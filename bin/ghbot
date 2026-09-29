@@ -1,0 +1,41 @@
+#!/bin/bash
+# Runs `gh` authenticated as the GitHub App bot instead of your personal
+# `gh auth login` session. Usage is identical to `gh`:
+#   ghbot pr create --draft --title "..." --body "..."
+#   ghbot pr comment 24 --body "..."
+#   ghbot api repos/OWNER/REPO/pulls/24/comments/ID/replies -f body="..."
+#
+# Every body the bot posts must end with a model fingerprint line:
+#   _Posted by <model name> (`<model id>`) via <tool>._
+# The wrapper refuses bodies without one, so the attribution is never left
+# to memory. Bodies are looked for in `-f body=…`, `-F body=…`, `--body …`
+# and `--body-file <path>`.
+set -euo pipefail
+
+check_body() {
+  # `gh api -f body=@file` reads the body from a file.
+  [[ "$1" == @* && -f "${1#@}" ]] && set -- "$(cat "${1#@}")"
+  grep -q '^_Posted by .* (`.*`) via .*\._$' <<<"$1" || {
+    echo "ghbot: body lacks the model fingerprint line (see AGENTS.md, GitHub identity)" >&2
+    exit 2
+  }
+}
+
+args=("$@")
+for ((i = 0; i < ${#args[@]}; i++)); do
+  case "${args[$i]}" in
+    body=*) check_body "${args[$i]#body=}" ;;
+    --body|-b) check_body "${args[$((i + 1))]:-}" ;;
+    --body-file|-F)
+      # `-F` is a typed field for `gh api` but `--body-file` for `gh issue comment`.
+      next="${args[$((i + 1))]:-}"
+      case "$next" in
+        body=*) check_body "${next#body=}" ;;
+        *) [[ -f "$next" ]] && check_body "$(cat "$next")" ;;
+      esac
+      ;;
+  esac
+done
+
+token="$(gh-bot-token)" || exit 1
+GH_TOKEN="$token" exec gh "${args[@]}"

@@ -1,0 +1,66 @@
+#!/bin/bash
+# Mints (and caches) a GitHub App installation access token.
+# Prints the token to stdout. Exit non-zero with a message on stderr on failure.
+set -euo pipefail
+
+CONFIG="${GH_BOT_CONFIG:-$HOME/.config/gh-bot/config.env}"
+CACHE_DIR="$HOME/.cache/gh-bot"
+CACHE_FILE="$CACHE_DIR/token.json"
+
+if [[ ! -f "$CONFIG" ]]; then
+  echo "gh-bot-token: no config at $CONFIG — copy config.env.example to config.env and fill it in" >&2
+  exit 1
+fi
+# shellcheck disable=SC1090
+source "$CONFIG"
+
+: "${APP_ID:?set APP_ID in $CONFIG}"
+: "${INSTALLATION_ID:?set INSTALLATION_ID in $CONFIG}"
+: "${PRIVATE_KEY_PATH:?set PRIVATE_KEY_PATH in $CONFIG}"
+
+if [[ ! -r "$PRIVATE_KEY_PATH" ]]; then
+  echo "gh-bot-token: can't read private key at $PRIVATE_KEY_PATH" >&2
+  exit 1
+fi
+
+mkdir -p "$CACHE_DIR"
+
+# Reuse the cached token while it still has more than 5 minutes left.
+if [[ -f "$CACHE_FILE" ]]; then
+  exp="$(jq -r '.expires_at // empty' "$CACHE_FILE" 2>/dev/null || true)"
+  if [[ -n "$exp" ]]; then
+    exp_epoch="$(date -d "$exp" +%s 2>/dev/null || echo 0)"
+    now_epoch="$(date +%s)"
+    if (( exp_epoch - now_epoch > 300 )); then
+      jq -r '.token' "$CACHE_FILE"
+      exit 0
+    fi
+  fi
+fi
+
+b64() { openssl base64 -e -A | tr '+/' '-_' | tr -d '='; }
+
+now="$(date +%s)"
+iat=$((now - 60))   # allow for clock drift
+exp=$((now + 540))  # 9 minutes; GitHub caps JWTs at 10
+
+header="$(printf '{"alg":"RS256","typ":"JWT"}' | b64)"
+payload="$(jq -n -c --argjson iat "$iat" --argjson exp "$exp" --arg iss "$APP_ID" \
+  '{iat: $iat, exp: $exp, iss: $iss}' | b64)"
+signature="$(printf '%s.%s' "$header" "$payload" | openssl dgst -sha256 -sign "$PRIVATE_KEY_PATH" | b64)"
+jwt="$header.$payload.$signature"
+
+response="$(curl -sS -X POST \
+  -H "Authorization: Bearer $jwt" \
+  -H "Accept: application/vnd.github+json" \
+  "https://api.github.com/app/installations/$INSTALLATION_ID/access_tokens")"
+
+token="$(jq -r '.token // empty' <<<"$response")"
+if [[ -z "$token" ]]; then
+  echo "gh-bot-token: failed to mint installation token: $response" >&2
+  exit 1
+fi
+
+umask 077
+echo "$response" > "$CACHE_FILE"
+echo "$token"
