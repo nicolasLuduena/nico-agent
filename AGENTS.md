@@ -10,8 +10,13 @@ later a reviewer) in named tabs, and sends the harness-specific skill call.
 Work done by coding agents must be visibly attributed to the bot account
 `nicolasluduena-coding-agent[bot]`.
 
-`ghbot` is a local wrapper (`~/.local/bin/ghbot`) that runs `gh` with a
-GitHub App installation token. Use `ghbot ...` instead of `gh ...` for:
+`ghbot` is a local wrapper that runs `gh` with a GitHub App installation
+token. Its source lives in this repo: `bin/ghbot` and `bin/gh-bot-token`,
+symlinked into `~/.local/bin`. Credentials stay outside the repo in
+`~/.config/gh-bot/` (template: `bin/gh-bot.config.env.example`). Never commit
+the config, the private key, or the token cache.
+
+Use `ghbot ...` instead of `gh ...` for:
 
 - **Opening pull requests**: `ghbot pr create ...`
 - **Issue comments, PR comments, and PR review replies** posted on your own
