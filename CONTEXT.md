@@ -67,6 +67,12 @@ _Avoid_: Worker, coder
 The agent launched in the same workspace, once a PR is linked, to review it.
 _Avoid_: Checker
 
+**Bot suffix**:
+Text appended to the Implementer's prompt when the bot's GitHub App is
+installed on the Repo, telling the agent to open its PR with `ghbot` and to
+add the bot as commit co-author. Checked on every Dispatch.
+_Avoid_: Bot mode, attribution prompt
+
 **Stage**:
 Where a Dispatch stands, taken from the Source and GitHub: Implementing, PR
 ready, Review launched. Also Failed, naming the step that failed.

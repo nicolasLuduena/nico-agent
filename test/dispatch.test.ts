@@ -26,6 +26,7 @@ describe("dispatch", () => {
       "herdr worktree create --cwd /src/api --branch agent/api-7 --base origin/main --label api#7 --no-focus",
       "herdr tab create --workspace w1 --cwd /worktrees/api-7 --label implementer --no-focus",
       "herdr agent start impl-api-7 --kind claude --pane w1:p2 -- --model opus --effort high",
+      "github app repos",
       "herdr agent prompt impl-api-7 /implement https://github.com/acme/api/issues/7 as draft PR",
       "github assign acme/api#7 @me",
     ]);
@@ -88,6 +89,7 @@ describe("dispatch", () => {
       workspace: "w1",
       implementer: { tab: "w1:t2", pane: "w1:p2", agent: "impl-api-7", harness: "claude", model: "opus", effort: "high" },
       completed: ["fetch", "worktree", "tab", "agent start", "agent ready", "prompt"],
+      bot: false,
       claimed: true,
       createdAt: "2026-09-30T12:00:00.000Z",
       updatedAt: "2026-09-30T12:00:00.000Z",
@@ -114,6 +116,7 @@ describe("dispatch", () => {
         "  model: opus",
         "  effort: high",
         "completed[6]: fetch,worktree,tab,agent start,agent ready,prompt",
+        "bot: false",
         "claimed: true",
         'createdAt: "2026-09-30T12:00:00.000Z"',
         'updatedAt: "2026-09-30T12:00:00.000Z"',
@@ -230,11 +233,12 @@ describe("dispatch", () => {
 
     const { exitCode } = await cli("dispatch", "acme/api#7", ...FLAGS);
     expect(exitCode).toBe(0);
-    expect(world.calls.slice(-6, -1)).toEqual([
+    expect(world.calls.slice(-7, -1)).toEqual([
       "herdr agent start impl-api-7 --kind claude --pane w1:p2 -- --model opus --effort high",
       "herdr agent read impl-api-7 --source visible",
       "herdr agent send-keys impl-api-7 down enter",
       "herdr agent wait impl-api-7 --until idle --until done --timeout 30000",
+      "github app repos",
       "herdr agent prompt impl-api-7 /implement https://github.com/acme/api/issues/7 as draft PR",
     ]);
   });
@@ -399,6 +403,7 @@ describe("resuming a failed Dispatch", () => {
     "herdr worktree create --cwd /src/api --branch agent/api-7 --base origin/main --label api#7 --no-focus",
     "herdr tab create --workspace w1 --cwd /worktrees/api-7 --label implementer --no-focus",
     "herdr agent start impl-api-7 --kind claude --pane w1:p2 -- --model opus --effort high",
+    "github app repos",
     "herdr agent prompt impl-api-7 /implement https://github.com/acme/api/issues/7 as draft PR",
     "github assign acme/api#7 @me",
   ];
@@ -517,7 +522,7 @@ describe("Claim", () => {
 
     await cli("dispatch", "acme/api#7", ...FLAGS);
     expect(world.claimed).toEqual(["acme/api#7"]);
-    expect(world.calls.filter((c) => c.startsWith("github "))).toEqual(["github issue acme/api#7", "github assign acme/api#7 @me"]);
+    expect(world.calls.filter((c) => c.startsWith("github "))).toEqual(["github issue acme/api#7", "github app repos", "github assign acme/api#7 @me"]);
     expect(world.calls.at(-1)).toBe("github assign acme/api#7 @me");
   });
 
@@ -534,7 +539,7 @@ describe("Claim", () => {
         "stage: Implementing",
         "workspace: w1",
         "agent: impl-api-7",
-        'warning: "could not Claim acme/api#7: GitHub request failed; check your network and `gh auth status`"',
+        'warnings[1]: "could not Claim acme/api#7: GitHub request failed; check your network and `gh auth status`"',
         "help[3]:",
         "  Assign https://github.com/acme/api/issues/7 to yourself on GitHub to Claim it by hand",
         "  Run `nico-agent show acme/api#7` to see the Dispatch",

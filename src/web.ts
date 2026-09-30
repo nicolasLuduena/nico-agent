@@ -1,6 +1,6 @@
 import htmx from "htmx.org/dist/htmx.min.js" with { type: "text" };
 import { type Board, loadBoard } from "./board";
-import { type Repo, CONFIG_ERROR_HELP, ConfigError, loadConfig } from "./config";
+import { type Repo, ConfigError, loadConfig } from "./config";
 import { DispatchError, StepFailed, dispatch } from "./dispatch";
 import { HARNESSES } from "./harness";
 import { type Dispatch, loadDispatches, stageOf } from "./state";
@@ -28,7 +28,7 @@ export function webHandler(ctx: WebContext) {
       repos = loadConfig(ctx.configDir).repos;
     } catch (e) {
       if (!(e instanceof ConfigError)) throw e;
-      const body = `<p class="error">${escape(e.message)}</p>\n<p>${escape(CONFIG_ERROR_HELP)}</p>`;
+      const body = `<p class="error">${escape(e.message)}</p>\n<p>${escape(e.help)}</p>`;
       return new Response(page("Board", body), { status: 500, headers: HTML_HEADERS });
     }
     const board = await loadBoard(ctx.world, repos, loadDispatches(ctx.configDir));
@@ -62,7 +62,7 @@ async function postDispatch(ctx: WebContext, request: Request) {
 function failureOf(e: unknown) {
   if (e instanceof StepFailed) return { message: e.message, help: e.help, status: 502 };
   if (e instanceof DispatchError) return { message: e.message, help: e.help, status: e.usage ? 400 : 409 };
-  if (e instanceof ConfigError) return { message: e.message, help: [CONFIG_ERROR_HELP], status: 500 };
+  if (e instanceof ConfigError) return { message: e.message, help: [e.help], status: 500 };
   if (e instanceof WorldError) return { message: e.message, help: [], status: 502 };
   return null;
 }

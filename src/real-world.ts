@@ -170,6 +170,16 @@ export class RealWorld implements World {
     return repository.issue ? toIssue(repository.issue) : null;
   }
 
+  async githubAppRepos() {
+    const args = ["api", "/installation/repositories", "--paginate", "--jq", ".repositories[].full_name"];
+    const result = await exec(["ghbot", ...args], { GH_PROMPT_DISABLED: "1", NO_COLOR: "1" });
+    if (result.exitCode !== 0) {
+      const reason = result.stderr.trim().split("\n")[0] || `exit code ${result.exitCode}`;
+      throw new WorldError(`\`ghbot api /installation/repositories\` failed: ${reason}`);
+    }
+    return result.stdout.split("\n").filter(Boolean);
+  }
+
   async githubAssignSelf(slug: string, number: number) {
     await gh(["issue", "edit", String(number), "--repo", slug, "--add-assignee", "@me"]);
   }

@@ -16,6 +16,8 @@ export class FakeWorld implements World {
   callFailures = new Map<string, string>();
   /** Assignees each `githubAssignSelf` added, as `slug#N`. */
   claimed: string[] = [];
+  /** Repos the bot's GitHub App is installed on. */
+  appRepos: string[] = [];
   clock = new Date("2026-09-30T12:00:00.000Z");
   /** This process's id, and whether each process id is still running. */
   pid = 4242;
@@ -168,6 +170,11 @@ export class FakeWorld implements World {
     if (this.stalledPrompts === 0) return { started: true };
     this.stalledPrompts--;
     return { started: false };
+  }
+
+  async githubAppRepos() {
+    this.call("github app repos");
+    return this.appRepos;
   }
 
   async githubAssignSelf(slug: string, number: number) {
