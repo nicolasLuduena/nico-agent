@@ -1,0 +1,115 @@
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { describe, expect, test } from "bun:test";
+import { WorldError } from "../src/world";
+import { setup } from "./harness";
+
+describe("AXI conventions", () => {
+  test("an unknown flag is a usage error naming the command's valid flags", async () => {
+    const { cli, world } = setup();
+    const { stdout, exitCode } = await cli("repo", "list", "--stat");
+    expect(exitCode).toBe(2);
+    expect(stdout).toBe(
+      ["error: unknown flag --stat for `repo list`", "help[1]:", "  Valid flags for `repo list`: --json, --help", ""].join("\n"),
+    );
+    expect(world.calls).toEqual([]);
+  });
+
+  test("an unknown flag is rejected before any outside-world call", async () => {
+    const { cli, world } = setup();
+    const { exitCode } = await cli("repo", "add", "acme/api", "--path", "/src/api", "--force");
+    expect(exitCode).toBe(2);
+    expect(world.calls).toEqual([]);
+  });
+
+  test("an unknown command is a usage error listing the commands", async () => {
+    const { cli } = setup();
+    const { stdout, exitCode } = await cli("dispatch-all");
+    expect(exitCode).toBe(2);
+    expect(stdout).toStartWith("error: unknown command `dispatch-all`\nhelp[4]:\n  Run `nico-agent [board]` to show Ready issues");
+  });
+
+  test("a missing required flag is a usage error with the usage line", async () => {
+    const { cli } = setup();
+    const { stdout, exitCode } = await cli("repo", "add", "acme/api");
+    expect(exitCode).toBe(2);
+    expect(stdout).toBe(
+      ["error: missing required flag --path", "help[1]:", "  Usage: `nico-agent repo add <owner/name> --path <clone>`", ""].join("\n"),
+    );
+  });
+
+  test("errors are structured JSON on stdout under --json", async () => {
+    const { cli } = setup();
+    const { stdout, exitCode } = await cli("repo", "add", "acme/api", "--path", "/nowhere", "--json");
+    expect(exitCode).toBe(1);
+    expect(JSON.parse(stdout)).toEqual({
+      error: "/nowhere is not a git clone",
+      help: ["Run `git clone https://github.com/acme/api /nowhere` first, or pass the path of an existing clone"],
+    });
+  });
+
+  test("--help prints a concise reference for the command", async () => {
+    const { cli, world } = setup();
+    const { stdout, exitCode } = await cli("repo", "add", "--help");
+    expect(exitCode).toBe(0);
+    expect(stdout).toBe(
+      [
+        "usage: nico-agent repo add <owner/name> --path <clone>",
+        "description: Add a Repo after checking the path is a clone of it",
+        "flags[3]{flag,description}:",
+        '  "--path <value>",path of a local clone of the repo (required)',
+        '  "--json",print JSON instead of TOON',
+        '  "--help",show help for the command',
+        "examples[1]: nico-agent repo add acme/api --path ~/src/api",
+        "",
+      ].join("\n"),
+    );
+    expect(world.calls).toEqual([]);
+  });
+
+  test("-v, -V and --version print the bare version", async () => {
+    const { cli } = setup();
+    for (const flag of ["-v", "-V", "--version"]) {
+      expect(await cli(flag)).toMatchObject({ stdout: "0.1.0\n", exitCode: 0 });
+    }
+  });
+
+  test("top-level --help lists every command", async () => {
+    const { cli } = setup();
+    const { stdout, exitCode } = await cli("--help");
+    expect(exitCode).toBe(0);
+    expect(stdout).toBe(
+      [
+        "bin: ~/.local/bin/nico-agent",
+        "description: Dispatch coding agents onto ready-for-agent issues",
+        "commands[4]{usage,description}:",
+        '  "nico-agent [board]",Show Ready issues across all Repos (the default view)',
+        "  nico-agent repo add <owner/name> --path <clone>,Add a Repo after checking the path is a clone of it",
+        "  nico-agent repo rm <owner/name>,Remove a Repo (its clone is left untouched)",
+        "  nico-agent repo list,List the configured Repos",
+        "help[1]:",
+        "  Run `nico-agent <command> --help` for its flags and examples",
+        "",
+      ].join("\n"),
+    );
+  });
+
+  test("a corrupt config file is a structured error, not a crash", async () => {
+    const { cli, configDir } = setup();
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(join(configDir, "config.json"), "{bad");
+    const { stdout, exitCode } = await cli("repo", "list");
+    expect(exitCode).toBe(1);
+    expect(stdout).toBe(`error: ${join(configDir, "config.json")} is not valid JSON\nhelp[1]:\n  Fix or delete the file and run \`nico-agent repo add\` again\n`);
+  });
+
+  test("an outside-world failure during a command is a structured error", async () => {
+    const { cli, world } = setup();
+    world.gitRemotes = async () => {
+      throw new WorldError("`git` is not installed or not on PATH");
+    };
+    const { stdout, exitCode } = await cli("repo", "add", "acme/api", "--path", "/src/api");
+    expect(exitCode).toBe(1);
+    expect(stdout).toBe("error: `git` is not installed or not on PATH\n");
+  });
+});
