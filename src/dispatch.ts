@@ -1,6 +1,6 @@
 import { type Repo, findRepo, loadConfig } from "./config";
 import { HARNESSES, type Harness } from "./harness";
-import { type Dispatch, type Step, STEPS, addDispatch, findDispatch, saveDispatch } from "./state";
+import { type Dispatch, type Step, STEPS, addDispatch, findDispatch, leaseDispatch, saveDispatch } from "./state";
 import { type World, WorldError } from "./world";
 
 /** A request the user can fix; `usage` marks a malformed one (CLI exit 2). */
@@ -63,9 +63,9 @@ export class StepFailed extends DispatchError {
 
 export interface DispatchResult {
   dispatch: Dispatch;
-  /** `new`, `existing` for a no-op re-run, or `resumed` from the step that had failed. */
+  /** `new`, `existing` for a no-op re-run, or `resumed` from the step that had failed or was cut short. */
   outcome: "new" | "existing" | "resumed";
-  resumedFrom?: Step;
+  resumedFrom?: Step | "claim";
 }
 
 /**
@@ -89,20 +89,22 @@ export async function dispatch(world: World, configDir: string, request: Dispatc
       ], true);
     }
   }
-  const { repo, number, key } = resolveIssue(configDir, request.issue);
+  const ref = resolveIssue(configDir, request.issue);
+  const { repo, number, key } = ref;
   const existing = findDispatch(configDir, key);
   if (existing) {
     sameLaunch(existing, request);
-    if (!existing.failure) return { dispatch: existing, outcome: "existing" };
-    const resumedFrom = existing.failure.step;
-    return { dispatch: await runSteps(world, configDir, repo, harness, existing), outcome: "resumed", resumedFrom };
+    const leased = await leaseDispatch(configDir, key, world.processId(), (d) => isResumable(world, d));
+    if (!leased) return { dispatch: findDispatch(configDir, key) ?? existing, outcome: "existing" };
+    const resumedFrom = leased.failure?.step ?? STEPS.find((s) => !leased.completed.includes(s)) ?? "claim";
+    return { dispatch: await runSteps(world, configDir, ref, harness, leased), outcome: "resumed", resumedFrom };
   }
 
   const issue = await world.githubIssue(repo.slug, number);
   if (!issue) throw new DispatchError(`${key} was not found on GitHub`, [`Check the issue number on https://github.com/${repo.slug}/issues`]);
   if (issue.state !== "open") throw new DispatchError(`${key} is closed`, ["Run `nico-agent` to see the Ready issues"]);
 
-  const name = repo.slug.split("/")[1]!;
+  const name = repoName(repo);
   const now = world.now().toISOString();
   const record: Dispatch = {
     issue: key,
@@ -112,21 +114,37 @@ export async function dispatch(world: World, configDir: string, request: Dispatc
     branch: `agent/${name}-${number}`,
     implementer: { agent: agentName("impl", name, number), harness: harness.name, model: request.model, effort: request.effort },
     completed: [],
+    runner: world.processId(),
     createdAt: now,
     updatedAt: now,
   };
   // Recorded before any side effect, so a concurrent dispatch of the issue finds it.
   if (!(await addDispatch(configDir, record))) throw alreadyInFlight(key);
-  return { dispatch: await runSteps(world, configDir, repo, harness, record), outcome: "new" };
+  return { dispatch: await runSteps(world, configDir, ref, harness, record), outcome: "new" };
 }
 
 /**
- * Run the steps `record` has not completed, saving it after each one. A
- * failing step is recorded and reported as StepFailed; what earlier steps
- * created is kept for inspection and reuse.
+ * Whether a re-run may take over a Dispatch: nobody is running its steps (its
+ * runner exited, or was killed mid-step) and something is left to do.
  */
-async function runSteps(world: World, configDir: string, repo: Repo, harness: Harness, dispatch: Dispatch) {
+function isResumable(world: World, dispatch: Dispatch) {
+  if (dispatch.runner !== undefined && world.processAlive(dispatch.runner)) return false;
+  return dispatch.failure !== undefined || dispatch.completed.length < STEPS.length || dispatch.claimed === undefined;
+}
+
+/**
+ * Run the steps `record` has not completed, saving it after each one, as the
+ * runner of a Dispatch that holds its lease. A failing step is recorded and
+ * reported as StepFailed; what earlier steps created is kept for inspection
+ * and reuse. The lease is released however the run ends.
+ */
+async function runSteps(world: World, configDir: string, ref: IssueRef, harness: Harness, dispatch: Dispatch) {
+  const { repo, number } = ref;
   const record: Dispatch = { ...dispatch, completed: [...dispatch.completed], implementer: { ...dispatch.implementer } };
+  const save = () => {
+    record.updatedAt = world.now().toISOString();
+    return saveDispatch(configDir, record);
+  };
   const { agent } = record.implementer;
   let ready: boolean | undefined;
   const steps: Record<Step, () => Promise<void>> = {
@@ -135,7 +153,7 @@ async function runSteps(world: World, configDir: string, repo: Repo, harness: Ha
       record.base = `origin/${await world.gitDefaultBranch(repo.path)}`;
     },
     worktree: async () => {
-      const label = `${repo.slug.split("/")[1]}#${record.issue.split("#")[1]}`;
+      const label = `${repoName(repo)}#${number}`;
       const worktree = await world.herdrWorktreeCreate({ cwd: repo.path, branch: record.branch, base: record.base!, label });
       record.worktree = worktree.path;
       record.workspace = worktree.workspace;
@@ -161,34 +179,35 @@ async function runSteps(world: World, configDir: string, repo: Repo, harness: Ha
     prompt: () => prompt(world, agent, `${harness.sigil}implement ${record.url} as draft PR`),
   };
 
-  for (const step of STEPS) {
-    if (record.completed.includes(step)) continue;
-    try {
-      await steps[step]();
-    } catch (e) {
-      if (!(e instanceof DispatchError || e instanceof WorldError)) throw e;
-      record.failure = { step, error: e.message };
-      record.updatedAt = world.now().toISOString();
-      await saveDispatch(configDir, record);
-      throw new StepFailed(record, step, e.message, e instanceof DispatchError ? e.help : []);
+  try {
+    for (const step of STEPS) {
+      if (record.completed.includes(step)) continue;
+      try {
+        await steps[step]();
+      } catch (e) {
+        record.failure = { step, error: e instanceof Error ? e.message : String(e) };
+        delete record.runner;
+        await save();
+        // Anything but a World or Dispatch failure is a bug: kept as the failure, but still thrown.
+        if (!(e instanceof DispatchError || e instanceof WorldError)) throw e;
+        throw new StepFailed(record, step, e.message, e instanceof DispatchError ? e.help : []);
+      }
+      record.completed.push(step);
+      delete record.failure;
+      await save();
     }
-    record.completed.push(step);
-    delete record.failure;
-    record.updatedAt = world.now().toISOString();
-    await saveDispatch(configDir, record);
-  }
-
-  if (record.claimed === undefined) {
-    await claim(world, repo, record);
-    record.updatedAt = world.now().toISOString();
-    await saveDispatch(configDir, record);
+    if (record.claimed === undefined) await claim(world, repo, number, record);
+  } finally {
+    if (record.runner !== undefined) {
+      delete record.runner;
+      await save();
+    }
   }
   return record;
 }
 
 /** Assign the issue to the user (ADR-0007); a failure is only a warning on a healthy Dispatch. */
-async function claim(world: World, repo: Repo, record: Dispatch) {
-  const number = Number(record.issue.split("#")[1]);
+async function claim(world: World, repo: Repo, number: number, record: Dispatch) {
   try {
     await world.githubAssignSelf(repo.slug, number);
     record.claimed = true;
@@ -255,6 +274,11 @@ function sameLaunch(existing: Dispatch, request: DispatchRequest) {
 
 function alreadyInFlight(key: string) {
   return new DispatchError(`${key} is already In flight`, [`Run \`nico-agent show ${key}\` to see the Dispatch`]);
+}
+
+/** The name part of a Repo's `owner/name` slug. */
+function repoName(repo: Repo) {
+  return repo.slug.split("/")[1]!;
 }
 
 const MAX_AGENT_NAME = 32;

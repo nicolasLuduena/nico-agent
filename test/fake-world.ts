@@ -17,6 +17,13 @@ export class FakeWorld implements World {
   /** Assignees each `githubAssignSelf` added, as `slug#N`. */
   claimed: string[] = [];
   clock = new Date("2026-09-30T12:00:00.000Z");
+  /** This process's id, and whether each process id is still running. */
+  pid = 4242;
+  deadPids = new Set<number>();
+  /** Calls that crash the process mid-step, like a bug or a kill would. */
+  crashes = new Set<string>();
+  /** Calls that never return, as if the process were stuck or killed in them. */
+  hangs = new Set<string>();
   private workspaces = 0;
   /** Screen of an agent blocked on a startup question, if the next start should block. */
   private blockedScreen: string | null = null;
@@ -85,6 +92,9 @@ export class FakeWorld implements World {
 
   private call(text: string) {
     this.calls.push(text);
+    for (const prefix of this.crashes) {
+      if (text.startsWith(prefix)) throw new Error(`crashed during ${text}`);
+    }
     for (const [prefix, failure] of this.callFailures) {
       if (text.startsWith(prefix)) throw new WorldError(failure);
     }
@@ -128,6 +138,7 @@ export class FakeWorld implements World {
 
   async herdrTabCreate({ workspace, cwd, label }: { workspace: string; cwd: string; label: string }) {
     this.herdr("tab create", "--workspace", workspace, "--cwd", cwd, "--label", label, "--no-focus");
+    if (this.hangs.has("herdr tab create")) await new Promise(() => {});
     return { tab: `${workspace}:t2`, pane: `${workspace}:p2` };
   }
 
@@ -162,6 +173,14 @@ export class FakeWorld implements World {
   async githubAssignSelf(slug: string, number: number) {
     this.call(`github assign ${slug}#${number} @me`);
     this.claimed.push(`${slug}#${number}`);
+  }
+
+  processId() {
+    return this.pid;
+  }
+
+  processAlive(pid: number) {
+    return !this.deadPids.has(pid);
   }
 
   now() {

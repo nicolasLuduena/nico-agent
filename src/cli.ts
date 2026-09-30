@@ -279,8 +279,7 @@ async function dispatchCommand(args: Args, ctx: RunContext): Promise<Output> {
     resumed: `${record.issue} (resumed from ${resumedFrom})`,
   }[outcome];
   const help = [`Run \`nico-agent show ${record.issue}\` to see the Dispatch`, BOARD_HELP];
-  const [owner, number] = record.issue.split("#") as [string, string];
-  if (record.warning) help.unshift(`Run \`gh issue edit ${number} --repo ${owner} --add-assignee @me\` to Claim it by hand`);
+  if (record.warning) help.unshift(`Assign ${record.url} to yourself on GitHub to Claim it by hand`);
   return {
     data: {
       dispatched,

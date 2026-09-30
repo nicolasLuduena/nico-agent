@@ -536,7 +536,7 @@ describe("Claim", () => {
         "agent: impl-api-7",
         'warning: "could not Claim acme/api#7: GitHub request failed; check your network and `gh auth status`"',
         "help[3]:",
-        "  Run `gh issue edit 7 --repo acme/api --add-assignee @me` to Claim it by hand",
+        "  Assign https://github.com/acme/api/issues/7 to yourself on GitHub to Claim it by hand",
         "  Run `nico-agent show acme/api#7` to see the Dispatch",
         "  Run `nico-agent` to see the Board",
         "",
@@ -552,5 +552,44 @@ describe("Claim", () => {
     expect(again.exitCode).toBe(0);
     expect(again.stdout).toStartWith("dispatched: acme/api#7 already In flight (no-op)\n");
     expect(world.calls).toEqual([]);
+  });
+});
+
+describe("interrupted Dispatch", () => {
+  test("a step that crashes is recorded as its failure and resumed by a re-run", async () => {
+    const { cli, world } = await withRepo();
+    world.addIssue("acme/api", { number: 7 });
+    world.crashes.add("herdr tab create");
+    await expect(cli("dispatch", "acme/api#7", ...FLAGS)).rejects.toThrow("crashed during herdr tab create");
+    world.crashes.clear();
+    expect((await cli("show", "acme/api#7", "--json")).json().stage).toBe("Failed at tab");
+
+    world.calls.length = 0;
+    const again = await cli("dispatch", "acme/api#7", ...FLAGS);
+    expect(again.stdout).toStartWith("dispatched: acme/api#7 (resumed from tab)\n");
+    expect(world.calls[0]).toStartWith("herdr tab create --workspace w1 ");
+  });
+
+  test("while a process runs the steps a re-run is a no-op; once that process is gone, it resumes", async () => {
+    const { cli, world } = await withRepo();
+    world.addIssue("acme/api", { number: 7 });
+    world.hangs.add("herdr tab create");
+    void cli("dispatch", "acme/api#7", ...FLAGS);
+    await Bun.sleep(20);
+    world.hangs.clear();
+
+    world.calls.length = 0;
+    const during = await cli("dispatch", "acme/api#7", ...FLAGS);
+    expect(during.exitCode).toBe(0);
+    expect(during.stdout).toStartWith("dispatched: acme/api#7 already In flight (no-op)\n");
+    expect(world.calls).toEqual([]);
+
+    // The first process was killed mid-step; a later one takes over.
+    world.deadPids.add(world.pid);
+    world.pid = 5000;
+    const after = await cli("dispatch", "acme/api#7", ...FLAGS);
+    expect(after.stdout).toStartWith("dispatched: acme/api#7 (resumed from tab)\n");
+    expect(world.calls[0]).toStartWith("herdr tab create --workspace w1 ");
+    expect((await cli("show", "acme/api#7", "--json")).json().stage).toBe("Implementing");
   });
 });

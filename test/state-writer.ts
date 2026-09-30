@@ -13,6 +13,7 @@ await addDispatch(dir, {
   worktree: `/worktrees/api-${n}`,
   workspace: `w${n}`,
   implementer: { tab: `w${n}:t2`, pane: `w${n}:p2`, agent: `impl-api-${n}`, harness: "claude", model: "opus", effort: "high" },
+  claimed: true,
   completed: ["fetch", "worktree", "tab", "agent start", "agent ready", "prompt"],
   createdAt: now,
   updatedAt: now,

@@ -28,6 +28,8 @@ export interface Dispatch {
   /** Whether the issue was assigned to the user (ADR-0007); false with a warning when that failed. */
   claimed?: boolean;
   warning?: string;
+  /** Id of the process running the steps, while one is. */
+  runner?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -66,6 +68,26 @@ export async function addDispatch(dir: string, dispatch: Dispatch): Promise<bool
     state.dispatches[dispatch.issue] = dispatch;
     write(dir, state);
     return true;
+  });
+}
+
+/**
+ * Take over running a Dispatch's steps for process `pid`, if `canTake` allows
+ * it; null when there is no record or it is not free to take.
+ */
+export async function leaseDispatch(
+  dir: string,
+  issue: string,
+  pid: number,
+  canTake: (dispatch: Dispatch) => boolean,
+): Promise<Dispatch | null> {
+  return withLock(dir, () => {
+    const state = read(dir);
+    const dispatch = state.dispatches[issue];
+    if (!dispatch || !canTake(dispatch)) return null;
+    dispatch.runner = pid;
+    write(dir, state);
+    return dispatch;
   });
 }
 
