@@ -25,6 +25,8 @@ export interface World {
    * `closedByPullRequestsReferences`); closed unmerged ones are left out.
    */
   githubLinkedPullRequests(slug: string, number: number): Promise<PullRequest[]>;
+  /** All PRs on a Dispatch's head branch, including closed unmerged PRs. */
+  githubBranchPullRequests(slug: string, branch: string): Promise<PullRequest[]>;
   /** Assign an issue to the user's own GitHub session (the Claim, ADR-0007). */
   githubAssignSelf(slug: string, number: number): Promise<void>;
   /** `git fetch origin` in the clone at `path`. */
@@ -36,6 +38,8 @@ export interface World {
     workspace: string;
     path: string;
   }>;
+  /** Remove the workspace's worktree, keeping its branch; no-op if the workspace is gone. */
+  herdrWorktreeRemove(workspace: string): Promise<void>;
   /** Create a labelled tab in a herdr workspace, without focusing it. */
   herdrTabCreate(options: { workspace: string; cwd: string; label: string }): Promise<{ tab: string; pane: string }>;
   /**

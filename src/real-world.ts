@@ -220,6 +220,14 @@ export class RealWorld implements World {
     await gh(["issue", "edit", String(number), "--repo", slug, "--add-assignee", "@me"]);
   }
 
+  async githubBranchPullRequests(slug: string, branch: string): Promise<PullRequest[]> {
+    const result = await gh(["pr", "list", "--repo", slug, "--head", branch, "--state", "all", "--limit", "100", "--json", "number,url,state,baseRefName"]);
+    const prs = JSON.parse(result) as { number: number; url: string; state: string; baseRefName: string }[];
+    // gh lists newest first; linkedPr expects the latest at the end.
+    return prs.reverse().map((pr) => ({ repo: slug, number: pr.number, url: pr.url,
+      state: pr.state.toLowerCase() as PullRequest["state"], baseBranch: pr.baseRefName }));
+  }
+
   async gitFetch(path: string) {
     await git(path, ["fetch", "origin"]);
   }
@@ -245,6 +253,14 @@ export class RealWorld implements World {
   async herdrTabCreate({ workspace, cwd, label }: { workspace: string; cwd: string; label: string }) {
     const result = await herdr(["tab", "create", "--workspace", workspace, "--cwd", cwd, "--label", label, "--no-focus"]);
     return { tab: result.tab.tab_id as string, pane: result.root_pane.pane_id as string };
+  }
+
+  async herdrWorktreeRemove(workspace: string) {
+    try {
+      await herdr(["worktree", "remove", "--workspace", workspace]);
+    } catch (e) {
+      if (!(e instanceof HerdrError && e.code === "workspace_not_found")) throw e;
+    }
   }
 
   async herdrAgentStart({ name, kind, pane, args }: { name: string; kind: string; pane: string; args: string[] }) {

@@ -1,7 +1,7 @@
 import htmx from "htmx.org/dist/htmx.min.js" with { type: "text" };
 import { type Board, loadBoard } from "./board";
 import { type Repo, ConfigError, loadConfig } from "./config";
-import { DispatchError, StepFailed, dispatch, review } from "./dispatch";
+import { CloseConfirmationRequired, DispatchError, StepFailed, closeDispatch, dispatch, review } from "./dispatch";
 import { type Catalog, type Remembered, harnessCatalogs, refreshHarnesses, rememberedLaunches } from "./harness";
 import { type InFlightRow, type PrLookup, cachedPrs, loadInFlight } from "./stage";
 import { type Launch, loadDispatches } from "./state";
@@ -24,6 +24,7 @@ export function webHandler(context: WebContext) {
     try {
       if (pathname === "/dispatch" && request.method === "POST") return await postLaunch(ctx, request, dispatch);
       if (pathname === "/review" && request.method === "POST") return await postLaunch(ctx, request, review);
+      if (pathname === "/close" && request.method === "POST") return await postClose(ctx, request);
       if (pathname === "/harnesses/refresh" && request.method === "POST") return await postRefresh(ctx);
       if (request.method !== "GET") return new Response("Method Not Allowed\n", { status: 405 });
       if (pathname === "/htmx.min.js") {
@@ -43,6 +44,26 @@ export function webHandler(context: WebContext) {
       return new Response(page(failure.title, body), { status: failure.status, headers: HTML_HEADERS });
     }
   };
+}
+
+async function postClose(ctx: WebContext, request: Request) {
+  const form = await request.formData();
+  const issue = String(form.get("issue") ?? "");
+  try {
+    await closeDispatch(ctx.world, ctx.configDir, issue, form.get("confirm") === "yes");
+  } catch (e) {
+    if (!(e instanceof CloseConfirmationRequired)) throw e;
+    const body = `<p>${escape(e.issue)} has an open PR or no linked PR. Close removes its worktree and workspace and forgets the Dispatch. Its branch is kept.</p>\n${closeForm(e.issue, true)}\n<p><a href="/">Cancel and return to the Board</a></p>`;
+    return new Response(page("Confirm close", body), { headers: HTML_HEADERS });
+  }
+  return new Response(null, { status: 303, headers: { location: "/" } });
+}
+
+function closeForm(issue: string, confirm = false) {
+  return ['<form method="post" action="/close">',
+    `<input type="hidden" name="issue" value="${escape(issue)}">`,
+    ...(confirm ? ['<input type="hidden" name="confirm" value="yes">'] : []),
+    `<button>${confirm ? "Confirm close" : "Close"}</button>`, "</form>"].join("\n");
 }
 
 interface ServerContext extends WebContext {
@@ -155,6 +176,7 @@ function renderInFlightRow(row: InFlightRow, choices: Choices) {
   ];
   const notes = [...(d.warnings ?? []), ...(prError ? [`could not look up the PR: ${prError}`] : [])];
   const extra = notes.map((w) => `<p class="warning">${escape(w)}</p>`);
+  extra.push(closeForm(d.issue));
   if (d.failure) extra.push(retryForm("dispatch", d.issue, d.implementer));
   else if (d.reviewer?.failure) extra.push(retryForm("review", d.issue, d.reviewer));
   else if (canLaunchReview(row)) {

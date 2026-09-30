@@ -1,7 +1,7 @@
 import { resolve } from "node:path";
 import { loadBoard } from "./board";
 import { ConfigError, findRepo, loadConfig, saveConfig } from "./config";
-import { DispatchError, StepFailed, dispatch, resolveIssue, review } from "./dispatch";
+import { DispatchError, StepFailed, closeDispatch, dispatch, resolveIssue, review } from "./dispatch";
 import { type Catalog, harnessCatalogs, harnesses, refreshHarnesses } from "./harness";
 import { type Output, render } from "./output";
 import { VERSION } from "./version";
@@ -124,6 +124,18 @@ const commands: Command[] = [
     positionals: ["issue"],
     examples: ["nico-agent review acme/api#7 --harness codex --model gpt-5.5 --effort high"],
     run: reviewCommand,
+  },
+  {
+    name: "close",
+    usage: "nico-agent close <issue> [--confirm]",
+    summary: "Remove a Dispatch's workspace and forget it, keeping its branch",
+    flags: { "--confirm": { value: false, description: "close even with an open PR or no linked PR" } },
+    positionals: ["issue"],
+    examples: ["nico-agent close acme/api#7", "nico-agent close acme/api#7 --confirm"],
+    run: async (args, ctx) => {
+      const result = await closeDispatch(ctx.world, ctx.configDir, issueArg(args, "nico-agent close <issue> [--confirm]"), args.flags["--confirm"] === true);
+      return { data: { closed: result.outcome === "closed" ? result.issue : `${result.issue} already Closed (no-op)` }, help: [BOARD_HELP] };
+    },
   },
   {
     name: "harness list",

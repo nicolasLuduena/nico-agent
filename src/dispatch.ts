@@ -1,7 +1,7 @@
 import { type Prompts, type Repo, fillTemplate, findRepo, loadConfig, prompts } from "./config";
 import { type Harness, harnessCatalog, harnesses, launchArgs, rememberLaunch } from "./harness";
 import { sameSlug } from "./slug";
-import { freshPrs, isReviewLaunched } from "./stage";
+import { freshPrs, isReviewLaunched, issueNumber, linkedPr } from "./stage";
 import {
   type Dispatch,
   type Launch,
@@ -12,6 +12,7 @@ import {
   addDispatch,
   findDispatch,
   leaseDispatch,
+  removeDispatch,
   saveDispatch,
 } from "./state";
 import { type World, WorldError } from "./world";
@@ -127,6 +128,43 @@ export async function dispatch(world: World, configDir: string, request: Dispatc
   if (!(await addDispatch(configDir, record))) throw alreadyInFlight(key);
   rememberLaunch(configDir, harness.name, request.model, request.effort);
   return { dispatch: await runSteps(world, configDir, ref, harness, templates, record), outcome: "new" };
+}
+
+export class CloseConfirmationRequired extends DispatchError {
+  constructor(readonly issue: string) {
+    super(`${issue} has an open PR or no linked PR; closing requires confirmation`, [
+      `Run \`nico-agent close ${issue} --confirm\` to remove its workspace and forget the Dispatch`,
+    ]);
+  }
+}
+
+/** Remove a Dispatch's workspace before forgetting it, holding the same lease as launches. */
+export async function closeDispatch(world: World, configDir: string, issue: string, confirm = false) {
+  const { key } = resolveIssue(configDir, issue);
+  if (!findDispatch(configDir, key)) return { issue: key, outcome: "existing" as const };
+  const record = await leaseDispatch(configDir, key, world.processId(),
+    (d) => d.runner === undefined || !world.processAlive(d.runner));
+  if (!record) {
+    if (!findDispatch(configDir, key)) return { issue: key, outcome: "existing" as const };
+    throw new DispatchError(`${key} is busy with another nico-agent`, ["Try again once it is done"]);
+  }
+  try {
+    if (!confirm) {
+      const [linked, branch] = await Promise.all([
+        world.githubLinkedPullRequests(record.repo, issueNumber(record)),
+        world.githubBranchPullRequests(record.repo, record.branch),
+      ]);
+      const pr = linkedPr([...linked, ...branch], record.repo);
+      if (!pr || pr.state === "open") throw new CloseConfirmationRequired(key);
+    }
+    if (record.workspace) await world.herdrWorktreeRemove(record.workspace);
+    await removeDispatch(configDir, key);
+    return { issue: key, outcome: "closed" as const };
+  } catch (e) {
+    delete record.runner;
+    await saveDispatch(configDir, record);
+    throw e;
+  }
 }
 
 export interface ReviewResult {

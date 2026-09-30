@@ -31,6 +31,7 @@ export class FakeWorld implements World {
   codexCatalog = CODEX_CATALOG;
   /** PRs linked to each issue, by `slug#N`. */
   linkedPrs = new Map<string, PullRequest[]>();
+  branchPrs = new Map<string, PullRequest[]>();
   /** Agent state of each started agent, as `herdr agent list` reports it. */
   agentStates = new Map<string, string>();
   private workspaces = 0;
@@ -150,6 +151,11 @@ export class FakeWorld implements World {
     return this.linkedPrs.get(`${slug}#${number}`) ?? [];
   }
 
+  async githubBranchPullRequests(slug: string, branch: string) {
+    this.call(`github branch prs ${slug}:${branch}`);
+    return this.branchPrs.get(`${slug}:${branch}`) ?? [];
+  }
+
   async gitFetch(path: string) {
     this.call(`git -C ${path} fetch origin`);
   }
@@ -177,6 +183,10 @@ export class FakeWorld implements World {
     this.herdr("agent start", name, "--kind", kind, "--pane", pane, "--", ...args);
     this.agentStates.set(name, "idle");
     return { ready: this.blockedScreen === null };
+  }
+
+  async herdrWorktreeRemove(workspace: string) {
+    this.herdr("worktree remove", "--workspace", workspace);
   }
 
   async herdrAgents() {
