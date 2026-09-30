@@ -5,6 +5,10 @@ import { join } from "node:path";
 export const STEPS = ["fetch", "worktree", "tab", "agent start", "agent ready", "prompt"] as const;
 export type Step = (typeof STEPS)[number];
 
+/** The steps that launch a Reviewer in a Dispatch's workspace, in order. */
+export const REVIEW_STEPS = ["tab", "agent start", "agent ready", "prompt"] as const;
+export type ReviewStep = (typeof REVIEW_STEPS)[number];
+
 /**
  * The local record of one Dispatch (ADR-0002), keyed by its issue. It is
  * written before the first step, so ids appear as the steps that create them
@@ -21,6 +25,8 @@ export interface Dispatch {
   worktree?: string;
   workspace?: string;
   implementer: Launch;
+  /** The Reviewer, once a review was launched. */
+  reviewer?: Reviewer;
   /** Steps done so far, in order. */
   completed: Step[];
   /** The step that failed last, until a re-run gets past it. */
@@ -31,7 +37,7 @@ export interface Dispatch {
   claimed?: boolean;
   /** What went wrong without failing the Dispatch. */
   warnings?: string[];
-  /** Id of the process running the steps, while one is. */
+  /** Id of the process running the steps (the Implementer's or the Reviewer's), while one is. */
   runner?: number;
   createdAt: string;
   updatedAt: string;
@@ -45,6 +51,15 @@ export interface Launch {
   harness: string;
   model: string;
   effort: string;
+}
+
+/** A Reviewer's launch, the PR it reviews, and how far its steps got. */
+export interface Reviewer extends Launch {
+  /** URL of the PR under review, and the branch it merges into. */
+  pr: string;
+  prBase: string;
+  completed: ReviewStep[];
+  failure?: { step: ReviewStep; error: string };
 }
 
 interface StateFile {
@@ -101,11 +116,6 @@ export async function saveDispatch(dir: string, dispatch: Dispatch): Promise<voi
     state.dispatches[dispatch.issue] = dispatch;
     write(dir, state);
   });
-}
-
-/** Where a Dispatch stands: Failed at its failed step, else Implementing (ADR-0003 adds the PR Stages). */
-export function stageOf(dispatch: Dispatch) {
-  return dispatch.failure ? `Failed at ${dispatch.failure.step}` : "Implementing";
 }
 
 function read(dir: string): StateFile {

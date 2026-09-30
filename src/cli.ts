@@ -1,12 +1,13 @@
 import { resolve } from "node:path";
 import { loadBoard } from "./board";
 import { ConfigError, findRepo, loadConfig, saveConfig } from "./config";
-import { DispatchError, StepFailed, dispatch, resolveIssue } from "./dispatch";
+import { DispatchError, StepFailed, dispatch, resolveIssue, review } from "./dispatch";
 import { type Catalog, harnessCatalogs, harnesses, refreshHarnesses } from "./harness";
 import { type Output, render } from "./output";
 import { VERSION } from "./version";
 import { sameSlug, slugOfRemote } from "./slug";
-import { findDispatch, loadDispatches, stageOf } from "./state";
+import { cachedPrs, freshPrs, loadInFlight, stageOf } from "./stage";
+import { findDispatch, loadDispatches } from "./state";
 import { webHandler } from "./web";
 import { type World, WorldError } from "./world";
 
@@ -26,6 +27,12 @@ const DESCRIPTION = "Dispatch coding agents onto ready-for-agent issues";
 const ADD_REPO_HELP = "Run `nico-agent repo add <owner/name> --path <clone>` to add a Repo";
 const BOARD_HELP = "Run `nico-agent` to see the Board";
 const DISPATCH_USAGE = "nico-agent dispatch <issue> --harness <harness> --model <model> --effort <effort>";
+const REVIEW_USAGE = "nico-agent review <issue> --harness <harness> --model <model> --effort <effort>";
+const LAUNCH_FLAGS = {
+  "--harness": { value: true, description: "Harness to launch, e.g. claude (see `nico-agent harness list`)" },
+  "--model": { value: true, description: "model for the Harness, e.g. opus" },
+  "--effort": { value: true, description: "Effort level for the Harness, e.g. high" },
+};
 
 /** An error the user can act on; `exitCode` 2 marks a usage error. */
 class CliError extends Error {
@@ -101,17 +108,22 @@ const commands: Command[] = [
     name: "dispatch",
     usage: DISPATCH_USAGE,
     summary: "Start an Implementer on an issue in a new herdr worktree workspace (resumes a failed one)",
-    flags: {
-      "--harness": { value: true, description: "Harness to launch, e.g. claude (see `nico-agent harness list`)" },
-      "--model": { value: true, description: "model for the Harness, e.g. opus" },
-      "--effort": { value: true, description: "Effort level for the Harness, e.g. high" },
-    },
+    flags: LAUNCH_FLAGS,
     positionals: ["issue"],
     examples: [
       "nico-agent dispatch acme/api#7 --harness claude --model opus --effort high",
       "nico-agent dispatch https://github.com/acme/api/issues/7 --harness claude --model sonnet --effort max",
     ],
     run: dispatchCommand,
+  },
+  {
+    name: "review",
+    usage: REVIEW_USAGE,
+    summary: "Start a Reviewer on an In-flight issue's linked PR, in its workspace (resumes a failed one)",
+    flags: LAUNCH_FLAGS,
+    positionals: ["issue"],
+    examples: ["nico-agent review acme/api#7 --harness codex --model gpt-5.5 --effort high"],
+    run: reviewCommand,
   },
   {
     name: "harness list",
@@ -170,7 +182,7 @@ export async function run(argv: string[], ctx: RunContext): Promise<RunResult> {
     if (e instanceof ConfigError) e = new CliError(e.message, [e.help]);
     else if (e instanceof WorldError) e = new CliError(e.message);
     else if (e instanceof DispatchError) {
-      const details = e instanceof StepFailed ? { stage: stageOf(e.dispatch) } : {};
+      const details = e instanceof StepFailed ? { stage: stageOf(e.dispatch, null) } : {};
       e = new CliError(e.message, e.help, e.usage ? 2 : 1, details);
     }
     if (!(e instanceof CliError)) throw e;
@@ -276,6 +288,15 @@ function required(args: Args, flag: string, usage: string) {
   return value;
 }
 
+function launchRequest(args: Args, usage: string) {
+  return {
+    issue: issueArg(args, usage),
+    harness: required(args, "--harness", usage),
+    model: required(args, "--model", usage),
+    effort: required(args, "--effort", usage),
+  };
+}
+
 function issueArg(args: Args, usage: string) {
   const issue = args.positionals[0];
   if (!issue) throw new CliError("<issue> is required", [`Usage: \`${usage}\``], 2);
@@ -283,14 +304,7 @@ function issueArg(args: Args, usage: string) {
 }
 
 async function dispatchCommand(args: Args, ctx: RunContext): Promise<Output> {
-  const issue = issueArg(args, DISPATCH_USAGE);
-  const request = {
-    issue,
-    harness: required(args, "--harness", DISPATCH_USAGE),
-    model: required(args, "--model", DISPATCH_USAGE),
-    effort: required(args, "--effort", DISPATCH_USAGE),
-  };
-  const { dispatch: record, outcome, resumedFrom } = await dispatch(ctx.world, ctx.configDir, request);
+  const { dispatch: record, outcome, resumedFrom } = await dispatch(ctx.world, ctx.configDir, launchRequest(args, DISPATCH_USAGE));
   const dispatched = {
     new: record.issue,
     existing: `${record.issue} already In flight (no-op)`,
@@ -301,7 +315,7 @@ async function dispatchCommand(args: Args, ctx: RunContext): Promise<Output> {
   return {
     data: {
       dispatched,
-      stage: stageOf(record),
+      stage: stageOf(record, null),
       workspace: record.workspace,
       agent: record.implementer.agent,
       ...(record.warnings && { warnings: record.warnings }),
@@ -310,17 +324,42 @@ async function dispatchCommand(args: Args, ctx: RunContext): Promise<Output> {
   };
 }
 
+async function reviewCommand(args: Args, ctx: RunContext): Promise<Output> {
+  const { dispatch: record, outcome, resumedFrom } = await review(ctx.world, ctx.configDir, launchRequest(args, REVIEW_USAGE));
+  const reviewer = record.reviewer!;
+  const reviewing = {
+    new: record.issue,
+    existing: `${record.issue} already launched (no-op)`,
+    resumed: `${record.issue} (resumed from ${resumedFrom})`,
+  }[outcome];
+  return {
+    data: {
+      reviewing,
+      // The Reviewer exists only once a PR was linked, so the PR's absence can't change the Stage.
+      stage: stageOf(record, null),
+      pr: reviewer.pr,
+      workspace: record.workspace,
+      agent: reviewer.agent,
+    },
+    help: [`Run \`nico-agent show ${record.issue}\` to see the Dispatch`, BOARD_HELP],
+  };
+}
+
 async function show(args: Args, ctx: RunContext): Promise<Output> {
   const { key } = resolveIssue(ctx.configDir, issueArg(args, "nico-agent show <issue>"));
   const record = findDispatch(ctx.configDir, key);
   if (!record) throw new CliError(`${key} is not In flight`, ["Run `nico-agent` to see the Board and what is In flight"]);
   const { tab, pane, ...launch } = record.implementer;
+  const [row] = await loadInFlight(ctx.world, [record], freshPrs(ctx.world));
+  const { stage, pr, prError } = row!;
   // Ids are filled in as steps complete; print them in a fixed order all the same.
   const data = {
     issue: record.issue,
     title: record.title,
     url: record.url,
-    stage: stageOf(record),
+    stage,
+    pr: pr?.url,
+    prError,
     failure: record.failure,
     warnings: record.warnings,
     repo: record.repo,
@@ -330,6 +369,7 @@ async function show(args: Args, ctx: RunContext): Promise<Output> {
     workspace: record.workspace,
     implementer: definedOnly({ tab, pane, ...launch }),
     completed: record.completed,
+    reviewer: record.reviewer,
     botSuffix: record.botSuffix,
     claimed: record.claimed,
     createdAt: record.createdAt,
@@ -468,9 +508,14 @@ async function board(ctx: RunContext): Promise<Output> {
   if (repos.length === 0) {
     return { data: { ...header, ready: "0 issues (no Repos configured)" }, help: [ADD_REPO_HELP] };
   }
-  const { ready, inFlight, errors } = await loadBoard(ctx.world, repos, loadDispatches(ctx.configDir));
+  const { ready, inFlight, errors } = await loadBoard(ctx.world, repos, loadDispatches(ctx.configDir), cachedPrs(ctx.world));
   const help = ["Run `nico-agent repo list` to see the Repos", ADD_REPO_HELP];
   if (inFlight.length) help.unshift("Run `nico-agent show <issue>` to see a Dispatch");
+  if (inFlight.some((row) => row.stage === "PR ready")) {
+    help.unshift(
+      `Run \`nico-agent review <issue> --harness ${harnesses(ctx.configDir)[0]!.name} --model <model> --effort <effort>\` to review an issue whose PR is ready`,
+    );
+  }
   if (ready.length) {
     help.unshift(
       `Run \`nico-agent dispatch <issue> --harness ${harnesses(ctx.configDir)[0]!.name} --model <model> --effort <effort>\` to dispatch a Ready issue`,
@@ -479,10 +524,14 @@ async function board(ctx: RunContext): Promise<Output> {
   const inFlightData = {
     inFlight: plural(inFlight.length, "Dispatch", "Dispatches"),
     ...(inFlight.length > 0 && {
-      dispatches: inFlight.map((d) => ({
+      dispatches: inFlight.map(({ dispatch: d, stage, pr, prError, implementerState, reviewerState }) => ({
         issue: d.issue,
         title: d.title,
-        stage: stageOf(d),
+        stage,
+        pr: pr?.url ?? "",
+        ...(prError && { prError }),
+        implementer: implementerState,
+        reviewer: reviewerState ?? "",
         harness: d.implementer.harness,
         model: d.implementer.model,
         effort: d.implementer.effort,

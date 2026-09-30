@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import type { Address, GitHubIssue, RequestHandler, World } from "../src/world";
+import type { Address, GitHubIssue, PullRequest, RequestHandler, World } from "../src/world";
 import { WorldError } from "../src/world";
 
 export class FakeWorld implements World {
@@ -29,7 +29,12 @@ export class FakeWorld implements World {
   hangs = new Set<string>();
   /** What `codex debug models` prints: the recorded catalog unless a test swaps it. */
   codexCatalog = CODEX_CATALOG;
+  /** PRs linked to each issue, by `slug#N`. */
+  linkedPrs = new Map<string, PullRequest[]>();
+  /** Agent state of each started agent, as `herdr agent list` reports it. */
+  agentStates = new Map<string, string>();
   private workspaces = 0;
+  private tabs = new Map<string, number>();
   /** Screen of an agent blocked on a startup question, if the next start should block. */
   private blockedScreen: string | null = null;
   private stalledPrompts = 0;
@@ -49,6 +54,19 @@ export class FakeWorld implements World {
       ...issue,
     };
     this.issues.set(slug, [...(this.issues.get(slug) ?? []), full]);
+  }
+
+  /** Link a PR to an issue, as a closing reference would. */
+  linkPr(slug: string, issue: number, pr: Partial<PullRequest> & { number: number }) {
+    const full: PullRequest = {
+      repo: slug,
+      url: `https://github.com/${slug}/pull/${pr.number}`,
+      state: "open",
+      baseBranch: "main",
+      ...pr,
+    };
+    const key = `${slug}#${issue}`;
+    this.linkedPrs.set(key, [...(this.linkedPrs.get(key) ?? []), full]);
   }
 
   /** Make the next calls to `serve` fail with `message`. */
@@ -127,6 +145,11 @@ export class FakeWorld implements World {
     return this.issues.get(slug)?.find((i) => i.number === number) ?? null;
   }
 
+  async githubLinkedPullRequests(slug: string, number: number) {
+    this.call(`github linked prs ${slug}#${number}`);
+    return this.linkedPrs.get(`${slug}#${number}`) ?? [];
+  }
+
   async gitFetch(path: string) {
     this.call(`git -C ${path} fetch origin`);
   }
@@ -144,12 +167,21 @@ export class FakeWorld implements World {
   async herdrTabCreate({ workspace, cwd, label }: { workspace: string; cwd: string; label: string }) {
     this.herdr("tab create", "--workspace", workspace, "--cwd", cwd, "--label", label, "--no-focus");
     if (this.hangs.has("herdr tab create")) await new Promise(() => {});
-    return { tab: `${workspace}:t2`, pane: `${workspace}:p2` };
+    // Tab 1 is the workspace's own; created ones follow it.
+    const n = (this.tabs.get(workspace) ?? 1) + 1;
+    this.tabs.set(workspace, n);
+    return { tab: `${workspace}:t${n}`, pane: `${workspace}:p${n}` };
   }
 
   async herdrAgentStart({ name, kind, pane, args }: { name: string; kind: string; pane: string; args: string[] }) {
     this.herdr("agent start", name, "--kind", kind, "--pane", pane, "--", ...args);
+    this.agentStates.set(name, "idle");
     return { ready: this.blockedScreen === null };
+  }
+
+  async herdrAgents() {
+    this.herdr("agent list");
+    return [...this.agentStates].map(([name, state]) => ({ name, state }));
   }
 
   async herdrAgentRead(name: string) {
@@ -170,7 +202,10 @@ export class FakeWorld implements World {
 
   async herdrAgentPrompt(name: string, text: string) {
     this.herdr("agent prompt", name, text);
-    if (this.stalledPrompts === 0) return { started: true };
+    if (this.stalledPrompts === 0) {
+      this.agentStates.set(name, "working");
+      return { started: true };
+    }
     this.stalledPrompts--;
     return { started: false };
   }

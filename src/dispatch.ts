@@ -1,8 +1,22 @@
 import { type Prompts, type Repo, fillTemplate, findRepo, loadConfig, prompts } from "./config";
 import { type Harness, harnessCatalog, harnesses, launchArgs, rememberLaunch } from "./harness";
 import { sameSlug } from "./slug";
-import { type Dispatch, type Step, STEPS, addDispatch, findDispatch, leaseDispatch, saveDispatch } from "./state";
+import { freshPrs } from "./stage";
+import {
+  type Dispatch,
+  type Launch,
+  type ReviewStep,
+  type Step,
+  REVIEW_STEPS,
+  STEPS,
+  addDispatch,
+  findDispatch,
+  leaseDispatch,
+  saveDispatch,
+} from "./state";
 import { type World, WorldError } from "./world";
+
+const DISPATCH_HINT = "nico-agent dispatch <issue> --harness <harness> --model <model> --effort <effort>";
 
 /** A request the user can fix; `usage` marks a malformed one (CLI exit 2). */
 export class DispatchError extends Error {
@@ -46,18 +60,19 @@ export function resolveIssue(configDir: string, ref: string): IssueRef {
   return { repo, number, key: `${repo.slug}#${number}` };
 }
 
-/** A step of a Dispatch failed; the Dispatch is kept, Failed at `step`, to be resumed. */
+/** A step of a Dispatch failed; the Dispatch is kept, Failed at `step`, to be resumed by the same `command`. */
 export class StepFailed extends DispatchError {
   constructor(
     readonly dispatch: Dispatch,
-    readonly step: Step,
+    readonly step: string,
     message: string,
     help: string[],
+    command: "dispatch" | "review" = "dispatch",
   ) {
     super(message, [
       ...help,
       `Run \`nico-agent show ${dispatch.issue}\` to see the Dispatch`,
-      `Run the same \`nico-agent dispatch\` again to resume from ${step}`,
+      `Run the same \`nico-agent ${command}\` again to resume from ${step}`,
     ]);
   }
 }
@@ -114,6 +129,92 @@ export async function dispatch(world: World, configDir: string, request: Dispatc
   return { dispatch: await runSteps(world, configDir, ref, harness, templates, record), outcome: "new" };
 }
 
+export interface ReviewResult {
+  dispatch: Dispatch;
+  /** `new`, `existing` for a no-op re-run, or `resumed` from the step that had failed or was cut short. */
+  outcome: "new" | "existing" | "resumed";
+  resumedFrom?: ReviewStep;
+}
+
+/**
+ * Launch a Reviewer on an In-flight issue's PR: a `reviewer` tab in the
+ * Dispatch's workspace, prompted to review the PR against its base branch
+ * for the issue's spec. Only once a PR is linked (ADR-0003); idempotent like
+ * dispatch.
+ */
+export async function review(world: World, configDir: string, request: DispatchRequest): Promise<ReviewResult> {
+  const harness = await chooseLaunch(world, configDir, request);
+  const ref = resolveIssue(configDir, request.issue);
+  const { key } = ref;
+  const templates = prompts(loadConfig(configDir));
+  const existing = findDispatch(configDir, key);
+  if (!existing) throw new DispatchError(`${key} is not In flight`, [`Run \`${DISPATCH_HINT}\` to dispatch it first`]);
+  const show = `Run \`nico-agent show ${key}\` to see the Dispatch`;
+  const free = (d: Dispatch) => d.runner === undefined || !world.processAlive(d.runner);
+
+  if (existing.reviewer) {
+    const { harness: h, model, effort } = existing.reviewer;
+    if (h !== request.harness || model !== request.model || effort !== request.effort) {
+      throw new DispatchError(`${key} already has a Reviewer with ${h} ${model} ${effort}`, [show]);
+    }
+    const leased = await leaseDispatch(configDir, key, world.processId(), (d) => free(d) && !isLaunched(d));
+    if (!leased) return { dispatch: findDispatch(configDir, key) ?? existing, outcome: "existing" };
+    const resumedFrom = leased.reviewer!.failure?.step ?? REVIEW_STEPS.find((s) => !leased.reviewer!.completed.includes(s))!;
+    return { dispatch: await runReview(world, configDir, ref, harness, templates, leased), outcome: "resumed", resumedFrom };
+  }
+
+  if (!existing.workspace || !existing.worktree) {
+    throw new DispatchError(`${key} has no workspace to review in yet`, [
+      `Run the same \`nico-agent dispatch\` again to resume it`,
+      show,
+    ]);
+  }
+  const pr = await freshPrs(world)(existing);
+  if (!pr) {
+    throw new DispatchError(`no PR is linked to ${key} yet`, [
+      "Run the same `nico-agent review` again once the Implementer has opened a PR that closes the issue",
+      show,
+    ]);
+  }
+  const leased = await leaseDispatch(configDir, key, world.processId(), (d) => free(d) && !d.reviewer);
+  if (!leased) {
+    const now = findDispatch(configDir, key);
+    if (now?.reviewer) return review(world, configDir, request);
+    throw new DispatchError(`${key} is busy with another nico-agent`, ["Try again once it is done", show]);
+  }
+  leased.reviewer = {
+    agent: agentName("rev", repoName(ref.repo), ref.number),
+    harness: harness.name,
+    model: request.model,
+    effort: request.effort,
+    pr: pr.url,
+    prBase: pr.baseBranch,
+    completed: [],
+  };
+  return { dispatch: await runReview(world, configDir, ref, harness, templates, leased), outcome: "new" };
+}
+
+/** Whether a Dispatch's Reviewer was prompted. */
+function isLaunched(dispatch: Dispatch) {
+  const { reviewer } = dispatch;
+  return reviewer !== undefined && REVIEW_STEPS.every((s) => reviewer.completed.includes(s));
+}
+
+/** Run the Reviewer's steps `dispatch` has not completed, as the runner holding its lease. */
+async function runReview(world: World, configDir: string, ref: IssueRef, harness: Harness, templates: Prompts, dispatch: Dispatch) {
+  const reviewer = { ...dispatch.reviewer!, completed: [...dispatch.reviewer!.completed] };
+  const record: Dispatch = { ...dispatch, reviewer };
+  const steps: Record<ReviewStep, () => Promise<void>> = {
+    ...agentSteps(world, harness, ref.repo, record, reviewer, "reviewer"),
+    prompt: async () => {
+      const values = { sigil: harness.sigil, issueUrl: record.url, prUrl: reviewer.pr, prBaseBranch: reviewer.prBase };
+      await prompt(world, reviewer.agent, fillTemplate(templates.review, values));
+    },
+  };
+  await runLeased(world, configDir, record, (save) => runPhase(record, reviewer, REVIEW_STEPS, steps, save, "review"));
+  return record;
+}
+
 /**
  * The Harness of a request, once its model is one of the Harness's and its
  * Effort one that model supports. Which models and Efforts are valid comes
@@ -158,10 +259,8 @@ function isResumable(world: World, dispatch: Dispatch) {
 }
 
 /**
- * Run the steps `record` has not completed, saving it after each one, as the
- * runner of a Dispatch that holds its lease. A failing step is recorded and
- * reported as StepFailed; what earlier steps created is kept for inspection
- * and reuse. The lease is released however the run ends.
+ * Run the Implementer's steps `dispatch` has not completed, then Claim the
+ * issue, as the runner of a Dispatch that holds its lease.
  */
 async function runSteps(
   world: World,
@@ -178,12 +277,6 @@ async function runSteps(
     implementer: { ...dispatch.implementer },
     ...(dispatch.warnings && { warnings: [...dispatch.warnings] }),
   };
-  const save = () => {
-    record.updatedAt = world.now().toISOString();
-    return saveDispatch(configDir, record);
-  };
-  const { agent } = record.implementer;
-  let ready: boolean | undefined;
   const steps: Record<Step, () => Promise<void>> = {
     fetch: async () => {
       await world.gitFetch(repo.path);
@@ -195,57 +288,103 @@ async function runSteps(
       record.worktree = worktree.path;
       record.workspace = worktree.workspace;
     },
-    tab: async () => {
-      const tab = await world.herdrTabCreate({ workspace: record.workspace!, cwd: record.worktree!, label: "implementer" });
-      record.implementer.tab = tab.tab;
-      record.implementer.pane = tab.pane;
-    },
-    "agent start": async () => {
-      const { model, effort } = record.implementer;
-      ({ ready } = await world.herdrAgentStart({
-        name: agent,
-        kind: harness.kind,
-        pane: record.implementer.pane!,
-        args: launchArgs(harness, { model, effort, repoPath: repo.path }),
-      }));
-    },
-    // After a failure `ready` is unknown: the user may have answered the agent by hand.
-    "agent ready": async () => {
-      if (!ready) await awaitReady(world, harness, agent, record.worktree!);
-    },
+    ...agentSteps(world, harness, repo, record, record.implementer, "implementer"),
     prompt: async () => {
       const { text, botSuffix, warning } = await implementPrompt(world, templates, ref.repo, harness, record);
-      await prompt(world, agent, text);
+      await prompt(world, record.implementer.agent, text);
       record.botSuffix = botSuffix;
       if (warning) warn(record, warning);
     },
   };
-
-  try {
-    for (const step of STEPS) {
-      if (record.completed.includes(step)) continue;
-      try {
-        await steps[step]();
-      } catch (e) {
-        record.failure = { step, error: e instanceof Error ? e.message : String(e) };
-        delete record.runner;
-        await save();
-        // Anything but a World or Dispatch failure is a bug: kept as the failure, but still thrown.
-        if (!(e instanceof DispatchError || e instanceof WorldError)) throw e;
-        throw new StepFailed(record, step, e.message, e instanceof DispatchError ? e.help : []);
-      }
-      record.completed.push(step);
-      delete record.failure;
-      await save();
-    }
+  await runLeased(world, configDir, record, async (save) => {
+    await runPhase(record, record, STEPS, steps, save, "dispatch");
     if (record.claimed === undefined) await claim(world, repo, number, record);
+  });
+  return record;
+}
+
+/**
+ * Run `fn` as the runner of `record`, saving it after it and releasing the
+ * lease however `fn` ends.
+ */
+async function runLeased(world: World, configDir: string, record: Dispatch, fn: (save: () => Promise<void>) => Promise<void>) {
+  const save = () => {
+    record.updatedAt = world.now().toISOString();
+    return saveDispatch(configDir, record);
+  };
+  try {
+    await fn(save);
   } finally {
     if (record.runner !== undefined) {
       delete record.runner;
       await save();
     }
   }
-  return record;
+}
+
+/** How far an agent's steps got: the Dispatch itself for the Implementer, the Reviewer for a review. */
+interface Progress<S extends string> {
+  completed: S[];
+  failure?: { step: S; error: string };
+}
+
+/**
+ * Run the `steps` `progress` has not completed, in order, saving after each
+ * one. A failing step is recorded and reported as StepFailed; what earlier
+ * steps created is kept for inspection and reuse.
+ */
+async function runPhase<S extends string>(
+  record: Dispatch,
+  progress: Progress<S>,
+  order: readonly S[],
+  steps: Record<S, () => Promise<void>>,
+  save: () => Promise<void>,
+  command: "dispatch" | "review",
+) {
+  for (const step of order) {
+    if (progress.completed.includes(step)) continue;
+    try {
+      await steps[step]();
+    } catch (e) {
+      progress.failure = { step, error: e instanceof Error ? e.message : String(e) };
+      delete record.runner;
+      await save();
+      // Anything but a World or Dispatch failure is a bug: kept as the failure, but still thrown.
+      if (!(e instanceof DispatchError || e instanceof WorldError)) throw e;
+      throw new StepFailed(record, step, e.message, e instanceof DispatchError ? e.help : [], command);
+    }
+    progress.completed.push(step);
+    delete progress.failure;
+    await save();
+  }
+}
+
+/**
+ * The steps that start an agent in a new `label` tab of the Dispatch's
+ * workspace, up to where it is ready for its prompt.
+ */
+function agentSteps(world: World, harness: Harness, repo: Repo, record: Dispatch, launch: Launch, label: string) {
+  let ready: boolean | undefined;
+  return {
+    tab: async () => {
+      const tab = await world.herdrTabCreate({ workspace: record.workspace!, cwd: record.worktree!, label });
+      launch.tab = tab.tab;
+      launch.pane = tab.pane;
+    },
+    "agent start": async () => {
+      const { model, effort } = launch;
+      ({ ready } = await world.herdrAgentStart({
+        name: launch.agent,
+        kind: harness.kind,
+        pane: launch.pane!,
+        args: launchArgs(harness, { model, effort, repoPath: repo.path }),
+      }));
+    },
+    // After a failure `ready` is unknown: the user may have answered the agent by hand.
+    "agent ready": async () => {
+      if (!ready) await awaitReady(world, harness, launch.agent, record.worktree!);
+    },
+  };
 }
 
 /** Assign the issue to the user (ADR-0007); a failure is only a warning on a healthy Dispatch. */

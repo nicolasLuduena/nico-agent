@@ -1,9 +1,10 @@
 import htmx from "htmx.org/dist/htmx.min.js" with { type: "text" };
 import { type Board, loadBoard } from "./board";
 import { type Repo, ConfigError, loadConfig } from "./config";
-import { DispatchError, StepFailed, dispatch } from "./dispatch";
+import { DispatchError, StepFailed, dispatch, review } from "./dispatch";
 import { type Catalog, type Remembered, harnessCatalogs, refreshHarnesses, rememberedLaunches } from "./harness";
-import { type Dispatch, loadDispatches, stageOf } from "./state";
+import { type InFlightRow, type PrLookup, cachedPrs, loadInFlight } from "./stage";
+import { type Launch, loadDispatches } from "./state";
 import { type World, WorldError } from "./world";
 
 export interface WebContext {
@@ -14,18 +15,23 @@ export interface WebContext {
 const HTML_HEADERS = { "content-type": "text/html; charset=utf-8" };
 
 /** The web app: server-rendered pages over the same core operations as the CLI. */
-export function webHandler(ctx: WebContext) {
+export function webHandler(context: WebContext) {
+  // One cache for the server's life, so polling the In-flight section asks GitHub only every ~30s.
+  const ctx: Handling = { ...context, prs: cachedPrs(context.world) };
   return async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
     const { pathname } = url;
     try {
-      if (pathname === "/dispatch" && request.method === "POST") return await postDispatch(ctx, request);
+      if (pathname === "/dispatch" && request.method === "POST") return await postLaunch(ctx, request, dispatch);
+      if (pathname === "/review" && request.method === "POST") return await postLaunch(ctx, request, review);
       if (pathname === "/harnesses/refresh" && request.method === "POST") return await postRefresh(ctx);
       if (request.method !== "GET") return new Response("Method Not Allowed\n", { status: 405 });
       if (pathname === "/htmx.min.js") {
         return new Response(htmx, { headers: { "content-type": "text/javascript; charset=utf-8" } });
       }
-      if (pathname === "/dispatch-form") return await getDispatchForm(ctx, url.searchParams);
+      if (pathname === "/dispatch-form") return await getLaunchForm(ctx, url.searchParams, "dispatch");
+      if (pathname === "/review-form") return await getLaunchForm(ctx, url.searchParams, "review");
+      if (pathname === "/in-flight") return await getInFlight(ctx);
       if (pathname !== "/") return new Response(page("Not found", `<p class="error">No page at ${escape(pathname)}</p>`), { status: 404, headers: HTML_HEADERS });
       return await getBoard(ctx);
     } catch (e) {
@@ -39,27 +45,43 @@ export function webHandler(ctx: WebContext) {
   };
 }
 
-async function getBoard(ctx: WebContext) {
+interface Handling extends WebContext {
+  prs: PrLookup;
+}
+
+async function getBoard(ctx: Handling) {
   const { repos } = loadConfig(ctx.configDir);
-  const board = await loadBoard(ctx.world, repos, loadDispatches(ctx.configDir));
-  // Discovery may run a Harness's CLI, so only when there is something to dispatch.
-  const choices = { catalogs: board.ready.length ? await harnessCatalogs(ctx.world, ctx.configDir) : [], remembered: rememberedLaunches(ctx.configDir) };
+  const board = await loadBoard(ctx.world, repos, loadDispatches(ctx.configDir), ctx.prs);
+  // Discovery may run a Harness's CLI, so only when there is something to launch.
+  const launchable = board.ready.length > 0 || board.inFlight.some(canLaunchReview);
+  const choices = await choicesFor(ctx, launchable);
   return new Response(page("Board", renderBoard(repos, board, choices)), { headers: HTML_HEADERS });
 }
 
-/** The dispatch form again, after a choice changed: only the chosen model's Efforts are offered. */
-async function getDispatchForm(ctx: WebContext, params: URLSearchParams) {
-  const param = (name: string) => params.get(name) ?? "";
-  const choices = { catalogs: await harnessCatalogs(ctx.world, ctx.configDir), remembered: rememberedLaunches(ctx.configDir) };
-  const form = dispatchForm(param("issue"), choices, { harness: param("harness"), model: param("model"), effort: param("effort") });
-  return new Response(form, { headers: HTML_HEADERS });
+/** The In-flight section alone, for the Board to poll. */
+async function getInFlight(ctx: Handling) {
+  const rows = await loadInFlight(ctx.world, loadDispatches(ctx.configDir), ctx.prs);
+  const choices = await choicesFor(ctx, rows.some(canLaunchReview));
+  return new Response(renderInFlight(rows, choices), { headers: HTML_HEADERS });
 }
 
-/** The dispatch form's target: dispatch, then back to the Board. */
-async function postDispatch(ctx: WebContext, request: Request) {
+async function choicesFor(ctx: WebContext, needed: boolean): Promise<Choices> {
+  return { catalogs: needed ? await harnessCatalogs(ctx.world, ctx.configDir) : [], remembered: rememberedLaunches(ctx.configDir) };
+}
+
+/** A launch form again, after a choice changed: only the chosen model's Efforts are offered. */
+async function getLaunchForm(ctx: WebContext, params: URLSearchParams, action: Action) {
+  const param = (name: string) => params.get(name) ?? "";
+  const choices = await choicesFor(ctx, true);
+  const chosen = { harness: param("harness"), model: param("model"), effort: param("effort") };
+  return new Response(launchForm(action, param("issue"), choices, chosen), { headers: HTML_HEADERS });
+}
+
+/** A launch form's target: dispatch or review, then back to the Board. */
+async function postLaunch(ctx: WebContext, request: Request, launch: typeof dispatch | typeof review) {
   const form = await request.formData();
   const field = (name: string) => String(form.get(name) ?? "");
-  await dispatch(ctx.world, ctx.configDir, {
+  await launch(ctx.world, ctx.configDir, {
     issue: field("issue"),
     harness: field("harness"),
     model: field("model"),
@@ -89,7 +111,7 @@ class WebFailure extends Error {
 }
 
 function failureOf(e: unknown): { title: string; message: string; help: string[]; status: number } | null {
-  const failed = "Dispatch failed";
+  const failed = "Launch failed";
   if (e instanceof WebFailure) return e;
   if (e instanceof StepFailed) return { title: failed, message: e.message, help: e.help, status: 502 };
   if (e instanceof DispatchError) return { title: failed, message: e.message, help: e.help, status: e.usage ? 400 : 409 };
@@ -107,26 +129,51 @@ function renderBoard(repos: Repo[], board: Board, choices: Choices) {
   const sections = repos.map((repo) =>
     ['<section class="repo">', `<h2>${escape(repo.slug)}</h2>`, renderRepo(repo, board, choices), "</section>"].join("\n"),
   );
-  return [...refresh, ...warnings, ...sections, renderInFlight(board)].join("\n");
+  return [...refresh, ...warnings, ...sections, renderInFlight(board.inFlight, choices)].join("\n");
 }
 
-function renderInFlight(board: Board) {
-  const list = board.inFlight.length
-    ? [
-        "<ul>",
-        ...board.inFlight.map((d) => {
-          const { harness, model, effort } = d.implementer;
-          const link = `<a href="${escape(d.url)}">${escape(d.issue)} ${escape(d.title)}</a>`;
-          const where = d.workspace ? ` · workspace ${escape(d.workspace)}` : "";
-          const warnings = (d.warnings ?? []).map((w) => `\n<p class="warning">${escape(w)}</p>`).join("");
-          const item = `<li>${link} · ${escape(`${harness} ${model} ${effort}`)}${where}`;
-          if (!d.failure) return `${item} · ${escape(stageOf(d))}${warnings}</li>`;
-          return `${item} · <span class="error">${escape(`${stageOf(d)}: ${d.failure.error}`)}</span>\n${retryForm(d)}</li>`;
-        }),
-        "</ul>",
-      ].join("\n")
+/** Polled every ~5s, replacing itself; launch forms keep what the user chose across polls. */
+function renderInFlight(rows: InFlightRow[], choices: Choices) {
+  const list = rows.length
+    ? ["<ul>", ...rows.map((row) => renderInFlightRow(row, choices)), "</ul>"].join("\n")
     : '<p class="empty">Nothing in flight.</p>';
-  return ['<section class="in-flight">', "<h2>In flight</h2>", list, "</section>"].join("\n");
+  return ['<section class="in-flight" hx-get="/in-flight" hx-trigger="every 5s" hx-swap="outerHTML">', "<h2>In flight</h2>", list, "</section>"].join("\n");
+}
+
+function renderInFlightRow(row: InFlightRow, choices: Choices) {
+  const { dispatch: d, stage, pr, prError } = row;
+  const { harness, model, effort } = d.implementer;
+  const failure = d.failure ?? d.reviewer?.failure;
+  const parts = [
+    `<a href="${escape(d.url)}">${escape(d.issue)} ${escape(d.title)}</a>`,
+    escape(`${harness} ${model} ${effort}`),
+    ...(d.workspace ? [`workspace ${escape(d.workspace)}`] : []),
+    failure ? `<span class="error">${escape(`${stage}: ${failure.error}`)}</span>` : escape(stage),
+    ...(pr ? [`<a href="${escape(pr.url)}">PR #${pr.number}</a>`] : []),
+    `implementer ${agentState(row.implementerState)}`,
+    ...(row.reviewerState ? [`reviewer ${agentState(row.reviewerState)}`] : []),
+  ];
+  const notes = [...(d.warnings ?? []), ...(prError ? [`could not look up the PR: ${prError}`] : [])];
+  const extra = notes.map((w) => `<p class="warning">${escape(w)}</p>`);
+  if (d.failure) extra.push(retryForm("dispatch", d.issue, d.implementer));
+  else if (d.reviewer?.failure) extra.push(retryForm("review", d.issue, d.reviewer));
+  else if (canLaunchReview(row)) {
+    // Preserved across polls, so a choice in progress isn't reset.
+    const id = `review-${d.issue.replace(/[^\w-]/g, "-")}`;
+    extra.push(`<div id="${escape(id)}" hx-preserve="true">\n${launchForm("review", d.issue, choices)}\n</div>`);
+  }
+  return `<li>${parts.join(" · ")}${extra.map((e) => `\n${e}`).join("")}</li>`;
+}
+
+/** Whether a row offers Launch review: a PR is linked (ADR-0003) and no Reviewer was started. */
+function canLaunchReview(row: InFlightRow) {
+  const d = row.dispatch;
+  return row.pr !== null && !d.reviewer && !d.failure && d.workspace !== undefined;
+}
+
+/** An Agent state as herdr reports it, `blocked` highlighted since it waits on the user. */
+function agentState(state: string) {
+  return `<span class="agent${state === "blocked" ? " blocked" : ""}">${escape(state)}</span>`;
 }
 
 function renderRepo(repo: Repo, board: Board, choices: Choices) {
@@ -137,14 +184,19 @@ function renderRepo(repo: Repo, board: Board, choices: Choices) {
   return [
     "<ul>",
     ...issues.map(
-      (i) => `<li><a href="${escape(i.url)}">#${i.number} ${escape(i.title)}</a>\n${dispatchForm(`${i.repo}#${i.number}`, choices)}</li>`,
+      (i) => `<li><a href="${escape(i.url)}">#${i.number} ${escape(i.title)}</a>\n${launchForm("dispatch", `${i.repo}#${i.number}`, choices)}</li>`,
     ),
     "</ul>",
   ].join("\n");
 }
 
+type Action = "dispatch" | "review";
+
 /** Changing the Harness or model re-renders the form, so only Efforts valid for the chosen model are offered. */
-const RERENDER = 'hx-get="/dispatch-form" hx-include="closest form" hx-target="closest form" hx-swap="outerHTML"';
+const rerender = (action: Action) =>
+  `hx-get="/${action}-form" hx-include="closest form" hx-target="closest form" hx-swap="outerHTML"`;
+
+const BUTTONS: Record<Action, string> = { dispatch: "Dispatch", review: "Launch review" };
 
 /** What the dispatch form offers, and what it starts from. */
 interface Choices {
@@ -153,16 +205,21 @@ interface Choices {
 }
 
 /**
- * The dispatch form of an issue, offering each Harness that has models. It
+ * The dispatch or review form of an issue, offering each Harness that has models. It
  * starts on the Harness and model last dispatched with; a chosen Harness,
  * model and Effort are kept while valid. Otherwise the Effort is the one last
  * used with the model, or the model's first.
  */
-function dispatchForm(issue: string, { catalogs, remembered }: Choices, chosen: { harness?: string; model?: string; effort?: string } = {}) {
+function launchForm(
+  action: Action,
+  issue: string,
+  { catalogs, remembered }: Choices,
+  chosen: { harness?: string; model?: string; effort?: string } = {},
+) {
   const offered = catalogs.filter((c) => c.models.length > 0);
   const { harness: wanted = remembered.last?.harness, model: wantedModel = remembered.last?.model } = chosen;
   const catalog = offered.find((c) => c.harness.name === wanted) ?? offered[0];
-  if (!catalog) return '<p class="empty">No Harness has models to dispatch with.</p>';
+  if (!catalog) return '<p class="empty">No Harness has models to launch with.</p>';
   const model = catalog.models.find((m) => m.model === wantedModel) ?? catalog.models[0]!;
   const valid = (effort: string | undefined) => (effort && model.efforts.includes(effort) ? effort : undefined);
   const effort =
@@ -172,23 +229,22 @@ function dispatchForm(issue: string, { catalogs, remembered }: Choices, chosen: 
       .map((o) => `<option${o === selected ? " selected" : ""}>${escape(o)}</option>`)
       .join("")}</select>`;
   return [
-    '<form method="post" action="/dispatch" class="dispatch">',
+    `<form method="post" action="/${action}" class="dispatch">`,
     `<input type="hidden" name="issue" value="${escape(issue)}">`,
-    select("harness", offered.map((c) => c.harness.name), catalog.harness.name, ` ${RERENDER}`),
-    select("model", catalog.models.map((m) => m.model), model.model, ` ${RERENDER}`),
+    select("harness", offered.map((c) => c.harness.name), catalog.harness.name, ` ${rerender(action)}`),
+    select("model", catalog.models.map((m) => m.model), model.model, ` ${rerender(action)}`),
     select("effort", model.efforts, effort),
-    "<button>Dispatch</button>",
+    `<button>${BUTTONS[action]}</button>`,
     "</form>",
   ].join("\n");
 }
 
-/** Retry re-posts the Dispatch's own request, which resumes it from its failed step (ADR-0006). */
-function retryForm(d: Dispatch) {
-  const { harness, model, effort } = d.implementer;
-  const hidden = Object.entries({ issue: d.issue, harness, model, effort }).map(
+/** Retry re-posts the failed launch's own request, which resumes it from its failed step (ADR-0006). */
+function retryForm(action: Action, issue: string, { harness, model, effort }: Launch) {
+  const hidden = Object.entries({ issue, harness, model, effort }).map(
     ([name, value]) => `<input type="hidden" name="${name}" value="${escape(value)}">`,
   );
-  return ['<form method="post" action="/dispatch" class="dispatch">', ...hidden, "<button>Retry</button>", "</form>"].join("\n");
+  return [`<form method="post" action="/${action}" class="dispatch">`, ...hidden, "<button>Retry</button>", "</form>"].join("\n");
 }
 
 function page(title: string, main: string) {
@@ -205,6 +261,7 @@ h2 { font-size: 1.1rem; margin-bottom: 0.25rem; }
 .empty { color: #666; }
 .error { color: #b00020; }
 .warning { color: #8a5a00; margin: 0.25rem 0 0; }
+.agent.blocked { color: #fff; background: #b00020; padding: 0 0.25rem; border-radius: 0.2rem; font-weight: bold; }
 form.dispatch { display: inline-flex; gap: 0.25rem; margin-left: 0.5rem; }
 form.refresh { margin-bottom: 1rem; }
 </style>
