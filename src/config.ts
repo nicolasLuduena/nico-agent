@@ -6,6 +6,13 @@ import { sameSlug } from "./slug";
 export interface Repo {
   slug: string;
   path: string;
+  linear?: LinearSelector;
+}
+
+export interface LinearSelector {
+  team: string;
+  project?: string;
+  label?: string;
 }
 
 export interface Config {

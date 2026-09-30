@@ -1,3 +1,4 @@
+import { LinearSource } from "./linear";
 import { realpathSync } from "node:fs";
 import type { Address, GitHubIssue, PullRequest, RequestHandler, World } from "./world";
 import { READY_LABEL, WorldError } from "./world";
@@ -130,6 +131,11 @@ interface IssueNode {
 }
 
 export class RealWorld implements World {
+  private readonly linear = new LinearSource();
+
+  linearViewer() { return this.linear.viewer(); }
+  linearIssues(team: string) { return this.linear.issues(team); }
+
   async gitRemotes(path: string) {
     let real: string;
     try {

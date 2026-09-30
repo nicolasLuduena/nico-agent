@@ -1,6 +1,6 @@
 /**
  * The outside-world port: every interaction with git, GitHub, herdr, the
- * network, the clock and (later) Linear goes through here. Tests swap in an
+ * network, the clock and Linear goes through here. Tests swap in an
  * in-memory fake.
  */
 export interface World {
@@ -8,6 +8,8 @@ export interface World {
   gitRemotes(path: string): Promise<string[] | null>;
   /** Login of the user's own GitHub session. */
   githubViewer(): Promise<string>;
+  linearViewer(): Promise<string>;
+  linearIssues(team: string): Promise<LinearIssue[]>;
   /**
    * Candidate issues of a GitHub repo. Adapters may narrow server-side to
    * open `ready-for-agent` issues; the core still applies the Ready rule.
@@ -102,3 +104,15 @@ export const READY_LABEL = "ready-for-agent";
 
 /** A failure reported by an adapter, already stripped of tool noise. */
 export class WorldError extends Error {}
+
+export interface LinearIssue {
+  identifier: string;
+  title: string;
+  url: string;
+  team: { id: string; key: string; name: string };
+  project: { id: string; name: string } | null;
+  labels: string[];
+  state: string;
+  assignee: string | null;
+  blockers: { state: string }[];
+}

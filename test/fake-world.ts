@@ -1,9 +1,31 @@
 import { readFileSync } from "node:fs";
-import type { Address, GitHubIssue, PullRequest, RequestHandler, World } from "../src/world";
+import type { Address, LinearIssue, GitHubIssue, PullRequest, RequestHandler, World } from "../src/world";
 import { WorldError } from "../src/world";
 
 export class FakeWorld implements World {
   viewer = "me";
+  linearUser = "linear-me";
+  linear = new Map<string, LinearIssue[]>();
+  linearFailure: string | null = null;
+
+  addLinearIssue(issue: Partial<LinearIssue> & { identifier: string }) {
+    const full: LinearIssue = {
+      title: issue.identifier, url: `https://linear.app/bleentr/issue/${issue.identifier}/title`,
+      team: { id: "team-ble", key: "BLE", name: "Bleentr" }, project: null,
+      labels: ["ready-for-agent"], state: "unstarted", assignee: null, blockers: [], ...issue,
+    };
+    this.linear.set(full.team.key, [...(this.linear.get(full.team.key) ?? []), full]);
+  }
+
+  async linearViewer() {
+    if (this.linearFailure) throw new WorldError(this.linearFailure);
+    return this.linearUser;
+  }
+
+  async linearIssues(team: string) {
+    if (this.linearFailure) throw new WorldError(this.linearFailure);
+    return [...this.linear.values()].flat().filter((i) => [i.team.key, i.team.id, i.team.name].includes(team));
+  }
   clones = new Map<string, string[]>();
   issues = new Map<string, GitHubIssue[]>();
   failures = new Map<string, string>();

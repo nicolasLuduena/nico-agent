@@ -206,13 +206,14 @@ function agentState(state: string) {
 }
 
 function renderRepo(repo: Repo, board: Board, choices: Choices) {
-  const error = board.errors.find((e) => e.repo === repo.slug);
-  if (error) return `<p class="error">Could not load: ${escape(error.error)}</p>`;
+  const errors = board.errors.filter((e) => e.repo === repo.slug);
+  const errorHtml = errors.map((e) => `<p class="error">Could not load: ${e.source ? `${e.source}: ` : ""}${escape(e.error)}</p>`).join("\n");
   const issues = board.ready.filter((i) => i.repo === repo.slug);
-  const ready = issues.length === 0 ? '<p class="empty">No Ready issues.</p>' : [
+  const ready = issues.length === 0 ? (errorHtml || '<p class="empty">No Ready issues.</p>') : [
+    ...(errorHtml ? [errorHtml] : []),
     "<ul>",
     ...issues.map(
-      (i) => `<li><a href="${escape(i.url)}">#${i.number} ${escape(i.title)}</a>\n${launchForm("dispatch", `${i.repo}#${i.number}`, choices)}</li>`,
+      (i) => `<li><a href="${escape(i.url)}">${i.identifier ?? `#${i.number}`} ${escape(i.title)}</a>\n${i.identifier ? "" : launchForm("dispatch", `${i.repo}#${i.number}`, choices)}</li>`,
     ),
     "</ul>",
   ].join("\n");
