@@ -15,6 +15,11 @@ export interface World {
   githubIssues(slug: string): Promise<GitHubIssue[]>;
   /** One issue of a GitHub repo, or null if there is no such issue. */
   githubIssue(slug: string, number: number): Promise<GitHubIssue | null>;
+  /**
+   * The repos (`owner/name`) the bot's GitHub App is installed on, as the
+   * App's installation sees them through `ghbot`.
+   */
+  githubAppRepos(): Promise<string[]>;
   /** Assign an issue to the user's own GitHub session (the Claim, ADR-0007). */
   githubAssignSelf(slug: string, number: number): Promise<void>;
   /** `git fetch origin` in the clone at `path`. */

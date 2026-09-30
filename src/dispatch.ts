@@ -1,5 +1,6 @@
-import { type Repo, findRepo, loadConfig } from "./config";
+import { type Prompts, type Repo, fillTemplate, findRepo, loadConfig, prompts } from "./config";
 import { HARNESSES, type Harness } from "./harness";
+import { sameSlug } from "./slug";
 import { type Dispatch, type Step, STEPS, addDispatch, findDispatch, leaseDispatch, saveDispatch } from "./state";
 import { type World, WorldError } from "./world";
 
@@ -70,9 +71,10 @@ export interface DispatchResult {
 
 /**
  * Dispatch an issue: fetch the clone, create a worktree workspace on the
- * default branch, start the Implementer in an `implementer` tab, prompt it and
- * Claim the issue. Idempotent (ADR-0006): the same request again returns the
- * existing Dispatch, or resumes it from the step that failed.
+ * default branch, start the Implementer in an `implementer` tab, prompt it
+ * (see `implementPrompt`) and Claim the issue. Idempotent (ADR-0006): the
+ * same request again returns the existing Dispatch, or resumes it from the
+ * step that failed.
  */
 export async function dispatch(world: World, configDir: string, request: DispatchRequest): Promise<DispatchResult> {
   const harness = HARNESSES.find((h) => h.name === request.harness);
@@ -91,13 +93,14 @@ export async function dispatch(world: World, configDir: string, request: Dispatc
   }
   const ref = resolveIssue(configDir, request.issue);
   const { repo, number, key } = ref;
+  const templates = prompts(loadConfig(configDir));
   const existing = findDispatch(configDir, key);
   if (existing) {
     sameLaunch(existing, request);
     const leased = await leaseDispatch(configDir, key, world.processId(), (d) => isResumable(world, d));
     if (!leased) return { dispatch: findDispatch(configDir, key) ?? existing, outcome: "existing" };
     const resumedFrom = leased.failure?.step ?? STEPS.find((s) => !leased.completed.includes(s)) ?? "claim";
-    return { dispatch: await runSteps(world, configDir, ref, harness, leased), outcome: "resumed", resumedFrom };
+    return { dispatch: await runSteps(world, configDir, ref, harness, templates, leased), outcome: "resumed", resumedFrom };
   }
 
   const issue = await world.githubIssue(repo.slug, number);
@@ -120,7 +123,7 @@ export async function dispatch(world: World, configDir: string, request: Dispatc
   };
   // Recorded before any side effect, so a concurrent dispatch of the issue finds it.
   if (!(await addDispatch(configDir, record))) throw alreadyInFlight(key);
-  return { dispatch: await runSteps(world, configDir, ref, harness, record), outcome: "new" };
+  return { dispatch: await runSteps(world, configDir, ref, harness, templates, record), outcome: "new" };
 }
 
 /**
@@ -138,9 +141,21 @@ function isResumable(world: World, dispatch: Dispatch) {
  * reported as StepFailed; what earlier steps created is kept for inspection
  * and reuse. The lease is released however the run ends.
  */
-async function runSteps(world: World, configDir: string, ref: IssueRef, harness: Harness, dispatch: Dispatch) {
+async function runSteps(
+  world: World,
+  configDir: string,
+  ref: IssueRef,
+  harness: Harness,
+  templates: Prompts,
+  dispatch: Dispatch,
+) {
   const { repo, number } = ref;
-  const record: Dispatch = { ...dispatch, completed: [...dispatch.completed], implementer: { ...dispatch.implementer } };
+  const record: Dispatch = {
+    ...dispatch,
+    completed: [...dispatch.completed],
+    implementer: { ...dispatch.implementer },
+    ...(dispatch.warnings && { warnings: [...dispatch.warnings] }),
+  };
   const save = () => {
     record.updatedAt = world.now().toISOString();
     return saveDispatch(configDir, record);
@@ -176,7 +191,12 @@ async function runSteps(world: World, configDir: string, ref: IssueRef, harness:
     "agent ready": async () => {
       if (!ready) await awaitReady(world, harness, agent, record.worktree!);
     },
-    prompt: () => prompt(world, agent, `${harness.sigil}implement ${record.url} as draft PR`),
+    prompt: async () => {
+      const { text, botSuffix, warning } = await implementPrompt(world, templates, ref.repo, harness, record);
+      await prompt(world, agent, text);
+      record.botSuffix = botSuffix;
+      if (warning) warn(record, warning);
+    },
   };
 
   try {
@@ -214,8 +234,32 @@ async function claim(world: World, repo: Repo, number: number, record: Dispatch)
   } catch (e) {
     if (!(e instanceof WorldError)) throw e;
     record.claimed = false;
-    record.warning = `could not Claim ${record.issue}: ${e.message}`;
+    warn(record, `could not Claim ${record.issue}: ${e.message}`);
   }
+}
+
+function warn(record: Dispatch, warning: string) {
+  record.warnings = [...(record.warnings ?? []), warning];
+}
+
+/**
+ * The Implementer's prompt, from the config's templates. When the bot's GitHub
+ * App is installed on the Repo, checked afresh each time the prompt is sent,
+ * the bot suffix is appended so the agent's PR and commits are attributed to
+ * it. A failed check sends the plain prompt, with a warning.
+ */
+async function implementPrompt(world: World, templates: Prompts, repo: Repo, harness: Harness, record: Dispatch) {
+  const values = { sigil: harness.sigil, issueUrl: record.url };
+  const text = fillTemplate(templates.implement, values);
+  let installed: boolean;
+  try {
+    installed = (await world.githubAppRepos()).some((slug) => sameSlug(slug, repo.slug));
+  } catch (e) {
+    if (!(e instanceof WorldError)) throw e;
+    const warning = `could not check the GitHub App on ${repo.slug}, so the prompt has no bot suffix: ${e.message}`;
+    return { text, botSuffix: false, warning };
+  }
+  return { text: installed ? text + fillTemplate(templates.botSuffix, values) : text, botSuffix: installed };
 }
 
 const STARTUP_TIMEOUT_MS = 30_000;

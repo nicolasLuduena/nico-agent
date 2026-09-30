@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 import { loadBoard } from "./board";
-import { CONFIG_ERROR_HELP, ConfigError, findRepo, loadConfig, saveConfig } from "./config";
+import { ConfigError, findRepo, loadConfig, saveConfig } from "./config";
 import { DispatchError, StepFailed, dispatch, resolveIssue } from "./dispatch";
 import { HARNESSES } from "./harness";
 import { type Output, render } from "./output";
@@ -149,7 +149,7 @@ export async function run(argv: string[], ctx: RunContext): Promise<RunResult> {
         : commandHelp(command);
     return { stdout: render(output, json), exitCode: output.exitCode ?? 0 };
   } catch (e) {
-    if (e instanceof ConfigError) e = new CliError(e.message, [CONFIG_ERROR_HELP]);
+    if (e instanceof ConfigError) e = new CliError(e.message, [e.help]);
     else if (e instanceof WorldError) e = new CliError(e.message);
     else if (e instanceof DispatchError) {
       const details = e instanceof StepFailed ? { stage: stageOf(e.dispatch) } : {};
@@ -279,14 +279,14 @@ async function dispatchCommand(args: Args, ctx: RunContext): Promise<Output> {
     resumed: `${record.issue} (resumed from ${resumedFrom})`,
   }[outcome];
   const help = [`Run \`nico-agent show ${record.issue}\` to see the Dispatch`, BOARD_HELP];
-  if (record.warning) help.unshift(`Assign ${record.url} to yourself on GitHub to Claim it by hand`);
+  if (record.claimed === false) help.unshift(`Assign ${record.url} to yourself on GitHub to Claim it by hand`);
   return {
     data: {
       dispatched,
       stage: stageOf(record),
       workspace: record.workspace,
       agent: record.implementer.agent,
-      ...(record.warning && { warning: record.warning }),
+      ...(record.warnings && { warnings: record.warnings }),
     },
     help,
   };
@@ -304,7 +304,7 @@ async function show(args: Args, ctx: RunContext): Promise<Output> {
     url: record.url,
     stage: stageOf(record),
     failure: record.failure,
-    warning: record.warning,
+    warnings: record.warnings,
     repo: record.repo,
     branch: record.branch,
     base: record.base,
@@ -312,6 +312,7 @@ async function show(args: Args, ctx: RunContext): Promise<Output> {
     workspace: record.workspace,
     implementer: definedOnly({ tab, pane, ...launch }),
     completed: record.completed,
+    botSuffix: record.botSuffix,
     claimed: record.claimed,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
