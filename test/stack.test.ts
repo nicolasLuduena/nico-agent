@@ -1,4 +1,6 @@
 import { expect, test } from "bun:test";
+import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { setup } from "./harness";
 
 const FLAGS = ["--harness", "claude", "--model", "opus", "--effort", "high"];
@@ -102,4 +104,29 @@ test("multiple PRs for one Blocker can be chosen by the PR URL listed in help", 
   expect(failed.help).toContain("Stack on https://github.com/acme/api/pull/17 with `--stack-on https://github.com/acme/api/pull/17`");
   expect((await cli("dispatch", "acme/api#7", ...FLAGS, "--stack-on", "https://github.com/acme/api/pull/17")).exitCode).toBe(0);
   expect((await cli("show", "acme/api#7", "--json")).json().base).toBe("origin/agent/alternate-6");
+});
+
+test("the real CLI recognizes a same-Repo PR closing a Blocker from another repo", async () => {
+  const { configDir } = await stackable();
+  const binDir = join(configDir, "fake-bin");
+  mkdirSync(binDir);
+  const issue = { number: 7, title: "Issue 7", url: "https://github.com/acme/api/issues/7", state: "OPEN",
+    labels: { nodes: [{ name: "ready-for-agent" }] }, assignees: { nodes: [] },
+    blockedBy: { nodes: [{ number: 6, state: "OPEN", repository: { nameWithOwner: "acme/other" } }] } };
+  const pr = { number: 16, url: "https://github.com/acme/api/pull/16", state: "OPEN", baseRefName: "main",
+    headRefName: "agent/blocker-6", headRepository: { nameWithOwner: "acme/api" }, repository: { nameWithOwner: "acme/api" } };
+  writeFileSync(join(binDir, "issues.json"), JSON.stringify({ data: { repository: { issues: { nodes: [issue], pageInfo: { hasNextPage: false } } } } }));
+  writeFileSync(join(binDir, "prs.json"), JSON.stringify({ data: { repository: { issue: { closedByPullRequestsReferences: { nodes: [pr] } } } } }));
+  const gh = join(binDir, "gh");
+  writeFileSync(gh, `#!/bin/sh\ncase "$*" in\n*"api user"*) printf 'me';;\n*closedByPullRequestsReferences*) cat "${binDir}/prs.json";;\n*) cat "${binDir}/issues.json";;\nesac\n`);
+  chmodSync(gh, 0o755);
+  const cliPath = new URL("../src/cli.ts", import.meta.url).pathname;
+  const worldPath = new URL("../src/real-world.ts", import.meta.url).pathname;
+  const script = `import { run } from ${JSON.stringify(cliPath)}; import { RealWorld } from ${JSON.stringify(worldPath)};
+    const result = await run(["board", "--json"], { world: new RealWorld(), configDir: ${JSON.stringify(configDir)}, bin: "nico-agent" });
+    process.stdout.write(result.stdout); process.exitCode = result.exitCode;`;
+  const proc = Bun.spawn([process.execPath, "--eval", script], { env: { ...process.env, PATH: `${binDir}:${process.env.PATH}` }, stdout: "pipe", stderr: "pipe" });
+  const output = JSON.parse(await new Response(proc.stdout).text());
+  expect(await proc.exited).toBe(0);
+  expect(output.stackable).toEqual([{ issue: "acme/api#7", title: "Issue 7", blockers: [{ issue: "acme/other#6", pr: "https://github.com/acme/api/pull/16" }] }]);
 });

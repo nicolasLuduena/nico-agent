@@ -216,7 +216,7 @@ export class RealWorld implements World {
       state: pr.state.toLowerCase() as PullRequest["state"],
       baseBranch: pr.baseRefName,
       // A fork head is not fetchable as origin/<head branch> in this clone.
-      headBranch: pr.headRepository?.nameWithOwner.toLowerCase() === slug.toLowerCase() ? pr.headRefName : undefined,
+      headBranch: pr.headRepository?.nameWithOwner.toLowerCase() === pr.repository.nameWithOwner.toLowerCase() ? pr.headRefName : undefined,
     }));
   }
 
