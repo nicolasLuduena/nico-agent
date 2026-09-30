@@ -17,6 +17,7 @@ import {
   saveDispatch,
 } from "./state";
 import { type World, WorldError } from "./world";
+import { canStart, stackChoice, stackOptions, type StackOption } from "./board";
 
 const DISPATCH_HINT = "nico-agent dispatch <issue> --harness <harness> --model <model> --effort <effort>";
 
@@ -36,6 +37,8 @@ export interface DispatchRequest {
   harness: string;
   model: string;
   effort: string;
+  /** Blocker issue reference to stack on; omitted when there is a single option. */
+  stackOn?: string;
 }
 
 export interface IssueRef {
@@ -114,6 +117,20 @@ export async function dispatch(world: World, configDir: string, request: Dispatc
   const issue = await world.githubIssue(repo.slug, number);
   if (!issue) throw new DispatchError(`${key} was not found on GitHub`, [`Check the issue number on https://github.com/${repo.slug}/issues`]);
   if (issue.state !== "open") throw new DispatchError(`${key} is closed`, ["Run `nico-agent` to see the Ready issues"]);
+  let stackedOn: StackOption | undefined;
+  if (issue.blockers.some((b) => b.state === "open")) {
+    if (!canStart(issue, await world.githubViewer())) {
+      throw new DispatchError(`${key} is not Stackable`, ["Run `nico-agent` to see the Board"]);
+    }
+    const options = await stackOptions(world, repo.slug, issue);
+    const help = options.map((o) => `Stack on ${o.pr.url} with \`--stack-on ${stackChoice(o, options)}\``);
+    if (!options.length) throw new DispatchError(`${key} has open Blockers without same-Repo open PRs`, ["Run `nico-agent` to see the Board"]);
+    const selected = request.stackOn ? options.filter((o) => matchesStack(request.stackOn!, repo.slug, o)) : options;
+    if (selected.length !== 1) throw new DispatchError(`${key} needs a unique Blocker choice with --stack-on`, help);
+    stackedOn = selected[0];
+  } else if (request.stackOn) {
+    throw new DispatchError(`${key} has no open Blockers to stack on`, ["Dispatch it without `--stack-on`"]);
+  }
 
   const name = repoName(repo);
   const now = world.now().toISOString();
@@ -122,6 +139,7 @@ export async function dispatch(world: World, configDir: string, request: Dispatc
     title: issue.title,
     url: `https://github.com/${repo.slug}/issues/${number}`,
     repo: repo.slug,
+    ...(stackedOn && { stackedOn }),
     branch: `agent/${name}-${number}`,
     implementer: { agent: agentName("impl", name, number), harness: harness.name, model: request.model, effort: request.effort },
     completed: [],
@@ -323,8 +341,8 @@ async function runSteps(
   };
   const steps: Record<Step, () => Promise<void>> = {
     fetch: async () => {
-      await world.gitFetch(repo.path);
-      record.base = `origin/${await world.gitDefaultBranch(repo.path)}`;
+      await world.gitFetch(repo.path, record.stackedOn?.pr.headBranch);
+      record.base = `origin/${record.stackedOn?.pr.headBranch ?? await world.gitDefaultBranch(repo.path)}`;
     },
     worktree: async () => {
       const label = `${repoName(repo)}#${number}`;
@@ -455,7 +473,9 @@ function warn(record: Dispatch, warning: string) {
  */
 async function implementPrompt(world: World, templates: Prompts, repo: Repo, harness: Harness, record: Dispatch) {
   const values = { sigil: harness.sigil, issueUrl: record.url };
-  const text = fillTemplate(templates.implement, values);
+  const text = fillTemplate(templates.implement, values) + (record.stackedOn
+    ? ` as the top of the stacked PRs on top of ${record.stackedOn.pr.url} - check gh-stack if you are not aware of github's stacked PRs`
+    : "");
   let installed: boolean;
   try {
     installed = (await world.githubAppRepos()).some((slug) => sameSlug(slug, repo.slug));
@@ -515,10 +535,22 @@ async function prompt(world: World, agent: string, text: string) {
 /** Only the same request may return or resume a Dispatch (ADR-0006); other parameters are refused. */
 function sameLaunch(existing: Dispatch, request: DispatchRequest) {
   const { harness, model, effort } = existing.implementer;
+  if (request.stackOn && (!existing.stackedOn || !matchesStack(request.stackOn, existing.repo, existing.stackedOn))) {
+    throw new DispatchError(`${existing.issue} is already In flight with a different stacking choice`, [
+      `Run \`nico-agent show ${existing.issue}\` to see the Dispatch`,
+    ]);
+  }
   if (harness === request.harness && model === request.model && effort === request.effort) return;
   throw new DispatchError(`${existing.issue} is already In flight with ${harness} ${model} ${effort}`, [
     `Run \`nico-agent show ${existing.issue}\` to see the Dispatch`,
   ]);
+}
+
+/** A local Blocker number, issue reference/URL, or an exact PR URL. */
+function matchesStack(choice: string, repo: string, option: StackOption) {
+  const url = choice.match(/^https?:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/issues\/(\d+)\/?$/i);
+  const key = /^\d+$/.test(choice) ? `${repo}#${choice}` : url ? `${url[1]}#${url[2]}` : choice;
+  return sameSlug(key, option.blocker) || sameSlug(choice, option.pr.url);
 }
 
 function alreadyInFlight(key: string) {

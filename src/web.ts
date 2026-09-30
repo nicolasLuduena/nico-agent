@@ -1,7 +1,7 @@
 import htmx from "htmx.org/dist/htmx.min.js" with { type: "text" };
-import { type Board, loadBoard } from "./board";
+import { type Board, type StackOption, loadBoard, stackChoice, stackOptions } from "./board";
 import { type Repo, ConfigError, loadConfig } from "./config";
-import { CloseConfirmationRequired, DispatchError, StepFailed, closeDispatch, dispatch, review } from "./dispatch";
+import { CloseConfirmationRequired, DispatchError, StepFailed, closeDispatch, dispatch, review, resolveIssue } from "./dispatch";
 import { type Catalog, type Remembered, harnessCatalogs, refreshHarnesses, rememberedLaunches } from "./harness";
 import { type InFlightRow, type PrLookup, cachedPrs, loadInFlight } from "./stage";
 import { type Launch, loadDispatches } from "./state";
@@ -74,7 +74,7 @@ async function getBoard(ctx: ServerContext) {
   const { repos } = loadConfig(ctx.configDir);
   const board = await loadBoard(ctx.world, repos, loadDispatches(ctx.configDir), ctx.prs);
   // Discovery may run a Harness's CLI, so only when there is something to launch.
-  const launchable = board.ready.length > 0 || board.inFlight.some(canLaunchReview);
+  const launchable = board.ready.length > 0 || board.stackable.length > 0 || board.inFlight.some(canLaunchReview);
   const choices = await choicesFor(ctx, launchable);
   return new Response(page("Board", renderBoard(repos, board, choices)), { headers: HTML_HEADERS });
 }
@@ -94,8 +94,14 @@ async function choicesFor(ctx: WebContext, needed: boolean): Promise<Choices> {
 async function getLaunchForm(ctx: WebContext, params: URLSearchParams, action: Action) {
   const param = (name: string) => params.get(name) ?? "";
   const choices = await choicesFor(ctx, true);
-  const chosen = { harness: param("harness"), model: param("model"), effort: param("effort") };
-  return new Response(launchForm(action, param("issue"), choices, chosen), { headers: HTML_HEADERS });
+  const chosen = { harness: param("harness"), model: param("model"), effort: param("effort"), stackOn: param("stackOn") };
+  let options: StackOption[] = [];
+  if (action === "dispatch") {
+    const ref = resolveIssue(ctx.configDir, param("issue"));
+    const issue = await ctx.world.githubIssue(ref.repo.slug, ref.number);
+    if (issue) options = await stackOptions(ctx.world, ref.repo.slug, issue);
+  }
+  return new Response(launchForm(action, param("issue"), choices, chosen, options), { headers: HTML_HEADERS });
 }
 
 /** A launch form's target: dispatch or review, then back to the Board. */
@@ -107,6 +113,7 @@ async function postLaunch(ctx: WebContext, request: Request, launch: typeof disp
     harness: field("harness"),
     model: field("model"),
     effort: field("effort"),
+    ...(launch === dispatch && field("stackOn") && { stackOn: field("stackOn") }),
   });
   return new Response(null, { status: 303, headers: { location: "/" } });
 }
@@ -177,7 +184,7 @@ function renderInFlightRow(row: InFlightRow, choices: Choices) {
   const notes = [...(d.warnings ?? []), ...(prError ? [`could not look up the PR: ${prError}`] : [])];
   const extra = notes.map((w) => `<p class="warning">${escape(w)}</p>`);
   extra.push(closeForm(d.issue));
-  if (d.failure) extra.push(retryForm("dispatch", d.issue, d.implementer));
+  if (d.failure) extra.push(retryForm("dispatch", d.issue, d.implementer, d.stackedOn?.pr.url));
   else if (d.reviewer?.failure) extra.push(retryForm("review", d.issue, d.reviewer));
   else if (canLaunchReview(row)) {
     // Preserved across polls, so a choice in progress isn't reset.
@@ -202,8 +209,7 @@ function renderRepo(repo: Repo, board: Board, choices: Choices) {
   const errors = board.errors.filter((e) => e.repo === repo.slug);
   const errorHtml = errors.map((e) => `<p class="error">Could not load: ${e.source ? `${e.source}: ` : ""}${escape(e.error)}</p>`).join("\n");
   const issues = board.ready.filter((i) => i.repo === repo.slug);
-  if (issues.length === 0) return errorHtml || '<p class="empty">No Ready issues.</p>';
-  return [
+  const ready = issues.length === 0 ? (errorHtml || '<p class="empty">No Ready issues.</p>') : [
     ...(errorHtml ? [errorHtml] : []),
     "<ul>",
     ...issues.map(
@@ -211,6 +217,10 @@ function renderRepo(repo: Repo, board: Board, choices: Choices) {
     ),
     "</ul>",
   ].join("\n");
+  const stackable = board.stackable.filter((i) => i.repo === repo.slug);
+  if (!stackable.length) return ready;
+  return [ready, "<h3>Stackable</h3>", "<ul>", ...stackable.map((i) =>
+    `<li><a href="${escape(i.url)}">#${i.number} ${escape(i.title)}</a>\n${launchForm("dispatch", `${i.repo}#${i.number}`, choices, {}, i.blockers)}</li>`), "</ul>"].join("\n");
 }
 
 type Action = "dispatch" | "review";
@@ -237,7 +247,8 @@ function launchForm(
   action: Action,
   issue: string,
   { catalogs, remembered }: Choices,
-  chosen: { harness?: string; model?: string; effort?: string } = {},
+  chosen: { harness?: string; model?: string; effort?: string; stackOn?: string } = {},
+  stack: StackOption[] = [],
 ) {
   const offered = catalogs.filter((c) => c.models.length > 0);
   const { harness: wanted = remembered.last?.harness, model: wantedModel = remembered.last?.model } = chosen;
@@ -254,6 +265,7 @@ function launchForm(
   return [
     `<form method="post" action="/${action}" class="dispatch">`,
     `<input type="hidden" name="issue" value="${escape(issue)}">`,
+    ...(stack.length ? [stackSelect(stack, chosen.stackOn)] : []),
     select("harness", offered.map((c) => c.harness.name), catalog.harness.name, ` ${rerender(action)}`),
     select("model", catalog.models.map((m) => m.model), model.model, ` ${rerender(action)}`),
     select("effort", model.efforts, effort),
@@ -262,9 +274,17 @@ function launchForm(
   ].join("\n");
 }
 
+function stackSelect(options: StackOption[], chosen?: string) {
+  return `<label>Stack on <select name="stackOn">${options.map((o, i) => {
+    const value = stackChoice(o, options);
+    const selected = chosen ? chosen === value : i === 0;
+    return `<option value="${escape(value)}"${selected ? " selected" : ""}>${escape(o.blocker)} · PR #${o.pr.number}</option>`;
+  }).join("")}</select></label>`;
+}
+
 /** Retry re-posts the failed launch's own request, which resumes it from its failed step (ADR-0006). */
-function retryForm(action: Action, issue: string, { harness, model, effort }: Launch) {
-  const hidden = Object.entries({ issue, harness, model, effort }).map(
+function retryForm(action: Action, issue: string, { harness, model, effort }: Launch, stackOn?: string) {
+  const hidden = Object.entries({ issue, harness, model, effort, ...(stackOn && { stackOn }) }).map(
     ([name, value]) => `<input type="hidden" name="${name}" value="${escape(value)}">`,
   );
   return [`<form method="post" action="/${action}" class="dispatch">`, ...hidden, "<button>Retry</button>", "</form>"].join("\n");

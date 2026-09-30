@@ -113,7 +113,7 @@ const commands: Command[] = [
     name: "dispatch",
     usage: DISPATCH_USAGE,
     summary: "Start an Implementer on an issue in a new herdr worktree workspace (resumes a failed one)",
-    flags: LAUNCH_FLAGS,
+    flags: { ...LAUNCH_FLAGS, "--stack-on": { value: true, description: "Blocker issue reference to stack on; required when ambiguous" } },
     positionals: ["issue"],
     examples: [
       "nico-agent dispatch acme/api#7 --harness claude --model opus --effort high",
@@ -321,7 +321,10 @@ function issueArg(args: Args, usage: string) {
 }
 
 async function dispatchCommand(args: Args, ctx: RunContext): Promise<Output> {
-  const { dispatch: record, outcome, resumedFrom } = await dispatch(ctx.world, ctx.configDir, launchRequest(args, DISPATCH_USAGE));
+  const { dispatch: record, outcome, resumedFrom } = await dispatch(ctx.world, ctx.configDir, {
+    ...launchRequest(args, DISPATCH_USAGE),
+    ...(typeof args.flags["--stack-on"] === "string" && { stackOn: args.flags["--stack-on"] }),
+  });
   // A Dispatch just run has no PR yet; an existing one may.
   const stage = outcome === "existing" ? await currentStage(ctx.world, record) : stageOf(record, null);
   const dispatched = {
@@ -384,6 +387,7 @@ async function show(args: Args, ctx: RunContext): Promise<Output> {
     repo: record.repo,
     branch: record.branch,
     base: record.base,
+    stackedOn: record.stackedOn,
     worktree: record.worktree,
     workspace: record.workspace,
     implementer: definedOnly({ tab, pane, ...launch }),
@@ -533,7 +537,7 @@ async function board(ctx: RunContext): Promise<Output> {
   if (repos.length === 0) {
     return { data: { ...header, ready: "0 issues (no Repos configured)" }, help: [ADD_REPO_HELP] };
   }
-  const { ready, inFlight, errors } = await loadBoard(ctx.world, repos, loadDispatches(ctx.configDir), cachedPrs(ctx.world));
+  const { ready, stackable, inFlight, errors } = await loadBoard(ctx.world, repos, loadDispatches(ctx.configDir), cachedPrs(ctx.world));
   const help = ["Run `nico-agent repo list` to see the Repos", ADD_REPO_HELP];
   if (inFlight.length) help.unshift("Run `nico-agent show <issue>` to see a Dispatch");
   const blocked = inFlight.flatMap(({ dispatch: d, implementerState, reviewerState }) => [
@@ -579,6 +583,11 @@ async function board(ctx: RunContext): Promise<Output> {
     : `0 issues across ${plural(repos.length - failedRepos, "Repo")}`;
   const data: Record<string, unknown> = { ...header, ready: count };
   if (ready.length) data.issues = ready.map((i) => ({ issue: i.identifier ?? `${i.repo}#${i.number}`, title: i.title, ...(i.identifier && { repo: i.repo }) }));
+  if (stackable.length) {
+    data.stackable = stackable.map((i) => ({ issue: `${i.repo}#${i.number}`, title: i.title,
+      blockers: i.blockers.map((b) => ({ issue: b.blocker, pr: b.pr.url })) }));
+    help.unshift("Run `nico-agent dispatch <issue> --stack-on <blocker> --harness <harness> --model <model> --effort <effort>` to dispatch a Stackable issue");
+  }
   Object.assign(data, inFlightData);
   if (errors.length) data.errors = errors;
   return { data, help };

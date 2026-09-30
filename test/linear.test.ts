@@ -92,3 +92,30 @@ for (const ref of ["BLE-27", "https://linear.app/bleentr/issue/BLE-27/title?foo=
     expect(result.stdout).not.toContain("not an issue reference");
   });
 }
+
+test("Linear Ready and GitHub Stackable issues share the Board, including a failed Linear Source", async () => {
+  const { cli, web, world } = setup();
+  world.addClone("/src/pdf", "git@github.com:bleentr/pdf-diff.git");
+  await cli("repo", "add", "bleentr/pdf-diff", "--path", "/src/pdf", "--linear-team", "BLE");
+  world.addIssue("bleentr/pdf-diff", { number: 7, title: "Stack this issue", blockers: [{ slug: "bleentr/pdf-diff", number: 6, state: "open" }] });
+  world.linkPr("bleentr/pdf-diff", 6, { number: 16, headBranch: "agent/blocker-6" });
+  world.addLinearIssue({ identifier: "BLE-27", title: "Linear Ready issue" });
+
+  const board = (await cli("board", "--json")).json();
+  expect(board.issues).toEqual([{ issue: "BLE-27", title: "Linear Ready issue", repo: "bleentr/pdf-diff" }]);
+  expect(board.stackable).toEqual([{ issue: "bleentr/pdf-diff#7", title: "Stack this issue", blockers: [{ issue: "bleentr/pdf-diff#6", pr: "https://github.com/bleentr/pdf-diff/pull/16" }] }]);
+  const page = (await web("/")).body;
+  expect(page).toContain("BLE-27 Linear Ready issue");
+  expect(page).toContain("<h3>Stackable</h3>");
+  expect(page).toContain("#7 Stack this issue");
+
+  world.linearFailure = "Linear unavailable";
+  const partial = await cli("board", "--json");
+  expect(partial.exitCode).toBe(0);
+  expect(partial.json().stackable).toEqual(board.stackable);
+  expect(partial.json().errors).toEqual([{ repo: "bleentr/pdf-diff", source: "Linear", error: "Linear unavailable" }]);
+  const partialPage = (await web("/")).body;
+  expect(partialPage).toContain("Linear: Linear unavailable");
+  expect(partialPage).toContain("<h3>Stackable</h3>");
+  expect(partialPage).toContain("#7 Stack this issue");
+});

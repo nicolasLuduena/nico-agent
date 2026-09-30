@@ -1,5 +1,6 @@
 import { closeSync, mkdirSync, openSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import type { StackOption } from "./board";
 
 /** The steps of a Dispatch, in order; each runs once, and a failed one is resumed. */
 export const STEPS = ["fetch", "worktree", "tab", "agent start", "agent ready", "prompt"] as const;
@@ -22,6 +23,8 @@ export interface Dispatch {
   repo: string;
   branch: string;
   base?: string;
+  /** The chosen Blocker's PR, kept across interrupted dispatches. */
+  stackedOn?: StackOption;
   worktree?: string;
   workspace?: string;
   implementer: Launch;

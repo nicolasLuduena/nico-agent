@@ -31,8 +31,8 @@ export interface World {
   githubBranchPullRequests(slug: string, branch: string): Promise<PullRequest[]>;
   /** Assign an issue to the user's own GitHub session (the Claim, ADR-0007). */
   githubAssignSelf(slug: string, number: number): Promise<void>;
-  /** `git fetch origin` in the clone at `path`. */
-  gitFetch(path: string): Promise<void>;
+  /** Fetch origin, or explicitly fetch a head branch into its origin tracking ref. */
+  gitFetch(path: string, branch?: string): Promise<void>;
   /** The default branch of the clone's `origin`, without the remote prefix. */
   gitDefaultBranch(path: string): Promise<string>;
   /** Create a git worktree and open it as a herdr workspace, without focusing it. */
@@ -96,6 +96,8 @@ export interface PullRequest {
   url: string;
   state: "open" | "closed" | "merged";
   baseBranch: string;
+  /** Head branch when available from GitHub; required for stacking. */
+  headBranch?: string;
 }
 
 export const READY_LABEL = "ready-for-agent";
