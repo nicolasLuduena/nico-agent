@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { WorldError } from "../src/world";
 import { setup } from "./harness";
 
 describe("serve", () => {
@@ -18,7 +17,7 @@ describe("serve", () => {
     );
     expect(world.calls).toContain("serve 127.0.0.1:42069");
 
-    const response = await world.server!.fetch(new Request("http://127.0.0.1:42069/"));
+    const response = await world.server!.handler(new Request("http://127.0.0.1:42069/"));
     expect(await response.text()).toContain('<a href="https://github.com/acme/api/issues/7">#7 Add retries</a>');
   });
 
@@ -44,9 +43,7 @@ describe("serve", () => {
 
   test("a port already in use is an error suggesting another port", async () => {
     const { cli, world } = setup();
-    world.serve = async () => {
-      throw new WorldError("port 42069 is already in use");
-    };
+    world.failServe("port 42069 is already in use");
     const { stdout, exitCode } = await cli("serve");
     expect(exitCode).toBe(1);
     expect(stdout).toBe(

@@ -1,5 +1,5 @@
 import { realpathSync } from "node:fs";
-import type { Fetch, GitHubIssue, World } from "./world";
+import type { Address, GitHubIssue, RequestHandler, World } from "./world";
 import { READY_LABEL, WorldError } from "./world";
 
 interface Exec {
@@ -101,9 +101,9 @@ export class RealWorld implements World {
     return issues;
   }
 
-  async serve(address: { hostname: string; port: number }, fetch: Fetch) {
+  async serve(address: Address, handler: RequestHandler) {
     try {
-      Bun.serve({ ...address, fetch });
+      Bun.serve({ ...address, fetch: handler });
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code === "EADDRINUSE") {
         throw new WorldError(`port ${address.port} is already in use`);

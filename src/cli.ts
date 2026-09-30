@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 import { loadBoard } from "./board";
-import { ConfigError, findRepo, loadConfig, saveConfig } from "./config";
+import { CONFIG_ERROR_HELP, ConfigError, findRepo, loadConfig, saveConfig } from "./config";
 import { type Output, render } from "./output";
 import { VERSION } from "./version";
 import { sameSlug, slugOfRemote } from "./slug";
@@ -119,7 +119,7 @@ export async function run(argv: string[], ctx: RunContext): Promise<RunResult> {
         : commandHelp(command);
     return { stdout: render(output, json), exitCode: output.exitCode ?? 0 };
   } catch (e) {
-    if (e instanceof ConfigError) e = new CliError(e.message, ["Fix or delete the file and run `nico-agent repo add` again"]);
+    if (e instanceof ConfigError) e = new CliError(e.message, [CONFIG_ERROR_HELP]);
     else if (e instanceof WorldError) e = new CliError(e.message);
     if (!(e instanceof CliError)) throw e;
     const output = { data: { error: e.message, ...e.details }, help: e.help };

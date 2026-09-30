@@ -1,3 +1,5 @@
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 import { setup } from "./harness";
 
@@ -75,6 +77,17 @@ describe("web Board", () => {
     expect(asset.status).toBe(200);
     expect(asset.type).toBe("text/javascript; charset=utf-8");
     expect(asset.body).toContain("htmx");
+  });
+
+  test("a corrupt config file is an error page with the same help as the CLI", async () => {
+    const { configDir, web } = setup();
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(join(configDir, "config.json"), "{bad");
+    const { status, body } = await web("/");
+    expect(status).toBe(500);
+    expect(body).toContain(
+      `<p class="error">${join(configDir, "config.json")} is not valid JSON</p>\n<p>Fix or delete the file and run \`nico-agent repo add\` again</p>`,
+    );
   });
 
   test("an unknown path is a 404 page", async () => {

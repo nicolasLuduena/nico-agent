@@ -13,10 +13,15 @@ export interface World {
    */
   githubIssues(slug: string): Promise<GitHubIssue[]>;
   /** Start answering HTTP requests on `hostname:port`; resolves once listening. */
-  serve(address: { hostname: string; port: number }, fetch: Fetch): Promise<void>;
+  serve(address: Address, handler: RequestHandler): Promise<void>;
 }
 
-export type Fetch = (request: Request) => Promise<Response>;
+export interface Address {
+  hostname: string;
+  port: number;
+}
+
+export type RequestHandler = (request: Request) => Promise<Response>;
 
 export interface GitHubIssue {
   number: number;

@@ -1,4 +1,4 @@
-import type { Fetch, GitHubIssue, World } from "../src/world";
+import type { Address, GitHubIssue, RequestHandler, World } from "../src/world";
 import { WorldError } from "../src/world";
 
 export class FakeWorld implements World {
@@ -8,7 +8,8 @@ export class FakeWorld implements World {
   failures = new Map<string, string>();
   calls: string[] = [];
   /** What the last `serve` call would be answering, for tests to send requests to. */
-  server: { hostname: string; port: number; fetch: Fetch } | null = null;
+  server: { address: Address; handler: RequestHandler } | null = null;
+  serveFailure: string | null = null;
 
   addClone(path: string, ...remotes: string[]) {
     this.clones.set(path, remotes);
@@ -25,6 +26,11 @@ export class FakeWorld implements World {
       ...issue,
     };
     this.issues.set(slug, [...(this.issues.get(slug) ?? []), full]);
+  }
+
+  /** Make the next calls to `serve` fail with `message`. */
+  failServe(message: string) {
+    this.serveFailure = message;
   }
 
   /** Make the next calls to `githubIssues(slug)` fail with `message`. */
@@ -49,8 +55,9 @@ export class FakeWorld implements World {
     return this.issues.get(slug) ?? [];
   }
 
-  async serve(address: { hostname: string; port: number }, fetch: Fetch) {
+  async serve(address: Address, handler: RequestHandler) {
     this.calls.push(`serve ${address.hostname}:${address.port}`);
-    this.server = { ...address, fetch };
+    if (this.serveFailure) throw new WorldError(this.serveFailure);
+    this.server = { address, handler };
   }
 }
