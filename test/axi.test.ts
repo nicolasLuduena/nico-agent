@@ -26,7 +26,7 @@ describe("AXI conventions", () => {
     const { cli } = setup();
     const { stdout, exitCode } = await cli("dispatch-all");
     expect(exitCode).toBe(2);
-    expect(stdout).toStartWith("error: unknown command `dispatch-all`\nhelp[10]:\n  Run `nico-agent [board]` to show Ready issues");
+    expect(stdout).toStartWith("error: unknown command `dispatch-all`\nhelp[11]:\n  Run `nico-agent [board]` to show Ready issues");
   });
 
   test("a missing required flag is a usage error with the usage line", async () => {
@@ -89,13 +89,14 @@ describe("AXI conventions", () => {
       [
         "bin: ~/.local/bin/nico-agent",
         "description: Dispatch coding agents onto ready-for-agent issues",
-        "commands[10]{usage,description}:",
+        "commands[11]{usage,description}:",
         '  "nico-agent [board]",Show Ready issues across all Repos (the default view)',
         "  nico-agent repo add <owner/name> --path <clone>,Add a Repo after checking the path is a clone of it",
         "  nico-agent repo rm <owner/name>,Remove a Repo (its clone is left untouched)",
         "  nico-agent repo list,List the configured Repos",
         "  nico-agent dispatch <issue> --harness <harness> --model <model> --effort <effort>,Start an Implementer on an issue in a new herdr worktree workspace (resumes a failed one)",
         '  nico-agent review <issue> --harness <harness> --model <model> --effort <effort>,"Start a Reviewer on an In-flight issue\'s linked PR, in its workspace (resumes a failed one)"',
+        '  "nico-agent close <issue> [--confirm]","Remove a Dispatch\'s workspace and forget it, keeping its branch"',
         "  nico-agent harness list,List the Harnesses with their models and Effort levels (discovers uncached ones)",
         "  nico-agent harness refresh,Discover the Harnesses' models and Effort levels again and replace the cache",
         "  nico-agent show <issue>,Print the full Dispatch record of an In-flight issue",

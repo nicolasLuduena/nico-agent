@@ -118,6 +118,15 @@ export async function saveDispatch(dir: string, dispatch: Dispatch): Promise<voi
   });
 }
 
+/** Forget a Dispatch after its workspace was removed. */
+export async function removeDispatch(dir: string, issue: string): Promise<void> {
+  await withLock(dir, () => {
+    const state = read(dir);
+    delete state.dispatches[issue];
+    write(dir, state);
+  });
+}
+
 function read(dir: string): StateFile {
   let text: string;
   try {

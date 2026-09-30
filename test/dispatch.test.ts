@@ -358,7 +358,11 @@ describe("In flight on the Board", () => {
         '<section class="in-flight" hx-get="/in-flight" hx-trigger="every 5s" hx-swap="outerHTML">',
         "<h2>In flight</h2>",
         "<ul>",
-        '<li><a href="https://github.com/acme/api/issues/7">acme/api#7 Add retries</a> · claude opus high · workspace w1 · Implementing · implementer <span class="agent">working</span></li>',
+        '<li><a href="https://github.com/acme/api/issues/7">acme/api#7 Add retries</a> · claude opus high · workspace w1 · Implementing · implementer <span class="agent">working</span>',
+        '<form method="post" action="/close">',
+        '<input type="hidden" name="issue" value="acme/api#7">',
+        '<button>Close</button>',
+        '</form></li>',
         "</ul>",
         "</section>",
       ].join("\n"),
@@ -505,6 +509,10 @@ describe("web Retry", () => {
     expect(body).toContain(
       [
         '<li><a href="https://github.com/acme/api/issues/7">acme/api#7 Add retries</a> · claude opus high · workspace w1 · <span class="error">Failed at tab: workspace_not_found: no workspace w1</span> · implementer <span class="agent">unknown</span>',
+        '<form method="post" action="/close">',
+        '<input type="hidden" name="issue" value="acme/api#7">',
+        '<button>Close</button>',
+        '</form>',
         '<form method="post" action="/dispatch" class="dispatch">',
         '<input type="hidden" name="issue" value="acme/api#7">',
         '<input type="hidden" name="harness" value="claude">',
@@ -521,7 +529,7 @@ describe("web Retry", () => {
     expect(retried.status).toBe(303);
     expect(world.calls[0]).toStartWith("herdr tab create --workspace w1 ");
     expect((await cli("show", "acme/api#7", "--json")).json().stage).toBe("Implementing");
-    expect((await web("/")).body).toContain('· workspace w1 · Implementing · implementer <span class="agent">working</span></li>');
+    expect((await web("/")).body).toContain('· workspace w1 · Implementing · implementer <span class="agent">working</span>');
   });
 });
 
