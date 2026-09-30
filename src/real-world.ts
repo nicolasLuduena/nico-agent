@@ -170,6 +170,10 @@ export class RealWorld implements World {
     return repository.issue ? toIssue(repository.issue) : null;
   }
 
+  async githubAssignSelf(slug: string, number: number) {
+    await gh(["issue", "edit", String(number), "--repo", slug, "--add-assignee", "@me"]);
+  }
+
   async gitFetch(path: string) {
     await git(path, ["fetch", "origin"]);
   }
@@ -201,7 +205,8 @@ export class RealWorld implements World {
     try {
       await herdr(["agent", "start", name, "--kind", kind, "--pane", pane, "--", ...args]);
     } catch (e) {
-      if (e instanceof HerdrError && e.code === "agent_not_ready") return { ready: false };
+      // Both leave the agent running, waiting on a startup question.
+      if (e instanceof HerdrError && (e.code === "agent_not_ready" || e.code === "agent_blocked")) return { ready: false };
       throw e;
     }
     return { ready: true };
@@ -229,6 +234,20 @@ export class RealWorld implements World {
       throw e;
     }
     return { started: true };
+  }
+
+  processId() {
+    return process.pid;
+  }
+
+  processAlive(pid: number) {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch (e) {
+      // EPERM: alive, but someone else's.
+      return (e as NodeJS.ErrnoException).code === "EPERM";
+    }
   }
 
   now() {

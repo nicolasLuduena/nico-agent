@@ -12,8 +12,18 @@ export class FakeWorld implements World {
   serveFailure: string | null = null;
   /** Default branch of each clone's origin; `main` when unset. */
   defaultBranches = new Map<string, string>();
-  herdrFailures = new Map<string, string>();
+  /** Failures of outside-world calls, keyed by a prefix of the recorded call. */
+  callFailures = new Map<string, string>();
+  /** Assignees each `githubAssignSelf` added, as `slug#N`. */
+  claimed: string[] = [];
   clock = new Date("2026-09-30T12:00:00.000Z");
+  /** This process's id, and whether each process id is still running. */
+  pid = 4242;
+  deadPids = new Set<number>();
+  /** Calls that crash the process mid-step, like a bug or a kill would. */
+  crashes = new Set<string>();
+  /** Calls that never return, as if the process were stuck or killed in them. */
+  hangs = new Set<string>();
   private workspaces = 0;
   /** Screen of an agent blocked on a startup question, if the next start should block. */
   private blockedScreen: string | null = null;
@@ -48,7 +58,22 @@ export class FakeWorld implements World {
 
   /** Make the herdr `command` (e.g. `agent start`) fail with `message`. */
   failHerdr(command: string, message: string) {
-    this.herdrFailures.set(command, message);
+    this.failCall(`herdr ${command}`, message);
+  }
+
+  /** Make every call recorded as starting with `prefix` fail with `message`. */
+  failCall(prefix: string, message: string) {
+    this.callFailures.set(prefix, message);
+  }
+
+  /** Stop injecting call failures. */
+  clearFailures() {
+    this.callFailures.clear();
+  }
+
+  /** The user answered the agent's startup question by hand. */
+  unblockAgent() {
+    this.blockedScreen = null;
   }
 
   /** Make the next agent start report a startup block showing `screen`. */
@@ -62,9 +87,17 @@ export class FakeWorld implements World {
   }
 
   private herdr(command: string, ...args: string[]) {
-    this.calls.push(["herdr", command, ...args].join(" "));
-    const failure = this.herdrFailures.get(command);
-    if (failure) throw new WorldError(failure);
+    this.call(["herdr", command, ...args].join(" "));
+  }
+
+  private call(text: string) {
+    this.calls.push(text);
+    for (const prefix of this.crashes) {
+      if (text.startsWith(prefix)) throw new Error(`crashed during ${text}`);
+    }
+    for (const [prefix, failure] of this.callFailures) {
+      if (text.startsWith(prefix)) throw new WorldError(failure);
+    }
   }
 
   async gitRemotes(path: string) {
@@ -90,7 +123,7 @@ export class FakeWorld implements World {
   }
 
   async gitFetch(path: string) {
-    this.calls.push(`git -C ${path} fetch origin`);
+    this.call(`git -C ${path} fetch origin`);
   }
 
   async gitDefaultBranch(path: string) {
@@ -105,6 +138,7 @@ export class FakeWorld implements World {
 
   async herdrTabCreate({ workspace, cwd, label }: { workspace: string; cwd: string; label: string }) {
     this.herdr("tab create", "--workspace", workspace, "--cwd", cwd, "--label", label, "--no-focus");
+    if (this.hangs.has("herdr tab create")) await new Promise(() => {});
     return { tab: `${workspace}:t2`, pane: `${workspace}:p2` };
   }
 
@@ -125,6 +159,8 @@ export class FakeWorld implements World {
 
   async herdrAgentWait(name: string, states: string[], timeoutMs: number) {
     this.herdr("agent wait", name, ...states.flatMap((s) => ["--until", s]), "--timeout", String(timeoutMs));
+    // An agent blocked on a question never reaches idle.
+    if (this.blockedScreen !== null) throw new WorldError(`agent_wait_timeout: ${name} did not reach ${states.join(" or ")}`);
   }
 
   async herdrAgentPrompt(name: string, text: string) {
@@ -132,6 +168,19 @@ export class FakeWorld implements World {
     if (this.stalledPrompts === 0) return { started: true };
     this.stalledPrompts--;
     return { started: false };
+  }
+
+  async githubAssignSelf(slug: string, number: number) {
+    this.call(`github assign ${slug}#${number} @me`);
+    this.claimed.push(`${slug}#${number}`);
+  }
+
+  processId() {
+    return this.pid;
+  }
+
+  processAlive(pid: number) {
+    return !this.deadPids.has(pid);
   }
 
   now() {
