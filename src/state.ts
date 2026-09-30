@@ -56,7 +56,7 @@ export interface Launch {
 /** A Reviewer's launch, the PR it reviews, and how far its steps got. */
 export interface Reviewer extends Launch {
   /** URL of the PR under review, and the branch it merges into. */
-  pr: string;
+  prUrl: string;
   prBase: string;
   completed: ReviewStep[];
   failure?: { step: ReviewStep; error: string };

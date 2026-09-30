@@ -17,7 +17,7 @@ const HTML_HEADERS = { "content-type": "text/html; charset=utf-8" };
 /** The web app: server-rendered pages over the same core operations as the CLI. */
 export function webHandler(context: WebContext) {
   // One cache for the server's life, so polling the In-flight section asks GitHub only every ~30s.
-  const ctx: Handling = { ...context, prs: cachedPrs(context.world) };
+  const ctx: ServerContext = { ...context, prs: cachedPrs(context.world) };
   return async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
     const { pathname } = url;
@@ -45,11 +45,11 @@ export function webHandler(context: WebContext) {
   };
 }
 
-interface Handling extends WebContext {
+interface ServerContext extends WebContext {
   prs: PrLookup;
 }
 
-async function getBoard(ctx: Handling) {
+async function getBoard(ctx: ServerContext) {
   const { repos } = loadConfig(ctx.configDir);
   const board = await loadBoard(ctx.world, repos, loadDispatches(ctx.configDir), ctx.prs);
   // Discovery may run a Harness's CLI, so only when there is something to launch.
@@ -59,7 +59,7 @@ async function getBoard(ctx: Handling) {
 }
 
 /** The In-flight section alone, for the Board to poll. */
-async function getInFlight(ctx: Handling) {
+async function getInFlight(ctx: ServerContext) {
   const rows = await loadInFlight(ctx.world, loadDispatches(ctx.configDir), ctx.prs);
   const choices = await choicesFor(ctx, rows.some(canLaunchReview));
   return new Response(renderInFlight(rows, choices), { headers: HTML_HEADERS });
@@ -206,7 +206,7 @@ interface Choices {
 
 /**
  * The dispatch or review form of an issue, offering each Harness that has models. It
- * starts on the Harness and model last dispatched with; a chosen Harness,
+ * starts on the Harness and model last dispatched with (a review form too); a chosen Harness,
  * model and Effort are kept while valid. Otherwise the Effort is the one last
  * used with the model, or the model's first.
  */

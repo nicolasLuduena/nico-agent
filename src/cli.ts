@@ -6,7 +6,7 @@ import { type Catalog, harnessCatalogs, harnesses, refreshHarnesses } from "./ha
 import { type Output, render } from "./output";
 import { VERSION } from "./version";
 import { sameSlug, slugOfRemote } from "./slug";
-import { cachedPrs, freshPrs, loadInFlight, stageOf } from "./stage";
+import { cachedPrs, currentStage, freshPrs, loadInFlight, stageOf } from "./stage";
 import { findDispatch, loadDispatches } from "./state";
 import { webHandler } from "./web";
 import { type World, WorldError } from "./world";
@@ -305,6 +305,8 @@ function issueArg(args: Args, usage: string) {
 
 async function dispatchCommand(args: Args, ctx: RunContext): Promise<Output> {
   const { dispatch: record, outcome, resumedFrom } = await dispatch(ctx.world, ctx.configDir, launchRequest(args, DISPATCH_USAGE));
+  // A Dispatch just run has no PR yet; an existing one may.
+  const stage = outcome === "existing" ? await currentStage(ctx.world, record) : stageOf(record, null);
   const dispatched = {
     new: record.issue,
     existing: `${record.issue} already In flight (no-op)`,
@@ -315,7 +317,7 @@ async function dispatchCommand(args: Args, ctx: RunContext): Promise<Output> {
   return {
     data: {
       dispatched,
-      stage: stageOf(record, null),
+      stage,
       workspace: record.workspace,
       agent: record.implementer.agent,
       ...(record.warnings && { warnings: record.warnings }),
@@ -335,9 +337,9 @@ async function reviewCommand(args: Args, ctx: RunContext): Promise<Output> {
   return {
     data: {
       reviewing,
-      // The Reviewer exists only once a PR was linked, so the PR's absence can't change the Stage.
-      stage: stageOf(record, null),
-      pr: reviewer.pr,
+      // A Reviewer just run was prompted, so the PR can't change the Stage.
+      stage: outcome === "existing" ? await currentStage(ctx.world, record) : stageOf(record, null),
+      pr: reviewer.prUrl,
       workspace: record.workspace,
       agent: reviewer.agent,
     },
@@ -511,6 +513,10 @@ async function board(ctx: RunContext): Promise<Output> {
   const { ready, inFlight, errors } = await loadBoard(ctx.world, repos, loadDispatches(ctx.configDir), cachedPrs(ctx.world));
   const help = ["Run `nico-agent repo list` to see the Repos", ADD_REPO_HELP];
   if (inFlight.length) help.unshift("Run `nico-agent show <issue>` to see a Dispatch");
+  const blocked = inFlight.flatMap(({ dispatch: d, implementerState, reviewerState }) => [
+    ...(implementerState === "blocked" ? [d.implementer.agent] : []),
+    ...(reviewerState === "blocked" ? [d.reviewer!.agent] : []),
+  ].map((agent) => `Run \`herdr agent read ${agent}\` to see what the blocked agent of ${d.issue} is waiting on`));
   if (inFlight.some((row) => row.stage === "PR ready")) {
     help.unshift(
       `Run \`nico-agent review <issue> --harness ${harnesses(ctx.configDir)[0]!.name} --model <model> --effort <effort>\` to review an issue whose PR is ready`,
@@ -521,6 +527,8 @@ async function board(ctx: RunContext): Promise<Output> {
       `Run \`nico-agent dispatch <issue> --harness ${harnesses(ctx.configDir)[0]!.name} --model <model> --effort <effort>\` to dispatch a Ready issue`,
     );
   }
+  // Agents waiting on the user come first.
+  help.unshift(...blocked);
   const inFlightData = {
     inFlight: plural(inFlight.length, "Dispatch", "Dispatches"),
     ...(inFlight.length > 0 && {

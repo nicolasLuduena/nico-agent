@@ -84,7 +84,7 @@ describe("review", () => {
       harness: "claude",
       model: "sonnet",
       effort: "max",
-      pr: "https://github.com/acme/api/pull/9",
+      prUrl: "https://github.com/acme/api/pull/9",
       prBase: "trunk",
       completed: ["tab", "agent start", "agent ready", "prompt"],
     });
@@ -106,6 +106,22 @@ describe("review", () => {
     expect(world.calls).toEqual(["github linked prs acme/api#7"]);
   });
 
+  test("a Failed Dispatch can't be reviewed until it is resumed", async () => {
+    const { cli, world } = setup();
+    world.addClone("/src/api", "git@github.com:acme/api.git");
+    await cli("repo", "add", "acme/api", "--path", "/src/api");
+    world.addIssue("acme/api", { number: 7 });
+    world.stallPrompts(3);
+    await cli("dispatch", "acme/api#7", ...FLAGS);
+    world.linkPr("acme/api", 7, { number: 9 });
+    world.calls.length = 0;
+
+    const { stdout, exitCode } = await cli("review", "acme/api#7", ...REVIEW_FLAGS);
+    expect(exitCode).toBe(1);
+    expect(stdout).toStartWith("error: acme/api#7 is Failed at prompt\nhelp[2]:\n  Run the same `nico-agent dispatch` again to resume it\n");
+    expect(world.calls).toEqual([]);
+  });
+
   test("an issue that is not In flight can't be reviewed", async () => {
     const { cli, world } = await dispatched();
     const { stdout, exitCode } = await cli("review", "acme/api#8", ...REVIEW_FLAGS);
@@ -123,6 +139,9 @@ describe("review", () => {
     const again = await cli("review", "acme/api#7", ...REVIEW_FLAGS);
     expect(again.exitCode).toBe(0);
     expect(again.stdout).toStartWith("reviewing: acme/api#7 already launched (no-op)\nstage: Review launched\n");
+
+    const dispatchAgain = await cli("dispatch", "acme/api#7", ...FLAGS);
+    expect(dispatchAgain.stdout).toStartWith("dispatched: acme/api#7 already In flight (no-op)\nstage: Review launched\n");
 
     const other = await cli("review", "acme/api#7", ...FLAGS);
     expect(other.exitCode).toBe(1);
@@ -213,6 +232,20 @@ describe("In flight on the CLI Board", () => {
     expect(stdout).not.toContain("to review an issue whose PR is ready");
   });
 
+  test("a no-op dispatch re-run reports the Stage from the linked PR", async () => {
+    const { cli, world } = await dispatched();
+    world.linkPr("acme/api", 7, { number: 9 });
+    const again = await cli("dispatch", "acme/api#7", ...FLAGS);
+    expect(again.stdout).toStartWith("dispatched: acme/api#7 already In flight (no-op)\nstage: PR ready\n");
+  });
+
+  test("a blocked agent gets a help line to see what it is waiting on", async () => {
+    const { cli, world } = await dispatched();
+    world.agentStates.set("impl-api-7", "blocked");
+    const { json } = await cli("--json");
+    expect(json().help[0]).toBe("Run `herdr agent read impl-api-7` to see what the blocked agent of acme/api#7 is waiting on");
+  });
+
   test("a herdr failure leaves the Agent states unknown, and a GitHub failure is reported with the row", async () => {
     const { cli, world } = await dispatched();
     world.failHerdr("agent list", "herdr is not running");
@@ -221,7 +254,7 @@ describe("In flight on the CLI Board", () => {
     expect(exitCode).toBe(0);
     const [row] = json().dispatches;
     expect(row.implementer).toBe("unknown");
-    expect(row.stage).toBe("Implementing");
+    expect(row.stage).toBe("unknown");
     expect(row.prError).toBe("GitHub rate limit exceeded; try again later");
   });
 });
@@ -255,6 +288,15 @@ describe("In flight on the web", () => {
     world.clock = new Date(world.clock.getTime() + 2_000);
     await web("/in-flight");
     expect(world.calls.filter((c) => c.startsWith("github linked prs"))).toHaveLength(2);
+  });
+
+  test("a failed GitHub lookup is cached too, so an outage isn't asked every poll", async () => {
+    const { web, world } = await dispatched();
+    world.failCall("github linked prs", "GitHub rate limit exceeded; try again later");
+    expect((await web("/in-flight")).body).toContain("could not look up the PR: GitHub rate limit exceeded; try again later");
+    world.clearFailures();
+    expect((await web("/in-flight")).body).toContain("could not look up the PR");
+    expect(world.calls.filter((c) => c.startsWith("github linked prs"))).toHaveLength(1);
   });
 
   test("a blocked agent is highlighted", async () => {

@@ -1,7 +1,7 @@
 import { type Prompts, type Repo, fillTemplate, findRepo, loadConfig, prompts } from "./config";
 import { type Harness, harnessCatalog, harnesses, launchArgs, rememberLaunch } from "./harness";
 import { sameSlug } from "./slug";
-import { freshPrs } from "./stage";
+import { freshPrs, isReviewLaunched } from "./stage";
 import {
   type Dispatch,
   type Launch,
@@ -150,19 +150,26 @@ export async function review(world: World, configDir: string, request: DispatchR
   const existing = findDispatch(configDir, key);
   if (!existing) throw new DispatchError(`${key} is not In flight`, [`Run \`${DISPATCH_HINT}\` to dispatch it first`]);
   const show = `Run \`nico-agent show ${key}\` to see the Dispatch`;
-  const free = (d: Dispatch) => d.runner === undefined || !world.processAlive(d.runner);
+  const isFree = (d: Dispatch) => d.runner === undefined || !world.processAlive(d.runner);
 
   if (existing.reviewer) {
     const { harness: h, model, effort } = existing.reviewer;
     if (h !== request.harness || model !== request.model || effort !== request.effort) {
       throw new DispatchError(`${key} already has a Reviewer with ${h} ${model} ${effort}`, [show]);
     }
-    const leased = await leaseDispatch(configDir, key, world.processId(), (d) => free(d) && !isLaunched(d));
+    const leased = await leaseDispatch(configDir, key, world.processId(), (d) => isFree(d) && !isReviewLaunched(d));
     if (!leased) return { dispatch: findDispatch(configDir, key) ?? existing, outcome: "existing" };
     const resumedFrom = leased.reviewer!.failure?.step ?? REVIEW_STEPS.find((s) => !leased.reviewer!.completed.includes(s))!;
     return { dispatch: await runReview(world, configDir, ref, harness, templates, leased), outcome: "resumed", resumedFrom };
   }
 
+  // The web offers no Launch review then; the CLI refuses the same way.
+  if (existing.failure) {
+    throw new DispatchError(`${key} is Failed at ${existing.failure.step}`, [
+      "Run the same `nico-agent dispatch` again to resume it",
+      show,
+    ]);
+  }
   if (!existing.workspace || !existing.worktree) {
     throw new DispatchError(`${key} has no workspace to review in yet`, [
       `Run the same \`nico-agent dispatch\` again to resume it`,
@@ -176,7 +183,7 @@ export async function review(world: World, configDir: string, request: DispatchR
       show,
     ]);
   }
-  const leased = await leaseDispatch(configDir, key, world.processId(), (d) => free(d) && !d.reviewer);
+  const leased = await leaseDispatch(configDir, key, world.processId(), (d) => isFree(d) && !d.reviewer && !d.failure);
   if (!leased) {
     const now = findDispatch(configDir, key);
     if (now?.reviewer) return review(world, configDir, request);
@@ -187,17 +194,11 @@ export async function review(world: World, configDir: string, request: DispatchR
     harness: harness.name,
     model: request.model,
     effort: request.effort,
-    pr: pr.url,
+    prUrl: pr.url,
     prBase: pr.baseBranch,
     completed: [],
   };
   return { dispatch: await runReview(world, configDir, ref, harness, templates, leased), outcome: "new" };
-}
-
-/** Whether a Dispatch's Reviewer was prompted. */
-function isLaunched(dispatch: Dispatch) {
-  const { reviewer } = dispatch;
-  return reviewer !== undefined && REVIEW_STEPS.every((s) => reviewer.completed.includes(s));
 }
 
 /** Run the Reviewer's steps `dispatch` has not completed, as the runner holding its lease. */
@@ -207,7 +208,7 @@ async function runReview(world: World, configDir: string, ref: IssueRef, harness
   const steps: Record<ReviewStep, () => Promise<void>> = {
     ...agentSteps(world, harness, ref.repo, record, reviewer, "reviewer"),
     prompt: async () => {
-      const values = { sigil: harness.sigil, issueUrl: record.url, prUrl: reviewer.pr, prBaseBranch: reviewer.prBase };
+      const values = { sigil: harness.sigil, issueUrl: record.url, prUrl: reviewer.prUrl, prBaseBranch: reviewer.prBase };
       await prompt(world, reviewer.agent, fillTemplate(templates.review, values));
     },
   };

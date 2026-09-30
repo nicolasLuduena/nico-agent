@@ -156,7 +156,8 @@ describe("dispatch", () => {
         "",
       ].join("\n"),
     );
-    expect(world.calls).toEqual([]);
+    // A no-op only reads the Stage.
+    expect(world.calls).toEqual(["github linked prs acme/api#7"]);
   });
 
   test("rejects an unknown Harness or model before any outside-world call", async () => {
@@ -565,7 +566,8 @@ describe("Claim", () => {
     const again = await cli("dispatch", "acme/api#7", ...FLAGS);
     expect(again.exitCode).toBe(0);
     expect(again.stdout).toStartWith("dispatched: acme/api#7 already In flight (no-op)\n");
-    expect(world.calls).toEqual([]);
+    // A no-op only reads the Stage.
+    expect(world.calls).toEqual(["github linked prs acme/api#7"]);
   });
 });
 
@@ -596,11 +598,13 @@ describe("interrupted Dispatch", () => {
     const during = await cli("dispatch", "acme/api#7", ...FLAGS);
     expect(during.exitCode).toBe(0);
     expect(during.stdout).toStartWith("dispatched: acme/api#7 already In flight (no-op)\n");
-    expect(world.calls).toEqual([]);
+    // A no-op only reads the Stage.
+    expect(world.calls).toEqual(["github linked prs acme/api#7"]);
 
     // The first process was killed mid-step; a later one takes over.
     world.deadPids.add(world.pid);
     world.pid = 5000;
+    world.calls.length = 0;
     const after = await cli("dispatch", "acme/api#7", ...FLAGS);
     expect(after.stdout).toStartWith("dispatched: acme/api#7 (resumed from tab)\n");
     expect(world.calls[0]).toStartWith("herdr tab create --workspace w1 ");

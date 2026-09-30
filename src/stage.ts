@@ -5,14 +5,34 @@ import { type PullRequest, type World, WorldError } from "./world";
 /**
  * Where a Dispatch stands (ADR-0003): Failed at the step that failed, else
  * decided only by PR linkage. Implementing until a PR is linked, then PR
- * ready, then Review launched once the Reviewer was prompted.
+ * ready, then Review launched once the Reviewer was prompted. `pr` is
+ * undefined when the lookup failed, which leaves the Stage `unknown`.
  */
-export function stageOf(dispatch: Dispatch, pr: PullRequest | null) {
+export function stageOf(dispatch: Dispatch, pr: PullRequest | null | undefined) {
   if (dispatch.failure) return `Failed at ${dispatch.failure.step}`;
-  const { reviewer } = dispatch;
-  if (reviewer?.failure) return `Failed at review ${reviewer.failure.step}`;
-  if (reviewer && REVIEW_STEPS.every((s) => reviewer.completed.includes(s))) return "Review launched";
+  if (dispatch.reviewer?.failure) return `Failed at review ${dispatch.reviewer.failure.step}`;
+  if (isReviewLaunched(dispatch)) return "Review launched";
+  if (pr === undefined) return "unknown";
   return pr ? "PR ready" : "Implementing";
+}
+
+/** Whether a Dispatch's Reviewer was prompted. */
+export function isReviewLaunched(dispatch: Dispatch) {
+  const { reviewer } = dispatch;
+  return reviewer !== undefined && REVIEW_STEPS.every((s) => reviewer.completed.includes(s));
+}
+
+/** The Stage as of now, asking GitHub for the PR unless the record alone decides it. */
+export async function currentStage(world: World, dispatch: Dispatch) {
+  const stage = stageOf(dispatch, undefined);
+  if (stage !== "unknown") return stage;
+  return stageOf(dispatch, await freshPrs(world)(dispatch).catch(unlessWorldError));
+}
+
+/** Undefined for an adapter failure; anything else is a bug and propagates. */
+function unlessWorldError(e: unknown): undefined {
+  if (e instanceof WorldError) return undefined;
+  throw e;
 }
 
 /** The PR of a Dispatch: one in its Repo closing the issue, the open one first, else the latest. */
@@ -31,17 +51,25 @@ export function freshPrs(world: World): PrLookup {
 
 const PR_CACHE_MS = 30_000;
 
-/** Asks GitHub at most every ~30s per issue, for a Board that polls; failures are not cached. */
+/** Asks GitHub at most every ~30s per issue, for a Board that polls; a failure is kept as long, so an outage isn't asked every poll. */
 export function cachedPrs(world: World): PrLookup {
   const fresh = freshPrs(world);
-  const cache = new Map<string, { at: number; pr: PullRequest | null }>();
+  const cache = new Map<string, { at: number; pr: PullRequest | null } | { at: number; error: WorldError }>();
   return async (d) => {
     const now = world.now().getTime();
     const hit = cache.get(d.issue);
-    if (hit && now - hit.at < PR_CACHE_MS) return hit.pr;
-    const pr = await fresh(d);
-    cache.set(d.issue, { at: now, pr });
-    return pr;
+    if (hit && now - hit.at < PR_CACHE_MS) {
+      if ("error" in hit) throw hit.error;
+      return hit.pr;
+    }
+    try {
+      const pr = await fresh(d);
+      cache.set(d.issue, { at: now, pr });
+      return pr;
+    } catch (e) {
+      if (e instanceof WorldError) cache.set(d.issue, { at: now, error: e });
+      throw e;
+    }
   };
 }
 
@@ -50,7 +78,7 @@ export interface InFlightRow {
   dispatch: Dispatch;
   stage: string;
   pr: PullRequest | null;
-  /** Why the PR could not be looked up; the Stage then ignores PRs. */
+  /** Why the PR could not be looked up; the Stage is then `unknown` unless the record decides it. */
   prError?: string;
   implementerState: string;
   reviewerState?: string;
@@ -71,17 +99,17 @@ export async function loadInFlight(world: World, dispatches: Dispatch[], prs: Pr
       (pr) => ({ pr }),
       (e) => {
         if (!(e instanceof WorldError)) throw e;
-        return { pr: null, prError: e.message };
+        return { pr: undefined, prError: e.message };
       },
     )),
   ]);
   const stateOf = (agent: string) => states.get(agent) ?? "unknown";
   return dispatches.map((dispatch, i) => {
-    const { pr, prError } = lookups[i]! as { pr: PullRequest | null; prError?: string };
+    const { pr, prError } = lookups[i]! as { pr: PullRequest | null | undefined; prError?: string };
     return {
       dispatch,
       stage: stageOf(dispatch, pr),
-      pr,
+      pr: pr ?? null,
       ...(prError && { prError }),
       implementerState: stateOf(dispatch.implementer.agent),
       ...(dispatch.reviewer && { reviewerState: stateOf(dispatch.reviewer.agent) }),
