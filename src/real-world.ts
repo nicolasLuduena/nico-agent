@@ -113,7 +113,7 @@ query($owner: String!, $name: String!, $number: Int!) {
   repository(owner: $owner, name: $name) {
     issue(number: $number) {
       closedByPullRequestsReferences(first: 20) {
-        nodes { number url state baseRefName repository { nameWithOwner } }
+        nodes { number url state baseRefName headRefName headRepository { nameWithOwner } repository { nameWithOwner } }
       }
     }
   }
@@ -205,6 +205,8 @@ export class RealWorld implements World {
       url: string;
       state: string;
       baseRefName: string;
+      headRefName: string;
+      headRepository: { nameWithOwner: string } | null;
       repository: { nameWithOwner: string };
     }[];
     return nodes.map((pr) => ({
@@ -213,6 +215,8 @@ export class RealWorld implements World {
       url: pr.url,
       state: pr.state.toLowerCase() as PullRequest["state"],
       baseBranch: pr.baseRefName,
+      // A fork head is not fetchable as origin/<head branch> in this clone.
+      headBranch: pr.headRepository?.nameWithOwner.toLowerCase() === pr.repository.nameWithOwner.toLowerCase() ? pr.headRefName : undefined,
     }));
   }
 
@@ -228,8 +232,8 @@ export class RealWorld implements World {
       state: pr.state.toLowerCase() as PullRequest["state"], baseBranch: pr.baseRefName }));
   }
 
-  async gitFetch(path: string) {
-    await git(path, ["fetch", "origin"]);
+  async gitFetch(path: string, branch?: string) {
+    await git(path, ["fetch", "origin", ...(branch ? [`+refs/heads/${branch}:refs/remotes/origin/${branch}`] : [])]);
   }
 
   async gitDefaultBranch(path: string) {

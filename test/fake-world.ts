@@ -64,6 +64,7 @@ export class FakeWorld implements World {
       url: `https://github.com/${slug}/pull/${pr.number}`,
       state: "open",
       baseBranch: "main",
+      headBranch: `agent/pr-${pr.number}`,
       ...pr,
     };
     const key = `${slug}#${issue}`;
@@ -156,8 +157,8 @@ export class FakeWorld implements World {
     return this.branchPrs.get(`${slug}:${branch}`) ?? [];
   }
 
-  async gitFetch(path: string) {
-    this.call(`git -C ${path} fetch origin`);
+  async gitFetch(path: string, branch?: string) {
+    this.call(`git -C ${path} fetch origin${branch ? ` +refs/heads/${branch}:refs/remotes/origin/${branch}` : ""}`);
   }
 
   async gitDefaultBranch(path: string) {
