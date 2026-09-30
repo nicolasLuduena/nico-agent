@@ -1,6 +1,7 @@
 /**
- * The outside-world port: every interaction with git, GitHub, the network
- * and (later) herdr and Linear goes through here. Tests swap in an in-memory fake.
+ * The outside-world port: every interaction with git, GitHub, herdr, the
+ * network, the clock and (later) Linear goes through here. Tests swap in an
+ * in-memory fake.
  */
 export interface World {
   /** Remote URLs of the git clone at `path`, or null if it isn't one. */
@@ -12,6 +13,36 @@ export interface World {
    * open `ready-for-agent` issues; the core still applies the Ready rule.
    */
   githubIssues(slug: string): Promise<GitHubIssue[]>;
+  /** One issue of a GitHub repo, or null if there is no such issue. */
+  githubIssue(slug: string, number: number): Promise<GitHubIssue | null>;
+  /** `git fetch origin` in the clone at `path`. */
+  gitFetch(path: string): Promise<void>;
+  /** The default branch of the clone's `origin`, without the remote prefix. */
+  gitDefaultBranch(path: string): Promise<string>;
+  /** Create a git worktree and open it as a herdr workspace, without focusing it. */
+  herdrWorktreeCreate(options: { cwd: string; branch: string; base: string; label: string }): Promise<{
+    workspace: string;
+    path: string;
+  }>;
+  /** Create a labelled tab in a herdr workspace, without focusing it. */
+  herdrTabCreate(options: { workspace: string; cwd: string; label: string }): Promise<{ tab: string; pane: string }>;
+  /**
+   * Start an agent of a herdr kind in a shell pane. Resolves once it is ready
+   * for input, or with `ready: false` when it is blocked on a startup question.
+   */
+  herdrAgentStart(options: { name: string; kind: string; pane: string; args: string[] }): Promise<{ ready: boolean }>;
+  /** The text currently visible in a named agent's pane. */
+  herdrAgentRead(name: string): Promise<string>;
+  /** Press logical keys (e.g. `down`, `enter`) in a named agent's pane. */
+  herdrAgentSendKeys(name: string, keys: string[]): Promise<void>;
+  /** Wait until a named agent reaches one of `states`, failing after `timeoutMs`. */
+  herdrAgentWait(name: string, states: string[], timeoutMs: number): Promise<void>;
+  /**
+   * Submit a prompt to a named agent and wait until it starts working, not
+   * until it finishes. `started: false` when the agent never reacted to it.
+   */
+  herdrAgentPrompt(name: string, text: string): Promise<{ started: boolean }>;
+  now(): Date;
   /** Start answering HTTP requests on `hostname:port`; resolves once listening. */
   serve(address: Address, handler: RequestHandler): Promise<void>;
 }

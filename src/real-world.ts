@@ -27,27 +27,80 @@ async function exec(cmd: string[], env?: Record<string, string>): Promise<Exec> 
 async function gh(args: string[]): Promise<string> {
   const result = await exec(["gh", ...args], { GH_PROMPT_DISABLED: "1", NO_COLOR: "1" });
   if (result.exitCode === 0) return result.stdout;
-  const stderr = result.stderr;
+  throw ghFailure(result.stderr);
+}
+
+function ghFailure(stderr: string): WorldError {
   if (/auth login|authentication|HTTP 401/i.test(stderr)) {
-    throw new WorldError("not authenticated with GitHub; run `gh auth login`");
+    return new WorldError("not authenticated with GitHub; run `gh auth login`");
   }
   if (/Could not resolve to a Repository|HTTP 404/i.test(stderr)) {
-    throw new WorldError("repository not found on GitHub, or not visible to your account");
+    return new WorldError("repository not found on GitHub, or not visible to your account");
   }
-  if (/rate limit/i.test(stderr)) throw new WorldError("GitHub rate limit exceeded; try again later");
-  throw new WorldError("GitHub request failed; check your network and `gh auth status`");
+  if (/rate limit/i.test(stderr)) return new WorldError("GitHub rate limit exceeded; try again later");
+  return new WorldError("GitHub request failed; check your network and `gh auth status`");
 }
+
+/** Run a git command in `path`, failing with its first stderr line. */
+async function git(path: string, args: string[]): Promise<string> {
+  const result = await exec(["git", "-C", path, ...args], { GIT_TERMINAL_PROMPT: "0" });
+  if (result.exitCode === 0) return result.stdout.trim();
+  const reason = result.stderr.trim().split("\n")[0] || `exit code ${result.exitCode}`;
+  throw new WorldError(`\`git ${args.join(" ")}\` failed in ${path}: ${reason}`);
+}
+
+/** How long a prompted agent may take to start working; herdr reports a stall after 5s. */
+const PROMPT_TIMEOUT_MS = 30_000;
+
+/** A failed herdr command; `code` is herdr's error code when it reported one. */
+class HerdrError extends WorldError {
+  constructor(
+    message: string,
+    readonly code: string | null,
+  ) {
+    super(message);
+  }
+}
+
+/** Run a herdr command and return its stdout. */
+async function herdrText(args: string[]): Promise<string> {
+  const result = await exec(["herdr", ...args]);
+  if (result.exitCode === 0) return result.stdout;
+  let message = result.stderr.trim() || `exit code ${result.exitCode}`;
+  let code: string | null = null;
+  try {
+    const error = JSON.parse(message).error;
+    code = error.code;
+    message = `${error.code}: ${error.message}`;
+  } catch {}
+  throw new HerdrError(`\`herdr ${args.slice(0, 2).join(" ")}\` failed: ${message}`, code);
+}
+
+/** Run a herdr control command and return its JSON `result`. */
+async function herdr(args: string[]): Promise<any> {
+  return JSON.parse(await herdrText(args)).result;
+}
+
+const ISSUE_FIELDS = `
+        number title url state
+        labels(first: 50) { nodes { name } }
+        assignees(first: 20) { nodes { login } }
+        blockedBy(first: 50) { nodes { number state repository { nameWithOwner } } }`;
+
+const ISSUE_QUERY = `
+query($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    issue(number: $number) {${ISSUE_FIELDS}
+    }
+  }
+}`;
 
 const ISSUES_QUERY = `
 query($owner: String!, $name: String!, $label: String!, $cursor: String) {
   repository(owner: $owner, name: $name) {
     issues(first: 100, after: $cursor, states: OPEN, labels: [$label], orderBy: {field: CREATED_AT, direction: ASC}) {
       pageInfo { hasNextPage endCursor }
-      nodes {
-        number title url state
-        labels(first: 50) { nodes { name } }
-        assignees(first: 20) { nodes { login } }
-        blockedBy(first: 50) { nodes { number state repository { nameWithOwner } } }
+      nodes {${ISSUE_FIELDS}
       }
     }
   }
@@ -99,6 +152,87 @@ export class RealWorld implements World {
       cursor = page.pageInfo.hasNextPage ? page.pageInfo.endCursor : null;
     } while (cursor);
     return issues;
+  }
+
+  async githubIssue(slug: string, number: number) {
+    const [owner, name] = slug.split("/") as [string, string];
+    const args = ["api", "graphql", "-f", `query=${ISSUE_QUERY}`, "-f", `owner=${owner}`, "-f", `name=${name}`];
+    args.push("-F", `number=${number}`);
+    const result = await exec(["gh", ...args], { GH_PROMPT_DISABLED: "1", NO_COLOR: "1" });
+    // A missing issue is a GraphQL error on an otherwise found repository.
+    if (result.exitCode !== 0 && !/Could not resolve to an issue/i.test(result.stderr + result.stdout)) {
+      throw ghFailure(result.stderr);
+    }
+    const repository = JSON.parse(result.stdout || "{}").data?.repository;
+    if (repository === undefined || repository === null) {
+      throw new WorldError("repository not found on GitHub, or not visible to your account");
+    }
+    return repository.issue ? toIssue(repository.issue) : null;
+  }
+
+  async gitFetch(path: string) {
+    await git(path, ["fetch", "origin"]);
+  }
+
+  async gitDefaultBranch(path: string) {
+    const head = ["symbolic-ref", "--short", "refs/remotes/origin/HEAD"];
+    let ref: string;
+    try {
+      ref = await git(path, head);
+    } catch {
+      // Clones made before origin/HEAD existed need it set once.
+      await git(path, ["remote", "set-head", "origin", "--auto"]);
+      ref = await git(path, head);
+    }
+    return ref.replace(/^origin\//, "");
+  }
+
+  async herdrWorktreeCreate({ cwd, branch, base, label }: { cwd: string; branch: string; base: string; label: string }) {
+    const result = await herdr(["worktree", "create", "--cwd", cwd, "--branch", branch, "--base", base, "--label", label, "--no-focus"]);
+    return { workspace: result.workspace.workspace_id as string, path: result.worktree.path as string };
+  }
+
+  async herdrTabCreate({ workspace, cwd, label }: { workspace: string; cwd: string; label: string }) {
+    const result = await herdr(["tab", "create", "--workspace", workspace, "--cwd", cwd, "--label", label, "--no-focus"]);
+    return { tab: result.tab.tab_id as string, pane: result.root_pane.pane_id as string };
+  }
+
+  async herdrAgentStart({ name, kind, pane, args }: { name: string; kind: string; pane: string; args: string[] }) {
+    try {
+      await herdr(["agent", "start", name, "--kind", kind, "--pane", pane, "--", ...args]);
+    } catch (e) {
+      if (e instanceof HerdrError && e.code === "agent_not_ready") return { ready: false };
+      throw e;
+    }
+    return { ready: true };
+  }
+
+  async herdrAgentRead(name: string) {
+    return herdrText(["agent", "read", name, "--source", "visible"]);
+  }
+
+  async herdrAgentSendKeys(name: string, keys: string[]) {
+    await herdr(["agent", "send-keys", name, ...keys]);
+  }
+
+  async herdrAgentWait(name: string, states: string[], timeoutMs: number) {
+    const until = states.flatMap((s) => ["--until", s]);
+    await herdr(["agent", "wait", name, ...until, "--timeout", String(timeoutMs)]);
+  }
+
+  async herdrAgentPrompt(name: string, text: string) {
+    const wait = ["--wait", "--until", "working", "--timeout", String(PROMPT_TIMEOUT_MS)];
+    try {
+      await herdr(["agent", "prompt", name, text, ...wait]);
+    } catch (e) {
+      if (e instanceof HerdrError && e.code === "agent_prompt_stalled") return { started: false };
+      throw e;
+    }
+    return { started: true };
+  }
+
+  now() {
+    return new Date();
   }
 
   async serve(address: Address, handler: RequestHandler) {
