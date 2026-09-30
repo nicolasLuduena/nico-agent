@@ -1,5 +1,5 @@
 import { type Prompts, type Repo, fillTemplate, findRepo, loadConfig, prompts } from "./config";
-import { type Harness, harnessCatalog, harnesses, launchArgs } from "./harness";
+import { type Harness, harnessCatalog, harnesses, launchArgs, rememberLaunch } from "./harness";
 import { sameSlug } from "./slug";
 import { type Dispatch, type Step, STEPS, addDispatch, findDispatch, leaseDispatch, saveDispatch } from "./state";
 import { type World, WorldError } from "./world";
@@ -110,6 +110,7 @@ export async function dispatch(world: World, configDir: string, request: Dispatc
   };
   // Recorded before any side effect, so a concurrent dispatch of the issue finds it.
   if (!(await addDispatch(configDir, record))) throw alreadyInFlight(key);
+  rememberLaunch(configDir, harness.name, request.model, request.effort);
   return { dispatch: await runSteps(world, configDir, ref, harness, templates, record), outcome: "new" };
 }
 
@@ -205,7 +206,7 @@ async function runSteps(
         name: agent,
         kind: harness.kind,
         pane: record.implementer.pane!,
-        args: launchArgs(harness, model, effort),
+        args: launchArgs(harness, { model, effort, repoPath: repo.path }),
       }));
     },
     // After a failure `ready` is unknown: the user may have answered the agent by hand.

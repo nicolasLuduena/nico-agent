@@ -46,14 +46,15 @@ function catalog(...models: [string, string[]][]) {
 }
 
 describe("codex dispatch", () => {
-  test("launches codex with its model and Effort args plus extraArgs, and prompts with its Sigil", async () => {
+  test("launches codex with its model, Effort and trust args plus extraArgs, and prompts with its Sigil", async () => {
     const { cli, world } = await withRepo({ codex: { extraArgs: ["--dangerously-bypass-approvals-and-sandbox"] } });
 
     const { exitCode } = await cli("dispatch", "acme/api#7", "--harness", "codex", "--model", "gpt-6-sol", "--effort", "ultra");
     expect(exitCode).toBe(0);
     expect(world.calls[0]).toBe("codex debug models");
+    // codex asks whether to trust the clone (not the worktree), and herdr reports that question as ready.
     expect(world.calls).toContain(
-      "herdr agent start impl-api-7 --kind codex --pane w1:p2 -- -m gpt-6-sol -c model_reasoning_effort=ultra --dangerously-bypass-approvals-and-sandbox",
+      'herdr agent start impl-api-7 --kind codex --pane w1:p2 -- -m gpt-6-sol -c model_reasoning_effort=ultra -c projects={"/src/api"={trust_level="trusted"}} --dangerously-bypass-approvals-and-sandbox',
     );
     expect(world.calls).toContain("herdr agent prompt impl-api-7 $implement https://github.com/acme/api/issues/7 as draft PR");
   });
@@ -118,7 +119,7 @@ describe("harness list", () => {
           name: "codex",
           launch: "herdr-kind codex",
           sigil: "$",
-          args: "-m {model} -c model_reasoning_effort={effort}",
+          args: '-m {model} -c model_reasoning_effort={effort} -c projects={"{repoPath}"={trust_level="trusted"}}',
           models: CODEX_MODELS,
           source: "discovered 2026-09-30T12:00:00.000Z",
         },
@@ -155,7 +156,7 @@ describe("harness list", () => {
         "  - name: codex",
         "    launch: herdr-kind codex",
         "    sigil: $",
-        '    args: "-m {model} -c model_reasoning_effort={effort}"',
+        '    args: "-m {model} -c model_reasoning_effort={effort} -c projects={\\"{repoPath}\\"={trust_level=\\"trusted\\"}}"',
         "    models[1]:",
         "      - model: gpt-6-sol",
         "        efforts[2]: low,high",
@@ -285,7 +286,9 @@ describe("Harness config", () => {
     const { exitCode } = await cli("dispatch", "acme/api#7", "--harness", "codex", "--model", "gpt-next", "--effort", "high");
     expect(exitCode).toBe(0);
     expect(world.calls).not.toContain("codex debug models");
-    expect(world.calls).toContain("herdr agent start impl-api-7 --kind codex --pane w1:p2 -- -m gpt-next -c model_reasoning_effort=high");
+    expect(world.calls).toContain(
+      'herdr agent start impl-api-7 --kind codex --pane w1:p2 -- -m gpt-next -c model_reasoning_effort=high -c projects={"/src/api"={trust_level="trusted"}}',
+    );
   });
 
   test("claude's args, Sigil and extraArgs come from config", async () => {
@@ -311,7 +314,7 @@ describe("Harness config", () => {
   test("a malformed Harness config is a config error, before any outside-world call", async () => {
     const cases: [Record<string, unknown>, string, string][] = [
       [{ codex: { extraArgs: "--yolo" } }, "harnesses.codex.extraArgs is not a list of strings", "Fix or delete the file and run `nico-agent repo add` again"],
-      [{ codex: { color: "red" } }, "harnesses.codex.color is not a Harness setting", "Harness settings: launchMode, kind, sigil, modelArgs, effortArgs, extraArgs, models, efforts, discovery, trustPrompt"],
+      [{ codex: { color: "red" } }, "harnesses.codex.color is not a Harness setting", "Harness settings: launchMode, kind, sigil, modelArgs, effortArgs, extraArgs, trustArgs, models, efforts, discovery, trustPrompt"],
       [{ codex: { launchMode: "pane-command" } }, "harnesses.codex.launchMode `pane-command` is not supported", "Launch modes: herdr-kind"],
       [{ codex: { discovery: "opencode2" } }, "harnesses.codex.discovery `opencode2` is not supported", "Discovery: codex"],
       [{ gemini: { launchMode: "herdr-kind", kind: "gemini" } }, "harnesses.gemini is missing sigil", "A new Harness needs launchMode, kind, sigil, modelArgs, effortArgs"],
@@ -324,6 +327,14 @@ describe("Harness config", () => {
       expect(stdout).toBe(`error: "${join(configDir, "config.json")}: ${error}"\nhelp[1]:\n  ${help}\n`);
       expect(world.calls).toEqual([]);
     }
+  });
+
+  test("trustArgs can be overridden apart from extraArgs, and fill {repoPath}", async () => {
+    const { cli, world } = await withRepo({ codex: { trustArgs: ["--trust={repoPath}"], extraArgs: ["--yolo"] } });
+    await cli("dispatch", "acme/api#7", "--harness", "codex", "--model", "gpt-6-sol", "--effort", "high");
+    expect(world.calls).toContain(
+      "herdr agent start impl-api-7 --kind codex --pane w1:p2 -- -m gpt-6-sol -c model_reasoning_effort=high --trust=/src/api --yolo",
+    );
   });
 
   test("adding a Repo keeps the Harness config", async () => {
@@ -364,6 +375,35 @@ describe("web Harness choices", () => {
     const { web } = await withRepo();
     const { body } = await web("/dispatch-form?issue=acme%2Fapi%237&harness=claude&model=gpt-5.5&effort=high");
     expect(body).toContain('<select name="model" hx-get="/dispatch-form" hx-include="closest form" hx-target="closest form" hx-swap="outerHTML"><option selected>fable</option>');
+    expect(body).toContain("<option selected>high</option>");
+  });
+
+  test("the form starts on the last dispatched Harness and model, with the Effort last used with that model", async () => {
+    const { cli, web, world } = await withRepo();
+    world.addIssue("acme/api", { number: 8 });
+    await cli("dispatch", "acme/api#7", "--harness", "claude", "--model", "sonnet", "--effort", "max");
+    await cli("dispatch", "acme/api#8", "--harness", "codex", "--model", "gpt-6-sol", "--effort", "xhigh");
+    world.addIssue("acme/api", { number: 9 });
+
+    const { body } = await web("/");
+    expect(body).toContain("<option selected>codex</option>");
+    expect(body).toContain("<option selected>gpt-6-sol</option>");
+    expect(body).toContain("<option selected>xhigh</option>");
+
+    // Back to claude sonnet: its own last Effort, not the codex one kept over.
+    const form = await web("/dispatch-form?issue=acme%2Fapi%239&harness=claude&model=sonnet");
+    expect(form.body).toContain("<option selected>sonnet</option>");
+    expect(form.body).toContain("<option selected>max</option>");
+    // A model never dispatched starts on its first Effort.
+    const other = await web("/dispatch-form?issue=acme%2Fapi%239&harness=codex&model=gpt-5.5");
+    expect(other.body).toContain("<option selected>low</option>");
+  });
+
+  test("an Effort chosen in the form is kept across a model switch while still valid", async () => {
+    const { cli, web, world } = await withRepo();
+    world.addIssue("acme/api", { number: 8 });
+    await cli("dispatch", "acme/api#8", "--harness", "codex", "--model", "gpt-6-luna", "--effort", "low");
+    const { body } = await web("/dispatch-form?issue=acme%2Fapi%237&harness=codex&model=gpt-6-luna&effort=high");
     expect(body).toContain("<option selected>high</option>");
   });
 

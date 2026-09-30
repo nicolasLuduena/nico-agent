@@ -414,7 +414,7 @@ async function harnessList(ctx: RunContext): Promise<Output> {
         name: harness.name,
         launch: `${harness.launchMode} ${harness.kind}`,
         sigil: harness.sigil,
-        args: [...harness.modelArgs, ...harness.effortArgs, ...harness.extraArgs].join(" "),
+        args: [...harness.modelArgs, ...harness.effortArgs, ...(harness.trustArgs ?? []), ...harness.extraArgs].join(" "),
         models,
         source,
         ...(error && { error }),

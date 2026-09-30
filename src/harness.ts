@@ -69,10 +69,48 @@ export async function refreshHarnesses(world: World, configDir: string): Promise
   return refreshed;
 }
 
-/** `modelArgs`, `effortArgs` and `extraArgs`, with the placeholders filled. */
-export function launchArgs(harness: Harness, model: string, effort: string): string[] {
-  const fill = (args: string[]) => args.map((a) => a.replaceAll("{model}", model).replaceAll("{effort}", effort));
-  return [...fill(harness.modelArgs), ...fill(harness.effortArgs), ...harness.extraArgs];
+/** The values a launch fills its args' placeholders with. */
+export interface Launch {
+  model: string;
+  effort: string;
+  /** Path of the Repo's clone. */
+  repoPath: string;
+}
+
+/** `modelArgs`, `effortArgs`, `trustArgs` and `extraArgs`, with the placeholders filled. */
+export function launchArgs(harness: Harness, launch: Launch): string[] {
+  const fill = (args: string[]) =>
+    args.map((a) => a.replace(/\{(model|effort|repoPath)\}/g, (_, name: keyof Launch) => launch[name]));
+  const { modelArgs, effortArgs, trustArgs = [], extraArgs } = harness;
+  return [...fill(modelArgs), ...fill(effortArgs), ...fill(trustArgs), ...fill(extraArgs)];
+}
+
+/** The Harness and model last dispatched with, and the Effort last used with each model. */
+export interface Remembered {
+  last?: { harness: string; model: string };
+  /** By `<harness> <model>`. */
+  efforts: Record<string, string>;
+}
+
+const REMEMBERED_FILE = "launches.json";
+
+export function rememberedLaunches(configDir: string): Remembered {
+  try {
+    const parsed = JSON.parse(readFileSync(join(configDir, REMEMBERED_FILE), "utf8")) as Remembered;
+    return { ...parsed, efforts: parsed.efforts ?? {} };
+  } catch {
+    // Only a convenience for the web form: forget whatever can't be read.
+    return { efforts: {} };
+  }
+}
+
+/** Remember a dispatch's choices, for the web form to start from. */
+export function rememberLaunch(configDir: string, harness: string, model: string, effort: string) {
+  const remembered = rememberedLaunches(configDir);
+  writeJson(configDir, REMEMBERED_FILE, {
+    last: { harness, model },
+    efforts: { ...remembered.efforts, [`${harness} ${model}`]: effort },
+  });
 }
 
 /**

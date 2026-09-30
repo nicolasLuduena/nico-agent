@@ -18,7 +18,8 @@ export interface Config {
 
 /**
  * How a Harness is launched (ADR-0005). `modelArgs` and `effortArgs` hold the
- * `{model}` and `{effort}` placeholders; `extraArgs` follow them on every
+ * `{model}` and `{effort}` placeholders; `trustArgs` trust the Repo's clone
+ * at `{repoPath}` for this launch only; `extraArgs` follow them on every
  * launch. `models` overrides discovered models, and `efforts` sets the Effort
  * levels of every model, overriding discovered ones.
  */
@@ -30,6 +31,7 @@ export interface HarnessConfig {
   modelArgs: string[];
   effortArgs: string[];
   extraArgs: string[];
+  trustArgs?: string[];
   models?: string[];
   efforts?: string[];
   /** Where the models and their Effort levels are discovered from. */
@@ -65,12 +67,15 @@ export const HARNESSES: Record<string, HarnessConfig> = {
     modelArgs: ["-m", "{model}"],
     effortArgs: ["-c", "model_reasoning_effort={effort}"],
     extraArgs: [],
+    // codex asks to trust the clone (not the worktree) even when herdr reports it ready; this
+    // form of -c answers it for this session without writing ~/.codex/config.toml.
+    trustArgs: ["-c", 'projects={"{repoPath}"={trust_level="trusted"}}'],
     discovery: "codex",
   },
 };
 
 const REQUIRED_HARNESS_SETTINGS = ["launchMode", "kind", "sigil", "modelArgs", "effortArgs"] as const;
-const HARNESS_SETTINGS = [...REQUIRED_HARNESS_SETTINGS, "extraArgs", "models", "efforts", "discovery", "trustPrompt"];
+const HARNESS_SETTINGS = [...REQUIRED_HARNESS_SETTINGS, "extraArgs", "trustArgs", "models", "efforts", "discovery", "trustPrompt"];
 
 /** Every Harness, built-in and from config, by name: the config's settings over the built-in ones. */
 export function harnessConfigs(config: Config): Record<string, HarnessConfig> {
@@ -188,7 +193,7 @@ function checkHarnesses(file: string, harnesses: unknown): Record<string, Partia
         throw new ConfigError(`${at}.discovery \`${value}\` is not supported`, `Discovery: ${DISCOVERIES.join(", ")}`);
       }
       if (["kind", "sigil"].includes(key) && typeof value !== "string") throw new ConfigError(`${at}.${key} is not a string`);
-      if (["modelArgs", "effortArgs", "extraArgs", "models", "efforts"].includes(key) && !isStrings(value)) {
+      if (["modelArgs", "effortArgs", "extraArgs", "trustArgs", "models", "efforts"].includes(key) && !isStrings(value)) {
         throw new ConfigError(`${at}.${key} is not a list of strings`);
       }
       if (key === "trustPrompt" && !(isObject(value) && typeof value.text === "string" && isStrings(value.keys))) {

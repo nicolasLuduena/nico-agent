@@ -2,7 +2,7 @@ import htmx from "htmx.org/dist/htmx.min.js" with { type: "text" };
 import { type Board, loadBoard } from "./board";
 import { type Repo, ConfigError, loadConfig } from "./config";
 import { DispatchError, StepFailed, dispatch } from "./dispatch";
-import { type Catalog, harnessCatalogs, refreshHarnesses } from "./harness";
+import { type Catalog, type Remembered, harnessCatalogs, refreshHarnesses, rememberedLaunches } from "./harness";
 import { type Dispatch, loadDispatches, stageOf } from "./state";
 import { type World, WorldError } from "./world";
 
@@ -43,15 +43,15 @@ async function getBoard(ctx: WebContext) {
   const { repos } = loadConfig(ctx.configDir);
   const board = await loadBoard(ctx.world, repos, loadDispatches(ctx.configDir));
   // Discovery may run a Harness's CLI, so only when there is something to dispatch.
-  const catalogs = board.ready.length ? await harnessCatalogs(ctx.world, ctx.configDir) : [];
-  return new Response(page("Board", renderBoard(repos, board, catalogs)), { headers: HTML_HEADERS });
+  const choices = { catalogs: board.ready.length ? await harnessCatalogs(ctx.world, ctx.configDir) : [], remembered: rememberedLaunches(ctx.configDir) };
+  return new Response(page("Board", renderBoard(repos, board, choices)), { headers: HTML_HEADERS });
 }
 
 /** The dispatch form again, after a choice changed: only the chosen model's Efforts are offered. */
 async function getDispatchForm(ctx: WebContext, params: URLSearchParams) {
   const param = (name: string) => params.get(name) ?? "";
-  const catalogs = await harnessCatalogs(ctx.world, ctx.configDir);
-  const form = dispatchForm(param("issue"), catalogs, { harness: param("harness"), model: param("model"), effort: param("effort") });
+  const choices = { catalogs: await harnessCatalogs(ctx.world, ctx.configDir), remembered: rememberedLaunches(ctx.configDir) };
+  const form = dispatchForm(param("issue"), choices, { harness: param("harness"), model: param("model"), effort: param("effort") });
   return new Response(form, { headers: HTML_HEADERS });
 }
 
@@ -98,14 +98,14 @@ function failureOf(e: unknown): { title: string; message: string; help: string[]
   return null;
 }
 
-function renderBoard(repos: Repo[], board: Board, catalogs: Catalog[]) {
+function renderBoard(repos: Repo[], board: Board, choices: Choices) {
   if (repos.length === 0) {
     return '<p class="empty">No Repos configured. Run <code>nico-agent repo add &lt;owner/name&gt; --path &lt;clone&gt;</code> to add one.</p>';
   }
   const refresh = ['<form method="post" action="/harnesses/refresh" class="refresh">', "<button>Refresh harnesses</button>", "</form>"];
-  const warnings = catalogs.flatMap((c) => (c.error ? [`<p class="warning">${escape(c.error)}</p>`] : []));
+  const warnings = choices.catalogs.flatMap((c) => (c.error ? [`<p class="warning">${escape(c.error)}</p>`] : []));
   const sections = repos.map((repo) =>
-    ['<section class="repo">', `<h2>${escape(repo.slug)}</h2>`, renderRepo(repo, board, catalogs), "</section>"].join("\n"),
+    ['<section class="repo">', `<h2>${escape(repo.slug)}</h2>`, renderRepo(repo, board, choices), "</section>"].join("\n"),
   );
   return [...refresh, ...warnings, ...sections, renderInFlight(board)].join("\n");
 }
@@ -129,7 +129,7 @@ function renderInFlight(board: Board) {
   return ['<section class="in-flight">', "<h2>In flight</h2>", list, "</section>"].join("\n");
 }
 
-function renderRepo(repo: Repo, board: Board, catalogs: Catalog[]) {
+function renderRepo(repo: Repo, board: Board, choices: Choices) {
   const error = board.errors.find((e) => e.repo === repo.slug);
   if (error) return `<p class="error">Could not load: ${escape(error.error)}</p>`;
   const issues = board.ready.filter((i) => i.repo === repo.slug);
@@ -137,7 +137,7 @@ function renderRepo(repo: Repo, board: Board, catalogs: Catalog[]) {
   return [
     "<ul>",
     ...issues.map(
-      (i) => `<li><a href="${escape(i.url)}">#${i.number} ${escape(i.title)}</a>\n${dispatchForm(`${i.repo}#${i.number}`, catalogs)}</li>`,
+      (i) => `<li><a href="${escape(i.url)}">#${i.number} ${escape(i.title)}</a>\n${dispatchForm(`${i.repo}#${i.number}`, choices)}</li>`,
     ),
     "</ul>",
   ].join("\n");
@@ -146,17 +146,27 @@ function renderRepo(repo: Repo, board: Board, catalogs: Catalog[]) {
 /** Changing the Harness or model re-renders the form, so only Efforts valid for the chosen model are offered. */
 const RERENDER = 'hx-get="/dispatch-form" hx-include="closest form" hx-target="closest form" hx-swap="outerHTML"';
 
+/** What the dispatch form offers, and what it starts from. */
+interface Choices {
+  catalogs: Catalog[];
+  remembered: Remembered;
+}
+
 /**
- * The dispatch form of an issue, offering each Harness that has models. The
- * chosen Harness, model and Effort are kept while valid; otherwise the first
- * valid one is chosen.
+ * The dispatch form of an issue, offering each Harness that has models. It
+ * starts on the Harness and model last dispatched with; a chosen Harness,
+ * model and Effort are kept while valid. Otherwise the Effort is the one last
+ * used with the model, or the model's first.
  */
-function dispatchForm(issue: string, catalogs: Catalog[], chosen: { harness?: string; model?: string; effort?: string } = {}) {
+function dispatchForm(issue: string, { catalogs, remembered }: Choices, chosen: { harness?: string; model?: string; effort?: string } = {}) {
   const offered = catalogs.filter((c) => c.models.length > 0);
-  const catalog = offered.find((c) => c.harness.name === chosen.harness) ?? offered[0];
+  const { harness: wanted = remembered.last?.harness, model: wantedModel = remembered.last?.model } = chosen;
+  const catalog = offered.find((c) => c.harness.name === wanted) ?? offered[0];
   if (!catalog) return '<p class="empty">No Harness has models to dispatch with.</p>';
-  const model = catalog.models.find((m) => m.model === chosen.model) ?? catalog.models[0]!;
-  const effort = chosen.effort && model.efforts.includes(chosen.effort) ? chosen.effort : model.efforts[0];
+  const model = catalog.models.find((m) => m.model === wantedModel) ?? catalog.models[0]!;
+  const valid = (effort: string | undefined) => (effort && model.efforts.includes(effort) ? effort : undefined);
+  const effort =
+    valid(chosen.effort) ?? valid(remembered.efforts[`${catalog.harness.name} ${model.model}`]) ?? model.efforts[0];
   const select = (name: string, options: string[], selected: string | undefined, attributes = "") =>
     `<select name="${name}"${attributes}>${options
       .map((o) => `<option${o === selected ? " selected" : ""}>${escape(o)}</option>`)
