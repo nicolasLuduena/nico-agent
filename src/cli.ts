@@ -81,7 +81,12 @@ const commands: Command[] = [
     name: "repo add",
     usage: "nico-agent repo add <owner/name> --path <clone>",
     summary: "Add a Repo after checking the path is a clone of it",
-    flags: { "--path": { value: true, description: "path of a local clone of the repo (required)" } },
+    flags: {
+      "--path": { value: true, description: "path of a local clone of the repo (required)" },
+      "--linear-team": { value: true, description: "Linear team key, name or ID" },
+      "--linear-project": { value: true, description: "Narrow to a Linear project name or ID" },
+      "--linear-label": { value: true, description: "Narrow to a Linear label name" },
+    },
     positionals: ["owner/name"],
     examples: ["nico-agent repo add acme/api --path ~/src/api"],
     run: repoAdd,
@@ -409,6 +414,11 @@ async function repoAdd(args: Args, ctx: RunContext): Promise<Output> {
   const usage = "nico-agent repo add <owner/name> --path <clone>";
   const slug = slugArg(args, usage);
   const path = resolve(required(args, "--path", usage));
+  const team = args.flags["--linear-team"];
+  const project = args.flags["--linear-project"];
+  const label = args.flags["--linear-label"];
+  if ((project || label) && !team) throw new CliError("--linear-project and --linear-label require --linear-team", [`Usage: \`${usage}\``], 2);
+  const linear = typeof team === "string" ? { team, ...(typeof project === "string" && { project }), ...(typeof label === "string" && { label }) } : undefined;
   const remotes = await ctx.world.gitRemotes(path);
   if (!remotes) {
     throw new CliError(`${path} is not a git clone`, [
@@ -427,15 +437,16 @@ async function repoAdd(args: Args, ctx: RunContext): Promise<Output> {
   const help = [BOARD_HELP, "Run `nico-agent repo list` to see all Repos"];
   const config = loadConfig(ctx.configDir);
   const existing = findRepo(config, slug);
-  if (existing?.path === path) {
+  if (existing?.path === path && (!linear || JSON.stringify(existing.linear) === JSON.stringify(linear))) {
     return { data: { repo: `${existing.slug} already added (no-op)`, path }, help };
   }
   const canonical = existing?.slug ?? slug;
   const repos = existing
-    ? config.repos.map((r) => (r === existing ? { ...r, path } : r))
-    : [...config.repos, { slug: canonical, path }];
+    ? config.repos.map((r) => (r === existing ? { ...r, path, ...(linear && { linear }) } : r))
+    : [...config.repos, { slug: canonical, path, ...(linear && { linear }) }];
   saveConfig(ctx.configDir, { ...config, repos });
-  return { data: { repo: `${canonical} ${existing ? "path updated" : "added"}`, path }, help };
+  const outcome = existing ? (existing.path === path ? "selector updated" : "path updated") : "added";
+  return { data: { repo: `${canonical} ${outcome}`, path }, help };
 }
 
 async function repoRm(args: Args, ctx: RunContext): Promise<Output> {
@@ -559,14 +570,15 @@ async function board(ctx: RunContext): Promise<Output> {
       })),
     }),
   };
-  if (errors.length === repos.length) {
+  const failedRepos = repos.filter((r) => errors.filter((e) => e.repo === r.slug).length === (r.linear ? 2 : 1)).length;
+  if (failedRepos === repos.length) {
     return { data: { ...header, ready: "0 issues (no Repo could be loaded)", ...inFlightData, errors }, help, exitCode: 1 };
   }
   const count = ready.length
     ? plural(ready.length, "issue")
-    : `0 issues across ${plural(repos.length - errors.length, "Repo")}`;
+    : `0 issues across ${plural(repos.length - failedRepos, "Repo")}`;
   const data: Record<string, unknown> = { ...header, ready: count };
-  if (ready.length) data.issues = ready.map((i) => ({ issue: `${i.repo}#${i.number}`, title: i.title }));
+  if (ready.length) data.issues = ready.map((i) => ({ issue: i.identifier ?? `${i.repo}#${i.number}`, title: i.title, ...(i.identifier && { repo: i.repo }) }));
   Object.assign(data, inFlightData);
   if (errors.length) data.errors = errors;
   return { data, help };

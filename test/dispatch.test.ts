@@ -186,9 +186,9 @@ describe("dispatch", () => {
 
   test("rejects a malformed issue reference and an issue of an unconfigured Repo", async () => {
     const { cli, world } = await withRepo();
-    const bad = await cli("dispatch", "api-7", ...FLAGS);
+    const bad = await cli("dispatch", "api#7", ...FLAGS);
     expect(bad.exitCode).toBe(2);
-    expect(bad.stdout).toStartWith("error: `api-7` is not an issue reference\nhelp[1]:\n  Pass `owner/repo#N` or a GitHub issue URL\n");
+    expect(bad.stdout).toStartWith("error: `api#7` is not an issue reference\nhelp[1]:\n  Pass `owner/repo#N` or a GitHub issue URL\n");
 
     const unknown = await cli("dispatch", "acme/web#3", ...FLAGS);
     expect(unknown.exitCode).toBe(1);

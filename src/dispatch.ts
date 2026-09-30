@@ -1,5 +1,6 @@
 import { type Prompts, type Repo, fillTemplate, findRepo, loadConfig, prompts } from "./config";
 import { type Harness, harnessCatalog, harnesses, launchArgs, rememberLaunch } from "./harness";
+import { linearIdentifier } from "./linear";
 import { sameSlug } from "./slug";
 import { freshPrs, isReviewLaunched, issueNumber, linkedPr } from "./stage";
 import {
@@ -46,6 +47,10 @@ export interface IssueRef {
 
 /** Resolve `owner/repo#N` or a GitHub issue URL to a configured Repo's issue. */
 export function resolveIssue(configDir: string, ref: string): IssueRef {
+  const identifier = linearIdentifier(ref);
+  if (identifier) {
+    throw new DispatchError(`Linear issue ${identifier} is recognized; Linear dispatch and review are not supported yet`, ["Open the issue in Linear; dispatch support follows in #14"]);
+  }
   const match =
     ref.match(/^([\w.-]+\/[\w.-]+)#(\d+)$/) ??
     ref.match(/^https?:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/issues\/(\d+)\/?(?:[?#].*)?$/i);

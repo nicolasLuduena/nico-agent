@@ -56,8 +56,11 @@ describe("AXI conventions", () => {
       [
         "usage: nico-agent repo add <owner/name> --path <clone>",
         "description: Add a Repo after checking the path is a clone of it",
-        "flags[3]{flag,description}:",
+        "flags[6]{flag,description}:",
         '  "--path <value>",path of a local clone of the repo (required)',
+        '  "--linear-team <value>","Linear team key, name or ID"',
+        '  "--linear-project <value>",Narrow to a Linear project name or ID',
+        '  "--linear-label <value>",Narrow to a Linear label name',
         '  "--json",print JSON instead of TOON',
         '  "--help",show help for the command',
         "examples[1]: nico-agent repo add acme/api --path ~/src/api",
