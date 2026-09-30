@@ -1,7 +1,15 @@
 import { closeSync, mkdirSync, openSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-/** The local record of one Dispatch (ADR-0002), keyed by its issue. */
+/** The steps of a Dispatch, in order; each runs once, and a failed one is resumed. */
+export const STEPS = ["fetch", "worktree", "tab", "agent start", "agent ready", "prompt"] as const;
+export type Step = (typeof STEPS)[number];
+
+/**
+ * The local record of one Dispatch (ADR-0002), keyed by its issue. It is
+ * written before the first step, so ids appear as the steps that create them
+ * complete.
+ */
 export interface Dispatch {
   /** `owner/repo#N`, with the Repo's configured slug. */
   issue: string;
@@ -9,18 +17,25 @@ export interface Dispatch {
   url: string;
   repo: string;
   branch: string;
-  base: string;
-  worktree: string;
-  workspace: string;
+  base?: string;
+  worktree?: string;
+  workspace?: string;
   implementer: Launch;
+  /** Steps done so far, in order. */
+  completed: Step[];
+  /** The step that failed last, until a re-run gets past it. */
+  failure?: { step: Step; error: string };
+  /** Whether the issue was assigned to the user (ADR-0007); false with a warning when that failed. */
+  claimed?: boolean;
+  warning?: string;
   createdAt: string;
   updatedAt: string;
 }
 
 /** Where an agent was launched, and with which Harness, model and Effort. */
 export interface Launch {
-  tab: string;
-  pane: string;
+  tab?: string;
+  pane?: string;
   agent: string;
   harness: string;
   model: string;
@@ -52,6 +67,20 @@ export async function addDispatch(dir: string, dispatch: Dispatch): Promise<bool
     write(dir, state);
     return true;
   });
+}
+
+/** Replace the record of a Dispatch that was added. */
+export async function saveDispatch(dir: string, dispatch: Dispatch): Promise<void> {
+  await withLock(dir, () => {
+    const state = read(dir);
+    state.dispatches[dispatch.issue] = dispatch;
+    write(dir, state);
+  });
+}
+
+/** Where a Dispatch stands: Failed at its failed step, else Implementing (ADR-0003 adds the PR Stages). */
+export function stageOf(dispatch: Dispatch) {
+  return dispatch.failure ? `Failed at ${dispatch.failure.step}` : "Implementing";
 }
 
 function read(dir: string): StateFile {

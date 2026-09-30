@@ -1,9 +1,9 @@
 import htmx from "htmx.org/dist/htmx.min.js" with { type: "text" };
 import { type Board, loadBoard } from "./board";
 import { type Repo, CONFIG_ERROR_HELP, ConfigError, loadConfig } from "./config";
-import { DispatchError, dispatch } from "./dispatch";
+import { DispatchError, StepFailed, dispatch } from "./dispatch";
 import { HARNESSES } from "./harness";
-import { loadDispatches } from "./state";
+import { type Dispatch, loadDispatches, stageOf } from "./state";
 import { type World, WorldError } from "./world";
 
 export interface WebContext {
@@ -60,6 +60,7 @@ async function postDispatch(ctx: WebContext, request: Request) {
 }
 
 function failureOf(e: unknown) {
+  if (e instanceof StepFailed) return { message: e.message, help: e.help, status: 502 };
   if (e instanceof DispatchError) return { message: e.message, help: e.help, status: e.usage ? 400 : 409 };
   if (e instanceof ConfigError) return { message: e.message, help: [CONFIG_ERROR_HELP], status: 500 };
   if (e instanceof WorldError) return { message: e.message, help: [], status: 502 };
@@ -83,7 +84,10 @@ function renderInFlight(board: Board) {
         ...board.inFlight.map((d) => {
           const { harness, model, effort } = d.implementer;
           const link = `<a href="${escape(d.url)}">${escape(d.issue)} ${escape(d.title)}</a>`;
-          return `<li>${link} · ${escape(`${harness} ${model} ${effort}`)} · workspace ${escape(d.workspace)}</li>`;
+          const where = d.workspace ? ` · workspace ${escape(d.workspace)}` : "";
+          const item = `<li>${link} · ${escape(`${harness} ${model} ${effort}`)}${where}`;
+          if (!d.failure) return `${item} · ${escape(stageOf(d))}</li>`;
+          return `${item} · <span class="error">${escape(`${stageOf(d)}: ${d.failure.error}`)}</span>\n${retryForm(d)}</li>`;
         }),
         "</ul>",
       ].join("\n")
@@ -119,6 +123,15 @@ function dispatchForm(issue: string) {
     "<button>Dispatch</button>",
     "</form>",
   ].join("\n");
+}
+
+/** Retry re-posts the Dispatch's own request, which resumes it from its failed step (ADR-0006). */
+function retryForm(d: Dispatch) {
+  const { harness, model, effort } = d.implementer;
+  const hidden = Object.entries({ issue: d.issue, harness, model, effort }).map(
+    ([name, value]) => `<input type="hidden" name="${name}" value="${escape(value)}">`,
+  );
+  return ['<form method="post" action="/dispatch" class="dispatch">', ...hidden, "<button>Retry</button>", "</form>"].join("\n");
 }
 
 function page(title: string, main: string) {

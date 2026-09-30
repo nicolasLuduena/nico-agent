@@ -1,12 +1,12 @@
 import { resolve } from "node:path";
 import { loadBoard } from "./board";
 import { CONFIG_ERROR_HELP, ConfigError, findRepo, loadConfig, saveConfig } from "./config";
-import { DispatchError, dispatch, resolveIssue } from "./dispatch";
+import { DispatchError, StepFailed, dispatch, resolveIssue } from "./dispatch";
 import { HARNESSES } from "./harness";
 import { type Output, render } from "./output";
 import { VERSION } from "./version";
 import { sameSlug, slugOfRemote } from "./slug";
-import { findDispatch, loadDispatches } from "./state";
+import { findDispatch, loadDispatches, stageOf } from "./state";
 import { webHandler } from "./web";
 import { type World, WorldError } from "./world";
 
@@ -100,7 +100,7 @@ const commands: Command[] = [
   {
     name: "dispatch",
     usage: DISPATCH_USAGE,
-    summary: "Start an Implementer on an issue in a new herdr worktree workspace",
+    summary: "Start an Implementer on an issue in a new herdr worktree workspace (resumes a failed one)",
     flags: {
       "--harness": { value: true, description: `Harness to launch (${HARNESSES.map((h) => h.name).join(", ")})` },
       "--model": { value: true, description: "model for the Harness, e.g. opus" },
@@ -151,7 +151,10 @@ export async function run(argv: string[], ctx: RunContext): Promise<RunResult> {
   } catch (e) {
     if (e instanceof ConfigError) e = new CliError(e.message, [CONFIG_ERROR_HELP]);
     else if (e instanceof WorldError) e = new CliError(e.message);
-    else if (e instanceof DispatchError) e = new CliError(e.message, e.help, e.usage ? 2 : 1);
+    else if (e instanceof DispatchError) {
+      const details = e instanceof StepFailed ? { stage: stageOf(e.dispatch) } : {};
+      e = new CliError(e.message, e.help, e.usage ? 2 : 1, details);
+    }
     if (!(e instanceof CliError)) throw e;
     const output = { data: { error: e.message, ...e.details }, help: e.help };
     return { stdout: render(output, json), exitCode: e.exitCode };
@@ -269,14 +272,24 @@ async function dispatchCommand(args: Args, ctx: RunContext): Promise<Output> {
     model: required(args, "--model", DISPATCH_USAGE),
     effort: required(args, "--effort", DISPATCH_USAGE),
   };
-  const { dispatch: record, existing } = await dispatch(ctx.world, ctx.configDir, request);
+  const { dispatch: record, outcome, resumedFrom } = await dispatch(ctx.world, ctx.configDir, request);
+  const dispatched = {
+    new: record.issue,
+    existing: `${record.issue} already In flight (no-op)`,
+    resumed: `${record.issue} (resumed from ${resumedFrom})`,
+  }[outcome];
+  const help = [`Run \`nico-agent show ${record.issue}\` to see the Dispatch`, BOARD_HELP];
+  const [owner, number] = record.issue.split("#") as [string, string];
+  if (record.warning) help.unshift(`Run \`gh issue edit ${number} --repo ${owner} --add-assignee @me\` to Claim it by hand`);
   return {
     data: {
-      dispatched: existing ? `${record.issue} already In flight (no-op)` : record.issue,
+      dispatched,
+      stage: stageOf(record),
       workspace: record.workspace,
       agent: record.implementer.agent,
+      ...(record.warning && { warning: record.warning }),
     },
-    help: [`Run \`nico-agent show ${record.issue}\` to see the Dispatch`, BOARD_HELP],
+    help,
   };
 }
 
@@ -284,7 +297,31 @@ async function show(args: Args, ctx: RunContext): Promise<Output> {
   const { key } = resolveIssue(ctx.configDir, issueArg(args, "nico-agent show <issue>"));
   const record = findDispatch(ctx.configDir, key);
   if (!record) throw new CliError(`${key} is not In flight`, ["Run `nico-agent` to see the Board and what is In flight"]);
-  return { data: { ...record }, help: [BOARD_HELP] };
+  const { tab, pane, ...launch } = record.implementer;
+  // Ids are filled in as steps complete; print them in a fixed order all the same.
+  const data = {
+    issue: record.issue,
+    title: record.title,
+    url: record.url,
+    stage: stageOf(record),
+    failure: record.failure,
+    warning: record.warning,
+    repo: record.repo,
+    branch: record.branch,
+    base: record.base,
+    worktree: record.worktree,
+    workspace: record.workspace,
+    implementer: definedOnly({ tab, pane, ...launch }),
+    completed: record.completed,
+    claimed: record.claimed,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+  };
+  return { data: definedOnly(data), help: [BOARD_HELP] };
+}
+
+function definedOnly(object: Record<string, unknown>) {
+  return Object.fromEntries(Object.entries(object).filter(([, v]) => v !== undefined));
 }
 
 function slugArg(args: Args, usage: string) {
@@ -390,10 +427,11 @@ async function board(ctx: RunContext): Promise<Output> {
       dispatches: inFlight.map((d) => ({
         issue: d.issue,
         title: d.title,
+        stage: stageOf(d),
         harness: d.implementer.harness,
         model: d.implementer.model,
         effort: d.implementer.effort,
-        workspace: d.workspace,
+        workspace: d.workspace ?? "",
       })),
     }),
   };

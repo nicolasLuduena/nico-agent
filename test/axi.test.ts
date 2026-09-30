@@ -94,7 +94,7 @@ describe("AXI conventions", () => {
         "  nico-agent repo add <owner/name> --path <clone>,Add a Repo after checking the path is a clone of it",
         "  nico-agent repo rm <owner/name>,Remove a Repo (its clone is left untouched)",
         "  nico-agent repo list,List the configured Repos",
-        "  nico-agent dispatch <issue> --harness <harness> --model <model> --effort <effort>,Start an Implementer on an issue in a new herdr worktree workspace",
+        "  nico-agent dispatch <issue> --harness <harness> --model <model> --effort <effort>,Start an Implementer on an issue in a new herdr worktree workspace (resumes a failed one)",
         "  nico-agent show <issue>,Print the full Dispatch record of an In-flight issue",
         '  "nico-agent serve [--port <port>]",Start the web app on 127.0.0.1 (port 42069 by default)',
         "help[1]:",

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import type { FakeWorld } from "./fake-world";
 import { setup } from "./harness";
 
 async function withRepo(slug = "acme/api", path = "/src/api") {
@@ -26,10 +27,12 @@ describe("dispatch", () => {
       "herdr tab create --workspace w1 --cwd /worktrees/api-7 --label implementer --no-focus",
       "herdr agent start impl-api-7 --kind claude --pane w1:p2 -- --model opus --effort high",
       "herdr agent prompt impl-api-7 /implement https://github.com/acme/api/issues/7 as draft PR",
+      "github assign acme/api#7 @me",
     ]);
     expect(stdout).toBe(
       [
         "dispatched: acme/api#7",
+        "stage: Implementing",
         "workspace: w1",
         "agent: impl-api-7",
         "help[2]:",
@@ -77,12 +80,15 @@ describe("dispatch", () => {
       issue: "acme/api#7",
       title: "Add retries",
       url: "https://github.com/acme/api/issues/7",
+      stage: "Implementing",
       repo: "acme/api",
       branch: "agent/api-7",
       base: "origin/main",
       worktree: "/worktrees/api-7",
       workspace: "w1",
       implementer: { tab: "w1:t2", pane: "w1:p2", agent: "impl-api-7", harness: "claude", model: "opus", effort: "high" },
+      completed: ["fetch", "worktree", "tab", "agent start", "agent ready", "prompt"],
+      claimed: true,
       createdAt: "2026-09-30T12:00:00.000Z",
       updatedAt: "2026-09-30T12:00:00.000Z",
       help: ["Run `nico-agent` to see the Board"],
@@ -94,6 +100,7 @@ describe("dispatch", () => {
         "issue: acme/api#7",
         "title: Add retries",
         'url: "https://github.com/acme/api/issues/7"',
+        "stage: Implementing",
         "repo: acme/api",
         "branch: agent/api-7",
         "base: origin/main",
@@ -106,6 +113,8 @@ describe("dispatch", () => {
         "  harness: claude",
         "  model: opus",
         "  effort: high",
+        "completed[6]: fetch,worktree,tab,agent start,agent ready,prompt",
+        "claimed: true",
         'createdAt: "2026-09-30T12:00:00.000Z"',
         'updatedAt: "2026-09-30T12:00:00.000Z"',
         "help[1]:",
@@ -132,7 +141,7 @@ describe("dispatch", () => {
 
     const again = await cli("dispatch", "https://github.com/acme/api/issues/7", ...FLAGS);
     expect(again.exitCode).toBe(0);
-    expect(again.stdout).toStartWith("dispatched: acme/api#7 already In flight (no-op)\nworkspace: w1\nagent: impl-api-7\n");
+    expect(again.stdout).toStartWith("dispatched: acme/api#7 already In flight (no-op)\nstage: Implementing\nworkspace: w1\nagent: impl-api-7\n");
 
     const other = await cli("dispatch", "acme/api#7", "--harness", "claude", "--model", "sonnet", "--effort", "high");
     expect(other.exitCode).toBe(1);
@@ -191,7 +200,16 @@ describe("dispatch", () => {
 
     const { stdout, exitCode } = await cli("dispatch", "acme/api#7", ...FLAGS);
     expect(exitCode).toBe(1);
-    expect(stdout).toBe("error: the agent in w1 is not ready\n");
+    expect(stdout).toBe(
+      [
+        "error: the agent in w1 is not ready",
+        "stage: Failed at agent start",
+        "help[2]:",
+        "  Run `nico-agent show acme/api#7` to see the Dispatch",
+        "  Run the same `nico-agent dispatch` again to resume from agent start",
+        "",
+      ].join("\n"),
+    );
   });
 
   test("claude's trust question for the new worktree is answered before prompting", async () => {
@@ -212,7 +230,7 @@ describe("dispatch", () => {
 
     const { exitCode } = await cli("dispatch", "acme/api#7", ...FLAGS);
     expect(exitCode).toBe(0);
-    expect(world.calls.slice(-5)).toEqual([
+    expect(world.calls.slice(-6, -1)).toEqual([
       "herdr agent start impl-api-7 --kind claude --pane w1:p2 -- --model opus --effort high",
       "herdr agent read impl-api-7 --source visible",
       "herdr agent send-keys impl-api-7 down enter",
@@ -239,8 +257,11 @@ describe("dispatch", () => {
     expect(failed.stdout).toBe(
       [
         "error: impl-api-7 did not start working on its prompt",
-        "help[1]:",
+        "stage: Failed at prompt",
+        "help[3]:",
         "  Run `herdr agent read impl-api-7` to see its screen, and send the prompt by hand",
+        "  Run `nico-agent show acme/api#7` to see the Dispatch",
+        "  Run the same `nico-agent dispatch` again to resume from prompt",
         "",
       ].join("\n"),
     );
@@ -256,12 +277,18 @@ describe("dispatch", () => {
     expect(stdout).toBe(
       [
         "error: impl-api-7 is blocked during startup",
-        "help[1]:",
+        "stage: Failed at agent ready",
+        "help[3]:",
         "  Run `herdr agent read impl-api-7` to see what it is asking, and answer it in herdr",
+        "  Run `nico-agent show acme/api#7` to see the Dispatch",
+        "  Run the same `nico-agent dispatch` again to resume from agent ready",
         "",
       ].join("\n"),
     );
-    expect(world.calls.at(-1)).toBe("herdr agent read impl-api-7 --source visible");
+    expect(world.calls.slice(-2)).toEqual([
+      "herdr agent read impl-api-7 --source visible",
+      "herdr agent wait impl-api-7 --until idle --until done --timeout 5000",
+    ]);
   });
 
   test("dispatch --help documents the flags", async () => {
@@ -293,8 +320,8 @@ describe("In flight on the Board", () => {
         "issues[1]{issue,title}:",
         "  acme/api#8,Fix login",
         "inFlight: 1 Dispatch",
-        "dispatches[1]{issue,title,harness,model,effort,workspace}:",
-        "  acme/api#7,Add retries,claude,opus,high,w1",
+        "dispatches[1]{issue,title,stage,harness,model,effort,workspace}:",
+        "  acme/api#7,Add retries,Implementing,claude,opus,high,w1",
         "help[4]:",
         "  Run `nico-agent dispatch <issue> --harness claude --model <model> --effort <effort>` to dispatch a Ready issue",
         "  Run `nico-agent show <issue>` to see a Dispatch",
@@ -317,7 +344,7 @@ describe("In flight on the Board", () => {
         '<section class="in-flight">',
         "<h2>In flight</h2>",
         "<ul>",
-        '<li><a href="https://github.com/acme/api/issues/7">acme/api#7 Add retries</a> · claude opus high · workspace w1</li>',
+        '<li><a href="https://github.com/acme/api/issues/7">acme/api#7 Add retries</a> · claude opus high · workspace w1 · Implementing</li>',
         "</ul>",
         "</section>",
       ].join("\n"),
@@ -360,6 +387,170 @@ describe("web dispatch", () => {
     const { status, body } = await web("/dispatch", { method: "POST", body: form });
     expect(status).toBe(400);
     expect(body).toContain('<p class="error">unknown model `gpt` for claude</p>\n<p>Valid models for claude: fable, opus, sonnet, haiku</p>');
+    expect(world.calls).toEqual([]);
+  });
+});
+
+describe("resuming a failed Dispatch", () => {
+  const ALL = [
+    "github issue acme/api#7",
+    "git -C /src/api fetch origin",
+    "git -C /src/api default-branch",
+    "herdr worktree create --cwd /src/api --branch agent/api-7 --base origin/main --label api#7 --no-focus",
+    "herdr tab create --workspace w1 --cwd /worktrees/api-7 --label implementer --no-focus",
+    "herdr agent start impl-api-7 --kind claude --pane w1:p2 -- --model opus --effort high",
+    "herdr agent prompt impl-api-7 /implement https://github.com/acme/api/issues/7 as draft PR",
+    "github assign acme/api#7 @me",
+  ];
+  const cases: { step: string; inject(world: FakeWorld): void; heal(world: FakeWorld): void; resumed: string[] }[] = [
+    { step: "fetch", inject: (w) => w.failCall("git -C /src/api fetch", "`git fetch origin` failed"), heal: (w) => w.clearFailures(), resumed: ALL.slice(1) },
+    { step: "worktree", inject: (w) => w.failHerdr("worktree create", "worktree_exists"), heal: (w) => w.clearFailures(), resumed: ALL.slice(3) },
+    { step: "tab", inject: (w) => w.failHerdr("tab create", "workspace_not_found"), heal: (w) => w.clearFailures(), resumed: ALL.slice(4) },
+    { step: "agent start", inject: (w) => w.failHerdr("agent start", "agent_blocked"), heal: (w) => w.clearFailures(), resumed: ALL.slice(5) },
+    {
+      step: "agent ready",
+      inject: (w) => w.blockAgentStart("Do you want to enable telemetry?"),
+      heal: (w) => w.unblockAgent(),
+      resumed: [
+        "herdr agent read impl-api-7 --source visible",
+        "herdr agent wait impl-api-7 --until idle --until done --timeout 5000",
+        ...ALL.slice(6),
+      ],
+    },
+    { step: "prompt", inject: (w) => w.stallPrompts(3), heal: () => {}, resumed: ALL.slice(6) },
+  ];
+
+  for (const { step, inject, heal, resumed } of cases) {
+    test(`a failure at ${step} is kept, and a re-run resumes from ${step} without repeating earlier side effects`, async () => {
+      const { cli, world } = await withRepo();
+      world.addIssue("acme/api", { number: 7 });
+      inject(world);
+
+      const failed = await cli("dispatch", "acme/api#7", ...FLAGS, "--json");
+      expect(failed.exitCode).toBe(1);
+      expect(failed.json().stage).toBe(`Failed at ${step}`);
+      expect(failed.json().help.slice(-2)).toEqual([
+        "Run `nico-agent show acme/api#7` to see the Dispatch",
+        `Run the same \`nico-agent dispatch\` again to resume from ${step}`,
+      ]);
+      const shown = (await cli("show", "acme/api#7", "--json")).json();
+      expect(shown.stage).toBe(`Failed at ${step}`);
+      expect(shown.failure.step).toBe(step);
+      expect(shown.failure.error).toBe(failed.json().error);
+      expect(world.claimed).toEqual([]);
+
+      heal(world);
+      world.calls.length = 0;
+      const again = await cli("dispatch", "acme/api#7", ...FLAGS);
+      expect(again.exitCode).toBe(0);
+      expect(again.stdout).toStartWith(`dispatched: acme/api#7 (resumed from ${step})\n`);
+      expect(world.calls).toEqual(resumed);
+      const healthy = (await cli("show", "acme/api#7", "--json")).json();
+      expect(healthy.stage).toBe("Implementing");
+      expect(healthy.failure).toBeUndefined();
+      expect(healthy.workspace).toBe("w1");
+    });
+  }
+
+  test("a failed Dispatch is In flight: other parameters are refused rather than resumed", async () => {
+    const { cli, world } = await withRepo();
+    world.addIssue("acme/api", { number: 7 });
+    world.failHerdr("tab create", "workspace_not_found");
+    await cli("dispatch", "acme/api#7", ...FLAGS);
+    world.clearFailures();
+    world.calls.length = 0;
+
+    const other = await cli("dispatch", "acme/api#7", "--harness", "claude", "--model", "haiku", "--effort", "high");
+    expect(other.exitCode).toBe(1);
+    expect(other.stdout).toBe(
+      [
+        "error: acme/api#7 is already In flight with claude opus high",
+        "help[1]:",
+        "  Run `nico-agent show acme/api#7` to see the Dispatch",
+        "",
+      ].join("\n"),
+    );
+    expect(world.calls).toEqual([]);
+  });
+});
+
+describe("web Retry", () => {
+  test("a failed Dispatch shows its Stage and error on the web Board, and Retry resumes it", async () => {
+    const { web, world, cli } = await withRepo();
+    world.addIssue("acme/api", { number: 7, title: "Add retries" });
+    world.failHerdr("tab create", "workspace_not_found: no workspace w1");
+
+    const form = new URLSearchParams({ issue: "acme/api#7", harness: "claude", model: "opus", effort: "high" });
+    const failed = await web("/dispatch", { method: "POST", body: form });
+    expect(failed.status).toBe(502);
+    expect(failed.body).toContain('<p class="error">workspace_not_found: no workspace w1</p>');
+    expect(failed.body).toContain("<p>Run `nico-agent show acme/api#7` to see the Dispatch</p>");
+
+    const { body } = await web("/");
+    expect(body).toContain(
+      [
+        '<li><a href="https://github.com/acme/api/issues/7">acme/api#7 Add retries</a> · claude opus high · workspace w1 · <span class="error">Failed at tab: workspace_not_found: no workspace w1</span>',
+        '<form method="post" action="/dispatch" class="dispatch">',
+        '<input type="hidden" name="issue" value="acme/api#7">',
+        '<input type="hidden" name="harness" value="claude">',
+        '<input type="hidden" name="model" value="opus">',
+        '<input type="hidden" name="effort" value="high">',
+        "<button>Retry</button>",
+        "</form></li>",
+      ].join("\n"),
+    );
+
+    world.clearFailures();
+    world.calls.length = 0;
+    const retried = await web("/dispatch", { method: "POST", body: form });
+    expect(retried.status).toBe(303);
+    expect(world.calls[0]).toStartWith("herdr tab create --workspace w1 ");
+    expect((await cli("show", "acme/api#7", "--json")).json().stage).toBe("Implementing");
+    expect((await web("/")).body).toContain("· workspace w1 · Implementing</li>");
+  });
+});
+
+describe("Claim", () => {
+  test("after prompting, the issue is assigned to the user, and nothing else on it changes", async () => {
+    const { cli, world } = await withRepo();
+    world.addIssue("acme/api", { number: 7 });
+
+    await cli("dispatch", "acme/api#7", ...FLAGS);
+    expect(world.claimed).toEqual(["acme/api#7"]);
+    expect(world.calls.filter((c) => c.startsWith("github "))).toEqual(["github issue acme/api#7", "github assign acme/api#7 @me"]);
+    expect(world.calls.at(-1)).toBe("github assign acme/api#7 @me");
+  });
+
+  test("a failed Claim is a warning on a healthy Dispatch, not retried by a re-run", async () => {
+    const { cli, world } = await withRepo();
+    world.addIssue("acme/api", { number: 7 });
+    world.failCall("github assign", "GitHub request failed; check your network and `gh auth status`");
+
+    const { stdout, exitCode } = await cli("dispatch", "acme/api#7", ...FLAGS);
+    expect(exitCode).toBe(0);
+    expect(stdout).toBe(
+      [
+        "dispatched: acme/api#7",
+        "stage: Implementing",
+        "workspace: w1",
+        "agent: impl-api-7",
+        'warning: "could not Claim acme/api#7: GitHub request failed; check your network and `gh auth status`"',
+        "help[3]:",
+        "  Run `gh issue edit 7 --repo acme/api --add-assignee @me` to Claim it by hand",
+        "  Run `nico-agent show acme/api#7` to see the Dispatch",
+        "  Run `nico-agent` to see the Board",
+        "",
+      ].join("\n"),
+    );
+    const shown = (await cli("show", "acme/api#7", "--json")).json();
+    expect(shown.stage).toBe("Implementing");
+    expect(shown.claimed).toBe(false);
+
+    world.clearFailures();
+    world.calls.length = 0;
+    const again = await cli("dispatch", "acme/api#7", ...FLAGS);
+    expect(again.exitCode).toBe(0);
+    expect(again.stdout).toStartWith("dispatched: acme/api#7 already In flight (no-op)\n");
     expect(world.calls).toEqual([]);
   });
 });

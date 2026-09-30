@@ -170,6 +170,10 @@ export class RealWorld implements World {
     return repository.issue ? toIssue(repository.issue) : null;
   }
 
+  async githubAssignSelf(slug: string, number: number) {
+    await gh(["issue", "edit", String(number), "--repo", slug, "--add-assignee", "@me"]);
+  }
+
   async gitFetch(path: string) {
     await git(path, ["fetch", "origin"]);
   }
