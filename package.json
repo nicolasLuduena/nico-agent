@@ -8,7 +8,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@toon-format/toon": "^4.1.1"
+    "@toon-format/toon": "^4.1.1",
+    "htmx.org": "2.0.11"
   },
   "devDependencies": {
     "@types/bun": "^1.4.2",

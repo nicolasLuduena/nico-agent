@@ -26,7 +26,7 @@ describe("AXI conventions", () => {
     const { cli } = setup();
     const { stdout, exitCode } = await cli("dispatch-all");
     expect(exitCode).toBe(2);
-    expect(stdout).toStartWith("error: unknown command `dispatch-all`\nhelp[4]:\n  Run `nico-agent [board]` to show Ready issues");
+    expect(stdout).toStartWith("error: unknown command `dispatch-all`\nhelp[5]:\n  Run `nico-agent [board]` to show Ready issues");
   });
 
   test("a missing required flag is a usage error with the usage line", async () => {
@@ -67,6 +67,13 @@ describe("AXI conventions", () => {
     expect(world.calls).toEqual([]);
   });
 
+  test("a flag right after a one-word command is parsed, not skipped", async () => {
+    const { cli, world } = setup();
+    const { exitCode } = await cli("board", "--stat");
+    expect(exitCode).toBe(2);
+    expect(world.calls).toEqual([]);
+  });
+
   test("-v, -V and --version print the bare version", async () => {
     const { cli } = setup();
     for (const flag of ["-v", "-V", "--version"]) {
@@ -82,11 +89,12 @@ describe("AXI conventions", () => {
       [
         "bin: ~/.local/bin/nico-agent",
         "description: Dispatch coding agents onto ready-for-agent issues",
-        "commands[4]{usage,description}:",
+        "commands[5]{usage,description}:",
         '  "nico-agent [board]",Show Ready issues across all Repos (the default view)',
         "  nico-agent repo add <owner/name> --path <clone>,Add a Repo after checking the path is a clone of it",
         "  nico-agent repo rm <owner/name>,Remove a Repo (its clone is left untouched)",
         "  nico-agent repo list,List the configured Repos",
+        '  "nico-agent serve [--port <port>]",Start the web app on 127.0.0.1 (port 42069 by default)',
         "help[1]:",
         "  Run `nico-agent <command> --help` for its flags and examples",
         "",

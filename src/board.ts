@@ -3,8 +3,10 @@ import type { GitHubIssue, World } from "./world";
 import { READY_LABEL, WorldError } from "./world";
 
 export interface BoardIssue {
-  issue: string;
+  repo: string;
+  number: number;
   title: string;
+  url: string;
 }
 
 export interface Board {
@@ -43,7 +45,7 @@ export async function loadBoard(world: World, repos: Repo[]): Promise<Board> {
       return;
     }
     const ready = result.value.filter((issue) => isReady(issue, viewer)).sort((a, b) => a.number - b.number);
-    board.ready.push(...ready.map((issue) => ({ issue: `${repo.slug}#${issue.number}`, title: issue.title })));
+    board.ready.push(...ready.map(({ number, title, url }) => ({ repo: repo.slug, number, title, url })));
   });
   return board;
 }

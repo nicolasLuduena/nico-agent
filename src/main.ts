@@ -20,4 +20,5 @@ const bin = exe === home || exe.startsWith(`${home}/`) ? `~${exe.slice(home.leng
 
 const result = await run(argv, { world: new RealWorld(), configDir: defaultConfigDir(process.env), bin });
 process.stdout.write(result.stdout);
-process.exit(result.exitCode);
+// Not process.exit: a running server (`serve`) must keep the process alive.
+process.exitCode = result.exitCode;
