@@ -2,7 +2,7 @@ import htmx from "htmx.org/dist/htmx.min.js" with { type: "text" };
 import { type Board, loadBoard } from "./board";
 import { type Repo, ConfigError, loadConfig } from "./config";
 import { DispatchError, StepFailed, dispatch } from "./dispatch";
-import { HARNESSES } from "./harness";
+import { type Catalog, harnessCatalogs, refreshHarnesses } from "./harness";
 import { type Dispatch, loadDispatches, stageOf } from "./state";
 import { type World, WorldError } from "./world";
 
@@ -16,65 +16,98 @@ const HTML_HEADERS = { "content-type": "text/html; charset=utf-8" };
 /** The web app: server-rendered pages over the same core operations as the CLI. */
 export function webHandler(ctx: WebContext) {
   return async (request: Request): Promise<Response> => {
-    const { pathname } = new URL(request.url);
-    if (pathname === "/dispatch" && request.method === "POST") return postDispatch(ctx, request);
-    if (request.method !== "GET") return new Response("Method Not Allowed\n", { status: 405 });
-    if (pathname === "/htmx.min.js") {
-      return new Response(htmx, { headers: { "content-type": "text/javascript; charset=utf-8" } });
-    }
-    if (pathname !== "/") return new Response(page("Not found", `<p class="error">No page at ${escape(pathname)}</p>`), { status: 404, headers: HTML_HEADERS });
-    let repos: Repo[];
+    const url = new URL(request.url);
+    const { pathname } = url;
     try {
-      repos = loadConfig(ctx.configDir).repos;
+      if (pathname === "/dispatch" && request.method === "POST") return await postDispatch(ctx, request);
+      if (pathname === "/harnesses/refresh" && request.method === "POST") return await postRefresh(ctx);
+      if (request.method !== "GET") return new Response("Method Not Allowed\n", { status: 405 });
+      if (pathname === "/htmx.min.js") {
+        return new Response(htmx, { headers: { "content-type": "text/javascript; charset=utf-8" } });
+      }
+      if (pathname === "/dispatch-form") return await getDispatchForm(ctx, url.searchParams);
+      if (pathname !== "/") return new Response(page("Not found", `<p class="error">No page at ${escape(pathname)}</p>`), { status: 404, headers: HTML_HEADERS });
+      return await getBoard(ctx);
     } catch (e) {
-      if (!(e instanceof ConfigError)) throw e;
-      const body = `<p class="error">${escape(e.message)}</p>\n<p>${escape(e.help)}</p>`;
-      return new Response(page("Board", body), { status: 500, headers: HTML_HEADERS });
+      const failure = failureOf(e);
+      if (!failure) throw e;
+      const help = failure.help.map((h) => `<p>${escape(h)}</p>`);
+      const back = pathname === "/" ? [] : ['<p><a href="/">Back to the Board</a></p>'];
+      const body = [`<p class="error">${escape(failure.message)}</p>`, ...help, ...back].join("\n");
+      return new Response(page(failure.title, body), { status: failure.status, headers: HTML_HEADERS });
     }
-    const board = await loadBoard(ctx.world, repos, loadDispatches(ctx.configDir));
-    return new Response(page("Board", renderBoard(repos, board)), { headers: HTML_HEADERS });
   };
+}
+
+async function getBoard(ctx: WebContext) {
+  const { repos } = loadConfig(ctx.configDir);
+  const board = await loadBoard(ctx.world, repos, loadDispatches(ctx.configDir));
+  // Discovery may run a Harness's CLI, so only when there is something to dispatch.
+  const catalogs = board.ready.length ? await harnessCatalogs(ctx.world, ctx.configDir) : [];
+  return new Response(page("Board", renderBoard(repos, board, catalogs)), { headers: HTML_HEADERS });
+}
+
+/** The dispatch form again, after a choice changed: only the chosen model's Efforts are offered. */
+async function getDispatchForm(ctx: WebContext, params: URLSearchParams) {
+  const param = (name: string) => params.get(name) ?? "";
+  const catalogs = await harnessCatalogs(ctx.world, ctx.configDir);
+  const form = dispatchForm(param("issue"), catalogs, { harness: param("harness"), model: param("model"), effort: param("effort") });
+  return new Response(form, { headers: HTML_HEADERS });
 }
 
 /** The dispatch form's target: dispatch, then back to the Board. */
 async function postDispatch(ctx: WebContext, request: Request) {
   const form = await request.formData();
   const field = (name: string) => String(form.get(name) ?? "");
-  try {
-    await dispatch(ctx.world, ctx.configDir, {
-      issue: field("issue"),
-      harness: field("harness"),
-      model: field("model"),
-      effort: field("effort"),
-    });
-  } catch (e) {
-    const failure = failureOf(e);
-    if (!failure) throw e;
-    const body = [`<p class="error">${escape(failure.message)}</p>`, ...failure.help.map((h) => `<p>${escape(h)}</p>`)].join("\n");
-    return new Response(page("Dispatch failed", `${body}\n<p><a href="/">Back to the Board</a></p>`), {
-      status: failure.status,
-      headers: HTML_HEADERS,
-    });
+  await dispatch(ctx.world, ctx.configDir, {
+    issue: field("issue"),
+    harness: field("harness"),
+    model: field("model"),
+    effort: field("effort"),
+  });
+  return new Response(null, { status: 303, headers: { location: "/" } });
+}
+
+/** Refresh harnesses: discover again, then back to the Board. */
+async function postRefresh(ctx: WebContext) {
+  const failed = (await refreshHarnesses(ctx.world, ctx.configDir)).filter((c) => c.error);
+  if (failed.length) {
+    throw new WebFailure("Refresh failed", failed.map((c) => c.error!).join("; "), ["Run `nico-agent harness refresh` for details"], 502);
   }
   return new Response(null, { status: 303, headers: { location: "/" } });
 }
 
-function failureOf(e: unknown) {
-  if (e instanceof StepFailed) return { message: e.message, help: e.help, status: 502 };
-  if (e instanceof DispatchError) return { message: e.message, help: e.help, status: e.usage ? 400 : 409 };
-  if (e instanceof ConfigError) return { message: e.message, help: [e.help], status: 500 };
-  if (e instanceof WorldError) return { message: e.message, help: [], status: 502 };
+class WebFailure extends Error {
+  constructor(
+    readonly title: string,
+    message: string,
+    readonly help: string[],
+    readonly status: number,
+  ) {
+    super(message);
+  }
+}
+
+function failureOf(e: unknown): { title: string; message: string; help: string[]; status: number } | null {
+  const failed = "Dispatch failed";
+  if (e instanceof WebFailure) return e;
+  if (e instanceof StepFailed) return { title: failed, message: e.message, help: e.help, status: 502 };
+  if (e instanceof DispatchError) return { title: failed, message: e.message, help: e.help, status: e.usage ? 400 : 409 };
+  if (e instanceof ConfigError) return { title: "Config error", message: e.message, help: [e.help], status: 500 };
+  if (e instanceof WorldError) return { title: "Error", message: e.message, help: [], status: 502 };
   return null;
 }
 
-function renderBoard(repos: Repo[], board: Board) {
+function renderBoard(repos: Repo[], board: Board, catalogs: Catalog[]) {
   if (repos.length === 0) {
     return '<p class="empty">No Repos configured. Run <code>nico-agent repo add &lt;owner/name&gt; --path &lt;clone&gt;</code> to add one.</p>';
   }
+  const refresh = ['<form method="post" action="/harnesses/refresh" class="refresh">', "<button>Refresh harnesses</button>", "</form>"];
+  const warnings = catalogs.flatMap((c) => (c.error ? [`<p class="warning">${escape(c.error)}</p>`] : []));
   const sections = repos.map((repo) =>
-    ['<section class="repo">', `<h2>${escape(repo.slug)}</h2>`, renderRepo(repo, board), "</section>"].join("\n"),
+    ['<section class="repo">', `<h2>${escape(repo.slug)}</h2>`, renderRepo(repo, board, catalogs), "</section>"].join("\n"),
   );
-  return [...sections, renderInFlight(board)].join("\n");
+  return [...refresh, ...warnings, ...sections, renderInFlight(board)].join("\n");
 }
 
 function renderInFlight(board: Board) {
@@ -96,7 +129,7 @@ function renderInFlight(board: Board) {
   return ['<section class="in-flight">', "<h2>In flight</h2>", list, "</section>"].join("\n");
 }
 
-function renderRepo(repo: Repo, board: Board) {
+function renderRepo(repo: Repo, board: Board, catalogs: Catalog[]) {
   const error = board.errors.find((e) => e.repo === repo.slug);
   if (error) return `<p class="error">Could not load: ${escape(error.error)}</p>`;
   const issues = board.ready.filter((i) => i.repo === repo.slug);
@@ -104,23 +137,36 @@ function renderRepo(repo: Repo, board: Board) {
   return [
     "<ul>",
     ...issues.map(
-      (i) => `<li><a href="${escape(i.url)}">#${i.number} ${escape(i.title)}</a>\n${dispatchForm(`${i.repo}#${i.number}`)}</li>`,
+      (i) => `<li><a href="${escape(i.url)}">#${i.number} ${escape(i.title)}</a>\n${dispatchForm(`${i.repo}#${i.number}`, catalogs)}</li>`,
     ),
     "</ul>",
   ].join("\n");
 }
 
-function dispatchForm(issue: string) {
-  const select = (name: string, options: string[]) =>
-    `<select name="${name}">${options.map((o) => `<option>${escape(o)}</option>`).join("")}</select>`;
-  // Only claude for now, so its models and Efforts are the only choices.
-  const harness = HARNESSES[0]!;
+/** Changing the Harness or model re-renders the form, so only Efforts valid for the chosen model are offered. */
+const RERENDER = 'hx-get="/dispatch-form" hx-include="closest form" hx-target="closest form" hx-swap="outerHTML"';
+
+/**
+ * The dispatch form of an issue, offering each Harness that has models. The
+ * chosen Harness, model and Effort are kept while valid; otherwise the first
+ * valid one is chosen.
+ */
+function dispatchForm(issue: string, catalogs: Catalog[], chosen: { harness?: string; model?: string; effort?: string } = {}) {
+  const offered = catalogs.filter((c) => c.models.length > 0);
+  const catalog = offered.find((c) => c.harness.name === chosen.harness) ?? offered[0];
+  if (!catalog) return '<p class="empty">No Harness has models to dispatch with.</p>';
+  const model = catalog.models.find((m) => m.model === chosen.model) ?? catalog.models[0]!;
+  const effort = chosen.effort && model.efforts.includes(chosen.effort) ? chosen.effort : model.efforts[0];
+  const select = (name: string, options: string[], selected: string | undefined, attributes = "") =>
+    `<select name="${name}"${attributes}>${options
+      .map((o) => `<option${o === selected ? " selected" : ""}>${escape(o)}</option>`)
+      .join("")}</select>`;
   return [
     '<form method="post" action="/dispatch" class="dispatch">',
     `<input type="hidden" name="issue" value="${escape(issue)}">`,
-    select("harness", HARNESSES.map((h) => h.name)),
-    select("model", harness.models),
-    select("effort", harness.efforts),
+    select("harness", offered.map((c) => c.harness.name), catalog.harness.name, ` ${RERENDER}`),
+    select("model", catalog.models.map((m) => m.model), model.model, ` ${RERENDER}`),
+    select("effort", model.efforts, effort),
     "<button>Dispatch</button>",
     "</form>",
   ].join("\n");
@@ -150,6 +196,7 @@ h2 { font-size: 1.1rem; margin-bottom: 0.25rem; }
 .error { color: #b00020; }
 .warning { color: #8a5a00; margin: 0.25rem 0 0; }
 form.dispatch { display: inline-flex; gap: 0.25rem; margin-left: 0.5rem; }
+form.refresh { margin-bottom: 1rem; }
 </style>
 </head>
 <body>

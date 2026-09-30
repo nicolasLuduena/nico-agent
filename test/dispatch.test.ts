@@ -162,13 +162,14 @@ describe("dispatch", () => {
   test("rejects an unknown Harness, model or Effort before any outside-world call", async () => {
     const { cli, world } = await withRepo();
     const cases: [string[], string, string][] = [
-      [["--harness", "pi", "--model", "opus", "--effort", "high"], "unknown Harness `pi`", "Valid Harnesses: claude"],
+      [["--harness", "pi", "--model", "opus", "--effort", "high"], "unknown Harness `pi`", "Valid Harnesses: claude, codex"],
       [["--harness", "claude", "--model", "gpt", "--effort", "high"], "unknown model `gpt` for claude", "Valid models for claude: fable, opus, sonnet, haiku"],
-      [["--harness", "claude", "--model", "opus", "--effort", "ultra"], "unknown Effort `ultra` for claude", "Valid Efforts for claude: low, medium, high, xhigh, max"],
+      [["--harness", "claude", "--model", "opus", "--effort", "ultra"], "Effort `ultra` is not valid for claude opus", "Valid Efforts for claude opus: low, medium, high, xhigh, max"],
     ];
     for (const [flags, error, help] of cases) {
       const { stdout, exitCode } = await cli("dispatch", "acme/api#7", ...flags);
-      expect(exitCode).toBe(2);
+      // An Effort is checked against the model's, which come from config and discovery: not a usage error.
+      expect(exitCode).toBe(flags[5] === "ultra" ? 1 : 2);
       expect(stdout).toBe(`error: ${error}\nhelp[1]:\n  ${help}\n`);
     }
     expect(world.calls).toEqual([]);
@@ -357,19 +358,19 @@ describe("In flight on the Board", () => {
 });
 
 describe("web dispatch", () => {
-  test("each Ready issue has a dispatch form offering claude's models and Efforts", async () => {
+  test("each Ready issue has a dispatch form offering the Harnesses, claude's models and their Efforts", async () => {
     const { web, world } = await withRepo();
     world.addIssue("acme/api", { number: 7, title: "Add retries" });
 
     const { body } = await web("/");
     expect(body).toContain('<form method="post" action="/dispatch" class="dispatch">');
     expect(body).toContain('<input type="hidden" name="issue" value="acme/api#7">');
-    expect(body).toContain('<select name="harness"><option>claude</option></select>');
+    expect(body).toContain('<option selected>claude</option><option>codex</option></select>');
     expect(body).toContain(
-      '<select name="model"><option>fable</option><option>opus</option><option>sonnet</option><option>haiku</option></select>',
+      '<option selected>fable</option><option>opus</option><option>sonnet</option><option>haiku</option></select>',
     );
     expect(body).toContain(
-      '<select name="effort"><option>low</option><option>medium</option><option>high</option><option>xhigh</option><option>max</option></select>',
+      '<select name="effort"><option selected>low</option><option>medium</option><option>high</option><option>xhigh</option><option>max</option></select>',
     );
   });
 
