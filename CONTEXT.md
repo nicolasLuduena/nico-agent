@@ -29,7 +29,8 @@ _Avoid_: Dependency, prerequisite
 
 **Ready**:
 An issue labelled `ready-for-agent`, open and not started, unassigned or
-assigned to the user, whose Blockers are all resolved.
+assigned only to the user (an issue shared with someone else is theirs too),
+whose Blockers are all resolved.
 _Avoid_: Available, eligible, todo
 
 **Stackable**:

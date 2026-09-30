@@ -1,0 +1,55 @@
+import type { Repo } from "./config";
+import type { GitHubIssue, World } from "./world";
+import { READY_LABEL, WorldError } from "./world";
+
+export interface BoardIssue {
+  issue: string;
+  title: string;
+}
+
+export interface Board {
+  ready: BoardIssue[];
+  errors: { repo: string; error: string }[];
+}
+
+/**
+ * Ready: open, labelled `ready-for-agent`, unassigned or assigned only to the
+ * user, and every Blocker closed.
+ */
+export function isReady(issue: GitHubIssue, viewer: string) {
+  return (
+    issue.state === "open" &&
+    issue.labels.includes(READY_LABEL) &&
+    issue.assignees.every((login) => login.toLowerCase() === viewer.toLowerCase()) &&
+    issue.blockers.every((blocker) => blocker.state === "closed")
+  );
+}
+
+export async function loadBoard(world: World, repos: Repo[]): Promise<Board> {
+  const board: Board = { ready: [], errors: [] };
+  if (repos.length === 0) return board;
+  let viewer: string;
+  try {
+    viewer = await world.githubViewer();
+  } catch (e) {
+    const error = worldErrorMessage(e);
+    return { ready: [], errors: repos.map((r) => ({ repo: r.slug, error })) };
+  }
+  const results = await Promise.allSettled(repos.map((repo) => world.githubIssues(repo.slug)));
+  results.forEach((result, i) => {
+    const repo = repos[i]!;
+    if (result.status === "rejected") {
+      board.errors.push({ repo: repo.slug, error: worldErrorMessage(result.reason) });
+      return;
+    }
+    const ready = result.value.filter((issue) => isReady(issue, viewer)).sort((a, b) => a.number - b.number);
+    board.ready.push(...ready.map((issue) => ({ issue: `${repo.slug}#${issue.number}`, title: issue.title })));
+  });
+  return board;
+}
+
+/** The message of an adapter failure; anything else is a bug and propagates. */
+function worldErrorMessage(e: unknown) {
+  if (e instanceof WorldError) return e.message;
+  throw e;
+}
