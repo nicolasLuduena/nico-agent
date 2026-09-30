@@ -175,16 +175,16 @@ export class RealWorld implements World {
   }
 
   async gitDefaultBranch(path: string) {
-    const head = ["symbolic-ref", "--short", "refs/remotes/origin/HEAD"];
-    let ref: string;
     try {
-      ref = await git(path, head);
+      const ref = await git(path, ["symbolic-ref", "--short", "refs/remotes/origin/HEAD"]);
+      return ref.replace(/^origin\//, "");
     } catch {
-      // Clones made before origin/HEAD existed need it set once.
-      await git(path, ["remote", "set-head", "origin", "--auto"]);
-      ref = await git(path, head);
+      // Some clones lack origin/HEAD; ask the remote rather than write it into the clone.
+      const listing = await git(path, ["ls-remote", "--symref", "origin", "HEAD"]);
+      const branch = listing.match(/^ref: refs\/heads\/(\S+)\s+HEAD$/m)?.[1];
+      if (!branch) throw new WorldError(`could not find the default branch of origin in ${path}`);
+      return branch;
     }
-    return ref.replace(/^origin\//, "");
   }
 
   async herdrWorktreeCreate({ cwd, branch, base, label }: { cwd: string; branch: string; base: string; label: string }) {

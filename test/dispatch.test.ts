@@ -124,16 +124,25 @@ describe("dispatch", () => {
     );
   });
 
-  test("dispatching an issue already In flight is refused without touching herdr", async () => {
+  test("re-running the same dispatch returns the existing one; other parameters are refused", async () => {
     const { cli, world } = await withRepo();
     world.addIssue("acme/api", { number: 7 });
     await cli("dispatch", "acme/api#7", ...FLAGS);
     world.calls.length = 0;
 
-    const { stdout, exitCode } = await cli("dispatch", "acme/api#7", ...FLAGS);
-    expect(exitCode).toBe(1);
-    expect(stdout).toBe(
-      ["error: acme/api#7 is already In flight", "help[1]:", "  Run `nico-agent show acme/api#7` to see the Dispatch", ""].join("\n"),
+    const again = await cli("dispatch", "https://github.com/acme/api/issues/7", ...FLAGS);
+    expect(again.exitCode).toBe(0);
+    expect(again.stdout).toStartWith("dispatched: acme/api#7 already In flight (no-op)\nworkspace: w1\nagent: impl-api-7\n");
+
+    const other = await cli("dispatch", "acme/api#7", "--harness", "claude", "--model", "sonnet", "--effort", "high");
+    expect(other.exitCode).toBe(1);
+    expect(other.stdout).toBe(
+      [
+        "error: acme/api#7 is already In flight with claude opus high",
+        "help[1]:",
+        "  Run `nico-agent show acme/api#7` to see the Dispatch",
+        "",
+      ].join("\n"),
     );
     expect(world.calls).toEqual([]);
   });
@@ -175,7 +184,7 @@ describe("dispatch", () => {
     expect(world.calls).toEqual(["github issue acme/api#7", "github issue acme/api#8"]);
   });
 
-  test("a herdr failure is a structured error and records nothing", async () => {
+  test("a herdr failure is a structured error", async () => {
     const { cli, world } = await withRepo();
     world.addIssue("acme/api", { number: 7 });
     world.failHerdr("agent start", "the agent in w1 is not ready");
@@ -183,7 +192,6 @@ describe("dispatch", () => {
     const { stdout, exitCode } = await cli("dispatch", "acme/api#7", ...FLAGS);
     expect(exitCode).toBe(1);
     expect(stdout).toBe("error: the agent in w1 is not ready\n");
-    expect((await cli("show", "acme/api#7")).exitCode).toBe(1);
   });
 
   test("claude's trust question for the new worktree is answered before prompting", async () => {

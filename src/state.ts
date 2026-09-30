@@ -12,12 +12,13 @@ export interface Dispatch {
   base: string;
   worktree: string;
   workspace: string;
-  implementer: Agent;
+  implementer: Launch;
   createdAt: string;
   updatedAt: string;
 }
 
-export interface Agent {
+/** Where an agent was launched, and with which Harness, model and Effort. */
+export interface Launch {
   tab: string;
   pane: string;
   agent: string;

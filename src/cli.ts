@@ -269,9 +269,13 @@ async function dispatchCommand(args: Args, ctx: RunContext): Promise<Output> {
     model: required(args, "--model", DISPATCH_USAGE),
     effort: required(args, "--effort", DISPATCH_USAGE),
   };
-  const record = await dispatch(ctx.world, ctx.configDir, request);
+  const { dispatch: record, existing } = await dispatch(ctx.world, ctx.configDir, request);
   return {
-    data: { dispatched: record.issue, workspace: record.workspace, agent: record.implementer.agent },
+    data: {
+      dispatched: existing ? `${record.issue} already In flight (no-op)` : record.issue,
+      workspace: record.workspace,
+      agent: record.implementer.agent,
+    },
     help: [`Run \`nico-agent show ${record.issue}\` to see the Dispatch`, BOARD_HELP],
   };
 }

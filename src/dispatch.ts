@@ -49,27 +49,28 @@ export function resolveIssue(configDir: string, ref: string): IssueRef {
  * Dispatch an issue: fetch the clone, create a worktree workspace on the
  * default branch, start the Implementer in an `implementer` tab and prompt it.
  */
-export async function dispatch(world: World, configDir: string, request: DispatchRequest): Promise<Dispatch> {
+export async function dispatch(
+  world: World,
+  configDir: string,
+  request: DispatchRequest,
+): Promise<{ dispatch: Dispatch; existing: boolean }> {
   const harness = HARNESSES.find((h) => h.name === request.harness);
   if (!harness) {
     throw new DispatchError(`unknown Harness \`${request.harness}\``, [`Valid Harnesses: ${HARNESSES.map((h) => h.name).join(", ")}`], true);
   }
-  if (!harness.models.includes(request.model)) {
-    throw new DispatchError(
-      `unknown model \`${request.model}\` for ${harness.name}`,
-      [`Valid models for ${harness.name}: ${harness.models.join(", ")}`],
-      true,
-    );
-  }
-  if (!harness.efforts.includes(request.effort)) {
-    throw new DispatchError(
-      `unknown Effort \`${request.effort}\` for ${harness.name}`,
-      [`Valid Efforts for ${harness.name}: ${harness.efforts.join(", ")}`],
-      true,
-    );
+  for (const [choice, value, valid] of [
+    ["model", request.model, harness.models],
+    ["Effort", request.effort, harness.efforts],
+  ] as const) {
+    if (!valid.includes(value)) {
+      throw new DispatchError(`unknown ${choice} \`${value}\` for ${harness.name}`, [
+        `Valid ${choice}s for ${harness.name}: ${valid.join(", ")}`,
+      ], true);
+    }
   }
   const { repo, number, key } = resolveIssue(configDir, request.issue);
-  if (findDispatch(configDir, key)) throw alreadyInFlight(key);
+  const existing = findDispatch(configDir, key);
+  if (existing) return { dispatch: sameLaunch(existing, request), existing: true };
 
   const issue = await world.githubIssue(repo.slug, number);
   if (!issue) throw new DispatchError(`${key} was not found on GitHub`, [`Check the issue number on https://github.com/${repo.slug}/issues`]);
@@ -108,7 +109,7 @@ export async function dispatch(world: World, configDir: string, request: Dispatc
     updatedAt: now,
   };
   if (!(await addDispatch(configDir, record))) throw alreadyInFlight(key);
-  return record;
+  return { dispatch: record, existing: false };
 }
 
 const STARTUP_TIMEOUT_MS = 30_000;
@@ -143,6 +144,15 @@ async function prompt(world: World, agent: string, text: string) {
   }
   throw new DispatchError(`${agent} did not start working on its prompt`, [
     `Run \`herdr agent read ${agent}\` to see its screen, and send the prompt by hand`,
+  ]);
+}
+
+/** Re-running the same dispatch returns the existing one (ADR-0006); other parameters are refused. */
+function sameLaunch(existing: Dispatch, request: DispatchRequest) {
+  const { harness, model, effort } = existing.implementer;
+  if (harness === request.harness && model === request.model && effort === request.effort) return existing;
+  throw new DispatchError(`${existing.issue} is already In flight with ${harness} ${model} ${effort}`, [
+    `Run \`nico-agent show ${existing.issue}\` to see the Dispatch`,
   ]);
 }
 
