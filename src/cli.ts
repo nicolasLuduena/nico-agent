@@ -1,9 +1,10 @@
 import { resolve } from "node:path";
 import { loadBoard } from "./board";
-import { ConfigError, findRepo, loadConfig, saveConfig } from "./config";
+import { CONFIG_ERROR_HELP, ConfigError, findRepo, loadConfig, saveConfig } from "./config";
 import { type Output, render } from "./output";
 import { VERSION } from "./version";
 import { sameSlug, slugOfRemote } from "./slug";
+import { webHandler } from "./web";
 import { type World, WorldError } from "./world";
 
 export interface RunContext {
@@ -91,6 +92,15 @@ const commands: Command[] = [
     examples: ["nico-agent repo list", "nico-agent repo list --json"],
     run: (_args, ctx) => repoList(ctx),
   },
+  {
+    name: "serve",
+    usage: "nico-agent serve [--port <port>]",
+    summary: "Start the web app on 127.0.0.1 (port 42069 by default)",
+    flags: { "--port": { value: true, description: "port to listen on (default 42069)" } },
+    positionals: [],
+    examples: ["nico-agent serve", "nico-agent serve --port 8080"],
+    run: serve,
+  },
 ];
 
 export async function run(argv: string[], ctx: RunContext): Promise<RunResult> {
@@ -109,7 +119,7 @@ export async function run(argv: string[], ctx: RunContext): Promise<RunResult> {
         : commandHelp(command);
     return { stdout: render(output, json), exitCode: output.exitCode ?? 0 };
   } catch (e) {
-    if (e instanceof ConfigError) e = new CliError(e.message, ["Fix or delete the file and run `nico-agent repo add` again"]);
+    if (e instanceof ConfigError) e = new CliError(e.message, [CONFIG_ERROR_HELP]);
     else if (e instanceof WorldError) e = new CliError(e.message);
     if (!(e instanceof CliError)) throw e;
     const output = { data: { error: e.message, ...e.details }, help: e.help };
@@ -125,6 +135,7 @@ function findCommand(argv: string[]): { command: Command; rest: string[] } {
   }
   if (words.length === 0) return { command: commands[0]!, rest: argv };
   for (const size of [2, 1]) {
+    if (words.length < size) continue;
     const name = words.slice(0, size).join(" ");
     const command = commands.find((c) => c.name === name);
     if (command) return { command, rest: argv.slice(size) };
@@ -274,6 +285,28 @@ async function repoList(ctx: RunContext): Promise<Output> {
   };
 }
 
+const HOSTNAME = "127.0.0.1";
+const DEFAULT_PORT = 42069;
+
+async function serve(args: Args, ctx: RunContext): Promise<Output> {
+  const usage = "nico-agent serve [--port <port>]";
+  const flag = args.flags["--port"];
+  const port = typeof flag === "string" ? Number(flag) : DEFAULT_PORT;
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new CliError(`the port must be a number from 1 to 65535 (got \`${flag}\`)`, [`Usage: \`${usage}\``], 2);
+  }
+  try {
+    await ctx.world.serve({ hostname: HOSTNAME, port }, webHandler(ctx));
+  } catch (e) {
+    if (!(e instanceof WorldError)) throw e;
+    throw new CliError(e.message, ["Run `nico-agent serve --port <port>` with a free port"]);
+  }
+  return {
+    data: { url: `http://${HOSTNAME}:${port}/` },
+    help: ["Open the url in a browser to see the Board; stop the server with Ctrl-C"],
+  };
+}
+
 async function board(ctx: RunContext): Promise<Output> {
   const { repos } = loadConfig(ctx.configDir);
   const header = { bin: ctx.bin, description: DESCRIPTION, repos: `${repos.length} configured` };
@@ -289,7 +322,7 @@ async function board(ctx: RunContext): Promise<Output> {
     ? plural(ready.length, "issue")
     : `0 issues across ${plural(repos.length - errors.length, "Repo")}`;
   const data: Record<string, unknown> = { ...header, ready: count };
-  if (ready.length) data.issues = ready;
+  if (ready.length) data.issues = ready.map((i) => ({ issue: `${i.repo}#${i.number}`, title: i.title }));
   if (errors.length) data.errors = errors;
   return { data, help };
 }

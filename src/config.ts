@@ -21,6 +21,8 @@ export function defaultConfigDir(env: Record<string, string | undefined>) {
 /** The config file exists but can't be used. */
 export class ConfigError extends Error {}
 
+export const CONFIG_ERROR_HELP = "Fix or delete the file and run `nico-agent repo add` again";
+
 export function loadConfig(dir: string): Config {
   const file = join(dir, "config.json");
   let text: string;

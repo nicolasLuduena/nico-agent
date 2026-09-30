@@ -1,6 +1,6 @@
 /**
- * The outside-world port: every interaction with git, GitHub and (later)
- * herdr and Linear goes through here. Tests swap in an in-memory fake.
+ * The outside-world port: every interaction with git, GitHub, the network
+ * and (later) herdr and Linear goes through here. Tests swap in an in-memory fake.
  */
 export interface World {
   /** Remote URLs of the git clone at `path`, or null if it isn't one. */
@@ -12,7 +12,16 @@ export interface World {
    * open `ready-for-agent` issues; the core still applies the Ready rule.
    */
   githubIssues(slug: string): Promise<GitHubIssue[]>;
+  /** Start answering HTTP requests on `hostname:port`; resolves once listening. */
+  serve(address: Address, handler: RequestHandler): Promise<void>;
 }
+
+export interface Address {
+  hostname: string;
+  port: number;
+}
+
+export type RequestHandler = (request: Request) => Promise<Response>;
 
 export interface GitHubIssue {
   number: number;
