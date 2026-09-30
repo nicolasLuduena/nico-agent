@@ -17,22 +17,10 @@ describe("web Board", () => {
     const { status, type, body } = await web("/");
     expect(status).toBe(200);
     expect(type).toBe("text/html; charset=utf-8");
-    expect(body).toContain(
-      [
-        '<section class="repo">',
-        "<h2>acme/api</h2>",
-        "<ul>",
-        '<li><a href="https://github.com/acme/api/issues/7">#7 Add retries</a></li>',
-        "</ul>",
-        "</section>",
-        '<section class="repo">',
-        "<h2>acme/web</h2>",
-        "<ul>",
-        '<li><a href="https://github.com/acme/web/issues/4">#4 Fix &lt;header&gt; &amp; nav</a></li>',
-        "</ul>",
-        "</section>",
-      ].join("\n"),
-    );
+    expect(body).toContain('<section class="repo">\n<h2>acme/api</h2>\n<ul>\n<li><a href="https://github.com/acme/api/issues/7">#7 Add retries</a>\n');
+    expect(body).toContain('<section class="repo">\n<h2>acme/web</h2>\n<ul>\n<li><a href="https://github.com/acme/web/issues/4">#4 Fix &lt;header&gt; &amp; nav</a>\n');
+    expect(body.indexOf("<h2>acme/api</h2>")).toBeLessThan(body.indexOf("<h2>acme/web</h2>"));
+    expect(body).toContain('<section class="in-flight">\n<h2>In flight</h2>\n<p class="empty">Nothing in flight.</p>\n</section>');
     expect(body).not.toContain("Taken");
   });
 

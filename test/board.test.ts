@@ -56,7 +56,9 @@ describe("board", () => {
         "  acme/api#1,Unassigned",
         "  acme/api#2,Assigned to me",
         "  acme/api#7,Blocker closed",
-        "help[2]:",
+        "inFlight: 0 Dispatches",
+        "help[3]:",
+        "  Run `nico-agent dispatch <issue> --harness claude --model <model> --effort <effort>` to dispatch a Ready issue",
         "  Run `nico-agent repo list` to see the Repos",
         "  Run `nico-agent repo add <owner/name> --path <clone>` to add a Repo",
         "",
@@ -72,7 +74,7 @@ describe("board", () => {
 
     const { stdout, exitCode } = await cli();
     expect(exitCode).toBe(0);
-    expect(stdout).toContain("\nready: 0 issues across 1 Repo\nhelp[2]:\n");
+    expect(stdout).toContain("\nready: 0 issues across 1 Repo\ninFlight: 0 Dispatches\nhelp[2]:\n");
     expect(stdout).not.toContain("issues[");
   });
 
@@ -93,8 +95,10 @@ describe("board", () => {
       repos: "2 configured",
       ready: "1 issue",
       issues: [{ issue: "acme/web#4", title: "Fix header" }],
+      inFlight: "0 Dispatches",
       errors: [{ repo: "acme/api", error: "GitHub is not reachable" }],
-      help: ["Run `nico-agent repo list` to see the Repos", "Run `nico-agent repo add <owner/name> --path <clone>` to add a Repo"],
+      help: [
+        "Run `nico-agent dispatch <issue> --harness claude --model <model> --effort <effort>` to dispatch a Ready issue","Run `nico-agent repo list` to see the Repos", "Run `nico-agent repo add <owner/name> --path <clone>` to add a Repo"],
     });
   });
 
@@ -107,7 +111,7 @@ describe("board", () => {
     const { stdout, exitCode } = await cli();
     expect(exitCode).toBe(1);
     expect(stdout).toContain(
-      "\nready: 0 issues (no Repo could be loaded)\nerrors[1]{repo,error}:\n  acme/api,not authenticated with GitHub\n",
+      "\nready: 0 issues (no Repo could be loaded)\ninFlight: 0 Dispatches\nerrors[1]{repo,error}:\n  acme/api,not authenticated with GitHub\n",
     );
   });
 });

@@ -1,9 +1,12 @@
 import { resolve } from "node:path";
 import { loadBoard } from "./board";
 import { CONFIG_ERROR_HELP, ConfigError, findRepo, loadConfig, saveConfig } from "./config";
+import { DispatchError, dispatch, resolveIssue } from "./dispatch";
+import { HARNESSES } from "./harness";
 import { type Output, render } from "./output";
 import { VERSION } from "./version";
 import { sameSlug, slugOfRemote } from "./slug";
+import { findDispatch, loadDispatches } from "./state";
 import { webHandler } from "./web";
 import { type World, WorldError } from "./world";
 
@@ -21,6 +24,8 @@ export interface RunResult {
 
 const DESCRIPTION = "Dispatch coding agents onto ready-for-agent issues";
 const ADD_REPO_HELP = "Run `nico-agent repo add <owner/name> --path <clone>` to add a Repo";
+const BOARD_HELP = "Run `nico-agent` to see the Board";
+const DISPATCH_USAGE = "nico-agent dispatch <issue> --harness <harness> --model <model> --effort <effort>";
 
 /** An error the user can act on; `exitCode` 2 marks a usage error. */
 class CliError extends Error {
@@ -93,6 +98,31 @@ const commands: Command[] = [
     run: (_args, ctx) => repoList(ctx),
   },
   {
+    name: "dispatch",
+    usage: DISPATCH_USAGE,
+    summary: "Start an Implementer on an issue in a new herdr worktree workspace",
+    flags: {
+      "--harness": { value: true, description: `Harness to launch (${HARNESSES.map((h) => h.name).join(", ")})` },
+      "--model": { value: true, description: "model for the Harness, e.g. opus" },
+      "--effort": { value: true, description: "Effort level for the Harness, e.g. high" },
+    },
+    positionals: ["issue"],
+    examples: [
+      "nico-agent dispatch acme/api#7 --harness claude --model opus --effort high",
+      "nico-agent dispatch https://github.com/acme/api/issues/7 --harness claude --model sonnet --effort max",
+    ],
+    run: dispatchCommand,
+  },
+  {
+    name: "show",
+    usage: "nico-agent show <issue>",
+    summary: "Print the full Dispatch record of an In-flight issue",
+    flags: {},
+    positionals: ["issue"],
+    examples: ["nico-agent show acme/api#7", "nico-agent show https://github.com/acme/api/issues/7 --json"],
+    run: show,
+  },
+  {
     name: "serve",
     usage: "nico-agent serve [--port <port>]",
     summary: "Start the web app on 127.0.0.1 (port 42069 by default)",
@@ -121,6 +151,7 @@ export async function run(argv: string[], ctx: RunContext): Promise<RunResult> {
   } catch (e) {
     if (e instanceof ConfigError) e = new CliError(e.message, [CONFIG_ERROR_HELP]);
     else if (e instanceof WorldError) e = new CliError(e.message);
+    else if (e instanceof DispatchError) e = new CliError(e.message, e.help, e.usage ? 2 : 1);
     if (!(e instanceof CliError)) throw e;
     const output = { data: { error: e.message, ...e.details }, help: e.help };
     return { stdout: render(output, json), exitCode: e.exitCode };
@@ -224,6 +255,38 @@ function required(args: Args, flag: string, usage: string) {
   return value;
 }
 
+function issueArg(args: Args, usage: string) {
+  const issue = args.positionals[0];
+  if (!issue) throw new CliError("<issue> is required", [`Usage: \`${usage}\``], 2);
+  return issue;
+}
+
+async function dispatchCommand(args: Args, ctx: RunContext): Promise<Output> {
+  const issue = issueArg(args, DISPATCH_USAGE);
+  const request = {
+    issue,
+    harness: required(args, "--harness", DISPATCH_USAGE),
+    model: required(args, "--model", DISPATCH_USAGE),
+    effort: required(args, "--effort", DISPATCH_USAGE),
+  };
+  const { dispatch: record, existing } = await dispatch(ctx.world, ctx.configDir, request);
+  return {
+    data: {
+      dispatched: existing ? `${record.issue} already In flight (no-op)` : record.issue,
+      workspace: record.workspace,
+      agent: record.implementer.agent,
+    },
+    help: [`Run \`nico-agent show ${record.issue}\` to see the Dispatch`, BOARD_HELP],
+  };
+}
+
+async function show(args: Args, ctx: RunContext): Promise<Output> {
+  const { key } = resolveIssue(ctx.configDir, issueArg(args, "nico-agent show <issue>"));
+  const record = findDispatch(ctx.configDir, key);
+  if (!record) throw new CliError(`${key} is not In flight`, ["Run `nico-agent` to see the Board and what is In flight"]);
+  return { data: { ...record }, help: [BOARD_HELP] };
+}
+
 function slugArg(args: Args, usage: string) {
   const slug = args.positionals[0];
   if (!slug) throw new CliError("<owner/name> is required", [`Usage: \`${usage}\``], 2);
@@ -252,7 +315,7 @@ async function repoAdd(args: Args, ctx: RunContext): Promise<Output> {
       { remotes },
     );
   }
-  const help = ["Run `nico-agent` to see the Board", "Run `nico-agent repo list` to see all Repos"];
+  const help = [BOARD_HELP, "Run `nico-agent repo list` to see all Repos"];
   const config = loadConfig(ctx.configDir);
   const existing = findRepo(config, slug);
   if (existing?.path === path) {
@@ -313,22 +376,42 @@ async function board(ctx: RunContext): Promise<Output> {
   if (repos.length === 0) {
     return { data: { ...header, ready: "0 issues (no Repos configured)" }, help: [ADD_REPO_HELP] };
   }
-  const { ready, errors } = await loadBoard(ctx.world, repos);
+  const { ready, inFlight, errors } = await loadBoard(ctx.world, repos, loadDispatches(ctx.configDir));
   const help = ["Run `nico-agent repo list` to see the Repos", ADD_REPO_HELP];
+  if (inFlight.length) help.unshift("Run `nico-agent show <issue>` to see a Dispatch");
+  if (ready.length) {
+    help.unshift(
+      `Run \`nico-agent dispatch <issue> --harness ${HARNESSES[0]!.name} --model <model> --effort <effort>\` to dispatch a Ready issue`,
+    );
+  }
+  const inFlightData = {
+    inFlight: plural(inFlight.length, "Dispatch", "Dispatches"),
+    ...(inFlight.length > 0 && {
+      dispatches: inFlight.map((d) => ({
+        issue: d.issue,
+        title: d.title,
+        harness: d.implementer.harness,
+        model: d.implementer.model,
+        effort: d.implementer.effort,
+        workspace: d.workspace,
+      })),
+    }),
+  };
   if (errors.length === repos.length) {
-    return { data: { ...header, ready: "0 issues (no Repo could be loaded)", errors }, help, exitCode: 1 };
+    return { data: { ...header, ready: "0 issues (no Repo could be loaded)", ...inFlightData, errors }, help, exitCode: 1 };
   }
   const count = ready.length
     ? plural(ready.length, "issue")
     : `0 issues across ${plural(repos.length - errors.length, "Repo")}`;
   const data: Record<string, unknown> = { ...header, ready: count };
   if (ready.length) data.issues = ready.map((i) => ({ issue: `${i.repo}#${i.number}`, title: i.title }));
+  Object.assign(data, inFlightData);
   if (errors.length) data.errors = errors;
   return { data, help };
 }
 
-function plural(count: number, noun: string) {
-  return `${count} ${noun}${count === 1 ? "" : "s"}`;
+function plural(count: number, noun: string, nouns = `${noun}s`) {
+  return `${count} ${count === 1 ? noun : nouns}`;
 }
 
 function lowerFirst(text: string) {
