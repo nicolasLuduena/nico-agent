@@ -1,5 +1,5 @@
 import { type Prompts, type Repo, fillTemplate, findRepo, loadConfig, prompts } from "./config";
-import { HARNESSES, type Harness } from "./harness";
+import { type Harness, harnessCatalog, harnesses, launchArgs, rememberLaunch } from "./harness";
 import { sameSlug } from "./slug";
 import { type Dispatch, type Step, STEPS, addDispatch, findDispatch, leaseDispatch, saveDispatch } from "./state";
 import { type World, WorldError } from "./world";
@@ -77,20 +77,7 @@ export interface DispatchResult {
  * step that failed.
  */
 export async function dispatch(world: World, configDir: string, request: DispatchRequest): Promise<DispatchResult> {
-  const harness = HARNESSES.find((h) => h.name === request.harness);
-  if (!harness) {
-    throw new DispatchError(`unknown Harness \`${request.harness}\``, [`Valid Harnesses: ${HARNESSES.map((h) => h.name).join(", ")}`], true);
-  }
-  for (const [choice, value, valid] of [
-    ["model", request.model, harness.models],
-    ["Effort", request.effort, harness.efforts],
-  ] as const) {
-    if (!valid.includes(value)) {
-      throw new DispatchError(`unknown ${choice} \`${value}\` for ${harness.name}`, [
-        `Valid ${choice}s for ${harness.name}: ${valid.join(", ")}`,
-      ], true);
-    }
-  }
+  const harness = await chooseLaunch(world, configDir, request);
   const ref = resolveIssue(configDir, request.issue);
   const { repo, number, key } = ref;
   const templates = prompts(loadConfig(configDir));
@@ -123,7 +110,42 @@ export async function dispatch(world: World, configDir: string, request: Dispatc
   };
   // Recorded before any side effect, so a concurrent dispatch of the issue finds it.
   if (!(await addDispatch(configDir, record))) throw alreadyInFlight(key);
+  rememberLaunch(configDir, harness.name, request.model, request.effort);
   return { dispatch: await runSteps(world, configDir, ref, harness, templates, record), outcome: "new" };
+}
+
+/**
+ * The Harness of a request, once its model is one of the Harness's and its
+ * Effort one that model supports. Which models and Efforts are valid comes
+ * from config and discovery, so only an unknown Harness or model is a usage
+ * error; an Effort the model does not support fails like a Source would.
+ */
+async function chooseLaunch(world: World, configDir: string, request: DispatchRequest): Promise<Harness> {
+  const catalog = await harnessCatalog(world, configDir, request.harness);
+  if (!catalog) {
+    const names = harnesses(configDir).map((h) => h.name);
+    throw new DispatchError(`unknown Harness \`${request.harness}\``, [`Valid Harnesses: ${names.join(", ")}`], true);
+  }
+  const { harness, models, error } = catalog;
+  const choice = models.find((m) => m.model === request.model);
+  if (!choice && error) {
+    throw new DispatchError(error, [
+      "Run `nico-agent harness refresh` to try again",
+      `Set harnesses.${harness.name}.models and harnesses.${harness.name}.efforts in config.json to skip discovery`,
+    ]);
+  }
+  if (!choice) {
+    throw new DispatchError(`unknown model \`${request.model}\` for ${harness.name}`, [
+      `Valid models for ${harness.name}: ${models.map((m) => m.model).join(", ")}`,
+    ], true);
+  }
+  if (!choice.efforts.includes(request.effort)) {
+    const launch = `${harness.name} ${choice.model}`;
+    throw new DispatchError(`Effort \`${request.effort}\` is not valid for ${launch}`, [
+      `Valid Efforts for ${launch}: ${choice.efforts.join(", ")}`,
+    ]);
+  }
+  return harness;
 }
 
 /**
@@ -184,7 +206,7 @@ async function runSteps(
         name: agent,
         kind: harness.kind,
         pane: record.implementer.pane!,
-        args: harness.args(model, effort),
+        args: launchArgs(harness, { model, effort, repoPath: repo.path }),
       }));
     },
     // After a failure `ready` is unknown: the user may have answered the agent by hand.

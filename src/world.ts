@@ -49,6 +49,8 @@ export interface World {
    * until it finishes. `started: false` when the agent never reacted to it.
    */
   herdrAgentPrompt(name: string, text: string): Promise<{ started: boolean }>;
+  /** The raw JSON model catalog `codex debug models` prints. */
+  codexModels(): Promise<string>;
   /** Id of this process, and whether a process id is still running. */
   processId(): number;
   processAlive(pid: number): boolean;

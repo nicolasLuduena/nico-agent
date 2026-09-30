@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import type { Address, GitHubIssue, RequestHandler, World } from "../src/world";
 import { WorldError } from "../src/world";
 
@@ -26,6 +27,8 @@ export class FakeWorld implements World {
   crashes = new Set<string>();
   /** Calls that never return, as if the process were stuck or killed in them. */
   hangs = new Set<string>();
+  /** What `codex debug models` prints: the recorded catalog unless a test swaps it. */
+  codexCatalog = CODEX_CATALOG;
   private workspaces = 0;
   /** Screen of an agent blocked on a startup question, if the next start should block. */
   private blockedScreen: string | null = null;
@@ -182,6 +185,11 @@ export class FakeWorld implements World {
     this.claimed.push(`${slug}#${number}`);
   }
 
+  async codexModels() {
+    this.call("codex debug models");
+    return this.codexCatalog;
+  }
+
   processId() {
     return this.pid;
   }
@@ -200,3 +208,6 @@ export class FakeWorld implements World {
     this.server = { address, handler };
   }
 }
+
+/** `codex debug models` from codex-cli 0.159.0, trimmed to the fields nico-agent reads and their neighbours. */
+export const CODEX_CATALOG = readFileSync(new URL("fixtures/codex-debug-models.json", import.meta.url), "utf8");

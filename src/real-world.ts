@@ -249,6 +249,13 @@ export class RealWorld implements World {
     return { started: true };
   }
 
+  async codexModels() {
+    const result = await exec(["codex", "debug", "models"]);
+    if (result.exitCode === 0) return result.stdout;
+    const reason = result.stderr.trim().split("\n")[0] || `exit code ${result.exitCode}`;
+    throw new WorldError(`\`codex debug models\` failed: ${reason}`);
+  }
+
   processId() {
     return process.pid;
   }

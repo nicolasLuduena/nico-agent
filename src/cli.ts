@@ -2,7 +2,7 @@ import { resolve } from "node:path";
 import { loadBoard } from "./board";
 import { ConfigError, findRepo, loadConfig, saveConfig } from "./config";
 import { DispatchError, StepFailed, dispatch, resolveIssue } from "./dispatch";
-import { HARNESSES } from "./harness";
+import { type Catalog, harnessCatalogs, harnesses, refreshHarnesses } from "./harness";
 import { type Output, render } from "./output";
 import { VERSION } from "./version";
 import { sameSlug, slugOfRemote } from "./slug";
@@ -102,7 +102,7 @@ const commands: Command[] = [
     usage: DISPATCH_USAGE,
     summary: "Start an Implementer on an issue in a new herdr worktree workspace (resumes a failed one)",
     flags: {
-      "--harness": { value: true, description: `Harness to launch (${HARNESSES.map((h) => h.name).join(", ")})` },
+      "--harness": { value: true, description: "Harness to launch, e.g. claude (see `nico-agent harness list`)" },
       "--model": { value: true, description: "model for the Harness, e.g. opus" },
       "--effort": { value: true, description: "Effort level for the Harness, e.g. high" },
     },
@@ -112,6 +112,24 @@ const commands: Command[] = [
       "nico-agent dispatch https://github.com/acme/api/issues/7 --harness claude --model sonnet --effort max",
     ],
     run: dispatchCommand,
+  },
+  {
+    name: "harness list",
+    usage: "nico-agent harness list",
+    summary: "List the Harnesses with their models and Effort levels (discovers uncached ones)",
+    flags: {},
+    positionals: [],
+    examples: ["nico-agent harness list", "nico-agent harness list --json"],
+    run: (_args, ctx) => harnessList(ctx),
+  },
+  {
+    name: "harness refresh",
+    usage: "nico-agent harness refresh",
+    summary: "Discover the Harnesses' models and Effort levels again and replace the cache",
+    flags: {},
+    positionals: [],
+    examples: ["nico-agent harness refresh"],
+    run: (_args, ctx) => harnessRefresh(ctx),
   },
   {
     name: "show",
@@ -385,6 +403,43 @@ async function repoList(ctx: RunContext): Promise<Output> {
   };
 }
 
+const HARNESS_LIST_HELP = "Run `nico-agent harness list` to see the models and Effort levels";
+
+async function harnessList(ctx: RunContext): Promise<Output> {
+  const catalogs = await harnessCatalogs(ctx.world, ctx.configDir);
+  return {
+    data: {
+      count: catalogs.length,
+      harnesses: catalogs.map(({ harness, models, source, error }) => ({
+        name: harness.name,
+        launch: `${harness.launchMode} ${harness.kind}`,
+        sigil: harness.sigil,
+        args: [...harness.modelArgs, ...harness.effortArgs, ...(harness.trustArgs ?? []), ...harness.extraArgs].join(" "),
+        models,
+        source,
+        ...(error && { error }),
+      })),
+    },
+    help: [
+      "Run `nico-agent harness refresh` to discover models again",
+      `Run \`${DISPATCH_USAGE}\` to dispatch an issue`,
+    ],
+  };
+}
+
+async function harnessRefresh(ctx: RunContext): Promise<Output> {
+  const refreshed = await refreshHarnesses(ctx.world, ctx.configDir);
+  const failed = refreshed.some((c) => c.error);
+  const row = ({ harness, models, source, error }: Catalog) => ({
+    harness: harness.name,
+    models: models.length,
+    source,
+    ...(failed && { error: error ?? "" }),
+  });
+  // A list even when empty, so --json readers always get one shape.
+  return { data: { refreshed: refreshed.map(row) }, help: [HARNESS_LIST_HELP], exitCode: failed ? 1 : 0 };
+}
+
 const HOSTNAME = "127.0.0.1";
 const DEFAULT_PORT = 42069;
 
@@ -418,7 +473,7 @@ async function board(ctx: RunContext): Promise<Output> {
   if (inFlight.length) help.unshift("Run `nico-agent show <issue>` to see a Dispatch");
   if (ready.length) {
     help.unshift(
-      `Run \`nico-agent dispatch <issue> --harness ${HARNESSES[0]!.name} --model <model> --effort <effort>\` to dispatch a Ready issue`,
+      `Run \`nico-agent dispatch <issue> --harness ${harnesses(ctx.configDir)[0]!.name} --model <model> --effort <effort>\` to dispatch a Ready issue`,
     );
   }
   const inFlightData = {
