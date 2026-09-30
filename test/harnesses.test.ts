@@ -183,6 +183,16 @@ describe("harness list", () => {
     });
   });
 
+  test("a malformed cache is discovered again, not a crash", async () => {
+    const { cli, world, configDir } = setup();
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(join(configDir, "harnesses.json"), JSON.stringify({ codex: { models: "oops" } }));
+    const { exitCode, json } = await cli("harness", "list", "--json");
+    expect(exitCode).toBe(0);
+    expect(world.calls).toEqual(["codex debug models"]);
+    expect(json().harnesses[1].models).toEqual(CODEX_MODELS);
+  });
+
   test("a failed discovery is shown on its Harness while the others still list", async () => {
     const { cli, world } = setup();
     world.failCall("codex debug models", "`codex` is not installed or not on PATH");
@@ -204,6 +214,17 @@ describe("harness list", () => {
 });
 
 describe("harness refresh", () => {
+  test("drops cached models of a Harness that is no longer configured", async () => {
+    const { cli, configDir } = setup();
+    await cli("harness", "list");
+    const file = join(configDir, "harnesses.json");
+    const cache = JSON.parse(readFileSync(file, "utf8"));
+    writeFileSync(file, JSON.stringify({ ...cache, gone: cache.codex }));
+
+    expect((await cli("harness", "refresh")).exitCode).toBe(0);
+    expect(Object.keys(JSON.parse(readFileSync(file, "utf8")))).toEqual(["codex"]);
+  });
+
   test("discovers again and replaces the cache", async () => {
     const { cli, world } = setup();
     await cli("harness", "list");

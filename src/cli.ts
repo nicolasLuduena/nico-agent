@@ -429,7 +429,6 @@ async function harnessList(ctx: RunContext): Promise<Output> {
 
 async function harnessRefresh(ctx: RunContext): Promise<Output> {
   const refreshed = await refreshHarnesses(ctx.world, ctx.configDir);
-  if (refreshed.length === 0) return { data: { refreshed: "0 Harnesses discover their models" }, help: [HARNESS_LIST_HELP] };
   const failed = refreshed.some((c) => c.error);
   const row = ({ harness, models, source, error }: Catalog) => ({
     harness: harness.name,
@@ -437,6 +436,7 @@ async function harnessRefresh(ctx: RunContext): Promise<Output> {
     source,
     ...(failed && { error: error ?? "" }),
   });
+  // A list even when empty, so --json readers always get one shape.
   return { data: { refreshed: refreshed.map(row) }, help: [HARNESS_LIST_HELP], exitCode: failed ? 1 : 0 };
 }
 

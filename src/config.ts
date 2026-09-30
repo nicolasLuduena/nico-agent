@@ -218,8 +218,13 @@ export function findRepo(config: Config, slug: string) {
 }
 
 export function saveConfig(dir: string, config: Config) {
+  writeJson(dir, "config.json", config);
+}
+
+/** Replace `dir/name` with `value` as JSON, atomically. */
+export function writeJson(dir: string, name: string, value: unknown) {
   mkdirSync(dir, { recursive: true });
-  const file = join(dir, "config.json");
-  writeFileSync(`${file}.tmp`, `${JSON.stringify(config, null, 2)}\n`);
+  const file = join(dir, name);
+  writeFileSync(`${file}.tmp`, `${JSON.stringify(value, null, 2)}\n`);
   renameSync(`${file}.tmp`, file);
 }

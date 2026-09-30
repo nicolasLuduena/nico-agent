@@ -1,6 +1,6 @@
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { type Discovery, type HarnessConfig, harnessConfigs, loadConfig } from "./config";
+import { type Discovery, type HarnessConfig, harnessConfigs, loadConfig, writeJson } from "./config";
 import { type World, WorldError } from "./world";
 
 /** A coding-agent CLI nico-agent can launch, as configured. */
@@ -55,14 +55,17 @@ export async function harnessCatalog(world: World, configDir: string, name: stri
 
 /**
  * Discover the models of every Harness that has discovery again, replacing
- * the cache; a Harness whose discovery fails keeps its cached models.
+ * the cache; a Harness whose discovery fails keeps its cached models, and
+ * entries of Harnesses that no longer discover are dropped.
  */
 export async function refreshHarnesses(world: World, configDir: string): Promise<Catalog[]> {
-  const cache = readCache(configDir);
+  const discovering = harnesses(configDir).filter((h) => h.discovery);
+  const old = readCache(configDir);
+  const cache: Cache = {};
+  for (const { name } of discovering) if (old[name]) cache[name] = old[name];
+  writeJson(configDir, CACHE_FILE, cache);
   const refreshed: Catalog[] = [];
-  for (const harness of harnesses(configDir)) {
-    if (harness.discovery) refreshed.push(await catalogOf(world, configDir, cache, harness, true));
-  }
+  for (const harness of discovering) refreshed.push(await catalogOf(world, configDir, cache, harness, true));
   return refreshed;
 }
 
@@ -86,7 +89,7 @@ async function catalogOf(world: World, configDir: string, cache: Cache, harness:
     try {
       discovered = { discoveredAt: world.now().toISOString(), models: await discover(world, discovery) };
       cache[harness.name] = discovered;
-      writeCache(configDir, cache);
+      writeJson(configDir, CACHE_FILE, cache);
     } catch (e) {
       if (!(e instanceof WorldError)) throw e;
       error = `could not discover ${harness.name} models: ${e.message}`;
@@ -123,18 +126,23 @@ function parseCodexModels(text: string): ModelChoice[] {
   }
 }
 
+/** The cached discoveries; a missing, unreadable or malformed entry is just rediscovered. */
 function readCache(configDir: string): Cache {
+  let parsed: unknown;
   try {
-    return JSON.parse(readFileSync(join(configDir, CACHE_FILE), "utf8")) as Cache;
+    parsed = JSON.parse(readFileSync(join(configDir, CACHE_FILE), "utf8"));
   } catch {
-    // Missing or unreadable, the cache is only a cache: discovery fills it again.
     return {};
   }
+  if (typeof parsed !== "object" || parsed === null) return {};
+  return Object.fromEntries(Object.entries(parsed).filter(([, entry]) => isDiscovered(entry)));
 }
 
-function writeCache(configDir: string, cache: Cache) {
-  mkdirSync(configDir, { recursive: true });
-  const file = join(configDir, CACHE_FILE);
-  writeFileSync(`${file}.tmp`, `${JSON.stringify(cache, null, 2)}\n`);
-  renameSync(`${file}.tmp`, file);
+function isDiscovered(entry: unknown): entry is Discovered {
+  const { discoveredAt, models } = (entry ?? {}) as Partial<Discovered>;
+  return (
+    typeof discoveredAt === "string" &&
+    Array.isArray(models) &&
+    models.every((m) => typeof m?.model === "string" && Array.isArray(m.efforts) && m.efforts.every((e) => typeof e === "string"))
+  );
 }

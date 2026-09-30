@@ -159,19 +159,27 @@ describe("dispatch", () => {
     expect(world.calls).toEqual([]);
   });
 
-  test("rejects an unknown Harness, model or Effort before any outside-world call", async () => {
+  test("rejects an unknown Harness or model before any outside-world call", async () => {
     const { cli, world } = await withRepo();
     const cases: [string[], string, string][] = [
       [["--harness", "pi", "--model", "opus", "--effort", "high"], "unknown Harness `pi`", "Valid Harnesses: claude, codex"],
       [["--harness", "claude", "--model", "gpt", "--effort", "high"], "unknown model `gpt` for claude", "Valid models for claude: fable, opus, sonnet, haiku"],
-      [["--harness", "claude", "--model", "opus", "--effort", "ultra"], "Effort `ultra` is not valid for claude opus", "Valid Efforts for claude opus: low, medium, high, xhigh, max"],
     ];
     for (const [flags, error, help] of cases) {
       const { stdout, exitCode } = await cli("dispatch", "acme/api#7", ...flags);
-      // An Effort is checked against the model's, which come from config and discovery: not a usage error.
-      expect(exitCode).toBe(flags[5] === "ultra" ? 1 : 2);
+      expect(exitCode).toBe(2);
       expect(stdout).toBe(`error: ${error}\nhelp[1]:\n  ${help}\n`);
     }
+    expect(world.calls).toEqual([]);
+  });
+
+  test("rejects an Effort the model does not support, like other choices that come from config (exit 1)", async () => {
+    const { cli, world } = await withRepo();
+    const { stdout, exitCode } = await cli("dispatch", "acme/api#7", "--harness", "claude", "--model", "opus", "--effort", "ultra");
+    expect(exitCode).toBe(1);
+    expect(stdout).toBe(
+      "error: Effort `ultra` is not valid for claude opus\nhelp[1]:\n  Valid Efforts for claude opus: low, medium, high, xhigh, max\n",
+    );
     expect(world.calls).toEqual([]);
   });
 
