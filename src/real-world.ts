@@ -1,5 +1,5 @@
 import { realpathSync } from "node:fs";
-import type { Address, GitHubIssue, RequestHandler, World } from "./world";
+import type { Address, GitHubIssue, PullRequest, RequestHandler, World } from "./world";
 import { READY_LABEL, WorldError } from "./world";
 
 interface Exec {
@@ -108,6 +108,17 @@ query($owner: String!, $name: String!, $label: String!, $cursor: String) {
   }
 }`;
 
+const LINKED_PRS_QUERY = `
+query($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    issue(number: $number) {
+      closedByPullRequestsReferences(first: 20) {
+        nodes { number url state baseRefName repository { nameWithOwner } }
+      }
+    }
+  }
+}`;
+
 interface IssueNode {
   number: number;
   title: string;
@@ -183,6 +194,28 @@ export class RealWorld implements World {
     return result.stdout.split("\n").filter(Boolean);
   }
 
+  async githubLinkedPullRequests(slug: string, number: number) {
+    const [owner, name] = slug.split("/") as [string, string];
+    const args = ["api", "graphql", "-f", `query=${LINKED_PRS_QUERY}`, "-f", `owner=${owner}`, "-f", `name=${name}`];
+    args.push("-F", `number=${number}`);
+    const issue = JSON.parse(await gh(args)).data?.repository?.issue;
+    if (!issue) throw new WorldError(`${slug}#${number} was not found on GitHub`);
+    const nodes = issue.closedByPullRequestsReferences.nodes as {
+      number: number;
+      url: string;
+      state: string;
+      baseRefName: string;
+      repository: { nameWithOwner: string };
+    }[];
+    return nodes.map((pr) => ({
+      repo: pr.repository.nameWithOwner,
+      number: pr.number,
+      url: pr.url,
+      state: pr.state.toLowerCase() as PullRequest["state"],
+      baseBranch: pr.baseRefName,
+    }));
+  }
+
   async githubAssignSelf(slug: string, number: number) {
     await gh(["issue", "edit", String(number), "--repo", slug, "--add-assignee", "@me"]);
   }
@@ -223,6 +256,12 @@ export class RealWorld implements World {
       throw e;
     }
     return { ready: true };
+  }
+
+  async herdrAgents() {
+    const result = await herdr(["agent", "list"]);
+    const agents = result.agents as { name?: string; agent_status?: string }[];
+    return agents.flatMap((a) => (a.name ? [{ name: a.name, state: a.agent_status ?? "unknown" }] : []));
   }
 
   async herdrAgentRead(name: string) {

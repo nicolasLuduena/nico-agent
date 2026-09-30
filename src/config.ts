@@ -90,10 +90,13 @@ export function harnessConfigs(config: Config): Record<string, HarnessConfig> {
  * The prompt templates a Dispatch sends. `implement` prompts the Implementer;
  * `botSuffix` is appended to it as is, with no separator, when the GitHub App
  * is installed on the Repo, so it carries its own leading punctuation.
+ * `review` prompts the Reviewer; only it has a PR to fill `{prUrl}` and
+ * `{prBaseBranch}` with.
  */
 export interface Prompts {
   implement: string;
   botSuffix: string;
+  review: string;
 }
 
 export const PROMPTS: Prompts = {
@@ -101,15 +104,16 @@ export const PROMPTS: Prompts = {
   botSuffix:
     ", opened with `ghbot pr create` (not `gh`); end every commit message with the trailer " +
     "`Co-authored-by: nicolasluduena-coding-agent[bot] <324920906+nicolasluduena-coding-agent[bot]@users.noreply.github.com>`",
+  review: "{sigil}code-review {prUrl} against {prBaseBranch} for the spec at {issueUrl}",
 };
 
-export const PLACEHOLDERS = ["sigil", "issueUrl"] as const;
+export const PLACEHOLDERS = ["sigil", "issueUrl", "prUrl", "prBaseBranch"] as const;
 export type Placeholder = (typeof PLACEHOLDERS)[number];
 
 const PLACEHOLDER = /\{(\w+)\}/g;
 
-/** A template with each `{placeholder}` replaced by its value. */
-export function fillTemplate(template: string, values: Record<Placeholder, string>) {
+/** A template with each `{placeholder}` replaced by its value; one without a value is left as is. */
+export function fillTemplate(template: string, values: Partial<Record<Placeholder, string>>) {
   return template.replace(PLACEHOLDER, (match, name: string) => values[name as Placeholder] ?? match);
 }
 

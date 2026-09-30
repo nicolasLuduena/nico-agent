@@ -333,8 +333,8 @@ describe("In flight on the Board", () => {
         "issues[1]{issue,title}:",
         "  acme/api#8,Fix login",
         "inFlight: 1 Dispatch",
-        "dispatches[1]{issue,title,stage,harness,model,effort,workspace}:",
-        "  acme/api#7,Add retries,Implementing,claude,opus,high,w1",
+        "dispatches[1]{issue,title,stage,pr,implementer,reviewer,harness,model,effort,workspace}:",
+        '  acme/api#7,Add retries,Implementing,"",working,"",claude,opus,high,w1',
         "help[4]:",
         "  Run `nico-agent dispatch <issue> --harness claude --model <model> --effort <effort>` to dispatch a Ready issue",
         "  Run `nico-agent show <issue>` to see a Dispatch",
@@ -354,10 +354,10 @@ describe("In flight on the Board", () => {
     expect(body).toContain('<p class="empty">No Ready issues.</p>');
     expect(body).toContain(
       [
-        '<section class="in-flight">',
+        '<section class="in-flight" hx-get="/in-flight" hx-trigger="every 5s" hx-swap="outerHTML">',
         "<h2>In flight</h2>",
         "<ul>",
-        '<li><a href="https://github.com/acme/api/issues/7">acme/api#7 Add retries</a> · claude opus high · workspace w1 · Implementing</li>',
+        '<li><a href="https://github.com/acme/api/issues/7">acme/api#7 Add retries</a> · claude opus high · workspace w1 · Implementing · implementer <span class="agent">working</span></li>',
         "</ul>",
         "</section>",
       ].join("\n"),
@@ -503,7 +503,7 @@ describe("web Retry", () => {
     const { body } = await web("/");
     expect(body).toContain(
       [
-        '<li><a href="https://github.com/acme/api/issues/7">acme/api#7 Add retries</a> · claude opus high · workspace w1 · <span class="error">Failed at tab: workspace_not_found: no workspace w1</span>',
+        '<li><a href="https://github.com/acme/api/issues/7">acme/api#7 Add retries</a> · claude opus high · workspace w1 · <span class="error">Failed at tab: workspace_not_found: no workspace w1</span> · implementer <span class="agent">unknown</span>',
         '<form method="post" action="/dispatch" class="dispatch">',
         '<input type="hidden" name="issue" value="acme/api#7">',
         '<input type="hidden" name="harness" value="claude">',
@@ -520,7 +520,7 @@ describe("web Retry", () => {
     expect(retried.status).toBe(303);
     expect(world.calls[0]).toStartWith("herdr tab create --workspace w1 ");
     expect((await cli("show", "acme/api#7", "--json")).json().stage).toBe("Implementing");
-    expect((await web("/")).body).toContain("· workspace w1 · Implementing</li>");
+    expect((await web("/")).body).toContain('· workspace w1 · Implementing · implementer <span class="agent">working</span></li>');
   });
 });
 

@@ -20,6 +20,11 @@ export interface World {
    * App's installation sees them through `ghbot`.
    */
   githubAppRepos(): Promise<string[]>;
+  /**
+   * The open or merged PRs that close an issue when merged (GitHub's
+   * `closedByPullRequestsReferences`); closed unmerged ones are left out.
+   */
+  githubLinkedPullRequests(slug: string, number: number): Promise<PullRequest[]>;
   /** Assign an issue to the user's own GitHub session (the Claim, ADR-0007). */
   githubAssignSelf(slug: string, number: number): Promise<void>;
   /** `git fetch origin` in the clone at `path`. */
@@ -38,6 +43,8 @@ export interface World {
    * for input, or with `ready: false` when it is blocked on a startup question.
    */
   herdrAgentStart(options: { name: string; kind: string; pane: string; args: string[] }): Promise<{ ready: boolean }>;
+  /** Every named herdr agent with its raw Agent state (idle, working, blocked, done, unknown). */
+  herdrAgents(): Promise<{ name: string; state: string }[]>;
   /** The text currently visible in a named agent's pane. */
   herdrAgentRead(name: string): Promise<string>;
   /** Press logical keys (e.g. `down`, `enter`) in a named agent's pane. */
@@ -74,6 +81,15 @@ export interface GitHubIssue {
   labels: string[];
   assignees: string[];
   blockers: { slug: string; number: number; state: "open" | "closed" }[];
+}
+
+export interface PullRequest {
+  /** `owner/name` of the repo the PR is in. */
+  repo: string;
+  number: number;
+  url: string;
+  state: "open" | "closed" | "merged";
+  baseBranch: string;
 }
 
 export const READY_LABEL = "ready-for-agent";

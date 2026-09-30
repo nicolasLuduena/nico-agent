@@ -127,7 +127,7 @@ describe("bot-aware implement prompt", () => {
     const { body } = await web("/");
     expect(body).toContain(
       [
-        "· workspace w1 · Implementing",
+        '· workspace w1 · Implementing · implementer <span class="agent">working</span>',
         '<p class="warning">could not check the GitHub App on acme/api, so the prompt has no bot suffix: GitHub request failed</p></li>',
       ].join("\n"),
     );
@@ -165,7 +165,7 @@ describe("prompt templates from config", () => {
       [
         `error: "${join(configDir, "config.json")}: prompts.botSuffix has an unknown placeholder {bot}"`,
         "help[1]:",
-        "  Placeholders: {sigil}, {issueUrl}",
+        "  Placeholders: {sigil}, {issueUrl}, {prUrl}, {prBaseBranch}",
         "",
       ].join("\n"),
     );
