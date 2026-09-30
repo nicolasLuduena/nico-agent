@@ -23,9 +23,11 @@ async function exec(cmd: string[], env?: Record<string, string>): Promise<Exec> 
   return { exitCode, stdout, stderr };
 }
 
+const GH_ENV = { GH_PROMPT_DISABLED: "1", NO_COLOR: "1" };
+
 /** Run `gh`, translating its failures into actionable WorldErrors. */
 async function gh(args: string[]): Promise<string> {
-  const result = await exec(["gh", ...args], { GH_PROMPT_DISABLED: "1", NO_COLOR: "1" });
+  const result = await exec(["gh", ...args], GH_ENV);
   if (result.exitCode === 0) return result.stdout;
   throw ghFailure(result.stderr);
 }
@@ -158,7 +160,7 @@ export class RealWorld implements World {
     const [owner, name] = slug.split("/") as [string, string];
     const args = ["api", "graphql", "-f", `query=${ISSUE_QUERY}`, "-f", `owner=${owner}`, "-f", `name=${name}`];
     args.push("-F", `number=${number}`);
-    const result = await exec(["gh", ...args], { GH_PROMPT_DISABLED: "1", NO_COLOR: "1" });
+    const result = await exec(["gh", ...args], GH_ENV);
     // A missing issue is a GraphQL error on an otherwise found repository.
     if (result.exitCode !== 0 && !/Could not resolve to an issue/i.test(result.stderr + result.stdout)) {
       throw ghFailure(result.stderr);
@@ -170,9 +172,10 @@ export class RealWorld implements World {
     return repository.issue ? toIssue(repository.issue) : null;
   }
 
+  // A read, but through `ghbot`: only the App's installation token can list its repositories.
   async githubAppRepos() {
     const args = ["api", "/installation/repositories", "--paginate", "--jq", ".repositories[].full_name"];
-    const result = await exec(["ghbot", ...args], { GH_PROMPT_DISABLED: "1", NO_COLOR: "1" });
+    const result = await exec(["ghbot", ...args], GH_ENV);
     if (result.exitCode !== 0) {
       const reason = result.stderr.trim().split("\n")[0] || `exit code ${result.exitCode}`;
       throw new WorldError(`\`ghbot api /installation/repositories\` failed: ${reason}`);

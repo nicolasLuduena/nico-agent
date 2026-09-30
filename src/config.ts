@@ -16,7 +16,8 @@ export interface Config {
 
 /**
  * The prompt templates a Dispatch sends. `implement` prompts the Implementer;
- * `botSuffix` is appended to it as is when the GitHub App is installed on the Repo.
+ * `botSuffix` is appended to it as is, with no separator, when the GitHub App
+ * is installed on the Repo, so it carries its own leading punctuation.
  */
 export interface Prompts {
   implement: string;
@@ -24,18 +25,20 @@ export interface Prompts {
 }
 
 export const PROMPTS: Prompts = {
-  implement: "{sigil}implement {url} as draft PR",
+  implement: "{sigil}implement {issueUrl} as draft PR",
   botSuffix:
     ", opened with `ghbot pr create` (not `gh`); end every commit message with the trailer " +
     "`Co-authored-by: nicolasluduena-coding-agent[bot] <324920906+nicolasluduena-coding-agent[bot]@users.noreply.github.com>`",
 };
 
-export const PLACEHOLDERS = ["sigil", "url", "issue", "repo", "number", "branch"] as const;
+export const PLACEHOLDERS = ["sigil", "issueUrl"] as const;
 export type Placeholder = (typeof PLACEHOLDERS)[number];
+
+const PLACEHOLDER = /\{(\w+)\}/g;
 
 /** A template with each `{placeholder}` replaced by its value. */
 export function fillTemplate(template: string, values: Record<Placeholder, string>) {
-  return template.replace(/\{(\w+)\}/g, (match, name: string) => values[name as Placeholder] ?? match);
+  return template.replace(PLACEHOLDER, (match, name: string) => values[name as Placeholder] ?? match);
 }
 
 export function prompts(config: Config): Prompts {
@@ -85,11 +88,11 @@ function checkPrompts(file: string, prompts: unknown): Partial<Prompts> {
     throw new ConfigError(`${file}: prompts is not an object`);
   }
   for (const [key, template] of Object.entries(prompts)) {
-    if (!(key in PROMPTS)) {
+    if (!Object.hasOwn(PROMPTS, key)) {
       throw new ConfigError(`${file}: prompts.${key} is not a prompt template`, `Prompt templates: ${Object.keys(PROMPTS).join(", ")}`);
     }
     if (typeof template !== "string") throw new ConfigError(`${file}: prompts.${key} is not a string`);
-    for (const [, name] of template.matchAll(/\{(\w+)\}/g)) {
+    for (const [, name] of template.matchAll(PLACEHOLDER)) {
       if (!PLACEHOLDERS.includes(name as Placeholder)) {
         throw new ConfigError(
           `${file}: prompts.${key} has an unknown placeholder {${name}}`,

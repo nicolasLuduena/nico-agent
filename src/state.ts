@@ -26,7 +26,7 @@ export interface Dispatch {
   /** The step that failed last, until a re-run gets past it. */
   failure?: { step: Step; error: string };
   /** Whether the prompt carried the bot suffix: the GitHub App is installed on the Repo. */
-  bot?: boolean;
+  botSuffix?: boolean;
   /** Whether the issue was assigned to the user (ADR-0007); false with a warning when that failed. */
   claimed?: boolean;
   /** What went wrong without failing the Dispatch. */

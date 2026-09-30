@@ -38,7 +38,7 @@ describe("bot-aware implement prompt", () => {
     expect(prompts(world.calls)).toEqual([WITH_BOT]);
     expect(world.calls.indexOf("github app repos")).toBe(world.calls.findIndex((c) => c.startsWith("herdr agent prompt")) - 1);
     expect(stdout).not.toContain("warning");
-    expect((await cli("show", "acme/api#7", "--json")).json().bot).toBe(true);
+    expect((await cli("show", "acme/api#7", "--json")).json().botSuffix).toBe(true);
   });
 
   test("the App not installed on the Repo leaves the prompt plain, without a warning", async () => {
@@ -48,7 +48,7 @@ describe("bot-aware implement prompt", () => {
     const { stdout } = await cli("dispatch", "acme/api#7", ...FLAGS);
     expect(prompts(world.calls)).toEqual([PLAIN]);
     expect(stdout).not.toContain("warning");
-    expect((await cli("show", "acme/api#7", "--json")).json().bot).toBe(false);
+    expect((await cli("show", "acme/api#7", "--json")).json().botSuffix).toBe(false);
   });
 
   test("a failed check leaves the prompt plain and warns", async () => {
@@ -72,7 +72,7 @@ describe("bot-aware implement prompt", () => {
       ].join("\n"),
     );
     const shown = (await cli("show", "acme/api#7", "--json")).json();
-    expect(shown.bot).toBe(false);
+    expect(shown.botSuffix).toBe(false);
     expect(shown.warnings).toHaveLength(1);
   });
 
@@ -117,29 +117,39 @@ describe("bot-aware implement prompt", () => {
     ]);
     expect(json().help[0]).toBe("Assign https://github.com/acme/api/issues/7 to yourself on GitHub to Claim it by hand");
   });
+
+  test("a dispatch from the web with a failed check shows its warning on the Board", async () => {
+    const { web, world } = await withRepo();
+    world.failCall("github app repos", "GitHub request failed");
+    const form = new URLSearchParams({ issue: "acme/api#7", harness: "claude", model: "opus", effort: "high" });
+    expect((await web("/dispatch", { method: "POST", body: form })).status).toBe(303);
+
+    const { body } = await web("/");
+    expect(body).toContain(
+      [
+        "· workspace w1 · Implementing",
+        '<p class="warning">could not check the GitHub App on acme/api, so the prompt has no bot suffix: GitHub request failed</p></li>',
+      ].join("\n"),
+    );
+  });
 });
 
 describe("prompt templates from config", () => {
   test("implement and bot suffix templates fill their placeholders", async () => {
     const { cli, world, configDir } = await withRepo();
     world.appRepos = ["acme/api"];
-    editConfig(configDir, {
-      prompts: {
-        implement: "{sigil}implement {url} ({issue}, {repo} #{number}) on {branch}",
-        botSuffix: " via ghbot for {repo}",
-      },
-    });
+    editConfig(configDir, { prompts: { implement: "{sigil}implement {issueUrl}", botSuffix: ". Use ghbot for {issueUrl}" } });
 
     await cli("dispatch", "acme/api#7", ...FLAGS);
     expect(prompts(world.calls)).toEqual([
-      "/implement https://github.com/acme/api/issues/7 (acme/api#7, acme/api #7) on agent/api-7 via ghbot for acme/api",
+      "/implement https://github.com/acme/api/issues/7. Use ghbot for https://github.com/acme/api/issues/7",
     ]);
   });
 
   test("an unset template keeps its default", async () => {
     const { cli, world, configDir } = await withRepo();
     world.appRepos = ["acme/api"];
-    editConfig(configDir, { prompts: { implement: "{sigil}implement {url}" } });
+    editConfig(configDir, { prompts: { implement: "{sigil}implement {issueUrl}" } });
 
     await cli("dispatch", "acme/api#7", ...FLAGS);
     expect(prompts(world.calls)).toEqual([`/implement https://github.com/acme/api/issues/7${WITH_BOT.slice(PLAIN.length)}`]);
@@ -155,7 +165,7 @@ describe("prompt templates from config", () => {
       [
         `error: "${join(configDir, "config.json")}: prompts.botSuffix has an unknown placeholder {bot}"`,
         "help[1]:",
-        "  Placeholders: {sigil}, {url}, {issue}, {repo}, {number}, {branch}",
+        "  Placeholders: {sigil}, {issueUrl}",
         "",
       ].join("\n"),
     );
@@ -164,12 +174,12 @@ describe("prompt templates from config", () => {
 
   test("adding a Repo keeps the prompt templates", async () => {
     const { cli, world, configDir } = await withRepo();
-    editConfig(configDir, { prompts: { implement: "{sigil}implement {url}" } });
+    editConfig(configDir, { prompts: { implement: "{sigil}implement {issueUrl}" } });
     world.addClone("/src/web", "git@github.com:acme/web.git");
     await cli("repo", "add", "acme/web", "--path", "/src/web");
 
     const saved = JSON.parse(readFileSync(join(configDir, "config.json"), "utf8"));
-    expect(saved.prompts).toEqual({ implement: "{sigil}implement {url}" });
+    expect(saved.prompts).toEqual({ implement: "{sigil}implement {issueUrl}" });
     expect(saved.repos).toHaveLength(2);
   });
 });

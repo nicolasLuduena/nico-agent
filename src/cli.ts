@@ -312,7 +312,7 @@ async function show(args: Args, ctx: RunContext): Promise<Output> {
     workspace: record.workspace,
     implementer: definedOnly({ tab, pane, ...launch }),
     completed: record.completed,
-    bot: record.bot,
+    botSuffix: record.botSuffix,
     claimed: record.claimed,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,

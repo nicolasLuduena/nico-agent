@@ -85,8 +85,9 @@ function renderInFlight(board: Board) {
           const { harness, model, effort } = d.implementer;
           const link = `<a href="${escape(d.url)}">${escape(d.issue)} ${escape(d.title)}</a>`;
           const where = d.workspace ? ` · workspace ${escape(d.workspace)}` : "";
+          const warnings = (d.warnings ?? []).map((w) => `\n<p class="warning">${escape(w)}</p>`).join("");
           const item = `<li>${link} · ${escape(`${harness} ${model} ${effort}`)}${where}`;
-          if (!d.failure) return `${item} · ${escape(stageOf(d))}</li>`;
+          if (!d.failure) return `${item} · ${escape(stageOf(d))}${warnings}</li>`;
           return `${item} · <span class="error">${escape(`${stageOf(d)}: ${d.failure.error}`)}</span>\n${retryForm(d)}</li>`;
         }),
         "</ul>",
@@ -147,6 +148,7 @@ body { font-family: system-ui, sans-serif; max-width: 60rem; margin: 2rem auto; 
 h2 { font-size: 1.1rem; margin-bottom: 0.25rem; }
 .empty { color: #666; }
 .error { color: #b00020; }
+.warning { color: #8a5a00; margin: 0.25rem 0 0; }
 form.dispatch { display: inline-flex; gap: 0.25rem; margin-left: 0.5rem; }
 </style>
 </head>

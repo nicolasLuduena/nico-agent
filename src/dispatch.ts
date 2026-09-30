@@ -72,8 +72,9 @@ export interface DispatchResult {
 /**
  * Dispatch an issue: fetch the clone, create a worktree workspace on the
  * default branch, start the Implementer in an `implementer` tab, prompt it
- * (bot-aware, see `implementPrompt`) and Claim the issue. Idempotent (ADR-0006): the same request again returns the
- * existing Dispatch, or resumes it from the step that failed.
+ * (see `implementPrompt`) and Claim the issue. Idempotent (ADR-0006): the
+ * same request again returns the existing Dispatch, or resumes it from the
+ * step that failed.
  */
 export async function dispatch(world: World, configDir: string, request: DispatchRequest): Promise<DispatchResult> {
   const harness = HARNESSES.find((h) => h.name === request.harness);
@@ -191,9 +192,9 @@ async function runSteps(
       if (!ready) await awaitReady(world, harness, agent, record.worktree!);
     },
     prompt: async () => {
-      const { text, bot, warning } = await implementPrompt(world, templates, ref, harness, record);
+      const { text, botSuffix, warning } = await implementPrompt(world, templates, ref.repo, harness, record);
       await prompt(world, agent, text);
-      record.bot = bot;
+      record.botSuffix = botSuffix;
       if (warning) warn(record, warning);
     },
   };
@@ -243,29 +244,22 @@ function warn(record: Dispatch, warning: string) {
 
 /**
  * The Implementer's prompt, from the config's templates. When the bot's GitHub
- * App is installed on the Repo, checked afresh on every prompt, the bot suffix
- * is appended so the agent's PR and commits are attributed to it. A failed
- * check sends the plain prompt, with a warning.
+ * App is installed on the Repo, checked afresh each time the prompt is sent,
+ * the bot suffix is appended so the agent's PR and commits are attributed to
+ * it. A failed check sends the plain prompt, with a warning.
  */
-async function implementPrompt(world: World, templates: Prompts, ref: IssueRef, harness: Harness, record: Dispatch) {
-  const values = {
-    sigil: harness.sigil,
-    url: record.url,
-    issue: ref.key,
-    repo: ref.repo.slug,
-    number: String(ref.number),
-    branch: record.branch,
-  };
+async function implementPrompt(world: World, templates: Prompts, repo: Repo, harness: Harness, record: Dispatch) {
+  const values = { sigil: harness.sigil, issueUrl: record.url };
   const text = fillTemplate(templates.implement, values);
-  let bot: boolean;
+  let installed: boolean;
   try {
-    bot = (await world.githubAppRepos()).some((slug) => sameSlug(slug, ref.repo.slug));
+    installed = (await world.githubAppRepos()).some((slug) => sameSlug(slug, repo.slug));
   } catch (e) {
     if (!(e instanceof WorldError)) throw e;
-    const warning = `could not check the GitHub App on ${ref.repo.slug}, so the prompt has no bot suffix: ${e.message}`;
-    return { text, bot: false, warning };
+    const warning = `could not check the GitHub App on ${repo.slug}, so the prompt has no bot suffix: ${e.message}`;
+    return { text, botSuffix: false, warning };
   }
-  return { text: bot ? text + fillTemplate(templates.botSuffix, values) : text, bot };
+  return { text: installed ? text + fillTemplate(templates.botSuffix, values) : text, botSuffix: installed };
 }
 
 const STARTUP_TIMEOUT_MS = 30_000;
