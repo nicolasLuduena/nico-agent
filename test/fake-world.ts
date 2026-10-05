@@ -35,6 +35,8 @@ export class FakeWorld implements World {
   serveFailure: string | null = null;
   /** Default branch of each clone's origin; `main` when unset. */
   defaultBranches = new Map<string, string>();
+  /** Branches on each clone's origin; just its default branch when unset. */
+  remoteBranches = new Map<string, string[]>();
   /** Failures of outside-world calls, keyed by a prefix of the recorded call. */
   callFailures = new Map<string, string>();
   /** Assignees each `githubAssignSelf` added, as `slug#N`. */
@@ -181,6 +183,11 @@ export class FakeWorld implements World {
 
   async gitFetch(path: string, branch?: string) {
     this.call(`git -C ${path} fetch origin${branch ? ` +refs/heads/${branch}:refs/remotes/origin/${branch}` : ""}`);
+  }
+
+  async gitRemoteBranches(path: string) {
+    this.call(`git -C ${path} ls-remote --heads origin`);
+    return this.remoteBranches.get(path) ?? [this.defaultBranches.get(path) ?? "main"];
   }
 
   async gitDefaultBranch(path: string) {

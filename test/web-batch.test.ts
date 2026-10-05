@@ -93,6 +93,20 @@ describe("batch launch form", () => {
     expect(body).toContain('hx-get="/batch-row" hx-vals=\'{"action":"dispatch"}\' hx-include="closest fieldset" hx-target="closest fieldset" hx-swap="outerHTML"');
   });
 
+  test("each dispatch row offers origin's branches as its Base, and posts its own Base", async () => {
+    const { web, world } = await mixed();
+    world.remoteBranches.set("/src/api", ["beta", "main"]);
+    const { body } = await web(`/batch-form?${query(["acme/api#1", "acme/api#2"], { action: "dispatch" })}`);
+    expect(body.match(/<label>Base <select name="base">/g)?.length).toBe(2);
+    const form = new URLSearchParams();
+    for (const [issue, base] of [["acme/api#1", "beta"], ["acme/api#2", "main"]]) {
+      for (const [name, value] of Object.entries({ issue: issue!, base: base!, harness: "claude", model: "opus", effort: "high", stackOn: "" })) form.append(name, value);
+    }
+    expect((await web("/batch/dispatch", { method: "POST", body: form })).status).toBe(200);
+    expect(world.calls).toContain("herdr worktree create --cwd /src/api --branch agent/api-1 --base origin/beta --label api#1 --no-focus");
+    expect(world.calls).toContain("herdr worktree create --cwd /src/api --branch agent/api-2 --base origin/main --label api#2 --no-focus");
+  });
+
   test("submitting launches each row with its own Harness, model and Effort, and reports each issue", async () => {
     const { web, world, cli } = await mixed();
     world.failCall("herdr worktree create --cwd /src/api --branch agent/api-2 ", "worktree already exists");

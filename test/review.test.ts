@@ -212,6 +212,7 @@ describe("In flight on the CLI Board", () => {
         harness: "claude",
         model: "opus",
         effort: "high",
+        base: "main",
         workspace: "w1",
       },
     ]);
@@ -225,8 +226,8 @@ describe("In flight on the CLI Board", () => {
     const { stdout } = await cli();
     expect(stdout).toContain(
       [
-        "dispatches[1]{issue,title,stage,pr,implementer,reviewer,harness,model,effort,workspace}:",
-        '  acme/api#7,Add retries,Review launched,"https://github.com/acme/api/pull/9",done,working,claude,opus,high,w1',
+        "dispatches[1]{issue,title,stage,pr,implementer,reviewer,harness,model,effort,base,workspace}:",
+        '  acme/api#7,Add retries,Review launched,"https://github.com/acme/api/pull/9",done,working,claude,opus,high,main,w1',
       ].join("\n"),
     );
     expect(stdout).not.toContain("to review an issue whose PR is ready");
@@ -272,7 +273,7 @@ describe("In flight on the web", () => {
     expect(fragment.body).toStartWith('<section class="in-flight" hx-get="/in-flight"');
     expect(fragment.body).not.toContain("<html");
     expect(fragment.body).toContain(
-      '<li><input type="checkbox" class="pick" name="issue" value="acme/api#7" form="batch" autocomplete="off" id="pick-acme-api-7" hx-preserve="true" aria-label="Select acme/api#7"> <a href="https://github.com/acme/api/issues/7">acme/api#7 Add retries</a> · claude opus high · workspace w1 · PR ready · <a href="https://github.com/acme/api/pull/9">PR #9</a> · implementer <span class="agent">working</span>',
+      '<li><input type="checkbox" class="pick" name="issue" value="acme/api#7" form="batch" autocomplete="off" id="pick-acme-api-7" hx-preserve="true" aria-label="Select acme/api#7"> <a href="https://github.com/acme/api/issues/7">acme/api#7 Add retries</a> · claude opus high · base main · workspace w1 · PR ready · <a href="https://github.com/acme/api/pull/9">PR #9</a> · implementer <span class="agent">working</span>',
     );
   });
 

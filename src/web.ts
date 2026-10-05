@@ -1,7 +1,7 @@
 import htmx from "htmx.org/dist/htmx.min.js" with { type: "text" };
-import { type Board, type StackOption, loadBoard, stackChoice, stackOptions } from "./board";
+import { type BaseChoice, type Board, type StackOption, baseChoice, loadBoard, stackChoice, stackOptions } from "./board";
 import { type Repo, ConfigError, loadConfig } from "./config";
-import { type IssueOutcome, CloseConfirmationRequired, DispatchError, StepFailed, closeDispatch, dispatch, eachIssue, review, resolveIssue } from "./dispatch";
+import { type IssueOutcome, CloseConfirmationRequired, DispatchError, StepFailed, baseBranch, closeDispatch, dispatch, eachIssue, review, resolveIssue } from "./dispatch";
 import { type Catalog, type Remembered, harnessCatalogs, refreshHarnesses, rememberedLaunches } from "./harness";
 import { type InFlightRow, type PrLookup, cachedPrs, loadInFlight } from "./stage";
 import { type Dispatch, type Launch, findDispatch, loadDispatches } from "./state";
@@ -103,7 +103,7 @@ interface ServerContext extends WebContext {
 
 async function getBoard(ctx: ServerContext) {
   const { repos } = loadConfig(ctx.configDir);
-  const board = await loadBoard(ctx.world, repos, loadDispatches(ctx.configDir), ctx.prs);
+  const board = await loadBoard(ctx.world, repos, loadDispatches(ctx.configDir), ctx.prs, rememberedLaunches(ctx.configDir).bases);
   // Discovery may run a Harness's CLI, so only when there is something to launch.
   const launchable = board.ready.length > 0 || board.stackable.length > 0 || board.inFlight.some(canLaunchReview);
   const choices = await choicesFor(ctx, launchable);
@@ -127,12 +127,15 @@ async function getLaunchForm(ctx: WebContext, params: URLSearchParams, action: A
   const choices = await choicesFor(ctx, true);
   const chosen = { harness: param("harness"), model: param("model"), effort: param("effort"), stackOn: param("stackOn") };
   let options: StackOption[] = [];
+  let base: BaseChoice | undefined;
   if (action === "dispatch") {
     const ref = resolveIssue(ctx.configDir, param("issue"));
     const issue = await ctx.world.githubIssue(ref.repo.slug, ref.number);
     if (issue) options = await stackOptions(ctx.world, ref.repo.slug, issue);
+    // A Stacked dispatch has no Base choice.
+    if (!options.length) base = await baseChoice(ctx.world, ref.repo, param("base") || choices.remembered.bases[ref.repo.slug]);
   }
-  return new Response(launchForm(action, param("issue"), choices, chosen, options), { headers: HTML_HEADERS });
+  return new Response(launchForm(action, param("issue"), choices, chosen, options, base), { headers: HTML_HEADERS });
 }
 
 /** A launch form's target: dispatch or review, then back to the Board. */
@@ -145,6 +148,7 @@ async function postLaunch(ctx: WebContext, request: Request, launch: typeof disp
     model: field("model"),
     effort: field("effort"),
     ...(launch === dispatch && field("stackOn") && { stackOn: field("stackOn") }),
+    ...(launch === dispatch && field("base") && { base: field("base") }),
   });
   return new Response(null, { status: 303, headers: { location: "/" } });
 }
@@ -207,6 +211,7 @@ function renderInFlightRow(row: InFlightRow, choices: Choices) {
     // Preserved across polls, so a ticked row stays ticked.
     `${pick(d.issue, true)}<a href="${escape(d.url)}">${escape(d.issue)} ${escape(d.title)}</a>`,
     escape(`${harness} ${model} ${effort}`),
+    ...(d.base ? [`base ${escape(baseBranch(d)!)}`] : []),
     ...(d.workspace ? [`workspace ${escape(d.workspace)}`] : []),
     failure ? `<span class="error">${escape(`${stage}: ${failure.error}`)}</span>` : escape(stage),
     ...(pr ? [`<a href="${escape(pr.url)}">PR #${pr.number}</a>`] : []),
@@ -246,8 +251,8 @@ function renderRepo(repo: Repo, board: Board, choices: Choices) {
     "<ul>",
     ...issues.map(
       (i) => i.identifier
-        ? `<li><a href="${escape(i.url)}">${i.identifier} ${escape(i.title)}</a>\n</li>`
-        : `<li>${pick(`${i.repo}#${i.number}`)}<a href="${escape(i.url)}">#${i.number} ${escape(i.title)}</a>\n${launchForm("dispatch", `${i.repo}#${i.number}`, choices)}</li>`,
+        ? `<li><a href="${escape(i.url)}">${i.identifier} ${escape(i.title)}</a>${i.base ? ` · base ${escape(i.base)}` : ""}</li>`
+        : `<li>${pick(`${i.repo}#${i.number}`)}<a href="${escape(i.url)}">#${i.number} ${escape(i.title)}</a>\n${launchForm("dispatch", `${i.repo}#${i.number}`, choices, {}, [], board.bases[i.repo])}</li>`,
     ),
     "</ul>",
   ].join("\n");
@@ -275,7 +280,8 @@ interface Choices {
  * The dispatch or review form of an issue, offering each Harness that has models. It
  * starts on the Harness and model last dispatched with (a review form too); a chosen Harness,
  * model and Effort are kept while valid. Otherwise the Effort is the one last
- * used with the model, or the model's first.
+ * used with the model, or the model's first. A Ready issue's form also offers
+ * origin's branches as the Base, starting on `base.selected`.
  */
 function launchForm(
   action: Action,
@@ -283,8 +289,9 @@ function launchForm(
   choices: Choices,
   chosen: Chosen = {},
   stack: StackOption[] = [],
+  base?: BaseChoice,
 ) {
-  const fields = launchFields(action, issue, choices, chosen, stack, rerender(action));
+  const fields = launchFields(action, issue, choices, chosen, stack, rerender(action), base);
   if (!fields) return NO_HARNESS;
   return [`<form method="post" action="/${action}" class="dispatch">`, ...fields, `<button>${BUTTONS[action]}</button>`, "</form>"].join("\n");
 }
@@ -296,6 +303,7 @@ interface Chosen {
   model?: string;
   effort?: string;
   stackOn?: string;
+  base?: string;
 }
 
 /** A launch form's fields, `rerenderAttributes` on the Harness and model; null when no Harness has models. */
@@ -306,6 +314,7 @@ function launchFields(
   chosen: Chosen,
   stack: StackOption[],
   rerenderAttributes: string,
+  base?: BaseChoice,
 ) {
   const offered = catalogs.filter((c) => c.models.length > 0);
   const { harness: wanted = remembered.last?.harness, model: wantedModel = remembered.last?.model } = chosen;
@@ -322,6 +331,7 @@ function launchFields(
   return [
     `<input type="hidden" name="issue" value="${escape(issue)}">`,
     ...(stack.length ? [stackSelect(stack, chosen.stackOn)] : []),
+    ...(base ? [`<label>Base ${select("base", base.branches, base.selected)}</label>`] : []),
     select("harness", offered.map((c) => c.harness.name), catalog.harness.name, ` ${rerenderAttributes}`),
     select("model", catalog.models.map((m) => m.model), model.model, ` ${rerenderAttributes}`),
     select("effort", model.efforts, effort),
@@ -332,7 +342,7 @@ function stackSelect(options: StackOption[], chosen?: string) {
   return `<label>Stack on <select name="stackOn">${options.map((o, i) => {
     const value = stackChoice(o, options);
     const selected = chosen ? chosen === value : i === 0;
-    return `<option value="${escape(value)}"${selected ? " selected" : ""}>${escape(o.blocker)} · PR #${o.pr.number}</option>`;
+    return `<option value="${escape(value)}"${selected ? " selected" : ""}>${escape(o.blocker)} · PR #${o.pr.number} · base ${escape(o.pr.headBranch)}</option>`;
   }).join("")}</select></label>`;
 }
 
@@ -395,8 +405,11 @@ async function canReview(ctx: ServerContext, record: Dispatch) {
   return (await ctx.prs(record).catch(() => null)) !== null;
 }
 
-/** Why `issue` doesn't fit `action`, or the Blockers it could stack on when it does. */
-async function fitFor(ctx: ServerContext, action: Action, issue: string): Promise<{ skip: string } | { stack: StackOption[] }> {
+/**
+ * Why `issue` doesn't fit `action`, or when it does the Blockers it could
+ * stack on, else the Base choice starting on `base` (as the single-issue form).
+ */
+async function fitFor(ctx: ServerContext, action: Action, issue: string, base?: string): Promise<{ skip: string } | { stack: StackOption[]; base?: BaseChoice }> {
   let ref;
   try {
     ref = resolveIssue(ctx.configDir, issue);
@@ -414,7 +427,10 @@ async function fitFor(ctx: ServerContext, action: Action, issue: string): Promis
   }
   if (record) return { skip: `${ref.key} is already In flight` };
   const found = await ctx.world.githubIssue(ref.repo.slug, ref.number);
-  return { stack: found ? await stackOptions(ctx.world, ref.repo.slug, found) : [] };
+  const stack = found ? await stackOptions(ctx.world, ref.repo.slug, found) : [];
+  // A Stacked dispatch has no Base choice.
+  if (stack.length) return { stack };
+  return { stack, base: await baseChoice(ctx.world, ref.repo, base || rememberedLaunches(ctx.configDir).bases[ref.repo.slug]) };
 }
 
 /** One form with a row per ticked issue that fits the action, each filled in like its own launch form. */
@@ -426,7 +442,7 @@ async function getBatchForm(ctx: ServerContext, params: URLSearchParams) {
   for (const issue of unique(params.getAll("issue"))) {
     const fit = await fitFor(ctx, action, issue);
     if ("skip" in fit) skipped.push(`<li>${escape(issue)}: skipped, ${escape(fit.skip)}</li>`);
-    else rows.push(batchRow(action, issue, choices, {}, fit.stack));
+    else rows.push(batchRow(action, issue, choices, {}, fit));
   }
   const noHarness = rows.length > 0 && !choices.catalogs.some((c) => c.models.length > 0);
   const form = rows.length && !noHarness
@@ -440,18 +456,18 @@ async function getBatchForm(ctx: ServerContext, params: URLSearchParams) {
 async function getBatchRow(ctx: ServerContext, params: URLSearchParams) {
   const action = batchAction(params.get("action"));
   const param = (name: string) => params.get(name) ?? "";
-  const fit = await fitFor(ctx, action, param("issue"));
-  const stack = "stack" in fit ? fit.stack : [];
+  const fit = await fitFor(ctx, action, param("issue"), param("base"));
   const chosen = { harness: param("harness"), model: param("model"), effort: param("effort"), stackOn: param("stackOn") };
-  return new Response(batchRow(action, param("issue"), await choicesFor(ctx, true), chosen, stack), { headers: HTML_HEADERS });
+  return new Response(batchRow(action, param("issue"), await choicesFor(ctx, true), chosen, "skip" in fit ? { stack: [] } : fit), { headers: HTML_HEADERS });
 }
 
-/** A dispatch row always posts a `stackOn`, so the rows' fields line up by position. */
-function batchRow(action: Action, issue: string, choices: Choices, chosen: Chosen, stack: StackOption[]) {
+/** A dispatch row always posts a `stackOn` and a `base`, so the rows' fields line up by position. */
+function batchRow(action: Action, issue: string, choices: Choices, chosen: Chosen, { stack, base }: { stack: StackOption[]; base?: BaseChoice }) {
   const rerenderRow = `hx-get="/batch-row" hx-vals='{"action":"${action}"}' hx-include="closest fieldset" hx-target="closest fieldset" hx-swap="outerHTML"`;
-  const fields = launchFields(action, issue, choices, chosen, stack, rerenderRow) ?? [NO_HARNESS];
-  const noStack = action === "dispatch" && !stack.length ? ['<input type="hidden" name="stackOn" value="">'] : [];
-  return ['<fieldset class="row">', `<legend>${escape(issue)}</legend>`, ...fields, ...noStack, "</fieldset>"].join("\n");
+  const fields = launchFields(action, issue, choices, chosen, stack, rerenderRow, base) ?? [NO_HARNESS];
+  const blank = (name: string) => `<input type="hidden" name="${name}" value="">`;
+  const padding = action === "dispatch" ? [...(stack.length ? [] : [blank("stackOn")]), ...(base ? [] : [blank("base")])] : [];
+  return ['<fieldset class="row">', `<legend>${escape(issue)}</legend>`, ...fields, ...padding, "</fieldset>"].join("\n");
 }
 
 function batchAction(action: string | null): Action {
@@ -463,13 +479,13 @@ function batchAction(action: string | null): Action {
 async function postBatch(ctx: WebContext, request: Request, action: Action) {
   const form = await request.formData();
   const column = (name: string) => form.getAll(name).map(String);
-  const [issues, harnesses, models, efforts, stackOns] = ["issue", "harness", "model", "effort", "stackOn"].map(column) as [string[], string[], string[], string[], string[]];
-  const rows = issues.map((issue, i) => ({ issue, harness: harnesses[i] ?? "", model: models[i] ?? "", effort: efforts[i] ?? "", stackOn: stackOns[i] ?? "" }));
+  const [issues, harnesses, models, efforts, stackOns, bases] = ["issue", "harness", "model", "effort", "stackOn", "base"].map(column) as string[][] as [string[], string[], string[], string[], string[], string[]];
+  const rows = issues.map((issue, i) => ({ issue, harness: harnesses[i] ?? "", model: models[i] ?? "", effort: efforts[i] ?? "", stackOn: stackOns[i] ?? "", base: bases[i] ?? "" }));
   const byIssue = new Map(rows.map((r) => [r.issue, r]));
   const outcomes = await eachIssue([...byIssue.keys()], (issue) => {
-    const { stackOn, ...request } = byIssue.get(issue)!;
+    const { stackOn, base, ...request } = byIssue.get(issue)!;
     return action === "dispatch"
-      ? dispatch(ctx.world, ctx.configDir, { ...request, ...(stackOn && { stackOn }) })
+      ? dispatch(ctx.world, ctx.configDir, { ...request, ...(stackOn && { stackOn }), ...(base && { base }) })
       : review(ctx.world, ctx.configDir, request);
   });
   const body = [renderOutcomes(outcomes, (r) => ({

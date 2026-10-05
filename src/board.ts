@@ -24,13 +24,31 @@ export type BoardIssue = {
   repo: string;
   title: string;
   url: string;
+  /** For a Ready issue, the Base its dispatch would start from; unset when origin's branches could not be listed. */
+  base?: string;
 } & ({ number: number; identifier?: never } | { identifier: string; number?: never });
 
 export interface Board {
   ready: BoardIssue[];
   stackable: StackableIssue[];
   inFlight: InFlightRow[];
-  errors: { repo: string; error: string; source?: "Linear" }[];
+  /** The Base choice of each Repo with Ready issues, by slug. */
+  bases: Record<string, BaseChoice>;
+  /** `git` errors are about listing origin's branches; the Repo's issues still loaded. */
+  errors: { repo: string; error: string; source?: "Linear" | "git" }[];
+}
+
+/** origin's branches, and the Base a dispatch starts from unless another is chosen. */
+export interface BaseChoice {
+  branches: string[];
+  selected: string;
+}
+
+/** A Repo's Base choice: `wanted` while origin has it, else origin's default branch. */
+export async function baseChoice(world: World, repo: Repo, wanted?: string): Promise<BaseChoice> {
+  const branches = await world.gitRemoteBranches(repo.path);
+  const selected = wanted && branches.includes(wanted) ? wanted : await world.gitDefaultBranch(repo.path);
+  return { branches, selected };
 }
 
 /**
@@ -61,14 +79,18 @@ export async function stackOptions(world: World, repo: string, issue: GitHubIssu
   return options.some((prs) => prs.length === 0) ? [] : options.flat();
 }
 
-/** Ready issues of every Repo, minus those In flight, which are listed apart with their Stage. */
-export async function loadBoard(world: World, repos: Repo[], dispatches: Dispatch[], prs: PrLookup): Promise<Board> {
-  const [ready, inFlight] = await Promise.all([loadReady(world, repos, dispatches), loadInFlight(world, dispatches, prs)]);
+/**
+ * Ready issues of every Repo, minus those In flight, which are listed apart
+ * with their Stage. Ready issues carry the Base their dispatch would start
+ * from: the Repo's entry in `lastBases` while origin still has it.
+ */
+export async function loadBoard(world: World, repos: Repo[], dispatches: Dispatch[], prs: PrLookup, lastBases: Record<string, string> = {}): Promise<Board> {
+  const [ready, inFlight] = await Promise.all([loadReady(world, repos, dispatches, lastBases), loadInFlight(world, dispatches, prs)]);
   return { ...ready, inFlight };
 }
 
-async function loadReady(world: World, repos: Repo[], inFlight: Dispatch[]) {
-  const board: Omit<Board, "inFlight"> = { ready: [], stackable: [], errors: [] };
+async function loadReady(world: World, repos: Repo[], inFlight: Dispatch[], lastBases: Record<string, string>) {
+  const board: Omit<Board, "inFlight"> = { ready: [], stackable: [], bases: {}, errors: [] };
   if (repos.length === 0) return board;
   const dispatched = new Set(inFlight.map((d) => d.issue));
   const github = async () => {
@@ -123,6 +145,14 @@ async function loadReady(world: World, repos: Repo[], inFlight: Dispatch[]) {
   // GitHub rows precede Linear rows.
   await github();
   await linear();
+  await Promise.all(repos.filter((r) => board.ready.some((i) => i.repo === r.slug)).map(async (repo) => {
+    try { board.bases[repo.slug] = await baseChoice(world, repo, lastBases[repo.slug]); }
+    catch (e) { board.errors.push({ repo: repo.slug, source: "git", error: worldErrorMessage(e) }); }
+  }));
+  for (const issue of board.ready) {
+    const choice = board.bases[issue.repo];
+    if (choice) issue.base = choice.selected;
+  }
   return board;
 }
 
