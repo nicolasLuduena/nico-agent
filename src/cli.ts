@@ -118,7 +118,7 @@ const commands: Command[] = [
     summary: "Start an Implementer on each issue in a new herdr worktree workspace (resumes a failed one)",
     flags: {
       ...LAUNCH_FLAGS,
-      "--stack-on": { value: true, description: "Blocker issue reference to stack on; required when ambiguous" },
+      "--stack-on": { value: true, description: "Blocker to stack on: its issue reference, Linear identifier, or PR URL; required when ambiguous" },
       "--base": { value: true, description: "branch on origin to start from and open the PR against (default: the last one used in the Repo, else the default branch); not for a Stackable issue" },
       "--repo": { value: true, description: "Repo to dispatch a Linear issue into; required when several Repos claim it" },
     },
@@ -649,7 +649,7 @@ async function board(ctx: RunContext): Promise<Output> {
     data.issues = ready.map((i) => ({ issue: i.identifier ?? `${i.repo}#${i.number}`, title: i.title, ...(i.identifier && { repo: i.repo }), ...(i.base && { base: i.base }) }));
   }
   if (stackable.length) {
-    data.stackable = stackable.map((i) => ({ issue: `${i.repo}#${i.number}`, title: i.title,
+    data.stackable = stackable.map((i) => ({ issue: i.identifier ?? `${i.repo}#${i.number}`, title: i.title, ...(i.identifier && { repo: i.repo }),
       blockers: i.blockers.map((b) => ({ issue: b.blocker, pr: b.pr.url, base: b.pr.headBranch })) }));
     help.unshift("Run `nico-agent dispatch <issue> --stack-on <blocker> --harness <harness> --model <model> --effort <effort>` to dispatch a Stackable issue");
   }

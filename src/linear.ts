@@ -102,11 +102,11 @@ export class LinearSource {
 
   private async toIssue(node: IssueNode): Promise<LinearIssue> {
     const labels = await this.remaining(node.id, "labels", node.labels, "name");
-    const relations = await this.remaining(node.id, "inverseRelations", node.inverseRelations, "type issue { state { type } }");
+    const relations = await this.remaining(node.id, "inverseRelations", node.inverseRelations, "type issue { identifier state { type } }");
     return {
       identifier: node.identifier, title: node.title, url: node.url, branchName: node.branchName, team: node.team, project: node.project,
       labels: labels.map((l) => l.name), state: node.state.type, assignee: node.assignee?.id ?? null,
-      blockers: relations.filter((r) => r.type === "blocks").map((r) => ({ state: r.issue.state.type })),
+      blockers: relations.filter((r) => r.type === "blocks").map((r) => ({ identifier: r.issue.identifier, state: r.issue.state.type })),
     };
   }
 
@@ -147,14 +147,14 @@ interface IssueNode {
   state: { type: string };
   assignee: { id: string } | null;
   labels: Connection<{ name: string }>;
-  inverseRelations: Connection<{ type: string; issue: { state: { type: string } } }>;
+  inverseRelations: Connection<{ type: string; issue: { identifier: string; state: { type: string } } }>;
 }
 
 const ISSUE_FIELDS = `
       id identifier title url branchName team { id key name } project { id name }
       state { type } assignee { id }
       labels(first: 100) { nodes { name } pageInfo { hasNextPage endCursor } }
-      inverseRelations(first: 100) { nodes { type issue { state { type } } } pageInfo { hasNextPage endCursor } }`;
+      inverseRelations(first: 100) { nodes { type issue { identifier state { type } } } pageInfo { hasNextPage endCursor } }`;
 
 const ISSUES_QUERY = `query($filter: IssueFilter!, $cursor: String) {
   issues(first: 100, after: $cursor, filter: $filter) {

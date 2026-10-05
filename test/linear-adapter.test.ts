@@ -20,7 +20,7 @@ test("Linear adapter reads viewer, pages issues and uses incoming blocks as Bloc
     requests.push(body);
     if (body.query.includes("viewer")) return Response.json({ data: { viewer: { id: "user-me" } } });
     if (body.query.includes("issue(id:")) {
-      if (body.query.includes("inverseRelations")) return Response.json({ data: { issue: { inverseRelations: page([{ type: "blocks", issue: { state: { type: "started" } } }]) } } });
+      if (body.query.includes("inverseRelations")) return Response.json({ data: { issue: { inverseRelations: page([{ type: "blocks", issue: { identifier: "BLE-26", state: { type: "started" } } }]) } } });
       return Response.json({ data: { issue: { labels: page([{ name: "pdf" }]) } } });
     }
     if (body.variables.cursor) return Response.json({ data: { issues: page([]) } });
@@ -29,8 +29,8 @@ test("Linear adapter reads viewer, pages issues and uses incoming blocks as Bloc
       team: { id: "team-ble", key: "BLE", name: "Bleentr" }, project: { id: "pdf", name: "PDF diff" },
       state: { type: "backlog" }, assignee: { id: "user-me" }, labels: page([{ name: "ready-for-agent" }], "labels-2"),
       inverseRelations: page([
-        { type: "related", issue: { state: { type: "started" } } },
-        { type: "blocks", issue: { state: { type: "completed" } } },
+        { type: "related", issue: { identifier: "BLE-24", state: { type: "started" } } },
+        { type: "blocks", issue: { identifier: "BLE-25", state: { type: "completed" } } },
       ], "relations-2"),
     }], "issues-2") } });
   });
@@ -41,7 +41,7 @@ test("Linear adapter reads viewer, pages issues and uses incoming blocks as Bloc
       identifier: "BLE-27", title: "Compare PDFs", url: "https://linear.app/bleentr/issue/BLE-27", branchName: "nico/ble-27",
       team: { id: "team-ble", key: "BLE", name: "Bleentr" }, project: { id: "pdf", name: "PDF diff" },
       state: "backlog", assignee: "user-me", labels: ["ready-for-agent", "pdf"],
-      blockers: [{ state: "completed" }, { state: "started" }],
+      blockers: [{ identifier: "BLE-25", state: "completed" }, { identifier: "BLE-26", state: "started" }],
     }]);
     expect(requests.at(-1).variables.cursor).toBe("issues-2");
     expect(requests[1].variables.filter.team).toEqual({ or: [{ key: { eq: "BLE" } }, { name: { eq: "BLE" } }] });

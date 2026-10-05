@@ -42,11 +42,11 @@ test("Linear Ready excludes started, done, unlabeled, taken and blocked issues",
   world.addClone("/src/pdf", "git@github.com:bleentr/pdf-diff.git");
   await cli("repo", "add", "bleentr/pdf-diff", "--path", "/src/pdf", "--linear-team", "BLE");
   world.addLinearIssue({ identifier: "BLE-1", state: "backlog" });
-  world.addLinearIssue({ identifier: "BLE-2", assignee: world.linearUser, blockers: [{ state: "completed" }, { state: "canceled" }] });
+  world.addLinearIssue({ identifier: "BLE-2", assignee: world.linearUser, blockers: [{ identifier: "BLE-10", state: "completed" }, { identifier: "BLE-11", state: "canceled" }] });
   world.addLinearIssue({ identifier: "BLE-3", state: "started" });
   world.addLinearIssue({ identifier: "BLE-4", assignee: "someone-else" });
-  world.addLinearIssue({ identifier: "BLE-5", blockers: [{ state: "unstarted" }] });
-  world.addLinearIssue({ identifier: "BLE-6", blockers: [{ state: "started" }] });
+  world.addLinearIssue({ identifier: "BLE-5", blockers: [{ identifier: "BLE-12", state: "unstarted" }] });
+  world.addLinearIssue({ identifier: "BLE-6", blockers: [{ identifier: "BLE-13", state: "started" }] });
   world.addLinearIssue({ identifier: "BLE-7", labels: [] });
   world.addLinearIssue({ identifier: "BLE-8", state: "completed" });
   world.addLinearIssue({ identifier: "BLE-9", state: "canceled" });

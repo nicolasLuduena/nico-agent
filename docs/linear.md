@@ -45,8 +45,19 @@ nico-agent dispatch BLE-27 --harness claude --model opus --effort high --repo bl
 A Linear issue is dispatched into the Repo whose selector claims it. When
 several Repos claim it, `--repo` chooses one; without it the dispatch fails
 and lists them. On the web Board each Linear row's form names the Repo it
-sits under. Linear issues with unresolved Blockers are not dispatched, and
-they cannot be stacked.
+sits under.
+
+A Linear issue with unresolved Blockers is Stackable in a Repo when each of
+those Blockers has an open GitHub PR attachment in that Repo. A Blocker whose
+only PR is in another Repo keeps the issue out of that Repo's Stackable list.
+The Stacked dispatch starts the worktree on the Blocker PR's head branch, still
+on the issue's Linear `branchName`, and the prompt names the Blocker PR. When
+several Blocker PRs qualify, `--stack-on` takes the Blocker's identifier or
+Linear URL, or the PR URL:
+
+```bash
+nico-agent dispatch BLE-27 --harness claude --model opus --effort high --stack-on BLE-26
+```
 
 The worktree branch is the issue's Linear `branchName`, so Linear's GitHub
 integration links the PR. The workspace is labelled `<repo>:BLE-27`, the
