@@ -33,6 +33,8 @@ export interface World {
   githubAssignSelf(slug: string, number: number): Promise<void>;
   /** Fetch origin, or explicitly fetch a head branch into its origin tracking ref. */
   gitFetch(path: string, branch?: string): Promise<void>;
+  /** The branches on the clone's `origin`, without the `refs/heads/` prefix. */
+  gitRemoteBranches(path: string): Promise<string[]>;
   /** The default branch of the clone's `origin`, without the remote prefix. */
   gitDefaultBranch(path: string): Promise<string>;
   /** Create a git worktree and open it as a herdr workspace, without focusing it. */

@@ -1,5 +1,5 @@
 import { type Prompts, type Repo, fillTemplate, findRepo, loadConfig, prompts } from "./config";
-import { type Harness, harnessCatalog, harnesses, launchArgs, rememberLaunch } from "./harness";
+import { type Harness, harnessCatalog, harnesses, launchArgs, rememberLaunch, rememberedLaunches } from "./harness";
 import { linearIdentifier } from "./linear";
 import { sameSlug } from "./slug";
 import { freshPrs, isReviewLaunched, issueNumber, linkedPr } from "./stage";
@@ -17,7 +17,7 @@ import {
   saveDispatch,
 } from "./state";
 import { type World, WorldError } from "./world";
-import { canStart, stackChoice, stackOptions, type StackOption } from "./board";
+import { baseChoice, canStart, stackChoice, stackOptions, type StackOption } from "./board";
 
 const DISPATCH_HINT = "nico-agent dispatch <issue> --harness <harness> --model <model> --effort <effort>";
 
@@ -39,6 +39,8 @@ export interface DispatchRequest {
   effort: string;
   /** Blocker issue reference to stack on; omitted when there is a single option. */
   stackOn?: string;
+  /** Branch on origin to use as the Base; omitted for the last one used in the Repo, else the default branch. */
+  base?: string;
 }
 
 export interface IssueRef {
@@ -94,8 +96,8 @@ export interface DispatchResult {
 }
 
 /**
- * Dispatch an issue: fetch the clone, create a worktree workspace on the
- * default branch, start the Implementer in an `implementer` tab, prompt it
+ * Dispatch an issue: fetch the clone, create a worktree workspace on its
+ * Base (see `chooseBase`), start the Implementer in an `implementer` tab, prompt it
  * (see `implementPrompt`) and Claim the issue. Idempotent (ADR-0006): the
  * same request again returns the existing Dispatch, or resumes it from the
  * step that failed.
@@ -131,6 +133,7 @@ export async function dispatch(world: World, configDir: string, request: Dispatc
   } else if (request.stackOn) {
     throw new DispatchError(`${key} has no open Blockers to stack on`, ["Dispatch it without `--stack-on`"]);
   }
+  const base = await chooseBase(world, configDir, ref, request, stackedOn);
 
   const name = repoName(repo);
   const now = world.now().toISOString();
@@ -141,6 +144,7 @@ export async function dispatch(world: World, configDir: string, request: Dispatc
     repo: repo.slug,
     ...(stackedOn && { stackedOn }),
     branch: `agent/${name}-${number}`,
+    base: `origin/${base}`,
     implementer: { agent: agentName("impl", name, number), harness: harness.name, model: request.model, effort: request.effort },
     completed: [],
     runner: world.processId(),
@@ -149,7 +153,7 @@ export async function dispatch(world: World, configDir: string, request: Dispatc
   };
   // Recorded before any side effect, so a concurrent dispatch of the issue finds it.
   if (!(await addDispatch(configDir, record))) throw alreadyInFlight(key);
-  rememberLaunch(configDir, harness.name, request.model, request.effort);
+  rememberLaunch(configDir, harness.name, request.model, request.effort, stackedOn ? undefined : { repo: repo.slug, branch: base });
   return { dispatch: await runSteps(world, configDir, ref, harness, templates, record), outcome: "new" };
 }
 
@@ -269,7 +273,7 @@ async function runReview(world: World, configDir: string, ref: IssueRef, harness
   const steps: Record<ReviewStep, () => Promise<void>> = {
     ...agentSteps(world, harness, ref.repo, record, reviewer, "reviewer"),
     prompt: async () => {
-      const values = { sigil: harness.sigil, issueUrl: record.url, prUrl: reviewer.prUrl, prBaseBranch: reviewer.prBase };
+      const values = { sigil: harness.sigil, issueUrl: record.url, baseBranch: baseBranch(record), prUrl: reviewer.prUrl, prBaseBranch: reviewer.prBase };
       await prompt(world, reviewer.agent, fillTemplate(templates.review, values));
     },
   };
@@ -312,6 +316,30 @@ async function chooseLaunch(world: World, configDir: string, request: DispatchRe
 }
 
 /**
+ * The Base of a new Dispatch, without the remote prefix. A Stacked dispatch's
+ * is its Blocker's PR head branch, with no choice. Otherwise it is the
+ * requested branch, which origin must have, else the last one used in the
+ * Repo while origin still has it, else origin's default branch.
+ */
+async function chooseBase(world: World, configDir: string, { repo, key }: IssueRef, request: DispatchRequest, stackedOn?: StackOption) {
+  if (stackedOn) {
+    if (request.base) throw stackedBase(key);
+    return stackedOn.pr.headBranch;
+  }
+  const { branches, selected } = await baseChoice(world, repo, request.base ?? rememberedLaunches(configDir).bases[repo.slug]);
+  if (request.base && selected !== request.base) {
+    throw new DispatchError(`\`${request.base}\` is not a branch on origin of ${repo.slug}`, [
+      `Pass \`--base\` one of origin's branches: ${branches.join(", ")}`,
+    ]);
+  }
+  return selected;
+}
+
+function stackedBase(key: string) {
+  return new DispatchError(`${key} is Stacked; its Base is its Blocker's PR head branch`, ["Dispatch it without `--base`"]);
+}
+
+/**
  * Whether a re-run may take over a Dispatch: nobody is running its steps (its
  * runner exited, or was killed mid-step) and something is left to do.
  */
@@ -342,7 +370,8 @@ async function runSteps(
   const steps: Record<Step, () => Promise<void>> = {
     fetch: async () => {
       await world.gitFetch(repo.path, record.stackedOn?.pr.headBranch);
-      record.base = `origin/${record.stackedOn?.pr.headBranch ?? await world.gitDefaultBranch(repo.path)}`;
+      // Dispatches recorded before the Base was chosen up front.
+      record.base ??= `origin/${record.stackedOn?.pr.headBranch ?? await world.gitDefaultBranch(repo.path)}`;
     },
     worktree: async () => {
       const label = `${repoName(repo)}#${number}`;
@@ -472,7 +501,7 @@ function warn(record: Dispatch, warning: string) {
  * it. A failed check sends the plain prompt, with a warning.
  */
 async function implementPrompt(world: World, templates: Prompts, repo: Repo, harness: Harness, record: Dispatch) {
-  const values = { sigil: harness.sigil, issueUrl: record.url };
+  const values = { sigil: harness.sigil, issueUrl: record.url, baseBranch: baseBranch(record) };
   const text = fillTemplate(templates.implement, values) + (record.stackedOn
     ? ` as the top of the stacked PRs on top of ${record.stackedOn.pr.url} - check gh-stack if you are not aware of github's stacked PRs`
     : "");
@@ -540,6 +569,14 @@ function sameLaunch(existing: Dispatch, request: DispatchRequest) {
       `Run \`nico-agent show ${existing.issue}\` to see the Dispatch`,
     ]);
   }
+  if (request.base) {
+    if (existing.stackedOn) throw stackedBase(existing.issue);
+    const base = baseBranch(existing);
+    // A record from before the Base was chosen up front has none to compare.
+    if (base !== undefined && base !== request.base) {
+      throw new DispatchError(`${existing.issue} is already In flight with Base ${base}`, [`Run \`nico-agent show ${existing.issue}\` to see the Dispatch`]);
+    }
+  }
   if (harness === request.harness && model === request.model && effort === request.effort) return;
   throw new DispatchError(`${existing.issue} is already In flight with ${harness} ${model} ${effort}`, [
     `Run \`nico-agent show ${existing.issue}\` to see the Dispatch`,
@@ -551,6 +588,11 @@ function matchesStack(choice: string, repo: string, option: StackOption) {
   const url = choice.match(/^https?:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/issues\/(\d+)\/?$/i);
   const key = /^\d+$/.test(choice) ? `${repo}#${choice}` : url ? `${url[1]}#${url[2]}` : choice;
   return sameSlug(key, option.blocker) || sameSlug(choice, option.pr.url);
+}
+
+/** A Dispatch's Base without the remote prefix; unset only on a record from before the fetch step chose it. */
+export function baseBranch(dispatch: Dispatch) {
+  return dispatch.base?.replace(/^origin\//, "");
 }
 
 function alreadyInFlight(key: string) {

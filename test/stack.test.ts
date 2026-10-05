@@ -20,7 +20,7 @@ test("the Board offers issues whose open Blockers all have same-Repo open PRs", 
   world.linkPr("acme/api", 5, { number: 15, repo: "acme/other" });
   world.addIssue("acme/api", { number: 9, blockers: [{ slug: "acme/api", number: 4, state: "open" }] });
   const result = (await cli("board", "--json")).json();
-  expect(result.stackable).toEqual([{ issue: "acme/api#7", title: "Issue 7", blockers: [{ issue: "acme/api#6", pr: "https://github.com/acme/api/pull/16" }] }]);
+  expect(result.stackable).toEqual([{ issue: "acme/api#7", title: "Issue 7", blockers: [{ issue: "acme/api#6", pr: "https://github.com/acme/api/pull/16", base: "agent/blocker-6" }] }]);
 });
 
 test("dispatch starts on the chosen Blocker PR and keeps its stacking context", async () => {
@@ -128,5 +128,5 @@ test("the real CLI recognizes a same-Repo PR closing a Blocker from another repo
   const proc = Bun.spawn([process.execPath, "--eval", script], { env: { ...process.env, PATH: `${binDir}:${process.env.PATH}` }, stdout: "pipe", stderr: "pipe" });
   const output = JSON.parse(await new Response(proc.stdout).text());
   expect(await proc.exited).toBe(0);
-  expect(output.stackable).toEqual([{ issue: "acme/api#7", title: "Issue 7", blockers: [{ issue: "acme/other#6", pr: "https://github.com/acme/api/pull/16" }] }]);
+  expect(output.stackable).toEqual([{ issue: "acme/api#7", title: "Issue 7", blockers: [{ issue: "acme/other#6", pr: "https://github.com/acme/api/pull/16", base: "agent/blocker-6" }] }]);
 });

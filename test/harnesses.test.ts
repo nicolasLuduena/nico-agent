@@ -56,7 +56,7 @@ describe("codex dispatch", () => {
     expect(world.calls).toContain(
       'herdr agent start impl-api-7 --kind codex --pane w1:p2 -- -m gpt-6-sol -c model_reasoning_effort=ultra -c projects={"/src/api"={trust_level="trusted"}} --dangerously-bypass-approvals-and-sandbox',
     );
-    expect(world.calls).toContain("herdr agent prompt impl-api-7 $implement https://github.com/acme/api/issues/7 as draft PR");
+    expect(world.calls).toContain("herdr agent prompt impl-api-7 $implement https://github.com/acme/api/issues/7 as draft PR against main");
   });
 
   test("an Effort the chosen model does not support is rejected before anything is created", async () => {
@@ -299,7 +299,7 @@ describe("Harness config", () => {
     expect(world.calls).toContain(
       "herdr agent start impl-api-7 --kind claude --pane w1:p2 -- --model=opus --effort high --permission-mode acceptEdits",
     );
-    expect(world.calls).toContain("herdr agent prompt impl-api-7 !implement https://github.com/acme/api/issues/7 as draft PR");
+    expect(world.calls).toContain("herdr agent prompt impl-api-7 !implement https://github.com/acme/api/issues/7 as draft PR against main");
   });
 
   test("a new Harness can be defined in config", async () => {

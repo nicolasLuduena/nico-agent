@@ -242,6 +242,11 @@ export class RealWorld implements World {
     await git(path, ["fetch", "origin", ...(branch ? [`+refs/heads/${branch}:refs/remotes/origin/${branch}`] : [])]);
   }
 
+  async gitRemoteBranches(path: string) {
+    const listing = await git(path, ["ls-remote", "--heads", "origin"]);
+    return listing.split("\n").flatMap((line) => line.match(/\trefs\/heads\/(.+)$/)?.[1] ?? []);
+  }
+
   async gitDefaultBranch(path: string) {
     try {
       const ref = await git(path, ["symbolic-ref", "--short", "refs/remotes/origin/HEAD"]);
