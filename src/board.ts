@@ -1,5 +1,5 @@
 import type { LinearSelector, Repo } from "./config";
-import { type InFlightRow, type PrLookup, loadInFlight } from "./stage";
+import { type InFlightRow, type PrLookup, linearPullRequests, loadInFlight } from "./stage";
 import type { Dispatch } from "./state";
 import type { GitHubIssue, LinearIssue, World } from "./world";
 import { READY_LABEL, WorldError } from "./world";
@@ -72,10 +72,26 @@ export async function stackOptions(world: World, repo: string, issue: GitHubIssu
   const blockers = issue.blockers.filter((b) => b.state === "open");
   const options = await Promise.all(blockers.map(async (b) => {
     const prs = await world.githubLinkedPullRequests(b.slug, b.number);
-    return prs.filter((pr): pr is PullRequest & { headBranch: string } =>
-      pr.state === "open" && sameSlug(pr.repo, repo) && Boolean(pr.headBranch))
-      .map((pr) => ({ blocker: `${b.slug}#${b.number}`, pr }));
+    return stackable(prs, repo).map((pr) => ({ blocker: `${b.slug}#${b.number}`, pr }));
   }));
+  return everyBlocker(options);
+}
+
+/** Each unresolved Blocker of a Linear issue must have an open PR attached whose head can be fetched from this Repo. */
+export async function linearStackOptions(world: World, repo: string, issue: LinearIssue): Promise<StackOption[]> {
+  const blockers = issue.blockers.filter((b) => !isLinearClosed(b.state));
+  const options = await Promise.all(blockers.map(async (b) =>
+    stackable(await linearPullRequests(world, b.identifier, repo), repo).map((pr) => ({ blocker: b.identifier, pr }))));
+  return everyBlocker(options);
+}
+
+function stackable(prs: PullRequest[], repo: string) {
+  return prs.filter((pr): pr is PullRequest & { headBranch: string } =>
+    pr.state === "open" && sameSlug(pr.repo, repo) && Boolean(pr.headBranch));
+}
+
+/** The options of each Blocker, or none when some Blocker has none. */
+function everyBlocker(options: StackOption[][]) {
   return options.some((prs) => prs.length === 0) ? [] : options.flat();
 }
 
@@ -130,16 +146,29 @@ async function loadReady(world: World, repos: Repo[], inFlight: Dispatch[], last
       return;
     }
     const teams = [...new Set(selected.map((r) => r.linear!.team))];
-    const results = await Promise.allSettled(teams.map((team) => world.linearIssues(team)));
-    selected.forEach((repo) => {
-      const result = results[teams.indexOf(repo.linear!.team)]!;
+    const issues = await Promise.allSettled(teams.map((team) => world.linearIssues(team)));
+    // A Repo's Stackable issues are those with a Blocker PR in it, so each Repo is asked on its own.
+    const results = await Promise.allSettled(selected.map(async (repo) => {
+      const result = issues[teams.indexOf(repo.linear!.team)]!;
+      if (result.status === "rejected") throw result.reason;
+      const startable = result.value.filter((i) => matchesSelector(i, repo.linear!) && canStartLinear(i, viewer) && !dispatched.has(i.identifier))
+        .sort((a, b) => a.identifier.localeCompare(b.identifier, undefined, { numeric: true }));
+      return Promise.all(startable.map(async (issue) => {
+        const ready = isLinearReady(issue, viewer);
+        return { issue, ready, blockers: ready ? [] : await linearStackOptions(world, repo.slug, issue) };
+      }));
+    }));
+    results.forEach((result, i) => {
+      const repo = selected[i]!;
       if (result.status === "rejected") {
         board.errors.push({ repo: repo.slug, source: "Linear", error: worldErrorMessage(result.reason) });
         return;
       }
-      const ready = result.value.filter((i) => matchesSelector(i, repo.linear!) && isLinearReady(i, viewer) && !dispatched.has(i.identifier));
-      ready.sort((a, b) => a.identifier.localeCompare(b.identifier, undefined, { numeric: true }));
-      board.ready.push(...ready.map(({ identifier, title, url }) => ({ repo: repo.slug, identifier, title, url })));
+      for (const { issue: { identifier, title, url }, ready, blockers } of result.value) {
+        const row = { repo: repo.slug, identifier, title, url };
+        if (ready) board.ready.push(row);
+        else if (blockers.length) board.stackable.push({ ...row, blockers });
+      }
     });
   };
   // GitHub rows precede Linear rows.
@@ -169,7 +198,16 @@ export function matchesSelector(issue: LinearIssue, selector: LinearSelector) {
 }
 
 export function isLinearReady(issue: LinearIssue, viewer: string) {
+  return canStartLinear(issue, viewer) && issue.blockers.every((b) => isLinearClosed(b.state));
+}
+
+/** Ready but for its Blockers: not started, labelled `ready-for-agent`, and unassigned or assigned to the user. */
+export function canStartLinear(issue: LinearIssue, viewer: string) {
   return ["backlog", "unstarted"].includes(issue.state) && issue.labels.includes(READY_LABEL) &&
-    (issue.assignee === null || issue.assignee === viewer) &&
-    issue.blockers.every((b) => ["completed", "canceled"].includes(b.state));
+    (issue.assignee === null || issue.assignee === viewer);
+}
+
+/** Whether a Linear state type is closed: completed or canceled. */
+export function isLinearClosed(state: string) {
+  return ["completed", "canceled"].includes(state);
 }

@@ -58,12 +58,20 @@ export function freshPrs(world: World): PrLookup {
 export async function linkedPrs(world: World, dispatch: Dispatch): Promise<PullRequest[]> {
   const identifier = linearIdentifier(dispatch.issue);
   if (!identifier) return world.githubLinkedPullRequests(dispatch.repo, issueNumber(dispatch));
+  return linearPullRequests(world, identifier, dispatch.repo);
+}
+
+/**
+ * A Linear issue's GitHub PR attachments in `repo`, with their state read from
+ * GitHub. Attachments in other repos are ignored.
+ */
+export async function linearPullRequests(world: World, identifier: string, repo: string): Promise<PullRequest[]> {
   const numbers = new Set<number>();
   for (const url of await world.linearAttachmentUrls(identifier)) {
     const match = url.match(/^https:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/pull\/(\d+)(?:\/[^?#]*)?(?:[?#].*)?$/i);
-    if (match && sameSlug(match[1]!, dispatch.repo)) numbers.add(Number(match[2]));
+    if (match && sameSlug(match[1]!, repo)) numbers.add(Number(match[2]));
   }
-  const prs = await Promise.all([...numbers].map((n) => world.githubPullRequest(dispatch.repo, n)));
+  const prs = await Promise.all([...numbers].map((n) => world.githubPullRequest(repo, n)));
   // Closed unmerged PRs are left out, as GitHub's closing references leave them out.
   return prs.filter((pr): pr is PullRequest => pr !== null && pr.state !== "closed");
 }

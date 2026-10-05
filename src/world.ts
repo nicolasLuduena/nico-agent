@@ -126,5 +126,6 @@ export interface LinearIssue {
   labels: string[];
   state: string;
   assignee: string | null;
-  blockers: { state: string }[];
+  /** Issues blocking this one, by identifier, with their Linear state type. */
+  blockers: { identifier: string; state: string }[];
 }

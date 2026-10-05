@@ -1,5 +1,5 @@
 import htmx from "htmx.org/dist/htmx.min.js" with { type: "text" };
-import { type BaseChoice, type Board, type StackOption, baseChoice, loadBoard, stackChoice, stackOptions } from "./board";
+import { type BaseChoice, type Board, type StackOption, baseChoice, linearStackOptions, loadBoard, stackChoice, stackOptions } from "./board";
 import { type Repo, ConfigError, findRepo, loadConfig } from "./config";
 import { type IssueOutcome, CloseConfirmationRequired, DispatchError, StepFailed, baseBranch, closeDispatch, dispatch, eachIssue, review, resolveIssue } from "./dispatch";
 import { type Catalog, type Remembered, harnessCatalogs, refreshHarnesses, rememberedLaunches } from "./harness";
@@ -135,6 +135,9 @@ async function getLaunchForm(ctx: WebContext, params: URLSearchParams, action: A
     if (ref.repo) {
       const issue = await ctx.world.githubIssue(ref.repo.slug, ref.number);
       if (issue) options = await stackOptions(ctx.world, ref.repo.slug, issue);
+    } else {
+      const issue = await ctx.world.linearIssue(ref.identifier);
+      if (issue) options = await linearStackOptions(ctx.world, repo.slug, issue);
     }
     // A Stacked dispatch has no Base choice.
     if (!options.length) base = await baseChoice(ctx.world, repo, param("base") || choices.remembered.bases[repo.slug]);
@@ -458,8 +461,9 @@ function renderRepo(repo: Repo, board: Board, choices: Choices) {
     // No tick box: a batch row can't name the Repo of an issue several Repos claim.
     ? `<li>${issueLink(i.identifier, i.title, i.url)}${i.base ? baseChip(i.base) : ""}\n${launchForm("dispatch", i.identifier, choices, { repo: repo.slug }, [], board.bases[i.repo])}</li>`
     : `<li>${pick(`${i.repo}#${i.number}`)}${issueLink(`#${i.number}`, i.title, i.url)}\n${launchForm("dispatch", `${i.repo}#${i.number}`, choices, {}, [], board.bases[i.repo])}</li>`);
-  const stackRows = stackable.map((i) =>
-    `<li>${pick(`${i.repo}#${i.number}`)}${issueLink(`#${i.number}`, i.title, i.url)}\n${launchForm("dispatch", `${i.repo}#${i.number}`, choices, {}, i.blockers)}</li>`);
+  const stackRows = stackable.map((i) => i.identifier
+    ? `<li>${issueLink(i.identifier, i.title, i.url)}\n${launchForm("dispatch", i.identifier, choices, { repo: repo.slug }, i.blockers)}</li>`
+    : `<li>${pick(`${i.repo}#${i.number}`)}${issueLink(`#${i.number}`, i.title, i.url)}\n${launchForm("dispatch", `${i.repo}#${i.number}`, choices, {}, i.blockers)}</li>`);
   return [
     '<section class="repo">',
     `<header><h2>${escape(repo.slug)}</h2><span class="count">${ready.length + stackable.length}</span></header>`,
