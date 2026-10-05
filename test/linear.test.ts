@@ -13,8 +13,8 @@ test("a Repo's Linear team selector adds Ready issues beside GitHub issues", asy
     { issue: "BLE-27", title: "Linear issue", repo: "bleentr/pdf-diff", base: "main" },
   ]);
   const page = await web("/");
-  expect(page.body).toContain("BLE-27 Linear issue");
-  expect(page.body).toContain("#1 GitHub issue");
+  expect(page.body).toContain('<span class="num">BLE-27</span> Linear issue');
+  expect(page.body).toContain('<span class="num">#1</span> GitHub issue');
 });
 
 test("selectors narrow by project and label, and an issue appears under every matching Repo", async () => {
@@ -32,8 +32,8 @@ test("selectors narrow by project and label, and an issue appears under every ma
   const board = (await cli("--json")).json();
   expect(board.issues.map((i: { issue: string }) => i.issue)).toEqual(["BLE-27", "BLE-28", "BLE-27", "BLE-27", "BLE-27"]);
   const page = (await web("/")).body;
-  expect(page.match(/BLE-27 BLE-27/g)).toHaveLength(4);
-  expect(page.match(/BLE-28 BLE-28/g)).toHaveLength(1);
+  expect(page.match(/BLE-27<\/span> BLE-27/g)).toHaveLength(4);
+  expect(page.match(/BLE-28<\/span> BLE-28/g)).toHaveLength(1);
   expect(page).not.toContain("OTHER-1");
 });
 
@@ -63,13 +63,13 @@ test("a failing Linear Source preserves GitHub issues in CLI and web for the sam
   expect(board.exitCode).toBe(0);
   expect(board.json().issues).toEqual([{ issue: "bleentr/pdf-diff#1", title: "Still Ready", base: "main" }]);
   expect(board.json().errors).toEqual([{ repo: "bleentr/pdf-diff", source: "Linear", error: "Missing LINEAR_API_KEY" }]);
-  expect((await web("/")).body).toContain("#1 Still Ready");
+  expect((await web("/")).body).toContain('<span class="num">#1</span> Still Ready');
   expect((await web("/")).body).toContain("Linear: Missing LINEAR_API_KEY");
   world.linearFailure = null;
   world.failGitHub("bleentr/pdf-diff", "GitHub down");
   world.addLinearIssue({ identifier: "BLE-27" });
   expect((await cli("--json")).exitCode).toBe(0);
-  expect((await web("/")).body).toContain("BLE-27 BLE-27");
+  expect((await web("/")).body).toContain('<span class="num">BLE-27</span> BLE-27');
   world.linearFailure = "Linear down";
   expect((await cli()).exitCode).toBe(1);
 });
@@ -105,9 +105,9 @@ test("Linear Ready and GitHub Stackable issues share the Board, including a fail
   expect(board.issues).toEqual([{ issue: "BLE-27", title: "Linear Ready issue", repo: "bleentr/pdf-diff", base: "main" }]);
   expect(board.stackable).toEqual([{ issue: "bleentr/pdf-diff#7", title: "Stack this issue", blockers: [{ issue: "bleentr/pdf-diff#6", pr: "https://github.com/bleentr/pdf-diff/pull/16", base: "agent/blocker-6" }] }]);
   const page = (await web("/")).body;
-  expect(page).toContain("BLE-27 Linear Ready issue");
+  expect(page).toContain('<span class="num">BLE-27</span> Linear Ready issue');
   expect(page).toContain("<h3>Stackable</h3>");
-  expect(page).toContain("#7 Stack this issue");
+  expect(page).toContain('<span class="num">#7</span> Stack this issue');
 
   world.linearFailure = "Linear unavailable";
   const partial = await cli("board", "--json");
@@ -117,5 +117,5 @@ test("Linear Ready and GitHub Stackable issues share the Board, including a fail
   const partialPage = (await web("/")).body;
   expect(partialPage).toContain("Linear: Linear unavailable");
   expect(partialPage).toContain("<h3>Stackable</h3>");
-  expect(partialPage).toContain("#7 Stack this issue");
+  expect(partialPage).toContain('<span class="num">#7</span> Stack this issue');
 });

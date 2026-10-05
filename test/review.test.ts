@@ -273,7 +273,7 @@ describe("In flight on the web", () => {
     expect(fragment.body).toStartWith('<section class="in-flight" hx-get="/in-flight"');
     expect(fragment.body).not.toContain("<html");
     expect(fragment.body).toContain(
-      '<li><input type="checkbox" class="pick" name="issue" value="acme/api#7" form="batch" autocomplete="off" id="pick-acme-api-7" hx-preserve="true" aria-label="Select acme/api#7"> <a href="https://github.com/acme/api/issues/7">acme/api#7 Add retries</a> · claude opus high · base main · workspace w1 · PR ready · <a href="https://github.com/acme/api/pull/9">PR #9</a> · implementer <span class="agent">working</span>',
+      '<li class="flight">\n<div class="head"><input type="checkbox" class="pick" name="issue" value="acme/api#7" form="batch" autocomplete="off" id="pick-acme-api-7" hx-preserve="true" aria-label="Select acme/api#7"> <a class="title" href="https://github.com/acme/api/issues/7"><span class="num">api#7</span> Add retries</a><span class="stage pr-ready">PR ready</span><a class="pr" href="https://github.com/acme/api/pull/9">PR #9</a></div>\n<div class="meta"><span class="chip">claude · opus · high</span><span class="chip" title="Base"><svg class="icon" viewBox="0 0 12 12" aria-hidden="true"><circle cx="3" cy="2.5" r="1.5"/><circle cx="3" cy="9.5" r="1.5"/><circle cx="9" cy="3.5" r="1.5"/><path d="M3 4v4M9 5c0 2.5-6 1.5-6 3"/></svg>main</span><span class="chip" title="herdr workspace">w1</span><span class="agent working"><i></i>implementer working</span></div>',
     );
   });
 
@@ -303,7 +303,7 @@ describe("In flight on the web", () => {
   test("a blocked agent is highlighted", async () => {
     const { web, world } = await dispatched();
     world.agentStates.set("impl-api-7", "blocked");
-    expect((await web("/in-flight")).body).toContain('implementer <span class="agent blocked">blocked</span>');
+    expect((await web("/in-flight")).body).toContain('<span class="agent blocked"><i></i>implementer blocked</span>');
   });
 
   test("Launch review appears once a PR is linked, kept across polls, and launches the Reviewer", async () => {
@@ -331,8 +331,8 @@ describe("In flight on the web", () => {
 
     const after = (await web("/in-flight")).body;
     expect(after).not.toContain("Launch review");
-    expect(after).toContain("· Review launched · ");
-    expect(after).toContain('reviewer <span class="agent">working</span>');
+    expect(after).toContain('<span class="stage review-launched">Review launched</span>');
+    expect(after).toContain('<span class="agent working"><i></i>reviewer working</span>');
   });
 
   test("launching a review before a PR is linked is an error page with the CLI's help", async () => {
@@ -351,7 +351,8 @@ describe("In flight on the web", () => {
     expect((await web("/review", { method: "POST", body: form })).status).toBe(502);
 
     const { body } = await web("/in-flight");
-    expect(body).toContain('<span class="error">Failed at review agent start: agent_name_taken</span>');
+    expect(body).toContain('<span class="stage failed">Failed at review agent start</span>');
+    expect(body).toContain('<div class="notes"><p class="error">agent_name_taken</p></div>');
     expect(body).toContain('<form method="post" action="/review" class="dispatch">\n<input type="hidden" name="issue" value="acme/api#7">');
     expect(body).toContain('<input type="hidden" name="model" value="sonnet">');
   });

@@ -1,0 +1,870 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-05T20:38:36+00:00",
+  "title": "Design System: nico-agent",
+  "extensions": {
+    "colorMeta": {
+      "display-field": {
+        "role": "neutral",
+        "displayName": "Display Field",
+        "canonical": "oklch(15.8% 0.012 261)",
+        "tonalRamp": [
+          "#080b10",
+          "#21242a",
+          "#3f4349",
+          "#5f636a",
+          "#82868d",
+          "#a3a8af",
+          "#c6cbd2",
+          "#eaeff7"
+        ]
+      },
+      "display-ink": {
+        "role": "neutral",
+        "displayName": "Display Ink",
+        "canonical": "oklch(91.7% 0.011 257)",
+        "tonalRamp": [
+          "#080b10",
+          "#212429",
+          "#3f4348",
+          "#5f646a",
+          "#82878d",
+          "#a3a8af",
+          "#c6cbd2",
+          "#eaeff6"
+        ]
+      },
+      "display-ink-bright": {
+        "role": "neutral",
+        "displayName": "Display Ink Bright",
+        "canonical": "oklch(96.6% 0.005 258)",
+        "tonalRamp": [
+          "#0a0b0d",
+          "#232426",
+          "#414245",
+          "#626366",
+          "#848689",
+          "#a6a8ab",
+          "#c9cbcd",
+          "#edeff2"
+        ]
+      },
+      "display-ink-muted": {
+        "role": "neutral",
+        "displayName": "Display Ink Muted",
+        "canonical": "oklch(62.0% 0.026 258)",
+        "tonalRamp": [
+          "#050b16",
+          "#1c2430",
+          "#3a4350",
+          "#5a6472",
+          "#7d8796",
+          "#9ea9b8",
+          "#c1cbdc",
+          "#e5effe"
+        ]
+      },
+      "display-geometry": {
+        "role": "neutral",
+        "displayName": "Detector Geometry",
+        "canonical": "oklch(34.9% 0.030 256)",
+        "tonalRamp": [
+          "#040b18",
+          "#1a2533",
+          "#384353",
+          "#586475",
+          "#7b8799",
+          "#9ca9bb",
+          "#beccdf",
+          "#e5f0ff"
+        ]
+      },
+      "display-rule": {
+        "role": "neutral",
+        "displayName": "Readout Hairline",
+        "canonical": "oklch(24.6% 0.022 257)",
+        "tonalRamp": [
+          "#060b14",
+          "#1d242f",
+          "#3b434e",
+          "#5c6470",
+          "#7e8794",
+          "#9fa8b6",
+          "#c2cbd9",
+          "#e6effd"
+        ]
+      },
+      "implementing-signal": {
+        "role": "secondary",
+        "displayName": "Tracker Amber (signal)",
+        "canonical": "oklch(78.2% 0.158 72)",
+        "tonalRamp": [
+          "#130900",
+          "#341f01",
+          "#5c3a00",
+          "#875805",
+          "#b5770e",
+          "#e19619",
+          "#febc65",
+          "#ffebd4"
+        ]
+      },
+      "pr-ready-signal": {
+        "role": "secondary",
+        "displayName": "Calorimeter Green (signal)",
+        "canonical": "oklch(77.1% 0.179 153)",
+        "tonalRamp": [
+          "#001004",
+          "#002d13",
+          "#025028",
+          "#0c773f",
+          "#18a057",
+          "#25c76f",
+          "#59eb91",
+          "#c7ffd6"
+        ]
+      },
+      "review-signal": {
+        "role": "secondary",
+        "displayName": "Muon Blue (signal)",
+        "canonical": "oklch(74.6% 0.141 244)",
+        "tonalRamp": [
+          "#000c1a",
+          "#012640",
+          "#004670",
+          "#0668a3",
+          "#218dd4",
+          "#4cb0fa",
+          "#9bd1fe",
+          "#e1f1fe"
+        ]
+      },
+      "failed-signal": {
+        "role": "secondary",
+        "displayName": "Burst Red (signal)",
+        "canonical": "oklch(68.5% 0.204 24)",
+        "tonalRamp": [
+          "#1e0001",
+          "#4b0007",
+          "#800514",
+          "#b81224",
+          "#e74044",
+          "#fb7b75",
+          "#feb5af",
+          "#fee9e7"
+        ]
+      },
+      "blocked-signal": {
+        "role": "tertiary",
+        "displayName": "Attention Magenta (signal)",
+        "canonical": "oklch(71.5% 0.250 339)",
+        "tonalRamp": [
+          "#1b0014",
+          "#420235",
+          "#74005f",
+          "#a9088b",
+          "#dd27b7",
+          "#fd62d6",
+          "#ffabe5",
+          "#ffe6f6"
+        ]
+      },
+      "unknown-signal": {
+        "role": "neutral",
+        "displayName": "Unknown Grey (signal)",
+        "canonical": "oklch(55.9% 0.026 258)",
+        "tonalRamp": [
+          "#050b16",
+          "#1c2431",
+          "#3a4351",
+          "#5a6473",
+          "#7d8796",
+          "#9ea9b9",
+          "#c0cbdc",
+          "#e5efff"
+        ]
+      },
+      "implementing": {
+        "role": "secondary",
+        "displayName": "Tracker Amber",
+        "canonical": "oklch(61.0% 0.144 60)",
+        "tonalRamp": [
+          "#160700",
+          "#391c01",
+          "#633505",
+          "#925002",
+          "#c36d09",
+          "#e98f3d",
+          "#feba83",
+          "#ffeada"
+        ]
+      },
+      "implementing-ink": {
+        "role": "secondary",
+        "displayName": "Tracker Amber Ink",
+        "canonical": "oklch(49.4% 0.115 61)",
+        "tonalRamp": [
+          "#160700",
+          "#381c01",
+          "#623606",
+          "#915104",
+          "#b87436",
+          "#dc9658",
+          "#ffba80",
+          "#feeadb"
+        ]
+      },
+      "pr-ready": {
+        "role": "secondary",
+        "displayName": "Calorimeter Green",
+        "canonical": "oklch(54.9% 0.135 154)",
+        "tonalRamp": [
+          "#000f05",
+          "#002d14",
+          "#045029",
+          "#107641",
+          "#339d5e",
+          "#5ac07f",
+          "#7ee4a1",
+          "#c7fed7"
+        ]
+      },
+      "pr-ready-ink": {
+        "role": "secondary",
+        "displayName": "Calorimeter Green Ink",
+        "canonical": "oklch(46.5% 0.114 154)",
+        "tonalRamp": [
+          "#001004",
+          "#012d15",
+          "#07502a",
+          "#1d7544",
+          "#479a66",
+          "#6abd86",
+          "#8de0a8",
+          "#c6ffd6"
+        ]
+      },
+      "review": {
+        "role": "secondary",
+        "displayName": "Muon Blue",
+        "canonical": "oklch(54.4% 0.170 256)",
+        "tonalRamp": [
+          "#000a20",
+          "#01224d",
+          "#003f86",
+          "#065fc1",
+          "#3785ea",
+          "#6ca9fd",
+          "#a9cdfe",
+          "#e5f0fe"
+        ]
+      },
+      "review-ink": {
+        "role": "secondary",
+        "displayName": "Muon Blue Ink",
+        "canonical": "oklch(46.1% 0.143 257)",
+        "tonalRamp": [
+          "#000a21",
+          "#01224e",
+          "#044085",
+          "#2462b3",
+          "#4986db",
+          "#6ea9fc",
+          "#abcdfd",
+          "#e5f0ff"
+        ]
+      },
+      "failed": {
+        "role": "secondary",
+        "displayName": "Burst Red",
+        "canonical": "oklch(55.8% 0.205 26)",
+        "tonalRamp": [
+          "#1e0001",
+          "#4b0005",
+          "#800510",
+          "#b9121e",
+          "#e8403e",
+          "#fc7b72",
+          "#feb5ae",
+          "#fee9e6"
+        ]
+      },
+      "failed-ink": {
+        "role": "secondary",
+        "displayName": "Burst Red Ink",
+        "canonical": "oklch(49.0% 0.180 26)",
+        "tonalRamp": [
+          "#1f0001",
+          "#4a0205",
+          "#7f0a11",
+          "#b32225",
+          "#de4e49",
+          "#fd7a70",
+          "#fdb6ae",
+          "#ffe9e6"
+        ]
+      },
+      "blocked": {
+        "role": "tertiary",
+        "displayName": "Attention Magenta",
+        "canonical": "oklch(53.1% 0.225 337)",
+        "tonalRamp": [
+          "#1b0015",
+          "#420337",
+          "#730261",
+          "#a70c8e",
+          "#d43cb6",
+          "#fb63da",
+          "#feabe7",
+          "#fee6f7"
+        ]
+      },
+      "unknown": {
+        "role": "neutral",
+        "displayName": "Unknown Grey",
+        "canonical": "oklch(66.3% 0.024 257)",
+        "tonalRamp": [
+          "#050b15",
+          "#1d2530",
+          "#3a434f",
+          "#5b6471",
+          "#7d8795",
+          "#9ea9b7",
+          "#c1cbda",
+          "#e5f0ff"
+        ]
+      },
+      "fire": {
+        "role": "primary",
+        "displayName": "Ignition Amber",
+        "canonical": "oklch(77.8% 0.160 75)",
+        "tonalRamp": [
+          "#130900",
+          "#331f00",
+          "#5a3b03",
+          "#85590c",
+          "#b47801",
+          "#df970b",
+          "#fdbd61",
+          "#feebd3"
+        ]
+      },
+      "fire-hover": {
+        "role": "primary",
+        "displayName": "Ignition Amber Hover",
+        "canonical": "oklch(82.3% 0.161 77)",
+        "tonalRamp": [
+          "#130900",
+          "#332000",
+          "#5a3c02",
+          "#835a0a",
+          "#b07a15",
+          "#dd9802",
+          "#fdbe58",
+          "#feecd1"
+        ]
+      },
+      "fire-ink": {
+        "role": "primary",
+        "displayName": "Ignition Ink",
+        "canonical": "oklch(20.3% 0.042 79)",
+        "tonalRamp": [
+          "#120900",
+          "#2f210a",
+          "#4f4028",
+          "#706148",
+          "#94846a",
+          "#b6a58a",
+          "#dac8ac",
+          "#feeccf"
+        ]
+      },
+      "ground": {
+        "role": "neutral",
+        "displayName": "Ground",
+        "canonical": "oklch(96.9% 0.005 258)",
+        "tonalRamp": [
+          "#0a0b0d",
+          "#232426",
+          "#414245",
+          "#626366",
+          "#848689",
+          "#a6a8ab",
+          "#c9cbcd",
+          "#edeff1"
+        ]
+      },
+      "panel": {
+        "role": "neutral",
+        "displayName": "Panel",
+        "canonical": "oklch(100.0% 0.000 90)",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#242424",
+          "#424242",
+          "#636363",
+          "#868686",
+          "#a8a8a8",
+          "#cacaca",
+          "#eeeeee"
+        ]
+      },
+      "panel-raised": {
+        "role": "neutral",
+        "displayName": "Raised Panel",
+        "canonical": "oklch(95.7% 0.006 255)",
+        "tonalRamp": [
+          "#090b0e",
+          "#222427",
+          "#404346",
+          "#616367",
+          "#84868a",
+          "#a5a8ac",
+          "#c8cbcf",
+          "#eceff3"
+        ]
+      },
+      "rule": {
+        "role": "neutral",
+        "displayName": "Rule",
+        "canonical": "oklch(90.8% 0.011 257)",
+        "tonalRamp": [
+          "#080b10",
+          "#212429",
+          "#3f4348",
+          "#5f646a",
+          "#82878d",
+          "#a3a8af",
+          "#c6cbd2",
+          "#eaeff6"
+        ]
+      },
+      "rule-strong": {
+        "role": "neutral",
+        "displayName": "Strong Rule",
+        "canonical": "oklch(83.3% 0.016 257)",
+        "tonalRamp": [
+          "#070b12",
+          "#1f242c",
+          "#3d434b",
+          "#5e646d",
+          "#808790",
+          "#a1a8b2",
+          "#c4cbd5",
+          "#e8eff9"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "oklch(19.4% 0.014 258)",
+        "tonalRamp": [
+          "#080b11",
+          "#20242b",
+          "#3e434a",
+          "#5f646b",
+          "#81878f",
+          "#a2a8b0",
+          "#c5cbd4",
+          "#e9eff8"
+        ]
+      },
+      "ink-muted": {
+        "role": "neutral",
+        "displayName": "Muted Ink",
+        "canonical": "oklch(48.9% 0.028 256)",
+        "tonalRamp": [
+          "#040b17",
+          "#1b2531",
+          "#394351",
+          "#596473",
+          "#7c8797",
+          "#9da9b9",
+          "#bfccdd",
+          "#e4f0ff"
+        ]
+      },
+      "link": {
+        "role": "neutral",
+        "displayName": "Link Blue",
+        "canonical": "oklch(48.7% 0.160 259)",
+        "tonalRamp": [
+          "#000924",
+          "#002053",
+          "#023d8d",
+          "#215fbc",
+          "#4684e5",
+          "#71a8fd",
+          "#acccfe",
+          "#e6effe"
+        ]
+      },
+      "ground-dark": {
+        "role": "neutral",
+        "displayName": "Ground (dark)",
+        "canonical": "oklch(13.3% 0.008 254)",
+        "tonalRamp": [
+          "#090b0f",
+          "#212428",
+          "#3f4347",
+          "#606468",
+          "#83868b",
+          "#a4a8ad",
+          "#c7cbd0",
+          "#ebeff4"
+        ]
+      },
+      "panel-dark": {
+        "role": "neutral",
+        "displayName": "Panel (dark)",
+        "canonical": "oklch(16.7% 0.012 254)",
+        "tonalRamp": [
+          "#080b10",
+          "#20242a",
+          "#3e4349",
+          "#5f646a",
+          "#81878e",
+          "#a2a8b0",
+          "#c5cbd3",
+          "#e9eff7"
+        ]
+      },
+      "panel-raised-dark": {
+        "role": "neutral",
+        "displayName": "Raised Panel (dark)",
+        "canonical": "oklch(19.8% 0.016 257)",
+        "tonalRamp": [
+          "#070b12",
+          "#1f242c",
+          "#3d434b",
+          "#5d646d",
+          "#808790",
+          "#a1a8b2",
+          "#c4cbd5",
+          "#e8effa"
+        ]
+      },
+      "rule-dark": {
+        "role": "neutral",
+        "displayName": "Rule (dark)",
+        "canonical": "oklch(24.1% 0.022 257)",
+        "tonalRamp": [
+          "#060b14",
+          "#1d242f",
+          "#3b434e",
+          "#5c6470",
+          "#7e8794",
+          "#9fa8b6",
+          "#c2cbd9",
+          "#e5effe"
+        ]
+      },
+      "rule-strong-dark": {
+        "role": "neutral",
+        "displayName": "Strong Rule (dark)",
+        "canonical": "oklch(31.4% 0.029 257)",
+        "tonalRamp": [
+          "#040b17",
+          "#1b2532",
+          "#394352",
+          "#596474",
+          "#7b8798",
+          "#9ca9ba",
+          "#bfccde",
+          "#e5efff"
+        ]
+      },
+      "ink-dark": {
+        "role": "neutral",
+        "displayName": "Ink (dark)",
+        "canonical": "oklch(92.7% 0.009 258)",
+        "tonalRamp": [
+          "#090b0f",
+          "#212429",
+          "#3f4347",
+          "#606369",
+          "#83868c",
+          "#a4a8ae",
+          "#c7cbd1",
+          "#ebeff5"
+        ]
+      },
+      "ink-muted-dark": {
+        "role": "neutral",
+        "displayName": "Muted Ink (dark)",
+        "canonical": "oklch(67.3% 0.025 258)",
+        "tonalRamp": [
+          "#050b16",
+          "#1d2430",
+          "#3a4350",
+          "#5b6472",
+          "#7d8796",
+          "#9ea8b8",
+          "#c1cbdb",
+          "#e5efff"
+        ]
+      },
+      "link-dark": {
+        "role": "neutral",
+        "displayName": "Link Blue (dark)",
+        "canonical": "oklch(77.0% 0.118 258)",
+        "tonalRamp": [
+          "#000a21",
+          "#02224f",
+          "#124080",
+          "#3563a5",
+          "#5787cc",
+          "#78a9f1",
+          "#abcdfe",
+          "#e5effe"
+        ]
+      },
+      "failed-ink-dark": {
+        "role": "secondary",
+        "displayName": "Burst Red Ink (dark)",
+        "canonical": "oklch(71.2% 0.181 23)",
+        "tonalRamp": [
+          "#1f0002",
+          "#4a0109",
+          "#7f0819",
+          "#b4202e",
+          "#de4d50",
+          "#fe7876",
+          "#fdb5b1",
+          "#ffe9e7"
+        ]
+      },
+      "blocked-ink-dark": {
+        "role": "tertiary",
+        "displayName": "Blocked Ink (dark)",
+        "canonical": "oklch(14.9% 0.066 336)",
+        "tonalRamp": [
+          "#1a0015",
+          "#371630",
+          "#583450",
+          "#7b5572",
+          "#a07795",
+          "#c398b8",
+          "#e7bbdb",
+          "#ffe6f8"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "brand": {
+        "displayName": "Brand",
+        "purpose": "Wordmark beside the detector glyph."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Page title in muted ink after a '/' separator."
+      },
+      "readout": {
+        "displayName": "Readout",
+        "purpose": "Legend counts in the event display readout."
+      },
+      "lede": {
+        "displayName": "Lede",
+        "purpose": "The one explanatory sentence in the readout, max 34ch."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Section headings (Repo slug, In flight)."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Issue titles and page text; tabular numerals."
+      },
+      "control": {
+        "displayName": "Control",
+        "purpose": "Buttons and selects; 600 on amber fire buttons."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Stage keys, counts, Stackable sub-headings."
+      },
+      "mono": {
+        "displayName": "Mono",
+        "purpose": "Identifiers only: issue keys, branches, launch triples, workspace names, code."
+      },
+      "display-label": {
+        "displayName": "Display Label",
+        "purpose": "Track labels and subdetector key inside the SVG, haloed in the display field."
+      }
+    },
+    "shadows": [
+      {
+        "name": "ambient-panel",
+        "value": "0 1px 2px rgb(17 21 27 / 0.06), 0 4px 14px -6px rgb(17 21 27 / 0.08)",
+        "purpose": "Light scheme only, on sections and the event display; none in dark."
+      }
+    ],
+    "motion": [
+      {
+        "name": "track-redraw",
+        "value": "stroke-dashoffset 1 to 0, 900ms cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "The one authored motion: a track redraws from the vertex when its Stage advances. Skipped under prefers-reduced-motion."
+      },
+      {
+        "name": "state-transition",
+        "value": "120ms",
+        "purpose": "Border, background and colour changes on controls and rows."
+      },
+      {
+        "name": "track-dim",
+        "value": "opacity 160ms",
+        "purpose": "Unlit tracks fade to 22% while one is hovered."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "animation: none; transition: none",
+        "purpose": "prefers-reduced-motion disables every transition and the redraw; track click scrolls without smoothing."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "narrow",
+        "value": "760px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Fire Button",
+      "kind": "button",
+      "refersTo": "button-fire",
+      "description": "Starts a track: Dispatch, or Retry of a failed Dispatch.",
+      "html": "<button class=\"ds-btn ds-btn-fire\">Dispatch</button>",
+      "css": ":host{--ground:#f3f5f8;--panel:#fff;--panel-2:#eef1f5;--rule:#dce1e8;--rule-strong:#c2c9d3;--ink:#11151b;--ink-2:#566170;--link:#1d5bb8;--implementing:#c06a00;--implementing-ink:#8f4f00;--pr-ready:#10874a;--pr-ready-ink:#0b6b3a;--review:#1c6dd0;--review-ink:#1756a6;--failed:#d1262b;--failed-ink:#b01e22;--blocked:#b5129a;--blocked-ink:#fff;--fire:#f2a516;--fire-hover:#ffb52e;--fire-ink:#211400;--display:#0a0d12;font:14px/1.45 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;color:var(--ink)} .ds-btn{display:inline-flex;align-items:center;gap:.35rem;height:28px;padding:0 .6rem;font:500 13px system-ui,sans-serif;color:var(--ink);background:var(--panel-2);border:1px solid var(--rule-strong);border-radius:4px;cursor:pointer;transition:border-color 120ms,background-color 120ms,color 120ms} .ds-btn:hover{border-color:var(--ink-2)} .ds-btn:focus-visible{outline:2px solid var(--link);outline-offset:2px} .ds-btn-fire{background:var(--fire);border-color:var(--fire);color:var(--fire-ink);font-weight:600} .ds-btn-fire:hover{background:var(--fire-hover);border-color:var(--fire-hover)}"
+    },
+    {
+      "name": "Review Button",
+      "kind": "button",
+      "refersTo": "button-review",
+      "description": "Launch review, or Retry of a failed review; outlined in Muon Blue.",
+      "html": "<button class=\"ds-btn ds-btn-review\">Launch review</button>",
+      "css": ":host{--ground:#f3f5f8;--panel:#fff;--panel-2:#eef1f5;--rule:#dce1e8;--rule-strong:#c2c9d3;--ink:#11151b;--ink-2:#566170;--link:#1d5bb8;--implementing:#c06a00;--implementing-ink:#8f4f00;--pr-ready:#10874a;--pr-ready-ink:#0b6b3a;--review:#1c6dd0;--review-ink:#1756a6;--failed:#d1262b;--failed-ink:#b01e22;--blocked:#b5129a;--blocked-ink:#fff;--fire:#f2a516;--fire-hover:#ffb52e;--fire-ink:#211400;--display:#0a0d12;font:14px/1.45 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;color:var(--ink)} .ds-btn{display:inline-flex;align-items:center;gap:.35rem;height:28px;padding:0 .6rem;font:500 13px system-ui,sans-serif;color:var(--ink);background:var(--panel-2);border:1px solid var(--rule-strong);border-radius:4px;cursor:pointer;transition:border-color 120ms,background-color 120ms,color 120ms} .ds-btn:hover{border-color:var(--ink-2)} .ds-btn:focus-visible{outline:2px solid var(--link);outline-offset:2px} .ds-btn-review{border-color:var(--review);color:var(--review-ink)} .ds-btn-review:hover{background:color-mix(in srgb,var(--review) 14%,var(--panel));border-color:var(--review)}"
+    },
+    {
+      "name": "Close Button",
+      "kind": "button",
+      "refersTo": "button-close",
+      "description": "Default button with muted text that turns red on hover.",
+      "html": "<button class=\"ds-btn ds-btn-close\">Close</button>",
+      "css": ":host{--ground:#f3f5f8;--panel:#fff;--panel-2:#eef1f5;--rule:#dce1e8;--rule-strong:#c2c9d3;--ink:#11151b;--ink-2:#566170;--link:#1d5bb8;--implementing:#c06a00;--implementing-ink:#8f4f00;--pr-ready:#10874a;--pr-ready-ink:#0b6b3a;--review:#1c6dd0;--review-ink:#1756a6;--failed:#d1262b;--failed-ink:#b01e22;--blocked:#b5129a;--blocked-ink:#fff;--fire:#f2a516;--fire-hover:#ffb52e;--fire-ink:#211400;--display:#0a0d12;font:14px/1.45 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;color:var(--ink)} .ds-btn{display:inline-flex;align-items:center;gap:.35rem;height:28px;padding:0 .6rem;font:500 13px system-ui,sans-serif;color:var(--ink);background:var(--panel-2);border:1px solid var(--rule-strong);border-radius:4px;cursor:pointer;transition:border-color 120ms,background-color 120ms,color 120ms} .ds-btn:hover{border-color:var(--ink-2)} .ds-btn:focus-visible{outline:2px solid var(--link);outline-offset:2px} .ds-btn-close{color:var(--ink-2)} .ds-btn-close:hover{color:var(--failed-ink);border-color:var(--failed)}"
+    },
+    {
+      "name": "Select",
+      "kind": "input",
+      "refersTo": "select",
+      "description": "Launch-form field (Base, Harness, model, Effort).",
+      "html": "<select class=\"ds-select\"><option>opus</option><option>sonnet</option></select>",
+      "css": ":host{--ground:#f3f5f8;--panel:#fff;--panel-2:#eef1f5;--rule:#dce1e8;--rule-strong:#c2c9d3;--ink:#11151b;--ink-2:#566170;--link:#1d5bb8;--implementing:#c06a00;--implementing-ink:#8f4f00;--pr-ready:#10874a;--pr-ready-ink:#0b6b3a;--review:#1c6dd0;--review-ink:#1756a6;--failed:#d1262b;--failed-ink:#b01e22;--blocked:#b5129a;--blocked-ink:#fff;--fire:#f2a516;--fire-hover:#ffb52e;--fire-ink:#211400;--display:#0a0d12;font:14px/1.45 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;color:var(--ink)} .ds-select{height:28px;width:7.5rem;padding:0 .3rem;font:13px system-ui,sans-serif;color:var(--ink);background:var(--panel);border:1px solid var(--rule-strong);border-radius:4px;transition:border-color 120ms} .ds-select:hover{border-color:var(--ink-2)} .ds-select:focus-visible{outline:2px solid var(--link);outline-offset:2px}"
+    },
+    {
+      "name": "Chips",
+      "kind": "chip",
+      "refersTo": "chip",
+      "description": "Monospace identifier chips: launch triple, Base with the drawn branch icon, workspace.",
+      "html": "<span class=\"ds-chip\">claude · opus · high</span> <span class=\"ds-chip\" title=\"Base\"><svg class=\"ds-icon\" viewBox=\"0 0 12 12\" aria-hidden=\"true\"><circle cx=\"3\" cy=\"2.5\" r=\"1.5\"/><circle cx=\"3\" cy=\"9.5\" r=\"1.5\"/><circle cx=\"9\" cy=\"3.5\" r=\"1.5\"/><path d=\"M3 4v4M9 5c0 2.5-6 1.5-6 3\"/></svg>main</span> <span class=\"ds-chip\">w1</span>",
+      "css": ":host{--ground:#f3f5f8;--panel:#fff;--panel-2:#eef1f5;--rule:#dce1e8;--rule-strong:#c2c9d3;--ink:#11151b;--ink-2:#566170;--link:#1d5bb8;--implementing:#c06a00;--implementing-ink:#8f4f00;--pr-ready:#10874a;--pr-ready-ink:#0b6b3a;--review:#1c6dd0;--review-ink:#1756a6;--failed:#d1262b;--failed-ink:#b01e22;--blocked:#b5129a;--blocked-ink:#fff;--fire:#f2a516;--fire-hover:#ffb52e;--fire-ink:#211400;--display:#0a0d12;font:14px/1.45 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;color:var(--ink)} .ds-chip{display:inline-flex;align-items:center;gap:.3rem;font:12px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink-2);background:var(--panel-2);border:1px solid var(--rule);border-radius:3px;padding:0 .4rem;line-height:20px;white-space:nowrap} .ds-icon{width:11px;height:11px;fill:none;stroke:currentColor;stroke-width:1.2;stroke-linecap:round;flex:none}"
+    },
+    {
+      "name": "Stage Key",
+      "kind": "custom",
+      "description": "A Stage shown as its track's legend key: 14x2 bar plus coloured label. Never a pill.",
+      "html": "<span class=\"ds-stage ds-implementing\">Implementing</span> <span class=\"ds-stage ds-pr-ready\">PR ready</span> <span class=\"ds-stage ds-review\">Review launched</span> <span class=\"ds-stage ds-failed\">Failed</span>",
+      "css": ":host{--ground:#f3f5f8;--panel:#fff;--panel-2:#eef1f5;--rule:#dce1e8;--rule-strong:#c2c9d3;--ink:#11151b;--ink-2:#566170;--link:#1d5bb8;--implementing:#c06a00;--implementing-ink:#8f4f00;--pr-ready:#10874a;--pr-ready-ink:#0b6b3a;--review:#1c6dd0;--review-ink:#1756a6;--failed:#d1262b;--failed-ink:#b01e22;--blocked:#b5129a;--blocked-ink:#fff;--fire:#f2a516;--fire-hover:#ffb52e;--fire-ink:#211400;--display:#0a0d12;font:14px/1.45 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;color:var(--ink)} .ds-stage{--c:#8a94a2;display:inline-flex;align-items:center;gap:.45rem;font:650 12px system-ui,sans-serif;white-space:nowrap;color:var(--c-ink,var(--ink-2));margin-right:.75rem} .ds-stage::before{content:'';width:14px;height:2px;border-radius:1px;background:var(--c)} .ds-implementing{--c:var(--implementing);--c-ink:var(--implementing-ink)} .ds-pr-ready{--c:var(--pr-ready);--c-ink:var(--pr-ready-ink)} .ds-review{--c:var(--review);--c-ink:var(--review-ink)} .ds-failed{--c:var(--failed);--c-ink:var(--failed-ink)}"
+    },
+    {
+      "name": "Agent State",
+      "kind": "custom",
+      "refersTo": "agent-blocked",
+      "description": "Ring dot plus role and state; Agent blocked is the one filled magenta badge.",
+      "html": "<span class=\"ds-agent ds-working\"><i></i>implementer working</span> <span class=\"ds-agent ds-blocked\"><i></i>implementer blocked</span>",
+      "css": ":host{--ground:#f3f5f8;--panel:#fff;--panel-2:#eef1f5;--rule:#dce1e8;--rule-strong:#c2c9d3;--ink:#11151b;--ink-2:#566170;--link:#1d5bb8;--implementing:#c06a00;--implementing-ink:#8f4f00;--pr-ready:#10874a;--pr-ready-ink:#0b6b3a;--review:#1c6dd0;--review-ink:#1756a6;--failed:#d1262b;--failed-ink:#b01e22;--blocked:#b5129a;--blocked-ink:#fff;--fire:#f2a516;--fire-hover:#ffb52e;--fire-ink:#211400;--display:#0a0d12;font:14px/1.45 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;color:var(--ink)} .ds-agent{display:inline-flex;align-items:center;gap:.4rem;font-size:12px;color:var(--ink-2);padding:0 .3rem;line-height:20px} .ds-agent i{width:7px;height:7px;border-radius:50%;border:1.5px solid var(--rule-strong)} .ds-working i{border-color:var(--ink);background:var(--ink)} .ds-blocked{color:var(--blocked-ink);background:var(--blocked);border-radius:3px;padding:0 .45rem;font-weight:650} .ds-blocked i{border-color:var(--blocked-ink);background:var(--blocked-ink)}"
+    },
+    {
+      "name": "Section Panel",
+      "kind": "card",
+      "refersTo": "section-panel",
+      "description": "Repo or In flight section: raised header strip with bordered count, hairline-divided rows.",
+      "html": "<section class=\"ds-section\"><header><h2>acme/api</h2><span class=\"ds-count\">2</span></header><ul><li><span class=\"ds-num\">#21</span> Structured logging for background jobs</li><li><span class=\"ds-num\">#22</span> Retry budget per downstream service</li></ul></section>",
+      "css": ":host{--ground:#f3f5f8;--panel:#fff;--panel-2:#eef1f5;--rule:#dce1e8;--rule-strong:#c2c9d3;--ink:#11151b;--ink-2:#566170;--link:#1d5bb8;--implementing:#c06a00;--implementing-ink:#8f4f00;--pr-ready:#10874a;--pr-ready-ink:#0b6b3a;--review:#1c6dd0;--review-ink:#1756a6;--failed:#d1262b;--failed-ink:#b01e22;--blocked:#b5129a;--blocked-ink:#fff;--fire:#f2a516;--fire-hover:#ffb52e;--fire-ink:#211400;--display:#0a0d12;font:14px/1.45 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;color:var(--ink)} .ds-section{background:var(--panel);border:1px solid var(--rule);border-radius:6px;overflow:hidden;box-shadow:0 1px 2px rgb(17 21 27/.06),0 4px 14px -6px rgb(17 21 27/.08)} .ds-section header{display:flex;align-items:center;gap:.6rem;padding:.65rem 1rem;border-bottom:1px solid var(--rule);background:var(--panel-2)} .ds-section h2{margin:0;font-size:14px;font-weight:650;letter-spacing:-.005em} .ds-count{font-size:12px;font-weight:600;color:var(--ink-2);border:1px solid var(--rule-strong);border-radius:3px;padding:0 .35rem;line-height:18px} .ds-section ul{list-style:none;margin:0;padding:0} .ds-section li{padding:.45rem 1rem;min-height:44px;display:flex;align-items:center;border-top:1px solid var(--rule);transition:background-color 120ms} .ds-section li:first-child{border-top:none} .ds-section li:hover{background:var(--panel-2)} .ds-num{color:var(--ink-2);font:12px ui-monospace,SFMono-Regular,Menlo,monospace;margin-right:.3rem}"
+    },
+    {
+      "name": "Event Readout",
+      "kind": "custom",
+      "refersTo": "event-display",
+      "description": "The display field with a detector, one track per Stage, and the legend readout; fixed dark in both schemes.",
+      "html": "<figure class=\"ds-event\"><svg viewBox=\"-80 -80 160 160\" aria-hidden=\"true\"><g fill=\"none\"><circle r=\"14\"/><circle r=\"26\"/><circle r=\"38\"/><circle class=\"ds-ecal\" r=\"54\" stroke-width=\"10\" pathLength=\"360\" stroke-dasharray=\"6.5 1\"/><circle class=\"ds-muon\" r=\"72\" stroke-width=\"5\" pathLength=\"360\" stroke-dasharray=\"26 4\"/></g><path class=\"ds-trk\" style=\"--c:#f5a524\" d=\"M0 0 Q10 -18 8 -36\"/><path class=\"ds-trk\" style=\"--c:#3bd47b\" d=\"M0 0 Q20 4 48 10\"/><path class=\"ds-trk\" style=\"--c:#52b5ff\" d=\"M0 0 Q-14 18 -55 50\"/><circle r=\"2\" fill=\"#f4f6f9\"/></svg><dl><div style=\"--c:#f5a524\"><dt><i></i>Implementing</dt><dd>2</dd></div><div style=\"--c:#3bd47b\"><dt><i></i>PR ready</dt><dd>1</dd></div><div style=\"--c:#52b5ff\"><dt><i></i>Review launched</dt><dd>1</dd></div><div style=\"--c:#ff5757\"><dt><i></i>Failed</dt><dd>0</dd></div></dl></figure>",
+      "css": ":host{--ground:#f3f5f8;--panel:#fff;--panel-2:#eef1f5;--rule:#dce1e8;--rule-strong:#c2c9d3;--ink:#11151b;--ink-2:#566170;--link:#1d5bb8;--implementing:#c06a00;--implementing-ink:#8f4f00;--pr-ready:#10874a;--pr-ready-ink:#0b6b3a;--review:#1c6dd0;--review-ink:#1756a6;--failed:#d1262b;--failed-ink:#b01e22;--blocked:#b5129a;--blocked-ink:#fff;--fire:#f2a516;--fire-hover:#ffb52e;--fire-ink:#211400;--display:#0a0d12;font:14px/1.45 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;color:var(--ink)} .ds-event{display:grid;grid-template-columns:140px 1fr;gap:1.5rem;align-items:center;margin:0;padding:1rem;background:var(--display);border-radius:6px;color:#dfe4eb} .ds-event svg circle{stroke:#303b4a;stroke-width:.7} .ds-event .ds-ecal{stroke:color-mix(in srgb,#3bd47b 34%,#303b4a)} .ds-event .ds-muon{stroke:#3a4655} .ds-trk{fill:none;stroke:var(--c);stroke-width:1.8;stroke-linecap:round;transition:stroke-width 160ms} .ds-trk:hover{stroke-width:2.4} .ds-event dl{display:grid;grid-template-columns:1fr 1fr;gap:.15rem 1.5rem;margin:0} .ds-event dl>div{display:flex;justify-content:space-between;align-items:baseline;padding:.35rem 0;border-bottom:1px solid #1a212b} .ds-event dt{display:inline-flex;align-items:center;gap:.55rem;font-size:13px;color:#b9c1cc} .ds-event dt i{width:16px;height:2px;border-radius:1px;background:var(--c)} .ds-event dd{margin:0;font-size:18px;font-weight:600;color:#f2f4f7;font-variant-numeric:tabular-nums}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Event Display",
+    "overview": "The Board reads In-flight work the way a particle physicist reads a collision: a detector seen end-on, with one track per Dispatch leaving the vertex and reaching as far out as its Stage. Implementing stops inside the tracker, PR ready deposits a tower in the electromagnetic calorimeter, Review launched punches through to the muon stations, and Failed ends in a burst. The display is for reading at a glance; the rows below it are where the user acts, and the two are linked by hover.\n\nEverything outside the display is a quiet operational surface: system sans, hairline rules, 3 to 6px corners, flat panels, and colour that only ever means Stage, Agent blocked, or \"start a track\". The instrument is literal geometry, not costume. There is no HUD chrome, no neon glow, no scanlines, and nothing loops.\n\nThe surface is dense, monitor-grade, and built for a tab left open all day. It must stay at least as scannable as a plain status table.",
+    "keyCharacteristics": [
+      "A fixed dark instrument canvas (the display field) in both colour schemes.",
+      "One hue per Stage, shared by track, legend key, and row.",
+      "Magenta reserved for Agent blocked; amber fill reserved for starting a track.",
+      "System sans for UI; monospace only for identifiers.",
+      "Hairline rules, small radii, flat surfaces, a single authored motion."
+    ],
+    "rules": [
+      {
+        "name": "The Fixed Instrument Rule",
+        "body": "The display field stays #0a0d12 in both schemes, and inside it the Stage hues are always the signal values. Only the page around it changes with the scheme.",
+        "section": "colors"
+      },
+      {
+        "name": "The Stage Owns Its Hue Rule",
+        "body": "Amber, green, blue, and red mean Implementing, PR ready, Review launched, and Failed, in that order, everywhere they appear. A Stage nico-agent cannot read is grey, dashed on its track.",
+        "section": "colors"
+      },
+      {
+        "name": "The Magenta Means Waiting Rule",
+        "body": "Magenta marks an agent waiting on the user, and nothing else.",
+        "section": "colors"
+      },
+      {
+        "name": "The Amber Starts a Track Rule",
+        "body": "A filled amber button starts a track: Dispatch, or Retry of a failed Dispatch. Review actions, including a review's Retry, are outlined in Muon Blue. Close is muted and turns red on hover.",
+        "section": "colors"
+      },
+      {
+        "name": "The Identifier Rule",
+        "body": "Monospace is only for identifiers: issue keys, branches, launch triples, workspace names, and code. Prose, labels, Stage names, and buttons stay in sans.",
+        "section": "typography"
+      },
+      {
+        "name": "The No Glow Rule",
+        "body": "Emphasis comes from stroke weight, opacity, and hue, never from blur or glow. A lit track thickens to 2.4 while the others drop to 22% opacity, and a blocked tip gets a 1.5px ring.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Drawn Icon Rule",
+        "body": "Every icon is drawn as inline SVG in the glyph's stroke language. Never use a Unicode glyph, an emoji, or an icon font in place of an icon.",
+        "section": "components"
+      }
+    ],
+    "dos": [
+      "**Do** keep the display field #0a0d12 and the signal Stage hues in both colour schemes.",
+      "**Do** show a Stage as its legend key (a 14×2px bar plus coloured label) wherever it appears outside the display.",
+      "**Do** reserve the amber fill for actions that start a track (Dispatch, Retry of a failed Dispatch).",
+      "**Do** use monospace only for issue keys, branches, launch triples, workspace names, and code.",
+      "**Do** keep corners between 3 and 6px and dividers at 1px.",
+      "**Do** derive a track's angle from its issue hash and nudge it clear of neighbours and the ring key, so tracks hold still across polls.",
+      "**Do** gate the track redraw and smooth scroll behind prefers-reduced-motion."
+    ],
+    "donts": [
+      "**Don't** use magenta for anything but Agent blocked.",
+      "**Don't** reuse a Stage hue for a meaning other than its Stage.",
+      "**Don't** add infinite or looping animation. The only authored motion is a track redrawing when its Stage advances.",
+      "**Don't** add HUD chrome, neon glow, or scanlines. The detector is plain grey geometry.",
+      "**Don't** render Stage as a filled pill. The filled badge belongs to Agent blocked alone.",
+      "**Don't** load external fonts, images, or icon sets. Every mark is inline SVG or CSS.",
+      "**Don't** stand a Unicode glyph in for an icon. Draw it as inline SVG with a currentColor stroke and round caps."
+    ]
+  }
+}

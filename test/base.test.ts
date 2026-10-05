@@ -166,7 +166,7 @@ test("the Board shows the Base of every Ready, Stackable and In-flight issue", a
   expect(board.dispatches[0]).toMatchObject({ issue: "acme/api#9", base: "beta" });
 
   const { body } = await web("/");
-  expect(body).toContain("base beta");
+  expect(body).toContain('<span class="chip" title="Base"><svg class="icon" viewBox="0 0 12 12" aria-hidden="true"><circle cx="3" cy="2.5" r="1.5"/><circle cx="3" cy="9.5" r="1.5"/><circle cx="9" cy="3.5" r="1.5"/><path d="M3 4v4M9 5c0 2.5-6 1.5-6 3"/></svg>beta</span>');
 });
 
 test("a failed branch listing is reported per Repo and still shows its issues", async () => {
