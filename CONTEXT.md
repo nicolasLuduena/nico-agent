@@ -50,6 +50,11 @@ worktree, from creation until it is Closed. An issue has at most one live
 Dispatch.
 _Avoid_: Job, run, task
 
+**Base**:
+The branch a Dispatch's worktree starts from and its PR targets, chosen per
+Dispatch. A Stacked dispatch's Base is its Blocker's PR head branch.
+_Avoid_: Target branch, trunk
+
 **Stacked dispatch**:
 A Dispatch of a Stackable issue, started on the head branch of its Blocker's
 PR so its PR joins that stack.
@@ -90,7 +95,8 @@ _Avoid_: Lock, reserve
 
 **Close**:
 Ending a Dispatch: removing its worktree and workspace and forgetting it.
-Allowed once its PR is merged or closed, otherwise only with confirmation.
+Allowed once it has a PR. While it is still Implementing, Close needs
+confirmation.
 _Avoid_: Cleanup, archive, delete
 
 ### Harnesses
