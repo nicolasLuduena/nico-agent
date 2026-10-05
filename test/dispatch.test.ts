@@ -164,7 +164,7 @@ describe("dispatch", () => {
   test("rejects an unknown Harness or model before any outside-world call", async () => {
     const { cli, world } = await withRepo();
     const cases: [string[], string, string][] = [
-      [["--harness", "pi", "--model", "opus", "--effort", "high"], "unknown Harness `pi`", "Valid Harnesses: claude, codex"],
+      [["--harness", "pi", "--model", "opus", "--effort", "high"], "unknown Harness `pi`", "Valid Harnesses: claude, codex, opencode2"],
       [["--harness", "claude", "--model", "gpt", "--effort", "high"], "unknown model `gpt` for claude", "Valid models for claude: fable, opus, sonnet, haiku"],
     ];
     for (const [flags, error, help] of cases) {
@@ -383,7 +383,7 @@ describe("web dispatch", () => {
     const { body } = await web("/");
     expect(body).toContain('<form method="post" action="/dispatch" class="dispatch">');
     expect(body).toContain('<input type="hidden" name="issue" value="acme/api#7">');
-    expect(body).toContain('<option selected>claude</option><option>codex</option></select>');
+    expect(body).toContain('<option selected>claude</option><option>codex</option><option>opencode2</option></select>');
     expect(body).toContain(
       '<option selected>fable</option><option>opus</option><option>sonnet</option><option>haiku</option></select>',
     );

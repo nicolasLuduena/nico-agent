@@ -1,0 +1,223 @@
+{
+  "location": {
+    "directory": "/home/user"
+  },
+  "data": [
+    {
+      "id": "deepseek-v4.1-flash",
+      "modelID": "deepseek-v4.1-flash",
+      "providerID": "opencode-go",
+      "family": "deepseek-flash",
+      "name": "DeepSeek V4.1 Flash",
+      "compatibility": {
+        "reasoningField": "reasoning_content"
+      },
+      "package": "@opencode/ai/providers/openai-compatible",
+      "settings": {
+        "baseURL": "https://opencode.ai/zen/go/v1",
+        "provider": "opencode-go"
+      },
+      "capabilities": {
+        "tools": true,
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "variants": [
+        {
+          "id": "low",
+          "settings": {
+            "reasoningEffort": "low"
+          }
+        },
+        {
+          "id": "high",
+          "settings": {
+            "reasoningEffort": "high"
+          }
+        },
+        {
+          "id": "max",
+          "settings": {
+            "reasoningEffort": "max"
+          }
+        }
+      ],
+      "time": {
+        "released": 1788998400000
+      },
+      "cost": [
+        {
+          "input": 0.15,
+          "output": 0.6,
+          "cache": {
+            "read": 0.003,
+            "write": 0
+          }
+        }
+      ],
+      "status": "active",
+      "enabled": true,
+      "limit": {
+        "context": 1000000,
+        "output": 384000
+      }
+    },
+    {
+      "id": "fledge-alpha-free",
+      "modelID": "fledge-alpha-free",
+      "providerID": "opencode",
+      "name": "Fledge Alpha Free",
+      "package": "@opencode/ai/providers/openai-compatible",
+      "settings": {
+        "apiKey": "public",
+        "baseURL": "https://opencode.ai/zen/v1",
+        "provider": "opencode"
+      },
+      "capabilities": {
+        "tools": true,
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "variants": [
+        {
+          "id": "low",
+          "settings": {
+            "reasoningEffort": "low"
+          }
+        },
+        {
+          "id": "high",
+          "settings": {
+            "reasoningEffort": "high"
+          }
+        },
+        {
+          "id": "max",
+          "settings": {
+            "reasoningEffort": "max"
+          }
+        }
+      ],
+      "time": {
+        "released": 1790812800000
+      },
+      "cost": [
+        {
+          "input": 0,
+          "output": 0,
+          "cache": {
+            "read": 0,
+            "write": 0
+          }
+        }
+      ],
+      "status": "active",
+      "enabled": true,
+      "limit": {
+        "context": 1048576,
+        "output": 131072
+      }
+    },
+    {
+      "id": "unbiased/pareto-26.10-preview",
+      "modelID": "unbiased/pareto-26.10-preview",
+      "providerID": "openrouter",
+      "name": "Pareto 26.10 Preview",
+      "package": "@opencode/ai/providers/openrouter",
+      "settings": {
+        "baseURL": "https://openrouter.ai/api/v1"
+      },
+      "headers": {
+        "HTTP-Referer": "https://opencode.ai/",
+        "X-Title": "opencode"
+      },
+      "capabilities": {
+        "tools": true,
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "variants": [],
+      "time": {
+        "released": 1790812800000
+      },
+      "cost": [
+        {
+          "input": 0.8,
+          "output": 3.2,
+          "cache": {
+            "read": 0.03,
+            "write": 0
+          }
+        }
+      ],
+      "status": "active",
+      "enabled": true,
+      "limit": {
+        "context": 1048576,
+        "output": 131072
+      }
+    },
+    {
+      "id": "mimo-v2.6-pro",
+      "modelID": "mimo-v2.6-pro",
+      "providerID": "opencode-go",
+      "family": "mimo",
+      "name": "MiMo-V2.6-Pro",
+      "compatibility": {
+        "reasoningField": "reasoning_content"
+      },
+      "package": "@opencode/ai/providers/openai-compatible",
+      "settings": {
+        "baseURL": "https://opencode.ai/zen/go/v1",
+        "provider": "opencode-go"
+      },
+      "capabilities": {
+        "tools": true,
+        "input": [
+          "text",
+          "image",
+          "audio",
+          "video"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "variants": [],
+      "time": {
+        "released": 1790035200000
+      },
+      "cost": [
+        {
+          "input": 0.435,
+          "output": 0.87,
+          "cache": {
+            "read": 0.003625,
+            "write": 0
+          }
+        }
+      ],
+      "status": "active",
+      "enabled": false,
+      "limit": {
+        "context": 1048576,
+        "output": 131072
+      }
+    }
+  ]
+}

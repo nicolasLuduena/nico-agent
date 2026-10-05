@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { type Discovery, type HarnessConfig, harnessConfigs, loadConfig, writeJson } from "./config";
+import { parseOpencodeModels } from "./opencode";
 import { type World, WorldError } from "./world";
 
 /** A coding-agent CLI nico-agent can launch, as configured. */
@@ -128,7 +129,7 @@ async function catalogOf(world: World, configDir: string, cache: Cache, harness:
   let error: string | undefined;
   if (discovery && (refresh || (!discovered && !(models && efforts)))) {
     try {
-      discovered = { discoveredAt: world.now().toISOString(), models: await discover(world, discovery) };
+      discovered = { discoveredAt: world.now().toISOString(), models: await discover(world, harness, discovery) };
       cache[harness.name] = discovered;
       writeJson(configDir, CACHE_FILE, cache);
     } catch (e) {
@@ -143,10 +144,12 @@ async function catalogOf(world: World, configDir: string, cache: Cache, harness:
   return { harness, models: choices, source, ...(error && { error }) };
 }
 
-async function discover(world: World, discovery: Discovery): Promise<ModelChoice[]> {
+async function discover(world: World, harness: Harness, discovery: Discovery): Promise<ModelChoice[]> {
   switch (discovery) {
     case "codex":
       return parseCodexModels(await world.codexModels());
+    case "opencode2":
+      return parseOpencodeModels(await world.opencodeModels(harness.command ?? "opencode2"));
   }
 }
 

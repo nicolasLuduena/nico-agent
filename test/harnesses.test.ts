@@ -20,6 +20,14 @@ function writeConfig(configDir: string, config: Record<string, unknown>) {
 }
 
 const CLAUDE_EFFORTS = ["low", "medium", "high", "xhigh", "max"];
+const DISCOVERIES = ["codex debug models", "opencode2 api model.list"];
+
+/** The enabled models of the recorded opencode2 catalog. */
+const OPENCODE_MODELS = [
+  { model: "opencode-go/deepseek-v4.1-flash", efforts: ["low", "high", "max"] },
+  { model: "opencode/fledge-alpha-free", efforts: ["low", "high", "max"] },
+  { model: "openrouter/unbiased/pareto-26.10-preview", efforts: ["default"] },
+];
 const CODEX_EFFORTS = [...CLAUDE_EFFORTS, "ultra"];
 
 /** The listed codex models of the recorded catalog, in its order, without the hidden ones. */
@@ -105,7 +113,7 @@ describe("harness list", () => {
     const { exitCode, json } = await cli("harness", "list", "--json");
     expect(exitCode).toBe(0);
     expect(json()).toEqual({
-      count: 2,
+      count: 3,
       harnesses: [
         {
           name: "claude",
@@ -123,6 +131,14 @@ describe("harness list", () => {
           models: CODEX_MODELS,
           source: "discovered 2026-09-30T12:00:00.000Z",
         },
+        {
+          name: "opencode2",
+          launch: "pane-command opencode2",
+          sigil: "@",
+          args: "--standalone",
+          models: OPENCODE_MODELS,
+          source: "discovered 2026-09-30T12:00:00.000Z",
+        },
       ],
       help: [
         "Run `nico-agent harness refresh` to discover models again",
@@ -137,8 +153,8 @@ describe("harness list", () => {
     const { stdout } = await cli("harness", "list");
     expect(stdout).toBe(
       [
-        "count: 2",
-        "harnesses[2]:",
+        "count: 3",
+        "harnesses[3]:",
         "  - name: claude",
         "    launch: herdr-kind claude",
         '    sigil: /',
@@ -161,6 +177,18 @@ describe("harness list", () => {
         "      - model: gpt-6-sol",
         "        efforts[2]: low,high",
         '    source: "discovered 2026-09-30T12:00:00.000Z"',
+        "  - name: opencode2",
+        "    launch: pane-command opencode2",
+        "    sigil: @",
+        '    args: "--standalone"',
+        "    models[3]:",
+        "      - model: opencode-go/deepseek-v4.1-flash",
+        "        efforts[3]: low,high,max",
+        "      - model: opencode/fledge-alpha-free",
+        "        efforts[3]: low,high,max",
+        "      - model: openrouter/unbiased/pareto-26.10-preview",
+        "        efforts[1]: default",
+        '    source: "discovered 2026-09-30T12:00:00.000Z"',
         "help[2]:",
         "  Run `nico-agent harness refresh` to discover models again",
         "  Run `nico-agent dispatch <issue>... --harness <harness> --model <model> --effort <effort>` to dispatch an issue",
@@ -172,7 +200,7 @@ describe("harness list", () => {
   test("discovery is cached on disk: later runs don't ask codex again", async () => {
     const { cli, world, configDir } = setup();
     await cli("harness", "list");
-    expect(world.calls).toEqual(["codex debug models"]);
+    expect(world.calls).toEqual(DISCOVERIES);
     world.calls.length = 0;
     world.codexCatalog = catalog(["gpt-7", ["low"]]);
 
@@ -181,6 +209,7 @@ describe("harness list", () => {
     expect(json().harnesses[1].models).toEqual(CODEX_MODELS);
     expect(JSON.parse(readFileSync(join(configDir, "harnesses.json"), "utf8"))).toEqual({
       codex: { discoveredAt: "2026-09-30T12:00:00.000Z", models: CODEX_MODELS },
+      opencode2: { discoveredAt: "2026-09-30T12:00:00.000Z", models: OPENCODE_MODELS },
     });
   });
 
@@ -190,7 +219,7 @@ describe("harness list", () => {
     writeFileSync(join(configDir, "harnesses.json"), JSON.stringify({ codex: { models: "oops" } }));
     const { exitCode, json } = await cli("harness", "list", "--json");
     expect(exitCode).toBe(0);
-    expect(world.calls).toEqual(["codex debug models"]);
+    expect(world.calls).toEqual(DISCOVERIES);
     expect(json().harnesses[1].models).toEqual(CODEX_MODELS);
   });
 
@@ -199,10 +228,11 @@ describe("harness list", () => {
     world.failCall("codex debug models", "`codex` is not installed or not on PATH");
     const { exitCode, json } = await cli("harness", "list", "--json");
     expect(exitCode).toBe(0);
-    const [claude, codex] = json().harnesses;
+    const [claude, codex, opencode2] = json().harnesses;
     expect(claude.models).toHaveLength(4);
     expect(codex.models).toEqual([]);
     expect(codex.error).toBe("could not discover codex models: `codex` is not installed or not on PATH");
+    expect(opencode2.models).toEqual(OPENCODE_MODELS);
   });
 
   test("an unexpected catalog is a discovery failure, not a crash", async () => {
@@ -223,7 +253,7 @@ describe("harness refresh", () => {
     writeFileSync(file, JSON.stringify({ ...cache, gone: cache.codex }));
 
     expect((await cli("harness", "refresh")).exitCode).toBe(0);
-    expect(Object.keys(JSON.parse(readFileSync(file, "utf8")))).toEqual(["codex"]);
+    expect(Object.keys(JSON.parse(readFileSync(file, "utf8")))).toEqual(["codex", "opencode2"]);
   });
 
   test("discovers again and replaces the cache", async () => {
@@ -236,8 +266,9 @@ describe("harness refresh", () => {
     expect(refreshed.exitCode).toBe(0);
     expect(refreshed.stdout).toBe(
       [
-        "refreshed[1]{harness,models,source}:",
+        "refreshed[2]{harness,models,source}:",
         '  codex,1,"discovered 2026-10-01T08:00:00.000Z"',
+        '  opencode2,3,"discovered 2026-10-01T08:00:00.000Z"',
         "help[1]:",
         "  Run `nico-agent harness list` to see the models and Effort levels",
         "",
@@ -256,8 +287,9 @@ describe("harness refresh", () => {
     expect(exitCode).toBe(1);
     expect(stdout).toBe(
       [
-        "refreshed[1]{harness,models,source,error}:",
+        "refreshed[2]{harness,models,source,error}:",
         '  codex,8,"discovered 2026-09-30T12:00:00.000Z","could not discover codex models: `codex debug models` failed: exit code 1"',
+        '  opencode2,3,"discovered 2026-09-30T12:00:00.000Z",""',
         "help[1]:",
         "  Run `nico-agent harness list` to see the models and Effort levels",
         "",
@@ -314,10 +346,12 @@ describe("Harness config", () => {
   test("a malformed Harness config is a config error, before any outside-world call", async () => {
     const cases: [Record<string, unknown>, string, string][] = [
       [{ codex: { extraArgs: "--yolo" } }, "harnesses.codex.extraArgs is not a list of strings", "Fix or delete the file and run `nico-agent repo add` again"],
-      [{ codex: { color: "red" } }, "harnesses.codex.color is not a Harness setting", "Harness settings: launchMode, kind, sigil, modelArgs, effortArgs, extraArgs, trustArgs, models, efforts, discovery, trustPrompt"],
-      [{ codex: { launchMode: "pane-command" } }, "harnesses.codex.launchMode `pane-command` is not supported", "Launch modes: herdr-kind"],
-      [{ codex: { discovery: "opencode2" } }, "harnesses.codex.discovery `opencode2` is not supported", "Discovery: codex"],
-      [{ gemini: { launchMode: "herdr-kind", kind: "gemini" } }, "harnesses.gemini is missing sigil", "A new Harness needs launchMode, kind, sigil, modelArgs, effortArgs"],
+      [{ codex: { color: "red" } }, "harnesses.codex.color is not a Harness setting", "Harness settings: launchMode, kind, command, sigil, modelArgs, effortArgs, extraArgs, trustArgs, models, efforts, discovery, trustPrompt, variantFile"],
+      [{ codex: { launchMode: "tmux" } }, "harnesses.codex.launchMode `tmux` is not supported", "Launch modes: herdr-kind, pane-command"],
+      [{ codex: { launchMode: "pane-command" } }, "harnesses.codex is missing command", "A pane-command Harness needs command"],
+      [{ codex: { discovery: "pi" } }, "harnesses.codex.discovery `pi` is not supported", "Discovery: codex, opencode2"],
+      [{ gemini: { launchMode: "herdr-kind", kind: "gemini" } }, "harnesses.gemini is missing sigil", "A new Harness needs launchMode, sigil, modelArgs, effortArgs, and kind (herdr-kind) or command (pane-command)"],
+      [{ gemini: { launchMode: "herdr-kind", sigil: "/", modelArgs: [], effortArgs: [] } }, "harnesses.gemini is missing kind", "A herdr-kind Harness needs kind"],
     ];
     for (const [harnesses, error, help] of cases) {
       const { cli, world, configDir } = setup();
@@ -350,7 +384,7 @@ describe("web Harness choices", () => {
     const { web, world } = await withRepo();
     world.codexCatalog = CODEX_CATALOG;
     const { body } = await web("/");
-    expect(body).toContain('<select name="harness" hx-get="/dispatch-form" hx-include="closest form" hx-target="closest form" hx-swap="outerHTML"><option selected>claude</option><option>codex</option></select>');
+    expect(body).toContain('<select name="harness" hx-get="/dispatch-form" hx-include="closest form" hx-target="closest form" hx-swap="outerHTML"><option selected>claude</option><option>codex</option><option>opencode2</option></select>');
     expect(body).toContain(
       '<select name="effort"><option selected>low</option><option>medium</option><option>high</option><option>xhigh</option><option>max</option></select>',
     );
@@ -411,7 +445,7 @@ describe("web Harness choices", () => {
     const { web, world } = await withRepo();
     world.failCall("codex debug models", "`codex` is not installed or not on PATH");
     const { body } = await web("/");
-    expect(body).toContain('<option selected>claude</option></select>');
+    expect(body).toContain('<option selected>claude</option><option>opencode2</option></select>');
     expect(body).not.toContain("<option>codex</option>");
     expect(body).toContain('<p class="warning">could not discover codex models: `codex` is not installed or not on PATH</p>');
   });
@@ -424,7 +458,7 @@ describe("web Harness choices", () => {
 
     const response = await web("/harnesses/refresh", { method: "POST" });
     expect(response.status).toBe(303);
-    expect(world.calls).toEqual(["codex debug models"]);
+    expect(world.calls).toEqual(DISCOVERIES);
     expect((await web("/dispatch-form?issue=acme%2Fapi%237&harness=codex")).body).toContain("<option selected>gpt-7</option>");
   });
 

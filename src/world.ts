@@ -51,6 +51,12 @@ export interface World {
    * for input, or with `ready: false` when it is blocked on a startup question.
    */
   herdrAgentStart(options: { name: string; kind: string; pane: string; args: string[] }): Promise<{ ready: boolean }>;
+  /** Run a shell command line in a pane, as if typed and entered. */
+  herdrPaneRun(pane: string, command: string): Promise<void>;
+  /** Wait until herdr detects an agent running in a pane, failing after `timeoutMs`. */
+  herdrAgentDetect(pane: string, timeoutMs: number): Promise<void>;
+  /** Name the agent running in a pane, so later agent commands can address it by `name`. */
+  herdrAgentRename(pane: string, name: string): Promise<void>;
   /** Every named herdr agent with its raw Agent state (idle, working, blocked, done, unknown). */
   herdrAgents(): Promise<{ name: string; state: string }[]>;
   /** The text currently visible in a named agent's pane. */
@@ -66,6 +72,8 @@ export interface World {
   herdrAgentPrompt(name: string, text: string): Promise<{ started: boolean }>;
   /** The raw JSON model catalog `codex debug models` prints. */
   codexModels(): Promise<string>;
+  /** The raw JSON model catalog `<command> api model.list` prints, for the opencode2 binary `command`. */
+  opencodeModels(command: string): Promise<string>;
   /** Id of this process, and whether a process id is still running. */
   processId(): number;
   processAlive(pid: number): boolean;
