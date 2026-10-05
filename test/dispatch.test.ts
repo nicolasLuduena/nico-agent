@@ -21,13 +21,14 @@ describe("dispatch", () => {
     expect(exitCode).toBe(0);
     expect(world.calls).toEqual([
       "github issue acme/api#7",
-      "git -C /src/api fetch origin",
+      "git -C /src/api ls-remote --heads origin",
       "git -C /src/api default-branch",
+      "git -C /src/api fetch origin",
       "herdr worktree create --cwd /src/api --branch agent/api-7 --base origin/main --label api#7 --no-focus",
       "herdr tab create --workspace w1 --cwd /worktrees/api-7 --label implementer --no-focus",
       "herdr agent start impl-api-7 --kind claude --pane w1:p2 -- --model opus --effort high",
       "github app repos",
-      "herdr agent prompt impl-api-7 /implement https://github.com/acme/api/issues/7 as draft PR",
+      "herdr agent prompt impl-api-7 /implement https://github.com/acme/api/issues/7 as draft PR against main",
       "github assign acme/api#7 @me",
     ]);
     expect(stdout).toBe(
@@ -55,7 +56,7 @@ describe("dispatch", () => {
       "herdr worktree create --cwd /src/web --branch agent/Web-App-12 --base origin/trunk --label Web-App#12 --no-focus",
     );
     expect(world.calls).toContain(
-      "herdr agent prompt impl-web-app-12 /implement https://github.com/acme/Web-App/issues/12 as draft PR",
+      "herdr agent prompt impl-web-app-12 /implement https://github.com/acme/Web-App/issues/12 as draft PR against trunk",
     );
   });
 
@@ -249,7 +250,7 @@ describe("dispatch", () => {
       "herdr agent send-keys impl-api-7 down enter",
       "herdr agent wait impl-api-7 --until idle --until done --timeout 30000",
       "github app repos",
-      "herdr agent prompt impl-api-7 /implement https://github.com/acme/api/issues/7 as draft PR",
+      "herdr agent prompt impl-api-7 /implement https://github.com/acme/api/issues/7 as draft PR against main",
     ]);
   });
 
@@ -261,7 +262,7 @@ describe("dispatch", () => {
     const { exitCode } = await cli("dispatch", "acme/api#7", ...FLAGS);
     expect(exitCode).toBe(0);
     const prompts = world.calls.filter((c) => c.startsWith("herdr agent prompt "));
-    expect(prompts).toEqual(Array(3).fill("herdr agent prompt impl-api-7 /implement https://github.com/acme/api/issues/7 as draft PR"));
+    expect(prompts).toEqual(Array(3).fill("herdr agent prompt impl-api-7 /implement https://github.com/acme/api/issues/7 as draft PR against main"));
 
     const { cli: cli2, world: world2 } = await withRepo();
     world2.addIssue("acme/api", { number: 7 });
@@ -331,11 +332,11 @@ describe("In flight on the Board", () => {
         "description: Dispatch coding agents onto ready-for-agent issues",
         "repos: 1 configured",
         "ready: 1 issue",
-        "issues[1]{issue,title}:",
-        "  acme/api#8,Fix login",
+        "issues[1]{issue,title,base}:",
+        "  acme/api#8,Fix login,main",
         "inFlight: 1 Dispatch",
-        "dispatches[1]{issue,title,stage,pr,implementer,reviewer,harness,model,effort,workspace}:",
-        '  acme/api#7,Add retries,Implementing,"",working,"",claude,opus,high,w1',
+        "dispatches[1]{issue,title,stage,pr,implementer,reviewer,harness,model,effort,base,workspace}:",
+        '  acme/api#7,Add retries,Implementing,"",working,"",claude,opus,high,main,w1',
         "help[4]:",
         "  Run `nico-agent dispatch <issue> --harness claude --model <model> --effort <effort>` to dispatch a Ready issue",
         "  Run `nico-agent show <issue>` to see a Dispatch",
@@ -358,7 +359,7 @@ describe("In flight on the Board", () => {
         '<section class="in-flight" hx-get="/in-flight" hx-trigger="every 5s" hx-swap="outerHTML">',
         "<h2>In flight</h2>",
         "<ul>",
-        '<li><a href="https://github.com/acme/api/issues/7">acme/api#7 Add retries</a> · claude opus high · workspace w1 · Implementing · implementer <span class="agent">working</span>',
+        '<li><a href="https://github.com/acme/api/issues/7">acme/api#7 Add retries</a> · claude opus high · base main · workspace w1 · Implementing · implementer <span class="agent">working</span>',
         '<form method="post" action="/close">',
         '<input type="hidden" name="issue" value="acme/api#7">',
         '<button>Close</button>',
@@ -412,20 +413,21 @@ describe("web dispatch", () => {
 describe("resuming a failed Dispatch", () => {
   const ALL = [
     "github issue acme/api#7",
-    "git -C /src/api fetch origin",
+    "git -C /src/api ls-remote --heads origin",
     "git -C /src/api default-branch",
+    "git -C /src/api fetch origin",
     "herdr worktree create --cwd /src/api --branch agent/api-7 --base origin/main --label api#7 --no-focus",
     "herdr tab create --workspace w1 --cwd /worktrees/api-7 --label implementer --no-focus",
     "herdr agent start impl-api-7 --kind claude --pane w1:p2 -- --model opus --effort high",
     "github app repos",
-    "herdr agent prompt impl-api-7 /implement https://github.com/acme/api/issues/7 as draft PR",
+    "herdr agent prompt impl-api-7 /implement https://github.com/acme/api/issues/7 as draft PR against main",
     "github assign acme/api#7 @me",
   ];
   const cases: { step: string; inject(world: FakeWorld): void; heal(world: FakeWorld): void; resumed: string[] }[] = [
-    { step: "fetch", inject: (w) => w.failCall("git -C /src/api fetch", "`git fetch origin` failed"), heal: (w) => w.clearFailures(), resumed: ALL.slice(1) },
-    { step: "worktree", inject: (w) => w.failHerdr("worktree create", "worktree_exists"), heal: (w) => w.clearFailures(), resumed: ALL.slice(3) },
-    { step: "tab", inject: (w) => w.failHerdr("tab create", "workspace_not_found"), heal: (w) => w.clearFailures(), resumed: ALL.slice(4) },
-    { step: "agent start", inject: (w) => w.failHerdr("agent start", "agent_blocked"), heal: (w) => w.clearFailures(), resumed: ALL.slice(5) },
+    { step: "fetch", inject: (w) => w.failCall("git -C /src/api fetch", "`git fetch origin` failed"), heal: (w) => w.clearFailures(), resumed: ALL.slice(3) },
+    { step: "worktree", inject: (w) => w.failHerdr("worktree create", "worktree_exists"), heal: (w) => w.clearFailures(), resumed: ALL.slice(4) },
+    { step: "tab", inject: (w) => w.failHerdr("tab create", "workspace_not_found"), heal: (w) => w.clearFailures(), resumed: ALL.slice(5) },
+    { step: "agent start", inject: (w) => w.failHerdr("agent start", "agent_blocked"), heal: (w) => w.clearFailures(), resumed: ALL.slice(6) },
     {
       step: "agent ready",
       inject: (w) => w.blockAgentStart("Do you want to enable telemetry?"),
@@ -433,10 +435,10 @@ describe("resuming a failed Dispatch", () => {
       resumed: [
         "herdr agent read impl-api-7 --source visible",
         "herdr agent wait impl-api-7 --until idle --until done --timeout 5000",
-        ...ALL.slice(6),
+        ...ALL.slice(7),
       ],
     },
-    { step: "prompt", inject: (w) => w.stallPrompts(3), heal: () => {}, resumed: ALL.slice(6) },
+    { step: "prompt", inject: (w) => w.stallPrompts(3), heal: () => {}, resumed: ALL.slice(7) },
   ];
 
   for (const { step, inject, heal, resumed } of cases) {
@@ -508,7 +510,7 @@ describe("web Retry", () => {
     const { body } = await web("/");
     expect(body).toContain(
       [
-        '<li><a href="https://github.com/acme/api/issues/7">acme/api#7 Add retries</a> · claude opus high · workspace w1 · <span class="error">Failed at tab: workspace_not_found: no workspace w1</span> · implementer <span class="agent">unknown</span>',
+        '<li><a href="https://github.com/acme/api/issues/7">acme/api#7 Add retries</a> · claude opus high · base main · workspace w1 · <span class="error">Failed at tab: workspace_not_found: no workspace w1</span> · implementer <span class="agent">unknown</span>',
         '<form method="post" action="/close">',
         '<input type="hidden" name="issue" value="acme/api#7">',
         '<button>Close</button>',

@@ -97,7 +97,7 @@ export function harnessConfigs(config: Config): Record<string, HarnessConfig> {
  * The prompt templates a Dispatch sends. `implement` prompts the Implementer;
  * `botSuffix` is appended to it as is, with no separator, when the GitHub App
  * is installed on the Repo, so it carries its own leading punctuation.
- * `review` prompts the Reviewer; only it has a PR to fill `{prUrl}` and
+ * `{baseBranch}` is the Dispatch's Base. `review` prompts the Reviewer; only it has a PR to fill `{prUrl}` and
  * `{prBaseBranch}` with.
  */
 export interface Prompts {
@@ -107,14 +107,14 @@ export interface Prompts {
 }
 
 export const PROMPTS: Prompts = {
-  implement: "{sigil}implement {issueUrl} as draft PR",
+  implement: "{sigil}implement {issueUrl} as draft PR against {baseBranch}",
   botSuffix:
     ", opened with `ghbot pr create` (not `gh`); end every commit message with the trailer " +
     "`Co-authored-by: nicolasluduena-coding-agent[bot] <324920906+nicolasluduena-coding-agent[bot]@users.noreply.github.com>`",
   review: "{sigil}code-review {prUrl} against {prBaseBranch} for the spec at {issueUrl}",
 };
 
-export const PLACEHOLDERS = ["sigil", "issueUrl", "prUrl", "prBaseBranch"] as const;
+export const PLACEHOLDERS = ["sigil", "issueUrl", "baseBranch", "prUrl", "prBaseBranch"] as const;
 export type Placeholder = (typeof PLACEHOLDERS)[number];
 
 const PLACEHOLDER = /\{(\w+)\}/g;

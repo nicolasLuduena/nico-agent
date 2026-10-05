@@ -85,11 +85,13 @@ export function launchArgs(harness: Harness, launch: Launch): string[] {
   return [...fill(modelArgs), ...fill(effortArgs), ...fill(trustArgs), ...fill(extraArgs)];
 }
 
-/** The Harness and model last dispatched with, and the Effort last used with each model. */
+/** The Harness and model last dispatched with, the Effort last used with each model, and the Base last used in each Repo. */
 export interface Remembered {
   last?: { harness: string; model: string };
   /** By `<harness> <model>`. */
   efforts: Record<string, string>;
+  /** By Repo slug; Stacked dispatches leave it alone. */
+  bases: Record<string, string>;
 }
 
 const REMEMBERED_FILE = "launches.json";
@@ -97,19 +99,20 @@ const REMEMBERED_FILE = "launches.json";
 export function rememberedLaunches(configDir: string): Remembered {
   try {
     const parsed = JSON.parse(readFileSync(join(configDir, REMEMBERED_FILE), "utf8")) as Remembered;
-    return { ...parsed, efforts: parsed.efforts ?? {} };
+    return { ...parsed, efforts: parsed.efforts ?? {}, bases: parsed.bases ?? {} };
   } catch {
     // Only a convenience for the web form: forget whatever can't be read.
-    return { efforts: {} };
+    return { efforts: {}, bases: {} };
   }
 }
 
-/** Remember a dispatch's choices, for the web form to start from. */
-export function rememberLaunch(configDir: string, harness: string, model: string, effort: string) {
+/** Remember a dispatch's choices, and its Base in `repo` unless it is Stacked, for the web form and CLI to start from. */
+export function rememberLaunch(configDir: string, harness: string, model: string, effort: string, base?: { repo: string; branch: string }) {
   const remembered = rememberedLaunches(configDir);
   writeJson(configDir, REMEMBERED_FILE, {
     last: { harness, model },
     efforts: { ...remembered.efforts, [`${harness} ${model}`]: effort },
+    bases: base ? { ...remembered.bases, [base.repo]: base.branch } : remembered.bases,
   });
 }
 

@@ -15,7 +15,7 @@ async function withRepo(slug = "acme/api", path = "/src/api") {
 const FLAGS = ["--harness", "claude", "--model", "opus", "--effort", "high"];
 const TRAILER =
   "Co-authored-by: nicolasluduena-coding-agent[bot] <324920906+nicolasluduena-coding-agent[bot]@users.noreply.github.com>";
-const PLAIN = "/implement https://github.com/acme/api/issues/7 as draft PR";
+const PLAIN = "/implement https://github.com/acme/api/issues/7 as draft PR against main";
 const WITH_BOT = `${PLAIN}, opened with \`ghbot pr create\` (not \`gh\`); end every commit message with the trailer \`${TRAILER}\``;
 
 function prompts(calls: string[]) {
@@ -165,7 +165,7 @@ describe("prompt templates from config", () => {
       [
         `error: "${join(configDir, "config.json")}: prompts.botSuffix has an unknown placeholder {bot}"`,
         "help[1]:",
-        "  Placeholders: {sigil}, {issueUrl}, {prUrl}, {prBaseBranch}",
+        "  Placeholders: {sigil}, {issueUrl}, {baseBranch}, {prUrl}, {prBaseBranch}",
         "",
       ].join("\n"),
     );

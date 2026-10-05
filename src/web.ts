@@ -1,7 +1,7 @@
 import htmx from "htmx.org/dist/htmx.min.js" with { type: "text" };
-import { type Board, type StackOption, loadBoard, stackChoice, stackOptions } from "./board";
+import { type BaseChoice, type Board, type StackOption, baseChoice, loadBoard, stackChoice, stackOptions } from "./board";
 import { type Repo, ConfigError, loadConfig } from "./config";
-import { CloseConfirmationRequired, DispatchError, StepFailed, closeDispatch, dispatch, review, resolveIssue } from "./dispatch";
+import { CloseConfirmationRequired, DispatchError, StepFailed, baseBranch, closeDispatch, dispatch, review, resolveIssue } from "./dispatch";
 import { type Catalog, type Remembered, harnessCatalogs, refreshHarnesses, rememberedLaunches } from "./harness";
 import { type InFlightRow, type PrLookup, cachedPrs, loadInFlight } from "./stage";
 import { type Launch, loadDispatches } from "./state";
@@ -72,7 +72,7 @@ interface ServerContext extends WebContext {
 
 async function getBoard(ctx: ServerContext) {
   const { repos } = loadConfig(ctx.configDir);
-  const board = await loadBoard(ctx.world, repos, loadDispatches(ctx.configDir), ctx.prs);
+  const board = await loadBoard(ctx.world, repos, loadDispatches(ctx.configDir), ctx.prs, rememberedLaunches(ctx.configDir).bases);
   // Discovery may run a Harness's CLI, so only when there is something to launch.
   const launchable = board.ready.length > 0 || board.stackable.length > 0 || board.inFlight.some(canLaunchReview);
   const choices = await choicesFor(ctx, launchable);
@@ -96,12 +96,15 @@ async function getLaunchForm(ctx: WebContext, params: URLSearchParams, action: A
   const choices = await choicesFor(ctx, true);
   const chosen = { harness: param("harness"), model: param("model"), effort: param("effort"), stackOn: param("stackOn") };
   let options: StackOption[] = [];
+  let base: BaseChoice | undefined;
   if (action === "dispatch") {
     const ref = resolveIssue(ctx.configDir, param("issue"));
     const issue = await ctx.world.githubIssue(ref.repo.slug, ref.number);
     if (issue) options = await stackOptions(ctx.world, ref.repo.slug, issue);
+    // A Stacked dispatch has no Base choice.
+    if (!options.length) base = await baseChoice(ctx.world, ref.repo, param("base") || choices.remembered.bases[ref.repo.slug]);
   }
-  return new Response(launchForm(action, param("issue"), choices, chosen, options), { headers: HTML_HEADERS });
+  return new Response(launchForm(action, param("issue"), choices, chosen, options, base), { headers: HTML_HEADERS });
 }
 
 /** A launch form's target: dispatch or review, then back to the Board. */
@@ -114,6 +117,7 @@ async function postLaunch(ctx: WebContext, request: Request, launch: typeof disp
     model: field("model"),
     effort: field("effort"),
     ...(launch === dispatch && field("stackOn") && { stackOn: field("stackOn") }),
+    ...(launch === dispatch && field("base") && { base: field("base") }),
   });
   return new Response(null, { status: 303, headers: { location: "/" } });
 }
@@ -175,6 +179,7 @@ function renderInFlightRow(row: InFlightRow, choices: Choices) {
   const parts = [
     `<a href="${escape(d.url)}">${escape(d.issue)} ${escape(d.title)}</a>`,
     escape(`${harness} ${model} ${effort}`),
+    ...(d.base ? [`base ${escape(baseBranch(d)!)}`] : []),
     ...(d.workspace ? [`workspace ${escape(d.workspace)}`] : []),
     failure ? `<span class="error">${escape(`${stage}: ${failure.error}`)}</span>` : escape(stage),
     ...(pr ? [`<a href="${escape(pr.url)}">PR #${pr.number}</a>`] : []),
@@ -213,7 +218,7 @@ function renderRepo(repo: Repo, board: Board, choices: Choices) {
     ...(errorHtml ? [errorHtml] : []),
     "<ul>",
     ...issues.map(
-      (i) => `<li><a href="${escape(i.url)}">${i.identifier ?? `#${i.number}`} ${escape(i.title)}</a>\n${i.identifier ? "" : launchForm("dispatch", `${i.repo}#${i.number}`, choices)}</li>`,
+      (i) => `<li><a href="${escape(i.url)}">${i.identifier ?? `#${i.number}`} ${escape(i.title)}</a>${i.identifier ? (i.base ? ` · base ${escape(i.base)}` : "") : `\n${launchForm("dispatch", `${i.repo}#${i.number}`, choices, {}, [], board.bases[i.repo])}`}</li>`,
     ),
     "</ul>",
   ].join("\n");
@@ -241,7 +246,8 @@ interface Choices {
  * The dispatch or review form of an issue, offering each Harness that has models. It
  * starts on the Harness and model last dispatched with (a review form too); a chosen Harness,
  * model and Effort are kept while valid. Otherwise the Effort is the one last
- * used with the model, or the model's first.
+ * used with the model, or the model's first. A Ready issue's form also offers
+ * origin's branches as the Base, starting on `base.base`.
  */
 function launchForm(
   action: Action,
@@ -249,6 +255,7 @@ function launchForm(
   { catalogs, remembered }: Choices,
   chosen: { harness?: string; model?: string; effort?: string; stackOn?: string } = {},
   stack: StackOption[] = [],
+  base?: BaseChoice,
 ) {
   const offered = catalogs.filter((c) => c.models.length > 0);
   const { harness: wanted = remembered.last?.harness, model: wantedModel = remembered.last?.model } = chosen;
@@ -266,6 +273,7 @@ function launchForm(
     `<form method="post" action="/${action}" class="dispatch">`,
     `<input type="hidden" name="issue" value="${escape(issue)}">`,
     ...(stack.length ? [stackSelect(stack, chosen.stackOn)] : []),
+    ...(base ? [`<label>Base ${select("base", base.branches, base.base)}</label>`] : []),
     select("harness", offered.map((c) => c.harness.name), catalog.harness.name, ` ${rerender(action)}`),
     select("model", catalog.models.map((m) => m.model), model.model, ` ${rerender(action)}`),
     select("effort", model.efforts, effort),
@@ -278,7 +286,7 @@ function stackSelect(options: StackOption[], chosen?: string) {
   return `<label>Stack on <select name="stackOn">${options.map((o, i) => {
     const value = stackChoice(o, options);
     const selected = chosen ? chosen === value : i === 0;
-    return `<option value="${escape(value)}"${selected ? " selected" : ""}>${escape(o.blocker)} · PR #${o.pr.number}</option>`;
+    return `<option value="${escape(value)}"${selected ? " selected" : ""}>${escape(o.blocker)} · PR #${o.pr.number} · base ${escape(o.pr.headBranch)}</option>`;
   }).join("")}</select></label>`;
 }
 
