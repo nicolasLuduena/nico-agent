@@ -126,7 +126,7 @@ describe("harness list", () => {
       ],
       help: [
         "Run `nico-agent harness refresh` to discover models again",
-        "Run `nico-agent dispatch <issue> --harness <harness> --model <model> --effort <effort>` to dispatch an issue",
+        "Run `nico-agent dispatch <issue>... --harness <harness> --model <model> --effort <effort>` to dispatch an issue",
       ],
     });
   });
@@ -163,7 +163,7 @@ describe("harness list", () => {
         '    source: "discovered 2026-09-30T12:00:00.000Z"',
         "help[2]:",
         "  Run `nico-agent harness refresh` to discover models again",
-        "  Run `nico-agent dispatch <issue> --harness <harness> --model <model> --effort <effort>` to dispatch an issue",
+        "  Run `nico-agent dispatch <issue>... --harness <harness> --model <model> --effort <effort>` to dispatch an issue",
         "",
       ].join("\n"),
     );

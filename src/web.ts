@@ -1,10 +1,11 @@
 import htmx from "htmx.org/dist/htmx.min.js" with { type: "text" };
 import { type BaseChoice, type Board, type StackOption, baseChoice, loadBoard, stackChoice, stackOptions } from "./board";
 import { type Repo, ConfigError, loadConfig } from "./config";
-import { CloseConfirmationRequired, DispatchError, StepFailed, baseBranch, closeDispatch, dispatch, review, resolveIssue } from "./dispatch";
+import { type IssueOutcome, CloseConfirmationRequired, DispatchError, StepFailed, baseBranch, closeDispatch, dispatch, eachIssue, review, resolveIssue } from "./dispatch";
 import { type Catalog, type Remembered, harnessCatalogs, refreshHarnesses, rememberedLaunches } from "./harness";
 import { type InFlightRow, type PrLookup, cachedPrs, loadInFlight } from "./stage";
-import { type Launch, loadDispatches } from "./state";
+import { type Dispatch, type Launch, findDispatch, loadDispatches } from "./state";
+import { plural } from "./output";
 import { type World, WorldError } from "./world";
 
 export interface WebContext {
@@ -24,6 +25,8 @@ export function webHandler(context: WebContext) {
     try {
       if (pathname === "/dispatch" && request.method === "POST") return await postLaunch(ctx, request, dispatch);
       if (pathname === "/review" && request.method === "POST") return await postLaunch(ctx, request, review);
+      if (pathname === "/batch/dispatch" && request.method === "POST") return await postBatch(ctx, request, "dispatch");
+      if (pathname === "/batch/review" && request.method === "POST") return await postBatch(ctx, request, "review");
       if (pathname === "/close" && request.method === "POST") return await postClose(ctx, request);
       if (pathname === "/harnesses/refresh" && request.method === "POST") return await postRefresh(ctx);
       if (request.method !== "GET") return new Response("Method Not Allowed\n", { status: 405 });
@@ -33,6 +36,9 @@ export function webHandler(context: WebContext) {
       if (pathname === "/dispatch-form") return await getLaunchForm(ctx, url.searchParams, "dispatch");
       if (pathname === "/review-form") return await getLaunchForm(ctx, url.searchParams, "review");
       if (pathname === "/in-flight") return await getInFlight(ctx);
+      if (pathname === "/action-bar") return await getActionBar(ctx, url.searchParams);
+      if (pathname === "/batch-form") return await getBatchForm(ctx, url.searchParams);
+      if (pathname === "/batch-row") return await getBatchRow(ctx, url.searchParams);
       if (pathname !== "/") return new Response(page("Not found", `<p class="error">No page at ${escape(pathname)}</p>`), { status: 404, headers: HTML_HEADERS });
       return await getBoard(ctx);
     } catch (e) {
@@ -46,22 +52,47 @@ export function webHandler(context: WebContext) {
   };
 }
 
+/**
+ * Close each issue posted. Those with a PR close straight away; those with no
+ * PR yet are listed in one confirmation step, which posts them back confirmed.
+ */
 async function postClose(ctx: WebContext, request: Request) {
   const form = await request.formData();
-  const issue = String(form.get("issue") ?? "");
-  try {
-    await closeDispatch(ctx.world, ctx.configDir, issue, form.get("confirm") === "yes");
-  } catch (e) {
-    if (!(e instanceof CloseConfirmationRequired)) throw e;
-    const body = `<p>${escape(e.issue)} has an open PR or no linked PR. Close removes its worktree and workspace and forgets the Dispatch. Its branch is kept.</p>\n${closeForm(e.issue, true)}\n<p><a href="/">Cancel and return to the Board</a></p>`;
-    return new Response(page("Confirm close", body), { headers: HTML_HEADERS });
+  const issues = unique(form.getAll("issue").map(String));
+  const confirm = form.get("confirm") === "yes";
+  // A single issue's failure is an error page, as before batches.
+  const outcomes = issues.length === 1
+    ? [{ issue: issues[0]!, outcome: "done" as const, value: await closeOrAsk(ctx, issues[0]!, confirm) }]
+    : await eachIssue(issues, (issue) => closeOrAsk(ctx, issue, confirm));
+  const unconfirmed = outcomes.flatMap((o) => (o.outcome === "done" && o.value === "unconfirmed" ? [o.issue] : []));
+  const reported = outcomes.filter((o) => !(o.outcome === "done" && o.value === "unconfirmed"));
+  if (!unconfirmed.length && reported.every((o) => o.outcome === "done" && o.value === "closed")) {
+    return new Response(null, { status: 303, headers: { location: "/" } });
   }
-  return new Response(null, { status: 303, headers: { location: "/" } });
+  const body = [
+    ...(reported.length ? [renderOutcomes(reported, (closed) => (closed === "closed" ? "closed" : "skipped, not In flight"))] : []),
+    ...(unconfirmed.length ? [
+      `<p>${unconfirmed.map(escape).join(", ")} ${unconfirmed.length === 1 ? "has" : "have"} no PR yet. Close removes the worktree and workspace and forgets the Dispatch. The branch is kept.</p>`,
+      closeForm(unconfirmed, true),
+    ] : []),
+    '<p><a href="/">Back to the Board</a></p>',
+  ].join("\n");
+  return new Response(page(unconfirmed.length ? "Confirm close" : "Close", body), { headers: HTML_HEADERS });
 }
 
-function closeForm(issue: string, confirm = false) {
+/** Close an issue, or say it awaits confirmation or was not In flight (`existing`). */
+async function closeOrAsk(ctx: WebContext, issue: string, confirm: boolean) {
+  try {
+    return (await closeDispatch(ctx.world, ctx.configDir, issue, confirm)).outcome;
+  } catch (e) {
+    if (!(e instanceof CloseConfirmationRequired)) throw e;
+    return "unconfirmed" as const;
+  }
+}
+
+function closeForm(issues: string[], confirm = false) {
   return ['<form method="post" action="/close">',
-    `<input type="hidden" name="issue" value="${escape(issue)}">`,
+    ...issues.map((issue) => `<input type="hidden" name="issue" value="${escape(issue)}">`),
     ...(confirm ? ['<input type="hidden" name="confirm" value="yes">'] : []),
     `<button>${confirm ? "Confirm close" : "Close"}</button>`, "</form>"].join("\n");
 }
@@ -161,7 +192,7 @@ function renderBoard(repos: Repo[], board: Board, choices: Choices) {
   const sections = repos.map((repo) =>
     ['<section class="repo">', `<h2>${escape(repo.slug)}</h2>`, renderRepo(repo, board, choices), "</section>"].join("\n"),
   );
-  return [...refresh, ...warnings, ...sections, renderInFlight(board.inFlight, choices)].join("\n");
+  return [...refresh, ...warnings, actionBar({ dispatch: 0, review: 0, close: 0 }), ...sections, renderInFlight(board.inFlight, choices)].join("\n");
 }
 
 /** Polled every ~5s, replacing itself; launch forms keep what the user chose across polls. */
@@ -177,7 +208,8 @@ function renderInFlightRow(row: InFlightRow, choices: Choices) {
   const { harness, model, effort } = d.implementer;
   const failure = d.failure ?? d.reviewer?.failure;
   const parts = [
-    `<a href="${escape(d.url)}">${escape(d.issue)} ${escape(d.title)}</a>`,
+    // Preserved across polls, so a ticked row stays ticked.
+    `${pick(d.issue, true)}<a href="${escape(d.url)}">${escape(d.issue)} ${escape(d.title)}</a>`,
     escape(`${harness} ${model} ${effort}`),
     ...(d.base ? [`base ${escape(baseBranch(d)!)}`] : []),
     ...(d.workspace ? [`workspace ${escape(d.workspace)}`] : []),
@@ -188,7 +220,7 @@ function renderInFlightRow(row: InFlightRow, choices: Choices) {
   ];
   const notes = [...(d.warnings ?? []), ...(prError ? [`could not look up the PR: ${prError}`] : [])];
   const extra = notes.map((w) => `<p class="warning">${escape(w)}</p>`);
-  extra.push(closeForm(d.issue));
+  extra.push(closeForm([d.issue]));
   if (d.failure) extra.push(retryForm("dispatch", d.issue, d.implementer, d.stackedOn?.pr.url));
   else if (d.reviewer?.failure) extra.push(retryForm("review", d.issue, d.reviewer));
   else if (canLaunchReview(row)) {
@@ -218,14 +250,16 @@ function renderRepo(repo: Repo, board: Board, choices: Choices) {
     ...(errorHtml ? [errorHtml] : []),
     "<ul>",
     ...issues.map(
-      (i) => `<li><a href="${escape(i.url)}">${i.identifier ?? `#${i.number}`} ${escape(i.title)}</a>${i.identifier ? (i.base ? ` · base ${escape(i.base)}` : "") : `\n${launchForm("dispatch", `${i.repo}#${i.number}`, choices, {}, [], board.bases[i.repo])}`}</li>`,
+      (i) => i.identifier
+        ? `<li><a href="${escape(i.url)}">${i.identifier} ${escape(i.title)}</a>${i.base ? ` · base ${escape(i.base)}` : ""}</li>`
+        : `<li>${pick(`${i.repo}#${i.number}`)}<a href="${escape(i.url)}">#${i.number} ${escape(i.title)}</a>\n${launchForm("dispatch", `${i.repo}#${i.number}`, choices, {}, [], board.bases[i.repo])}</li>`,
     ),
     "</ul>",
   ].join("\n");
   const stackable = board.stackable.filter((i) => i.repo === repo.slug);
   if (!stackable.length) return ready;
   return [ready, "<h3>Stackable</h3>", "<ul>", ...stackable.map((i) =>
-    `<li><a href="${escape(i.url)}">#${i.number} ${escape(i.title)}</a>\n${launchForm("dispatch", `${i.repo}#${i.number}`, choices, {}, i.blockers)}</li>`), "</ul>"].join("\n");
+    `<li>${pick(`${i.repo}#${i.number}`)}<a href="${escape(i.url)}">#${i.number} ${escape(i.title)}</a>\n${launchForm("dispatch", `${i.repo}#${i.number}`, choices, {}, i.blockers)}</li>`), "</ul>"].join("\n");
 }
 
 type Action = "dispatch" | "review";
@@ -252,15 +286,40 @@ interface Choices {
 function launchForm(
   action: Action,
   issue: string,
-  { catalogs, remembered }: Choices,
-  chosen: { harness?: string; model?: string; effort?: string; stackOn?: string } = {},
+  choices: Choices,
+  chosen: Chosen = {},
   stack: StackOption[] = [],
+  base?: BaseChoice,
+) {
+  const fields = launchFields(action, issue, choices, chosen, stack, rerender(action), base);
+  if (!fields) return NO_HARNESS;
+  return [`<form method="post" action="/${action}" class="dispatch">`, ...fields, `<button>${BUTTONS[action]}</button>`, "</form>"].join("\n");
+}
+
+const NO_HARNESS = '<p class="empty">No Harness has models to launch with.</p>';
+
+interface Chosen {
+  harness?: string;
+  model?: string;
+  effort?: string;
+  stackOn?: string;
+  base?: string;
+}
+
+/** A launch form's fields, `rerenderAttributes` on the Harness and model; null when no Harness has models. */
+function launchFields(
+  action: Action,
+  issue: string,
+  { catalogs, remembered }: Choices,
+  chosen: Chosen,
+  stack: StackOption[],
+  rerenderAttributes: string,
   base?: BaseChoice,
 ) {
   const offered = catalogs.filter((c) => c.models.length > 0);
   const { harness: wanted = remembered.last?.harness, model: wantedModel = remembered.last?.model } = chosen;
   const catalog = offered.find((c) => c.harness.name === wanted) ?? offered[0];
-  if (!catalog) return '<p class="empty">No Harness has models to launch with.</p>';
+  if (!catalog) return null;
   const model = catalog.models.find((m) => m.model === wantedModel) ?? catalog.models[0]!;
   const valid = (effort: string | undefined) => (effort && model.efforts.includes(effort) ? effort : undefined);
   const effort =
@@ -270,16 +329,13 @@ function launchForm(
       .map((o) => `<option${o === selected ? " selected" : ""}>${escape(o)}</option>`)
       .join("")}</select>`;
   return [
-    `<form method="post" action="/${action}" class="dispatch">`,
     `<input type="hidden" name="issue" value="${escape(issue)}">`,
     ...(stack.length ? [stackSelect(stack, chosen.stackOn)] : []),
     ...(base ? [`<label>Base ${select("base", base.branches, base.selected)}</label>`] : []),
-    select("harness", offered.map((c) => c.harness.name), catalog.harness.name, ` ${rerender(action)}`),
-    select("model", catalog.models.map((m) => m.model), model.model, ` ${rerender(action)}`),
+    select("harness", offered.map((c) => c.harness.name), catalog.harness.name, ` ${rerenderAttributes}`),
+    select("model", catalog.models.map((m) => m.model), model.model, ` ${rerenderAttributes}`),
     select("effort", model.efforts, effort),
-    `<button>${BUTTONS[action]}</button>`,
-    "</form>",
-  ].join("\n");
+  ];
 }
 
 function stackSelect(options: StackOption[], chosen?: string) {
@@ -298,6 +354,161 @@ function retryForm(action: Action, issue: string, { harness, model, effort }: La
   return [`<form method="post" action="/${action}" class="dispatch">`, ...hidden, "<button>Retry</button>", "</form>"].join("\n");
 }
 
+/** A Board row's checkbox, belonging to the action bar's form wherever it sits. */
+function pick(issue: string, preserve = false) {
+  const id = preserve ? ` id="pick-${escape(issue.replace(/[^\w-]/g, "-"))}" hx-preserve="true"` : "";
+  return `<input type="checkbox" class="pick" name="issue" value="${escape(issue)}" form="batch" autocomplete="off"${id} aria-label="Select ${escape(issue)}"> `;
+}
+
+type Counts = Record<Action | "close", number>;
+
+/**
+ * Dispatch, Review and Close for the ticked issues, each with how many it
+ * applies to. Ticking re-renders it with fresh counts.
+ */
+function actionBar(counts: Counts) {
+  const button = (action: keyof Counts, label: string, attributes = "") =>
+    `<button name="action" value="${action}"${attributes}${counts[action] ? "" : " disabled"}>${label} ${counts[action]}</button>`;
+  return [
+    `<div class="actions" hx-get="/action-bar" hx-trigger="change[target.classList.contains('pick')] from:body" hx-include=".pick:checked" hx-swap="outerHTML">`,
+    '<form id="batch" method="get" action="/batch-form">',
+    button("dispatch", "Dispatch"),
+    button("review", "Review"),
+    button("close", "Close", ' formmethod="post" formaction="/close"'),
+    "</form>",
+    "</div>",
+  ].join("\n");
+}
+
+/**
+ * The action bar for the ticked issues: Dispatch applies to the ones not In
+ * flight (the Board ticks only Ready and Stackable ones besides), Review to
+ * In-flight ones with a PR, Close to In-flight ones.
+ */
+async function getActionBar(ctx: ServerContext, params: URLSearchParams) {
+  const counts: Counts = { dispatch: 0, review: 0, close: 0 };
+  for (const issue of unique(params.getAll("issue"))) {
+    const record = findDispatch(ctx.configDir, issue);
+    if (!record) {
+      counts.dispatch++;
+      continue;
+    }
+    counts.close++;
+    if (await canReview(ctx, record)) counts.review++;
+  }
+  return new Response(actionBar(counts), { headers: HTML_HEADERS });
+}
+
+/** Whether the Board offers Launch review for an In-flight issue (see `canLaunchReview`); a failed PR lookup counts as no PR. */
+async function canReview(ctx: ServerContext, record: Dispatch) {
+  if (record.reviewer || record.failure || !record.workspace) return false;
+  return (await ctx.prs(record).catch(() => null)) !== null;
+}
+
+/**
+ * Why `issue` doesn't fit `action`, or when it does the Blockers it could
+ * stack on, else the Base choice starting on `base` (as the single-issue form).
+ */
+async function fitFor(ctx: ServerContext, action: Action, issue: string, base?: string): Promise<{ skip: string } | { stack: StackOption[]; base?: BaseChoice }> {
+  let ref;
+  try {
+    ref = resolveIssue(ctx.configDir, issue);
+  } catch (e) {
+    if (!(e instanceof DispatchError)) throw e;
+    return { skip: e.message };
+  }
+  const record = findDispatch(ctx.configDir, ref.key);
+  if (action === "review") {
+    if (!record) return { skip: `${ref.key} is not In flight` };
+    if (record.reviewer) return { skip: `${ref.key} already has a Reviewer` };
+    if (record.failure) return { skip: `${ref.key} is Failed at ${record.failure.step}` };
+    if (!(await canReview(ctx, record))) return { skip: `no PR is linked to ${ref.key} yet` };
+    return { stack: [] };
+  }
+  if (record) return { skip: `${ref.key} is already In flight` };
+  const found = await ctx.world.githubIssue(ref.repo.slug, ref.number);
+  const stack = found ? await stackOptions(ctx.world, ref.repo.slug, found) : [];
+  // A Stacked dispatch has no Base choice.
+  if (stack.length) return { stack };
+  return { stack, base: await baseChoice(ctx.world, ref.repo, base || rememberedLaunches(ctx.configDir).bases[ref.repo.slug]) };
+}
+
+/** One form with a row per ticked issue that fits the action, each filled in like its own launch form. */
+async function getBatchForm(ctx: ServerContext, params: URLSearchParams) {
+  const action = batchAction(params.get("action"));
+  const choices = await choicesFor(ctx, true);
+  const rows: string[] = [];
+  const skipped: string[] = [];
+  for (const issue of unique(params.getAll("issue"))) {
+    const fit = await fitFor(ctx, action, issue);
+    if ("skip" in fit) skipped.push(`<li>${escape(issue)}: skipped, ${escape(fit.skip)}</li>`);
+    else rows.push(batchRow(action, issue, choices, {}, fit));
+  }
+  const noHarness = rows.length > 0 && !choices.catalogs.some((c) => c.models.length > 0);
+  const form = rows.length && !noHarness
+    ? [`<form method="post" action="/batch/${action}" class="batch">`, ...rows, `<button>${BUTTONS[action]} ${rows.length}</button>`, "</form>"]
+    : [noHarness ? NO_HARNESS : '<p class="empty">None of the ticked issues fit.</p>'];
+  const body = [...form, ...(skipped.length ? ['<ul class="skipped">', ...skipped, "</ul>"] : []), '<p><a href="/">Back to the Board</a></p>'];
+  return new Response(page(`${BUTTONS[action]} ${plural(rows.length, "issue")}`, body.join("\n")), { headers: HTML_HEADERS });
+}
+
+/** One row of the batch form again, after its Harness or model changed. */
+async function getBatchRow(ctx: ServerContext, params: URLSearchParams) {
+  const action = batchAction(params.get("action"));
+  const param = (name: string) => params.get(name) ?? "";
+  const fit = await fitFor(ctx, action, param("issue"), param("base"));
+  const chosen = { harness: param("harness"), model: param("model"), effort: param("effort"), stackOn: param("stackOn") };
+  return new Response(batchRow(action, param("issue"), await choicesFor(ctx, true), chosen, "skip" in fit ? { stack: [] } : fit), { headers: HTML_HEADERS });
+}
+
+/** A dispatch row always posts a `stackOn` and a `base`, so the rows' fields line up by position. */
+function batchRow(action: Action, issue: string, choices: Choices, chosen: Chosen, { stack, base }: { stack: StackOption[]; base?: BaseChoice }) {
+  const rerenderRow = `hx-get="/batch-row" hx-vals='{"action":"${action}"}' hx-include="closest fieldset" hx-target="closest fieldset" hx-swap="outerHTML"`;
+  const fields = launchFields(action, issue, choices, chosen, stack, rerenderRow, base) ?? [NO_HARNESS];
+  const blank = (name: string) => `<input type="hidden" name="${name}" value="">`;
+  const padding = action === "dispatch" ? [...(stack.length ? [] : [blank("stackOn")]), ...(base ? [] : [blank("base")])] : [];
+  return ['<fieldset class="row">', `<legend>${escape(issue)}</legend>`, ...fields, ...padding, "</fieldset>"].join("\n");
+}
+
+function batchAction(action: string | null): Action {
+  if (action === "dispatch" || action === "review") return action;
+  throw new WebFailure("Bad request", `\`${action ?? ""}\` is not an action with a launch form`, ["Tick issues on the Board and use Dispatch or Review"], 400);
+}
+
+/** Launch every row of a batch form, each on its own, and report each issue. */
+async function postBatch(ctx: WebContext, request: Request, action: Action) {
+  const form = await request.formData();
+  const column = (name: string) => form.getAll(name).map(String);
+  const [issues, harnesses, models, efforts, stackOns, bases] = ["issue", "harness", "model", "effort", "stackOn", "base"].map(column) as string[][] as [string[], string[], string[], string[], string[], string[]];
+  const rows = issues.map((issue, i) => ({ issue, harness: harnesses[i] ?? "", model: models[i] ?? "", effort: efforts[i] ?? "", stackOn: stackOns[i] ?? "", base: bases[i] ?? "" }));
+  const byIssue = new Map(rows.map((r) => [r.issue, r]));
+  const outcomes = await eachIssue([...byIssue.keys()], (issue) => {
+    const { stackOn, base, ...request } = byIssue.get(issue)!;
+    return action === "dispatch"
+      ? dispatch(ctx.world, ctx.configDir, { ...request, ...(stackOn && { stackOn }), ...(base && { base }) })
+      : review(ctx.world, ctx.configDir, request);
+  });
+  const body = [renderOutcomes(outcomes, (r) => ({
+    new: action === "dispatch" ? "dispatched" : "reviewing",
+    existing: action === "dispatch" ? "already In flight (no-op)" : "already launched (no-op)",
+    resumed: `resumed from ${r.resumedFrom}`,
+  })[r.outcome]), '<p><a href="/">Back to the Board</a></p>'].join("\n");
+  return new Response(page(`${BUTTONS[action]} results`, body), { headers: HTML_HEADERS });
+}
+
+/** A list with how each issue of a batch went. */
+function renderOutcomes<T>(outcomes: IssueOutcome<T>[], done: (value: T) => string) {
+  const item = (o: IssueOutcome<T>) =>
+    o.outcome === "done"
+      ? `<li>${escape(o.issue)}: ${escape(done(o.value))}</li>`
+      : `<li>${escape(o.issue)}: <span class="error">${o.outcome}, ${escape(o.error.message)}</span></li>`;
+  return ["<ul>", ...outcomes.map(item), "</ul>"].join("\n");
+}
+
+function unique(items: string[]) {
+  return [...new Set(items)];
+}
+
 function page(title: string, main: string) {
   return `<!doctype html>
 <html lang="en">
@@ -314,6 +525,9 @@ h2 { font-size: 1.1rem; margin-bottom: 0.25rem; }
 .warning { color: #8a5a00; margin: 0.25rem 0 0; }
 .agent.blocked { color: #fff; background: #b00020; padding: 0 0.25rem; border-radius: 0.2rem; font-weight: bold; }
 form.dispatch { display: inline-flex; gap: 0.25rem; margin-left: 0.5rem; }
+.actions { position: sticky; top: 0; background: #fff; padding: 0.5rem 0; }
+.actions form { display: flex; gap: 0.25rem; }
+fieldset.row { display: flex; gap: 0.25rem; align-items: center; margin-bottom: 0.5rem; }
 form.refresh { margin-bottom: 1rem; }
 </style>
 </head>

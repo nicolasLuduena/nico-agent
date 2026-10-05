@@ -157,15 +157,19 @@ export async function dispatch(world: World, configDir: string, request: Dispatc
   return { dispatch: await runSteps(world, configDir, ref, harness, templates, record), outcome: "new" };
 }
 
+/** A Dispatch with no PR yet is still Implementing, so closing it needs confirmation. */
 export class CloseConfirmationRequired extends DispatchError {
   constructor(readonly issue: string) {
-    super(`${issue} has an open PR or no linked PR; closing requires confirmation`, [
+    super(`${issue} has no PR yet; closing requires confirmation`, [
       `Run \`nico-agent close ${issue} --confirm\` to remove its workspace and forget the Dispatch`,
     ]);
   }
 }
 
-/** Remove a Dispatch's workspace before forgetting it, holding the same lease as launches. */
+/**
+ * Remove a Dispatch's workspace before forgetting it, holding the same lease as
+ * launches. Once it has a PR, whatever its state, no confirmation is needed.
+ */
 export async function closeDispatch(world: World, configDir: string, issue: string, confirm = false) {
   const { key } = resolveIssue(configDir, issue);
   if (!findDispatch(configDir, key)) return { issue: key, outcome: "existing" as const };
@@ -181,8 +185,7 @@ export async function closeDispatch(world: World, configDir: string, issue: stri
         world.githubLinkedPullRequests(record.repo, issueNumber(record)),
         world.githubBranchPullRequests(record.repo, record.branch),
       ]);
-      const pr = linkedPr([...linked, ...branch], record.repo);
-      if (!pr || pr.state === "open") throw new CloseConfirmationRequired(key);
+      if (!linkedPr([...linked, ...branch], record.repo)) throw new CloseConfirmationRequired(key);
     }
     if (record.workspace) await world.herdrWorktreeRemove(record.workspace);
     await removeDispatch(configDir, key);
@@ -192,6 +195,31 @@ export async function closeDispatch(world: World, configDir: string, issue: stri
     await saveDispatch(configDir, record);
     throw e;
   }
+}
+
+/** How one issue of a batch went: done with `value`, or failed or skipped with the error. */
+export type IssueOutcome<T> =
+  | { issue: string; outcome: "done"; value: T }
+  | { issue: string; outcome: "failed" | "skipped"; error: DispatchError | WorldError };
+
+/**
+ * Run `action` on each issue in turn, each on its own: an issue refused before
+ * any side effect is skipped, one whose step or outside call failed is failed,
+ * and either way the rest still run. One at a time, since issues of a Repo
+ * share its clone.
+ */
+export async function eachIssue<T>(issues: string[], action: (issue: string) => Promise<T>): Promise<IssueOutcome<T>[]> {
+  const outcomes: IssueOutcome<T>[] = [];
+  for (const issue of issues) {
+    try {
+      outcomes.push({ issue, outcome: "done", value: await action(issue) });
+    } catch (e) {
+      if (!(e instanceof DispatchError || e instanceof WorldError)) throw e;
+      const skipped = e instanceof DispatchError && !(e instanceof StepFailed);
+      outcomes.push({ issue, outcome: skipped ? "skipped" : "failed", error: e });
+    }
+  }
+  return outcomes;
 }
 
 export interface ReviewResult {

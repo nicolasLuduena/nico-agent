@@ -273,7 +273,7 @@ describe("In flight on the web", () => {
     expect(fragment.body).toStartWith('<section class="in-flight" hx-get="/in-flight"');
     expect(fragment.body).not.toContain("<html");
     expect(fragment.body).toContain(
-      '<li><a href="https://github.com/acme/api/issues/7">acme/api#7 Add retries</a> · claude opus high · base main · workspace w1 · PR ready · <a href="https://github.com/acme/api/pull/9">PR #9</a> · implementer <span class="agent">working</span>',
+      '<li><input type="checkbox" class="pick" name="issue" value="acme/api#7" form="batch" autocomplete="off" id="pick-acme-api-7" hx-preserve="true" aria-label="Select acme/api#7"> <a href="https://github.com/acme/api/issues/7">acme/api#7 Add retries</a> · claude opus high · base main · workspace w1 · PR ready · <a href="https://github.com/acme/api/pull/9">PR #9</a> · implementer <span class="agent">working</span>',
     );
   });
 

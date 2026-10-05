@@ -1,9 +1,9 @@
 import { resolve } from "node:path";
 import { loadBoard } from "./board";
 import { ConfigError, findRepo, loadConfig, saveConfig } from "./config";
-import { DispatchError, StepFailed, baseBranch, closeDispatch, dispatch, resolveIssue, review } from "./dispatch";
+import { DispatchError, StepFailed, baseBranch, closeDispatch, dispatch, eachIssue, resolveIssue, review } from "./dispatch";
 import { type Catalog, harnessCatalogs, harnesses, refreshHarnesses, rememberedLaunches } from "./harness";
-import { type Output, render } from "./output";
+import { type Output, plural, render } from "./output";
 import { VERSION } from "./version";
 import { sameSlug, slugOfRemote } from "./slug";
 import { cachedPrs, currentStage, freshPrs, loadInFlight, stageOf } from "./stage";
@@ -26,8 +26,9 @@ export interface RunResult {
 const DESCRIPTION = "Dispatch coding agents onto ready-for-agent issues";
 const ADD_REPO_HELP = "Run `nico-agent repo add <owner/name> --path <clone>` to add a Repo";
 const BOARD_HELP = "Run `nico-agent` to see the Board";
-const DISPATCH_USAGE = "nico-agent dispatch <issue> --harness <harness> --model <model> --effort <effort>";
-const REVIEW_USAGE = "nico-agent review <issue> --harness <harness> --model <model> --effort <effort>";
+const DISPATCH_USAGE = "nico-agent dispatch <issue>... --harness <harness> --model <model> --effort <effort>";
+const REVIEW_USAGE = "nico-agent review <issue>... --harness <harness> --model <model> --effort <effort>";
+const CLOSE_USAGE = "nico-agent close <issue>... [--confirm]";
 const LAUNCH_FLAGS = {
   "--harness": { value: true, description: "Harness to launch, e.g. claude (see `nico-agent harness list`)" },
   "--model": { value: true, description: "model for the Harness, e.g. opus" },
@@ -57,6 +58,7 @@ interface Command {
   summary: string;
   /** Command-specific flags; `value` marks a flag that takes a value. */
   flags: Record<string, { value: boolean; description: string }>;
+  /** A last one ending in `...` takes any number of arguments. */
   positionals: string[];
   examples: string[];
   run(args: Args, ctx: RunContext): Promise<Output>;
@@ -112,16 +114,17 @@ const commands: Command[] = [
   {
     name: "dispatch",
     usage: DISPATCH_USAGE,
-    summary: "Start an Implementer on an issue in a new herdr worktree workspace (resumes a failed one)",
+    summary: "Start an Implementer on each issue in a new herdr worktree workspace (resumes a failed one)",
     flags: {
       ...LAUNCH_FLAGS,
       "--stack-on": { value: true, description: "Blocker issue reference to stack on; required when ambiguous" },
       "--base": { value: true, description: "branch on origin to start from and open the PR against (default: the last one used in the Repo, else the default branch); not for a Stackable issue" },
     },
-    positionals: ["issue"],
+    positionals: ["issue..."],
     examples: [
       "nico-agent dispatch acme/api#7 --harness claude --model opus --effort high",
       "nico-agent dispatch acme/api#7 --harness claude --model opus --effort high --base beta",
+      "nico-agent dispatch acme/api#7 acme/api#8 --harness codex --model gpt-5.5 --effort high",
       "nico-agent dispatch https://github.com/acme/api/issues/7 --harness claude --model sonnet --effort max",
     ],
     run: dispatchCommand,
@@ -129,23 +132,20 @@ const commands: Command[] = [
   {
     name: "review",
     usage: REVIEW_USAGE,
-    summary: "Start a Reviewer on an In-flight issue's linked PR, in its workspace (resumes a failed one)",
+    summary: "Start a Reviewer on each In-flight issue's linked PR, in its workspace (resumes a failed one)",
     flags: LAUNCH_FLAGS,
-    positionals: ["issue"],
+    positionals: ["issue..."],
     examples: ["nico-agent review acme/api#7 --harness codex --model gpt-5.5 --effort high"],
     run: reviewCommand,
   },
   {
     name: "close",
-    usage: "nico-agent close <issue> [--confirm]",
-    summary: "Remove a Dispatch's workspace and forget it, keeping its branch",
-    flags: { "--confirm": { value: false, description: "close even with an open PR or no linked PR" } },
-    positionals: ["issue"],
-    examples: ["nico-agent close acme/api#7", "nico-agent close acme/api#7 --confirm"],
-    run: async (args, ctx) => {
-      const result = await closeDispatch(ctx.world, ctx.configDir, issueArg(args, "nico-agent close <issue> [--confirm]"), args.flags["--confirm"] === true);
-      return { data: { closed: result.outcome === "closed" ? result.issue : `${result.issue} already Closed (no-op)` }, help: [BOARD_HELP] };
-    },
+    usage: CLOSE_USAGE,
+    summary: "Remove each Dispatch's workspace and forget it, keeping its branch",
+    flags: { "--confirm": { value: false, description: "close even with no PR yet (still Implementing)" } },
+    positionals: ["issue..."],
+    examples: ["nico-agent close acme/api#7 acme/api#8", "nico-agent close acme/api#7 --confirm"],
+    run: closeCommand,
   },
   {
     name: "harness list",
@@ -266,7 +266,8 @@ function parseArgs(command: Command, tokens: string[]): Args {
     args.flags[name] = value;
   }
   if (args.flags["--help"]) return args;
-  if (args.positionals.length > command.positionals.length) {
+  const variadic = command.positionals.at(-1)?.endsWith("...");
+  if (!variadic && args.positionals.length > command.positionals.length) {
     const extra = args.positionals[command.positionals.length];
     throw new CliError(`unexpected argument \`${extra}\` for \`${command.name}\``, [`Usage: \`${command.usage}\``], 2);
   }
@@ -310,9 +311,8 @@ function required(args: Args, flag: string, usage: string) {
   return value;
 }
 
-function launchRequest(args: Args, usage: string) {
+function launchFlags(args: Args, usage: string) {
   return {
-    issue: issueArg(args, usage),
     harness: required(args, "--harness", usage),
     model: required(args, "--model", usage),
     effort: required(args, "--effort", usage),
@@ -325,52 +325,102 @@ function issueArg(args: Args, usage: string) {
   return issue;
 }
 
-async function dispatchCommand(args: Args, ctx: RunContext): Promise<Output> {
-  const { dispatch: record, outcome, resumedFrom } = await dispatch(ctx.world, ctx.configDir, {
-    ...launchRequest(args, DISPATCH_USAGE),
-    ...(typeof args.flags["--stack-on"] === "string" && { stackOn: args.flags["--stack-on"] }),
-    ...(typeof args.flags["--base"] === "string" && { base: args.flags["--base"] }),
+/** One issue's part of a command run on several: its Dispatch key, result and Stage. */
+interface IssueRun {
+  output: Output;
+  issue: string;
+  result: string;
+  stage?: string;
+}
+
+/**
+ * Run a command on each issue given. A single issue gets the command's own
+ * output and errors; several get a row each and exit 1 if any failed or was
+ * skipped (`verb` names the count of those done). `withStage` adds a Stage
+ * column.
+ */
+async function onIssues(args: Args, usage: string, verb: string, withStage: boolean, one: (issue: string) => Promise<IssueRun>): Promise<Output> {
+  const issues = args.positionals;
+  if (issues.length <= 1) return (await one(issueArg(args, usage))).output;
+  const outcomes = await eachIssue(issues, one);
+  const rows = outcomes.map((o) => {
+    if (o.outcome === "done") {
+      const { issue, result, stage = "" } = o.value;
+      return { issue, result, ...(withStage && { stage }), error: "" };
+    }
+    const stage = o.error instanceof StepFailed ? stageOf(o.error.dispatch, null) : "";
+    return { issue: o.issue, result: o.outcome, ...(withStage && { stage }), error: o.error.message };
   });
-  // A Dispatch just run has no PR yet; an existing one may.
-  const stage = outcome === "existing" ? await currentStage(ctx.world, record) : stageOf(record, null);
-  const dispatched = {
-    new: record.issue,
-    existing: `${record.issue} already In flight (no-op)`,
-    resumed: `${record.issue} (resumed from ${resumedFrom})`,
-  }[outcome];
-  const help = [`Run \`nico-agent show ${record.issue}\` to see the Dispatch`, BOARD_HELP];
-  if (record.claimed === false) help.unshift(`Assign ${record.url} to yourself on GitHub to Claim it by hand`);
+  const help = outcomes.flatMap((o) => (o.outcome === "done" ? [] : o.error instanceof DispatchError ? o.error.help : []));
+  help.push(...outcomes.flatMap((o) => (o.outcome === "done" ? (o.value.output.help ?? []) : [])));
+  const done = outcomes.filter((o) => o.outcome === "done").length;
   return {
-    data: {
-      dispatched,
+    data: { [verb]: `${done} of ${plural(issues.length, "issue")}`, results: rows },
+    help: [...new Set([...help, BOARD_HELP])],
+    exitCode: done === issues.length ? 0 : 1,
+  };
+}
+
+async function dispatchCommand(args: Args, ctx: RunContext): Promise<Output> {
+  const flags = launchFlags(args, DISPATCH_USAGE);
+  const { "--stack-on": stackOn, "--base": base } = args.flags;
+  return onIssues(args, DISPATCH_USAGE, "dispatched", true, async (issue) => {
+    const { dispatch: record, outcome, resumedFrom } = await dispatch(ctx.world, ctx.configDir, {
+      issue,
+      ...flags,
+      ...(typeof stackOn === "string" && { stackOn }),
+      ...(typeof base === "string" && { base }),
+    });
+    // A Dispatch just run has no PR yet; an existing one may.
+    const stage = outcome === "existing" ? await currentStage(ctx.world, record) : stageOf(record, null);
+    const result = {
+      new: "dispatched",
+      existing: "already In flight (no-op)",
+      resumed: `resumed from ${resumedFrom}`,
+    }[outcome];
+    const help = [`Run \`nico-agent show ${record.issue}\` to see the Dispatch`, BOARD_HELP];
+    if (record.claimed === false) help.unshift(`Assign ${record.url} to yourself on GitHub to Claim it by hand`);
+    const data = {
+      dispatched: outcome === "resumed" ? `${record.issue} (${result})` : outcome === "new" ? record.issue : `${record.issue} ${result}`,
       stage,
       workspace: record.workspace,
       agent: record.implementer.agent,
       ...(record.warnings && { warnings: record.warnings }),
-    },
-    help,
-  };
+    };
+    return { output: { data, help }, issue: record.issue, result, stage };
+  });
 }
 
 async function reviewCommand(args: Args, ctx: RunContext): Promise<Output> {
-  const { dispatch: record, outcome, resumedFrom } = await review(ctx.world, ctx.configDir, launchRequest(args, REVIEW_USAGE));
-  const reviewer = record.reviewer!;
-  const reviewing = {
-    new: record.issue,
-    existing: `${record.issue} already launched (no-op)`,
-    resumed: `${record.issue} (resumed from ${resumedFrom})`,
-  }[outcome];
-  return {
-    data: {
-      reviewing,
-      // A Reviewer just run was prompted, so the PR can't change the Stage.
-      stage: outcome === "existing" ? await currentStage(ctx.world, record) : stageOf(record, null),
+  const flags = launchFlags(args, REVIEW_USAGE);
+  return onIssues(args, REVIEW_USAGE, "reviewing", true, async (issue) => {
+    const { dispatch: record, outcome, resumedFrom } = await review(ctx.world, ctx.configDir, { issue, ...flags });
+    const reviewer = record.reviewer!;
+    const result = {
+      new: "reviewing",
+      existing: "already launched (no-op)",
+      resumed: `resumed from ${resumedFrom}`,
+    }[outcome];
+    // A Reviewer just run was prompted, so the PR can't change the Stage.
+    const stage = outcome === "existing" ? await currentStage(ctx.world, record) : stageOf(record, null);
+    const data = {
+      reviewing: outcome === "resumed" ? `${record.issue} (${result})` : outcome === "new" ? record.issue : `${record.issue} ${result}`,
+      stage,
       pr: reviewer.prUrl,
       workspace: record.workspace,
       agent: reviewer.agent,
-    },
-    help: [`Run \`nico-agent show ${record.issue}\` to see the Dispatch`, BOARD_HELP],
-  };
+    };
+    return { output: { data, help: [`Run \`nico-agent show ${record.issue}\` to see the Dispatch`, BOARD_HELP] }, issue: record.issue, result, stage };
+  });
+}
+
+async function closeCommand(args: Args, ctx: RunContext): Promise<Output> {
+  const confirm = args.flags["--confirm"] === true;
+  return onIssues(args, CLOSE_USAGE, "closed", false, async (issue) => {
+    const { issue: key, outcome } = await closeDispatch(ctx.world, ctx.configDir, issue, confirm);
+    const result = outcome === "closed" ? "closed" : "already Closed (no-op)";
+    return { output: { data: { closed: outcome === "closed" ? key : `${key} ${result}` }, help: [BOARD_HELP] }, issue: key, result };
+  });
 }
 
 async function show(args: Args, ctx: RunContext): Promise<Output> {
@@ -601,10 +651,6 @@ async function board(ctx: RunContext): Promise<Output> {
   Object.assign(data, inFlightData);
   if (errors.length) data.errors = errors;
   return { data, help };
-}
-
-function plural(count: number, noun: string, nouns = `${noun}s`) {
-  return `${count} ${count === 1 ? noun : nouns}`;
 }
 
 function lowerFirst(text: string) {

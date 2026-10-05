@@ -39,11 +39,18 @@ test("a closed unmerged PR on the Dispatch branch permits closing", async () => 
   expect(world.calls).toContain("herdr worktree remove --workspace w1");
 });
 
-test.each(["open", "none"])("%s PR requires --confirm, then closes without deleting branches", async (state) => {
+test("an open PR allows closing without --confirm", async () => {
   const { cli, world } = await dispatched();
-  if (state === "open") world.linkPr("acme/api", 7, { number: 9 });
+  world.linkPr("acme/api", 7, { number: 9 });
+  expect((await cli("close", "acme/api#7")).exitCode).toBe(0);
+  expect(world.calls).toContain("herdr worktree remove --workspace w1");
+});
+
+test("no PR yet requires --confirm, then closes without deleting branches", async () => {
+  const { cli, world } = await dispatched();
   const refused = await cli("close", "acme/api#7", "--json");
   expect(refused.exitCode).toBe(1);
+  expect(refused.json().error).toBe("acme/api#7 has no PR yet; closing requires confirmation");
   expect(refused.json().help).toContain("Run `nico-agent close acme/api#7 --confirm` to remove its workspace and forget the Dispatch");
   expect(world.calls.some((c) => c.startsWith("herdr worktree remove"))).toBe(false);
   world.calls.length = 0;
@@ -51,11 +58,15 @@ test.each(["open", "none"])("%s PR requires --confirm, then closes without delet
   expect(world.calls).toEqual(["herdr worktree remove --workspace w1"]);
 });
 
-test("an open PR takes precedence over a closed PR", async () => {
-  const { cli, world } = await dispatched();
-  world.linkPr("acme/api", 7, { number: 9, state: "merged" });
-  world.linkPr("acme/api", 7, { number: 10 });
-  expect((await cli("close", "acme/api#7")).exitCode).toBe(1);
+test("a Dispatch that Failed before opening a PR requires --confirm", async () => {
+  const ctx = setup();
+  ctx.world.addClone("/src/api", "git@github.com:acme/api.git");
+  await ctx.cli("repo", "add", "acme/api", "--path", "/src/api");
+  ctx.world.addIssue("acme/api", { number: 7 });
+  ctx.world.failHerdr("tab create", "no such workspace");
+  expect((await ctx.cli("dispatch", "acme/api#7", ...FLAGS)).exitCode).toBe(1);
+  expect((await ctx.cli("close", "acme/api#7")).exitCode).toBe(1);
+  expect((await ctx.cli("close", "acme/api#7", "--confirm")).exitCode).toBe(0);
 });
 
 test("failed removal keeps the Dispatch and allows retry", async () => {

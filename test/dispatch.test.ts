@@ -311,7 +311,7 @@ describe("dispatch", () => {
     const { stdout, exitCode } = await cli("dispatch", "--help");
     expect(exitCode).toBe(0);
     expect(stdout).toStartWith(
-      "usage: nico-agent dispatch <issue> --harness <harness> --model <model> --effort <effort>\n",
+      "usage: nico-agent dispatch <issue>... --harness <harness> --model <model> --effort <effort>\n",
     );
     expect(world.calls).toEqual([]);
   });
@@ -359,7 +359,7 @@ describe("In flight on the Board", () => {
         '<section class="in-flight" hx-get="/in-flight" hx-trigger="every 5s" hx-swap="outerHTML">',
         "<h2>In flight</h2>",
         "<ul>",
-        '<li><a href="https://github.com/acme/api/issues/7">acme/api#7 Add retries</a> · claude opus high · base main · workspace w1 · Implementing · implementer <span class="agent">working</span>',
+        '<li><input type="checkbox" class="pick" name="issue" value="acme/api#7" form="batch" autocomplete="off" id="pick-acme-api-7" hx-preserve="true" aria-label="Select acme/api#7"> <a href="https://github.com/acme/api/issues/7">acme/api#7 Add retries</a> · claude opus high · base main · workspace w1 · Implementing · implementer <span class="agent">working</span>',
         '<form method="post" action="/close">',
         '<input type="hidden" name="issue" value="acme/api#7">',
         '<button>Close</button>',
@@ -510,7 +510,7 @@ describe("web Retry", () => {
     const { body } = await web("/");
     expect(body).toContain(
       [
-        '<li><a href="https://github.com/acme/api/issues/7">acme/api#7 Add retries</a> · claude opus high · base main · workspace w1 · <span class="error">Failed at tab: workspace_not_found: no workspace w1</span> · implementer <span class="agent">unknown</span>',
+        '<li><input type="checkbox" class="pick" name="issue" value="acme/api#7" form="batch" autocomplete="off" id="pick-acme-api-7" hx-preserve="true" aria-label="Select acme/api#7"> <a href="https://github.com/acme/api/issues/7">acme/api#7 Add retries</a> · claude opus high · base main · workspace w1 · <span class="error">Failed at tab: workspace_not_found: no workspace w1</span> · implementer <span class="agent">unknown</span>',
         '<form method="post" action="/close">',
         '<input type="hidden" name="issue" value="acme/api#7">',
         '<button>Close</button>',
