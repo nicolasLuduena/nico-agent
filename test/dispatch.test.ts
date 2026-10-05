@@ -310,7 +310,7 @@ describe("dispatch", () => {
     const { stdout, exitCode } = await cli("dispatch", "--help");
     expect(exitCode).toBe(0);
     expect(stdout).toStartWith(
-      "usage: nico-agent dispatch <issue> --harness <harness> --model <model> --effort <effort>\n",
+      "usage: nico-agent dispatch <issue>... --harness <harness> --model <model> --effort <effort>\n",
     );
     expect(world.calls).toEqual([]);
   });
