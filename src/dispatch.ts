@@ -1,6 +1,7 @@
 import { type Prompts, type Repo, fillTemplate, findRepo, loadConfig, prompts } from "./config";
 import { type Harness, harnessCatalog, harnesses, launchArgs, rememberLaunch, rememberedLaunches } from "./harness";
 import { linearIdentifier } from "./linear";
+import { paneCommand, saveVariant } from "./opencode";
 import { sameSlug } from "./slug";
 import { freshPrs, isReviewLaunched, linkedPr, linkedPrs } from "./stage";
 import {
@@ -584,16 +585,21 @@ function agentSteps(world: World, harness: Harness, repo: Repo, record: Dispatch
       launch.pane = tab.pane;
     },
     "agent start": async () => {
-      const { model, effort } = launch;
-      ({ ready } = await world.herdrAgentStart({
-        name: launch.agent,
-        kind: harness.kind,
-        pane: launch.pane!,
-        args: launchArgs(harness, { model, effort, repoPath: repo.path }),
-      }));
+      const values = { model: launch.model, effort: launch.effort, repoPath: repo.path };
+      if (harness.launchMode === "pane-command") {
+        saveVariant(harness, launch.model, launch.effort);
+        await world.herdrPaneRun(launch.pane!, paneCommand(harness, values));
+        return;
+      }
+      ({ ready } = await world.herdrAgentStart({ name: launch.agent, kind: harness.kind!, pane: launch.pane!, args: launchArgs(harness, values) }));
     },
     // After a failure `ready` is unknown: the user may have answered the agent by hand.
     "agent ready": async () => {
+      if (harness.launchMode === "pane-command") {
+        // herdr has no kind to start it with, so it only gets its name once herdr sees it running.
+        await world.herdrAgentDetect(launch.pane!, STARTUP_TIMEOUT_MS);
+        await world.herdrAgentRename(launch.pane!, launch.agent);
+      }
       if (!ready) await awaitReady(world, harness, launch.agent, record.worktree!);
     },
   };

@@ -55,6 +55,9 @@ async function git(path: string, args: string[]): Promise<string> {
 /** How long a prompted agent may take to start working; herdr reports a stall after 5s. */
 const PROMPT_TIMEOUT_MS = 30_000;
 
+/** How often to look for an agent herdr has not detected yet. */
+const DETECT_POLL_MS = 250;
+
 /** A failed herdr command; `code` is herdr's error code when it reported one. */
 class HerdrError extends WorldError {
   constructor(
@@ -310,6 +313,32 @@ export class RealWorld implements World {
     return { ready: true };
   }
 
+  async herdrPaneRun(pane: string, command: string) {
+    // Prints nothing on success.
+    await herdrText(["pane", "run", pane, command]);
+  }
+
+  // `agent wait` fails at once on a pane with no agent yet, so poll until herdr detects one.
+  async herdrAgentDetect(pane: string, timeoutMs: number) {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      try {
+        const agent = await herdr(["agent", "get", pane]);
+        if (agent.agent?.agent && agent.agent.interactive_ready !== false) return;
+      } catch (e) {
+        if (!(e instanceof HerdrError && e.code === "agent_not_found")) throw e;
+      }
+      if (Date.now() >= deadline) {
+        throw new WorldError(`agent_not_detected: herdr detected no agent ready in pane ${pane} within ${timeoutMs}ms`);
+      }
+      await Bun.sleep(DETECT_POLL_MS);
+    }
+  }
+
+  async herdrAgentRename(pane: string, name: string) {
+    await herdr(["agent", "rename", pane, name]);
+  }
+
   async herdrAgents() {
     const result = await herdr(["agent", "list"]);
     const agents = result.agents as { name?: string; agent_status?: string }[];
@@ -345,6 +374,13 @@ export class RealWorld implements World {
     if (result.exitCode === 0) return result.stdout;
     const reason = result.stderr.trim().split("\n")[0] || `exit code ${result.exitCode}`;
     throw new WorldError(`\`codex debug models\` failed: ${reason}`);
+  }
+
+  async opencodeModels(command: string) {
+    const result = await exec([command, "api", "model.list"]);
+    if (result.exitCode === 0) return result.stdout;
+    const reason = result.stderr.trim().split("\n")[0] || `exit code ${result.exitCode}`;
+    throw new WorldError(`\`${command} api model.list\` failed: ${reason}`);
   }
 
   processId() {

@@ -90,6 +90,8 @@ export class FakeWorld implements World {
   hangs = new Set<string>();
   /** What `codex debug models` prints: the recorded catalog unless a test swaps it. */
   codexCatalog = CODEX_CATALOG;
+  /** What `opencode2 api model.list` prints: the recorded catalog unless a test swaps it. */
+  opencodeCatalog = OPENCODE_CATALOG;
   /** PRs linked to each issue, by `slug#N`. */
   linkedPrs = new Map<string, PullRequest[]>();
   branchPrs = new Map<string, PullRequest[]>();
@@ -252,6 +254,19 @@ export class FakeWorld implements World {
     return { ready: this.blockedScreen === null };
   }
 
+  async herdrPaneRun(pane: string, command: string) {
+    this.herdr("pane run", pane, command);
+  }
+
+  async herdrAgentDetect(pane: string, timeoutMs: number) {
+    this.herdr("agent detect", pane, "--timeout", String(timeoutMs));
+  }
+
+  async herdrAgentRename(pane: string, name: string) {
+    this.herdr("agent rename", pane, name);
+    this.agentStates.set(name, "idle");
+  }
+
   async herdrWorktreeRemove(workspace: string) {
     this.herdr("worktree remove", "--workspace", workspace);
   }
@@ -302,6 +317,11 @@ export class FakeWorld implements World {
     return this.codexCatalog;
   }
 
+  async opencodeModels(command: string) {
+    this.call(`${command} api model.list`);
+    return this.opencodeCatalog;
+  }
+
   processId() {
     return this.pid;
   }
@@ -323,3 +343,6 @@ export class FakeWorld implements World {
 
 /** `codex debug models` from codex-cli 0.159.0, trimmed to the fields nico-agent reads and their neighbours. */
 export const CODEX_CATALOG = readFileSync(new URL("fixtures/codex-debug-models.json", import.meta.url), "utf8");
+
+/** `opencode2 api model.list` from opencode 2.0.23, trimmed to four models, the last one disabled. */
+export const OPENCODE_CATALOG = readFileSync(new URL("fixtures/opencode2-model-list.json", import.meta.url), "utf8");

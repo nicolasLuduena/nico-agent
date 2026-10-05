@@ -32,8 +32,12 @@ export interface Config {
  */
 export interface HarnessConfig {
   launchMode: LaunchMode;
-  /** herdr's agent kind. */
-  kind: string;
+  /** herdr's agent kind; required by `herdr-kind`. */
+  kind?: string;
+  /** The binary `pane-command` runs in the pane (opencode2), and discovers models with. */
+  command?: string;
+  /** opencode2's saved per-model variant file, where `pane-command` writes the Effort; `~/` is the home directory. */
+  variantFile?: string;
   sigil: string;
   modelArgs: string[];
   effortArgs: string[];
@@ -47,12 +51,18 @@ export interface HarnessConfig {
   trustPrompt?: { text: string; keys: string[] };
 }
 
-/** `pane-command` (opencode2) is not supported yet. */
-export const LAUNCH_MODES = ["herdr-kind"] as const;
+/**
+ * `herdr-kind` has herdr start the agent; `pane-command` runs opencode2 in
+ * the pane and names the agent once herdr detects it.
+ */
+export const LAUNCH_MODES = ["herdr-kind", "pane-command"] as const;
 export type LaunchMode = (typeof LAUNCH_MODES)[number];
 
-export const DISCOVERIES = ["codex"] as const;
+export const DISCOVERIES = ["codex", "opencode2"] as const;
 export type Discovery = (typeof DISCOVERIES)[number];
+
+/** Where opencode2 saves its per-model variants, unless XDG_STATE_HOME moves it. */
+export const DEFAULT_VARIANT_FILE = "~/.local/state/opencode/model.json";
 
 /** The built-in Harnesses; claude's models are its aliases. */
 export const HARNESSES: Record<string, HarnessConfig> = {
@@ -79,10 +89,28 @@ export const HARNESSES: Record<string, HarnessConfig> = {
     trustArgs: ["-c", 'projects={"{repoPath}"={trust_level="trusted"}}'],
     discovery: "codex",
   },
+  // Its TUI takes no model or Effort flag: the model goes in OPENCODE_CONFIG_CONTENT and the
+  // Effort in the saved variant file, so modelArgs and effortArgs are empty (ADR-0005).
+  opencode2: {
+    launchMode: "pane-command",
+    command: "opencode2",
+    sigil: "@",
+    modelArgs: [],
+    effortArgs: [],
+    extraArgs: [],
+    discovery: "opencode2",
+    variantFile: DEFAULT_VARIANT_FILE,
+  },
 };
 
-const REQUIRED_HARNESS_SETTINGS = ["launchMode", "kind", "sigil", "modelArgs", "effortArgs"] as const;
-const HARNESS_SETTINGS = [...REQUIRED_HARNESS_SETTINGS, "extraArgs", "trustArgs", "models", "efforts", "discovery", "trustPrompt"];
+const REQUIRED_HARNESS_SETTINGS = ["launchMode", "sigil", "modelArgs", "effortArgs"] as const;
+/** What each Launch mode launches. */
+const LAUNCH_TARGET: Record<LaunchMode, "kind" | "command"> = { "herdr-kind": "kind", "pane-command": "command" };
+const HARNESS_SETTINGS = [
+  "launchMode", "kind", "command", "sigil", "modelArgs", "effortArgs", "extraArgs", "trustArgs",
+  "models", "efforts", "discovery", "trustPrompt", "variantFile",
+];
+const NEW_HARNESS_HELP = `A new Harness needs ${REQUIRED_HARNESS_SETTINGS.join(", ")}, and kind (herdr-kind) or command (pane-command)`;
 
 /** Every Harness, built-in and from config, by name: the config's settings over the built-in ones. */
 export function harnessConfigs(config: Config): Record<string, HarnessConfig> {
@@ -203,7 +231,7 @@ function checkHarnesses(file: string, harnesses: unknown): Record<string, Partia
       if (key === "discovery" && !DISCOVERIES.includes(value as Discovery)) {
         throw new ConfigError(`${at}.discovery \`${value}\` is not supported`, `Discovery: ${DISCOVERIES.join(", ")}`);
       }
-      if (["kind", "sigil"].includes(key) && typeof value !== "string") throw new ConfigError(`${at}.${key} is not a string`);
+      if (["kind", "command", "sigil", "variantFile"].includes(key) && typeof value !== "string") throw new ConfigError(`${at}.${key} is not a string`);
       if (["modelArgs", "effortArgs", "extraArgs", "trustArgs", "models", "efforts"].includes(key) && !isStrings(value)) {
         throw new ConfigError(`${at}.${key} is not a list of strings`);
       }
@@ -213,9 +241,12 @@ function checkHarnesses(file: string, harnesses: unknown): Record<string, Partia
     }
     if (!Object.hasOwn(HARNESSES, name)) {
       const missing = REQUIRED_HARNESS_SETTINGS.find((key) => !Object.hasOwn(settings, key));
-      if (missing) {
-        throw new ConfigError(`${at} is missing ${missing}`, `A new Harness needs ${REQUIRED_HARNESS_SETTINGS.join(", ")}`);
-      }
+      if (missing) throw new ConfigError(`${at} is missing ${missing}`, NEW_HARNESS_HELP);
+    }
+    const merged: Partial<HarnessConfig> = { ...HARNESSES[name], ...settings };
+    const launched = LAUNCH_TARGET[merged.launchMode!];
+    if (merged[launched] === undefined) {
+      throw new ConfigError(`${at} is missing ${launched}`, `A ${merged.launchMode} Harness needs ${launched}`);
     }
   }
   return harnesses as Record<string, Partial<HarnessConfig>>;
