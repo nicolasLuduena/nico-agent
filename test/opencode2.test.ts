@@ -91,7 +91,7 @@ describe("opencode2 dispatch", () => {
 
     const { exitCode, stdout } = await cli(...DISPATCH);
     expect(exitCode).toBe(1);
-    expect(stdout).toStartWith(`error: ${variantFile} is not valid JSON\nstage: Failed at agent start\n`);
+    expect(stdout).toStartWith(`error: ${variantFile} is not valid JSON; fix or delete it\nstage: Failed at agent start\n`);
     expect(readFileSync(variantFile, "utf8")).toBe("{ not json");
     expect(world.calls.some((c) => c.startsWith("herdr pane run"))).toBe(false);
   });

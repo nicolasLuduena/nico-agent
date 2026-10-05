@@ -1,8 +1,8 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { DispatchError } from "./dispatch";
 import { type Harness, type Launch, type ModelChoice, launchArgs } from "./harness";
+import { DEFAULT_VARIANT_FILE } from "./config";
 import { WorldError } from "./world";
 
 /**
@@ -10,6 +10,9 @@ import { WorldError } from "./world";
  * variant and clears the saved one, so the model runs as it comes.
  */
 export const DEFAULT_EFFORT = "default";
+
+/** What opencode2 always runs with in a pane, before the Harness's args: a private server. */
+export const PANE_ARGS = ["--standalone"];
 
 /**
  * The enabled models of `opencode2 api model.list`, in its order, as
@@ -42,7 +45,7 @@ export function parseOpencodeModels(text: string): ModelChoice[] {
 export function paneCommand(harness: Harness, launch: Launch) {
   const model = launch.effort === DEFAULT_EFFORT ? launch.model : `${launch.model}#${launch.effort}`;
   const config = JSON.stringify({ model, agents: { build: { model } } });
-  const args = [harness.command!, "--standalone", ...launchArgs(harness, launch)];
+  const args = [harness.command!, ...PANE_ARGS, ...launchArgs(harness, launch)];
   return `env OPENCODE_CONFIG_CONTENT=${shellQuote(config)} ${args.map(shellQuote).join(" ")}`;
 }
 
@@ -57,21 +60,23 @@ export function saveVariant(harness: Harness, model: string, effort: string) {
   try {
     saved = JSON.parse(readFileSync(file, "utf8"));
   } catch (e) {
-    if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw new DispatchError(`${file} is not valid JSON`, [`Fix or delete ${file}`]);
+    if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw new WorldError(`${file} is not valid JSON; fix or delete it`);
     saved = { recent: [], favorite: [] };
   }
   if (typeof saved !== "object" || saved === null || Array.isArray(saved)) {
-    throw new DispatchError(`${file} is not a JSON object`, [`Fix or delete ${file}`]);
+    throw new WorldError(`${file} is not a JSON object; fix or delete it`);
   }
   const { [model]: _, ...others } = saved.variant ?? {};
   saved.variant = effort === DEFAULT_EFFORT ? others : { ...saved.variant, [model]: effort };
   mkdirSync(dirname(file), { recursive: true });
-  writeFileSync(`${file}.tmp`, JSON.stringify(saved));
-  renameSync(`${file}.tmp`, file);
+  // Per process, so concurrent dispatches don't write over each other's half-written file.
+  const tmp = `${file}.${process.pid}.tmp`;
+  writeFileSync(tmp, JSON.stringify(saved));
+  renameSync(tmp, file);
 }
 
 function variantFile(harness: Harness) {
-  const file = harness.variantFile ?? "~/.local/state/opencode/model.json";
+  const file = harness.variantFile ?? DEFAULT_VARIANT_FILE;
   return file.startsWith("~/") ? join(homedir(), file.slice(2)) : file;
 }
 

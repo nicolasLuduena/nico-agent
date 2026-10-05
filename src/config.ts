@@ -61,6 +61,9 @@ export type LaunchMode = (typeof LAUNCH_MODES)[number];
 export const DISCOVERIES = ["codex", "opencode2"] as const;
 export type Discovery = (typeof DISCOVERIES)[number];
 
+/** Where opencode2 saves its per-model variants, unless XDG_STATE_HOME moves it. */
+export const DEFAULT_VARIANT_FILE = "~/.local/state/opencode/model.json";
+
 /** The built-in Harnesses; claude's models are its aliases. */
 export const HARNESSES: Record<string, HarnessConfig> = {
   claude: {
@@ -96,13 +99,13 @@ export const HARNESSES: Record<string, HarnessConfig> = {
     effortArgs: [],
     extraArgs: [],
     discovery: "opencode2",
-    variantFile: "~/.local/state/opencode/model.json",
+    variantFile: DEFAULT_VARIANT_FILE,
   },
 };
 
 const REQUIRED_HARNESS_SETTINGS = ["launchMode", "sigil", "modelArgs", "effortArgs"] as const;
 /** What each Launch mode launches. */
-const LAUNCHED: Record<LaunchMode, "kind" | "command"> = { "herdr-kind": "kind", "pane-command": "command" };
+const LAUNCH_TARGET: Record<LaunchMode, "kind" | "command"> = { "herdr-kind": "kind", "pane-command": "command" };
 const HARNESS_SETTINGS = [
   "launchMode", "kind", "command", "sigil", "modelArgs", "effortArgs", "extraArgs", "trustArgs",
   "models", "efforts", "discovery", "trustPrompt", "variantFile",
@@ -241,7 +244,7 @@ function checkHarnesses(file: string, harnesses: unknown): Record<string, Partia
       if (missing) throw new ConfigError(`${at} is missing ${missing}`, NEW_HARNESS_HELP);
     }
     const merged: Partial<HarnessConfig> = { ...HARNESSES[name], ...settings };
-    const launched = LAUNCHED[merged.launchMode!];
+    const launched = LAUNCH_TARGET[merged.launchMode!];
     if (merged[launched] === undefined) {
       throw new ConfigError(`${at} is missing ${launched}`, `A ${merged.launchMode} Harness needs ${launched}`);
     }

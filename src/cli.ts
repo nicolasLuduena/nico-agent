@@ -2,6 +2,7 @@ import { resolve } from "node:path";
 import { loadBoard } from "./board";
 import { ConfigError, findRepo, loadConfig, saveConfig } from "./config";
 import { DispatchError, StepFailed, baseBranch, closeDispatch, dispatch, eachIssue, resolveIssue, review } from "./dispatch";
+import { PANE_ARGS } from "./opencode";
 import { type Catalog, harnessCatalogs, harnesses, refreshHarnesses, rememberedLaunches } from "./harness";
 import { type Output, plural, render } from "./output";
 import { VERSION } from "./version";
@@ -540,7 +541,7 @@ async function harnessList(ctx: RunContext): Promise<Output> {
         launch: `${harness.launchMode} ${harness.launchMode === "pane-command" ? harness.command : harness.kind}`,
         sigil: harness.sigil,
         args: [
-          ...(harness.launchMode === "pane-command" ? ["--standalone"] : []),
+          ...(harness.launchMode === "pane-command" ? PANE_ARGS : []),
           ...harness.modelArgs, ...harness.effortArgs, ...(harness.trustArgs ?? []), ...harness.extraArgs,
         ].join(" "),
         models,

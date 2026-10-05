@@ -303,7 +303,7 @@ export class RealWorld implements World {
     for (;;) {
       try {
         const agent = await herdr(["agent", "get", pane]);
-        if (agent.agent?.interactive_ready !== false) return;
+        if (agent.agent?.agent && agent.agent.interactive_ready !== false) return;
       } catch (e) {
         if (!(e instanceof HerdrError && e.code === "agent_not_found")) throw e;
       }
