@@ -3,6 +3,7 @@ import { loadBoard } from "./board";
 import { ConfigError, findRepo, loadConfig, saveConfig } from "./config";
 import { DispatchError, StepFailed, baseBranch, closeDispatch, dispatch, eachIssue, resolveIssue, review } from "./dispatch";
 import { type Catalog, harnessCatalogs, harnesses, refreshHarnesses, rememberedLaunches } from "./harness";
+import { linearIdentifier } from "./linear";
 import { type Output, plural, render } from "./output";
 import { VERSION } from "./version";
 import { sameSlug, slugOfRemote } from "./slug";
@@ -119,6 +120,7 @@ const commands: Command[] = [
       ...LAUNCH_FLAGS,
       "--stack-on": { value: true, description: "Blocker issue reference to stack on; required when ambiguous" },
       "--base": { value: true, description: "branch on origin to start from and open the PR against (default: the last one used in the Repo, else the default branch); not for a Stackable issue" },
+      "--repo": { value: true, description: "Repo to dispatch a Linear issue into; required when several Repos claim it" },
     },
     positionals: ["issue..."],
     examples: [
@@ -126,6 +128,7 @@ const commands: Command[] = [
       "nico-agent dispatch acme/api#7 --harness claude --model opus --effort high --base beta",
       "nico-agent dispatch acme/api#7 acme/api#8 --harness codex --model gpt-5.5 --effort high",
       "nico-agent dispatch https://github.com/acme/api/issues/7 --harness claude --model sonnet --effort max",
+      "nico-agent dispatch BLE-27 --harness claude --model opus --effort high --repo acme/api",
     ],
     run: dispatchCommand,
   },
@@ -363,13 +366,14 @@ async function onIssues(args: Args, usage: string, verb: string, withStage: bool
 
 async function dispatchCommand(args: Args, ctx: RunContext): Promise<Output> {
   const flags = launchFlags(args, DISPATCH_USAGE);
-  const { "--stack-on": stackOn, "--base": base } = args.flags;
+  const { "--stack-on": stackOn, "--base": base, "--repo": repo } = args.flags;
   return onIssues(args, DISPATCH_USAGE, "dispatched", true, async (issue) => {
     const { dispatch: record, outcome, resumedFrom } = await dispatch(ctx.world, ctx.configDir, {
       issue,
       ...flags,
       ...(typeof stackOn === "string" && { stackOn }),
       ...(typeof base === "string" && { base }),
+      ...(typeof repo === "string" && { repo }),
     });
     // A Dispatch just run has no PR yet; an existing one may.
     const stage = outcome === "existing" ? await currentStage(ctx.world, record) : stageOf(record, null);
@@ -379,7 +383,8 @@ async function dispatchCommand(args: Args, ctx: RunContext): Promise<Output> {
       resumed: `resumed from ${resumedFrom}`,
     }[outcome];
     const help = [`Run \`nico-agent show ${record.issue}\` to see the Dispatch`, BOARD_HELP];
-    if (record.claimed === false) help.unshift(`Assign ${record.url} to yourself on GitHub to Claim it by hand`);
+    const source = linearIdentifier(record.issue) ? "Linear" : "GitHub";
+    if (record.claimed === false) help.unshift(`Assign ${record.url} to yourself on ${source} to Claim it by hand`);
     const data = {
       dispatched: outcome === "resumed" ? `${record.issue} (${result})` : outcome === "new" ? record.issue : `${record.issue} ${result}`,
       stage,

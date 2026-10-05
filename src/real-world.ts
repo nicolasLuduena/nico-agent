@@ -135,6 +135,9 @@ export class RealWorld implements World {
 
   linearViewer() { return this.linear.viewer(); }
   linearIssues(team: string) { return this.linear.issues(team); }
+  linearIssue(identifier: string) { return this.linear.issue(identifier); }
+  linearAttachmentUrls(identifier: string) { return this.linear.attachmentUrls(identifier); }
+  linearAssignSelf(identifier: string) { return this.linear.assignSelf(identifier); }
 
   async gitRemotes(path: string) {
     let real: string;
@@ -224,6 +227,24 @@ export class RealWorld implements World {
       // A fork head is not fetchable as origin/<head branch> in this clone.
       headBranch: pr.headRepository?.nameWithOwner.toLowerCase() === pr.repository.nameWithOwner.toLowerCase() ? pr.headRefName : undefined,
     }));
+  }
+
+  async githubPullRequest(slug: string, number: number): Promise<PullRequest | null> {
+    const args = ["pr", "view", String(number), "--repo", slug, "--json", "number,url,state,baseRefName,headRefName,isCrossRepository"];
+    const result = await exec(["gh", ...args], GH_ENV);
+    if (result.exitCode !== 0) {
+      if (/Could not resolve to a PullRequest|no pull requests found/i.test(result.stderr)) return null;
+      throw ghFailure(result.stderr);
+    }
+    const pr = JSON.parse(result.stdout) as { number: number; url: string; state: string; baseRefName: string; headRefName: string; isCrossRepository: boolean };
+    return {
+      repo: slug,
+      number: pr.number,
+      url: pr.url,
+      state: pr.state.toLowerCase() as PullRequest["state"],
+      baseBranch: pr.baseRefName,
+      ...(!pr.isCrossRepository && { headBranch: pr.headRefName }),
+    };
   }
 
   async githubAssignSelf(slug: string, number: number) {

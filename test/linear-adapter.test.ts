@@ -25,7 +25,7 @@ test("Linear adapter reads viewer, pages issues and uses incoming blocks as Bloc
     }
     if (body.variables.cursor) return Response.json({ data: { issues: page([]) } });
     return Response.json({ data: { issues: page([{
-      id: "issue-27", identifier: "BLE-27", title: "Compare PDFs", url: "https://linear.app/bleentr/issue/BLE-27",
+      id: "issue-27", identifier: "BLE-27", title: "Compare PDFs", url: "https://linear.app/bleentr/issue/BLE-27", branchName: "nico/ble-27",
       team: { id: "team-ble", key: "BLE", name: "Bleentr" }, project: { id: "pdf", name: "PDF diff" },
       state: { type: "backlog" }, assignee: { id: "user-me" }, labels: page([{ name: "ready-for-agent" }], "labels-2"),
       inverseRelations: page([
@@ -38,7 +38,7 @@ test("Linear adapter reads viewer, pages issues and uses incoming blocks as Bloc
     const source = new LinearSource("/unused", { LINEAR_API_KEY: "test-key" }, endpoint);
     expect(await source.viewer()).toBe("user-me");
     expect(await source.issues("BLE")).toEqual([{
-      identifier: "BLE-27", title: "Compare PDFs", url: "https://linear.app/bleentr/issue/BLE-27",
+      identifier: "BLE-27", title: "Compare PDFs", url: "https://linear.app/bleentr/issue/BLE-27", branchName: "nico/ble-27",
       team: { id: "team-ble", key: "BLE", name: "Bleentr" }, project: { id: "pdf", name: "PDF diff" },
       state: "backlog", assignee: "user-me", labels: ["ready-for-agent", "pdf"],
       blockers: [{ state: "completed" }, { state: "started" }],
@@ -81,3 +81,36 @@ for (const [name, response] of [
     } finally { app.stop(true); }
   });
 }
+
+test("Linear adapter reads one issue with its branchName, null when Linear has no such issue", async () => {
+  const { app, endpoint } = server((body) => {
+    if (body.variables.id === "BLE-99") return Response.json({ data: null, errors: [{ message: "Entity not found: Issue" }] });
+    return Response.json({ data: { issue: {
+      id: "issue-27", identifier: "BLE-27", title: "Compare PDFs", url: "https://linear.app/bleentr/issue/BLE-27", branchName: "nico/ble-27",
+      team: { id: "team-ble", key: "BLE", name: "Bleentr" }, project: null, state: { type: "unstarted" }, assignee: null,
+      labels: page([{ name: "ready-for-agent" }]), inverseRelations: page([]),
+    } } });
+  });
+  try {
+    const source = new LinearSource("/unused", { LINEAR_API_KEY: "test-key" }, endpoint);
+    expect(await source.issue("BLE-27")).toMatchObject({ identifier: "BLE-27", branchName: "nico/ble-27", state: "unstarted", blockers: [] });
+    expect(await source.issue("BLE-99")).toBeNull();
+  } finally { app.stop(true); }
+});
+
+test("Linear adapter pages attachment URLs and assigns the issue to the API key's owner", async () => {
+  const requests: any[] = [];
+  const { app, endpoint } = server((body) => {
+    requests.push(body);
+    if (body.query.includes("issueUpdate")) return Response.json({ data: { issueUpdate: { success: true } } });
+    if (body.query.includes("viewer")) return Response.json({ data: { viewer: { id: "user-me" }, issue: { id: "issue-27" } } });
+    if (body.variables.cursor) return Response.json({ data: { issue: { attachments: page([{ url: "https://github.com/bleentr/pdf-diff/pull/12" }]) } } });
+    return Response.json({ data: { issue: { id: "issue-27", attachments: page([{ url: "https://www.figma.com/file/abc" }], "attachments-2") } } });
+  });
+  try {
+    const source = new LinearSource("/unused", { LINEAR_API_KEY: "test-key" }, endpoint);
+    expect(await source.attachmentUrls("BLE-27")).toEqual(["https://www.figma.com/file/abc", "https://github.com/bleentr/pdf-diff/pull/12"]);
+    await source.assignSelf("BLE-27");
+    expect(requests.at(-1).variables).toEqual({ id: "issue-27", assigneeId: "user-me" });
+  } finally { app.stop(true); }
+});

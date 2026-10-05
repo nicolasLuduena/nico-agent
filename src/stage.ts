@@ -1,3 +1,4 @@
+import { linearIdentifier } from "./linear";
 import { sameSlug } from "./slug";
 import { type Dispatch, REVIEW_STEPS } from "./state";
 import { type PullRequest, type World, WorldError } from "./world";
@@ -44,9 +45,27 @@ export function linkedPr(prs: PullRequest[], repo: string): PullRequest | null {
 /** Looks up the PR of an In-flight issue. */
 export type PrLookup = (dispatch: Dispatch) => Promise<PullRequest | null>;
 
-/** Asks GitHub every time. */
+/** Asks GitHub (and Linear, for a Linear issue) every time. */
 export function freshPrs(world: World): PrLookup {
-  return async (d) => linkedPr(await world.githubLinkedPullRequests(d.repo, issueNumber(d)), d.repo);
+  return async (d) => linkedPr(await linkedPrs(world, d), d.repo);
+}
+
+/**
+ * The PRs linked to a Dispatch's issue (ADR-0003): GitHub's closing
+ * references, or for a Linear issue its GitHub PR attachments in the
+ * dispatched Repo, with their state read from GitHub.
+ */
+export async function linkedPrs(world: World, dispatch: Dispatch): Promise<PullRequest[]> {
+  const identifier = linearIdentifier(dispatch.issue);
+  if (!identifier) return world.githubLinkedPullRequests(dispatch.repo, issueNumber(dispatch));
+  const numbers = new Set<number>();
+  for (const url of await world.linearAttachmentUrls(identifier)) {
+    const match = url.match(/^https:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/pull\/(\d+)(?:\/[^?#]*)?(?:[?#].*)?$/i);
+    if (match && sameSlug(match[1]!, dispatch.repo)) numbers.add(Number(match[2]));
+  }
+  const prs = await Promise.all([...numbers].map((n) => world.githubPullRequest(dispatch.repo, n)));
+  // Closed unmerged PRs are left out, as GitHub's closing references leave them out.
+  return prs.filter((pr): pr is PullRequest => pr !== null && pr.state !== "closed");
 }
 
 const PR_CACHE_MS = 30_000;

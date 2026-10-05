@@ -11,6 +11,7 @@ export class FakeWorld implements World {
   addLinearIssue(issue: Partial<LinearIssue> & { identifier: string }) {
     const full: LinearIssue = {
       title: issue.identifier, url: `https://linear.app/bleentr/issue/${issue.identifier}/title`,
+      branchName: `nico/${issue.identifier.toLowerCase()}`,
       team: { id: "team-ble", key: "BLE", name: "Bleentr" }, project: null,
       labels: ["ready-for-agent"], state: "unstarted", assignee: null, blockers: [], ...issue,
     };
@@ -25,6 +26,42 @@ export class FakeWorld implements World {
   async linearIssues(team: string) {
     if (this.linearFailure) throw new WorldError(this.linearFailure);
     return [...this.linear.values()].flat().filter((i) => [i.team.key, i.team.id, i.team.name].includes(team));
+  }
+
+  /** Attachment URLs of each Linear issue, by identifier. */
+  linearAttachments = new Map<string, string[]>();
+  /** Identifiers each `linearAssignSelf` assigned. */
+  linearClaimed: string[] = [];
+  /** PRs `githubPullRequest` finds, by `slug#N`. */
+  prs = new Map<string, PullRequest>();
+
+  async linearIssue(identifier: string) {
+    this.call(`linear issue ${identifier}`);
+    if (this.linearFailure) throw new WorldError(this.linearFailure);
+    return [...this.linear.values()].flat().find((i) => i.identifier === identifier) ?? null;
+  }
+
+  async linearAttachmentUrls(identifier: string) {
+    this.call(`linear attachments ${identifier}`);
+    if (this.linearFailure) throw new WorldError(this.linearFailure);
+    return this.linearAttachments.get(identifier) ?? [];
+  }
+
+  async linearAssignSelf(identifier: string) {
+    this.call(`linear assign ${identifier}`);
+    this.linearClaimed.push(identifier);
+  }
+
+  /** Add a PR `githubPullRequest` can find. */
+  addPr(pr: Partial<PullRequest> & { repo: string; number: number }) {
+    this.prs.set(`${pr.repo}#${pr.number}`, {
+      url: `https://github.com/${pr.repo}/pull/${pr.number}`, state: "open", baseBranch: "main", ...pr,
+    });
+  }
+
+  async githubPullRequest(slug: string, number: number) {
+    this.call(`github pr ${slug}#${number}`);
+    return this.prs.get(`${slug}#${number}`) ?? null;
   }
   clones = new Map<string, string[]>();
   issues = new Map<string, GitHubIssue[]>();

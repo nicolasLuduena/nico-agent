@@ -1,6 +1,6 @@
 import htmx from "htmx.org/dist/htmx.min.js" with { type: "text" };
 import { type BaseChoice, type Board, type StackOption, baseChoice, loadBoard, stackChoice, stackOptions } from "./board";
-import { type Repo, ConfigError, loadConfig } from "./config";
+import { type Repo, ConfigError, findRepo, loadConfig } from "./config";
 import { type IssueOutcome, CloseConfirmationRequired, DispatchError, StepFailed, baseBranch, closeDispatch, dispatch, eachIssue, review, resolveIssue } from "./dispatch";
 import { type Catalog, type Remembered, harnessCatalogs, refreshHarnesses, rememberedLaunches } from "./harness";
 import { type InFlightRow, type PrLookup, cachedPrs, loadInFlight } from "./stage";
@@ -126,17 +126,27 @@ async function choicesFor(ctx: WebContext, needed: boolean): Promise<Choices> {
 async function getLaunchForm(ctx: WebContext, params: URLSearchParams, action: Action) {
   const param = (name: string) => params.get(name) ?? "";
   const choices = await choicesFor(ctx, true);
-  const chosen = { harness: param("harness"), model: param("model"), effort: param("effort"), stackOn: param("stackOn") };
+  const chosen = { harness: param("harness"), model: param("model"), effort: param("effort"), stackOn: param("stackOn"), repo: param("repo") };
   let options: StackOption[] = [];
   let base: BaseChoice | undefined;
   if (action === "dispatch") {
     const ref = resolveIssue(ctx.configDir, param("issue"));
-    const issue = await ctx.world.githubIssue(ref.repo.slug, ref.number);
-    if (issue) options = await stackOptions(ctx.world, ref.repo.slug, issue);
+    const repo = ref.repo ?? formRepo(ctx.configDir, chosen.repo);
+    if (ref.repo) {
+      const issue = await ctx.world.githubIssue(ref.repo.slug, ref.number);
+      if (issue) options = await stackOptions(ctx.world, ref.repo.slug, issue);
+    }
     // A Stacked dispatch has no Base choice.
-    if (!options.length) base = await baseChoice(ctx.world, ref.repo, param("base") || choices.remembered.bases[ref.repo.slug]);
+    if (!options.length) base = await baseChoice(ctx.world, repo, param("base") || choices.remembered.bases[repo.slug]);
   }
   return new Response(launchForm(action, param("issue"), choices, chosen, options, base), { headers: HTML_HEADERS });
+}
+
+/** The Repo a Linear issue's dispatch form names, since the issue alone doesn't. */
+function formRepo(configDir: string, slug: string) {
+  const repo = findRepo(loadConfig(configDir), slug);
+  if (!repo) throw new DispatchError(`\`${slug}\` is not a configured Repo`, ["Dispatch a Linear issue from its row on the Board, which names its Repo"], true);
+  return repo;
 }
 
 /** A launch form's target: dispatch or review, then back to the Board. */
@@ -150,6 +160,7 @@ async function postLaunch(ctx: WebContext, request: Request, launch: typeof disp
     effort: field("effort"),
     ...(launch === dispatch && field("stackOn") && { stackOn: field("stackOn") }),
     ...(launch === dispatch && field("base") && { base: field("base") }),
+    ...(launch === dispatch && field("repo") && { repo: field("repo") }),
   });
   return new Response(null, { status: 303, headers: { location: "/" } });
 }
@@ -444,7 +455,8 @@ function renderRepo(repo: Repo, board: Board, choices: Choices) {
   const stackable = board.stackable.filter((i) => i.repo === repo.slug);
   const list = (rows: string[]) => ['<ul class="issues">', ...rows, "</ul>"].join("\n");
   const readyRows = ready.map((i) => i.identifier
-    ? `<li>${issueLink(i.identifier, i.title, i.url)}${i.base ? baseChip(i.base) : ""}</li>`
+    // No tick box: a batch row can't name the Repo of an issue several Repos claim.
+    ? `<li>${issueLink(i.identifier, i.title, i.url)}${i.base ? baseChip(i.base) : ""}\n${launchForm("dispatch", i.identifier, choices, { repo: repo.slug }, [], board.bases[i.repo])}</li>`
     : `<li>${pick(`${i.repo}#${i.number}`)}${issueLink(`#${i.number}`, i.title, i.url)}\n${launchForm("dispatch", `${i.repo}#${i.number}`, choices, {}, [], board.bases[i.repo])}</li>`);
   const stackRows = stackable.map((i) =>
     `<li>${pick(`${i.repo}#${i.number}`)}${issueLink(`#${i.number}`, i.title, i.url)}\n${launchForm("dispatch", `${i.repo}#${i.number}`, choices, {}, i.blockers)}</li>`);
@@ -500,6 +512,8 @@ interface Chosen {
   effort?: string;
   stackOn?: string;
   base?: string;
+  /** The Repo of a Linear issue's dispatch. */
+  repo?: string;
 }
 
 /** A launch form's fields, `rerenderAttributes` on the Harness and model; null when no Harness has models. */
@@ -526,6 +540,7 @@ function launchFields(
       .join("")}</select>`;
   return [
     `<input type="hidden" name="issue" value="${escape(issue)}">`,
+    ...(chosen.repo ? [`<input type="hidden" name="repo" value="${escape(chosen.repo)}">`] : []),
     ...(stack.length ? [stackSelect(stack, chosen.stackOn)] : []),
     ...(base ? [`<label>Base ${select("base", base.branches, base.selected)}</label>`] : []),
     select("harness", offered.map((c) => c.harness.name), catalog.harness.name, ` ${rerenderAttributes}`),
@@ -622,6 +637,7 @@ async function fitFor(ctx: ServerContext, action: Action, issue: string, base?: 
     return { stack: [] };
   }
   if (record) return { skip: `${ref.key} is already In flight` };
+  if (!ref.repo) return { skip: `${ref.key} is a Linear issue; dispatch it from its row, which names its Repo` };
   const found = await ctx.world.githubIssue(ref.repo.slug, ref.number);
   const stack = found ? await stackOptions(ctx.world, ref.repo.slug, found) : [];
   // A Stacked dispatch has no Base choice.
