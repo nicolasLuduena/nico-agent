@@ -88,7 +88,7 @@ for (const ref of ["BLE-27", "https://linear.app/bleentr/issue/BLE-27/title?foo=
     const { cli } = setup();
     const result = await cli("show", ref);
     expect(result.exitCode).toBe(1);
-    expect(result.stdout).toContain("Linear issue BLE-27 is recognized");
+    expect(result.stdout).toContain("BLE-27 is not In flight");
     expect(result.stdout).not.toContain("not an issue reference");
   });
 }

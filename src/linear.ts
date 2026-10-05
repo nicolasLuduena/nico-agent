@@ -34,6 +34,13 @@ export class LinearSource {
   }
 
   private async query<T>(query: string, variables: Record<string, unknown> = {}): Promise<T> {
+    const data = await this.queryOrNotFound<T>(query, variables);
+    if (data === null) throw new WorldError("Linear GraphQL request failed; check API key permissions and selectors");
+    return data;
+  }
+
+  /** Like `query`, but null when Linear reports the entity asked for doesn't exist. */
+  private async queryOrNotFound<T>(query: string, variables: Record<string, unknown> = {}): Promise<T | null> {
     const key = this.key();
     let response: Response;
     try {
@@ -44,15 +51,39 @@ export class LinearSource {
     } catch { throw new WorldError("Linear request failed; check your network"); }
     if ([401, 403].includes(response.status)) throw new WorldError("Not authenticated with Linear; check LINEAR_API_KEY");
     if (!response.ok) throw new WorldError(`Linear request failed (HTTP ${response.status})`);
-    let payload: { data?: T; errors?: unknown[] };
+    let payload: { data?: T; errors?: { message?: string }[] };
     try { payload = await response.json() as typeof payload; }
     catch { throw new WorldError("Linear returned an invalid response"); }
+    if (payload?.errors?.some((e) => /entity not found/i.test(e?.message ?? ""))) return null;
     if (!payload || typeof payload !== "object" || payload.errors?.length || !payload.data) throw new WorldError("Linear GraphQL request failed; check API key permissions and selectors");
     return payload.data;
   }
 
   async viewer() {
     return (await this.query<{ viewer: { id: string } }>("query { viewer { id } }")).viewer.id;
+  }
+
+  async issue(identifier: string): Promise<LinearIssue | null> {
+    const data = await this.queryOrNotFound<{ issue: IssueNode | null }>(ISSUE_QUERY, { id: identifier });
+    return data?.issue ? this.toIssue(data.issue) : null;
+  }
+
+  async attachmentUrls(identifier: string): Promise<string[]> {
+    const data = await this.query<{ issue: { id: string; attachments: Connection<{ url: string }> } }>(
+      `query($id: String!) { issue(id: $id) { id attachments(first: 100) { nodes { url } pageInfo { hasNextPage endCursor } } } }`, { id: identifier },
+    );
+    return (await this.remaining(data.issue.id, "attachments", data.issue.attachments, "url")).map((a) => a.url);
+  }
+
+  async assignSelf(identifier: string) {
+    const data = await this.query<{ viewer: { id: string }; issue: { id: string } }>(
+      "query($id: String!) { viewer { id } issue(id: $id) { id } }", { id: identifier },
+    );
+    const result = await this.query<{ issueUpdate: { success: boolean } }>(
+      "mutation($id: String!, $assigneeId: String!) { issueUpdate(id: $id, input: { assigneeId: $assigneeId }) { success } }",
+      { id: data.issue.id, assigneeId: data.viewer.id },
+    );
+    if (!result.issueUpdate.success) throw new WorldError(`Linear did not assign ${identifier}`);
   }
 
   async issues(team: string): Promise<LinearIssue[]> {
@@ -63,18 +94,20 @@ export class LinearSource {
         filter: { team: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(team)
           ? { id: { eq: team } } : { or: [{ key: { eq: team } }, { name: { eq: team } }] }, labels: { name: { eq: "ready-for-agent" } } }, cursor,
       });
-      for (const node of data.issues.nodes) {
-        const labels = await this.remaining(node.id, "labels", node.labels, "name");
-        const relations = await this.remaining(node.id, "inverseRelations", node.inverseRelations, "type issue { state { type } }");
-        issues.push({
-          identifier: node.identifier, title: node.title, url: node.url, team: node.team, project: node.project,
-          labels: labels.map((l) => l.name), state: node.state.type, assignee: node.assignee?.id ?? null,
-          blockers: relations.filter((r) => r.type === "blocks").map((r) => ({ state: r.issue.state.type })),
-        });
-      }
+      for (const node of data.issues.nodes) issues.push(await this.toIssue(node));
       cursor = nextCursor(data.issues);
     } while (cursor);
     return issues;
+  }
+
+  private async toIssue(node: IssueNode): Promise<LinearIssue> {
+    const labels = await this.remaining(node.id, "labels", node.labels, "name");
+    const relations = await this.remaining(node.id, "inverseRelations", node.inverseRelations, "type issue { state { type } }");
+    return {
+      identifier: node.identifier, title: node.title, url: node.url, branchName: node.branchName, team: node.team, project: node.project,
+      labels: labels.map((l) => l.name), state: node.state.type, assignee: node.assignee?.id ?? null,
+      blockers: relations.filter((r) => r.type === "blocks").map((r) => ({ state: r.issue.state.type })),
+    };
   }
 
   private async remaining<T>(id: string, field: string, initial: Connection<T>, fields: string): Promise<T[]> {
@@ -108,6 +141,7 @@ interface IssueNode {
   identifier: string;
   title: string;
   url: string;
+  branchName: string;
   team: LinearIssue["team"];
   project: LinearIssue["project"];
   state: { type: string };
@@ -116,14 +150,21 @@ interface IssueNode {
   inverseRelations: Connection<{ type: string; issue: { state: { type: string } } }>;
 }
 
-const ISSUES_QUERY = `query($filter: IssueFilter!, $cursor: String) {
-  issues(first: 100, after: $cursor, filter: $filter) {
-    nodes {
-      id identifier title url team { id key name } project { id name }
+const ISSUE_FIELDS = `
+      id identifier title url branchName team { id key name } project { id name }
       state { type } assignee { id }
       labels(first: 100) { nodes { name } pageInfo { hasNextPage endCursor } }
-      inverseRelations(first: 100) { nodes { type issue { state { type } } } pageInfo { hasNextPage endCursor } }
+      inverseRelations(first: 100) { nodes { type issue { state { type } } } pageInfo { hasNextPage endCursor } }`;
+
+const ISSUES_QUERY = `query($filter: IssueFilter!, $cursor: String) {
+  issues(first: 100, after: $cursor, filter: $filter) {
+    nodes {${ISSUE_FIELDS}
     }
     pageInfo { hasNextPage endCursor }
+  }
+}`;
+
+const ISSUE_QUERY = `query($id: String!) {
+  issue(id: $id) {${ISSUE_FIELDS}
   }
 }`;

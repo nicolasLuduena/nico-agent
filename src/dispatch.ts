@@ -2,7 +2,7 @@ import { type Prompts, type Repo, fillTemplate, findRepo, loadConfig, prompts } 
 import { type Harness, harnessCatalog, harnesses, launchArgs, rememberLaunch, rememberedLaunches } from "./harness";
 import { linearIdentifier } from "./linear";
 import { sameSlug } from "./slug";
-import { freshPrs, isReviewLaunched, issueNumber, linkedPr } from "./stage";
+import { freshPrs, isReviewLaunched, linkedPr, linkedPrs } from "./stage";
 import {
   type Dispatch,
   type Launch,
@@ -16,8 +16,8 @@ import {
   removeDispatch,
   saveDispatch,
 } from "./state";
-import { type World, WorldError } from "./world";
-import { baseChoice, canStart, stackChoice, stackOptions, type StackOption } from "./board";
+import { type LinearIssue, type World, WorldError } from "./world";
+import { baseChoice, canStart, matchesSelector, stackChoice, stackOptions, type StackOption } from "./board";
 
 const DISPATCH_HINT = "nico-agent dispatch <issue> --harness <harness> --model <model> --effort <effort>";
 
@@ -41,21 +41,29 @@ export interface DispatchRequest {
   stackOn?: string;
   /** Branch on origin to use as the Base; omitted for the last one used in the Repo, else the default branch. */
   base?: string;
+  /** Repo to dispatch a Linear issue into; omitted when a single Repo claims it. */
+  repo?: string;
 }
 
-export interface IssueRef {
-  repo: Repo;
-  number: number;
-  /** `owner/repo#N` with the Repo's configured slug: the Dispatch key. */
-  key: string;
-}
+/**
+ * An issue in the Repo it is dispatched into. `key` is the Dispatch key:
+ * `owner/repo#N` with the Repo's configured slug for a GitHub issue, the
+ * identifier (`BLE-27`) for a Linear one.
+ */
+export type IssueRef = GitHubRef | LinearRef;
+export type GitHubRef = { repo: Repo; key: string; number: number; identifier?: undefined };
+export type LinearRef = { repo: Repo; key: string; identifier: string; number?: undefined };
 
-/** Resolve `owner/repo#N` or a GitHub issue URL to a configured Repo's issue. */
-export function resolveIssue(configDir: string, ref: string): IssueRef {
+/** An issue reference as given: a GitHub issue knows its Repo, a Linear one only once dispatched or fetched. */
+export type ParsedIssue = GitHubRef | { repo?: undefined; key: string; identifier: string; number?: undefined };
+
+/**
+ * Resolve `owner/repo#N` or a GitHub issue URL to a configured Repo's issue,
+ * or recognize a Linear identifier or issue URL.
+ */
+export function resolveIssue(configDir: string, ref: string): ParsedIssue {
   const identifier = linearIdentifier(ref);
-  if (identifier) {
-    throw new DispatchError(`Linear issue ${identifier} is recognized; Linear dispatch and review are not supported yet`, ["Open the issue in Linear; dispatch support follows in #14"]);
-  }
+  if (identifier) return { identifier, key: identifier };
   const match =
     ref.match(/^([\w.-]+\/[\w.-]+)#(\d+)$/) ??
     ref.match(/^https?:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/issues\/(\d+)\/?(?:[?#].*)?$/i);
@@ -104,18 +112,25 @@ export interface DispatchResult {
  */
 export async function dispatch(world: World, configDir: string, request: DispatchRequest): Promise<DispatchResult> {
   const harness = await chooseLaunch(world, configDir, request);
-  const ref = resolveIssue(configDir, request.issue);
-  const { repo, number, key } = ref;
+  const parsed = resolveIssue(configDir, request.issue);
+  if (parsed.repo && request.repo) {
+    throw new DispatchError(`${parsed.key} is a GitHub issue; its Repo is in its reference`, ["Dispatch it without `--repo`"]);
+  }
+  const { key } = parsed;
   const templates = prompts(loadConfig(configDir));
   const existing = findDispatch(configDir, key);
   if (existing) {
     sameLaunch(existing, request);
+    const ref = dispatchedRef(configDir, parsed, existing);
     const leased = await leaseDispatch(configDir, key, world.processId(), (d) => isResumable(world, d));
     if (!leased) return { dispatch: findDispatch(configDir, key) ?? existing, outcome: "existing" };
     const resumedFrom = leased.failure?.step ?? STEPS.find((s) => !leased.completed.includes(s)) ?? "claim";
     return { dispatch: await runSteps(world, configDir, ref, harness, templates, leased), outcome: "resumed", resumedFrom };
   }
+  if (!parsed.repo) return newLinearDispatch(world, configDir, parsed.identifier, harness, templates, request);
 
+  const ref = parsed;
+  const { repo, number } = ref;
   const issue = await world.githubIssue(repo.slug, number);
   if (!issue) throw new DispatchError(`${key} was not found on GitHub`, [`Check the issue number on https://github.com/${repo.slug}/issues`]);
   if (issue.state !== "open") throw new DispatchError(`${key} is closed`, ["Run `nico-agent` to see the Ready issues"]);
@@ -134,18 +149,65 @@ export async function dispatch(world: World, configDir: string, request: Dispatc
     throw new DispatchError(`${key} has no open Blockers to stack on`, ["Dispatch it without `--stack-on`"]);
   }
   const base = await chooseBase(world, configDir, ref, request, stackedOn);
+  const url = `https://github.com/${repo.slug}/issues/${number}`;
+  return startDispatch(world, configDir, ref, harness, templates, request, { title: issue.title, url, branch: `agent/${repoName(repo)}-${number}`, base, stackedOn });
+}
 
-  const name = repoName(repo);
+/**
+ * Dispatch a Linear issue (ADR-0004) into the Repo whose Linear selector
+ * claims it, or the requested one among several: on Linear's own
+ * `branchName`, so its GitHub integration links the PR.
+ */
+async function newLinearDispatch(world: World, configDir: string, identifier: string, harness: Harness, templates: Prompts, request: DispatchRequest) {
+  const issue = await world.linearIssue(identifier);
+  if (!issue) throw new DispatchError(`${identifier} was not found on Linear`, ["Check the identifier in Linear"]);
+  if (["completed", "canceled"].includes(issue.state)) throw new DispatchError(`${identifier} is closed`, ["Run `nico-agent` to see the Ready issues"]);
+  if (request.stackOn) throw new DispatchError(`${identifier} is a Linear issue, which can't be stacked`, ["Dispatch it without `--stack-on`"]);
+  if (!issue.blockers.every((b) => ["completed", "canceled"].includes(b.state))) {
+    throw new DispatchError(`${identifier} has unresolved Blockers`, ["Dispatch it once its Blockers are done", "Run `nico-agent` to see the Board"]);
+  }
+  const ref: IssueRef = { repo: claimingRepo(configDir, issue, request.repo), identifier, key: identifier };
+  const base = await chooseBase(world, configDir, ref, request);
+  return startDispatch(world, configDir, ref, harness, templates, request, { title: issue.title, url: issue.url, branch: issue.branchName, base });
+}
+
+/** The Repo a Linear issue is dispatched into: `choice`, which must claim it, else the only Repo that does. */
+function claimingRepo(configDir: string, issue: LinearIssue, choice?: string): Repo {
+  const { repos } = loadConfig(configDir);
+  const claiming = repos.filter((r) => r.linear && matchesSelector(issue, r.linear));
+  const help = claiming.map((r) => `Dispatch into ${r.slug} with \`--repo ${r.slug}\``);
+  const addRepo = "Run `nico-agent repo add <owner/name> --path <clone> --linear-team <team>` to add a Repo that claims it";
+  if (choice) {
+    const repo = claiming.find((r) => sameSlug(r.slug, choice));
+    if (repo) return repo;
+    throw new DispatchError(`${choice} does not claim ${issue.identifier} through its Linear selector`, help.length ? help : [addRepo]);
+  }
+  if (claiming.length === 1) return claiming[0]!;
+  if (!claiming.length) throw new DispatchError(`${issue.identifier} matches no Repo's Linear selector`, [addRepo]);
+  throw new DispatchError(`${issue.identifier} matches several Repos; choose one with --repo`, help);
+}
+
+/** Record a new Dispatch, then run its steps. */
+async function startDispatch(
+  world: World,
+  configDir: string,
+  ref: IssueRef,
+  harness: Harness,
+  templates: Prompts,
+  request: DispatchRequest,
+  { title, url, branch, base, stackedOn }: { title: string; url: string; branch: string; base: string; stackedOn?: StackOption },
+): Promise<DispatchResult> {
+  const { repo, key } = ref;
   const now = world.now().toISOString();
   const record: Dispatch = {
     issue: key,
-    title: issue.title,
-    url: `https://github.com/${repo.slug}/issues/${number}`,
+    title,
+    url,
     repo: repo.slug,
     ...(stackedOn && { stackedOn }),
-    branch: `agent/${name}-${number}`,
+    branch,
     base: `origin/${base}`,
-    implementer: { agent: agentName("impl", name, number), harness: harness.name, model: request.model, effort: request.effort },
+    implementer: { agent: agentName("impl", repoName(repo), ref), harness: harness.name, model: request.model, effort: request.effort },
     completed: [],
     runner: world.processId(),
     createdAt: now,
@@ -155,6 +217,18 @@ export async function dispatch(world: World, configDir: string, request: Dispatc
   if (!(await addDispatch(configDir, record))) throw alreadyInFlight(key);
   rememberLaunch(configDir, harness.name, request.model, request.effort, stackedOn ? undefined : { repo: repo.slug, branch: base });
   return { dispatch: await runSteps(world, configDir, ref, harness, templates, record), outcome: "new" };
+}
+
+/** The issue of an existing Dispatch, in the Repo it was dispatched into. */
+function dispatchedRef(configDir: string, parsed: ParsedIssue, dispatch: Dispatch): IssueRef {
+  if (parsed.repo) return parsed;
+  const repo = findRepo(loadConfig(configDir), dispatch.repo);
+  if (!repo) {
+    throw new DispatchError(`${dispatch.repo}, which ${parsed.key} was dispatched into, is no longer a configured Repo`, [
+      `Run \`nico-agent repo add ${dispatch.repo} --path <clone>\` to add it back`,
+    ]);
+  }
+  return { repo, identifier: parsed.identifier, key: parsed.key };
 }
 
 /** A Dispatch with no PR yet is still Implementing, so closing it needs confirmation. */
@@ -182,7 +256,7 @@ export async function closeDispatch(world: World, configDir: string, issue: stri
   try {
     if (!confirm) {
       const [linked, branch] = await Promise.all([
-        world.githubLinkedPullRequests(record.repo, issueNumber(record)),
+        linkedPrs(world, record),
         world.githubBranchPullRequests(record.repo, record.branch),
       ]);
       if (!linkedPr([...linked, ...branch], record.repo)) throw new CloseConfirmationRequired(key);
@@ -237,11 +311,12 @@ export interface ReviewResult {
  */
 export async function review(world: World, configDir: string, request: DispatchRequest): Promise<ReviewResult> {
   const harness = await chooseLaunch(world, configDir, request);
-  const ref = resolveIssue(configDir, request.issue);
-  const { key } = ref;
+  const parsed = resolveIssue(configDir, request.issue);
+  const { key } = parsed;
   const templates = prompts(loadConfig(configDir));
   const existing = findDispatch(configDir, key);
   if (!existing) throw new DispatchError(`${key} is not In flight`, [`Run \`${DISPATCH_HINT}\` to dispatch it first`]);
+  const ref = dispatchedRef(configDir, parsed, existing);
   const show = `Run \`nico-agent show ${key}\` to see the Dispatch`;
   const isFree = (d: Dispatch) => d.runner === undefined || !world.processAlive(d.runner);
 
@@ -283,7 +358,7 @@ export async function review(world: World, configDir: string, request: DispatchR
     throw new DispatchError(`${key} is busy with another nico-agent`, ["Try again once it is done", show]);
   }
   leased.reviewer = {
-    agent: agentName("rev", repoName(ref.repo), ref.number),
+    agent: agentName("rev", repoName(ref.repo), ref),
     harness: harness.name,
     model: request.model,
     effort: request.effort,
@@ -388,7 +463,7 @@ async function runSteps(
   templates: Prompts,
   dispatch: Dispatch,
 ) {
-  const { repo, number } = ref;
+  const { repo } = ref;
   const record: Dispatch = {
     ...dispatch,
     completed: [...dispatch.completed],
@@ -402,7 +477,7 @@ async function runSteps(
       record.base ??= `origin/${record.stackedOn?.pr.headBranch ?? await world.gitDefaultBranch(repo.path)}`;
     },
     worktree: async () => {
-      const label = `${repoName(repo)}#${number}`;
+      const label = ref.identifier ? `${repoName(repo)}:${ref.identifier}` : `${repoName(repo)}#${ref.number}`;
       const worktree = await world.herdrWorktreeCreate({ cwd: repo.path, branch: record.branch, base: record.base!, label });
       record.worktree = worktree.path;
       record.workspace = worktree.workspace;
@@ -417,7 +492,7 @@ async function runSteps(
   };
   await runLeased(world, configDir, record, async (save) => {
     await runPhase(record, record, STEPS, steps, save, "dispatch");
-    if (record.claimed === undefined) await claim(world, repo, number, record);
+    if (record.claimed === undefined) await claim(world, ref, record);
   });
   return record;
 }
@@ -506,10 +581,14 @@ function agentSteps(world: World, harness: Harness, repo: Repo, record: Dispatch
   };
 }
 
-/** Assign the issue to the user (ADR-0007); a failure is only a warning on a healthy Dispatch. */
-async function claim(world: World, repo: Repo, number: number, record: Dispatch) {
+/**
+ * Assign the issue to the user (ADR-0007): the `gh` session's user on GitHub,
+ * the API key's owner on Linear. A failure is only a warning on a healthy Dispatch.
+ */
+async function claim(world: World, ref: IssueRef, record: Dispatch) {
   try {
-    await world.githubAssignSelf(repo.slug, number);
+    if (ref.number === undefined) await world.linearAssignSelf(ref.identifier);
+    else await world.githubAssignSelf(ref.repo.slug, ref.number);
     record.claimed = true;
   } catch (e) {
     if (!(e instanceof WorldError)) throw e;
@@ -592,6 +671,11 @@ async function prompt(world: World, agent: string, text: string) {
 /** Only the same request may return or resume a Dispatch (ADR-0006); other parameters are refused. */
 function sameLaunch(existing: Dispatch, request: DispatchRequest) {
   const { harness, model, effort } = existing.implementer;
+  if (request.repo && !sameSlug(request.repo, existing.repo)) {
+    throw new DispatchError(`${existing.issue} is already In flight in ${existing.repo}`, [
+      `Run \`nico-agent show ${existing.issue}\` to see the Dispatch`,
+    ]);
+  }
   if (request.stackOn && (!existing.stackedOn || !matchesStack(request.stackOn, existing.repo, existing.stackedOn))) {
     throw new DispatchError(`${existing.issue} is already In flight with a different stacking choice`, [
       `Run \`nico-agent show ${existing.issue}\` to see the Dispatch`,
@@ -634,9 +718,9 @@ function repoName(repo: Repo) {
 
 const MAX_AGENT_NAME = 32;
 
-/** `<role>-<repo>-<n>` within herdr's `[a-z][a-z0-9_-]{0,31}`, keeping the number. */
-function agentName(role: string, repoName: string, number: number) {
-  const suffix = `-${number}`;
+/** `<role>-<repo>-<n>` (or `-<ble-27>` for Linear) within herdr's `[a-z][a-z0-9_-]{0,31}`, keeping the issue's number or identifier. */
+function agentName(role: string, repoName: string, ref: IssueRef) {
+  const suffix = `-${ref.identifier?.toLowerCase() ?? ref.number}`;
   const room = MAX_AGENT_NAME - role.length - 1 - suffix.length;
   const repo = repoName.toLowerCase().replace(/[^a-z0-9_-]/g, "-").slice(0, Math.max(room, 0));
   return `${role}-${repo}${suffix}`.slice(0, MAX_AGENT_NAME);

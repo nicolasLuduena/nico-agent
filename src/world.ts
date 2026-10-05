@@ -10,6 +10,12 @@ export interface World {
   githubViewer(): Promise<string>;
   linearViewer(): Promise<string>;
   linearIssues(team: string): Promise<LinearIssue[]>;
+  /** One Linear issue by identifier (`BLE-27`), or null if there is no such issue. */
+  linearIssue(identifier: string): Promise<LinearIssue | null>;
+  /** The URLs of a Linear issue's attachments, GitHub PRs among them. */
+  linearAttachmentUrls(identifier: string): Promise<string[]>;
+  /** Assign a Linear issue to the API key's owner (the Claim, ADR-0007). */
+  linearAssignSelf(identifier: string): Promise<void>;
   /**
    * Candidate issues of a GitHub repo. Adapters may narrow server-side to
    * open `ready-for-agent` issues; the core still applies the Ready rule.
@@ -27,6 +33,8 @@ export interface World {
    * `closedByPullRequestsReferences`); closed unmerged ones are left out.
    */
   githubLinkedPullRequests(slug: string, number: number): Promise<PullRequest[]>;
+  /** One PR of a GitHub repo, or null if there is no such PR. */
+  githubPullRequest(slug: string, number: number): Promise<PullRequest | null>;
   /** All PRs on a Dispatch's head branch, including closed unmerged PRs. */
   githubBranchPullRequests(slug: string, branch: string): Promise<PullRequest[]>;
   /** Assign an issue to the user's own GitHub session (the Claim, ADR-0007). */
@@ -111,6 +119,8 @@ export interface LinearIssue {
   identifier: string;
   title: string;
   url: string;
+  /** The branch Linear suggests, which its GitHub integration links PRs by. */
+  branchName: string;
   team: { id: string; key: string; name: string };
   project: { id: string; name: string } | null;
   labels: string[];
