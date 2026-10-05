@@ -64,7 +64,8 @@ export async function linkedPrs(world: World, dispatch: Dispatch): Promise<PullR
     if (match && sameSlug(match[1]!, dispatch.repo)) numbers.add(Number(match[2]));
   }
   const prs = await Promise.all([...numbers].map((n) => world.githubPullRequest(dispatch.repo, n)));
-  return prs.filter((pr) => pr !== null);
+  // Closed unmerged PRs are left out, as GitHub's closing references leave them out.
+  return prs.filter((pr): pr is PullRequest => pr !== null && pr.state !== "closed");
 }
 
 const PR_CACHE_MS = 30_000;

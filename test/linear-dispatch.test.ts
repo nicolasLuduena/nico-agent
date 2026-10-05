@@ -108,6 +108,18 @@ describe("Linear dispatch", () => {
     expect((await cli("dispatch", "BLE-30", ...FLAGS, "--json")).json().error).toBe("BLE-30 is closed");
   });
 
+  test("an issue assigned to someone else on Linear is refused, since the Claim would replace them", async () => {
+    const { cli, world } = await withLinearRepo();
+    world.addLinearIssue({ identifier: "BLE-31", assignee: "someone-else" });
+    world.addLinearIssue({ identifier: "BLE-32", assignee: world.linearUser });
+
+    const refused = await cli("dispatch", "BLE-31", ...FLAGS, "--json");
+    expect(refused.exitCode).toBe(1);
+    expect(refused.json().error).toBe("BLE-31 is assigned to someone else on Linear");
+    expect(world.calls.some((c) => c.startsWith("herdr"))).toBe(false);
+    expect((await cli("dispatch", "BLE-32", ...FLAGS)).exitCode).toBe(0);
+  });
+
   test("--repo is refused for a GitHub issue", async () => {
     const { cli, world } = await withLinearRepo();
     world.addIssue("bleentr/pdf-diff", { number: 7 });
@@ -142,6 +154,14 @@ describe("Linear Stage and review", () => {
       "herdr agent prompt rev-pdf-diff-ble-27 /code-review https://github.com/bleentr/pdf-diff/pull/12 against main for the spec at https://linear.app/bleentr/issue/BLE-27/title",
     );
     expect((await cli("show", "BLE-27", "--json")).json().stage).toBe("Review launched");
+  });
+
+  test("a closed unmerged PR attachment is not linked, like a GitHub closing reference", async () => {
+    const { cli, world } = await withLinearRepo();
+    await cli("dispatch", "BLE-27", ...FLAGS);
+    world.linearAttachments.set("BLE-27", ["https://github.com/bleentr/pdf-diff/pull/12"]);
+    world.addPr({ repo: "bleentr/pdf-diff", number: 12, state: "closed" });
+    expect((await cli("show", "BLE-27", "--json")).json().stage).toBe("Implementing");
   });
 
   test("closing needs confirmation until the issue has a PR in the Repo", async () => {

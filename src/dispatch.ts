@@ -166,6 +166,10 @@ async function newLinearDispatch(world: World, configDir: string, identifier: st
   if (!issue.blockers.every((b) => ["completed", "canceled"].includes(b.state))) {
     throw new DispatchError(`${identifier} has unresolved Blockers`, ["Dispatch it once its Blockers are done", "Run `nico-agent` to see the Board"]);
   }
+  // Linear has one assignee, so the Claim would replace someone else.
+  if (issue.assignee !== null && issue.assignee !== await world.linearViewer()) {
+    throw new DispatchError(`${identifier} is assigned to someone else on Linear`, ["Run `nico-agent` to see the Ready issues"]);
+  }
   const ref: IssueRef = { repo: claimingRepo(configDir, issue, request.repo), identifier, key: identifier };
   const base = await chooseBase(world, configDir, ref, request);
   return startDispatch(world, configDir, ref, harness, templates, request, { title: issue.title, url: issue.url, branch: issue.branchName, base });

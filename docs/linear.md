@@ -15,8 +15,8 @@ replaces its selector. Omitting the selector preserves it.
 
 Create a personal API key in Linear's Settings → Security & access with Read
 access to the selected team, plus Write access so a Dispatch can Claim the
-issue (without it the Claim fails with a warning). Set `LINEAR_API_KEY` in the environment, or put
-it in `~/.config/nico-agent/secrets.env` with file mode 600:
+issue (without it the Claim fails with a warning). Set `LINEAR_API_KEY` in
+the environment, or put it in `~/.config/nico-agent/secrets.env` with file mode 600:
 
 ```dotenv
 LINEAR_API_KEY=your-key
