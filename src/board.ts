@@ -79,7 +79,7 @@ export async function stackOptions(world: World, repo: string, issue: GitHubIssu
 
 /** Each unresolved Blocker of a Linear issue must have an open PR attached whose head can be fetched from this Repo. */
 export async function linearStackOptions(world: World, repo: string, issue: LinearIssue): Promise<StackOption[]> {
-  const blockers = issue.blockers.filter((b) => !isLinearResolved(b.state));
+  const blockers = issue.blockers.filter((b) => !isLinearClosed(b.state));
   const options = await Promise.all(blockers.map(async (b) =>
     stackable(await linearPullRequests(world, b.identifier, repo), repo).map((pr) => ({ blocker: b.identifier, pr }))));
   return everyBlocker(options);
@@ -153,9 +153,10 @@ async function loadReady(world: World, repos: Repo[], inFlight: Dispatch[], last
       if (result.status === "rejected") throw result.reason;
       const startable = result.value.filter((i) => matchesSelector(i, repo.linear!) && canStartLinear(i, viewer) && !dispatched.has(i.identifier))
         .sort((a, b) => a.identifier.localeCompare(b.identifier, undefined, { numeric: true }));
-      return Promise.all(startable.map(async (issue) => ({
-        issue, blockers: isLinearReady(issue, viewer) ? [] : await linearStackOptions(world, repo.slug, issue),
-      })));
+      return Promise.all(startable.map(async (issue) => {
+        const ready = isLinearReady(issue, viewer);
+        return { issue, ready, blockers: ready ? [] : await linearStackOptions(world, repo.slug, issue) };
+      }));
     }));
     results.forEach((result, i) => {
       const repo = selected[i]!;
@@ -163,10 +164,9 @@ async function loadReady(world: World, repos: Repo[], inFlight: Dispatch[], last
         board.errors.push({ repo: repo.slug, source: "Linear", error: worldErrorMessage(result.reason) });
         return;
       }
-      for (const { issue, blockers } of result.value) {
-        const { identifier, title, url } = issue;
+      for (const { issue: { identifier, title, url }, ready, blockers } of result.value) {
         const row = { repo: repo.slug, identifier, title, url };
-        if (isLinearReady(issue, viewer)) board.ready.push(row);
+        if (ready) board.ready.push(row);
         else if (blockers.length) board.stackable.push({ ...row, blockers });
       }
     });
@@ -198,7 +198,7 @@ export function matchesSelector(issue: LinearIssue, selector: LinearSelector) {
 }
 
 export function isLinearReady(issue: LinearIssue, viewer: string) {
-  return canStartLinear(issue, viewer) && issue.blockers.every((b) => isLinearResolved(b.state));
+  return canStartLinear(issue, viewer) && issue.blockers.every((b) => isLinearClosed(b.state));
 }
 
 /** Ready but for its Blockers: not started, labelled `ready-for-agent`, and unassigned or assigned to the user. */
@@ -207,7 +207,7 @@ export function canStartLinear(issue: LinearIssue, viewer: string) {
     (issue.assignee === null || issue.assignee === viewer);
 }
 
-/** Whether a Linear state type is a resolved one: done or canceled. */
-export function isLinearResolved(state: string) {
+/** Whether a Linear state type is closed: completed or canceled. */
+export function isLinearClosed(state: string) {
   return ["completed", "canceled"].includes(state);
 }

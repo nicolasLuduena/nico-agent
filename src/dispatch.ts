@@ -17,7 +17,7 @@ import {
   saveDispatch,
 } from "./state";
 import { type LinearIssue, type World, WorldError } from "./world";
-import { baseChoice, canStart, isLinearResolved, linearStackOptions, matchesSelector, stackChoice, stackOptions, type StackOption } from "./board";
+import { baseChoice, canStart, isLinearClosed, linearStackOptions, matchesSelector, stackChoice, stackOptions, type StackOption } from "./board";
 
 const DISPATCH_HINT = "nico-agent dispatch <issue> --harness <harness> --model <model> --effort <effort>";
 
@@ -158,14 +158,14 @@ export async function dispatch(world: World, configDir: string, request: Dispatc
 async function newLinearDispatch(world: World, configDir: string, identifier: string, harness: Harness, templates: Prompts, request: DispatchRequest) {
   const issue = await world.linearIssue(identifier);
   if (!issue) throw new DispatchError(`${identifier} was not found on Linear`, ["Check the identifier in Linear"]);
-  if (isLinearResolved(issue.state)) throw new DispatchError(`${identifier} is closed`, ["Run `nico-agent` to see the Ready issues"]);
+  if (isLinearClosed(issue.state)) throw new DispatchError(`${identifier} is closed`, ["Run `nico-agent` to see the Ready issues"]);
   // Linear has one assignee, so the Claim would replace someone else.
   if (issue.assignee !== null && issue.assignee !== await world.linearViewer()) {
     throw new DispatchError(`${identifier} is assigned to someone else on Linear`, ["Run `nico-agent` to see the Ready issues"]);
   }
   const ref: IssueRef = { repo: claimingRepo(configDir, issue, request.repo), identifier, key: identifier };
   let stackedOn: StackOption | undefined;
-  if (issue.blockers.some((b) => !isLinearResolved(b.state))) {
+  if (issue.blockers.some((b) => !isLinearClosed(b.state))) {
     const options = await linearStackOptions(world, ref.repo.slug, issue);
     if (!options.length) {
       throw new DispatchError(`${identifier} has unresolved Blockers without open PRs in ${ref.repo.slug}`, [
