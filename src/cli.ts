@@ -3,7 +3,7 @@ import { loadBoard } from "./board";
 import { ConfigError, findRepo, loadConfig, saveConfig } from "./config";
 import { DispatchError, StepFailed, closeDispatch, dispatch, eachIssue, resolveIssue, review } from "./dispatch";
 import { type Catalog, harnessCatalogs, harnesses, refreshHarnesses } from "./harness";
-import { type Output, render } from "./output";
+import { type Output, plural, render } from "./output";
 import { VERSION } from "./version";
 import { sameSlug, slugOfRemote } from "./slug";
 import { cachedPrs, currentStage, freshPrs, loadInFlight, stageOf } from "./stage";
@@ -641,10 +641,6 @@ async function board(ctx: RunContext): Promise<Output> {
   Object.assign(data, inFlightData);
   if (errors.length) data.errors = errors;
   return { data, help };
-}
-
-function plural(count: number, noun: string, nouns = `${noun}s`) {
-  return `${count} ${count === 1 ? noun : nouns}`;
 }
 
 function lowerFirst(text: string) {

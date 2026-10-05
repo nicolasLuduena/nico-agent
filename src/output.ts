@@ -8,6 +8,11 @@ export interface Output {
   exitCode?: 0 | 1;
 }
 
+/** `count` with `noun`, or `nouns` when not one. */
+export function plural(count: number, noun: string, nouns = `${noun}s`) {
+  return `${count} ${count === 1 ? noun : nouns}`;
+}
+
 export function render(output: Output, json: boolean): string {
   const help = output.help ?? [];
   if (json) {

@@ -4,7 +4,8 @@ import { type Repo, ConfigError, loadConfig } from "./config";
 import { type IssueOutcome, CloseConfirmationRequired, DispatchError, StepFailed, closeDispatch, dispatch, eachIssue, review, resolveIssue } from "./dispatch";
 import { type Catalog, type Remembered, harnessCatalogs, refreshHarnesses, rememberedLaunches } from "./harness";
 import { type InFlightRow, type PrLookup, cachedPrs, loadInFlight } from "./stage";
-import { type Launch, findDispatch, loadDispatches } from "./state";
+import { type Dispatch, type Launch, findDispatch, loadDispatches } from "./state";
+import { plural } from "./output";
 import { type World, WorldError } from "./world";
 
 export interface WebContext {
@@ -65,25 +66,24 @@ async function postClose(ctx: WebContext, request: Request) {
     : await eachIssue(issues, (issue) => closeOrAsk(ctx, issue, confirm));
   const unconfirmed = outcomes.flatMap((o) => (o.outcome === "done" && o.value === "unconfirmed" ? [o.issue] : []));
   const reported = outcomes.filter((o) => !(o.outcome === "done" && o.value === "unconfirmed"));
-  if (!unconfirmed.length && reported.every((o) => o.outcome === "done")) {
+  if (!unconfirmed.length && reported.every((o) => o.outcome === "done" && o.value === "closed")) {
     return new Response(null, { status: 303, headers: { location: "/" } });
   }
   const body = [
-    ...(reported.length ? [renderOutcomes(reported, () => "closed")] : []),
+    ...(reported.length ? [renderOutcomes(reported, (closed) => (closed === "closed" ? "closed" : "skipped, not In flight"))] : []),
     ...(unconfirmed.length ? [
       `<p>${unconfirmed.map(escape).join(", ")} ${unconfirmed.length === 1 ? "has" : "have"} no PR yet. Close removes the worktree and workspace and forgets the Dispatch. The branch is kept.</p>`,
       closeForm(unconfirmed, true),
     ] : []),
-    '<p><a href="/">Return to the Board</a></p>',
+    '<p><a href="/">Back to the Board</a></p>',
   ].join("\n");
   return new Response(page(unconfirmed.length ? "Confirm close" : "Close", body), { headers: HTML_HEADERS });
 }
 
-/** Close an issue, or say it awaits confirmation. */
+/** Close an issue, or say it awaits confirmation or was not In flight (`existing`). */
 async function closeOrAsk(ctx: WebContext, issue: string, confirm: boolean) {
   try {
-    await closeDispatch(ctx.world, ctx.configDir, issue, confirm);
-    return "closed" as const;
+    return (await closeDispatch(ctx.world, ctx.configDir, issue, confirm)).outcome;
   } catch (e) {
     if (!(e instanceof CloseConfirmationRequired)) throw e;
     return "unconfirmed" as const;
@@ -384,9 +384,15 @@ async function getActionBar(ctx: ServerContext, params: URLSearchParams) {
       continue;
     }
     counts.close++;
-    if (await ctx.prs(record).catch(() => null)) counts.review++;
+    if (await canReview(ctx, record)) counts.review++;
   }
   return new Response(actionBar(counts), { headers: HTML_HEADERS });
+}
+
+/** Whether the Board offers Launch review for an In-flight issue (see `canLaunchReview`); a failed PR lookup counts as no PR. */
+async function canReview(ctx: ServerContext, record: Dispatch) {
+  if (record.reviewer || record.failure || !record.workspace) return false;
+  return (await ctx.prs(record).catch(() => null)) !== null;
 }
 
 /** Why `issue` doesn't fit `action`, or the Blockers it could stack on when it does. */
@@ -401,7 +407,9 @@ async function fitFor(ctx: ServerContext, action: Action, issue: string): Promis
   const record = findDispatch(ctx.configDir, ref.key);
   if (action === "review") {
     if (!record) return { skip: `${ref.key} is not In flight` };
-    if (!(await ctx.prs(record).catch(() => null))) return { skip: `no PR is linked to ${ref.key} yet` };
+    if (record.reviewer) return { skip: `${ref.key} already has a Reviewer` };
+    if (record.failure) return { skip: `${ref.key} is Failed at ${record.failure.step}` };
+    if (!(await canReview(ctx, record))) return { skip: `no PR is linked to ${ref.key} yet` };
     return { stack: [] };
   }
   if (record) return { skip: `${ref.key} is already In flight` };
@@ -483,10 +491,6 @@ function renderOutcomes<T>(outcomes: IssueOutcome<T>[], done: (value: T) => stri
 
 function unique(items: string[]) {
   return [...new Set(items)];
-}
-
-function plural(count: number, noun: string) {
-  return `${count} ${count === 1 ? noun : `${noun}s`}`;
 }
 
 function page(title: string, main: string) {

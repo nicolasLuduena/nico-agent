@@ -67,6 +67,13 @@ describe("batch launch form", () => {
     expect(body).toContain("<button>Dispatch 2</button>");
   });
 
+  test("Review leaves out an issue that already has a Reviewer, like the single-issue form", async () => {
+    const { web, cli } = await mixed();
+    await cli("review", "acme/api#3", "--harness", "claude", "--model", "sonnet", "--effort", "max");
+    expect((await web(`/action-bar?${query(["acme/api#3"])}`)).body).toContain('<button name="action" value="review" disabled>Review 0</button>');
+    expect((await web(`/batch-form?${query(["acme/api#3"], { action: "review" })}`)).body).toContain("<li>acme/api#3: skipped, acme/api#3 already has a Reviewer</li>");
+  });
+
   test("a review form skips an issue without a PR", async () => {
     const { web } = await mixed();
     const { body } = await web(`/batch-form?${query(["acme/api#3", "acme/api#4"], { action: "review" })}`);
@@ -127,6 +134,14 @@ describe("batch close on the web", () => {
     const confirmed = await web("/close", { method: "POST", body: query(["acme/api#4"], { confirm: "yes" }) });
     expect(confirmed.status).toBe(303);
     expect((await cli("show", "acme/api#4")).exitCode).toBe(1);
+  });
+
+  test("a ticked issue that is not In flight is reported as skipped, not closed", async () => {
+    const { web } = await mixed();
+    const { status, body } = await web("/close", { method: "POST", body: query(["acme/api#1", "acme/api#3"]) });
+    expect(status).toBe(200);
+    expect(body).toContain("<li>acme/api#1: skipped, not In flight</li>");
+    expect(body).toContain("<li>acme/api#3: closed</li>");
   });
 
   test("closing only issues with a PR goes straight back to the Board", async () => {
