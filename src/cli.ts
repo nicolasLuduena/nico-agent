@@ -116,7 +116,7 @@ const commands: Command[] = [
     flags: {
       ...LAUNCH_FLAGS,
       "--stack-on": { value: true, description: "Blocker issue reference to stack on; required when ambiguous" },
-      "--base": { value: true, description: "branch on origin to start from and target (default: the last one used in the Repo, else the default branch); not for a Stackable issue" },
+      "--base": { value: true, description: "branch on origin to start from and open the PR against (default: the last one used in the Repo, else the default branch); not for a Stackable issue" },
     },
     positionals: ["issue"],
     examples: [

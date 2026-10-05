@@ -323,16 +323,20 @@ async function chooseLaunch(world: World, configDir: string, request: DispatchRe
  */
 async function chooseBase(world: World, configDir: string, { repo, key }: IssueRef, request: DispatchRequest, stackedOn?: StackOption) {
   if (stackedOn) {
-    if (request.base) throw new DispatchError(`${key} is Stackable; its Base is its Blocker's PR head branch`, ["Dispatch it without `--base`"]);
+    if (request.base) throw stackedBase(key);
     return stackedOn.pr.headBranch;
   }
-  const { branches, base } = await baseChoice(world, repo, request.base ?? rememberedLaunches(configDir).bases[repo.slug]);
-  if (request.base && base !== request.base) {
+  const { branches, selected } = await baseChoice(world, repo, request.base ?? rememberedLaunches(configDir).bases[repo.slug]);
+  if (request.base && selected !== request.base) {
     throw new DispatchError(`\`${request.base}\` is not a branch on origin of ${repo.slug}`, [
       `Pass \`--base\` one of origin's branches: ${branches.join(", ")}`,
     ]);
   }
-  return base;
+  return selected;
+}
+
+function stackedBase(key: string) {
+  return new DispatchError(`${key} is Stacked; its Base is its Blocker's PR head branch`, ["Dispatch it without `--base`"]);
 }
 
 /**
@@ -566,10 +570,12 @@ function sameLaunch(existing: Dispatch, request: DispatchRequest) {
     ]);
   }
   if (request.base) {
-    const help = [`Run \`nico-agent show ${existing.issue}\` to see the Dispatch`];
-    if (existing.stackedOn) throw new DispatchError(`${existing.issue} is Stacked; its Base is its Blocker's PR head branch`, help);
+    if (existing.stackedOn) throw stackedBase(existing.issue);
     const base = baseBranch(existing);
-    if (base !== request.base) throw new DispatchError(`${existing.issue} is already In flight with Base ${base}`, help);
+    // A record from before the Base was chosen up front has none to compare.
+    if (base !== undefined && base !== request.base) {
+      throw new DispatchError(`${existing.issue} is already In flight with Base ${base}`, [`Run \`nico-agent show ${existing.issue}\` to see the Dispatch`]);
+    }
   }
   if (harness === request.harness && model === request.model && effort === request.effort) return;
   throw new DispatchError(`${existing.issue} is already In flight with ${harness} ${model} ${effort}`, [

@@ -41,14 +41,14 @@ export interface Board {
 /** origin's branches, and the Base a dispatch starts from unless another is chosen. */
 export interface BaseChoice {
   branches: string[];
-  base: string;
+  selected: string;
 }
 
 /** A Repo's Base choice: `wanted` while origin has it, else origin's default branch. */
 export async function baseChoice(world: World, repo: Repo, wanted?: string): Promise<BaseChoice> {
   const branches = await world.gitRemoteBranches(repo.path);
-  const base = wanted && branches.includes(wanted) ? wanted : await world.gitDefaultBranch(repo.path);
-  return { branches, base };
+  const selected = wanted && branches.includes(wanted) ? wanted : await world.gitDefaultBranch(repo.path);
+  return { branches, selected };
 }
 
 /**
@@ -151,7 +151,7 @@ async function loadReady(world: World, repos: Repo[], inFlight: Dispatch[], last
   }));
   for (const issue of board.ready) {
     const choice = board.bases[issue.repo];
-    if (choice) issue.base = choice.base;
+    if (choice) issue.base = choice.selected;
   }
   return board;
 }

@@ -247,7 +247,7 @@ interface Choices {
  * starts on the Harness and model last dispatched with (a review form too); a chosen Harness,
  * model and Effort are kept while valid. Otherwise the Effort is the one last
  * used with the model, or the model's first. A Ready issue's form also offers
- * origin's branches as the Base, starting on `base.base`.
+ * origin's branches as the Base, starting on `base.selected`.
  */
 function launchForm(
   action: Action,
@@ -273,7 +273,7 @@ function launchForm(
     `<form method="post" action="/${action}" class="dispatch">`,
     `<input type="hidden" name="issue" value="${escape(issue)}">`,
     ...(stack.length ? [stackSelect(stack, chosen.stackOn)] : []),
-    ...(base ? [`<label>Base ${select("base", base.branches, base.base)}</label>`] : []),
+    ...(base ? [`<label>Base ${select("base", base.branches, base.selected)}</label>`] : []),
     select("harness", offered.map((c) => c.harness.name), catalog.harness.name, ` ${rerender(action)}`),
     select("model", catalog.models.map((m) => m.model), model.model, ` ${rerender(action)}`),
     select("effort", model.efforts, effort),

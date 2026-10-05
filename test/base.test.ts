@@ -105,7 +105,7 @@ test("a Stacked dispatch rejects --base, and its web form has no Base dropdown",
 
   const result = await cli("dispatch", "acme/api#7", ...FLAGS, "--base", "beta", "--json");
   expect(result.exitCode).toBe(1);
-  expect(result.json().error).toBe("acme/api#7 is Stackable; its Base is its Blocker's PR head branch");
+  expect(result.json().error).toBe("acme/api#7 is Stacked; its Base is its Blocker's PR head branch");
   expect(world.calls.some((c) => c.startsWith("herdr"))).toBe(false);
 
   const { body } = await web("/");
