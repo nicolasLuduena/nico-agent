@@ -107,14 +107,15 @@ async function getBoard(ctx: ServerContext) {
   // Discovery may run a Harness's CLI, so only when there is something to launch.
   const launchable = board.ready.length > 0 || board.stackable.length > 0 || board.inFlight.some(canLaunchReview);
   const choices = await choicesFor(ctx, launchable);
-  return new Response(page("Board", renderBoard(repos, board, choices)), { headers: HTML_HEADERS });
+  return new Response(page("Board", renderBoard(repos, board, choices), repos.length ? REFRESH : ""), { headers: HTML_HEADERS });
 }
 
 /** The In-flight section alone, for the Board to poll. */
 async function getInFlight(ctx: ServerContext) {
   const rows = await loadInFlight(ctx.world, loadDispatches(ctx.configDir), ctx.prs);
   const choices = await choicesFor(ctx, rows.some(canLaunchReview));
-  return new Response(renderInFlight(rows, choices), { headers: HTML_HEADERS });
+  // The event display rides along out of band, so one poll redraws both.
+  return new Response(`${renderInFlight(rows, choices)}\n${renderEvent(rows, true)}`, { headers: HTML_HEADERS });
 }
 
 async function choicesFor(ctx: WebContext, needed: boolean): Promise<Choices> {
@@ -187,48 +188,242 @@ function renderBoard(repos: Repo[], board: Board, choices: Choices) {
   if (repos.length === 0) {
     return '<p class="empty">No Repos configured. Run <code>nico-agent repo add &lt;owner/name&gt; --path &lt;clone&gt;</code> to add one.</p>';
   }
-  const refresh = ['<form method="post" action="/harnesses/refresh" class="refresh">', "<button>Refresh harnesses</button>", "</form>"];
   const warnings = choices.catalogs.flatMap((c) => (c.error ? [`<p class="warning">${escape(c.error)}</p>`] : []));
-  const sections = repos.map((repo) =>
-    ['<section class="repo">', `<h2>${escape(repo.slug)}</h2>`, renderRepo(repo, board, choices), "</section>"].join("\n"),
-  );
-  return [...refresh, ...warnings, actionBar({ dispatch: 0, review: 0, close: 0 }), ...sections, renderInFlight(board.inFlight, choices)].join("\n");
+  const sections = repos.map((repo) => renderRepo(repo, board, choices));
+  return [...warnings, renderEvent(board.inFlight), actionBar({ dispatch: 0, review: 0, close: 0 }), renderInFlight(board.inFlight, choices), ...sections].join("\n");
+}
+
+/** Where a row's track ends, by Stage: inside the tracker, in the calorimeter, out through the muon stations. */
+type Reach = "implementing" | "pr-ready" | "review-launched" | "failed" | "unknown";
+
+function reachOf(row: InFlightRow): Reach {
+  if (row.dispatch.failure || row.dispatch.reviewer?.failure) return "failed";
+  if (row.stage === "Implementing" || row.stage === "PR ready" || row.stage === "Review launched") {
+    return row.stage.toLowerCase().replace(/[^a-z]+/g, "-") as Reach;
+  }
+  return "unknown";
+}
+
+/** A stable 32-bit hash, so a Dispatch's track keeps its angle and bend across polls. */
+function hash(text: string) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 0x01000193);
+  return h >>> 0;
+}
+
+const R = { tracker: 62, ecal: [70, 86], hcal: [92, 112], muon: [126, 146], failedEarly: 40, failedReview: 112 } as const;
+
+/**
+ * The In-flight Dispatches as an event display's transverse view: one track
+ * per Dispatch, reaching as far out as its Stage. Rows stay the place to act;
+ * the display is for reading the Board at a glance.
+ */
+function renderEvent(rows: InFlightRow[], oob = false) {
+  const counts: Record<Reach, number> = { implementing: 0, "pr-ready": 0, "review-launched": 0, failed: 0, unknown: 0 };
+  let blocked = 0;
+  const angles = spread(rows.map((r) => r.dispatch.issue));
+  const tracks = rows.map((row) => {
+    const reach = reachOf(row);
+    counts[reach]++;
+    const waiting = row.implementerState === "blocked" || row.reviewerState === "blocked";
+    if (waiting) blocked++;
+    return renderTrack(row, reach, waiting, angles.get(row.dispatch.issue)!);
+  });
+  const legend = (reach: Reach, label: string) =>
+    `<div class="${reach}${counts[reach] ? "" : " none"}"><dt><i></i>${label}</dt><dd>${counts[reach]}</dd></div>`;
+  const time = new Date();
+  const clock = time.toTimeString().slice(0, 8);
+  return [
+    `<figure class="event" id="event"${oob ? ' hx-swap-oob="true"' : ""}>`,
+    `<svg viewBox="-200 -162 400 324" role="img" aria-label="${escape(`${plural(rows.length, "Dispatch")} in flight`)}">`,
+    DETECTOR,
+    ...tracks,
+    '<circle class="vertex" r="2.5"/>',
+    "</svg>",
+    "<figcaption>",
+    `<p class="lede">${rows.length ? "Each track is a Dispatch. It reaches as far out as its Stage." : "No tracks: nothing in flight."}</p>`,
+    '<dl class="stages">',
+    legend("implementing", "Implementing"),
+    legend("pr-ready", "PR ready"),
+    legend("review-launched", "Review launched"),
+    legend("failed", "Failed"),
+    ...(counts.unknown ? [legend("unknown", "Stage unknown")] : []),
+    "</dl>",
+    `<dl class="agents"><div class="blocked${blocked ? "" : " none"}"><dt><i></i>Agent blocked</dt><dd>${blocked}</dd></div></dl>`,
+    `<p class="sampled">Sampled <time datetime="${time.toISOString()}">${clock}</time></p>`,
+    "</figcaption>",
+    "</figure>",
+  ].join("\n");
+}
+
+/**
+ * Each issue's track angle: its hash's home angle, nudged apart from close
+ * neighbours. A Dispatch coming or going moves only the tracks beside it.
+ */
+function spread(issues: string[]) {
+  const TAU = 2 * Math.PI;
+  // The ring key runs straight down; it holds its place and tracks keep clear of it.
+  const KEY = "";
+  const points = [{ issue: KEY, a: Math.PI / 2 }, ...issues.map((issue) => ({ issue, a: ((hash(issue) % 3600) / 3600) * TAU }))];
+  const min = Math.min(TAU / points.length, 0.5) * 0.85;
+  for (let pass = 0; pass < 24 && points.length > 1; pass++) {
+    points.sort((x, y) => x.a - y.a || x.issue.localeCompare(y.issue));
+    let moved = false;
+    points.forEach((p, i) => {
+      const next = points[(i + 1) % points.length]!;
+      const gap = (next.a - p.a + TAU) % TAU;
+      if (gap >= min) return;
+      const push = (min - gap) / (p.issue === KEY || next.issue === KEY ? 1 : 2);
+      if (p.issue !== KEY) p.a = (p.a - push + TAU) % TAU;
+      if (next.issue !== KEY) next.a = (next.a + push) % TAU;
+      moved = true;
+    });
+    if (!moved) break;
+  }
+  return new Map(points.filter((p) => p.issue !== KEY).map((p) => [p.issue, p.a]));
+}
+
+/** The detector's fixed geometry: tracker layers, the two calorimeters, two muon stations. */
+const DETECTOR = [
+  '<g class="geometry" fill="none">',
+  ...[14, 26, 38, 50, 62].map((r) => `<circle r="${r}"/>`),
+  `<circle class="ecal" r="${(R.ecal[0] + R.ecal[1]) / 2}" stroke-width="${R.ecal[1] - R.ecal[0]}" pathLength="360" stroke-dasharray="6.5 1"/>`,
+  `<circle class="hcal" r="${(R.hcal[0] + R.hcal[1]) / 2}" stroke-width="${R.hcal[1] - R.hcal[0]}" pathLength="360" stroke-dasharray="14 1.5"/>`,
+  ...R.muon.map((r) => `<circle class="muon" r="${r}" stroke-width="6" pathLength="360" stroke-dasharray="26 4"/>`),
+  "</g>",
+  // The subdetectors named along one radius, as event displays do.
+  '<g class="key" text-anchor="middle">',
+  `<text y="${R.tracker - 6}">Tracker</text>`,
+  `<text y="${(R.ecal[0] + R.ecal[1]) / 2}" dominant-baseline="middle">ECAL</text>`,
+  `<text y="${(R.hcal[0] + R.hcal[1]) / 2}" dominant-baseline="middle">HCAL</text>`,
+  `<text y="${(R.muon[0] + R.muon[1]) / 2}" dominant-baseline="middle">Muon</text>`,
+  "</g>",
+].join("\n");
+
+function renderTrack(row: InFlightRow, reach: Reach, waiting: boolean, angle: number) {
+  const { issue } = row.dispatch;
+  const h = hash(issue);
+  // A track's bend is its charge: either way, never straight.
+  const bend = (((h >>> 12) % 100) / 100 - 0.5) * 0.7 + (((h >>> 12) % 100) < 50 ? -0.12 : 0.12);
+  const end = reach === "implementing" ? R.tracker - 4
+    : reach === "pr-ready" ? R.ecal[0]
+    : reach === "review-launched" ? R.muon[1] + 6
+    : reach === "failed" ? (row.dispatch.reviewer?.failure ? R.failedReview : R.failedEarly)
+    : R.tracker - 4;
+  const at = (r: number, a = angle) => [r * Math.cos(a), r * Math.sin(a)] as const;
+  const [ex, ey] = at(end);
+  // Curvature eases off beyond the tracker, where the field is weak.
+  const [cx, cy] = at(Math.min(end, R.tracker) * 0.55, angle - bend * (Math.min(end, R.tracker) / end));
+  const n = (v: number) => v.toFixed(1);
+  const marks: string[] = [];
+  if (reach === "pr-ready") {
+    // An energy deposit: a tower through the electromagnetic calorimeter.
+    const [ax, ay] = at(R.ecal[0]);
+    const [bx, by] = at(R.ecal[1] - 1);
+    marks.push(`<line class="deposit" x1="${n(ax)}" y1="${n(ay)}" x2="${n(bx)}" y2="${n(by)}"/>`);
+  }
+  if (reach === "review-launched") {
+    for (const r of R.muon) {
+      const [ax, ay] = at(r - 3);
+      const [bx, by] = at(r + 3);
+      marks.push(`<line class="hit" x1="${n(ax)}" y1="${n(ay)}" x2="${n(bx)}" y2="${n(by)}"/>`);
+    }
+  }
+  if (reach === "failed") {
+    marks.push(`<g class="burst" transform="translate(${n(ex)} ${n(ey)})">${[0, 60, 120].map((d) => `<line x1="-5" x2="5" transform="rotate(${d + (h % 60)})"/>`).join("")}</g>`);
+  } else {
+    marks.push(`<circle class="tip" cx="${n(ex)}" cy="${n(ey)}" r="${waiting ? 2.6 : 1.8}"/>`);
+  }
+  if (waiting) marks.push(`<circle class="attention" cx="${n(ex)}" cy="${n(ey)}" r="6"/>`);
+  const [lx, ly] = at(end + (reach === "pr-ready" ? R.ecal[1] - R.ecal[0] + 6 : waiting ? 13 : 8));
+  const label = issue.slice(issue.indexOf("/") + 1);
+  // Labels stay inside the display: one that would run off the edge turns back along its track.
+  const width = label.length * 6;
+  let anchor = Math.cos(angle) > 0.25 ? "start" : Math.cos(angle) < -0.25 ? "end" : "middle";
+  let x = lx;
+  if (anchor === "start" && lx + width > 196) [anchor, x] = ["end", Math.min(lx, 196)];
+  if (anchor === "end" && lx - width < -196) [anchor, x] = ["start", Math.max(lx, -196)];
+  const working = row.implementerState === "working" || row.reviewerState === "working";
+  return [
+    `<g class="track ${reach}${waiting ? " waiting" : ""}${working ? " working" : ""}" data-issue="${escape(issue)}">`,
+    `<title>${escape(`${issue} ${row.dispatch.title}: ${row.stage}`)}</title>`,
+    `<path d="M0 0 Q${n(cx)} ${n(cy)} ${n(ex)} ${n(ey)}" pathLength="1"/>`,
+    ...marks,
+    `<text x="${n(x)}" y="${n(ly)}" text-anchor="${anchor}" dominant-baseline="middle">${escape(label)}</text>`,
+    "</g>",
+  ].join("");
+}
+
+const REFRESH = '<form method="post" action="/harnesses/refresh" class="refresh"><button>Refresh harnesses</button></form>';
+
+/** A branch mark, drawn in the brand glyph's stroke. */
+const BRANCH = '<svg class="icon" viewBox="0 0 12 12" aria-hidden="true"><circle cx="3" cy="2.5" r="1.5"/><circle cx="3" cy="9.5" r="1.5"/><circle cx="9" cy="3.5" r="1.5"/><path d="M3 4v4M9 5c0 2.5-6 1.5-6 3"/></svg>';
+
+/** A Base, as a chip with the branch mark. */
+function baseChip(branch: string) {
+  return `<span class="chip" title="Base">${BRANCH}${escape(branch)}</span>`;
+}
+
+/** An issue's link: its number or key set apart from its title. */
+function issueLink(label: string, title: string, url: string) {
+  return `<a class="title" href="${escape(url)}"><span class="num">${escape(label)}</span> ${escape(title)}</a>`;
 }
 
 /** Polled every ~5s, replacing itself; launch forms keep what the user chose across polls. */
 function renderInFlight(rows: InFlightRow[], choices: Choices) {
   const list = rows.length
-    ? ["<ul>", ...rows.map((row) => renderInFlightRow(row, choices)), "</ul>"].join("\n")
+    ? ['<ul class="flights">', ...rows.map((row) => renderInFlightRow(row, choices)), "</ul>"].join("\n")
     : '<p class="empty">Nothing in flight.</p>';
-  return ['<section class="in-flight" hx-get="/in-flight" hx-trigger="every 5s" hx-swap="outerHTML">', "<h2>In flight</h2>", list, "</section>"].join("\n");
+  return [
+    '<section class="in-flight" hx-get="/in-flight" hx-trigger="every 5s" hx-swap="outerHTML">',
+    `<header><h2>In flight</h2><span class="count">${rows.length}</span></header>`,
+    list,
+    "</section>",
+  ].join("\n");
 }
 
 function renderInFlightRow(row: InFlightRow, choices: Choices) {
   const { dispatch: d, stage, pr, prError } = row;
   const { harness, model, effort } = d.implementer;
   const failure = d.failure ?? d.reviewer?.failure;
-  const parts = [
+  const stageClass = failure ? "failed" : stage.toLowerCase().replace(/[^a-z]+/g, "-");
+  const head = [
     // Preserved across polls, so a ticked row stays ticked.
-    `${pick(d.issue, true)}<a href="${escape(d.url)}">${escape(d.issue)} ${escape(d.title)}</a>`,
-    escape(`${harness} ${model} ${effort}`),
-    ...(d.base ? [`base ${escape(baseBranch(d)!)}`] : []),
-    ...(d.workspace ? [`workspace ${escape(d.workspace)}`] : []),
-    failure ? `<span class="error">${escape(`${stage}: ${failure.error}`)}</span>` : escape(stage),
-    ...(pr ? [`<a href="${escape(pr.url)}">PR #${pr.number}</a>`] : []),
-    `implementer ${agentState(row.implementerState)}`,
-    ...(row.reviewerState ? [`reviewer ${agentState(row.reviewerState)}`] : []),
+    pick(d.issue, true),
+    // The Repo's name is enough to tell issues apart; the owner is in the link.
+    issueLink(d.issue.slice(d.issue.indexOf("/") + 1), d.title, d.url),
+    `<span class="stage ${stageClass}">${escape(stage)}</span>`,
+    ...(pr ? [`<a class="pr" href="${escape(pr.url)}">PR #${pr.number}</a>`] : []),
   ];
-  const notes = [...(d.warnings ?? []), ...(prError ? [`could not look up the PR: ${prError}`] : [])];
-  const extra = notes.map((w) => `<p class="warning">${escape(w)}</p>`);
-  extra.push(closeForm([d.issue]));
-  if (d.failure) extra.push(retryForm("dispatch", d.issue, d.implementer, d.stackedOn?.pr.url));
-  else if (d.reviewer?.failure) extra.push(retryForm("review", d.issue, d.reviewer));
+  const meta = [
+    `<span class="chip">${escape(`${harness} · ${model} · ${effort}`)}</span>`,
+    ...(d.base ? [baseChip(baseBranch(d)!)] : []),
+    ...(d.workspace ? [`<span class="chip" title="herdr workspace">${escape(d.workspace)}</span>`] : []),
+    agentState("implementer", row.implementerState),
+    ...(row.reviewerState ? [agentState("reviewer", row.reviewerState)] : []),
+  ];
+  const notes = [
+    ...(failure ? [`<p class="error">${escape(failure.error)}</p>`] : []),
+    ...[...(d.warnings ?? []), ...(prError ? [`could not look up the PR: ${prError}`] : [])].map((w) => `<p class="warning">${escape(w)}</p>`),
+  ];
+  const actions = [closeForm([d.issue])];
+  if (d.failure) actions.push(retryForm("dispatch", d.issue, d.implementer, d.stackedOn?.pr.url));
+  else if (d.reviewer?.failure) actions.push(retryForm("review", d.issue, d.reviewer));
   else if (canLaunchReview(row)) {
     // Preserved across polls, so a choice in progress isn't reset.
     const id = `review-${d.issue.replace(/[^\w-]/g, "-")}`;
-    extra.push(`<div id="${escape(id)}" hx-preserve="true">\n${launchForm("review", d.issue, choices)}\n</div>`);
+    actions.push(`<div id="${escape(id)}" hx-preserve="true">\n${launchForm("review", d.issue, choices)}\n</div>`);
   }
-  return `<li>${parts.join(" · ")}${extra.map((e) => `\n${e}`).join("")}</li>`;
+  return [
+    '<li class="flight">',
+    `<div class="head">${head.join("")}</div>`,
+    `<div class="meta">${meta.join("")}</div>`,
+    ...(notes.length ? [`<div class="notes">${notes.join("")}</div>`] : []),
+    '<div class="row-actions">',
+    ...actions,
+    "</div>",
+    "</li>",
+  ].join("\n");
 }
 
 /** Whether a row offers Launch review: a PR is linked (ADR-0003) and no Reviewer was started. */
@@ -237,29 +432,30 @@ function canLaunchReview(row: InFlightRow) {
   return row.pr !== null && !d.reviewer && !d.failure && d.workspace !== undefined;
 }
 
-/** An Agent state as herdr reports it, `blocked` highlighted since it waits on the user. */
-function agentState(state: string) {
-  return `<span class="agent${state === "blocked" ? " blocked" : ""}">${escape(state)}</span>`;
+/** An agent's Agent state as herdr reports it; `blocked` stands out since it waits on the user. */
+function agentState(role: string, state: string) {
+  return `<span class="agent ${escape(state)}"><i></i>${role} ${escape(state)}</span>`;
 }
 
 function renderRepo(repo: Repo, board: Board, choices: Choices) {
-  const errors = board.errors.filter((e) => e.repo === repo.slug);
-  const errorHtml = errors.map((e) => `<p class="error">Could not load: ${e.source ? `${e.source}: ` : ""}${escape(e.error)}</p>`).join("\n");
-  const issues = board.ready.filter((i) => i.repo === repo.slug);
-  const ready = issues.length === 0 ? (errorHtml || '<p class="empty">No Ready issues.</p>') : [
-    ...(errorHtml ? [errorHtml] : []),
-    "<ul>",
-    ...issues.map(
-      (i) => i.identifier
-        ? `<li><a href="${escape(i.url)}">${i.identifier} ${escape(i.title)}</a>${i.base ? ` · base ${escape(i.base)}` : ""}</li>`
-        : `<li>${pick(`${i.repo}#${i.number}`)}<a href="${escape(i.url)}">#${i.number} ${escape(i.title)}</a>\n${launchForm("dispatch", `${i.repo}#${i.number}`, choices, {}, [], board.bases[i.repo])}</li>`,
-    ),
-    "</ul>",
-  ].join("\n");
+  const errors = board.errors.filter((e) => e.repo === repo.slug)
+    .map((e) => `<p class="error">Could not load: ${e.source ? `${e.source}: ` : ""}${escape(e.error)}</p>`);
+  const ready = board.ready.filter((i) => i.repo === repo.slug);
   const stackable = board.stackable.filter((i) => i.repo === repo.slug);
-  if (!stackable.length) return ready;
-  return [ready, "<h3>Stackable</h3>", "<ul>", ...stackable.map((i) =>
-    `<li>${pick(`${i.repo}#${i.number}`)}<a href="${escape(i.url)}">#${i.number} ${escape(i.title)}</a>\n${launchForm("dispatch", `${i.repo}#${i.number}`, choices, {}, i.blockers)}</li>`), "</ul>"].join("\n");
+  const list = (rows: string[]) => ['<ul class="issues">', ...rows, "</ul>"].join("\n");
+  const readyRows = ready.map((i) => i.identifier
+    ? `<li>${issueLink(i.identifier, i.title, i.url)}${i.base ? baseChip(i.base) : ""}</li>`
+    : `<li>${pick(`${i.repo}#${i.number}`)}${issueLink(`#${i.number}`, i.title, i.url)}\n${launchForm("dispatch", `${i.repo}#${i.number}`, choices, {}, [], board.bases[i.repo])}</li>`);
+  const stackRows = stackable.map((i) =>
+    `<li>${pick(`${i.repo}#${i.number}`)}${issueLink(`#${i.number}`, i.title, i.url)}\n${launchForm("dispatch", `${i.repo}#${i.number}`, choices, {}, i.blockers)}</li>`);
+  return [
+    '<section class="repo">',
+    `<header><h2>${escape(repo.slug)}</h2><span class="count">${ready.length + stackable.length}</span></header>`,
+    ...errors,
+    ready.length ? list(readyRows) : errors.length ? "" : '<p class="empty">No Ready issues.</p>',
+    ...(stackable.length ? ["<h3>Stackable</h3>", list(stackRows)] : []),
+    "</section>",
+  ].filter(Boolean).join("\n");
 }
 
 type Action = "dispatch" | "review";
@@ -509,7 +705,7 @@ function unique(items: string[]) {
   return [...new Set(items)];
 }
 
-function page(title: string, main: string) {
+function page(title: string, main: string, tools = "") {
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -517,29 +713,270 @@ function page(title: string, main: string) {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escape(title)} · nico-agent</title>
 <script src="/htmx.min.js"></script>
-<style>
-body { font-family: system-ui, sans-serif; max-width: 60rem; margin: 2rem auto; padding: 0 1rem; }
-h2 { font-size: 1.1rem; margin-bottom: 0.25rem; }
-.empty { color: #666; }
-.error { color: #b00020; }
-.warning { color: #8a5a00; margin: 0.25rem 0 0; }
-.agent.blocked { color: #fff; background: #b00020; padding: 0 0.25rem; border-radius: 0.2rem; font-weight: bold; }
-form.dispatch { display: inline-flex; gap: 0.25rem; margin-left: 0.5rem; }
-.actions { position: sticky; top: 0; background: #fff; padding: 0.5rem 0; }
-.actions form { display: flex; gap: 0.25rem; }
-fieldset.row { display: flex; gap: 0.25rem; align-items: center; margin-bottom: 0.5rem; }
-form.refresh { margin-bottom: 1rem; }
-</style>
+<style>${STYLE}</style>
 </head>
 <body>
+<header class="top">
+<a class="brand" href="/">${GLYPH}nico-agent</a>
 <h1>${escape(title)}</h1>
+${tools}
+</header>
 <main>
 ${main}
 </main>
+<script>${LINK_TRACKS}</script>
 </body>
 </html>
 `;
 }
+
+/** The brand: a detector seen end-on, one track leaving the vertex. */
+const GLYPH = '<svg class="glyph" viewBox="-12 -12 24 24" aria-hidden="true"><circle r="4.5"/><circle r="8"/><circle r="11"/><path class="trail" d="M0 0 Q4 -1 8.5 -7"/></svg>';
+
+/** Hovering a track lights its row and the reverse; clicking a track brings its row into view. */
+const LINK_TRACKS = `
+let lit = null;
+const rowOf = (issue) => [...document.querySelectorAll("li.flight .pick")].find((p) => p.value === issue)?.closest("li.flight");
+const light = (issue) => {
+  if (issue === lit) return;
+  lit = issue;
+  for (const el of document.querySelectorAll(".lit")) el.classList.remove("lit");
+  if (!issue) return;
+  for (const t of document.querySelectorAll("g.track")) if (t.dataset.issue === issue) t.classList.add("lit");
+  rowOf(issue)?.classList.add("lit");
+};
+document.addEventListener("mouseover", (e) => {
+  const at = e.target.closest?.("g.track, li.flight");
+  light(at ? (at.dataset.issue ?? at.querySelector(".pick")?.value ?? null) : null);
+});
+// A poll replaces rows and tracks: light the hovered issue again, and draw out any track whose Stage moved.
+let reaches = new Map();
+const reachesNow = () => new Map([...document.querySelectorAll("g.track")].map((t) => [t.dataset.issue, t.classList[1]]));
+document.addEventListener("htmx:oobBeforeSwap", () => { reaches = reachesNow(); });
+document.addEventListener("htmx:afterSettle", () => {
+  const was = lit;
+  lit = null;
+  light(was);
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  for (const [issue, reach] of reachesNow()) {
+    if (!reaches.has(issue) || reaches.get(issue) === reach || reach === "unknown") continue;
+    const path = [...document.querySelectorAll("g.track")].find((t) => t.dataset.issue === issue)?.querySelector("path");
+    path?.animate([{ strokeDasharray: "1 1", strokeDashoffset: 1 }, { strokeDasharray: "1 1", strokeDashoffset: 0 }], { duration: 900, easing: "cubic-bezier(0.16, 1, 0.3, 1)" });
+  }
+  reaches = new Map();
+});
+document.addEventListener("click", (e) => {
+  const track = e.target.closest?.("g.track");
+  const row = track && rowOf(track.dataset.issue);
+  if (!row) return;
+  row.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "center" });
+  row.querySelector(".pick")?.focus({ preventScroll: true });
+});
+`;
+
+const STYLE = `
+:root {
+  color-scheme: light;
+  --ground: #f3f5f8; --panel: #ffffff; --panel-2: #eef1f5; --rule: #dce1e8; --rule-strong: #c2c9d3;
+  --geometry: #c5ccd6; --geometry-2: #e4e8ee;
+  --ink: #11151b; --ink-2: #566170; --link: #1d5bb8;
+  --implementing: #c06a00; --implementing-ink: #8f4f00;
+  --pr-ready: #10874a; --pr-ready-ink: #0b6b3a;
+  --review: #1c6dd0; --review-ink: #1756a6;
+  --failed: #d1262b; --failed-ink: #b01e22;
+  --blocked: #b5129a; --blocked-ink: #ffffff;
+  --unknown: #8a94a2;
+  --fire: #f2a516; --fire-hover: #ffb52e; --fire-ink: #211400;
+  --shadow: 0 1px 2px rgb(17 21 27 / 0.06), 0 4px 14px -6px rgb(17 21 27 / 0.08);
+  --display: #0a0d12;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --ground: #06080b; --panel: #0b0f14; --panel-2: #11161d; --rule: #19202a; --rule-strong: #283240;
+    --geometry: #273140; --geometry-2: #141a22;
+    --ink: #e3e7ed; --ink-2: #8d97a6; --link: #84b6ff;
+    --implementing: #f5a524; --implementing-ink: #f5a524;
+    --pr-ready: #3bd47b; --pr-ready-ink: #3bd47b;
+    --review: #52b5ff; --review-ink: #52b5ff;
+    --failed: #ff5757; --failed-ink: #ff6b6b;
+    --blocked: #ff4fd6; --blocked-ink: #1a0015;
+    --unknown: #6b7584;
+    --shadow: none;
+    --frame: var(--rule-strong);
+  }
+}
+* { box-sizing: border-box; }
+html { background: var(--ground); scrollbar-color: var(--rule-strong) var(--ground); }
+body { margin: 0; font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: var(--ink); background: var(--ground); caret-color: var(--implementing); font-variant-numeric: tabular-nums; }
+::selection { background: color-mix(in srgb, var(--implementing) 30%, transparent); }
+a { color: var(--link); text-decoration: none; }
+a:hover { text-decoration: underline; text-underline-offset: 0.2em; text-decoration-thickness: 1px; }
+code { font: 0.9em ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--panel-2); padding: 0.1em 0.35em; border-radius: 3px; }
+
+header.top { display: flex; align-items: center; gap: 0.75rem; max-width: 76rem; margin: 0 auto; padding: 1.1rem 1.5rem 0.9rem; }
+.brand { display: inline-flex; align-items: center; gap: 0.5rem; font-size: 18px; font-weight: 700; color: var(--ink); letter-spacing: -0.015em; }
+.brand:hover { text-decoration: none; }
+.glyph { width: 22px; height: 22px; fill: none; stroke: var(--rule-strong); stroke-width: 1.4; }
+.glyph .trail { stroke: var(--implementing); stroke-width: 2; stroke-linecap: round; }
+header.top h1 { margin: 0; font-size: 18px; font-weight: 500; color: var(--ink-2); }
+header.top h1::before { content: "/"; margin-right: 0.75rem; color: var(--rule-strong); }
+header.top .refresh { margin-left: auto; }
+main { max-width: 76rem; margin: 0 auto; padding: 0 1.5rem 3rem; }
+
+button, select { font: inherit; font-size: 13px; color: var(--ink); background: var(--panel); border: 1px solid var(--rule-strong); border-radius: 4px; height: 28px; padding: 0 0.6rem; transition: border-color 120ms, background-color 120ms, color 120ms; }
+select { padding: 0 0.3rem; max-width: 9.5rem; text-overflow: ellipsis; }
+:is(form.dispatch, fieldset.row) select[name="base"] { width: 9.5rem; }
+:is(form.dispatch, fieldset.row) select[name="harness"] { width: 6.5rem; }
+:is(form.dispatch, fieldset.row) select[name="model"] { width: 7.5rem; }
+:is(form.dispatch, fieldset.row) select[name="effort"] { width: 6rem; }
+button { display: inline-flex; align-items: center; justify-content: center; gap: 0.35rem; cursor: pointer; background: var(--panel-2); font-weight: 500; white-space: nowrap; }
+button:hover:not(:disabled) { border-color: var(--ink-2); }
+button:disabled { opacity: 0.6; cursor: default; }
+:is(button, select, input, a):focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
+form.dispatch > button:last-child, form.batch > button:last-child { background: var(--fire); border-color: var(--fire); color: var(--fire-ink); font-weight: 600; }
+form.dispatch > button:last-child:hover, form.batch > button:last-child:hover { background: var(--fire-hover); border-color: var(--fire-hover); }
+form[action="/review"] > button:last-child { background: var(--panel-2); border-color: var(--review); color: var(--review-ink); }
+form[action="/review"] > button:last-child:hover { background: color-mix(in srgb, var(--review) 14%, var(--panel)); border-color: var(--review); }
+form[action="/close"] button { color: var(--ink-2); }
+form[action="/close"] button:hover { color: var(--failed-ink); border-color: var(--failed); }
+label { display: inline-flex; align-items: center; gap: 0.3rem; color: var(--ink-2); font-size: 12px; }
+input[type="checkbox"] { width: 15px; height: 15px; margin: 0; accent-color: var(--implementing); cursor: pointer; flex: none; }
+
+.empty { color: var(--ink-2); margin: 0; padding: 0.9rem 1rem; }
+.error { color: var(--failed-ink); }
+.warning { color: var(--implementing-ink); }
+p.error, p.warning { margin: 0.25rem 0; }
+
+/* The event display: a detector seen end-on, with a track per In-flight Dispatch. */
+figure.event { border: 1px solid var(--frame, transparent); display: grid; grid-template-columns: minmax(0, 460px) minmax(0, 1fr); align-items: center; gap: 2.5rem; margin: 0 0 1rem; padding: 1.5rem 2rem 1.5rem 1.5rem; background: var(--display); border-radius: 6px; color: #dfe4eb; box-shadow: var(--shadow);
+  --geometry: #303b4a; --geometry-2: #1a222d;
+  --implementing: #f5a524; --pr-ready: #3bd47b; --review: #52b5ff; --failed: #ff5757; --blocked: #ff4fd6; --unknown: #6b7584; }
+figure.event svg { display: block; width: 100%; height: auto; overflow: hidden; font: 600 10px system-ui, sans-serif; }
+.geometry circle { stroke: var(--geometry); stroke-width: 0.7; }
+.geometry .ecal, .geometry .hcal, .geometry .muon { stroke: var(--geometry-2); }
+.geometry .ecal { stroke: color-mix(in srgb, var(--pr-ready) 34%, var(--geometry)); }
+.geometry .hcal { stroke: color-mix(in srgb, var(--review) 28%, var(--geometry)); }
+.geometry .muon { stroke: #3a4655; }
+.key text { font-size: 7.5px; font-weight: 500; fill: #7d8796; paint-order: stroke; stroke: var(--display); stroke-width: 2.5px; stroke-linejoin: round; }
+.vertex { fill: #f4f6f9; }
+.track { --c: var(--unknown); color: var(--c); cursor: pointer; transition: opacity 160ms; }
+.track.implementing { --c: var(--implementing); }
+.track.pr-ready { --c: var(--pr-ready); }
+.track.review-launched { --c: var(--review); }
+.track.failed { --c: var(--failed); }
+.track path { fill: none; stroke: var(--c); stroke-width: 1.8; stroke-linecap: round; }
+.track.unknown path { stroke-dasharray: 0.03 0.03; }
+.track .tip { fill: var(--c); }
+.track .deposit { stroke: var(--pr-ready); stroke-width: 7; stroke-linecap: butt; }
+.track .hit { stroke: var(--review); stroke-width: 5; }
+.track .burst line { stroke: var(--failed); stroke-width: 1.6; stroke-linecap: round; }
+.track .attention { fill: none; stroke: var(--blocked); stroke-width: 1.5; }
+.track text { fill: var(--c); paint-order: stroke; stroke: var(--display); stroke-width: 3px; stroke-linejoin: round; }
+.track.waiting text { fill: var(--blocked); }
+svg:has(.track.lit) .track:not(.lit) { opacity: 0.22; }
+.track.lit path { stroke-width: 2.4; }
+
+figure.event figcaption { display: grid; gap: 1rem; align-content: center; min-width: 0; max-width: 30rem; }
+figure.event .lede { margin: 0; max-width: 34ch; font-size: 15px; line-height: 1.4; color: #f2f4f7; }
+figure.event dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.15rem 2rem; margin: 0; }
+figure.event dl.agents { padding-top: 0.6rem; border-top: 1px solid #222b37; }
+figure.event dl.agents > div { border-bottom: none; }
+figure.event dl > div { display: flex; align-items: baseline; justify-content: space-between; gap: 0.75rem; padding: 0.35rem 0; border-bottom: 1px solid #1a212b; }
+figure.event dt { display: inline-flex; align-items: center; gap: 0.55rem; font-size: 13px; color: #b9c1cc; }
+figure.event dd { margin: 0; font-size: 18px; font-weight: 600; color: #f2f4f7; }
+figure.event dt i { width: 16px; height: 2px; border-radius: 1px; background: var(--c); }
+figure.event dl > div { --c: var(--unknown); }
+figure.event .implementing { --c: var(--implementing); }
+figure.event .pr-ready { --c: var(--pr-ready); }
+figure.event .review-launched { --c: var(--review); }
+figure.event .failed { --c: var(--failed); }
+figure.event .blocked { --c: var(--blocked); }
+figure.event .blocked dt i { width: 9px; height: 9px; border-radius: 50%; background: none; border: 1.5px solid var(--c); }
+figure.event .blocked:not(.none) :is(dt, dd) { color: var(--blocked); }
+figure.event .none :is(dt, dd) { color: #5d6776; }
+figure.event .sampled { margin: 0; font-size: 12px; color: #7d8796; }
+
+.actions { position: sticky; top: 0; z-index: 2; background: var(--ground); padding: 0.5rem 0 0.75rem; }
+.actions form { display: flex; align-items: center; gap: 0.4rem; }
+.actions form::before { content: "With selected"; color: var(--ink-2); font-size: 12px; margin-right: 0.25rem; }
+
+section.repo, section.in-flight { background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; margin-bottom: 1rem; box-shadow: var(--shadow); overflow: hidden; }
+section > header { display: flex; align-items: center; gap: 0.6rem; padding: 0.65rem 1rem; border-bottom: 1px solid var(--rule); background: var(--panel-2); }
+section h2 { margin: 0; font-size: 14px; font-weight: 650; letter-spacing: -0.005em; }
+.count { font-size: 12px; font-weight: 600; color: var(--ink-2); min-width: 1.5rem; text-align: center; border: 1px solid var(--rule-strong); border-radius: 3px; padding: 0 0.35rem; line-height: 18px; }
+section h3 { margin: 0; padding: 0.85rem 1rem 0.35rem; font-size: 12px; font-weight: 650; color: var(--ink-2); border-top: 1px solid var(--rule); }
+section > p.error { padding: 0.6rem 1rem; margin: 0; }
+section ul { list-style: none; margin: 0; padding: 0; }
+section li { border-top: 1px solid var(--rule); transition: background-color 120ms; }
+section li:first-child { border-top: none; }
+section li:hover, section li.lit { background: var(--panel-2); }
+
+ul.issues li { display: flex; align-items: center; gap: 0.75rem; padding: 0.45rem 1rem; min-height: 44px; }
+a.title { flex: 1; min-width: 0; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+a.title:hover { color: var(--link); text-decoration: none; }
+.num { color: var(--ink-2); font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; margin-right: 0.3rem; }
+form.dispatch { display: flex; align-items: center; gap: 0.35rem; margin: 0; flex: none; }
+li:not(:hover) form.dispatch select:not(:focus) { border-color: var(--rule); }
+
+ul.flights li { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "head actions" "meta actions" "notes notes"; column-gap: 1rem; row-gap: 0.3rem; padding: 0.7rem 1rem; }
+ul.flights li.lit::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 1px; background: var(--ink-2); }
+.flight .head { grid-area: head; display: flex; align-items: center; gap: 0.6rem; min-width: 0; }
+.flight .meta { grid-area: meta; display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; padding-left: calc(15px + 0.6rem); }
+.flight .notes { grid-area: notes; padding-left: calc(15px + 0.6rem); }
+.flight .row-actions { grid-area: actions; display: flex; align-items: center; gap: 0.4rem; justify-content: flex-end; }
+.flight .row-actions form { display: flex; gap: 0.35rem; margin: 0; }
+.flight a.title { flex: 0 1 auto; font-weight: 500; }
+a.pr { font-size: 12px; font-weight: 600; white-space: nowrap; }
+
+.chip { display: inline-flex; align-items: center; gap: 0.3rem; font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--ink-2); background: var(--panel-2); border: 1px solid var(--rule); border-radius: 3px; padding: 0 0.4rem; line-height: 20px; white-space: nowrap; }
+.chip .icon { width: 11px; height: 11px; fill: none; stroke: currentColor; stroke-width: 1.2; stroke-linecap: round; flex: none; }
+/* A Stage reads as its track's legend key. */
+.stage { --c: var(--unknown); display: inline-flex; align-items: center; gap: 0.45rem; font-size: 12px; font-weight: 650; white-space: nowrap; color: var(--c-ink, var(--ink-2)); }
+.stage::before { content: ""; width: 14px; height: 2px; border-radius: 1px; background: var(--c); }
+.stage.implementing { --c: var(--implementing); --c-ink: var(--implementing-ink); }
+.stage.pr-ready { --c: var(--pr-ready); --c-ink: var(--pr-ready-ink); }
+.stage.review-launched { --c: var(--review); --c-ink: var(--review-ink); }
+.stage.failed { --c: var(--failed); --c-ink: var(--failed-ink); }
+.agent { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 12px; color: var(--ink-2); padding: 0 0.3rem; line-height: 20px; }
+.agent i { width: 7px; height: 7px; border-radius: 50%; border: 1.5px solid var(--rule-strong); }
+.agent.working i { border-color: var(--ink); background: var(--ink); }
+.agent.idle i { border-color: var(--ink-2); }
+.agent.done i { border-color: var(--pr-ready); background: var(--pr-ready); }
+.agent.unknown i { border-style: dashed; }
+.agent.blocked { color: var(--blocked-ink); background: var(--blocked); border-radius: 3px; padding: 0 0.45rem; font-weight: 650; }
+.agent.blocked i { border-color: var(--blocked-ink); background: var(--blocked-ink); }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+main > ul { list-style: none; padding: 0; margin: 0 0 1rem; background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; }
+main > ul li { padding: 0.55rem 1rem; border-top: 1px solid var(--rule); }
+main > ul li:first-child { border-top: none; }
+main > p { margin: 0 0 0.75rem; }
+form.batch { display: flex; flex-direction: column; align-items: flex-start; gap: 0.5rem; margin-bottom: 1rem; }
+fieldset.row { display: flex; align-items: center; gap: 0.5rem; width: 100%; margin: 0; padding: 0.6rem 1rem; background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; }
+fieldset.row legend { float: left; margin-right: auto; font: 600 13px ui-monospace, SFMono-Regular, Menlo, monospace; padding: 0; }
+@media (max-width: 760px) {
+  header.top, main { padding-left: 1rem; padding-right: 1rem; }
+  figure.event { grid-template-columns: 1fr; gap: 1rem; padding: 1rem; }
+  figure.event svg { max-width: 300px; margin: 0 auto; }
+  figure.event .key { display: none; }
+  figure.event dl { gap: 0 1.25rem; }
+  figure.event .lede { font-size: 14px; }
+  ul.issues li { flex-wrap: wrap; }
+  ul.issues a.title { flex-basis: calc(100% - 2rem); }
+  ul.flights li { grid-template-columns: minmax(0, 1fr); grid-template-areas: "head" "meta" "notes" "actions"; }
+  .flight .head { flex-wrap: wrap; row-gap: 0.25rem; }
+  .flight .head a.title { flex: 1 1 calc(100% - 15px - 0.6rem); white-space: normal; }
+  .flight .head :is(.stage, a.pr) { margin-left: calc(15px + 0.6rem); }
+  .flight .head .stage + a.pr { margin-left: 0; }
+  .flight .row-actions { justify-content: flex-start; flex-wrap: wrap; padding-left: calc(15px + 0.6rem); }
+  form.dispatch { flex: 1 1 100%; flex-wrap: wrap; }
+  form.dispatch select, :is(form.dispatch, fieldset.row) select[name] { flex: 1 1 6rem; width: auto; max-width: none; }
+  form.dispatch label { flex: 1 1 100%; }
+  form.dispatch label select { flex: 1; }
+  fieldset.row { flex-wrap: wrap; }
+}
+`;
 
 const ENTITIES: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
 

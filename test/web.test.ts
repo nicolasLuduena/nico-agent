@@ -17,10 +17,10 @@ describe("web Board", () => {
     const { status, type, body } = await web("/");
     expect(status).toBe(200);
     expect(type).toBe("text/html; charset=utf-8");
-    expect(body).toContain('<section class="repo">\n<h2>acme/api</h2>\n<ul>\n<li><input type="checkbox" class="pick" name="issue" value="acme/api#7" form="batch" autocomplete="off" aria-label="Select acme/api#7"> <a href="https://github.com/acme/api/issues/7">#7 Add retries</a>\n');
-    expect(body).toContain('<section class="repo">\n<h2>acme/web</h2>\n<ul>\n<li><input type="checkbox" class="pick" name="issue" value="acme/web#4" form="batch" autocomplete="off" aria-label="Select acme/web#4"> <a href="https://github.com/acme/web/issues/4">#4 Fix &lt;header&gt; &amp; nav</a>\n');
+    expect(body).toContain('<section class="repo">\n<header><h2>acme/api</h2><span class="count">1</span></header>\n<ul class="issues">\n<li><input type="checkbox" class="pick" name="issue" value="acme/api#7" form="batch" autocomplete="off" aria-label="Select acme/api#7"> <a class="title" href="https://github.com/acme/api/issues/7"><span class="num">#7</span> Add retries</a>\n');
+    expect(body).toContain('<section class="repo">\n<header><h2>acme/web</h2><span class="count">1</span></header>\n<ul class="issues">\n<li><input type="checkbox" class="pick" name="issue" value="acme/web#4" form="batch" autocomplete="off" aria-label="Select acme/web#4"> <a class="title" href="https://github.com/acme/web/issues/4"><span class="num">#4</span> Fix &lt;header&gt; &amp; nav</a>\n');
     expect(body.indexOf("<h2>acme/api</h2>")).toBeLessThan(body.indexOf("<h2>acme/web</h2>"));
-    expect(body).toContain('<section class="in-flight" hx-get="/in-flight" hx-trigger="every 5s" hx-swap="outerHTML">\n<h2>In flight</h2>\n<p class="empty">Nothing in flight.</p>\n</section>');
+    expect(body).toContain('<section class="in-flight" hx-get="/in-flight" hx-trigger="every 5s" hx-swap="outerHTML">\n<header><h2>In flight</h2><span class="count">0</span></header>\n<p class="empty">Nothing in flight.</p>\n</section>');
     expect(body).not.toContain("Taken");
   });
 
@@ -47,11 +47,11 @@ describe("web Board", () => {
     expect(body).toContain(
       [
         '<section class="repo">',
-        "<h2>acme/api</h2>",
+        '<header><h2>acme/api</h2><span class="count">0</span></header>',
         '<p class="empty">No Ready issues.</p>',
         "</section>",
         '<section class="repo">',
-        "<h2>acme/web</h2>",
+        '<header><h2>acme/web</h2><span class="count">0</span></header>',
         '<p class="error">Could not load: not authenticated with GitHub; run `gh auth login`</p>',
         "</section>",
       ].join("\n"),

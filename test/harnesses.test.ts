@@ -354,7 +354,7 @@ describe("web Harness choices", () => {
     expect(body).toContain(
       '<select name="effort"><option selected>low</option><option>medium</option><option>high</option><option>xhigh</option><option>max</option></select>',
     );
-    expect(body).toContain('<form method="post" action="/harnesses/refresh" class="refresh">\n<button>Refresh harnesses</button>\n</form>');
+    expect(body).toContain('<form method="post" action="/harnesses/refresh" class="refresh"><button>Refresh harnesses</button></form>');
   });
 
   test("choosing a Harness and model re-renders the form with only that model's Efforts", async () => {

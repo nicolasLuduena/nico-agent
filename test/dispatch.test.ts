@@ -357,13 +357,17 @@ describe("In flight on the Board", () => {
     expect(body).toContain(
       [
         '<section class="in-flight" hx-get="/in-flight" hx-trigger="every 5s" hx-swap="outerHTML">',
-        "<h2>In flight</h2>",
-        "<ul>",
-        '<li><input type="checkbox" class="pick" name="issue" value="acme/api#7" form="batch" autocomplete="off" id="pick-acme-api-7" hx-preserve="true" aria-label="Select acme/api#7"> <a href="https://github.com/acme/api/issues/7">acme/api#7 Add retries</a> · claude opus high · base main · workspace w1 · Implementing · implementer <span class="agent">working</span>',
+        '<header><h2>In flight</h2><span class="count">1</span></header>',
+        '<ul class="flights">',
+        '<li class="flight">\n<div class="head"><input type="checkbox" class="pick" name="issue" value="acme/api#7" form="batch" autocomplete="off" id="pick-acme-api-7" hx-preserve="true" aria-label="Select acme/api#7"> <a class="title" href="https://github.com/acme/api/issues/7"><span class="num">api#7</span> Add retries</a><span class="stage implementing">Implementing</span></div>',
+        '<div class="meta"><span class="chip">claude · opus · high</span><span class="chip" title="Base"><svg class="icon" viewBox="0 0 12 12" aria-hidden="true"><circle cx="3" cy="2.5" r="1.5"/><circle cx="3" cy="9.5" r="1.5"/><circle cx="9" cy="3.5" r="1.5"/><path d="M3 4v4M9 5c0 2.5-6 1.5-6 3"/></svg>main</span><span class="chip" title="herdr workspace">w1</span><span class="agent working"><i></i>implementer working</span></div>',
+        '<div class="row-actions">',
         '<form method="post" action="/close">',
         '<input type="hidden" name="issue" value="acme/api#7">',
         '<button>Close</button>',
-        '</form></li>',
+        '</form>',
+        "</div>",
+        "</li>",
         "</ul>",
         "</section>",
       ].join("\n"),
@@ -510,7 +514,10 @@ describe("web Retry", () => {
     const { body } = await web("/");
     expect(body).toContain(
       [
-        '<li><input type="checkbox" class="pick" name="issue" value="acme/api#7" form="batch" autocomplete="off" id="pick-acme-api-7" hx-preserve="true" aria-label="Select acme/api#7"> <a href="https://github.com/acme/api/issues/7">acme/api#7 Add retries</a> · claude opus high · base main · workspace w1 · <span class="error">Failed at tab: workspace_not_found: no workspace w1</span> · implementer <span class="agent">unknown</span>',
+        '<li class="flight">\n<div class="head"><input type="checkbox" class="pick" name="issue" value="acme/api#7" form="batch" autocomplete="off" id="pick-acme-api-7" hx-preserve="true" aria-label="Select acme/api#7"> <a class="title" href="https://github.com/acme/api/issues/7"><span class="num">api#7</span> Add retries</a><span class="stage failed">Failed at tab</span></div>',
+        '<div class="meta"><span class="chip">claude · opus · high</span><span class="chip" title="Base"><svg class="icon" viewBox="0 0 12 12" aria-hidden="true"><circle cx="3" cy="2.5" r="1.5"/><circle cx="3" cy="9.5" r="1.5"/><circle cx="9" cy="3.5" r="1.5"/><path d="M3 4v4M9 5c0 2.5-6 1.5-6 3"/></svg>main</span><span class="chip" title="herdr workspace">w1</span><span class="agent unknown"><i></i>implementer unknown</span></div>',
+        '<div class="notes"><p class="error">workspace_not_found: no workspace w1</p></div>',
+        '<div class="row-actions">',
         '<form method="post" action="/close">',
         '<input type="hidden" name="issue" value="acme/api#7">',
         '<button>Close</button>',
@@ -521,7 +528,9 @@ describe("web Retry", () => {
         '<input type="hidden" name="model" value="opus">',
         '<input type="hidden" name="effort" value="high">',
         "<button>Retry</button>",
-        "</form></li>",
+        "</form>",
+        "</div>",
+        "</li>",
       ].join("\n"),
     );
 
@@ -531,7 +540,7 @@ describe("web Retry", () => {
     expect(retried.status).toBe(303);
     expect(world.calls[0]).toStartWith("herdr tab create --workspace w1 ");
     expect((await cli("show", "acme/api#7", "--json")).json().stage).toBe("Implementing");
-    expect((await web("/")).body).toContain('· workspace w1 · Implementing · implementer <span class="agent">working</span>');
+    expect((await web("/")).body).toContain('<span class="stage implementing">Implementing</span>');
   });
 });
 

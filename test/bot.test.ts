@@ -126,10 +126,7 @@ describe("bot-aware implement prompt", () => {
 
     const { body } = await web("/");
     expect(body).toContain(
-      [
-        '· workspace w1 · Implementing · implementer <span class="agent">working</span>',
-        '<p class="warning">could not check the GitHub App on acme/api, so the prompt has no bot suffix: GitHub request failed</p>',
-      ].join("\n"),
+      '<div class="notes"><p class="warning">could not check the GitHub App on acme/api, so the prompt has no bot suffix: GitHub request failed</p></div>',
     );
   });
 });

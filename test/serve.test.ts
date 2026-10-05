@@ -18,7 +18,7 @@ describe("serve", () => {
     expect(world.calls).toContain("serve 127.0.0.1:42069");
 
     const response = await world.server!.handler(new Request("http://127.0.0.1:42069/"));
-    expect(await response.text()).toContain('<a href="https://github.com/acme/api/issues/7">#7 Add retries</a>');
+    expect(await response.text()).toContain('<a class="title" href="https://github.com/acme/api/issues/7"><span class="num">#7</span> Add retries</a>');
   });
 
   test("--port overrides the port", async () => {
