@@ -1,3 +1,5 @@
+import { readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 import { setup } from "./harness";
 
@@ -29,6 +31,19 @@ describe("--stack-on any open PR in the Repo", () => {
     expect(shown.stackedOn).toMatchObject({ issue: "acme/api#3", pr: { url: "https://github.com/acme/api/pull/13" } });
     // The same choice, named by the PR URL, is the same request.
     expect((await cli("dispatch", "acme/api#7", ...FLAGS, "--stack-on", "https://github.com/acme/api/pull/13")).stdout).toContain("already In flight (no-op)");
+  });
+
+  test("a record from before any open PR could be stacked on, naming its Blocker, reads as stacked on that issue", async () => {
+    const { cli, configDir } = await repo();
+    await cli("dispatch", "acme/api#7", ...FLAGS, "--stack-on", "3");
+    const file = join(configDir, "dispatches.json");
+    const state = JSON.parse(readFileSync(file, "utf8"));
+    const { issue, ...rest } = state.dispatches["acme/api#7"].stackedOn;
+    state.dispatches["acme/api#7"].stackedOn = { blocker: issue, ...rest };
+    writeFileSync(file, JSON.stringify(state));
+
+    expect((await cli("show", "acme/api#7", "--json")).json().stackedOn).toEqual({ issue: "acme/api#3", pr: expect.objectContaining({ number: 13 }) });
+    expect((await cli("dispatch", "acme/api#7", ...FLAGS, "--stack-on", "3")).stdout).toContain("already In flight (no-op)");
   });
 
   test("a Stackable issue stacks on a PR whose Stack holds its Blocker's PR below it", async () => {

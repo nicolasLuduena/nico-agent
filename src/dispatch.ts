@@ -706,9 +706,7 @@ function sameLaunch(existing: Dispatch, request: DispatchRequest) {
 function matchesStack(choice: string, repo: string, target: StackTarget) {
   const url = choice.match(/^https?:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/issues\/(\d+)\/?$/i);
   const key = /^\d+$/.test(choice) ? `${repo}#${choice}` : url ? `${url[1]}#${url[2]}` : linearIdentifier(choice) ?? choice;
-  // Records from before any open PR could be stacked on name the Blocker.
-  const issue = target.issue ?? (target as { blocker?: string }).blocker;
-  return (issue !== undefined && sameSlug(key, issue)) || sameSlug(choice, target.pr.url);
+  return (target.issue !== undefined && sameSlug(key, target.issue)) || sameSlug(choice, target.pr.url);
 }
 
 /** A Dispatch's Base without the remote prefix; unset only on a record from before the fetch step chose it. */
