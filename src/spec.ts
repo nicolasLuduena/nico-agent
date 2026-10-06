@@ -22,7 +22,7 @@ export interface IssueFacts {
   /** The step its In-flight Dispatch Failed at, until a re-run gets past it or the Dispatch is Closed. */
   failed?: { step: string; error: string };
   /** The PR closed without merging that its In-flight Dispatch's Stack is built on. */
-  orphanedBy?: PullRequest;
+  builtOnClosedPr?: PullRequest;
 }
 
 /** A Spec and its issues in sub-issue order; a loose issue is a Spec of one, named after itself. */
@@ -202,9 +202,9 @@ function holdOf(spec: SpecFacts): Hold | undefined {
   if (failed?.failed) {
     return { issue: failed.issue, reason: `${failed.issue}'s Dispatch Failed at ${failed.failed.step}: ${failed.failed.error}` };
   }
-  const orphaned = spec.issues.find((i) => i.orphanedBy);
-  if (orphaned?.orphanedBy) {
-    return { issue: orphaned.issue, reason: `${orphaned.issue}'s Stack is built on ${orphaned.orphanedBy.url}, closed without merging` };
+  const closedUnder = spec.issues.find((i) => i.builtOnClosedPr);
+  if (closedUnder?.builtOnClosedPr) {
+    return { issue: closedUnder.issue, reason: `${closedUnder.issue}'s Stack is built on ${closedUnder.builtOnClosedPr.url}, closed without merging` };
   }
   return undefined;
 }

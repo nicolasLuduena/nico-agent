@@ -195,7 +195,7 @@ describe("advance", () => {
       { spec: "BLE-10", repo: "bleentr/pdf-diff", result: "skipped", issue: "BLE-13", reason: "Held: BLE-13's Stack is built on https://github.com/bleentr/pdf-diff/pull/16, closed without merging" },
       { spec: "BLE-20", repo: "bleentr/pdf-diff", result: "started", issue: "BLE-23", reason: "BLE-23 is the first unblocked issue of BLE-20; it stacks on the Spec's newest open PR" },
     ]);
-    expect(advanced.help).toContain("Run `nico-agent close BLE-13` to Close the orphaned Dispatch, or retarget its Stack");
+    expect(advanced.help).toContain("Run `nico-agent close BLE-13` to Close its Dispatch, whose Stack is built on a PR closed without merging, or retarget that Stack");
     expect(world.calls.filter((c) => c.startsWith("herdr worktree create"))).toHaveLength(1);
   });
 
@@ -205,14 +205,14 @@ describe("advance", () => {
     expect((await cli("--json")).json().specs.find((s: { spec: string }) => s.spec === "BLE-10").held).toBeUndefined();
   });
 
-  test("Closing the orphaned Dispatch clears the hold", async () => {
+  test("Closing the Dispatch whose Stack is built on a PR closed without merging clears the hold", async () => {
     const { cli, world } = await stackedSpec();
     world.addPr({ repo: "bleentr/pdf-diff", number: 16, headBranch: "nico/ble-11", state: "closed" });
     expect((await cli("close", "BLE-13", "--confirm")).exitCode).toBe(0);
     expect((await cli("--json")).json().specs.find((s: { spec: string }) => s.spec === "BLE-10").held).toBeUndefined();
   });
 
-  test("the orphaned Dispatch's own PR retargeted off the closed PR clears the hold", async () => {
+  test("the Dispatch's own PR retargeted off the PR closed without merging clears the hold", async () => {
     const { cli, world } = await stackedSpec();
     world.linearAttachments.set("BLE-13", ["https://github.com/bleentr/pdf-diff/pull/18"]);
     world.addPr({ repo: "bleentr/pdf-diff", number: 18, headBranch: "nico/ble-13", baseBranch: "nico/ble-12" });

@@ -199,14 +199,14 @@ async function looseInFlight(world: World, row: InFlightRow): Promise<SpecFacts>
 }
 
 /** What an In-flight Dispatch tells the Spec rules about holds. */
-async function holdFacts(world: World, row: InFlightRow): Promise<Pick<IssueFacts, "failed" | "orphanedBy">> {
+async function holdFacts(world: World, row: InFlightRow): Promise<Pick<IssueFacts, "failed" | "builtOnClosedPr">> {
   const { failure, stackedOn, repo } = row.dispatch;
   if (failure) return { failed: { step: failure.step, error: failure.error } };
   if (!stackedOn) return {};
   // The Stack under the Dispatch's own open PR, else under the PR it was dispatched on.
   const from = row.pr?.state === "open" ? row.pr.baseBranch : stackedOn.pr.headBranch;
-  const orphanedBy = await closedBelow(world, repo, from);
-  return orphanedBy ? { orphanedBy } : {};
+  const builtOnClosedPr = await closedBelow(world, repo, from);
+  return builtOnClosedPr ? { builtOnClosedPr } : {};
 }
 
 /**

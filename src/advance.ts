@@ -100,12 +100,12 @@ export function planSpec(spec: SpecDecision, dispatches: Dispatch[]): SpecPlan {
   return { action: "skip", issue: "", reason: spec.reason ?? "" };
 }
 
-/** How the user clears a Spec's hold: resume the Failed Dispatch with its own launch, or Close it or the orphaned one. */
+/** How the user clears a Spec's hold: resume the Failed Dispatch with its own launch, or Close the one whose Stack is built on a PR closed without merging. */
 function clearHoldHelp(spec: SpecDecision, dispatches: Dispatch[]) {
   const issue = spec.held!.issue;
   const d = dispatches.find((d) => d.issue === issue);
   if (!d) return SHOW_HELP;
-  if (!d.failure) return `Run \`nico-agent close ${issue}\` to Close the orphaned Dispatch, or retarget its Stack`;
+  if (!d.failure) return `Run \`nico-agent close ${issue}\` to Close its Dispatch, whose Stack is built on a PR closed without merging, or retarget that Stack`;
   const { harness, model, effort } = d.implementer;
   const resume = `nico-agent dispatch ${issue} --harness ${harness} --model ${model} --effort ${effort}${linearIdentifier(issue) ? ` --repo ${d.repo}` : ""}`;
   return `Run \`${resume}\` to resume the Failed Dispatch, or \`nico-agent close ${issue}\` to Close it`;
