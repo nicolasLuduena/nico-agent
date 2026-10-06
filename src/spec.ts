@@ -19,6 +19,10 @@ export interface IssueFacts {
   pr: PullRequest | null;
   /** Its Blockers, named like `issue`, and whether each is closed. */
   blockers: { issue: string; closed: boolean }[];
+  /** The step its In-flight Dispatch Failed at, until a re-run gets past it or the Dispatch is Closed. */
+  failed?: { step: string; error: string };
+  /** The PR closed without merging that its In-flight Dispatch's Stack is built on. */
+  orphanedBy?: PullRequest;
 }
 
 /** A Spec and its issues in sub-issue order; a loose issue is a Spec of one, named after itself. */
@@ -53,6 +57,12 @@ export interface Waiting {
   reason: string;
 }
 
+/** Why the Scheduler does not dispatch into a Spec until the user acts, and the issue whose Dispatch needs it. */
+export interface Hold {
+  issue: string;
+  reason: string;
+}
+
 export interface SpecDecision {
   spec: string;
   title: string;
@@ -68,6 +78,8 @@ export interface SpecDecision {
   waiting?: Waiting;
   /** Why a running Spec has no next issue. */
   reason?: string;
+  /** Set when the Spec is Held; a Held Spec has no next issue and is never started. */
+  held?: Hold;
 }
 
 export interface RepoDecision {
@@ -93,10 +105,13 @@ function decideSpec(repo: RepoFacts, spec: SpecFacts): SpecDecision {
     spec: spec.spec, title: spec.title, url: spec.url, repo: repo.repo,
     issues: spec.issues.map((i) => i.issue), running: false,
   };
+  const held = holdOf(spec);
+  if (held) decision.held = held;
   const remaining = spec.issues.filter((i) => !done(i));
   const started = spec.issues.some((i) => i.inFlight || i.closed || i.pr);
   if (!started || remaining.length === 0) return decision;
   decision.running = true;
+  if (held) return decision;
   const implementing = remaining.find((i) => i.inFlight);
   if (implementing) {
     decision.implementing = implementing.issue;
@@ -125,6 +140,22 @@ function decideSpec(repo: RepoFacts, spec: SpecFacts): SpecDecision {
   }
   decision.reason = "no remaining issue is Ready or unblocked";
   return decision;
+}
+
+/**
+ * Holds are derived from the facts on every read, so they clear once the user
+ * resumes or Closes the Dispatch that caused them.
+ */
+function holdOf(spec: SpecFacts): Hold | undefined {
+  const failed = spec.issues.find((i) => i.failed);
+  if (failed?.failed) {
+    return { issue: failed.issue, reason: `${failed.issue}'s Dispatch Failed at ${failed.failed.step}: ${failed.failed.error}` };
+  }
+  const orphaned = spec.issues.find((i) => i.orphanedBy);
+  if (orphaned?.orphanedBy) {
+    return { issue: orphaned.issue, reason: `${orphaned.issue}'s Stack is built on ${orphaned.orphanedBy.url}, closed without merging` };
+  }
+  return undefined;
 }
 
 /** An issue is done for its Spec once it is closed or has a PR. */

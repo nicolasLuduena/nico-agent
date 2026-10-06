@@ -138,7 +138,7 @@ const commands: Command[] = [
   {
     name: "advance",
     usage: "nico-agent advance",
-    summary: "Dispatch each running Spec's next issue with the Scheduler defaults from config (resumes a failed one)",
+    summary: "Dispatch each running Spec's next issue with the Scheduler defaults from config (skips Held Specs)",
     flags: {},
     positionals: [],
     examples: ["nico-agent advance", "nico-agent advance --json"],
@@ -679,8 +679,9 @@ async function board(ctx: RunContext): Promise<Output> {
   }
   const specRows = specs.flatMap((r) => r.specs);
   if (specRows.length) {
-    data.specs = specRows.map(({ spec, title, repo, issues, running, next, waiting, reason }) => ({
+    data.specs = specRows.map(({ spec, title, repo, issues, running, held, next, waiting, reason }) => ({
       spec, title, repo, issues, running,
+      ...(held && { held }),
       ...(next && { next: { issue: next.issue, ...(next.stackOn && { stackOn: next.stackOn.url }), base: next.base, reason: next.reason } }),
       ...(waiting && { waiting }),
       ...(reason && { reason }),
