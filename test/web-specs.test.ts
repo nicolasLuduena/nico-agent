@@ -116,4 +116,17 @@ describe("web Board grouped by Spec", () => {
     expect(section).toContain('<span class="num">#40</span> Exports</a></header>');
     expect(section).toContain('<li class="member" data-issue="acme/api#41"><a class="title" href="https://github.com/acme/api/issues/41"><span class="num">#41</span> CSV export</a><span class="stage implementing">Implementing</span></li>');
   });
+
+  test("a Linear Spec claimed by two Repos shows its In-flight issue only in the Repo it was dispatched in", async () => {
+    const { cli, web, world } = setup();
+    world.addClone("/src/pdf", "git@github.com:bleentr/pdf-diff.git");
+    world.addClone("/src/web", "git@github.com:bleentr/web.git");
+    await cli("repo", "add", "bleentr/pdf-diff", "--path", "/src/pdf", "--linear-team", "BLE");
+    await cli("repo", "add", "bleentr/web", "--path", "/src/web", "--linear-team", "BLE");
+    world.addLinearSpec({ identifier: "BLE-10", title: "PDF diffing" }, { identifier: "BLE-11" }, { identifier: "BLE-12" });
+    await cli("dispatch", "BLE-11", ...FLAGS, "--repo", "bleentr/pdf-diff");
+
+    expect(await repoSection(web, "bleentr/pdf-diff")).toContain('<li class="member" data-issue="BLE-11">');
+    expect(await repoSection(web, "bleentr/web")).not.toContain('data-issue="BLE-11"');
+  });
 });

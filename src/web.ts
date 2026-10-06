@@ -9,7 +9,8 @@ import { type Catalog, type Remembered, harnessCatalogs, refreshHarnesses, remem
 import { type InFlightRow, type PrLookup, cachedPrs, loadInFlight } from "./stage";
 import { type Dispatch, type Launch, findDispatch, loadDispatches } from "./state";
 import { plural } from "./output";
-import { type World, WorldError } from "./world";
+import { sameSlug } from "./slug";
+import { type PullRequest, type World, WorldError } from "./world";
 
 export interface WebContext {
   world: World;
@@ -409,7 +410,7 @@ function renderInFlightRow(row: InFlightRow, choices: Choices) {
     // The Repo's name is enough to tell issues apart; the owner is in the link.
     issueLink(d.issue.slice(d.issue.indexOf("/") + 1), d.title, d.url),
     stageKey(row),
-    ...(pr ? [`<a class="pr" href="${escape(pr.url)}">PR #${pr.number}</a>`] : []),
+    ...(pr ? [prLink(pr)] : []),
   ];
   const meta = [
     `<span class="chip">${escape(`${harness} · ${model} · ${effort}`)}</span>`,
@@ -465,27 +466,30 @@ function renderRepo(repo: Repo, board: Board, choices: Choices) {
   const readyRow = (i: BoardIssue) => i.identifier
     // No tick box: a batch row can't name the Repo of an issue several Repos claim.
     ? `<li>${issueLink(i.identifier, i.title, i.url)}${i.base ? baseChip(i.base) : ""}\n${launchForm("dispatch", i.identifier, choices, { repo: repo.slug }, [], board.bases[i.repo])}</li>`
-    : `<li>${pick(`${i.repo}#${i.number}`)}${issueLink(`#${i.number}`, i.title, i.url)}\n${launchForm("dispatch", `${i.repo}#${i.number}`, choices, {}, [], board.bases[i.repo])}</li>`;
+    : `<li>${pick(boardKey(i))}${issueLink(`#${i.number}`, i.title, i.url)}\n${launchForm("dispatch", boardKey(i), choices, {}, [], board.bases[i.repo])}</li>`;
   const stackRow = (i: StackableIssue) => i.identifier
     ? `<li>${issueLink(i.identifier, i.title, i.url)}\n${launchForm("dispatch", i.identifier, choices, { repo: repo.slug }, i.blockers)}</li>`
-    : `<li>${pick(`${i.repo}#${i.number}`)}${issueLink(`#${i.number}`, i.title, i.url)}\n${launchForm("dispatch", `${i.repo}#${i.number}`, choices, {}, i.blockers)}</li>`;
+    : `<li>${pick(boardKey(i))}${issueLink(`#${i.number}`, i.title, i.url)}\n${launchForm("dispatch", boardKey(i), choices, {}, i.blockers)}</li>`;
   // An issue's row sits under its Spec; the rest are Specs of one, listed as before.
   const looseReady = ready.filter((i) => !grouped.has(boardKey(i)));
   const looseStackable = stackable.filter((i) => !grouped.has(boardKey(i)));
+  // A Linear issue several Repos claim is In flight only in the Repo it was dispatched in.
+  const flightOf = (issue: string) => board.inFlight.find((r) => sameSlug(r.dispatch.repo, repo.slug) && sameSlug(r.dispatch.issue, issue));
   const rowsOf = (spec: SpecDecision) => spec.issues.flatMap((issue) => {
-    const flight = board.inFlight.find((r) => r.dispatch.issue === issue);
-    if (flight) return issue === spec.spec ? [] : [memberRow(flight)];
+    const flight = flightOf(issue);
+    if (flight) return issue === spec.spec ? [] : [memberRow(flight, repo.slug)];
     const r = ready.find((i) => boardKey(i) === issue);
     if (r) return [readyRow(r)];
     const s = stackable.find((i) => boardKey(i) === issue);
     return s ? [stackRow(s)] : [];
   });
-  const specSections = groups.map((spec) => renderSpec(spec, rowsOf(spec), board.inFlight));
+  const specSections = groups.map((spec) =>
+    renderSpec(spec, specState(spec, decision!), rowsOf(spec), flightOf(spec.spec), repo.slug));
   return [
     '<section class="repo">',
     `<header><h2>${escape(repo.slug)}</h2><span class="count">${ready.length + stackable.length}</span>${decision ? roomReadout(decision) : ""}</header>`,
     ...errors,
-    errors.length || ready.length + stackable.length ? "" : '<p class="empty">No Ready issues.</p>',
+    errors.length || ready.length ? "" : '<p class="empty">No Ready issues.</p>',
     ...specSections,
     ...(looseReady.length && specSections.length ? ["<h3>Specs of one</h3>"] : []),
     looseReady.length ? list(looseReady.map(readyRow)) : "",
@@ -505,12 +509,25 @@ function boardKey(issue: BoardIssue) {
  * plain row, since its row says all there is.
  */
 function groupsOf(decision: RepoDecision) {
-  const rank = (s: SpecDecision) => (s.held ? 1 : s.running ? 0 : decision.candidates.includes(s.spec) ? 2 : 3);
+  const order: SpecState[] = ["running", "held", "candidate", "waiting", "not-startable"];
+  const rank = (s: SpecDecision) => order.indexOf(specState(s, decision));
   return decision.specs
     .filter((s) => s.running || s.held || s.issues.length !== 1 || s.issues[0] !== s.spec)
     .map((s, i) => ({ s, i }))
     .sort((a, b) => rank(a.s) - rank(b.s) || a.i - b.i)
     .map(({ s }) => s);
+}
+
+type SpecState = "held" | "running" | "candidate" | "waiting" | "not-startable";
+
+const SPEC_STATES: Record<SpecState, string> = { held: "Held", running: "Running", candidate: "Candidate", waiting: "Waiting", "not-startable": "Not startable" };
+
+/** A Spec's state for the Board, Held first since a Held Spec may be running too. */
+function specState(spec: SpecDecision, decision: RepoDecision): SpecState {
+  if (spec.held) return "held";
+  if (spec.running) return "running";
+  if (decision.candidates.includes(spec.spec)) return "candidate";
+  return spec.waiting ? "waiting" : "not-startable";
 }
 
 /** The Repo's Specs as the Scheduler sees them: a slot per Spec that may run, filled while one does. */
@@ -527,17 +544,15 @@ function roomReadout({ repo, specs, room, candidates }: RepoDecision) {
 }
 
 /** A Spec's group: its state, what it does next or why not, and its issues' rows in sub-issue order. */
-function renderSpec(spec: SpecDecision, rows: string[], inFlight: InFlightRow[]) {
-  const state = spec.held ? "held" : spec.running ? "running" : spec.next ? "candidate" : spec.waiting ? "waiting" : "idle";
-  const label = { held: "Held", running: "Running", candidate: "Candidate", waiting: "Waiting", idle: "Not startable" }[state];
-  const key = spec.spec.includes("#") ? spec.spec.slice(spec.spec.lastIndexOf("#")) : spec.spec;
-  // A Spec of one is its own issue, so its Stage sits in its heading.
-  const own = inFlight.find((r) => r.dispatch.issue === spec.spec);
-  const note = spec.held?.reason ?? spec.waiting?.reason ?? spec.next?.reason ?? spec.reason;
+function renderSpec(spec: SpecDecision, state: SpecState, rows: string[], ownFlight: InFlightRow | undefined, repo: string) {
+  const note = spec.held?.reason ?? spec.waiting?.reason ?? spec.next?.reason ?? spec.reason ??
+    (state === "not-startable" ? "None of its issues is Ready" : undefined);
+  const key = repoKey(spec.spec, repo);
   const title = spec.url ? issueLink(key, spec.title, spec.url) : `<span class="title"><span class="num">${escape(key)}</span> ${escape(spec.title)}</span>`;
   return [
     `<div class="spec ${state}">`,
-    `<header><span class="spec-state">${label}</span>${title}${own ? stageKey(own) : ""}</header>`,
+    // A Spec of one In flight is its own issue, so its Stage sits in its heading.
+    `<header><span class="spec-state">${SPEC_STATES[state]}</span>${title}${ownFlight ? stageKey(ownFlight) : ""}</header>`,
     ...(note ? [`<p class="spec-note${spec.held ? " error" : ""}">${escape(note)}</p>`] : []),
     ...(rows.length ? ['<ul class="issues">', ...rows, "</ul>"] : []),
     "</div>",
@@ -545,10 +560,19 @@ function renderSpec(spec: SpecDecision, rows: string[], inFlight: InFlightRow[])
 }
 
 /** An In-flight issue of a Spec, read-only: its row to act on is In flight, and hovering lights its track. */
-function memberRow(row: InFlightRow) {
+function memberRow(row: InFlightRow, repo: string) {
   const { dispatch: d, pr } = row;
-  const label = d.issue.includes("#") ? d.issue.slice(d.issue.lastIndexOf("#")) : d.issue;
-  return `<li class="member" data-issue="${escape(d.issue)}">${issueLink(label, d.title, d.url)}${stageKey(row)}${pr ? `<a class="pr" href="${escape(pr.url)}">PR #${pr.number}</a>` : ""}</li>`;
+  return `<li class="member" data-issue="${escape(d.issue)}">${issueLink(repoKey(d.issue, repo), d.title, d.url)}${stageKey(row)}${pr ? prLink(pr) : ""}</li>`;
+}
+
+/** An issue's key within the section of `repo`: `#N` for one of its GitHub issues; another repo's and a Linear key in full. */
+function repoKey(issue: string, repo: string) {
+  const hash = issue.lastIndexOf("#");
+  return hash > 0 && sameSlug(issue.slice(0, hash), repo) ? issue.slice(hash) : issue;
+}
+
+function prLink(pr: PullRequest) {
+  return `<a class="pr" href="${escape(pr.url)}">PR #${pr.number}</a>`;
 }
 
 /** A Stage as its track's legend key. */
@@ -1021,7 +1045,7 @@ section li:hover, section li.lit { background: var(--panel-2); }
 .slots { display: inline-flex; gap: 3px; }
 .slots i, .spec-state::before { width: 10px; height: 6px; border-radius: 1px; border: 1px solid var(--ink-2); }
 .slots i.taken { background: var(--ink-2); }
-.spec { border-top: 1px solid var(--rule); }
+.spec { --indent: calc(1rem + 6.5rem + 0.75rem); border-top: 1px solid var(--rule); }
 section > header + .spec { border-top: none; }
 .spec > header { display: flex; align-items: center; gap: 0.75rem; padding: 0.7rem 1rem 0.15rem; min-width: 0; }
 .spec > header a.title, .spec > header span.title { flex: 0 1 auto; font-weight: 600; }
@@ -1031,15 +1055,14 @@ section > header + .spec { border-top: none; }
 .spec.running .spec-state::before { background: var(--ink); border-color: var(--ink); }
 .spec.held .spec-state { color: var(--failed-ink); }
 .spec.held .spec-state::before { border-color: var(--failed); border-style: dashed; }
-.spec.waiting .spec-state::before, .spec.idle .spec-state::before { border-style: dashed; border-color: var(--rule-strong); }
-.spec-note { margin: 0; padding: 0 1rem 0.55rem calc(1rem + 6.5rem + 0.75rem); font-size: 12px; color: var(--ink-2); }
+.spec.waiting .spec-state::before, .spec.not-startable .spec-state::before { border-style: dashed; border-color: var(--rule-strong); }
+.spec-note { margin: 0; padding: 0 1rem 0.55rem var(--indent); font-size: 12px; color: var(--ink-2); }
 .spec-note.error { color: var(--failed-ink); }
 /* A Spec's issues hang from its heading, in sub-issue order. */
-.spec ul.issues { margin: 0 0 0.35rem calc(1rem + 6.5rem + 0.75rem - 1rem); border-left: 1px solid var(--rule); }
+.spec ul.issues { margin: 0 0 0.35rem calc(var(--indent) - 1rem); border-left: 1px solid var(--rule); }
 .spec ul.issues li { border-top: none; }
-li.member { display: flex; align-items: center; gap: 0.75rem; padding: 0.45rem 1rem; min-height: 36px; }
+li.member { display: flex; align-items: center; gap: 0.75rem; padding: 0.45rem 1rem; min-height: 44px; }
 li.member a.title { flex: 0 1 auto; color: var(--ink-2); }
-li.member.lit { background: var(--panel-2); }
 ul.issues li { display: flex; align-items: center; gap: 0.75rem; padding: 0.45rem 1rem; min-height: 44px; }
 a.title { flex: 1; min-width: 0; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 a.title:hover { color: var(--link); text-decoration: none; }
