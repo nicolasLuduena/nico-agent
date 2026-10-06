@@ -1,5 +1,6 @@
 import { resolve } from "node:path";
 import { advance } from "./advance";
+import { answer, loadAsking } from "./answer";
 import { loadBoard } from "./board";
 import { ConfigError, findRepo, loadConfig, saveConfig } from "./config";
 import { StepFailed, baseBranch, closeDispatch, dispatch, eachIssue, resolveIssue, review } from "./dispatch";
@@ -35,6 +36,7 @@ const BOARD_HELP = "Run `nico-agent` to see the Board";
 const DISPATCH_USAGE = "nico-agent dispatch <issue>... --harness <harness> --model <model> --effort <effort>";
 const REVIEW_USAGE = "nico-agent review <issue>... --harness <harness> --model <model> --effort <effort>";
 const CLOSE_USAGE = "nico-agent close <issue>... [--confirm]";
+const ANSWER_USAGE = "nico-agent answer <issue> <text>";
 const LAUNCH_FLAGS = {
   "--harness": { value: true, description: "Harness to launch, e.g. claude (see `nico-agent harness list`)" },
   "--model": { value: true, description: "model for the Harness, e.g. opus" },
@@ -170,6 +172,20 @@ const commands: Command[] = [
     run: closeCommand,
   },
   {
+    name: "answer",
+    usage: ANSWER_USAGE,
+    summary: "Submit text, as typed, to an In-flight issue's Implementer while it waits on the user",
+    flags: {},
+    positionals: ["issue", "text..."],
+    examples: [
+      "nico-agent answer acme/api#7 \"2\"",
+      "nico-agent answer BLE-27 \"Stop: this is already done in #48\"",
+      "nico-agent answer acme/api#7 --json -- \"--force is fine here\"",
+    ],
+    help: ["Run `nico-agent --json` to see which Implementers are waiting on you, under `asking`"],
+    run: answerCommand,
+  },
+  {
     name: "harness list",
     usage: "nico-agent harness list",
     summary: "List the Harnesses with their models and Effort levels (discovers uncached ones)",
@@ -208,7 +224,7 @@ const commands: Command[] = [
   {
     name: "mcp",
     usage: "nico-agent mcp",
-    summary: "Serve the Scheduler's MCP server on stdio, with two tools: board (the Board) and advance (with an optional Spec to start)",
+    summary: "Serve the Scheduler's MCP server on stdio, with three tools: board (the Board), advance (with an optional Spec to start) and answer (relay the user's answer to a waiting Implementer)",
     flags: {},
     positionals: [],
     examples: ["nico-agent mcp"],
@@ -230,7 +246,9 @@ export async function run(argv: string[], ctx: RunContext): Promise<RunResult> {
     return { stdout: `${VERSION}\n`, exitCode: 0 };
   }
   if (argv.length === 1 && argv[0] === "--skill") return { stdout: skill, exitCode: 0 };
-  const json = argv.includes("--json");
+  // After `--`, every token is an argument, `--json` included.
+  const end = argv.indexOf("--");
+  const json = (end === -1 ? argv : argv.slice(0, end)).includes("--json");
   try {
     const { command, rest } = findCommand(argv);
     const args = parseArgs(command, rest);
@@ -287,6 +305,10 @@ function parseArgs(command: Command, tokens: string[]): Args {
   const args: Args = { positionals: [], flags: {} };
   for (let i = 0; i < tokens.length; i++) {
     const token = tokens[i]!;
+    if (token === "--") {
+      args.positionals.push(...tokens.slice(i + 1));
+      break;
+    }
     if (!token.startsWith("-")) {
       args.positionals.push(token);
       continue;
@@ -445,6 +467,19 @@ async function advanceCommand(args: Args, ctx: RunContext): Promise<Output> {
     data: { specs, ...(errors.length && { errors }), ...(closed.length && { closed }) },
     help: [...help, BOARD_HELP],
     exitCode: errors.length || specs.some((s) => s.result === "failed") ? 1 : 0,
+  };
+}
+
+async function answerCommand(args: Args, ctx: RunContext): Promise<Output> {
+  const [issue, ...words] = args.positionals;
+  const text = words.join(" ");
+  if (!issue || !text) throw new CliError(issue ? "<text> is required" : "<issue> is required", [`Usage: \`${ANSWER_USAGE}\``], 2);
+  const { issue: key, agent, started } = await answer(ctx.world, ctx.configDir, issue, text);
+  const help = [`Run \`nico-agent show ${key}\` to see the Dispatch`, BOARD_HELP];
+  if (!started) help.unshift(`Run \`herdr agent read ${agent}\` to see whether it took the answer`);
+  return {
+    data: { answered: key, agent, ...(!started && { warning: "the answer was submitted, but the Implementer has not started working" }) },
+    help,
   };
 }
 
@@ -671,7 +706,10 @@ async function board(ctx: RunContext, json: boolean): Promise<Output> {
     );
   }
   // Agents waiting on the user come first.
+  if (inFlight.some((row) => row.implementerState === "blocked")) blocked.push("Run `nico-agent answer <issue> <text>` to answer an Implementer waiting on you");
   help.unshift(...blocked);
+  // What the Scheduler relays; the TOON Board points at `herdr agent read` instead.
+  const asking = json ? await loadAsking(ctx.world, inFlight, specs) : [];
   const inFlightData = {
     inFlight: plural(inFlight.length, "Dispatch", "Dispatches"),
     ...(inFlight.length > 0 && {
@@ -694,7 +732,7 @@ async function board(ctx: RunContext, json: boolean): Promise<Output> {
   // A failed branch listing still loaded the Repo's issues.
   const failedRepos = repos.filter((r) => errors.filter((e) => e.repo === r.slug && e.source !== "git").length === (r.linear ? 2 : 1)).length;
   if (failedRepos === repos.length) {
-    return { data: { ...header, ready: "0 issues (no Repo could be loaded)", ...inFlightData, errors }, help, exitCode: 1 };
+    return { data: { ...header, ready: "0 issues (no Repo could be loaded)", ...inFlightData, ...(asking.length && { asking }), errors }, help, exitCode: 1 };
   }
   const count = ready.length
     ? plural(ready.length, "issue")
@@ -730,6 +768,7 @@ async function board(ctx: RunContext, json: boolean): Promise<Output> {
     }));
   }
   Object.assign(data, inFlightData);
+  if (asking.length) data.asking = asking;
   if (errors.length) data.errors = errors;
   return { data, help };
 }

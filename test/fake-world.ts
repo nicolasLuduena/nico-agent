@@ -130,6 +130,8 @@ export class FakeWorld implements World {
   branchPrs = new Map<string, PullRequest[]>();
   /** Agent state of each started agent, as `herdr agent list` reports it. */
   agentStates = new Map<string, string>();
+  /** What `herdr agent read` shows of each named agent, besides a startup question. */
+  screens = new Map<string, string>();
   private workspaces = 0;
   private tabs = new Map<string, number>();
   /** Screen of an agent blocked on a startup question, if the next start should block. */
@@ -338,7 +340,7 @@ export class FakeWorld implements World {
 
   async herdrAgentRead(name: string) {
     this.herdr("agent read", name, "--source", "visible");
-    return this.blockedScreen ?? "";
+    return this.blockedScreen ?? this.screens.get(name) ?? "";
   }
 
   async herdrAgentSendKeys(name: string, keys: string[]) {
