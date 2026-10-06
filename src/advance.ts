@@ -3,7 +3,7 @@ import { loadBoard } from "./board";
 import { ConfigError, SCHEDULER_DEFAULTS, type SchedulerDefaults, loadConfig } from "./config";
 import { DispatchError, type DispatchRequest, StepFailed, checkLaunch, dispatch } from "./dispatch";
 import { linearIdentifier } from "./linear";
-import type { SpecDecision } from "./spec";
+import type { RepoDecision, SpecDecision } from "./spec";
 import { freshPrs } from "./stage";
 import { type Dispatch, STEPS, loadDispatches } from "./state";
 import { type World, WorldError } from "./world";
@@ -37,23 +37,48 @@ export type SpecPlan =
 
 const SHOW_HELP = "Run `nico-agent show <issue>` to see a Dispatch";
 
+export interface AdvanceOptions {
+  /** A candidate Spec to start too, the Scheduler's one judgment call; refused unless its Repo has room. */
+  start?: string;
+}
+
 /**
  * Keep running Specs moving (ADR-0008): dispatch each one's next issue on the
  * PR the Spec rules chose, with the Scheduler defaults from config, one Spec
  * at a time. Idempotent like `dispatch` (ADR-0006).
  */
-export async function advance(world: World, configDir: string): Promise<AdvanceReport> {
+export async function advance(world: World, configDir: string, { start }: AdvanceOptions = {}): Promise<AdvanceReport> {
   const launch = schedulerDefaults(configDir);
   const report: AdvanceReport = { specs: [], errors: [], help: [] };
   const { repos } = loadConfig(configDir);
-  if (!repos.length) return report;
+  if (!repos.length && start === undefined) return report;
   const dispatches = loadDispatches(configDir);
   const board = await loadBoard(world, repos, dispatches, freshPrs(world));
   report.errors = board.errors.filter((e) => e.source !== "git").map(({ repo, error }) => ({ repo, error }));
-  const plans = board.specs.flatMap((r) => r.specs).filter((s) => s.running).map((spec) => ({ spec, plan: planSpec(spec, dispatches) }));
+  const started = start === undefined ? undefined : startable(board.specs, start);
+  // A Spec waiting on another Spec's merges frees its slot, but is still reported.
+  const plans = board.specs.flatMap((r) => r.specs).filter((s) => s.running || s.waiting || s === started)
+    .map((spec) => ({ spec, plan: planSpec(spec, dispatches) }));
   if (plans.some(({ plan }) => plan.action === "start")) await checkDefaults(world, configDir, launch);
   for (const { spec, plan } of plans) report.specs.push(await carryOut(world, configDir, launch, spec, plan, report.help));
   return report;
+}
+
+/** The candidate Spec named `name`, refusing one that is not a candidate, already running, or whose Repo is full. */
+function startable(repos: RepoDecision[], name: string): SpecDecision {
+  const named = (s: SpecDecision) => s.spec.toLowerCase() === name.toLowerCase();
+  const repo = repos.find((r) => r.specs.some(named));
+  const spec = repo?.specs.find(named);
+  const notCandidate = (why: string) => new DispatchError(`${name} is not a candidate Spec: ${why}`, ["Run `nico-agent` to see the candidate Specs of each Repo"]);
+  const help = ["Run `nico-agent advance` to keep the running Specs moving", "Run `nico-agent` to see the Board"];
+  if (!repo || !spec) throw notCandidate("no Spec of a Repo has that name");
+  if (spec.running) throw new DispatchError(`${spec.spec} is already running`, help);
+  if (!repo.candidates.includes(spec.spec)) throw notCandidate(spec.waiting ? "it has already started" : "none of its issues is Ready");
+  if (repo.room === 0) {
+    const running = repo.specs.filter((s) => s.running).map((s) => s.spec);
+    throw new DispatchError(`${repo.repo} has no room for ${spec.spec}; its running Specs: ${running.join(", ")}`, help);
+  }
+  return spec;
 }
 
 /**

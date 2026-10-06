@@ -25,7 +25,7 @@ test("Linear adapter reads viewer, pages issues and uses incoming blocks as Bloc
     }
     if (body.variables.cursor) return Response.json({ data: { issues: page([]) } });
     return Response.json({ data: { issues: page([{
-      id: "issue-27", identifier: "BLE-27", title: "Compare PDFs", url: "https://linear.app/bleentr/issue/BLE-27", branchName: "nico/ble-27",
+      id: "issue-27", identifier: "BLE-27", title: "Compare PDFs", url: "https://linear.app/bleentr/issue/BLE-27", description: "Diff two PDFs.", branchName: "nico/ble-27",
       team: { id: "team-ble", key: "BLE", name: "Bleentr" }, project: { id: "pdf", name: "PDF diff" },
       state: { type: "backlog" }, assignee: { id: "user-me" }, labels: page([{ name: "ready-for-agent" }], "labels-2"),
       inverseRelations: page([
@@ -38,7 +38,7 @@ test("Linear adapter reads viewer, pages issues and uses incoming blocks as Bloc
     const source = new LinearSource("/unused", { LINEAR_API_KEY: "test-key" }, endpoint);
     expect(await source.viewer()).toBe("user-me");
     expect(await source.issues("BLE")).toEqual([{
-      identifier: "BLE-27", title: "Compare PDFs", url: "https://linear.app/bleentr/issue/BLE-27", branchName: "nico/ble-27",
+      identifier: "BLE-27", title: "Compare PDFs", url: "https://linear.app/bleentr/issue/BLE-27", body: "Diff two PDFs.", branchName: "nico/ble-27",
       team: { id: "team-ble", key: "BLE", name: "Bleentr" }, project: { id: "pdf", name: "PDF diff" },
       state: "backlog", assignee: "user-me", labels: ["ready-for-agent", "pdf"],
       blockers: [{ identifier: "BLE-25", state: "completed" }, { identifier: "BLE-26", state: "started" }],
@@ -87,7 +87,7 @@ test("Linear adapter reads one issue with its branchName, null when Linear has n
   const { app, endpoint } = server((body) => {
     if (body.variables.id === "BLE-99") return Response.json({ data: null, errors: [{ message: "Entity not found: Issue" }] });
     return Response.json({ data: { issue: {
-      id: "issue-27", identifier: "BLE-27", title: "Compare PDFs", url: "https://linear.app/bleentr/issue/BLE-27", branchName: "nico/ble-27",
+      id: "issue-27", identifier: "BLE-27", title: "Compare PDFs", url: "https://linear.app/bleentr/issue/BLE-27", description: "Diff two PDFs.", branchName: "nico/ble-27",
       team: { id: "team-ble", key: "BLE", name: "Bleentr" }, project: null, state: { type: "unstarted" }, assignee: null,
       labels: page([{ name: "ready-for-agent" }]), inverseRelations: page([]),
     } } });

@@ -10,7 +10,7 @@ export class FakeWorld implements World {
 
   addLinearIssue(issue: Partial<LinearIssue> & { identifier: string }) {
     const full: LinearIssue = {
-      title: issue.identifier, url: `https://linear.app/bleentr/issue/${issue.identifier}/title`,
+      title: issue.identifier, url: `https://linear.app/bleentr/issue/${issue.identifier}/title`, body: "",
       branchName: `nico/${issue.identifier.toLowerCase()}`,
       team: { id: "team-ble", key: "BLE", name: "Bleentr" }, project: null,
       labels: ["ready-for-agent"], state: "unstarted", assignee: null, blockers: [], parent: null, hasSubIssues: false, ...issue,
@@ -142,6 +142,7 @@ export class FakeWorld implements World {
     const full: GitHubIssue = {
       title: `Issue ${issue.number}`,
       url: `https://github.com/${slug}/issues/${issue.number}`,
+      body: "",
       state: "open",
       labels: ["ready-for-agent"],
       assignees: [],

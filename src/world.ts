@@ -106,6 +106,8 @@ export interface GitHubIssue {
   number: number;
   title: string;
   url: string;
+  /** The issue's description, as written; a Spec's says what it builds. */
+  body: string;
   state: "open" | "closed";
   labels: string[];
   assignees: string[];
@@ -132,6 +134,8 @@ export interface LinearIssue {
   identifier: string;
   title: string;
   url: string;
+  /** The issue's description, as written; empty without one. A Spec's says what it builds. */
+  body: string;
   /** The branch Linear suggests, which its GitHub integration links PRs by. */
   branchName: string;
   team: { id: string; key: string; name: string };

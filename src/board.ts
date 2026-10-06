@@ -1,4 +1,4 @@
-import type { LinearSelector, Repo } from "./config";
+import { DEFAULT_RUNNING_SPECS, type LinearSelector, type Repo } from "./config";
 import { type InFlightRow, type PrLookup, linearPullRequests, linkedPr, loadInFlight } from "./stage";
 import { type IssueFacts, type RepoDecision, type RepoFacts, type SpecFacts, decideSpecs } from "./spec";
 import type { Dispatch } from "./state";
@@ -148,18 +148,18 @@ async function loadLinearSpecs(world: World, board: Omit<Board, "specs">, linear
     };
     const specs: SpecFacts[] = await Promise.all([...parents].map(async (spec) => {
       const [parent, subIssues] = await Promise.all([known.get(spec) ?? world.linearIssue(spec), world.linearSubIssues(spec)]);
-      return { spec, title: parent?.title ?? spec, url: parent?.url ?? "", issues: await Promise.all(subIssues.map(facts)) };
+      return { spec, title: parent?.title ?? spec, url: parent?.url ?? "", body: parent?.body ?? "", issues: await Promise.all(subIssues.map(facts)) };
     }));
     const inSpec = new Set(specs.flatMap((s) => s.issues.map((i) => i.issue)));
     const loose = issues.filter((i) => !i.parent && !i.hasSubIssues && (canStartLinear(i, viewer) || inFlight.some((r) => r.dispatch.issue === i.identifier)));
-    for (const issue of loose) specs.push({ spec: issue.identifier, title: issue.title, url: issue.url, issues: [await facts(issue)] });
+    for (const issue of loose) specs.push({ spec: issue.identifier, title: issue.title, url: issue.url, body: issue.body, issues: [await facts(issue)] });
     for (const row of inFlight) {
       if (inSpec.has(row.dispatch.issue) || loose.some((i) => i.identifier === row.dispatch.issue)) continue;
       const { issue, title, url } = row.dispatch;
-      specs.push({ spec: issue, title, url, issues: [{ issue, closed: false, startable: false, inFlight: true, pr: row.pr, blockers: [] }] });
+      specs.push({ spec: issue, title, url, body: "", issues: [{ issue, closed: false, startable: false, inFlight: true, pr: row.pr, blockers: [] }] });
     }
     specs.sort((a, b) => a.spec.localeCompare(b.spec, undefined, { numeric: true }));
-    return { repo: repo.slug, defaultBranch: await world.gitDefaultBranch(repo.path), specs };
+    return { repo: repo.slug, defaultBranch: await world.gitDefaultBranch(repo.path), runningSpecs: repo.runningSpecs ?? DEFAULT_RUNNING_SPECS, specs };
   }));
   const loaded: RepoFacts[] = [];
   facts.forEach((result, i) => {

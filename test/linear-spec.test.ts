@@ -33,8 +33,10 @@ describe("Linear Specs", () => {
 
     const { specs } = (await cli("--json")).json();
     expect(specs).toEqual([
-      { spec: "BLE-10", title: "PDF diffing", repo: "bleentr/pdf-diff", issues: ["BLE-13", "BLE-11", "BLE-12"], running: false },
-      { spec: "BLE-20", title: "A bug from triage", repo: "bleentr/pdf-diff", issues: ["BLE-20"], running: false },
+      { spec: "BLE-10", title: "PDF diffing", repo: "bleentr/pdf-diff", issues: ["BLE-13", "BLE-11", "BLE-12"], running: false,
+        next: { issue: "BLE-13", base: "main", reason: "BLE-13 is the first unblocked issue of BLE-10; the Spec has no open PR, so it starts from main" } },
+      { spec: "BLE-20", title: "A bug from triage", repo: "bleentr/pdf-diff", issues: ["BLE-20"], running: false,
+        next: { issue: "BLE-20", base: "main", reason: "BLE-20 is the first unblocked issue of BLE-20; the Spec has no open PR, so it starts from main" } },
     ]);
   });
 
@@ -87,7 +89,7 @@ describe("Linear Specs", () => {
 
     const board = (await cli("--json")).json();
     expect(board.specs.find((s: { spec: string }) => s.spec === "BLE-10")).toEqual({
-      spec: "BLE-10", title: "PDF diffing", repo: "bleentr/pdf-diff", issues: ["BLE-11", "BLE-12"], running: true,
+      spec: "BLE-10", title: "PDF diffing", repo: "bleentr/pdf-diff", issues: ["BLE-11", "BLE-12"], running: false,
       waiting: { issue: "BLE-12", blocker: "BLE-21", reason: "BLE-12 waits for BLE-21, in another Spec, to close; a Stack never mixes Specs" },
     });
     expect(board.stackable).toBeUndefined();
