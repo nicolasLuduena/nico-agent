@@ -1,6 +1,6 @@
-import { linearPullRequests } from "./stage";
+import { linearPullRequests, withBranchPrs } from "./stage";
 import { linearIdentifier } from "./linear";
-import { sameSlug } from "./slug";
+import { githubBranch, sameSlug } from "./slug";
 import type { Dispatch } from "./state";
 import { type GitHubIssue, type LinearIssue, type PullRequest, READY_LABEL, type World } from "./world";
 
@@ -49,9 +49,10 @@ export function githubSource(world: World, repo: string): SourceAdapter<GitHubIs
     isSpec: (issue) => issue.hasSubIssues,
     parent: (issue) => issue.parent && nameOf(issue.parent.slug, issue.parent.number),
     blockers: (issue) => issue.blockers.map((b) => ({ issue: nameOf(b.slug, b.number), closed: b.state === "closed" })),
+    // A Closed Dispatch's PR into a non-default branch has no closing reference, but keeps its branch.
     linkedPrs: (name) => {
       const { slug, number } = parse(name);
-      return world.githubLinkedPullRequests(slug, number);
+      return withBranchPrs(world, slug, githubBranch(slug, number), world.githubLinkedPullRequests(slug, number));
     },
     spec: async (name, known) => {
       const { slug, number } = parse(name);

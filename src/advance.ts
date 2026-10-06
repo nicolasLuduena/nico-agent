@@ -1,11 +1,11 @@
 import { join } from "node:path";
 import { loadBoard } from "./board";
 import { ConfigError, SCHEDULER_DEFAULTS, type SchedulerDefaults, loadConfig } from "./config";
-import { type DispatchRequest, StepFailed, checkLaunch, dispatch } from "./dispatch";
+import { type DispatchRequest, StepFailed, checkLaunch, closeDispatch, dispatch } from "./dispatch";
 import { DispatchError, LaunchError } from "./dispatch-error";
 import { linearIdentifier } from "./linear";
 import type { RepoDecision, SpecDecision } from "./spec";
-import { freshPrs } from "./stage";
+import { type InFlightRow, freshPrs } from "./stage";
 import { type Dispatch, STEPS, loadDispatches } from "./state";
 import { type World, WorldError } from "./world";
 
@@ -24,6 +24,8 @@ export interface AdvanceReport {
   specs: AdvanceRow[];
   /** Repos whose Specs could not be loaded, so were not advanced. */
   errors: { repo: string; error: string }[];
+  /** Dispatches Closed because their PR is ready. */
+  closed: string[];
   help: string[];
 }
 
@@ -48,7 +50,7 @@ export interface AdvanceOptions {
  */
 export async function advance(world: World, configDir: string, { start }: AdvanceOptions = {}): Promise<AdvanceReport> {
   const launch = schedulerDefaults(configDir);
-  const report: AdvanceReport = { specs: [], errors: [], help: [] };
+  const report: AdvanceReport = { specs: [], errors: [], closed: [], help: [] };
   const { repos } = loadConfig(configDir);
   if (!repos.length && start === undefined) return report;
   const dispatches = loadDispatches(configDir);
@@ -63,7 +65,20 @@ export async function advance(world: World, configDir: string, { start }: Advanc
     const row = await carryOut(world, configDir, launch, spec, plan, report.help);
     if (row) report.specs.push(row);
   }
+  for (const row of board.inFlight.filter(prunable)) {
+    await closeDispatch(world, configDir, row.dispatch.issue, true);
+    report.closed.push(row.dispatch.issue);
+  }
   return report;
+}
+
+/**
+ * A Dispatch is done with its workspace once its PR is ready and its
+ * Implementer neither works nor waits on the user; the branch and the PR
+ * stay, and the Spec finds the PR by its branch (ADR-0003).
+ */
+function prunable(row: InFlightRow) {
+  return row.stage === "PR ready" && row.implementerState !== "working" && row.implementerState !== "blocked";
 }
 
 /** The candidate Spec named `name`, refusing one that is not a candidate, already running, or whose Repo is full. */

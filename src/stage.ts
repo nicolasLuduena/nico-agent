@@ -61,12 +61,17 @@ export function freshPrs(world: World): PrLookup {
  */
 export async function linkedPrs(world: World, dispatch: Dispatch): Promise<PullRequest[]> {
   const identifier = linearIdentifier(dispatch.issue);
-  const [linked, branch] = await Promise.all([
-    identifier ? linearPullRequests(world, identifier, dispatch.repo) : world.githubLinkedPullRequests(dispatch.repo, issueNumber(dispatch)),
-    world.githubBranchPullRequests(dispatch.repo, dispatch.branch),
-  ]);
-  const urls = new Set(linked.map((pr) => pr.url));
-  return [...linked, ...branch.filter((pr) => pr.state !== "closed" && !urls.has(pr.url))];
+  const linked = identifier
+    ? linearPullRequests(world, identifier, dispatch.repo)
+    : world.githubLinkedPullRequests(dispatch.repo, issueNumber(dispatch));
+  return withBranchPrs(world, dispatch.repo, dispatch.branch, linked);
+}
+
+/** `linked` and, after them, the open and merged PRs from `branch` in `repo` it lacks. */
+export async function withBranchPrs(world: World, repo: string, branch: string, linked: Promise<PullRequest[]>): Promise<PullRequest[]> {
+  const [own, fromBranch] = await Promise.all([linked, world.githubBranchPullRequests(repo, branch)]);
+  const urls = new Set(own.map((pr) => pr.url));
+  return [...own, ...fromBranch.filter((pr) => pr.state !== "closed" && !urls.has(pr.url))];
 }
 
 /**

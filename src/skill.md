@@ -64,7 +64,7 @@ changed; a run with nothing new ends silently.
    - each `failed` row, with its reason.
 
    Rows that are `started` or `resumed` for an already-running Spec need no
-   message. Done when every newly Held Spec is in your memory as reported.
+   message, nor do the Dispatches listed under `closed`. Done when every newly Held Spec is in your memory as reported.
 4. **Fill the room.** For each Repo with room above 0 and at least one
    candidate, act on the user's state:
    - Present, no open proposal: send a proposal (see below).
