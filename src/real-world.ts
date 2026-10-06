@@ -1,6 +1,7 @@
 import { LinearSource } from "./linear";
 import { realpathSync } from "node:fs";
-import type { Address, GitHubIssue, GitHubSubIssue, PullRequest, RequestHandler, World } from "./world";
+import { createInterface } from "node:readline";
+import type { Address, GitHubIssue, GitHubSubIssue, LineHandler, PullRequest, RequestHandler, World } from "./world";
 import { READY_LABEL, WorldError } from "./world";
 
 interface Exec {
@@ -447,6 +448,16 @@ export class RealWorld implements World {
         throw new WorldError(`port ${address.port} is already in use`);
       }
       throw e;
+    }
+  }
+
+  async serveStdio(handler: LineHandler) {
+    const lines = createInterface({ input: process.stdin, crlfDelay: Infinity });
+    // One line at a time, so two `advance` calls never race each other.
+    for await (const line of lines) {
+      if (!line.trim()) continue;
+      const reply = await handler(line);
+      if (reply !== null) process.stdout.write(`${reply}\n`);
     }
   }
 }

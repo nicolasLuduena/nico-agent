@@ -6,6 +6,7 @@ import { DispatchError, StepFailed, baseBranch, closeDispatch, dispatch, eachIss
 import { PANE_ARGS } from "./opencode";
 import { type Catalog, harnessCatalogs, harnesses, refreshHarnesses, rememberedLaunches } from "./harness";
 import { linearIdentifier } from "./linear";
+import { mcpHandler } from "./mcp";
 import { type Output, plural, render } from "./output";
 import { VERSION } from "./version";
 import { sameSlug, slugOfRemote } from "./slug";
@@ -64,6 +65,8 @@ interface Command {
   /** A last one ending in `...` takes any number of arguments. */
   positionals: string[];
   examples: string[];
+  /** Next steps shown with the command's `--help`. */
+  help?: string[];
   run(args: Args, ctx: RunContext): Promise<Output>;
 }
 
@@ -200,6 +203,24 @@ const commands: Command[] = [
     examples: ["nico-agent serve", "nico-agent serve --port 8080"],
     run: serve,
   },
+  {
+    name: "mcp",
+    usage: "nico-agent mcp",
+    summary: "Serve the Scheduler's MCP server on stdio, with two tools: board (the Board) and advance (with an optional Spec to start)",
+    flags: {},
+    positionals: [],
+    examples: ["nico-agent mcp"],
+    help: [
+      "Register with Hermes: `hermes mcp add nico-agent --command nico-agent --args mcp`",
+      "Register with Claude Code: `claude mcp add nico-agent -- nico-agent mcp`",
+      'Or in an MCP client\'s config: {"mcpServers": {"nico-agent": {"command": "nico-agent", "args": ["mcp"]}}}',
+    ],
+    run: async (_args, ctx) => {
+      await ctx.world.serveStdio(mcpHandler(ctx));
+      // stdout is the MCP channel: nothing else may be written on it.
+      return { data: {} };
+    },
+  },
 ];
 
 export async function run(argv: string[], ctx: RunContext): Promise<RunResult> {
@@ -319,6 +340,7 @@ function commandHelp(command: Command): Output {
       })),
       examples: command.examples,
     },
+    help: command.help,
   };
 }
 

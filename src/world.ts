@@ -98,7 +98,14 @@ export interface World {
   now(): Date;
   /** Start answering HTTP requests on `hostname:port`; resolves once listening. */
   serve(address: Address, handler: RequestHandler): Promise<void>;
+  /**
+   * Answer each stdin line with `handler`, writing its reply (if any) as one
+   * stdout line; resolves when stdin closes.
+   */
+  serveStdio(handler: LineHandler): Promise<void>;
 }
+
+export type LineHandler = (line: string) => Promise<string | null>;
 
 export interface Address {
   hostname: string;
