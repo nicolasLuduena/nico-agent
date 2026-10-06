@@ -1,7 +1,8 @@
 import htmx from "htmx.org/dist/htmx.min.js" with { type: "text" };
 import { type BaseChoice, type Board, type StackOption, baseChoice, linearStackOptions, loadBoard, stackChoice, stackOptions } from "./board";
 import { type Repo, ConfigError, findRepo, loadConfig } from "./config";
-import { type IssueOutcome, CloseConfirmationRequired, DispatchError, StepFailed, baseBranch, closeDispatch, dispatch, eachIssue, review, resolveIssue } from "./dispatch";
+import { type IssueOutcome, CloseConfirmationRequired, StepFailed, baseBranch, closeDispatch, dispatch, eachIssue, review, resolveIssue } from "./dispatch";
+import { DispatchError } from "./dispatch-error";
 import { type Catalog, type Remembered, harnessCatalogs, refreshHarnesses, rememberedLaunches } from "./harness";
 import { type InFlightRow, type PrLookup, cachedPrs, loadInFlight } from "./stage";
 import { type Dispatch, type Launch, findDispatch, loadDispatches } from "./state";

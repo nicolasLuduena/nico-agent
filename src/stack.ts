@@ -1,5 +1,5 @@
 import { type BlockerPrs, everyBlocker, openPrsIn, stackChoice } from "./board";
-import { DispatchError } from "./dispatch";
+import { DispatchError } from "./dispatch-error";
 import { linearIdentifier } from "./linear";
 import { sameSlug } from "./slug";
 import { linearPullRequests } from "./stage";

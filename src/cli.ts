@@ -2,7 +2,8 @@ import { resolve } from "node:path";
 import { advance } from "./advance";
 import { loadBoard } from "./board";
 import { ConfigError, findRepo, loadConfig, saveConfig } from "./config";
-import { DispatchError, StepFailed, baseBranch, closeDispatch, dispatch, eachIssue, resolveIssue, review } from "./dispatch";
+import { StepFailed, baseBranch, closeDispatch, dispatch, eachIssue, resolveIssue, review } from "./dispatch";
+import { DispatchError } from "./dispatch-error";
 import { PANE_ARGS } from "./opencode";
 import { type Catalog, harnessCatalogs, harnesses, refreshHarnesses, rememberedLaunches } from "./harness";
 import { linearIdentifier } from "./linear";
@@ -217,7 +218,7 @@ const commands: Command[] = [
       'Or in an MCP client\'s config: {"mcpServers": {"nico-agent": {"command": "nico-agent", "args": ["mcp"]}}}',
     ],
     run: async (_args, ctx) => {
-      await ctx.world.serveStdio(mcpHandler(ctx));
+      await ctx.world.serveStdio(mcpHandler((argv) => run(argv, ctx)));
       // stdout is the MCP channel: nothing else may be written on it.
       return { data: {} };
     },

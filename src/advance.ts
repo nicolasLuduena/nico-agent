@@ -1,7 +1,8 @@
 import { join } from "node:path";
 import { loadBoard } from "./board";
 import { ConfigError, SCHEDULER_DEFAULTS, type SchedulerDefaults, loadConfig } from "./config";
-import { DispatchError, type DispatchRequest, LaunchError, StepFailed, checkLaunch, dispatch } from "./dispatch";
+import { type DispatchRequest, StepFailed, checkLaunch, dispatch } from "./dispatch";
+import { DispatchError, LaunchError } from "./dispatch-error";
 import { linearIdentifier } from "./linear";
 import type { RepoDecision, SpecDecision } from "./spec";
 import { freshPrs } from "./stage";
