@@ -198,10 +198,10 @@ ENV_FILE=/dev/null
 
 # The toolsets that would let Hermes run a command, touch files or reach out on its own.
 required_denied=(terminal file code_execution browser web computer_use delegation cronjob)
-# What Hermes keeps: nico-agent's two tools, and what the routine's memory needs.
-allowed_tools="board and advance, plus memory, session_search and the skills tools"
+# What Hermes keeps: nico-agent's three tools, and what the routine's memory needs.
+allowed_tools="board, advance and answer, plus memory, session_search and the skills tools"
 
-cron_prompt='Run one tick of the nico-agent Scheduler routine from the nico-agent skill. Your final response is the message delivered to the user'"'"'s chat. Report a failed row once, and again only when its reason changes. Keep the Present / Postponed / Away state, the open proposal and the Held Specs and failed rows already reported in memory: the chat session that receives the user'"'"'s replies reads the same memory. If nothing changed that the user needs to hear, reply with exactly [SILENT].'
+cron_prompt='Run one tick of the nico-agent Scheduler routine from the nico-agent skill. Your final response is the message delivered to the user'"'"'s chat. Report a failed row once, and again only when its reason changes. Keep the Present / Postponed / Away state, the open proposal and the Held Specs, failed rows and Implementer questions already reported in memory: the chat session that receives the user'"'"'s replies reads the same memory. If nothing changed that the user needs to hear, reply with exactly [SILENT].'
 
 banner "Hermes as the nico-agent Scheduler"
 
@@ -256,15 +256,22 @@ if (( ${#missing[@]} )); then
 else
   note "agent.disabled_toolsets denies ${required_denied[*]}"
 fi
-if grep -qE '^mcp_servers:' "$hermes_config"; then
+included=$("$hermes_python" -c "import yaml,sys; c=yaml.safe_load(open(sys.argv[1])) or {}; s=(c.get('mcp_servers') or {}).get('nico-agent'); print(' '.join((s.get('tools') or {}).get('include') or []) if s else '')" "$hermes_config")
+if [[ -n "$included" && " $included " != *" answer "* ]]; then
+  warn "mcp_servers.nico-agent in $hermes_config includes only: $included"
+  note "Add answer to its tools.include, so Hermes can relay your answers to Implementers waiting on you."
+  pause "Press Enter once it reads include: [board, advance, answer]."
+elif [[ -n "$included" ]]; then
+  note "mcp_servers.nico-agent includes: $included"
+elif grep -qE '^mcp_servers:' "$hermes_config"; then
   warn "$hermes_config already has mcp_servers; add this entry under it by hand:"
-  note "  nico-agent: {command: $nico_agent, args: [mcp], env: {PATH: \"\${userHome}/.local/share/mise/shims:\${PATH}\"}, tools: {include: [board, advance], resources: false, prompts: false}}"
+  note "  nico-agent: {command: $nico_agent, args: [mcp], env: {PATH: \"\${userHome}/.local/share/mise/shims:\${PATH}\"}, tools: {include: [board, advance, answer], resources: false, prompts: false}}"
   pause "Press Enter once the entry is in place."
 elif confirm "Append the nico-agent MCP server to $hermes_config?"; then
   cp "$hermes_config" "$hermes_config.bak-before-nico-agent-mcp"
   cat >> "$hermes_config" <<EOF
 
-# nico-agent Scheduler (nico-agent scripts/hermes/setup.sh): only its two tools.
+# nico-agent Scheduler (nico-agent scripts/hermes/setup.sh): only its three tools.
 mcp_servers:
   nico-agent:
     command: $nico_agent
@@ -272,7 +279,7 @@ mcp_servers:
     env:
       PATH: "\${userHome}/.local/share/mise/shims:\${PATH}"
     tools:
-      include: [board, advance]
+      include: [board, advance, answer]
       resources: false
       prompts: false
 EOF

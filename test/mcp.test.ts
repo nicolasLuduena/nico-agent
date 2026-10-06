@@ -11,7 +11,7 @@ describe("nico-agent mcp", () => {
     expect(stdout).toBe("");
     expect(world.calls).toEqual(["serve stdio"]);
     const reply = await world.stdio!("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}");
-    expect(JSON.parse(reply!).result.tools).toHaveLength(2);
+    expect(JSON.parse(reply!).result.tools).toHaveLength(3);
   });
 
   test("--help says how to register it as an MCP server", async () => {
@@ -44,16 +44,25 @@ describe("the MCP handler", () => {
     expect(world.calls).toEqual([]);
   });
 
-  test("tools/list offers exactly two tools: board and advance with an optional Spec to start", async () => {
+  test("tools/list offers exactly three tools: board, advance with an optional Spec to start, and answer", async () => {
     const { mcp } = setup();
     const reply = await mcp({ jsonrpc: "2.0", id: "list", method: "tools/list" });
     expect(reply.id).toBe("list");
     const tools = reply.result.tools;
-    expect(tools.map((t: { name: string }) => t.name)).toEqual(["board", "advance"]);
+    expect(tools.map((t: { name: string }) => t.name)).toEqual(["board", "advance", "answer"]);
     expect(tools[0].inputSchema).toEqual({ type: "object", additionalProperties: false });
     expect(tools[1].inputSchema).toEqual({
       type: "object",
       properties: { start: { type: "string", description: expect.stringContaining("Spec") } },
+      additionalProperties: false,
+    });
+    expect(tools[2].inputSchema).toEqual({
+      type: "object",
+      properties: {
+        issue: { type: "string", description: expect.stringContaining("issue") },
+        text: { type: "string", description: expect.stringContaining("verbatim") },
+      },
+      required: ["issue", "text"],
       additionalProperties: false,
     });
     for (const tool of tools) expect(tool.description).toBeString();
@@ -132,6 +141,46 @@ describe("the MCP handler", () => {
     expect(reply.result.structuredContent.specs).toMatchObject([{ spec: "BLE-10", result: "started", issue: "BLE-11" }]);
   });
 
+  test("the answer tool returns what `nico-agent answer --json` prints, passing any text as the answer", async () => {
+    const { mcp, cli, world } = await dispatchedGitHub();
+    world.agentStates.set("impl-api-11", "blocked");
+    const text = "--confirm: no, stop and comment instead";
+
+    const reply = await mcp({ jsonrpc: "2.0", id: 10, method: "tools/call", params: { name: "answer", arguments: { issue: "acme/api#11", text } } });
+    expect(world.calls).toContain(`herdr agent prompt impl-api-11 ${text}`);
+    expect(reply.result.isError).toBe(false);
+    const view = reply.result.structuredContent;
+    expect(view).toEqual({
+      answered: "acme/api#11",
+      agent: "impl-api-11",
+      help: ["Run `nico-agent show acme/api#11` to see the Dispatch", "Run `nico-agent` to see the Board"],
+    });
+    expect(reply.result.content).toEqual([{ type: "text", text: `${JSON.stringify(view, null, 2)}\n` }]);
+    // The Implementer now works, so the same answer again is refused.
+    expect((await cli("answer", "acme/api#11", "--json", "--", text)).json().error).toContain("is not waiting on the user");
+  });
+
+  test("an answer refusal is a tool error carrying its help", async () => {
+    const { mcp, cli } = await dispatchedGitHub();
+    const reply = await mcp({ jsonrpc: "2.0", id: 11, method: "tools/call", params: { name: "answer", arguments: { issue: "acme/api#11", text: "yes" } } });
+    const expected = (await cli("answer", "acme/api#11", "yes", "--json")).stdout;
+    expect(JSON.parse(expected).error).toBe("acme/api#11's Implementer is not waiting on the user (it is working)");
+    expect(reply.result).toEqual({ content: [{ type: "text", text: expected }], structuredContent: JSON.parse(expected), isError: true });
+  });
+
+  test("the board tool lists the Implementers asking the user, within its size bounds however long the screen", async () => {
+    const { mcp, cli, world } = await dispatchedGitHub();
+    world.agentStates.set("impl-api-11", "blocked");
+    world.screens.set("impl-api-11", Array.from({ length: 2000 }, (_, i) => `${i} ${"y".repeat(100)}`).join("\n"));
+
+    const reply = await mcp({ jsonrpc: "2.0", id: 12, method: "tools/call", params: { name: "board", arguments: {} } });
+    const view = reply.result.structuredContent;
+    expect(Object.keys(view)).toEqual(["specs", "rooms", "asking", "help"]);
+    expect(view.asking).toEqual((await cli("--json")).json().asking);
+    expect(view.asking).toMatchObject([{ issue: "acme/api#11", spec: "acme/api#10" }]);
+    expect(reply.result.content[0].text.length).toBeLessThan(5000);
+  });
+
   test("initialize echoes an older handshake revision it knows, and offers its own for any other", async () => {
     const { mcp } = setup();
     const version = async (protocolVersion: string) =>
@@ -157,11 +206,14 @@ describe("the MCP handler", () => {
       { name: "advance", arguments: { start: 10 } },
       { name: "advance", arguments: { start: "BLE-10", repo: "acme/api" } },
       { name: "advance", arguments: "BLE-10" },
+      { name: "answer", arguments: { issue: "acme/api#7" } },
+      { name: "answer", arguments: { issue: "acme/api#7", text: 2 } },
+      { name: "answer", arguments: { issue: "acme/api#7", text: "yes", start: "BLE-10" } },
       {},
     ]) {
       expect(await call(params)).toEqual({ jsonrpc: "2.0", id: 7, error: { code: -32602, message: expect.any(String) } });
     }
-    expect((await call({ name: "close" })).error.message).toBe("Unknown tool: close (the tools are board, advance)");
+    expect((await call({ name: "close" })).error.message).toBe("Unknown tool: close (the tools are board, advance, answer)");
     expect(world.calls).toEqual([]);
   });
 
@@ -176,6 +228,17 @@ describe("the MCP handler", () => {
     });
   });
 });
+
+/** acme/api#11 dispatched as the first issue of Spec acme/api#10, its Implementer working. */
+async function dispatchedGitHub() {
+  const ctx = setup();
+  ctx.world.addClone("/src/api", "git@github.com:acme/api.git");
+  await ctx.cli("repo", "add", "acme/api", "--path", "/src/api");
+  ctx.world.addGitHubSpec("acme/api", { number: 10, title: "Billing" }, { number: 11 }, { number: 12 });
+  expect((await ctx.cli("dispatch", "acme/api#11", "--harness", "claude", "--model", "opus", "--effort", "high")).exitCode).toBe(0);
+  ctx.world.calls.length = 0;
+  return ctx;
+}
 
 /** A Repo claiming Linear team BLE, with no Scheduler defaults yet. */
 async function linearRepo() {

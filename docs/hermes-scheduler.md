@@ -2,8 +2,8 @@
 
 Hermes runs the Scheduler routine from `nico-agent --skill` every 10 minutes
 and messages your chat. Its reach is enforced in Hermes's own config
-(ADR-0008): no shell, and from nico-agent only the `board` and `advance` tools
-of `nico-agent mcp`.
+(ADR-0008): no shell, and from nico-agent only the `board`, `advance` and
+`answer` tools of `nico-agent mcp`.
 
 Set it up with the wizard, from this checkout:
 
@@ -31,7 +31,7 @@ and is safe to run again.
       env:
         PATH: "${userHome}/.local/share/mise/shims:${PATH}"
       tools:
-        include: [board, advance]
+        include: [board, advance, answer]
         resources: false
         prompts: false
   ```
@@ -61,9 +61,9 @@ requested:
   checks that those eight are still denied.
 - **MCP tools.** `tools.include` registers only the listed tools of a server.
   `resources: false` and `prompts: false` drop the four utility wrappers.
-  `nico-agent mcp` serves only `board` and `advance` anyway.
+  `nico-agent mcp` serves only `board`, `advance` and `answer` anyway.
 
-What stays is not limited to the two tools. Hermes keeps `memory`,
+What stays is not limited to the three tools. Hermes keeps `memory`,
 `session_search` and `skills`. The routine needs `memory`, because the
 Present / Postponed / Away state (defined in the skill) lives there, shared
 between the cron session and the chat session that gets your replies. `skills` includes `skill_manage`,
@@ -71,10 +71,38 @@ so Hermes could rewrite its own copy of the skill. That gives it no new reach,
 since the copy can only call the same tools. Re-run the wizard's skill stage to
 restore it.
 
+## Relaying an Implementer's questions
+
+When an Implementer stops to ask you something (a permission, a choice, or
+what to do with an issue that is already done), the Board lists it under
+`asking`, with the last lines of its screen. Hermes messages you once with the
+issue, its Spec and the question. Reply starting with the issue's name, then
+your answer:
+
+```
+acme/api#11 2
+```
+
+Hermes calls `answer` with the rest of your reply, unchanged, and tells you
+whether it was delivered. From a terminal, `nico-agent answer acme/api#11 2`
+does the same.
+
+This stays within the Scheduler's reach (ADR-0008) because nico-agent types
+only into an Implementer that is waiting on you: one that works, or whose
+question was already answered, refuses the text. What nico-agent can't check
+is that the text came from you; the skill tells Hermes never to answer an
+Implementer itself, Present, Postponed or Away.
+
+Upgrading from a setup made before `answer` existed: add `answer` to
+`tools.include` under `mcp_servers.nico-agent` (the wizard checks this), and
+re-run the skill and monitor-script stages.
+
 ## How a tick runs
 
 The monitor script runs `nico-agent advance` and prints the advance rows, each
-Repo's room and candidates, and the Held Specs. Hermes hashes that output and
+Repo's room and candidates, the Held Specs, and the issues whose Implementer is
+asking you something (the issues only, as a screen's spinners and timers would
+change the output every tick). Hermes hashes that output and
 wakes its agent only when it changes. When it wakes, the agent gets the diff
 and runs the rest of the routine: read the Board, report changes, fill the
 room. A tick with nothing to say ends with `[SILENT]`, which Hermes does not
@@ -87,7 +115,8 @@ tick. Otherwise an unanswered proposal could never turn into Away, and a
 running Specs advance, and the LLM doesn't run.
 
 Because the agent wakes every tick while there is room, the cron prompt tells
-it to report a failed row once, and again only when its reason changes.
+it to report a failed row once, and again only when its reason changes, and
+the skill tells it to report each question once.
 
 ## Operating it
 

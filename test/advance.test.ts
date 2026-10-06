@@ -288,7 +288,7 @@ describe("advance", () => {
     expect(world.calls.some((c) => c.startsWith("herdr worktree"))).toBe(false);
   });
 
-  test("it leaves a Dispatch open while it Implements, or while its Implementer still works or waits on its PR", async () => {
+  test("it leaves a Dispatch open while it Implements, or while its Implementer still works or waits on the user", async () => {
     const { cli, world, configDir } = setup();
     world.addClone("/src/api", "git@github.com:acme/api.git");
     await cli("repo", "add", "acme/api", "--path", "/src/api");
@@ -300,6 +300,7 @@ describe("advance", () => {
     world.linkPr("acme/api", 8, { number: 18 });
     world.agentStates.set("impl-api-8", "working");
     world.linkPr("acme/api", 9, { number: 19 });
+    // Its question is not lost to auto-Close.
     world.agentStates.set("impl-api-9", "blocked");
     world.calls.length = 0;
 

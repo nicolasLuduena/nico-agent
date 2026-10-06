@@ -2,8 +2,8 @@
 # Hermes monitor script for the nico-agent Scheduler (see docs/hermes-scheduler.md).
 #
 # Each cron tick Hermes runs this before its agent: it runs `nico-agent advance`
-# and prints the advance rows, each Repo's room and candidates, and the Held
-# Specs. Hermes hashes the output and wakes the agent only when it changed, so
+# and prints the advance rows, each Repo's room and candidates, the Held Specs,
+# and the issues whose Implementer is asking the user something. Hermes hashes the output and wakes the agent only when it changed, so
 # the output carries no timestamps, except a 10-minute tick while some Repo has
 # room and candidates: then the agent must wake every tick to time its
 # proposals (30 minutes to Away, 1 hour after "later").
@@ -35,6 +35,11 @@ jq -r '.rooms[]? | "  \(.repo) room=\(.room) candidates=\([.candidates[].spec] |
 
 echo "held:"
 jq -r '.specs[]? | select(.held) | "  \(.spec) on \(.held.issue): \(.held.reason)"' <<<"$board"
+
+# The issues only: a screen's spinners and timers would change the output
+# every tick.
+echo "asking:"
+jq -r '.asking[]? | "  \(.issue)"' <<<"$board"
 
 if jq -e 'any(.rooms[]?; .room > 0 and (.candidates | length) > 0)' >/dev/null <<<"$board"; then
   minute=$(date +%M)

@@ -20,11 +20,12 @@ describe("nico-agent --skill", () => {
     // Whitespace-normalized, so rewrapping the prose doesn't break the checks.
     const skill = async () => (await setup().cli("--skill")).stdout.replace(/\s+/g, " ");
 
-    test("acts only through the two MCP tools, advancing every 10 minutes", async () => {
+    test("acts only through the three MCP tools, advancing every 10 minutes", async () => {
       const text = await skill();
       expect(text).toContain("`board`");
       expect(text).toContain("`advance`");
-      expect(text).toMatch(/only through .*`board`.*`advance`/);
+      expect(text).toContain("`answer`");
+      expect(text).toMatch(/only through .*`board`.*`advance`.*`answer`/);
       expect(text).toContain("10 minutes");
     });
 
@@ -56,6 +57,28 @@ describe("nico-agent --skill", () => {
       const text = await skill();
       expect(text).toMatch(/started while .*Away.*reason/is);
       expect(text).toMatch(/Held.*reason/s);
+    });
+
+    test("reports each asking Implementer once, with its issue, Spec and question, remembered in memory", async () => {
+      const text = await skill();
+      expect(text).toMatch(/report each question once/i);
+      expect(text).toMatch(/`asking`/);
+      expect(text).toMatch(/issue, its Spec.*question/);
+      expect(text).toMatch(/memory.*questions you have reported/is);
+      expect(text).toMatch(/still unanswered.*only alongside other news/i);
+    });
+
+    test("relays a reply naming an issue verbatim, and never answers itself", async () => {
+      const text = await skill();
+      expect(text).toMatch(/starts with an issue's name/);
+      expect(text).toMatch(/`answer` with .*the rest.*verbatim/i);
+      expect(text).toMatch(/never answer an Implementer yourself/i);
+      expect(text).toMatch(/Present, Postponed or Away/);
+      expect(text).toMatch(/delivered/);
+    });
+
+    test("keeps a reply that is only a Spec's name as starting that Spec", async () => {
+      expect(await skill()).toMatch(/only a Spec's name.*`advance` with `start`/i);
     });
   });
 });
