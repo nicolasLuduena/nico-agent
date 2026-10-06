@@ -146,10 +146,10 @@ function decideSpec(repo: RepoFacts, spec: SpecFacts): SpecDecision {
     return decision;
   }
   for (const issue of remaining.filter((i) => i.startable)) {
-    const blocker = issue.blockers.find((b) => !b.closed && !spec.issues.some((i) => i.issue === b.issue));
+    const blocker = outsideBlocker(spec, issue);
     if (!blocker) continue;
     // Waiting only on another Spec's merges, it frees its slot.
-    decision.running = false;
+    decision.running = !remaining.every(waitsOnAnotherSpec(spec, remaining));
     decision.waiting = {
       issue: issue.issue, blocker: blocker.issue,
       reason: `${issue.issue} waits for ${blocker.issue}, in another Spec, to close; a Stack never mixes Specs`,
@@ -158,6 +158,25 @@ function decideSpec(repo: RepoFacts, spec: SpecFacts): SpecDecision {
   }
   decision.reason = "no remaining issue is Ready or unblocked";
   return decision;
+}
+
+/** An unresolved Blocker of `issue` outside its Spec. */
+function outsideBlocker(spec: SpecFacts, issue: IssueFacts) {
+  return issue.blockers.find((b) => !b.closed && !spec.issues.some((i) => i.issue === b.issue));
+}
+
+/** Whether a remaining issue waits on another Spec: through its own Blocker there, or a remaining Blocker in the Spec that does. */
+function waitsOnAnotherSpec(spec: SpecFacts, remaining: IssueFacts[]) {
+  const waits = new Set(remaining.filter((i) => outsideBlocker(spec, i)).map((i) => i.issue));
+  for (let grew = true; grew;) {
+    grew = false;
+    for (const issue of remaining) {
+      if (waits.has(issue.issue) || !issue.blockers.some((b) => !b.closed && waits.has(b.issue))) continue;
+      waits.add(issue.issue);
+      grew = true;
+    }
+  }
+  return (issue: IssueFacts) => waits.has(issue.issue);
 }
 
 /** The first remaining issue that is startable with each Blocker closed or done within the Spec, on the Spec's newest open PR. */

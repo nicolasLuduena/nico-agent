@@ -59,6 +59,20 @@ describe("room per Repo", () => {
     expect((await cli("--json")).json().rooms[0]).toMatchObject({ running: [], room: 1 });
   });
 
+  test("a stalled Spec frees its slot only when every remaining issue waits on another Spec, directly or through a Blocker in its own Spec", async () => {
+    const { cli, world } = await linearRepo();
+    world.addLinearSpec({ identifier: "BLE-20" }, { identifier: "BLE-21" });
+    world.addLinearSpec({ identifier: "BLE-30" }, { identifier: "BLE-31", state: "started" },
+      { identifier: "BLE-32", blockers: [{ identifier: "BLE-21", state: "unstarted" }] }, { identifier: "BLE-33", labels: [] });
+    world.linearAttachments.set("BLE-31", ["https://github.com/bleentr/pdf-diff/pull/31"]);
+    world.addPr({ repo: "bleentr/pdf-diff", number: 31, headBranch: "nico/ble-31" });
+
+    expect((await cli("--json")).json().rooms[0]).toMatchObject({ running: ["BLE-30"], room: 1 });
+
+    world.linearIssueNamed("BLE-33").blockers = [{ identifier: "BLE-32", state: "unstarted" }];
+    expect((await cli("--json")).json().rooms[0]).toMatchObject({ running: [], room: 2 });
+  });
+
   test("a GitHub candidate Spec carries its body too", async () => {
     const { cli, world } = setup();
     world.addClone("/src/api", "git@github.com:acme/api.git");
