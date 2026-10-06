@@ -25,12 +25,12 @@ jq -r '.specs[] | "  \(.spec) \(.result) \(.issue) \(.reason)"' <<<"$advance"
 jq -r '.errors[]? | "  error \(.repo): \(.error)"' <<<"$advance"
 
 echo "rooms:"
-jq -r '.rooms[] | "  \(.repo) room=\(.room) candidates=\([.candidates[].spec] | join(","))"' <<<"$board"
+jq -r '.rooms[]? | "  \(.repo) room=\(.room) candidates=\([.candidates[].spec] | join(","))"' <<<"$board"
 
 echo "held:"
-jq -r '.specs[] | select(.held) | "  \(.spec) on \(.held.issue): \(.held.reason)"' <<<"$board"
+jq -r '.specs[]? | select(.held) | "  \(.spec) on \(.held.issue): \(.held.reason)"' <<<"$board"
 
-if jq -e 'any(.rooms[]; .room > 0 and (.candidates | length) > 0)' >/dev/null <<<"$board"; then
+if jq -e 'any(.rooms[]?; .room > 0 and (.candidates | length) > 0)' >/dev/null <<<"$board"; then
   minute=$(date +%M)
   echo "room open, tick $(date +%Y-%m-%dT%H):$(printf '%02d' $((10#$minute / 10 * 10)))"
 fi

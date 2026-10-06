@@ -48,18 +48,19 @@ requested:
 
 - **Toolsets.** `agent.disabled_toolsets` is subtracted last from every agent
   (gateway, CLI and cron), so a per-job `enabled_toolsets` can't put a denied
-  toolset back. Cron agents also lose `cronjob`, `messaging` and `clarify`. The
-  denylist set during grilling covers `terminal`, `file`, `code_execution`,
-  `browser`, `web`, `computer_use` and `delegation`, so Hermes has no way to
-  run a command. The wizard checks that those are still denied.
+  toolset back. Cron agents also lose `cronjob`, `messaging` and `clarify`.
+  The denylist in `~/.hermes/config.yaml` covers `terminal`, `file`,
+  `code_execution`, `browser`, `web`, `computer_use`, `delegation` and
+  `cronjob`, among others, so Hermes has no way to run a command. The wizard
+  checks that those eight are still denied.
 - **MCP tools.** `tools.include` registers only the listed tools of a server.
   `resources: false` and `prompts: false` drop the four utility wrappers.
   `nico-agent mcp` serves only `board` and `advance` anyway.
 
 What stays is not limited to the two tools. Hermes keeps `memory`,
 `session_search` and `skills`. The routine needs `memory`, because the
-Present / Postponed / Away state lives there, shared between the cron session
-and the chat session that gets your replies. `skills` includes `skill_manage`,
+Present / Postponed / Away state (defined in the skill) lives there, shared
+between the cron session and the chat session that gets your replies. `skills` includes `skill_manage`,
 so Hermes could rewrite its own copy of the skill. That gives it no new reach,
 since the copy can only call the same tools. Re-run the wizard's skill stage to
 restore it.
@@ -78,6 +79,9 @@ script adds the current 10-minute tick to its output, so the agent wakes every
 tick. Otherwise an unanswered proposal could never turn into Away, and a
 "later" could never expire. The saving is in the ticks where no Repo has room:
 running Specs advance, and the LLM doesn't run.
+
+Because the agent wakes every tick while there is room, the cron prompt tells
+it to report a failed row once, and again only when its reason changes.
 
 ## Operating it
 

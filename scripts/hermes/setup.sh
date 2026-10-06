@@ -198,8 +198,10 @@ ENV_FILE=/dev/null
 
 # The toolsets that would let Hermes run a command, touch files or reach out on its own.
 required_denied=(terminal file code_execution browser web computer_use delegation cronjob)
+# What Hermes keeps: nico-agent's two tools, and what the routine's memory needs.
+allowed_tools="board and advance, plus memory, session_search and the skills tools"
 
-cron_prompt='Run one tick of the nico-agent Scheduler routine from the nico-agent skill. Your final response is the message delivered to the user'"'"'s chat. Keep the Present / Postponed / Away state, the open proposal and the reported Holds in memory: the chat session that receives the user'"'"'s replies reads the same memory. If nothing changed that the user needs to hear, reply with exactly [SILENT].'
+cron_prompt='Run one tick of the nico-agent Scheduler routine from the nico-agent skill. Your final response is the message delivered to the user'"'"'s chat. Report a failed row once, and again only when its reason changes. Keep the Present / Postponed / Away state, the open proposal and the Held Specs and failed rows already reported in memory: the chat session that receives the user'"'"'s replies reads the same memory. If nothing changed that the user needs to hear, reply with exactly [SILENT].'
 
 banner "Hermes as the nico-agent Scheduler"
 
@@ -218,6 +220,7 @@ fi
 stage "nico-agent: Scheduler defaults and room"
 say "\`advance\` dispatches every issue with one Harness, model and Effort from"
 say "$nico_config, so Hermes never chooses them."
+[[ -f "$nico_config" ]] || { warn "no $nico_config: add a Repo with \`nico-agent repo add\` first"; exit 1; }
 current=$(jq -c '.scheduler // empty' "$nico_config")
 note "current: ${current:-unset}"
 if [[ -z "$current" ]] || confirm "Change them?"; then
@@ -241,6 +244,7 @@ note "Keep it off a Repo with \`nico-agent repo rm\`, or lower its maxRunningSpe
 pause "Press Enter once the Repos and their room are what Hermes may act on."
 
 stage "Hermes: register nico-agent mcp as the only extra tools"
+[[ -f "$hermes_config" ]] || { warn "no $hermes_config: run \`hermes setup\` first"; exit 1; }
 missing=()
 for t in "${required_denied[@]}"; do
   "$hermes_python" -c "import yaml,sys; sys.exit(0 if sys.argv[2] in ((yaml.safe_load(open(sys.argv[1])).get('agent') or {}).get('disabled_toolsets') or []) else 1)" "$hermes_config" "$t" || missing+=("$t")
@@ -284,7 +288,7 @@ note "Hermes keeps its skills toolset, so it could edit this copy; re-run this s
 pause
 
 stage "Hermes: install the monitor script"
-say "Each tick it runs \`nico-agent advance\` and prints the Board's room and Holds;"
+say "Each tick it runs \`nico-agent advance\` and prints the Board's room and Held Specs;"
 say "Hermes wakes its agent only when that output changes."
 mkdir -p "$hermes_home/scripts"
 install -m 755 "$repo_root/scripts/hermes/nico-agent-monitor.sh" "$hermes_home/scripts/nico-agent-monitor.sh"
@@ -296,16 +300,17 @@ if confirm "Restart the Hermes gateway so it loads the MCP server and skill?"; t
   hermes gateway restart
 fi
 step "In your Hermes chat, send: List every tool you can call, by exact name."
-say "Expect the two nico-agent tools (board, advance), plus memory, session_search"
-say "and the skills tools. Nothing that runs commands, reads or writes files, or browses."
+say "Expect $allowed_tools."
+say "Nothing that runs commands, reads or writes files, or browses."
 if ! confirm "Did Hermes list only those?"; then
-  SKIPPED+=("Hermes still has tools beyond board, advance, memory, session_search and skills")
+  SKIPPED+=("Hermes still has tools beyond $allowed_tools")
 fi
 
 stage "Hermes: the 10-minute cron job"
-if hermes cron list 2>/dev/null | grep -q "$job_name"; then
+jobs=$(hermes cron list 2>/dev/null || true)
+if grep -q "$job_name" <<<"$jobs"; then
   note "a job named $job_name already exists:"
-  hermes cron list | grep -A3 "$job_name" || true
+  grep -A3 "$job_name" <<<"$jobs" || true
 else
   ask DELIVER "Deliver to (telegram, or platform:chat_id) [telegram]:"
   DELIVER="${DELIVER:-telegram}"
@@ -324,15 +329,17 @@ pause
 
 stage "Run it on a small real Spec"
 say "Watch one Spec through, answering in your Hermes chat."
-step "Make a small Spec Ready in a Repo with room: a GitHub issue with 2 sub-issues,"
-step "each labelled ready-for-agent (or a Linear parent with 2 sub-issues)."
+step "In a Repo with room 2, make two small Specs: GitHub issues with 2 sub-issues each,"
+step "every sub-issue Ready (labelled ready-for-agent), or Linear parents alike."
+note "You answer one by name; Hermes picks the other while you are Away."
 step "Start a tick now: \`hermes cron run <id>\` (the id is in \`hermes cron list\`)."
+note "A tick in the same 10 minutes as the last one, with nothing changed, stays silent."
 confirm "A proposal arrived, recommended Spec first, each with a reason?" || SKIPPED+=("observe a proposal")
 step "Reply \"later\". No proposal for that Repo should come within the hour; one comes after."
 confirm "\"later\" postponed it for an hour, then it proposed again?" || SKIPPED+=("observe a \"later\"")
 step "Reply with the Spec's name; Hermes starts it, and later ticks keep it moving."
 confirm "It started the Spec you named?" || SKIPPED+=("observe a proposal answered")
-step "Leave the next proposal unanswered 30 minutes: Hermes is Away and starts its pick."
+step "Leave the proposal for the other Spec unanswered 30 minutes: Hermes is Away and starts its pick."
 confirm "It started its own pick and told you why?" || SKIPPED+=("observe an Away pick")
 note "Record what you saw on issue #45."
 
