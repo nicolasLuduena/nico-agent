@@ -119,8 +119,8 @@ const commands: Command[] = [
     summary: "Start an Implementer on each issue in a new herdr worktree workspace (resumes a failed one)",
     flags: {
       ...LAUNCH_FLAGS,
-      "--stack-on": { value: true, description: "Blocker to stack on: its issue reference, Linear identifier, or PR URL; required when ambiguous" },
-      "--base": { value: true, description: "branch on origin to start from and open the PR against (default: the last one used in the Repo, else the default branch); not for a Stackable issue" },
+      "--stack-on": { value: true, description: "open PR in the Repo to stack on, named by its issue or its PR URL; each Blocker's PR must be it or below it in its Stack; required for a Stackable issue with several Blocker PRs" },
+      "--base": { value: true, description: "branch on origin to start from and open the PR against (default: the last one used in the Repo, else the default branch); not for a Stacked dispatch" },
       "--repo": { value: true, description: "Repo to dispatch a Linear issue into; required when several Repos claim it" },
     },
     positionals: ["issue..."],
@@ -130,6 +130,7 @@ const commands: Command[] = [
       "nico-agent dispatch acme/api#7 acme/api#8 --harness codex --model gpt-5.5 --effort high",
       "nico-agent dispatch https://github.com/acme/api/issues/7 --harness claude --model sonnet --effort max",
       "nico-agent dispatch BLE-27 --harness claude --model opus --effort high --repo acme/api",
+      "nico-agent dispatch acme/api#9 --harness claude --model opus --effort high --stack-on acme/api#8",
     ],
     run: dispatchCommand,
   },

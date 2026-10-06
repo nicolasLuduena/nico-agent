@@ -73,7 +73,7 @@ describe("Stackable Linear issues", () => {
     );
     expect(world.linearClaimed).toEqual(["BLE-27"]);
     const shown = (await cli("show", "BLE-27", "--json")).json();
-    expect(shown).toMatchObject({ base: "origin/nico/ble-26-parse-pdfs", stackedOn: { blocker: "BLE-26", pr: { url: "https://github.com/bleentr/pdf-diff/pull/16" } } });
+    expect(shown).toMatchObject({ base: "origin/nico/ble-26-parse-pdfs", stackedOn: { issue: "BLE-26", pr: { url: "https://github.com/bleentr/pdf-diff/pull/16" } } });
     expect((await cli("board", "--json")).json().stackable).toBeUndefined();
   });
 
@@ -82,7 +82,7 @@ describe("Stackable Linear issues", () => {
     world.addLinearIssue({ identifier: "BLE-25", state: "started", labels: [] });
     world.linear.get("BLE")!.find((i) => i.identifier === "BLE-27")!.blockers.push({ identifier: "BLE-25", state: "started" });
     world.linearAttachments.set("BLE-25", ["https://github.com/bleentr/pdf-diff/pull/15"]);
-    world.addPr({ repo: "bleentr/pdf-diff", number: 15, headBranch: "nico/ble-25" });
+    world.addPr({ repo: "bleentr/pdf-diff", number: 15, headBranch: "nico/ble-25", baseBranch: "nico/ble-26-parse-pdfs" });
 
     const refused = await cli("dispatch", "BLE-27", ...FLAGS, "--json");
     expect(refused.exitCode).toBe(1);
@@ -98,11 +98,9 @@ describe("Stackable Linear issues", () => {
     expect((await cli("dispatch", "BLE-27", ...FLAGS, "--stack-on", "BLE-26")).exitCode).toBe(1);
   });
 
-  test("a Stacked Linear dispatch refuses --base and a Ready one refuses --stack-on", async () => {
-    const { cli, world } = await stackable();
-    expect((await cli("dispatch", "BLE-27", ...FLAGS, "--base", "main", "--json")).json().error).toBe("BLE-27 is Stacked; its Base is its Blocker's PR head branch");
-    world.addLinearIssue({ identifier: "BLE-28" });
-    expect((await cli("dispatch", "BLE-28", ...FLAGS, "--stack-on", "BLE-26", "--json")).json().error).toBe("BLE-28 has no unresolved Blockers to stack on");
+  test("a Stacked Linear dispatch refuses --base", async () => {
+    const { cli } = await stackable();
+    expect((await cli("dispatch", "BLE-27", ...FLAGS, "--base", "main", "--json")).json().error).toBe("BLE-27 is Stacked; its Base is the head branch of the PR it stacks on");
   });
 
   test("the web lists a Stackable Linear row under its Repo, with Blocker choices, and dispatches it there", async () => {
