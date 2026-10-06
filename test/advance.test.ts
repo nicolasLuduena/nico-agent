@@ -143,6 +143,66 @@ describe("advance", () => {
     ]);
   });
 
+  /** BLE-10's BLE-13 stacked by `advance` on BLE-12's PR #17, itself on BLE-11's PR #16; BLE-20 is another running Spec. */
+  async function stackedSpec() {
+    const ctx = await linearRepo();
+    const { cli, world } = ctx;
+    world.addLinearSpec({ identifier: "BLE-10" },
+      { identifier: "BLE-11", state: "started" }, { identifier: "BLE-12", state: "started" }, { identifier: "BLE-13" }, { identifier: "BLE-14" });
+    world.linearAttachments.set("BLE-11", ["https://github.com/bleentr/pdf-diff/pull/16"]);
+    world.linearAttachments.set("BLE-12", ["https://github.com/bleentr/pdf-diff/pull/17"]);
+    world.addPr({ repo: "bleentr/pdf-diff", number: 16, headBranch: "nico/ble-11" });
+    world.addPr({ repo: "bleentr/pdf-diff", number: 17, headBranch: "nico/ble-12", baseBranch: "nico/ble-11" });
+    world.addLinearSpec({ identifier: "BLE-20" }, { identifier: "BLE-21", state: "completed" }, { identifier: "BLE-22" }, { identifier: "BLE-23" });
+    expect((await cli("advance", "--json")).json().specs.map((s: { result: string; issue: string }) => `${s.result} ${s.issue}`)).toEqual(["started BLE-13", "started BLE-22"]);
+    world.linearIssueNamed("BLE-13")!.state = "started";
+    world.linearIssueNamed("BLE-22")!.state = "started";
+    return ctx;
+  }
+
+  test("a Spec whose Stack is built on a PR closed without merging is Held, and other Specs keep moving", async () => {
+    const { cli, world } = await stackedSpec();
+    world.addPr({ repo: "bleentr/pdf-diff", number: 16, headBranch: "nico/ble-11", state: "closed" });
+    world.addPr({ repo: "bleentr/pdf-diff", number: 22, headBranch: "nico/ble-22" });
+    world.linearAttachments.set("BLE-22", ["https://github.com/bleentr/pdf-diff/pull/22"]);
+
+    const spec = (await cli("--json")).json().specs.find((s: { spec: string }) => s.spec === "BLE-10");
+    expect(spec.held).toEqual({ issue: "BLE-13", reason: "BLE-13's Stack is built on https://github.com/bleentr/pdf-diff/pull/16, closed without merging" });
+    world.calls.length = 0;
+    const advanced = (await cli("advance", "--json")).json();
+    expect(advanced.specs).toEqual([
+      { spec: "BLE-10", repo: "bleentr/pdf-diff", result: "skipped", issue: "BLE-13", reason: "Held: BLE-13's Stack is built on https://github.com/bleentr/pdf-diff/pull/16, closed without merging" },
+      { spec: "BLE-20", repo: "bleentr/pdf-diff", result: "started", issue: "BLE-23", reason: "BLE-23 is the first unblocked issue of BLE-20; it stacks on the Spec's newest open PR" },
+    ]);
+    expect(advanced.help).toContain("Run `nico-agent close BLE-13` to Close the orphaned Dispatch, or retarget its Stack");
+    expect(world.calls.filter((c) => c.startsWith("herdr worktree create"))).toHaveLength(1);
+  });
+
+  test("a merged PR below the Stack holds nothing", async () => {
+    const { cli, world } = await stackedSpec();
+    world.addPr({ repo: "bleentr/pdf-diff", number: 16, headBranch: "nico/ble-11", state: "merged" });
+    expect((await cli("--json")).json().specs.find((s: { spec: string }) => s.spec === "BLE-10").held).toBeUndefined();
+  });
+
+  test("Closing the orphaned Dispatch clears the hold", async () => {
+    const { cli, world } = await stackedSpec();
+    world.addPr({ repo: "bleentr/pdf-diff", number: 16, headBranch: "nico/ble-11", state: "closed" });
+    expect((await cli("close", "BLE-13", "--confirm")).exitCode).toBe(0);
+    expect((await cli("--json")).json().specs.find((s: { spec: string }) => s.spec === "BLE-10").held).toBeUndefined();
+  });
+
+  test("the orphaned Dispatch's own PR retargeted off the closed PR clears the hold", async () => {
+    const { cli, world } = await stackedSpec();
+    world.linearAttachments.set("BLE-13", ["https://github.com/bleentr/pdf-diff/pull/18"]);
+    world.addPr({ repo: "bleentr/pdf-diff", number: 18, headBranch: "nico/ble-13", baseBranch: "nico/ble-12" });
+    world.addPr({ repo: "bleentr/pdf-diff", number: 16, headBranch: "nico/ble-11", state: "closed" });
+    expect((await cli("--json")).json().specs.find((s: { spec: string }) => s.spec === "BLE-10").held)
+      .toEqual({ issue: "BLE-13", reason: "BLE-13's Stack is built on https://github.com/bleentr/pdf-diff/pull/16, closed without merging" });
+
+    world.addPr({ repo: "bleentr/pdf-diff", number: 17, headBranch: "nico/ble-12", baseBranch: "main" });
+    expect((await cli("--json")).json().specs.find((s: { spec: string }) => s.spec === "BLE-10").held).toBeUndefined();
+  });
+
   test("with no running Spec it succeeds quietly with an empty result, and never starts a Spec", async () => {
     const { cli, world } = await linearRepo();
     world.addLinearSpec({ identifier: "BLE-10" }, { identifier: "BLE-11" });

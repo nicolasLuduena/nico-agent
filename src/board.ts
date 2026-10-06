@@ -144,7 +144,7 @@ async function loadLinearSpecs(world: World, board: Omit<Board, "specs">, linear
         issue: issue.identifier, closed, startable: canStartLinear(issue, viewer), inFlight: row !== undefined,
         pr: row ? row.pr : closed ? null : linkedPr(await linearPullRequests(world, issue.identifier, repo.slug), repo.slug),
         blockers: issue.blockers.map((b) => ({ issue: b.identifier, closed: isLinearClosed(b.state) })),
-        ...(row && holdFacts(row)),
+        ...(row && await holdFacts(world, row)),
       };
     };
     const specs: SpecFacts[] = await Promise.all([...parents].map(async (spec) => {
@@ -157,7 +157,7 @@ async function loadLinearSpecs(world: World, board: Omit<Board, "specs">, linear
     for (const row of inFlight) {
       if (inSpec.has(row.dispatch.issue) || loose.some((i) => i.identifier === row.dispatch.issue)) continue;
       const { issue, title, url } = row.dispatch;
-      specs.push({ spec: issue, title, url, issues: [{ issue, closed: false, startable: false, inFlight: true, pr: row.pr, blockers: [], ...holdFacts(row) }] });
+      specs.push({ spec: issue, title, url, issues: [{ issue, closed: false, startable: false, inFlight: true, pr: row.pr, blockers: [], ...await holdFacts(world, row) }] });
     }
     specs.sort((a, b) => a.spec.localeCompare(b.spec, undefined, { numeric: true }));
     return { repo: repo.slug, defaultBranch: await world.gitDefaultBranch(repo.path), specs };
@@ -172,9 +172,31 @@ async function loadLinearSpecs(world: World, board: Omit<Board, "specs">, linear
 }
 
 /** What an In-flight Dispatch tells the Spec rules about holds. */
-function holdFacts(row: InFlightRow): Pick<IssueFacts, "failed"> {
-  const { failure } = row.dispatch;
-  return failure ? { failed: { step: failure.step, error: failure.error } } : {};
+async function holdFacts(world: World, row: InFlightRow): Promise<Pick<IssueFacts, "failed" | "orphanedBy">> {
+  const { failure, stackedOn, repo } = row.dispatch;
+  if (failure) return { failed: { step: failure.step, error: failure.error } };
+  if (!stackedOn) return {};
+  // The Stack under the Dispatch's own open PR, else under the PR it was dispatched on.
+  const from = row.pr?.state === "open" ? row.pr.baseBranch : stackedOn.pr.headBranch;
+  const orphanedBy = await closedBelow(world, repo, from);
+  return orphanedBy ? { orphanedBy } : {};
+}
+
+/**
+ * The PR closed without merging that a Stack is built on, walking down from
+ * `branch` through the head branches of its PRs; undefined once the walk
+ * reaches a branch without an open PR on it, such as the default branch.
+ */
+async function closedBelow(world: World, repo: string, branch: string): Promise<PullRequest | undefined> {
+  const seen = new Set<string>();
+  while (!seen.has(branch)) {
+    seen.add(branch);
+    const prs = (await world.githubBranchPullRequests(repo, branch)).filter((pr) => sameSlug(pr.repo, repo));
+    const open = prs.find((pr) => pr.state === "open");
+    if (!open) return prs.at(-1)?.state === "closed" ? prs.at(-1) : undefined;
+    branch = open.baseBranch;
+  }
+  return undefined;
 }
 
 async function loadReady(world: World, repos: Repo[], inFlight: Dispatch[], lastBases: Record<string, string>) {

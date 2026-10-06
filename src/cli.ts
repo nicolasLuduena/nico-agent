@@ -138,7 +138,7 @@ const commands: Command[] = [
   {
     name: "advance",
     usage: "nico-agent advance",
-    summary: "Dispatch each running Spec's next issue with the Scheduler defaults from config (resumes a failed one)",
+    summary: "Dispatch each running Spec's next issue with the Scheduler defaults from config (skips Held Specs)",
     flags: {},
     positionals: [],
     examples: ["nico-agent advance", "nico-agent advance --json"],

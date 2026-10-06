@@ -21,6 +21,8 @@ export interface IssueFacts {
   blockers: { issue: string; closed: boolean }[];
   /** The step its In-flight Dispatch Failed at, until a re-run gets past it or the Dispatch is Closed. */
   failed?: { step: string; error: string };
+  /** The PR closed without merging that its In-flight Dispatch's Stack is built on. */
+  orphanedBy?: PullRequest;
 }
 
 /** A Spec and its issues in sub-issue order; a loose issue is a Spec of one, named after itself. */
@@ -148,6 +150,10 @@ function holdOf(spec: SpecFacts): Hold | undefined {
   const failed = spec.issues.find((i) => i.failed);
   if (failed?.failed) {
     return { issue: failed.issue, reason: `${failed.issue}'s Dispatch Failed at ${failed.failed.step}: ${failed.failed.error}` };
+  }
+  const orphaned = spec.issues.find((i) => i.orphanedBy);
+  if (orphaned?.orphanedBy) {
+    return { issue: orphaned.issue, reason: `${orphaned.issue}'s Stack is built on ${orphaned.orphanedBy.url}, closed without merging` };
   }
   return undefined;
 }
