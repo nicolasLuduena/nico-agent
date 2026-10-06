@@ -2,7 +2,8 @@ import { resolve } from "node:path";
 import { advance } from "./advance";
 import { loadBoard } from "./board";
 import { ConfigError, findRepo, loadConfig, saveConfig } from "./config";
-import { DispatchError, StepFailed, baseBranch, closeDispatch, dispatch, eachIssue, resolveIssue, review } from "./dispatch";
+import { StepFailed, baseBranch, closeDispatch, dispatch, eachIssue, resolveIssue, review } from "./dispatch";
+import { DispatchError } from "./dispatch-error";
 import { PANE_ARGS } from "./opencode";
 import { type Catalog, harnessCatalogs, harnesses, refreshHarnesses, rememberedLaunches } from "./harness";
 import { linearIdentifier } from "./linear";
@@ -84,7 +85,7 @@ const commands: Command[] = [
     flags: {},
     positionals: [],
     examples: ["nico-agent", "nico-agent board --json"],
-    run: (_args, ctx) => board(ctx),
+    run: (args, ctx) => board(ctx, args.flags["--json"] === true),
   },
   {
     name: "repo add",
@@ -217,7 +218,7 @@ const commands: Command[] = [
       'Or in an MCP client\'s config: {"mcpServers": {"nico-agent": {"command": "nico-agent", "args": ["mcp"]}}}',
     ],
     run: async (_args, ctx) => {
-      await ctx.world.serveStdio(mcpHandler(ctx));
+      await ctx.world.serveStdio(mcpHandler((argv) => run(argv, ctx)));
       // stdout is the MCP channel: nothing else may be written on it.
       return { data: {} };
     },
@@ -646,7 +647,7 @@ async function serve(args: Args, ctx: RunContext): Promise<Output> {
   };
 }
 
-async function board(ctx: RunContext): Promise<Output> {
+async function board(ctx: RunContext, json: boolean): Promise<Output> {
   const { repos } = loadConfig(ctx.configDir);
   const header = { bin: ctx.bin, description: DESCRIPTION, repos: `${repos.length} configured` };
   if (repos.length === 0) {
@@ -707,7 +708,9 @@ async function board(ctx: RunContext): Promise<Output> {
       blockers: i.blockers.map((b) => ({ issue: b.blocker, pr: b.pr.url, base: b.pr.headBranch })) }));
     help.unshift("Run `nico-agent dispatch <issue> --stack-on <blocker> --harness <harness> --model <model> --effort <effort>` to dispatch a Stackable issue");
   }
-  const specRows = specs.flatMap((r) => r.specs);
+  const allSpecs = specs.flatMap((r) => r.specs);
+  // In TOON, Specs of one would only repeat the Ready and In-flight lists, unless Held.
+  const specRows = json ? allSpecs : allSpecs.filter((s) => s.held || s.issues.length !== 1 || s.issues[0] !== s.spec);
   if (specRows.length) {
     data.specs = specRows.map(({ spec, title, repo, issues, running, held, next, waiting, reason }) => ({
       spec, title, repo, issues, running,
@@ -717,6 +720,8 @@ async function board(ctx: RunContext): Promise<Output> {
       ...(waiting && { waiting }),
       ...(reason && { reason }),
     }));
+  }
+  if (allSpecs.length) {
     // What the Scheduler chooses from: each candidate's body lets it judge priority without reaching the Source.
     data.rooms = specs.map(({ repo, specs: decided, room, candidates }) => ({
       repo, running: decided.filter((s) => s.running).map((s) => s.spec), room,

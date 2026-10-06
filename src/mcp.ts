@@ -1,5 +1,7 @@
-import { type RunContext, run } from "./cli";
 import { VERSION } from "./version";
+
+/** Runs a CLI command line in-process, as `nico-agent` would. */
+export type CliRunner = (argv: string[]) => Promise<{ stdout: string; exitCode: number }>;
 
 /** The MCP revision answered: the last one with an `initialize` handshake. */
 const PROTOCOL_VERSION = "2025-11-25";
@@ -48,7 +50,7 @@ class RpcError extends Error {
  * the CLI's own `--json` commands, so it can do nothing the CLI's Board and
  * `advance` can't.
  */
-export function mcpHandler(ctx: RunContext) {
+export function mcpHandler(runCli: CliRunner) {
   return async (line: string): Promise<string | null> => {
     let message: unknown;
     try {
@@ -61,7 +63,7 @@ export function mcpHandler(ctx: RunContext) {
     if (typeof method !== "string" || id === undefined) return null;
     if (typeof id !== "string" && typeof id !== "number") return reply(null, { error: { code: -32600, message: "Invalid Request" } });
     try {
-      return reply(id, { result: await answer(ctx, method, params) });
+      return reply(id, { result: await answer(runCli, method, params) });
     } catch (e) {
       if (e instanceof RpcError) return reply(id, { error: { code: e.code, message: e.message } });
       return reply(id, { error: { code: -32603, message: e instanceof Error ? e.message : String(e) } });
@@ -73,7 +75,7 @@ function reply(id: Id, body: { result: unknown } | { error: { code: number; mess
   return JSON.stringify({ jsonrpc: "2.0", id, ...body });
 }
 
-async function answer(ctx: RunContext, method: string, params: unknown) {
+async function answer(runCli: CliRunner, method: string, params: unknown) {
   switch (method) {
     case "initialize":
       return initialize(params);
@@ -82,7 +84,7 @@ async function answer(ctx: RunContext, method: string, params: unknown) {
     case "tools/list":
       return { tools: TOOLS };
     case "tools/call":
-      return await callTool(ctx, params);
+      return await callTool(runCli, params);
     default:
       throw new RpcError(-32601, `Method not found: ${method}`);
   }
@@ -100,9 +102,9 @@ function initialize(params: unknown) {
 }
 
 /** Runs the tool as its CLI command with `--json`; an AXI error is a tool error, its `help` included. */
-async function callTool(ctx: RunContext, params: unknown) {
+async function callTool(runCli: CliRunner, params: unknown) {
   const argv = toolArgv(params);
-  const { stdout, exitCode } = await run(argv, ctx);
+  const { stdout, exitCode } = await runCli(argv);
   return { content: [{ type: "text", text: stdout }], structuredContent: JSON.parse(stdout), isError: exitCode !== 0 };
 }
 

@@ -15,14 +15,14 @@ export interface IssueFacts {
   startable: boolean;
   /** It has a Dispatch that has not been Closed. */
   inFlight: boolean;
-  /** Its PR in the Repo: the open one, else a merged one; null without any. */
+  /** Its PR in the Repo, closed issue or not: the open one, else the latest; null without any. */
   pr: PullRequest | null;
   /** Its Blockers, named like `issue`, and whether each is closed. */
   blockers: { issue: string; closed: boolean }[];
   /** The step its In-flight Dispatch Failed at, until a re-run gets past it or the Dispatch is Closed. */
   failed?: { step: string; error: string };
   /** The PR closed without merging that its In-flight Dispatch's Stack is built on. */
-  orphanedBy?: PullRequest;
+  builtOnClosedPr?: PullRequest;
 }
 
 /** A Spec and its issues in sub-issue order; a loose issue is a Spec of one, named after itself. */
@@ -40,7 +40,7 @@ export interface RepoFacts {
   /** The default branch of the Repo's origin, which every Stack is anchored on. */
   defaultBranch: string;
   /** How many Specs may run in the Repo at once. */
-  runningSpecs: number;
+  maxRunningSpecs: number;
   specs: SpecFacts[];
 }
 
@@ -106,7 +106,7 @@ export function decideSpecs(repos: RepoFacts[]): RepoDecision[] {
     const specs = repo.specs.filter(hasWorkLeft).map((spec) => decideSpec(repo, spec));
     return {
       repo: repo.repo, specs,
-      room: Math.max(0, repo.runningSpecs - specs.filter((s) => s.running).length),
+      room: Math.max(0, repo.maxRunningSpecs - specs.filter((s) => s.running).length),
       candidates: specs.filter((s) => !s.running && !s.held && s.next).map((s) => s.spec),
     };
   });
@@ -125,7 +125,8 @@ function decideSpec(repo: RepoFacts, spec: SpecFacts): SpecDecision {
   const held = holdOf(spec);
   if (held) decision.held = held;
   const remaining = spec.issues.filter((i) => !done(i));
-  const started = spec.issues.some((i) => i.inFlight || i.closed || i.pr);
+  // Started by a Dispatch: one is In flight, or one left a PR. An issue closed by hand is no evidence.
+  const started = spec.issues.some((i) => i.inFlight || i.pr);
   if (remaining.length === 0) return decision;
   if (!started) {
     const first = nextIssue(repo, spec, remaining);
@@ -146,10 +147,10 @@ function decideSpec(repo: RepoFacts, spec: SpecFacts): SpecDecision {
     return decision;
   }
   for (const issue of remaining.filter((i) => i.startable)) {
-    const blocker = issue.blockers.find((b) => !b.closed && !spec.issues.some((i) => i.issue === b.issue));
+    const blocker = outsideBlocker(spec, issue);
     if (!blocker) continue;
     // Waiting only on another Spec's merges, it frees its slot.
-    decision.running = false;
+    decision.running = !remaining.every(waitsOnAnotherSpec(spec, remaining));
     decision.waiting = {
       issue: issue.issue, blocker: blocker.issue,
       reason: `${issue.issue} waits for ${blocker.issue}, in another Spec, to close; a Stack never mixes Specs`,
@@ -158,6 +159,25 @@ function decideSpec(repo: RepoFacts, spec: SpecFacts): SpecDecision {
   }
   decision.reason = "no remaining issue is Ready or unblocked";
   return decision;
+}
+
+/** An unresolved Blocker of `issue` outside its Spec. */
+function outsideBlocker(spec: SpecFacts, issue: IssueFacts) {
+  return issue.blockers.find((b) => !b.closed && !spec.issues.some((i) => i.issue === b.issue));
+}
+
+/** Whether a remaining issue waits on another Spec: through its own Blocker there, or a remaining Blocker in the Spec that does. */
+function waitsOnAnotherSpec(spec: SpecFacts, remaining: IssueFacts[]) {
+  const waits = new Set(remaining.filter((i) => outsideBlocker(spec, i)).map((i) => i.issue));
+  for (let grew = true; grew;) {
+    grew = false;
+    for (const issue of remaining) {
+      if (waits.has(issue.issue) || !issue.blockers.some((b) => !b.closed && waits.has(b.issue))) continue;
+      waits.add(issue.issue);
+      grew = true;
+    }
+  }
+  return (issue: IssueFacts) => waits.has(issue.issue);
 }
 
 /** The first remaining issue that is startable with each Blocker closed or done within the Spec, on the Spec's newest open PR. */
@@ -182,9 +202,9 @@ function holdOf(spec: SpecFacts): Hold | undefined {
   if (failed?.failed) {
     return { issue: failed.issue, reason: `${failed.issue}'s Dispatch Failed at ${failed.failed.step}: ${failed.failed.error}` };
   }
-  const orphaned = spec.issues.find((i) => i.orphanedBy);
-  if (orphaned?.orphanedBy) {
-    return { issue: orphaned.issue, reason: `${orphaned.issue}'s Stack is built on ${orphaned.orphanedBy.url}, closed without merging` };
+  const closedUnder = spec.issues.find((i) => i.builtOnClosedPr);
+  if (closedUnder?.builtOnClosedPr) {
+    return { issue: closedUnder.issue, reason: `${closedUnder.issue}'s Stack is built on ${closedUnder.builtOnClosedPr.url}, closed without merging` };
   }
   return undefined;
 }
@@ -200,10 +220,14 @@ function within(spec: SpecFacts, blocker: string) {
   return issue !== undefined && done(issue);
 }
 
-/** The top of the Spec's Stack: its open PR with the highest number. */
+/**
+ * The top of the Spec's Stack: its open PR that no other open PR of the Spec
+ * targets. Should several qualify, the highest-numbered of them.
+ */
 function newestOpenPr(spec: SpecFacts) {
-  return spec.issues
+  const open = spec.issues
     .map((i) => i.pr)
-    .filter((pr): pr is PullRequest & { headBranch: string } => pr?.state === "open" && Boolean(pr.headBranch))
-    .sort((a, b) => b.number - a.number)[0];
+    .filter((pr): pr is PullRequest & { headBranch: string } => pr?.state === "open" && Boolean(pr.headBranch));
+  const tops = open.filter((pr) => !open.some((other) => other.baseBranch === pr.headBranch));
+  return (tops.length ? tops : open).sort((a, b) => b.number - a.number)[0];
 }

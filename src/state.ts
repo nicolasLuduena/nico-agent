@@ -138,7 +138,18 @@ function read(dir: string): StateFile {
     if ((e as NodeJS.ErrnoException).code === "ENOENT") return { dispatches: {} };
     throw e;
   }
-  return JSON.parse(text) as StateFile;
+  const state = JSON.parse(text) as StateFile;
+  for (const dispatch of Object.values(state.dispatches)) migrate(dispatch);
+  return state;
+}
+
+/** Bring a record written by an older nico-agent to the current shape. */
+function migrate(dispatch: Dispatch) {
+  // Records from before any open PR could be stacked on name the Blocker.
+  const legacy = dispatch.stackedOn as (StackTarget & { blocker?: string }) | undefined;
+  if (legacy?.blocker === undefined) return;
+  const { blocker, ...target } = legacy;
+  dispatch.stackedOn = { issue: target.issue ?? blocker, pr: target.pr };
 }
 
 /** Atomic replace, so readers never need the lock. */

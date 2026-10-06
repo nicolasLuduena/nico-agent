@@ -18,21 +18,13 @@ import {
   saveDispatch,
 } from "./state";
 import { type LinearIssue, type World, WorldError } from "./world";
-import { type BlockerPrs, baseChoice, blockerPrs, canStart, isLinearClosed, linearBlockerPrs, matchesSelector } from "./board";
+import { type BlockerPrs, baseChoice, blockerPrs, matchesSelector } from "./board";
+import { canStart, githubSource, isLinearClosed, linearSource } from "./source";
 import { type StackTarget, chooseStackTarget } from "./stack";
 
-const DISPATCH_HINT = "nico-agent dispatch <issue> --harness <harness> --model <model> --effort <effort>";
+import { DispatchError, LaunchError } from "./dispatch-error";
 
-/** A request the user can fix; `usage` marks a malformed one (CLI exit 2). */
-export class DispatchError extends Error {
-  constructor(
-    message: string,
-    readonly help: string[],
-    readonly usage = false,
-  ) {
-    super(message);
-  }
-}
+const DISPATCH_HINT = "nico-agent dispatch <issue> --harness <harness> --model <model> --effort <effort>";
 
 export interface DispatchRequest {
   issue: string;
@@ -142,7 +134,7 @@ export async function dispatch(world: World, configDir: string, request: Dispatc
     if (!canStart(issue, await world.githubViewer())) {
       throw new DispatchError(`${key} is not Stackable`, ["Run `nico-agent` to see the Board"]);
     }
-    blockers = await blockerPrs(world, repo.slug, issue);
+    blockers = await blockerPrs(githubSource(world, repo.slug), issue);
   }
   const stackedOn = await chooseStackTarget(world, key, repo.slug, blockers, request.stackOn,
     () => new DispatchError(`${key} has open Blockers without same-Repo open PRs`, ["Run `nico-agent` to see the Board"]));
@@ -166,7 +158,7 @@ async function newLinearDispatch(world: World, configDir: string, identifier: st
     throw new DispatchError(`${identifier} is assigned to someone else on Linear`, ["Run `nico-agent` to see the Ready issues"]);
   }
   const ref: IssueRef = { repo: claimingRepo(configDir, issue, request.repo), identifier, key: identifier };
-  const blockers = await linearBlockerPrs(world, ref.repo.slug, issue);
+  const blockers = await blockerPrs(linearSource(world, ref.repo.slug), issue);
   const stackedOn = await chooseStackTarget(world, identifier, ref.repo.slug, blockers, request.stackOn,
     () => new DispatchError(`${identifier} has unresolved Blockers without open PRs in ${ref.repo.slug}`, [
       "Dispatch it once its Blockers are done, or once each has an open PR in the Repo",
@@ -404,7 +396,7 @@ async function chooseLaunch(world: World, configDir: string, request: DispatchRe
   const catalog = await harnessCatalog(world, configDir, request.harness);
   if (!catalog) {
     const names = harnesses(configDir).map((h) => h.name);
-    throw new DispatchError(`unknown Harness \`${request.harness}\``, [`Valid Harnesses: ${names.join(", ")}`], true);
+    throw new LaunchError("harness", `unknown Harness \`${request.harness}\``, [`Valid Harnesses: ${names.join(", ")}`], true);
   }
   const { harness, models, error } = catalog;
   const choice = models.find((m) => m.model === request.model);
@@ -415,13 +407,13 @@ async function chooseLaunch(world: World, configDir: string, request: DispatchRe
     ]);
   }
   if (!choice) {
-    throw new DispatchError(`unknown model \`${request.model}\` for ${harness.name}`, [
+    throw new LaunchError("model", `unknown model \`${request.model}\` for ${harness.name}`, [
       `Valid models for ${harness.name}: ${models.map((m) => m.model).join(", ")}`,
     ], true);
   }
   if (!choice.efforts.includes(request.effort)) {
     const launch = `${harness.name} ${choice.model}`;
-    throw new DispatchError(`Effort \`${request.effort}\` is not valid for ${launch}`, [
+    throw new LaunchError("effort", `Effort \`${request.effort}\` is not valid for ${launch}`, [
       `Valid Efforts for ${launch}: ${choice.efforts.join(", ")}`,
     ]);
   }
@@ -714,9 +706,7 @@ function sameLaunch(existing: Dispatch, request: DispatchRequest) {
 function matchesStack(choice: string, repo: string, target: StackTarget) {
   const url = choice.match(/^https?:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/issues\/(\d+)\/?$/i);
   const key = /^\d+$/.test(choice) ? `${repo}#${choice}` : url ? `${url[1]}#${url[2]}` : linearIdentifier(choice) ?? choice;
-  // Records from before any open PR could be stacked on name the Blocker.
-  const issue = target.issue ?? (target as { blocker?: string }).blocker;
-  return (issue !== undefined && sameSlug(key, issue)) || sameSlug(choice, target.pr.url);
+  return (target.issue !== undefined && sameSlug(key, target.issue)) || sameSlug(choice, target.pr.url);
 }
 
 /** A Dispatch's Base without the remote prefix; unset only on a record from before the fetch step chose it. */

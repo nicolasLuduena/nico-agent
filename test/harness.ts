@@ -21,7 +21,7 @@ export function setup() {
     const response = await handler(new Request(`http://127.0.0.1:42069${path}`, init));
     return { status: response.status, type: response.headers.get("content-type"), body: await response.text() };
   };
-  const answer = mcpHandler({ world, configDir, bin });
+  const answer = mcpHandler((argv) => run(argv, { world, configDir, bin }));
   /**
    * One line on the MCP server's stdin: a JSON-RPC message (or a raw string).
    * Returns its reply line parsed, or null when there is none.

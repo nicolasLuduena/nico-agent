@@ -36,6 +36,10 @@ describe("GitHub Specs", () => {
       { spec: "acme/api#10", title: "Billing", repo: "acme/api", issues: ["acme/api#13", "acme/api#11", "acme/api#12"], running: false },
       { spec: "acme/api#20", title: "A bug from triage", repo: "acme/api", issues: ["acme/api#20"], running: false },
     ]);
+    // In TOON, the Spec of one would repeat the Ready list.
+    const { stdout } = await cli();
+    expect(stdout).toContain("specs[1]:\n  - spec: acme/api#10\n");
+    expect(stdout).not.toContain("spec: acme/api#20");
   });
 
   test("a running Spec's next issue is its first unblocked one, stacked on the Spec's newest open PR", async () => {

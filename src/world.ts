@@ -149,6 +149,12 @@ export const READY_LABEL = "ready-for-agent";
 /** A failure reported by an adapter, already stripped of tool noise. */
 export class WorldError extends Error {}
 
+/** The message of an adapter failure; anything else is a bug and propagates. */
+export function worldErrorMessage(e: unknown) {
+  if (e instanceof WorldError) return e.message;
+  throw e;
+}
+
 export interface LinearIssue {
   identifier: string;
   title: string;
