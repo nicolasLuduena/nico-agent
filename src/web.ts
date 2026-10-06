@@ -1,5 +1,6 @@
 import htmx from "htmx.org/dist/htmx.min.js" with { type: "text" };
-import { type BaseChoice, type Board, type StackOption, baseChoice, linearStackOptions, loadBoard, stackChoice, stackOptions } from "./board";
+import { type BaseChoice, type Board, type StackOption, baseChoice, loadBoard, stackChoice, stackOptions } from "./board";
+import { githubSource, linearSource } from "./source";
 import { type Repo, ConfigError, findRepo, loadConfig } from "./config";
 import { type IssueOutcome, CloseConfirmationRequired, StepFailed, baseBranch, closeDispatch, dispatch, eachIssue, review, resolveIssue } from "./dispatch";
 import { DispatchError } from "./dispatch-error";
@@ -135,10 +136,10 @@ async function getLaunchForm(ctx: WebContext, params: URLSearchParams, action: A
     const repo = ref.repo ?? formRepo(ctx.configDir, chosen.repo);
     if (ref.repo) {
       const issue = await ctx.world.githubIssue(ref.repo.slug, ref.number);
-      if (issue) options = await stackOptions(ctx.world, ref.repo.slug, issue);
+      if (issue) options = await stackOptions(githubSource(ctx.world, ref.repo.slug), issue);
     } else {
       const issue = await ctx.world.linearIssue(ref.identifier);
-      if (issue) options = await linearStackOptions(ctx.world, repo.slug, issue);
+      if (issue) options = await stackOptions(linearSource(ctx.world, repo.slug), issue);
     }
     // A Stacked dispatch has no Base choice.
     if (!options.length) base = await baseChoice(ctx.world, repo, param("base") || choices.remembered.bases[repo.slug]);
@@ -644,7 +645,7 @@ async function fitFor(ctx: ServerContext, action: Action, issue: string, base?: 
   if (record) return { skip: `${ref.key} is already In flight` };
   if (!ref.repo) return { skip: `${ref.key} is a Linear issue; dispatch it from its row, which names its Repo` };
   const found = await ctx.world.githubIssue(ref.repo.slug, ref.number);
-  const stack = found ? await stackOptions(ctx.world, ref.repo.slug, found) : [];
+  const stack = found ? await stackOptions(githubSource(ctx.world, ref.repo.slug), found) : [];
   // A Stacked dispatch has no Base choice.
   if (stack.length) return { stack };
   return { stack, base: await baseChoice(ctx.world, ref.repo, base || rememberedLaunches(ctx.configDir).bases[ref.repo.slug]) };

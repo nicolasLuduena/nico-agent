@@ -18,7 +18,8 @@ import {
   saveDispatch,
 } from "./state";
 import { type LinearIssue, type World, WorldError } from "./world";
-import { type BlockerPrs, baseChoice, blockerPrs, canStart, isLinearClosed, linearBlockerPrs, matchesSelector } from "./board";
+import { type BlockerPrs, baseChoice, blockerPrs, matchesSelector } from "./board";
+import { canStart, githubSource, isLinearClosed, linearSource } from "./source";
 import { type StackTarget, chooseStackTarget } from "./stack";
 
 import { DispatchError, LaunchError } from "./dispatch-error";
@@ -133,7 +134,7 @@ export async function dispatch(world: World, configDir: string, request: Dispatc
     if (!canStart(issue, await world.githubViewer())) {
       throw new DispatchError(`${key} is not Stackable`, ["Run `nico-agent` to see the Board"]);
     }
-    blockers = await blockerPrs(world, repo.slug, issue);
+    blockers = await blockerPrs(githubSource(world, repo.slug), issue);
   }
   const stackedOn = await chooseStackTarget(world, key, repo.slug, blockers, request.stackOn,
     () => new DispatchError(`${key} has open Blockers without same-Repo open PRs`, ["Run `nico-agent` to see the Board"]));
@@ -157,7 +158,7 @@ async function newLinearDispatch(world: World, configDir: string, identifier: st
     throw new DispatchError(`${identifier} is assigned to someone else on Linear`, ["Run `nico-agent` to see the Ready issues"]);
   }
   const ref: IssueRef = { repo: claimingRepo(configDir, issue, request.repo), identifier, key: identifier };
-  const blockers = await linearBlockerPrs(world, ref.repo.slug, issue);
+  const blockers = await blockerPrs(linearSource(world, ref.repo.slug), issue);
   const stackedOn = await chooseStackTarget(world, identifier, ref.repo.slug, blockers, request.stackOn,
     () => new DispatchError(`${identifier} has unresolved Blockers without open PRs in ${ref.repo.slug}`, [
       "Dispatch it once its Blockers are done, or once each has an open PR in the Repo",
