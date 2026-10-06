@@ -1,5 +1,6 @@
 import htmx from "htmx.org/dist/htmx.min.js" with { type: "text" };
-import { type BaseChoice, type Board, type StackOption, baseChoice, loadBoard, stackChoice, stackOptions } from "./board";
+import { type BaseChoice, type Board, type BoardIssue, type StackOption, type StackableIssue, baseChoice, loadBoard, stackChoice, stackOptions } from "./board";
+import type { RepoDecision, SpecDecision } from "./spec";
 import { githubSource, linearSource } from "./source";
 import { type Repo, ConfigError, findRepo, loadConfig } from "./config";
 import { type IssueOutcome, CloseConfirmationRequired, StepFailed, baseBranch, closeDispatch, dispatch, eachIssue, review, resolveIssue } from "./dispatch";
@@ -402,13 +403,12 @@ function renderInFlightRow(row: InFlightRow, choices: Choices) {
   const { dispatch: d, stage, pr, prError } = row;
   const { harness, model, effort } = d.implementer;
   const failure = d.failure ?? d.reviewer?.failure;
-  const stageClass = failure ? "failed" : stage.toLowerCase().replace(/[^a-z]+/g, "-");
   const head = [
     // Preserved across polls, so a ticked row stays ticked.
     pick(d.issue, true),
     // The Repo's name is enough to tell issues apart; the owner is in the link.
     issueLink(d.issue.slice(d.issue.indexOf("/") + 1), d.title, d.url),
-    `<span class="stage ${stageClass}">${escape(stage)}</span>`,
+    stageKey(row),
     ...(pr ? [`<a class="pr" href="${escape(pr.url)}">PR #${pr.number}</a>`] : []),
   ];
   const meta = [
@@ -458,22 +458,103 @@ function renderRepo(repo: Repo, board: Board, choices: Choices) {
     .map((e) => `<p class="error">Could not load: ${e.source ? `${e.source}: ` : ""}${escape(e.error)}</p>`);
   const ready = board.ready.filter((i) => i.repo === repo.slug);
   const stackable = board.stackable.filter((i) => i.repo === repo.slug);
+  const decision = board.specs.find((r) => r.repo === repo.slug);
+  const groups = decision ? groupsOf(decision) : [];
+  const grouped = new Set(groups.flatMap((s) => s.issues));
   const list = (rows: string[]) => ['<ul class="issues">', ...rows, "</ul>"].join("\n");
-  const readyRows = ready.map((i) => i.identifier
+  const readyRow = (i: BoardIssue) => i.identifier
     // No tick box: a batch row can't name the Repo of an issue several Repos claim.
     ? `<li>${issueLink(i.identifier, i.title, i.url)}${i.base ? baseChip(i.base) : ""}\n${launchForm("dispatch", i.identifier, choices, { repo: repo.slug }, [], board.bases[i.repo])}</li>`
-    : `<li>${pick(`${i.repo}#${i.number}`)}${issueLink(`#${i.number}`, i.title, i.url)}\n${launchForm("dispatch", `${i.repo}#${i.number}`, choices, {}, [], board.bases[i.repo])}</li>`);
-  const stackRows = stackable.map((i) => i.identifier
+    : `<li>${pick(`${i.repo}#${i.number}`)}${issueLink(`#${i.number}`, i.title, i.url)}\n${launchForm("dispatch", `${i.repo}#${i.number}`, choices, {}, [], board.bases[i.repo])}</li>`;
+  const stackRow = (i: StackableIssue) => i.identifier
     ? `<li>${issueLink(i.identifier, i.title, i.url)}\n${launchForm("dispatch", i.identifier, choices, { repo: repo.slug }, i.blockers)}</li>`
-    : `<li>${pick(`${i.repo}#${i.number}`)}${issueLink(`#${i.number}`, i.title, i.url)}\n${launchForm("dispatch", `${i.repo}#${i.number}`, choices, {}, i.blockers)}</li>`);
+    : `<li>${pick(`${i.repo}#${i.number}`)}${issueLink(`#${i.number}`, i.title, i.url)}\n${launchForm("dispatch", `${i.repo}#${i.number}`, choices, {}, i.blockers)}</li>`;
+  // An issue's row sits under its Spec; the rest are Specs of one, listed as before.
+  const looseReady = ready.filter((i) => !grouped.has(boardKey(i)));
+  const looseStackable = stackable.filter((i) => !grouped.has(boardKey(i)));
+  const rowsOf = (spec: SpecDecision) => spec.issues.flatMap((issue) => {
+    const flight = board.inFlight.find((r) => r.dispatch.issue === issue);
+    if (flight) return issue === spec.spec ? [] : [memberRow(flight)];
+    const r = ready.find((i) => boardKey(i) === issue);
+    if (r) return [readyRow(r)];
+    const s = stackable.find((i) => boardKey(i) === issue);
+    return s ? [stackRow(s)] : [];
+  });
+  const specSections = groups.map((spec) => renderSpec(spec, rowsOf(spec), board.inFlight));
   return [
     '<section class="repo">',
-    `<header><h2>${escape(repo.slug)}</h2><span class="count">${ready.length + stackable.length}</span></header>`,
+    `<header><h2>${escape(repo.slug)}</h2><span class="count">${ready.length + stackable.length}</span>${decision ? roomReadout(decision) : ""}</header>`,
     ...errors,
-    ready.length ? list(readyRows) : errors.length ? "" : '<p class="empty">No Ready issues.</p>',
-    ...(stackable.length ? ["<h3>Stackable</h3>", list(stackRows)] : []),
+    errors.length || ready.length + stackable.length ? "" : '<p class="empty">No Ready issues.</p>',
+    ...specSections,
+    ...(looseReady.length && specSections.length ? ["<h3>Specs of one</h3>"] : []),
+    looseReady.length ? list(looseReady.map(readyRow)) : "",
+    ...(looseStackable.length ? ["<h3>Stackable</h3>", list(looseStackable.map(stackRow))] : []),
     "</section>",
   ].filter(Boolean).join("\n");
+}
+
+/** An issue as the CLI names it: `BLE-27` or `owner/repo#N`. */
+function boardKey(issue: BoardIssue) {
+  return issue.identifier ?? `${issue.repo}#${issue.number}`;
+}
+
+/**
+ * The Specs a Repo section groups rows under, running ones first, then Held,
+ * then candidates. A Spec of one that is neither running nor Held stays a
+ * plain row, since its row says all there is.
+ */
+function groupsOf(decision: RepoDecision) {
+  const rank = (s: SpecDecision) => (s.held ? 1 : s.running ? 0 : decision.candidates.includes(s.spec) ? 2 : 3);
+  return decision.specs
+    .filter((s) => s.running || s.held || s.issues.length !== 1 || s.issues[0] !== s.spec)
+    .map((s, i) => ({ s, i }))
+    .sort((a, b) => rank(a.s) - rank(b.s) || a.i - b.i)
+    .map(({ s }) => s);
+}
+
+/** The Repo's Specs as the Scheduler sees them: a slot per Spec that may run, filled while one does. */
+function roomReadout({ repo, specs, room, candidates }: RepoDecision) {
+  const running = specs.filter((s) => s.running).length;
+  const slots = [...Array(running).fill('<i class="taken"></i>'), ...Array(room).fill("<i></i>")].join("");
+  const figure = (label: string, n: number) => `<span>${label} <b>${n}</b></span>`;
+  return [
+    `<div class="room" role="group" aria-label="Specs of ${escape(repo)}">`,
+    `<span class="slots" aria-hidden="true">${slots}</span>`,
+    figure("Running", running), figure("Room", room), figure("Candidates", candidates.length),
+    "</div>",
+  ].join("");
+}
+
+/** A Spec's group: its state, what it does next or why not, and its issues' rows in sub-issue order. */
+function renderSpec(spec: SpecDecision, rows: string[], inFlight: InFlightRow[]) {
+  const state = spec.held ? "held" : spec.running ? "running" : spec.next ? "candidate" : spec.waiting ? "waiting" : "idle";
+  const label = { held: "Held", running: "Running", candidate: "Candidate", waiting: "Waiting", idle: "Not startable" }[state];
+  const key = spec.spec.includes("#") ? spec.spec.slice(spec.spec.lastIndexOf("#")) : spec.spec;
+  // A Spec of one is its own issue, so its Stage sits in its heading.
+  const own = inFlight.find((r) => r.dispatch.issue === spec.spec);
+  const note = spec.held?.reason ?? spec.waiting?.reason ?? spec.next?.reason ?? spec.reason;
+  const title = spec.url ? issueLink(key, spec.title, spec.url) : `<span class="title"><span class="num">${escape(key)}</span> ${escape(spec.title)}</span>`;
+  return [
+    `<div class="spec ${state}">`,
+    `<header><span class="spec-state">${label}</span>${title}${own ? stageKey(own) : ""}</header>`,
+    ...(note ? [`<p class="spec-note${spec.held ? " error" : ""}">${escape(note)}</p>`] : []),
+    ...(rows.length ? ['<ul class="issues">', ...rows, "</ul>"] : []),
+    "</div>",
+  ].join("\n");
+}
+
+/** An In-flight issue of a Spec, read-only: its row to act on is In flight, and hovering lights its track. */
+function memberRow(row: InFlightRow) {
+  const { dispatch: d, pr } = row;
+  const label = d.issue.includes("#") ? d.issue.slice(d.issue.lastIndexOf("#")) : d.issue;
+  return `<li class="member" data-issue="${escape(d.issue)}">${issueLink(label, d.title, d.url)}${stageKey(row)}${pr ? `<a class="pr" href="${escape(pr.url)}">PR #${pr.number}</a>` : ""}</li>`;
+}
+
+/** A Stage as its track's legend key. */
+function stageKey({ dispatch: d, stage }: InFlightRow) {
+  const failed = d.failure ?? d.reviewer?.failure;
+  return `<span class="stage ${failed ? "failed" : stage.toLowerCase().replace(/[^a-z]+/g, "-")}">${escape(stage)}</span>`;
 }
 
 type Action = "dispatch" | "review";
@@ -764,11 +845,11 @@ const light = (issue) => {
   lit = issue;
   for (const el of document.querySelectorAll(".lit")) el.classList.remove("lit");
   if (!issue) return;
-  for (const t of document.querySelectorAll("g.track")) if (t.dataset.issue === issue) t.classList.add("lit");
+  for (const t of document.querySelectorAll("g.track, li.member")) if (t.dataset.issue === issue) t.classList.add("lit");
   rowOf(issue)?.classList.add("lit");
 };
 document.addEventListener("mouseover", (e) => {
-  const at = e.target.closest?.("g.track, li.flight");
+  const at = e.target.closest?.("g.track, li.flight, li.member");
   light(at ? (at.dataset.issue ?? at.querySelector(".pick")?.value ?? null) : null);
 });
 // A poll replaces rows and tracks: light the hovered issue again, and draw out any track whose Stage moved.
@@ -934,6 +1015,31 @@ section li { border-top: 1px solid var(--rule); transition: background-color 120
 section li:first-child { border-top: none; }
 section li:hover, section li.lit { background: var(--panel-2); }
 
+/* A Repo's Specs as the Scheduler sees them: one slot per Spec that may run, filled while one does. */
+.room { display: flex; align-items: center; gap: 0.9rem; margin-left: auto; font-size: 12px; color: var(--ink-2); white-space: nowrap; }
+.room b { font-weight: 650; color: var(--ink); margin-left: 0.2rem; }
+.slots { display: inline-flex; gap: 3px; }
+.slots i, .spec-state::before { width: 10px; height: 6px; border-radius: 1px; border: 1px solid var(--ink-2); }
+.slots i.taken { background: var(--ink-2); }
+.spec { border-top: 1px solid var(--rule); }
+section > header + .spec { border-top: none; }
+.spec > header { display: flex; align-items: center; gap: 0.75rem; padding: 0.7rem 1rem 0.15rem; min-width: 0; }
+.spec > header a.title, .spec > header span.title { flex: 0 1 auto; font-weight: 600; }
+.spec-state { display: inline-flex; align-items: center; gap: 0.45rem; flex: none; width: 6.5rem; font-size: 12px; font-weight: 650; color: var(--ink-2); }
+.spec-state::before { content: ""; box-sizing: border-box; }
+.spec.running .spec-state { color: var(--ink); }
+.spec.running .spec-state::before { background: var(--ink); border-color: var(--ink); }
+.spec.held .spec-state { color: var(--failed-ink); }
+.spec.held .spec-state::before { border-color: var(--failed); border-style: dashed; }
+.spec.waiting .spec-state::before, .spec.idle .spec-state::before { border-style: dashed; border-color: var(--rule-strong); }
+.spec-note { margin: 0; padding: 0 1rem 0.55rem calc(1rem + 6.5rem + 0.75rem); font-size: 12px; color: var(--ink-2); }
+.spec-note.error { color: var(--failed-ink); }
+/* A Spec's issues hang from its heading, in sub-issue order. */
+.spec ul.issues { margin: 0 0 0.35rem calc(1rem + 6.5rem + 0.75rem - 1rem); border-left: 1px solid var(--rule); }
+.spec ul.issues li { border-top: none; }
+li.member { display: flex; align-items: center; gap: 0.75rem; padding: 0.45rem 1rem; min-height: 36px; }
+li.member a.title { flex: 0 1 auto; color: var(--ink-2); }
+li.member.lit { background: var(--panel-2); }
 ul.issues li { display: flex; align-items: center; gap: 0.75rem; padding: 0.45rem 1rem; min-height: 44px; }
 a.title { flex: 1; min-width: 0; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 a.title:hover { color: var(--link); text-decoration: none; }
@@ -985,6 +1091,12 @@ fieldset.row legend { float: left; margin-right: auto; font: 600 13px ui-monospa
   figure.event dl { gap: 0 1.25rem; }
   figure.event .lede { font-size: 14px; }
   ul.issues li { flex-wrap: wrap; }
+  section.repo > header { flex-wrap: wrap; }
+  .room { margin-left: 0; flex-basis: 100%; }
+  .spec > header { flex-wrap: wrap; row-gap: 0.15rem; }
+  .spec-state { width: auto; flex-basis: 100%; }
+  .spec-note { padding-left: 1rem; }
+  .spec ul.issues { margin-left: 1rem; }
   ul.issues a.title { flex-basis: calc(100% - 2rem); }
   ul.flights li { grid-template-columns: minmax(0, 1fr); grid-template-areas: "head" "meta" "notes" "actions"; }
   .flight .head { flex-wrap: wrap; row-gap: 0.25rem; }

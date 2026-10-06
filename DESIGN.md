@@ -255,6 +255,8 @@ Stage hues. Each appears in three places for one Dispatch: its track, its legend
 
 A single column, max 76rem, centered, with 1.5rem side padding (1rem below 760px). The first viewport is the event display. It is a two-column grid: the transverse view (at most 460px) on the left and the readout on the right, with a 2.5rem gap. Below it is a sticky action bar ("With selected" Dispatch / Review / Close with counts), then the In flight section, then one section per Repo.
 
+Each Repo section groups its rows by Spec: running Specs first, then Held, then candidates, then the rest, each under a heading. Loose issues follow, under "Specs of one" when any Spec heading is above them. A Spec's own rows hang from a 1px rule indented to its title, in sub-issue order.
+
 In-flight rows are a grid of head (checkbox, key and title, Stage key, PR link), meta (chips and agent states), and notes, with actions right-aligned. Ready rows are a single flex line ending in their launch form. Rows are at least 44px tall. Spacing is rem-based and tight: about 0.35rem between controls, 0.6 to 0.75rem between groups, and 1rem section padding and gaps.
 
 Below 760px, the display stacks: the SVG is capped at 300px, the subdetector key is hidden, and the readout sits under it. Row actions and launch forms wrap under the content, indented to the title's start.
@@ -297,6 +299,12 @@ Corners are small and functional: 3px for chips, counts, inline code, and the bl
 
 ### Icons
 - Icons are authored inline SVG in the brand glyph's stroke language: no fill, a `currentColor` stroke (1.2 at 11px), and round caps, so they take their container's ink. The branch mark in the Base chip is the reference.
+
+### Spec Group and Room Readout
+- **Room readout:** right-aligned in a Repo header, a row of slots (10×6px, 1px corners), one per Spec that may run, filled in muted ink while one runs and outlined while free. Beside it, Running, Room and Candidates in 12px muted labels with 650-weight ink counts. It wraps under the slug below 760px.
+- **Spec state:** a 6.5rem column leading the Spec heading, the same slot glyph plus a 12px/650 label. Running is a filled ink slot in ink; Candidate an outlined slot; Held a dashed Burst Red slot with failed-ink text; Waiting and Not startable a dashed rule-strong slot. It is never a Stage key: Spec states carry no Stage hue except Held, whose reason is error text.
+- **Spec heading:** the Spec's key in mono and its title at 600, then one 12px muted note saying what the rules decided (its next issue and Base, why it waits, or the hold's reason in failed-ink).
+- **Member line:** an In-flight issue of a Spec, read-only (its row to act on is In flight): muted title, Stage key and PR link. Hovering it lights its track, as an In-flight row does.
 
 ### Named Rules
 **The Drawn Icon Rule.** Every icon is drawn as inline SVG in the glyph's stroke language. Never use a Unicode glyph, an emoji, or an icon font in place of an icon.
