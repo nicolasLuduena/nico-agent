@@ -13,9 +13,32 @@ export class FakeWorld implements World {
       title: issue.identifier, url: `https://linear.app/bleentr/issue/${issue.identifier}/title`,
       branchName: `nico/${issue.identifier.toLowerCase()}`,
       team: { id: "team-ble", key: "BLE", name: "Bleentr" }, project: null,
-      labels: ["ready-for-agent"], state: "unstarted", assignee: null, blockers: [], ...issue,
+      labels: ["ready-for-agent"], state: "unstarted", assignee: null, blockers: [], parent: null, hasSubIssues: false, ...issue,
     };
     this.linear.set(full.team.key, [...(this.linear.get(full.team.key) ?? []), full]);
+  }
+
+  /** Sub-issue identifiers of each Linear parent issue, in sub-issue order. */
+  linearChildren = new Map<string, string[]>();
+
+  /** Add a Linear Spec: a parent issue and its sub-issues, in sub-issue order. */
+  addLinearSpec(parent: Partial<LinearIssue> & { identifier: string }, ...subIssues: (Partial<LinearIssue> & { identifier: string })[]) {
+    this.addLinearIssue({ ...parent, hasSubIssues: true });
+    for (const sub of subIssues) this.addLinearIssue({ ...(parent.team && { team: parent.team }), ...sub, parent: parent.identifier });
+    this.linearChildren.set(parent.identifier, [...(this.linearChildren.get(parent.identifier) ?? []), ...subIssues.map((s) => s.identifier)]);
+  }
+
+  /** The Linear issue `identifier`, to change it as a test goes on. */
+  linearIssueNamed(identifier: string) {
+    const issue = [...this.linear.values()].flat().find((i) => i.identifier === identifier);
+    if (!issue) throw new Error(`no Linear issue ${identifier}`);
+    return issue;
+  }
+
+  async linearSubIssues(identifier: string) {
+    this.call(`linear sub-issues ${identifier}`);
+    if (this.linearFailure) throw new WorldError(this.linearFailure);
+    return (this.linearChildren.get(identifier) ?? []).map((id) => this.linearIssueNamed(id));
   }
 
   async linearViewer() {

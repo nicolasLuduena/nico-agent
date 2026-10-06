@@ -12,6 +12,11 @@ export interface World {
   linearIssues(team: string): Promise<LinearIssue[]>;
   /** One Linear issue by identifier (`BLE-27`), or null if there is no such issue. */
   linearIssue(identifier: string): Promise<LinearIssue | null>;
+  /**
+   * A Linear issue's sub-issues (its children), in sub-issue order: the order
+   * of work when the issue is a Spec. Empty for an issue without any.
+   */
+  linearSubIssues(identifier: string): Promise<LinearIssue[]>;
   /** The URLs of a Linear issue's attachments, GitHub PRs among them. */
   linearAttachmentUrls(identifier: string): Promise<string[]>;
   /** Assign a Linear issue to the API key's owner (the Claim, ADR-0007). */
@@ -136,4 +141,8 @@ export interface LinearIssue {
   assignee: string | null;
   /** Issues blocking this one, by identifier, with their Linear state type. */
   blockers: { identifier: string; state: string }[];
+  /** The parent issue, by identifier: the Spec this issue belongs to, if any. */
+  parent: string | null;
+  /** Whether the issue has sub-issues, which makes it a Spec. */
+  hasSubIssues: boolean;
 }

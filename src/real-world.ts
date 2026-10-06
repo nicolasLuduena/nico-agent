@@ -139,6 +139,7 @@ export class RealWorld implements World {
   linearViewer() { return this.linear.viewer(); }
   linearIssues(team: string) { return this.linear.issues(team); }
   linearIssue(identifier: string) { return this.linear.issue(identifier); }
+  linearSubIssues(identifier: string) { return this.linear.subIssues(identifier); }
   linearAttachmentUrls(identifier: string) { return this.linear.attachmentUrls(identifier); }
   linearAssignSelf(identifier: string) { return this.linear.assignSelf(identifier); }
 

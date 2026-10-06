@@ -42,6 +42,7 @@ test("Linear adapter reads viewer, pages issues and uses incoming blocks as Bloc
       team: { id: "team-ble", key: "BLE", name: "Bleentr" }, project: { id: "pdf", name: "PDF diff" },
       state: "backlog", assignee: "user-me", labels: ["ready-for-agent", "pdf"],
       blockers: [{ identifier: "BLE-25", state: "completed" }, { identifier: "BLE-26", state: "started" }],
+      parent: null, hasSubIssues: false,
     }]);
     expect(requests.at(-1).variables.cursor).toBe("issues-2");
     expect(requests[1].variables.filter.team).toEqual({ or: [{ key: { eq: "BLE" } }, { name: { eq: "BLE" } }] });
@@ -112,5 +113,26 @@ test("Linear adapter pages attachment URLs and assigns the issue to the API key'
     expect(await source.attachmentUrls("BLE-27")).toEqual(["https://www.figma.com/file/abc", "https://github.com/bleentr/pdf-diff/pull/12"]);
     await source.assignSelf("BLE-27");
     expect(requests.at(-1).variables).toEqual({ id: "issue-27", assigneeId: "user-me" });
+  } finally { app.stop(true); }
+});
+
+test("Linear adapter reads a Spec's sub-issues in sub-issue order, each knowing its parent", async () => {
+  const node = (identifier: string, subIssueSortOrder: number | null) => ({
+    id: `id-${identifier}`, identifier, title: identifier, url: `https://linear.app/bleentr/issue/${identifier}`, branchName: identifier.toLowerCase(),
+    team: { id: "team-ble", key: "BLE", name: "Bleentr" }, project: null, state: { type: "unstarted" }, assignee: null,
+    labels: page([{ name: "ready-for-agent" }]), inverseRelations: page([]), parent: { identifier: "BLE-10" }, children: { nodes: [] }, subIssueSortOrder,
+  });
+  const requests: any[] = [];
+  const { app, endpoint } = server((body) => {
+    requests.push(body);
+    if (body.variables.cursor) return Response.json({ data: { issue: { children: page([node("BLE-13", -1)]) } } });
+    return Response.json({ data: { issue: { children: page([node("BLE-11", 2), node("BLE-12", 1)], "children-2") } } });
+  });
+  try {
+    const subIssues = await new LinearSource("/unused", { LINEAR_API_KEY: "test-key" }, endpoint).subIssues("BLE-10");
+    expect(subIssues.map((i) => i.identifier)).toEqual(["BLE-13", "BLE-12", "BLE-11"]);
+    expect(subIssues[0]).toMatchObject({ parent: "BLE-10", hasSubIssues: false });
+    expect(requests[0].variables).toEqual({ id: "BLE-10", cursor: null });
+    expect(requests[0].query).toContain("subIssueSortOrder");
   } finally { app.stop(true); }
 });

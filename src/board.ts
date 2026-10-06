@@ -201,9 +201,9 @@ export function isLinearReady(issue: LinearIssue, viewer: string) {
   return canStartLinear(issue, viewer) && issue.blockers.every((b) => isLinearClosed(b.state));
 }
 
-/** Ready but for its Blockers: not started, labelled `ready-for-agent`, and unassigned or assigned to the user. */
+/** Ready but for its Blockers: not a Spec, not started, labelled `ready-for-agent`, and unassigned or assigned to the user. */
 export function canStartLinear(issue: LinearIssue, viewer: string) {
-  return ["backlog", "unstarted"].includes(issue.state) && issue.labels.includes(READY_LABEL) &&
+  return !issue.hasSubIssues && ["backlog", "unstarted"].includes(issue.state) && issue.labels.includes(READY_LABEL) &&
     (issue.assignee === null || issue.assignee === viewer);
 }
 
