@@ -88,13 +88,17 @@ async function herdr(args: string[]): Promise<any> {
   return JSON.parse(await herdrText(args)).result;
 }
 
+const LINKED_PR_FIELDS = "number url state baseRefName headRefName headRepository { nameWithOwner } repository { nameWithOwner }";
+
+// Closing PRs come along, so a Board asks GitHub once per page of issues, not once per issue.
 const ISSUE_FIELDS = `
         number title url body state
         labels(first: 50) { nodes { name } }
         assignees(first: 20) { nodes { login } }
         blockedBy(first: 50) { nodes { number state repository { nameWithOwner } } }
         parent { number repository { nameWithOwner } }
-        subIssuesSummary { total }`;
+        subIssuesSummary { total }
+        closedByPullRequestsReferences(first: 20) { nodes { ${LINKED_PR_FIELDS} } }`;
 
 // Native sub-issues come in sub-issue order, the order of work of a Spec.
 const SUB_ISSUES_QUERY = `
@@ -135,7 +139,7 @@ query($owner: String!, $name: String!, $number: Int!) {
   repository(owner: $owner, name: $name) {
     issue(number: $number) {
       closedByPullRequestsReferences(first: 20) {
-        nodes { number url state baseRefName headRefName headRepository { nameWithOwner } repository { nameWithOwner } }
+        nodes { ${LINKED_PR_FIELDS} }
       }
     }
   }
@@ -152,10 +156,33 @@ interface IssueNode {
   blockedBy: { nodes: { number: number; state: string; repository: { nameWithOwner: string } }[] };
   parent: { number: number; repository: { nameWithOwner: string } } | null;
   subIssuesSummary: { total: number };
+  closedByPullRequestsReferences?: { nodes: LinkedPrNode[] };
 }
+
+interface LinkedPrNode {
+  number: number;
+  url: string;
+  state: string;
+  baseRefName: string;
+  headRefName: string;
+  headRepository: { nameWithOwner: string } | null;
+  repository: { nameWithOwner: string };
+}
+
+/** How long a Repo's PR listing and an issue's closing PRs are reused: within one Board, and a little longer for a polling web Board. */
+const PR_SNAPSHOT_MS = 20_000;
 
 export class RealWorld implements World {
   private readonly linear = new LinearSource();
+  /** Closing PRs of each issue (`owner/name#n`), as the issue queries brought them. */
+  private readonly linkedPrs = new Map<string, { at: number; prs: PullRequest[] }>();
+  /** Every PR of a Repo, listed once for all branch lookups. */
+  private readonly repoPrs = new Map<string, { at: number; prs: Promise<PullRequest[]> }>();
+
+  private rememberLinked(slug: string, node: IssueNode) {
+    const linked = node.closedByPullRequestsReferences;
+    if (linked) this.linkedPrs.set(`${slug.toLowerCase()}#${node.number}`, { at: Date.now(), prs: linked.nodes.map(toPullRequest) });
+  }
 
   linearViewer() { return this.linear.viewer(); }
   linearIssues(team: string) { return this.linear.issues(team); }
@@ -195,6 +222,7 @@ export class RealWorld implements World {
       const response = JSON.parse(await gh(args));
       const page = response.data?.repository?.issues;
       if (!page) throw new WorldError("repository not found on GitHub, or not visible to your account");
+      for (const node of page.nodes as IssueNode[]) this.rememberLinked(slug, node);
       issues.push(...(page.nodes as IssueNode[]).map(toIssue));
       cursor = page.pageInfo.hasNextPage ? page.pageInfo.endCursor : null;
     } while (cursor);
@@ -214,6 +242,7 @@ export class RealWorld implements World {
     if (repository === undefined || repository === null) {
       throw new WorldError("repository not found on GitHub, or not visible to your account");
     }
+    if (repository.issue) this.rememberLinked(slug, repository.issue);
     return repository.issue ? toIssue(repository.issue) : null;
   }
 
@@ -227,6 +256,7 @@ export class RealWorld implements World {
       const page = JSON.parse(await gh(args)).data?.repository?.issue?.subIssues;
       if (!page) throw new WorldError(`${slug}#${number} was not found on GitHub`);
       const nodes = page.nodes as (IssueNode & { repository: { nameWithOwner: string } })[];
+      for (const node of nodes) this.rememberLinked(node.repository.nameWithOwner, node);
       subIssues.push(...nodes.map((node) => ({ ...toIssue(node), slug: node.repository.nameWithOwner })));
       cursor = page.pageInfo.hasNextPage ? page.pageInfo.endCursor : null;
     } while (cursor);
@@ -245,29 +275,14 @@ export class RealWorld implements World {
   }
 
   async githubLinkedPullRequests(slug: string, number: number) {
+    const known = this.linkedPrs.get(`${slug.toLowerCase()}#${number}`);
+    if (known && Date.now() - known.at < PR_SNAPSHOT_MS) return known.prs;
     const [owner, name] = slug.split("/") as [string, string];
     const args = ["api", "graphql", "-f", `query=${LINKED_PRS_QUERY}`, "-f", `owner=${owner}`, "-f", `name=${name}`];
     args.push("-F", `number=${number}`);
     const issue = JSON.parse(await gh(args)).data?.repository?.issue;
     if (!issue) throw new WorldError(`${slug}#${number} was not found on GitHub`);
-    const nodes = issue.closedByPullRequestsReferences.nodes as {
-      number: number;
-      url: string;
-      state: string;
-      baseRefName: string;
-      headRefName: string;
-      headRepository: { nameWithOwner: string } | null;
-      repository: { nameWithOwner: string };
-    }[];
-    return nodes.map((pr) => ({
-      repo: pr.repository.nameWithOwner,
-      number: pr.number,
-      url: pr.url,
-      state: pr.state.toLowerCase() as PullRequest["state"],
-      baseBranch: pr.baseRefName,
-      // A fork head is not fetchable as origin/<head branch> in this clone.
-      headBranch: pr.headRepository?.nameWithOwner.toLowerCase() === pr.repository.nameWithOwner.toLowerCase() ? pr.headRefName : undefined,
-    }));
+    return (issue.closedByPullRequestsReferences.nodes as LinkedPrNode[]).map(toPullRequest);
   }
 
   async githubPullRequest(slug: string, number: number): Promise<PullRequest | null> {
@@ -293,12 +308,27 @@ export class RealWorld implements World {
   }
 
   async githubBranchPullRequests(slug: string, branch: string): Promise<PullRequest[]> {
-    const result = await gh(["pr", "list", "--repo", slug, "--head", branch, "--state", "all", "--limit", "100", "--json", "number,url,state,baseRefName,headRefName,isCrossRepository"]);
-    const prs = JSON.parse(result) as { number: number; url: string; state: string; baseRefName: string; headRefName: string; isCrossRepository: boolean }[];
-    // gh lists newest first; linkedPr expects the latest at the end.
-    return prs.reverse().map((pr) => ({ repo: slug, number: pr.number, url: pr.url,
-      state: pr.state.toLowerCase() as PullRequest["state"], baseBranch: pr.baseRefName,
-      ...(!pr.isCrossRepository && { headBranch: pr.headRefName }) }));
+    const prs = await this.allPullRequests(slug);
+    return prs.filter((pr) => pr.headBranch === branch || (pr.headBranch === undefined && pr.forkHead === branch))
+      .map(({ forkHead: _, ...pr }) => pr);
+  }
+
+  /** Every PR of a Repo, oldest first, listed once and reused for PR_SNAPSHOT_MS; `forkHead` is a fork PR's head branch name. */
+  private allPullRequests(slug: string): Promise<(PullRequest & { forkHead?: string })[]> {
+    const key = slug.toLowerCase();
+    const hit = this.repoPrs.get(key);
+    if (hit && Date.now() - hit.at < PR_SNAPSHOT_MS) return hit.prs;
+    const prs = gh(["pr", "list", "--repo", slug, "--state", "all", "--limit", "10000", "--json", "number,url,state,baseRefName,headRefName,isCrossRepository"])
+      .then((result) => {
+        const listed = JSON.parse(result) as { number: number; url: string; state: string; baseRefName: string; headRefName: string; isCrossRepository: boolean }[];
+        // gh lists newest first; linkedPr expects the latest at the end.
+        return listed.reverse().map((pr) => ({ repo: slug, number: pr.number, url: pr.url,
+          state: pr.state.toLowerCase() as PullRequest["state"], baseBranch: pr.baseRefName,
+          ...(pr.isCrossRepository ? { forkHead: pr.headRefName } : { headBranch: pr.headRefName }) }));
+      });
+    this.repoPrs.set(key, { at: Date.now(), prs });
+    prs.catch(() => this.repoPrs.delete(key));
+    return prs;
   }
 
   async gitFetch(path: string, branch?: string) {
@@ -461,6 +491,18 @@ export class RealWorld implements World {
       if (reply !== null) process.stdout.write(`${reply}\n`);
     }
   }
+}
+
+function toPullRequest(pr: LinkedPrNode): PullRequest {
+  return {
+    repo: pr.repository.nameWithOwner,
+    number: pr.number,
+    url: pr.url,
+    state: pr.state.toLowerCase() as PullRequest["state"],
+    baseBranch: pr.baseRefName,
+    // A fork head is not fetchable as origin/<head branch> in this clone.
+    headBranch: pr.headRepository?.nameWithOwner.toLowerCase() === pr.repository.nameWithOwner.toLowerCase() ? pr.headRefName : undefined,
+  };
 }
 
 function toIssue(node: IssueNode): GitHubIssue {

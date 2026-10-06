@@ -20,7 +20,10 @@ test("the PRs on a branch carry their head branch, unless they come from a fork"
       { repo: "acme/api", number: 17, url: "https://github.com/acme/api/pull/17", state: "closed", baseBranch: "main" },
       { repo: "acme/api", number: 18, url: "https://github.com/acme/api/pull/18", state: "open", baseBranch: "agent/api-6", headBranch: "agent/api-8" },
     ]);
-    expect(await Bun.file(join(bin, "args")).text()).toContain("--head agent/api-8");
+    // One listing of the Repo's PRs serves every branch.
+    const args = await Bun.file(join(bin, "args")).text();
+    expect(args).toContain("--state all");
+    expect(args).not.toContain("--head");
   } finally {
     process.env.PATH = path;
   }
