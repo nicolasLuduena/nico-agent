@@ -56,27 +56,6 @@ describe("board", () => {
         "  acme/api#1,Unassigned,main",
         "  acme/api#2,Assigned to me,main",
         "  acme/api#7,Blocker closed,main",
-        "specs[4]:",
-        "  - spec: acme/api#1",
-        "    title: Unassigned",
-        "    repo: acme/api",
-        "    issues[1]: acme/api#1",
-        "    running: false",
-        "  - spec: acme/api#2",
-        "    title: Assigned to me",
-        "    repo: acme/api",
-        "    issues[1]: acme/api#2",
-        "    running: false",
-        "  - spec: acme/api#7",
-        "    title: Blocker closed",
-        "    repo: acme/api",
-        "    issues[1]: acme/api#7",
-        "    running: false",
-        "  - spec: acme/api#8",
-        "    title: One Blocker still open",
-        "    repo: acme/api",
-        "    issues[1]: acme/api#8",
-        "    running: false",
         "rooms[1]:",
         "  - repo: acme/api",
         "    running: []",
@@ -93,6 +72,9 @@ describe("board", () => {
         "",
       ].join("\n"),
     );
+    // Specs of one repeat the Ready list in TOON; --json keeps them.
+    expect((await cli("board", "--json")).json().specs.map((s: { spec: string }) => s.spec))
+      .toEqual(["acme/api#1", "acme/api#2", "acme/api#7", "acme/api#8"]);
   });
 
   test("says explicitly when no configured Repo has a Ready issue", async () => {
