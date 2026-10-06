@@ -32,7 +32,7 @@ export class FakeWorld implements World {
   linearAttachments = new Map<string, string[]>();
   /** Identifiers each `linearAssignSelf` assigned. */
   linearClaimed: string[] = [];
-  /** PRs `githubPullRequest` finds, by `slug#N`. */
+  /** PRs `githubPullRequest` finds, by `slug#N`, besides linked ones. */
   prs = new Map<string, PullRequest>();
 
   async linearIssue(identifier: string) {
@@ -61,7 +61,13 @@ export class FakeWorld implements World {
 
   async githubPullRequest(slug: string, number: number) {
     this.call(`github pr ${slug}#${number}`);
-    return this.prs.get(`${slug}#${number}`) ?? null;
+    return this.prs.get(`${slug}#${number}`) ?? this.knownPrs().find((pr) => pr.repo === slug && pr.number === number) ?? null;
+  }
+
+  /** Every PR added or linked to an issue, without repeats. */
+  private knownPrs() {
+    const all = [...this.prs.values(), ...[...this.linkedPrs.values()].flat()];
+    return all.filter((pr, i) => all.findIndex((other) => other.url === pr.url) === i);
   }
   clones = new Map<string, string[]>();
   issues = new Map<string, GitHubIssue[]>();
@@ -94,6 +100,7 @@ export class FakeWorld implements World {
   opencodeCatalog = OPENCODE_CATALOG;
   /** PRs linked to each issue, by `slug#N`. */
   linkedPrs = new Map<string, PullRequest[]>();
+  /** PRs on each `slug:branch`, overriding those found among added and linked PRs. */
   branchPrs = new Map<string, PullRequest[]>();
   /** Agent state of each started agent, as `herdr agent list` reports it. */
   agentStates = new Map<string, string>();
@@ -217,7 +224,7 @@ export class FakeWorld implements World {
 
   async githubBranchPullRequests(slug: string, branch: string) {
     this.call(`github branch prs ${slug}:${branch}`);
-    return this.branchPrs.get(`${slug}:${branch}`) ?? [];
+    return this.branchPrs.get(`${slug}:${branch}`) ?? this.knownPrs().filter((pr) => pr.repo === slug && pr.headBranch === branch);
   }
 
   async gitFetch(path: string, branch?: string) {

@@ -255,11 +255,12 @@ export class RealWorld implements World {
   }
 
   async githubBranchPullRequests(slug: string, branch: string): Promise<PullRequest[]> {
-    const result = await gh(["pr", "list", "--repo", slug, "--head", branch, "--state", "all", "--limit", "100", "--json", "number,url,state,baseRefName"]);
-    const prs = JSON.parse(result) as { number: number; url: string; state: string; baseRefName: string }[];
+    const result = await gh(["pr", "list", "--repo", slug, "--head", branch, "--state", "all", "--limit", "100", "--json", "number,url,state,baseRefName,headRefName,isCrossRepository"]);
+    const prs = JSON.parse(result) as { number: number; url: string; state: string; baseRefName: string; headRefName: string; isCrossRepository: boolean }[];
     // gh lists newest first; linkedPr expects the latest at the end.
     return prs.reverse().map((pr) => ({ repo: slug, number: pr.number, url: pr.url,
-      state: pr.state.toLowerCase() as PullRequest["state"], baseBranch: pr.baseRefName }));
+      state: pr.state.toLowerCase() as PullRequest["state"], baseBranch: pr.baseRefName,
+      ...(!pr.isCrossRepository && { headBranch: pr.headRefName }) }));
   }
 
   async gitFetch(path: string, branch?: string) {

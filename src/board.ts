@@ -67,32 +67,49 @@ export function canStart(issue: GitHubIssue, viewer: string) {
     issue.assignees.every((login) => login.toLowerCase() === viewer.toLowerCase());
 }
 
+/** Each unresolved Blocker of an issue, with its open PRs whose head can be fetched from a Repo. */
+export interface BlockerPrs {
+  blocker: string;
+  prs: (PullRequest & { headBranch: string })[];
+}
+
+/** Each open Blocker of a GitHub issue, with its open PRs in `repo`. */
+export async function blockerPrs(world: World, repo: string, issue: GitHubIssue): Promise<BlockerPrs[]> {
+  const blockers = issue.blockers.filter((b) => b.state === "open");
+  return Promise.all(blockers.map(async (b) => ({
+    blocker: `${b.slug}#${b.number}`,
+    prs: stackable(await world.githubLinkedPullRequests(b.slug, b.number), repo),
+  })));
+}
+
+/** Each unresolved Blocker of a Linear issue, with its open PRs attached in `repo`. */
+export async function linearBlockerPrs(world: World, repo: string, issue: LinearIssue): Promise<BlockerPrs[]> {
+  const blockers = issue.blockers.filter((b) => !isLinearClosed(b.state));
+  return Promise.all(blockers.map(async (b) => ({
+    blocker: b.identifier,
+    prs: stackable(await linearPullRequests(world, b.identifier, repo), repo),
+  })));
+}
+
 /** Each open Blocker must have an open PR whose head can be fetched from this Repo. */
 export async function stackOptions(world: World, repo: string, issue: GitHubIssue): Promise<StackOption[]> {
-  const blockers = issue.blockers.filter((b) => b.state === "open");
-  const options = await Promise.all(blockers.map(async (b) => {
-    const prs = await world.githubLinkedPullRequests(b.slug, b.number);
-    return stackable(prs, repo).map((pr) => ({ blocker: `${b.slug}#${b.number}`, pr }));
-  }));
-  return everyBlocker(options);
+  return everyBlocker(await blockerPrs(world, repo, issue));
 }
 
 /** Each unresolved Blocker of a Linear issue must have an open PR attached whose head can be fetched from this Repo. */
 export async function linearStackOptions(world: World, repo: string, issue: LinearIssue): Promise<StackOption[]> {
-  const blockers = issue.blockers.filter((b) => !isLinearClosed(b.state));
-  const options = await Promise.all(blockers.map(async (b) =>
-    stackable(await linearPullRequests(world, b.identifier, repo), repo).map((pr) => ({ blocker: b.identifier, pr }))));
-  return everyBlocker(options);
+  return everyBlocker(await linearBlockerPrs(world, repo, issue));
 }
 
-function stackable(prs: PullRequest[], repo: string) {
+/** Open PRs in `repo` whose head branch can be fetched from it. */
+export function stackable(prs: PullRequest[], repo: string) {
   return prs.filter((pr): pr is PullRequest & { headBranch: string } =>
     pr.state === "open" && sameSlug(pr.repo, repo) && Boolean(pr.headBranch));
 }
 
 /** The options of each Blocker, or none when some Blocker has none. */
-function everyBlocker(options: StackOption[][]) {
-  return options.some((prs) => prs.length === 0) ? [] : options.flat();
+export function everyBlocker(blockers: BlockerPrs[]): StackOption[] {
+  return blockers.some((b) => b.prs.length === 0) ? [] : blockers.flatMap((b) => b.prs.map((pr) => ({ blocker: b.blocker, pr })));
 }
 
 /**
