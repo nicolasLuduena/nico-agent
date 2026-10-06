@@ -159,6 +159,7 @@ async function newLinearDispatch(world: World, configDir: string, identifier: st
   const issue = await world.linearIssue(identifier);
   if (!issue) throw new DispatchError(`${identifier} was not found on Linear`, ["Check the identifier in Linear"]);
   if (isLinearClosed(issue.state)) throw new DispatchError(`${identifier} is closed`, ["Run `nico-agent` to see the Ready issues"]);
+  if (issue.hasSubIssues) throw new DispatchError(`${identifier} is a Spec; dispatch its issues instead`, ["Run `nico-agent` to see the Ready issues"]);
   // Linear has one assignee, so the Claim would replace someone else.
   if (issue.assignee !== null && issue.assignee !== await world.linearViewer()) {
     throw new DispatchError(`${identifier} is assigned to someone else on Linear`, ["Run `nico-agent` to see the Ready issues"]);
