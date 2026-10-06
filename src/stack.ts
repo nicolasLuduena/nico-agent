@@ -1,4 +1,4 @@
-import { type BlockerPrs, everyBlocker, stackChoice, stackable } from "./board";
+import { type BlockerPrs, everyBlocker, openPrsIn, stackChoice } from "./board";
 import { DispatchError } from "./dispatch";
 import { linearIdentifier } from "./linear";
 import { sameSlug } from "./slug";
@@ -67,7 +67,7 @@ async function resolveStackTarget(world: World, repo: string, choice: string): P
     return { pr: pr as StackTarget["pr"] };
   }
   const issue = stackIssue(repo, choice);
-  const prs = stackable(!("slug" in issue)
+  const prs = openPrsIn(!("slug" in issue)
     ? await linearPullRequests(world, issue.identifier, repo)
     : await world.githubLinkedPullRequests(issue.slug, issue.number), repo);
   if (!prs.length) {
@@ -121,7 +121,7 @@ async function stackBelow(world: World, repo: string, pr: PullRequest): Promise<
   const below: PullRequest[] = [];
   const seen = new Set([pr.number]);
   for (let current = pr; ;) {
-    const next = stackable(await world.githubBranchPullRequests(repo, current.baseBranch), repo).find((p) => !seen.has(p.number));
+    const next = openPrsIn(await world.githubBranchPullRequests(repo, current.baseBranch), repo).find((p) => !seen.has(p.number));
     if (!next) return below;
     below.push(next);
     seen.add(next.number);

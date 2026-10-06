@@ -83,7 +83,7 @@ export async function blockerPrs(world: World, repo: string, issue: GitHubIssue)
   const blockers = issue.blockers.filter((b) => b.state === "open");
   return Promise.all(blockers.map(async (b) => ({
     blocker: `${b.slug}#${b.number}`,
-    prs: stackable(await world.githubLinkedPullRequests(b.slug, b.number), repo),
+    prs: openPrsIn(await world.githubLinkedPullRequests(b.slug, b.number), repo),
   })));
 }
 
@@ -92,7 +92,7 @@ export async function linearBlockerPrs(world: World, repo: string, issue: Linear
   const blockers = issue.blockers.filter((b) => !isLinearClosed(b.state));
   return Promise.all(blockers.map(async (b) => ({
     blocker: b.identifier,
-    prs: stackable(await linearPullRequests(world, b.identifier, repo), repo),
+    prs: openPrsIn(await linearPullRequests(world, b.identifier, repo), repo),
   })));
 }
 
@@ -107,7 +107,7 @@ export async function linearStackOptions(world: World, repo: string, issue: Line
 }
 
 /** Open PRs in `repo` whose head branch can be fetched from it. */
-export function stackable(prs: PullRequest[], repo: string) {
+export function openPrsIn(prs: PullRequest[], repo: string) {
   return prs.filter((pr): pr is PullRequest & { headBranch: string } =>
     pr.state === "open" && sameSlug(pr.repo, repo) && Boolean(pr.headBranch));
 }
