@@ -144,6 +144,7 @@ async function loadLinearSpecs(world: World, board: Omit<Board, "specs">, linear
         issue: issue.identifier, closed, startable: canStartLinear(issue, viewer), inFlight: row !== undefined,
         pr: row ? row.pr : closed ? null : linkedPr(await linearPullRequests(world, issue.identifier, repo.slug), repo.slug),
         blockers: issue.blockers.map((b) => ({ issue: b.identifier, closed: isLinearClosed(b.state) })),
+        ...(row && holdFacts(row)),
       };
     };
     const specs: SpecFacts[] = await Promise.all([...parents].map(async (spec) => {
@@ -156,7 +157,7 @@ async function loadLinearSpecs(world: World, board: Omit<Board, "specs">, linear
     for (const row of inFlight) {
       if (inSpec.has(row.dispatch.issue) || loose.some((i) => i.identifier === row.dispatch.issue)) continue;
       const { issue, title, url } = row.dispatch;
-      specs.push({ spec: issue, title, url, issues: [{ issue, closed: false, startable: false, inFlight: true, pr: row.pr, blockers: [] }] });
+      specs.push({ spec: issue, title, url, issues: [{ issue, closed: false, startable: false, inFlight: true, pr: row.pr, blockers: [], ...holdFacts(row) }] });
     }
     specs.sort((a, b) => a.spec.localeCompare(b.spec, undefined, { numeric: true }));
     return { repo: repo.slug, defaultBranch: await world.gitDefaultBranch(repo.path), specs };
@@ -168,6 +169,12 @@ async function loadLinearSpecs(world: World, board: Omit<Board, "specs">, linear
     else board.errors.push({ repo: repo.slug, source: "Linear", error: worldErrorMessage(result.reason) });
   });
   return decideSpecs(loaded).filter((r) => r.specs.length > 0);
+}
+
+/** What an In-flight Dispatch tells the Spec rules about holds. */
+function holdFacts(row: InFlightRow): Pick<IssueFacts, "failed"> {
+  const { failure } = row.dispatch;
+  return failure ? { failed: { step: failure.step, error: failure.error } } : {};
 }
 
 async function loadReady(world: World, repos: Repo[], inFlight: Dispatch[], lastBases: Record<string, string>) {

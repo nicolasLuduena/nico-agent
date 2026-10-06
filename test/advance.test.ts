@@ -83,8 +83,8 @@ describe("advance", () => {
     expect(world.calls.filter((c) => c.startsWith("herdr") && c !== "herdr agent list")).toEqual([]);
   });
 
-  test("a Dispatch that failed at a step is resumed from it on the next run, with its own launch", async () => {
-    const { cli, world, configDir } = await linearRepo();
+  test("a Spec whose Dispatch Failed is Held: the Board shows why, advance skips it, and other Specs keep moving", async () => {
+    const { cli, world } = await linearRepo();
     world.addLinearSpec({ identifier: "BLE-10" }, { identifier: "BLE-11", state: "completed" }, { identifier: "BLE-12" });
     world.failHerdr("agent start", "herdr is not running");
 
@@ -96,13 +96,51 @@ describe("advance", () => {
     });
 
     world.clearFailures();
-    setConfig(configDir, { scheduler: { harness: "claude", model: "sonnet", effort: "low" } });
+    world.addLinearSpec({ identifier: "BLE-20" }, { identifier: "BLE-21", state: "completed" }, { identifier: "BLE-22" });
+    const board = (await cli("--json")).json();
+    expect(board.specs.find((s: { spec: string }) => s.spec === "BLE-10")).toMatchObject({
+      running: true, held: { issue: "BLE-12", reason: "BLE-12's Dispatch Failed at agent start: herdr is not running" },
+    });
+    expect(board.specs.find((s: { spec: string }) => s.spec === "BLE-10").next).toBeUndefined();
+
     world.calls.length = 0;
-    const resumed = await cli("advance", "--json");
+    const held = await cli("advance", "--json");
+    expect(held.exitCode).toBe(0);
+    expect(held.json().specs).toEqual([
+      { spec: "BLE-10", repo: "bleentr/pdf-diff", result: "skipped", issue: "BLE-12", reason: "Held: BLE-12's Dispatch Failed at agent start: herdr is not running" },
+      { spec: "BLE-20", repo: "bleentr/pdf-diff", result: "started", issue: "BLE-22", reason: "BLE-22 is the first unblocked issue of BLE-20; the Spec has no open PR, so it starts from main" },
+    ]);
+    expect(held.json().help).toContain("Run `nico-agent dispatch BLE-12 --harness claude --model opus --effort high --repo bleentr/pdf-diff` to resume the Failed Dispatch, or `nico-agent close BLE-12` to Close it");
+    expect(world.calls.filter((c) => c.startsWith("herdr agent start"))).toEqual(["herdr agent start impl-pdf-diff-ble-22 --kind claude --pane w2:p2 -- --model opus --effort high"]);
+  });
+
+  test("resuming the Failed Dispatch clears the hold without any other action", async () => {
+    const { cli, world } = await linearRepo();
+    world.addLinearSpec({ identifier: "BLE-10" }, { identifier: "BLE-11", state: "completed" }, { identifier: "BLE-12" });
+    world.failHerdr("agent start", "herdr is not running");
+    await cli("advance");
+    world.clearFailures();
+
+    const resumed = await cli("dispatch", "BLE-12", "--harness", "claude", "--model", "opus", "--effort", "high", "--repo", "bleentr/pdf-diff", "--json");
     expect(resumed.exitCode).toBe(0);
-    expect(resumed.json().specs).toEqual([{ spec: "BLE-10", repo: "bleentr/pdf-diff", result: "resumed", issue: "BLE-12", reason: "BLE-12 resumed from agent start" }]);
-    expect(world.calls).toContain("herdr agent start impl-pdf-diff-ble-12 --kind claude --pane w1:p2 -- --model opus --effort high");
-    expect(world.calls.some((c) => c.startsWith("herdr worktree create"))).toBe(false);
+    const spec = (await cli("--json")).json().specs.find((s: { spec: string }) => s.spec === "BLE-10");
+    expect(spec.held).toBeUndefined();
+    expect((await cli("advance", "--json")).json().specs).toEqual([
+      { spec: "BLE-10", repo: "bleentr/pdf-diff", result: "skipped", issue: "BLE-12", reason: "BLE-12 is Implementing; a Spec has one Implementer at a time" },
+    ]);
+  });
+
+  test("Closing the Failed Dispatch clears the hold, and the Spec dispatches the issue again", async () => {
+    const { cli, world } = await linearRepo();
+    world.addLinearSpec({ identifier: "BLE-10" }, { identifier: "BLE-11", state: "completed" }, { identifier: "BLE-12" });
+    world.failHerdr("agent start", "herdr is not running");
+    await cli("advance");
+    world.clearFailures();
+
+    expect((await cli("close", "BLE-12", "--confirm")).exitCode).toBe(0);
+    expect((await cli("advance", "--json")).json().specs).toEqual([
+      { spec: "BLE-10", repo: "bleentr/pdf-diff", result: "started", issue: "BLE-12", reason: "BLE-12 is the first unblocked issue of BLE-10; the Spec has no open PR, so it starts from main" },
+    ]);
   });
 
   test("with no running Spec it succeeds quietly with an empty result, and never starts a Spec", async () => {
