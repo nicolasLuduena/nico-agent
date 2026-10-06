@@ -1,4 +1,5 @@
 import { resolve } from "node:path";
+import { advance } from "./advance";
 import { loadBoard } from "./board";
 import { ConfigError, findRepo, loadConfig, saveConfig } from "./config";
 import { DispatchError, StepFailed, baseBranch, closeDispatch, dispatch, eachIssue, resolveIssue, review } from "./dispatch";
@@ -133,6 +134,15 @@ const commands: Command[] = [
       "nico-agent dispatch acme/api#9 --harness claude --model opus --effort high --stack-on acme/api#8",
     ],
     run: dispatchCommand,
+  },
+  {
+    name: "advance",
+    usage: "nico-agent advance",
+    summary: "Dispatch each running Spec's next issue with the Scheduler defaults from config (resumes a failed one)",
+    flags: {},
+    positionals: [],
+    examples: ["nico-agent advance", "nico-agent advance --json"],
+    run: advanceCommand,
   },
   {
     name: "review",
@@ -396,6 +406,15 @@ async function dispatchCommand(args: Args, ctx: RunContext): Promise<Output> {
     };
     return { output: { data, help }, issue: record.issue, result, stage };
   });
+}
+
+async function advanceCommand(_args: Args, ctx: RunContext): Promise<Output> {
+  const { specs, errors, help } = await advance(ctx.world, ctx.configDir);
+  return {
+    data: { specs, ...(errors.length && { errors }) },
+    help: [...help, BOARD_HELP],
+    exitCode: errors.length || specs.some((s) => s.result === "failed") ? 1 : 0,
+  };
 }
 
 async function reviewCommand(args: Args, ctx: RunContext): Promise<Output> {

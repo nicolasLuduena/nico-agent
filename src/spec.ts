@@ -62,6 +62,8 @@ export interface SpecDecision {
   issues: string[];
   /** From the dispatch of its first issue until each of its issues has a PR. */
   running: boolean;
+  /** The issue whose Implementer the Spec is waiting on; a Spec has one at a time. */
+  implementing?: string;
   next?: Next;
   waiting?: Waiting;
   /** Why a running Spec has no next issue. */
@@ -97,6 +99,7 @@ function decideSpec(repo: RepoFacts, spec: SpecFacts): SpecDecision {
   decision.running = true;
   const implementing = remaining.find((i) => i.inFlight);
   if (implementing) {
+    decision.implementing = implementing.issue;
     decision.reason = `${implementing.issue} is Implementing; a Spec has one Implementer at a time`;
     return decision;
   }
