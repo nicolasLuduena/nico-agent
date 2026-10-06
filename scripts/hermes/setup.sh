@@ -258,7 +258,7 @@ else
 fi
 if grep -qE '^mcp_servers:' "$hermes_config"; then
   warn "$hermes_config already has mcp_servers; add this entry under it by hand:"
-  note "  nico-agent: {command: $nico_agent, args: [mcp], tools: {include: [board, advance], resources: false, prompts: false}}"
+  note "  nico-agent: {command: $nico_agent, args: [mcp], env: {PATH: \"\${userHome}/.local/share/mise/shims:\${PATH}\"}, tools: {include: [board, advance], resources: false, prompts: false}}"
   pause "Press Enter once the entry is in place."
 elif confirm "Append the nico-agent MCP server to $hermes_config?"; then
   cp "$hermes_config" "$hermes_config.bak-before-nico-agent-mcp"
@@ -269,6 +269,8 @@ mcp_servers:
   nico-agent:
     command: $nico_agent
     args: [mcp]
+    env:
+      PATH: "\${userHome}/.local/share/mise/shims:\${PATH}"
     tools:
       include: [board, advance]
       resources: false

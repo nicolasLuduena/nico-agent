@@ -12,6 +12,12 @@
 # edit it. A non-zero exit is a monitor ERROR Hermes reports, never a change.
 set -euo pipefail
 
+# Hermes runs this without the shell's mise activation, where a `gh` wrapper
+# that calls `mise x gh -- gh` finds itself again and loops forever. mise's
+# shims resolve the real tools without activation, so they go first.
+shims="${MISE_DATA_DIR:-$HOME/.local/share/mise}/shims"
+[[ -d "$shims" ]] && PATH="$shims:$PATH"
+
 bin="${NICO_AGENT_BIN:-$(command -v nico-agent || echo "$HOME/.local/bin/nico-agent")}"
 
 # `advance` exits 1 when a row failed; those rows are news, not a broken monitor.

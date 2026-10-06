@@ -28,12 +28,18 @@ and is safe to run again.
     nico-agent:
       command: /home/<you>/.local/bin/nico-agent
       args: [mcp]
+      env:
+        PATH: "${userHome}/.local/share/mise/shims:${PATH}"
       tools:
         include: [board, advance]
         resources: false
         prompts: false
   ```
 
+  Hermes runs its tools without your shell's mise activation. There, a `gh`
+  wrapper that calls `mise x gh -- gh` finds itself again and loops forever,
+  hanging every `nico-agent` call. Putting mise's shims first on `PATH` makes
+  `gh` resolve to the real binary. The monitor script does the same.
 - **Skill**: `nico-agent --skill` written to `~/.hermes/skills/nico-agent/SKILL.md`.
 - **Monitor script**: `scripts/hermes/nico-agent-monitor.sh` copied to
   `~/.hermes/scripts/`. Hermes runs only scripts that live in that directory,
