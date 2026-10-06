@@ -36,7 +36,8 @@ jq -r '.rooms[]? | "  \(.repo) room=\(.room) candidates=\([.candidates[].spec] |
 echo "held:"
 jq -r '.specs[]? | select(.held) | "  \(.spec) on \(.held.issue): \(.held.reason)"' <<<"$board"
 
-# The issues only: a screen's spinners and timers would change the output every tick.
+# The issues only: a screen's spinners and timers would change the output
+# every tick.
 echo "asking:"
 jq -r '.asking[]? | "  \(.issue)"' <<<"$board"
 

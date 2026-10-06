@@ -36,15 +36,15 @@ export async function loadAsking(world: World, inFlight: InFlightRow[], specs: R
     const spec = allSpecs.find((s) => s.issues.includes(d.issue))?.spec;
     const row = { issue: d.issue, ...(spec && spec !== d.issue && { spec }) };
     try {
-      return { ...row, question: question(await world.herdrAgentRead(d.implementer.agent)) };
+      return { ...row, question: screenTail(await world.herdrAgentRead(d.implementer.agent)) };
     } catch (e) {
       return { ...row, question: "", error: worldErrorMessage(e) };
     }
   }));
 }
 
-/** A screen cut to its last non-blank lines and characters. */
-export function question(screen: string) {
+/** A screen, its trailing blank lines dropped, cut to its last lines and characters. */
+function screenTail(screen: string) {
   const lines = screen.replace(/\s+$/, "").split("\n").slice(-QUESTION_LINES).join("\n");
   return lines.length > QUESTION_LIMIT ? `…${lines.slice(-(QUESTION_LIMIT - 1))}` : lines;
 }

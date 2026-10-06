@@ -93,6 +93,11 @@ _Avoid_: Paused, blocked, stuck
 The agent a Dispatch starts to implement the issue and open a draft PR.
 _Avoid_: Worker, coder
 
+**Asking**:
+An Implementer waiting on the user (Agent state `blocked`), with the question
+its screen shows. The Scheduler relays the user's answer to it, word for word.
+_Avoid_: Stuck, blocked (a Blocker is an issue)
+
 **Reviewer**:
 The agent launched in the same workspace, once a PR is linked, to review it.
 _Avoid_: Checker

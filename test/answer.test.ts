@@ -30,7 +30,7 @@ describe("nico-agent answer", () => {
     expect(world.calls).toEqual(["herdr agent list", `herdr agent prompt impl-api-11 ${text}`]);
   });
 
-  test("joins the words of an unquoted answer, and takes a Linear issue or a GitHub URL", async () => {
+  test("joins the words of an unquoted answer, and takes a GitHub issue URL", async () => {
     const { cli, world } = await dispatched();
     world.agentStates.set("impl-api-11", "blocked");
     const result = await cli("answer", "https://github.com/acme/api/issues/11", "2", "please");
@@ -146,6 +146,20 @@ describe("the Board's asking list", () => {
       "herdr agent read impl-api-7 --source visible",
     ]);
     expect(board.help).toContain("Run `nico-agent answer <issue> <text>` to answer an Implementer waiting on you");
+  });
+
+  test("names a Linear issue's Spec too", async () => {
+    const { cli, world } = setup();
+    world.addClone("/src/pdf", "git@github.com:bleentr/pdf-diff.git");
+    await cli("repo", "add", "bleentr/pdf-diff", "--path", "/src/pdf", "--linear-team", "BLE");
+    world.addLinearSpec({ identifier: "BLE-10", title: "PDF diffing" }, { identifier: "BLE-11" });
+    expect((await cli("dispatch", "BLE-11", ...FLAGS)).exitCode).toBe(0);
+    const [agent] = [...world.agentStates.keys()];
+    world.agentStates.set(agent!, "blocked");
+    world.screens.set(agent!, "Which one?");
+    expect((await cli("--json")).json().asking).toEqual([{ issue: "BLE-11", spec: "BLE-10", question: "Which one?" }]);
+    expect((await cli("answer", "BLE-11", "the first")).exitCode).toBe(0);
+    expect(world.calls).toContain(`herdr agent prompt ${agent} the first`);
   });
 
   test("cuts a long question to its last characters", async () => {

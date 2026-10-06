@@ -15,7 +15,8 @@ The Scheduler's reach is enforced, not requested: it gets no shell, only an MCP
 server from nico-agent with three tools: reading the Board; `advance`, which
 dispatches running Specs' next issues and starts a Spec only when its Repo has
 room; and `answer`, which relays the user's reply to an Implementer. The worst
-a wrong judgment can do is start the wrong Spec.
+a wrong judgment can do is start the wrong Spec, or, against the skill's rule,
+answer one question an Implementer asked (see the amendment).
 
 ## Amendment: relaying answers to waiting Implementers
 
@@ -25,7 +26,10 @@ Board lists the Implementers waiting on the user (herdr's Agent state
 `blocked`) with the question on their screen, and `answer` types text into
 one of them. nico-agent refuses `answer` unless that Implementer is `blocked`,
 so a working Implementer, or one whose question was already answered, can't
-be typed into, and a late or duplicate reply is refused.
+be typed into, and a late or duplicate reply is refused. That makes `answer` an
+exception to ADR-0006's idempotent mutations: a re-run is refused, not a no-op,
+because nico-agent can't tell a duplicate from a second answer, and a refusal
+tells the user their words did not reach the Implementer.
 
 What can't be enforced: nico-agent can't prove the text came from the user. A
 Scheduler could answer a question itself. The skill's rule covers that ("relay
