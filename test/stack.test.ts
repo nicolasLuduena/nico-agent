@@ -110,7 +110,8 @@ test("the real CLI recognizes a same-Repo PR closing a Blocker from another repo
   mkdirSync(binDir);
   const issue = { number: 7, title: "Issue 7", url: "https://github.com/acme/api/issues/7", state: "OPEN",
     labels: { nodes: [{ name: "ready-for-agent" }] }, assignees: { nodes: [] },
-    blockedBy: { nodes: [{ number: 6, state: "OPEN", repository: { nameWithOwner: "acme/other" } }] } };
+    blockedBy: { nodes: [{ number: 6, state: "OPEN", repository: { nameWithOwner: "acme/other" } }] },
+    parent: null, subIssuesSummary: { total: 0 } };
   const pr = { number: 16, url: "https://github.com/acme/api/pull/16", state: "OPEN", baseRefName: "main",
     headRefName: "agent/blocker-6", headRepository: { nameWithOwner: "acme/api" }, repository: { nameWithOwner: "acme/api" } };
   writeFileSync(join(binDir, "issues.json"), JSON.stringify({ data: { repository: { issues: { nodes: [issue], pageInfo: { hasNextPage: false } } } } }));
