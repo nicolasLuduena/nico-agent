@@ -220,10 +220,14 @@ function within(spec: SpecFacts, blocker: string) {
   return issue !== undefined && done(issue);
 }
 
-/** The top of the Spec's Stack: its open PR with the highest number. */
+/**
+ * The top of the Spec's Stack: its open PR that no other open PR of the Spec
+ * targets. Should several qualify, the highest-numbered of them.
+ */
 function newestOpenPr(spec: SpecFacts) {
-  return spec.issues
+  const open = spec.issues
     .map((i) => i.pr)
-    .filter((pr): pr is PullRequest & { headBranch: string } => pr?.state === "open" && Boolean(pr.headBranch))
-    .sort((a, b) => b.number - a.number)[0];
+    .filter((pr): pr is PullRequest & { headBranch: string } => pr?.state === "open" && Boolean(pr.headBranch));
+  const tops = open.filter((pr) => !open.some((other) => other.baseBranch === pr.headBranch));
+  return (tops.length ? tops : open).sort((a, b) => b.number - a.number)[0];
 }

@@ -64,6 +64,19 @@ describe("advance", () => {
     expect((await cli("show", "BLE-12", "--json")).json()).toMatchObject({ stackedOn: { pr: { url: "https://github.com/bleentr/pdf-diff/pull/16" } } });
   });
 
+  test("the Spec's newest open PR is the top of its Stack, not the highest-numbered one", async () => {
+    const { cli, world } = await linearRepo();
+    world.addLinearSpec({ identifier: "BLE-10" },
+      { identifier: "BLE-11", state: "started" }, { identifier: "BLE-12", state: "started" }, { identifier: "BLE-13" });
+    world.linearAttachments.set("BLE-11", ["https://github.com/bleentr/pdf-diff/pull/18"]);
+    world.linearAttachments.set("BLE-12", ["https://github.com/bleentr/pdf-diff/pull/17"]);
+    world.addPr({ repo: "bleentr/pdf-diff", number: 18, headBranch: "nico/ble-11" });
+    world.addPr({ repo: "bleentr/pdf-diff", number: 17, headBranch: "nico/ble-12", baseBranch: "nico/ble-11" });
+
+    expect((await cli("advance", "--json")).json().specs.map((s: { result: string; issue: string }) => `${s.result} ${s.issue}`)).toEqual(["started BLE-13"]);
+    expect(world.calls).toContain("herdr worktree create --cwd /src/pdf --branch nico/ble-13 --base origin/nico/ble-12 --label pdf-diff:BLE-13 --no-focus");
+  });
+
   test("a running Spec without an open PR starts from the default branch, and re-running while it Implements is quiet and stable", async () => {
     const { cli, world } = await linearRepo();
     world.defaultBranches.set("/src/pdf", "trunk");
