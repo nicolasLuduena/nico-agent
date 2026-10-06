@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { loadBoard } from "./board";
 import { ConfigError, SCHEDULER_DEFAULTS, type SchedulerDefaults, loadConfig } from "./config";
-import { DispatchError, type DispatchRequest, StepFailed, checkLaunch, dispatch } from "./dispatch";
+import { DispatchError, type DispatchRequest, LaunchError, StepFailed, checkLaunch, dispatch } from "./dispatch";
 import { linearIdentifier } from "./linear";
 import type { RepoDecision, SpecDecision } from "./spec";
 import { freshPrs } from "./stage";
@@ -154,9 +154,8 @@ async function checkDefaults(world: World, configDir: string, launch: SchedulerD
   try {
     await checkLaunch(world, configDir, launch);
   } catch (e) {
-    if (!(e instanceof DispatchError)) throw e;
-    const key = /^unknown Harness/.test(e.message) ? "harness" : /^unknown model/.test(e.message) ? "model" : "effort";
-    throw new DispatchError(`scheduler.${key} in ${join(configDir, "config.json")}: ${e.message}`, e.help);
+    if (!(e instanceof LaunchError)) throw e;
+    throw new DispatchError(`scheduler.${e.key} in ${join(configDir, "config.json")}: ${e.message}`, e.help);
   }
 }
 

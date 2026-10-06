@@ -34,6 +34,13 @@ export class DispatchError extends Error {
   }
 }
 
+/** A launch choice that is not valid, naming the request key at fault. */
+export class LaunchError extends DispatchError {
+  constructor(readonly key: "harness" | "model" | "effort", message: string, help: string[], usage = false) {
+    super(message, help, usage);
+  }
+}
+
 export interface DispatchRequest {
   issue: string;
   harness: string;
@@ -404,7 +411,7 @@ async function chooseLaunch(world: World, configDir: string, request: DispatchRe
   const catalog = await harnessCatalog(world, configDir, request.harness);
   if (!catalog) {
     const names = harnesses(configDir).map((h) => h.name);
-    throw new DispatchError(`unknown Harness \`${request.harness}\``, [`Valid Harnesses: ${names.join(", ")}`], true);
+    throw new LaunchError("harness", `unknown Harness \`${request.harness}\``, [`Valid Harnesses: ${names.join(", ")}`], true);
   }
   const { harness, models, error } = catalog;
   const choice = models.find((m) => m.model === request.model);
@@ -415,13 +422,13 @@ async function chooseLaunch(world: World, configDir: string, request: DispatchRe
     ]);
   }
   if (!choice) {
-    throw new DispatchError(`unknown model \`${request.model}\` for ${harness.name}`, [
+    throw new LaunchError("model", `unknown model \`${request.model}\` for ${harness.name}`, [
       `Valid models for ${harness.name}: ${models.map((m) => m.model).join(", ")}`,
     ], true);
   }
   if (!choice.efforts.includes(request.effort)) {
     const launch = `${harness.name} ${choice.model}`;
-    throw new DispatchError(`Effort \`${request.effort}\` is not valid for ${launch}`, [
+    throw new LaunchError("effort", `Effort \`${request.effort}\` is not valid for ${launch}`, [
       `Valid Efforts for ${launch}: ${choice.efforts.join(", ")}`,
     ]);
   }
