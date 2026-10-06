@@ -106,8 +106,9 @@ describe("AXI conventions", () => {
         "  nico-agent show <issue>,Print the full Dispatch record of an In-flight issue",
         '  "nico-agent serve [--port <port>]",Start the web app on 127.0.0.1 (port 42069 by default)',
         `  nico-agent mcp,"Serve the Scheduler's MCP server on stdio, with two tools: board (the Board) and advance (with an optional Spec to start)"`,
-        "help[1]:",
+        "help[2]:",
         "  Run `nico-agent <command> --help` for its flags and examples",
+        "  Run `nico-agent --skill` to print the Scheduler skill",
         "",
       ].join("\n"),
     );

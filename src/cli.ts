@@ -8,6 +8,7 @@ import { type Catalog, harnessCatalogs, harnesses, refreshHarnesses, rememberedL
 import { linearIdentifier } from "./linear";
 import { mcpHandler } from "./mcp";
 import { type Output, plural, render } from "./output";
+import skill from "./skill.md" with { type: "text" };
 import { VERSION } from "./version";
 import { sameSlug, slugOfRemote } from "./slug";
 import { cachedPrs, currentStage, freshPrs, loadInFlight, stageOf } from "./stage";
@@ -227,6 +228,7 @@ export async function run(argv: string[], ctx: RunContext): Promise<RunResult> {
   if (argv.length === 1 && ["-v", "-V", "--version"].includes(argv[0]!)) {
     return { stdout: `${VERSION}\n`, exitCode: 0 };
   }
+  if (argv.length === 1 && argv[0] === "--skill") return { stdout: skill, exitCode: 0 };
   const json = argv.includes("--json");
   try {
     const { command, rest } = findCommand(argv);
@@ -324,7 +326,10 @@ function topLevelHelp(ctx: RunContext): Output {
       description: DESCRIPTION,
       commands: commands.map((c) => ({ usage: c.usage, description: c.summary })),
     },
-    help: ["Run `nico-agent <command> --help` for its flags and examples"],
+    help: [
+      "Run `nico-agent <command> --help` for its flags and examples",
+      "Run `nico-agent --skill` to print the Scheduler skill",
+    ],
   };
 }
 
