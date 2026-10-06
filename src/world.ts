@@ -40,7 +40,7 @@ export interface World {
   githubLinkedPullRequests(slug: string, number: number): Promise<PullRequest[]>;
   /** One PR of a GitHub repo, or null if there is no such PR. */
   githubPullRequest(slug: string, number: number): Promise<PullRequest | null>;
-  /** All PRs on a Dispatch's head branch, including closed unmerged PRs. */
+  /** All PRs whose head is `branch` (a Dispatch's, or a Stack's next one down), including closed unmerged PRs. */
   githubBranchPullRequests(slug: string, branch: string): Promise<PullRequest[]>;
   /** Assign an issue to the user's own GitHub session (the Claim, ADR-0007). */
   githubAssignSelf(slug: string, number: number): Promise<void>;
