@@ -442,7 +442,8 @@ export class RealWorld implements World {
 
   async serve(address: Address, handler: RequestHandler) {
     try {
-      Bun.serve({ ...address, fetch: handler });
+      // A Board asks GitHub per issue and can take longer than Bun's 10s default; 255s is Bun's maximum.
+      Bun.serve({ ...address, fetch: handler, idleTimeout: 255 });
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code === "EADDRINUSE") {
         throw new WorldError(`port ${address.port} is already in use`);
