@@ -91,5 +91,44 @@ function decideSpec(repo: RepoFacts, spec: SpecFacts): SpecDecision {
     spec: spec.spec, title: spec.title, url: spec.url, repo: repo.repo,
     issues: spec.issues.map((i) => i.issue), running: false,
   };
+  const remaining = spec.issues.filter((i) => !done(i));
+  const started = spec.issues.some((i) => i.inFlight || i.closed || i.pr);
+  if (!started || remaining.length === 0) return decision;
+  decision.running = true;
+  const implementing = remaining.find((i) => i.inFlight);
+  if (implementing) {
+    decision.reason = `${implementing.issue} is Implementing; a Spec has one Implementer at a time`;
+    return decision;
+  }
+  const next = remaining.find((i) => i.startable && i.blockers.every((b) => b.closed || within(spec, b.issue)));
+  if (next) {
+    const stackOn = newestOpenPr(spec);
+    decision.next = {
+      issue: next.issue, base: stackOn?.headBranch ?? repo.defaultBranch,
+      reason: `${next.issue} is the first unblocked issue of ${spec.spec}; ` +
+        (stackOn ? "it stacks on the Spec's newest open PR" : `the Spec has no open PR, so it starts from ${repo.defaultBranch}`),
+      ...(stackOn && { stackOn }),
+    };
+    return decision;
+  }
   return decision;
+}
+
+/** An issue is done for its Spec once it is closed or has a PR. */
+function done(issue: IssueFacts) {
+  return issue.closed || issue.pr !== null;
+}
+
+/** Whether `blocker` is an issue of `spec` that is done, so a Dispatch stacked on the Spec's newest PR builds on it. */
+function within(spec: SpecFacts, blocker: string) {
+  const issue = spec.issues.find((i) => i.issue === blocker);
+  return issue !== undefined && done(issue);
+}
+
+/** The top of the Spec's Stack: its open PR with the highest number. */
+function newestOpenPr(spec: SpecFacts) {
+  return spec.issues
+    .map((i) => i.pr)
+    .filter((pr): pr is PullRequest & { headBranch: string } => pr?.state === "open" && Boolean(pr.headBranch))
+    .sort((a, b) => b.number - a.number)[0];
 }

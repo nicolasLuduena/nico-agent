@@ -37,4 +37,41 @@ describe("Linear Specs", () => {
       { spec: "BLE-20", title: "A bug from triage", repo: "bleentr/pdf-diff", issues: ["BLE-20"], running: false },
     ]);
   });
+
+  test("a running Spec's next issue is its first unblocked one, stacked on the Spec's newest open PR", async () => {
+    const { cli, world } = await linearRepo();
+    world.addLinearSpec({ identifier: "BLE-10", title: "PDF diffing" },
+      { identifier: "BLE-11" }, { identifier: "BLE-12", blockers: [{ identifier: "BLE-13", state: "unstarted" }] }, { identifier: "BLE-13" });
+    expect((await cli("dispatch", "BLE-11", ...FLAGS)).exitCode).toBe(0);
+
+    const implementing = (await cli("--json")).json().specs;
+    expect(implementing).toEqual([{
+      spec: "BLE-10", title: "PDF diffing", repo: "bleentr/pdf-diff", issues: ["BLE-11", "BLE-12", "BLE-13"], running: true,
+      reason: "BLE-11 is Implementing; a Spec has one Implementer at a time",
+    }]);
+
+    world.linearAttachments.set("BLE-11", ["https://github.com/bleentr/pdf-diff/pull/16"]);
+    world.addPr({ repo: "bleentr/pdf-diff", number: 16, headBranch: "nico/ble-11" });
+    const next = (await cli("--json")).json().specs[0];
+    expect(next.running).toBe(true);
+    expect(next.next).toEqual({
+      issue: "BLE-13", stackOn: "https://github.com/bleentr/pdf-diff/pull/16", base: "nico/ble-11",
+      reason: "BLE-13 is the first unblocked issue of BLE-10; it stacks on the Spec's newest open PR",
+    });
+    expect(next.reason).toBeUndefined();
+  });
+
+  test("a running Spec without an open PR starts its next issue from the Repo's default branch", async () => {
+    const { cli, world } = await linearRepo();
+    world.defaultBranches.set("/src/pdf", "trunk");
+    world.addLinearSpec({ identifier: "BLE-10" }, { identifier: "BLE-11", state: "completed" }, { identifier: "BLE-12" });
+    world.linearAttachments.set("BLE-11", ["https://github.com/bleentr/pdf-diff/pull/16"]);
+    world.addPr({ repo: "bleentr/pdf-diff", number: 16, state: "merged", headBranch: "nico/ble-11" });
+
+    const [spec] = (await cli("--json")).json().specs;
+    expect(spec).toMatchObject({ spec: "BLE-10", running: true, next: {
+      issue: "BLE-12", base: "trunk", reason: "BLE-12 is the first unblocked issue of BLE-10; the Spec has no open PR, so it starts from trunk",
+    } });
+    expect(spec.next.stackOn).toBeUndefined();
+  });
 });
