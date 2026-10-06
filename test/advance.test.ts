@@ -233,6 +233,44 @@ describe("advance", () => {
     expect(world.calls).toContain("herdr worktree create --cwd /src/pdf --branch nico/ble-22 --base origin/nico/ble-21 --label pdf-diff:BLE-22 --no-focus");
   });
 
+  test("it starts a running GitHub Spec's next issue, stacked on the Spec's newest open PR", async () => {
+    const { cli, world, configDir } = setup();
+    world.addClone("/src/api", "git@github.com:acme/api.git");
+    await cli("repo", "add", "acme/api", "--path", "/src/api");
+    setConfig(configDir, { scheduler: SCHEDULER });
+    world.addGitHubSpec("acme/api", { number: 10, title: "Billing" }, { number: 11 }, { number: 12 });
+    expect((await cli("dispatch", "acme/api#11", "--harness", "claude", "--model", "opus", "--effort", "high")).exitCode).toBe(0);
+    world.linkPr("acme/api", 11, { number: 16, headBranch: "agent/api-11" });
+    world.calls.length = 0;
+
+    const { exitCode, stdout } = await cli("advance", "--json");
+    expect(exitCode).toBe(0);
+    expect(JSON.parse(stdout).specs).toEqual([{
+      spec: "acme/api#10", repo: "acme/api", result: "started", issue: "acme/api#12",
+      reason: "acme/api#12 is the first unblocked issue of acme/api#10; it stacks on the Spec's newest open PR",
+    }]);
+    expect(world.calls.find((c) => c.startsWith("herdr worktree create"))).toContain("--base origin/agent/api-11");
+    expect(world.calls.find((c) => c.startsWith("herdr agent prompt"))).toContain("on top of https://github.com/acme/api/pull/16");
+  });
+
+  test("a GitHub Spec whose Dispatch Failed is Held, with a resume command without --repo", async () => {
+    const { cli, world, configDir } = setup();
+    world.addClone("/src/api", "git@github.com:acme/api.git");
+    await cli("repo", "add", "acme/api", "--path", "/src/api");
+    setConfig(configDir, { scheduler: SCHEDULER });
+    world.addGitHubSpec("acme/api", { number: 10, title: "Billing" }, { number: 11 }, { number: 12 });
+    world.failHerdr("agent start", "herdr is not running");
+    expect((await cli("dispatch", "acme/api#11", "--harness", "claude", "--model", "opus", "--effort", "high")).exitCode).toBe(1);
+    world.clearFailures();
+
+    const advanced = (await cli("advance", "--json")).json();
+    expect(advanced.specs).toEqual([{
+      spec: "acme/api#10", repo: "acme/api", result: "skipped", issue: "acme/api#11",
+      reason: "Held: acme/api#11's Dispatch Failed at agent start: herdr is not running",
+    }]);
+    expect(advanced.help).toContain("Run `nico-agent dispatch acme/api#11 --harness claude --model opus --effort high` to resume the Failed Dispatch, or `nico-agent close acme/api#11` to Close it");
+  });
+
   test("Scheduler defaults naming an unknown Harness or model are a config error, not a skipped Spec", async () => {
     const { cli, world, configDir } = await linearRepo({ harness: "claude", model: "gpt-9", effort: "high" });
     world.addLinearSpec({ identifier: "BLE-10" }, { identifier: "BLE-11", state: "completed" }, { identifier: "BLE-12" });

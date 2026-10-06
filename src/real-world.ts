@@ -1,6 +1,6 @@
 import { LinearSource } from "./linear";
 import { realpathSync } from "node:fs";
-import type { Address, GitHubIssue, PullRequest, RequestHandler, World } from "./world";
+import type { Address, GitHubIssue, GitHubSubIssue, PullRequest, RequestHandler, World } from "./world";
 import { READY_LABEL, WorldError } from "./world";
 
 interface Exec {
@@ -91,7 +91,24 @@ const ISSUE_FIELDS = `
         number title url state
         labels(first: 50) { nodes { name } }
         assignees(first: 20) { nodes { login } }
-        blockedBy(first: 50) { nodes { number state repository { nameWithOwner } } }`;
+        blockedBy(first: 50) { nodes { number state repository { nameWithOwner } } }
+        parent { number repository { nameWithOwner } }
+        subIssuesSummary { total }`;
+
+// Native sub-issues come in sub-issue order, the order of work of a Spec.
+const SUB_ISSUES_QUERY = `
+query($owner: String!, $name: String!, $number: Int!, $cursor: String) {
+  repository(owner: $owner, name: $name) {
+    issue(number: $number) {
+      subIssues(first: 100, after: $cursor) {
+        pageInfo { hasNextPage endCursor }
+        nodes {${ISSUE_FIELDS}
+          repository { nameWithOwner }
+        }
+      }
+    }
+  }
+}`;
 
 const ISSUE_QUERY = `
 query($owner: String!, $name: String!, $number: Int!) {
@@ -131,6 +148,8 @@ interface IssueNode {
   labels: { nodes: { name: string }[] };
   assignees: { nodes: { login: string }[] };
   blockedBy: { nodes: { number: number; state: string; repository: { nameWithOwner: string } }[] };
+  parent: { number: number; repository: { nameWithOwner: string } } | null;
+  subIssuesSummary: { total: number };
 }
 
 export class RealWorld implements World {
@@ -194,6 +213,22 @@ export class RealWorld implements World {
       throw new WorldError("repository not found on GitHub, or not visible to your account");
     }
     return repository.issue ? toIssue(repository.issue) : null;
+  }
+
+  async githubSubIssues(slug: string, number: number) {
+    const [owner, name] = slug.split("/") as [string, string];
+    const subIssues: GitHubSubIssue[] = [];
+    let cursor: string | null = null;
+    do {
+      const args = ["api", "graphql", "-f", `query=${SUB_ISSUES_QUERY}`, "-f", `owner=${owner}`, "-f", `name=${name}`, "-F", `number=${number}`];
+      if (cursor) args.push("-f", `cursor=${cursor}`);
+      const page = JSON.parse(await gh(args)).data?.repository?.issue?.subIssues;
+      if (!page) throw new WorldError(`${slug}#${number} was not found on GitHub`);
+      const nodes = page.nodes as (IssueNode & { repository: { nameWithOwner: string } })[];
+      subIssues.push(...nodes.map((node) => ({ ...toIssue(node), slug: node.repository.nameWithOwner })));
+      cursor = page.pageInfo.hasNextPage ? page.pageInfo.endCursor : null;
+    } while (cursor);
+    return subIssues;
   }
 
   // A read, but through `ghbot`: only the App's installation token can list its repositories.
@@ -428,5 +463,7 @@ function toIssue(node: IssueNode): GitHubIssue {
       number: b.number,
       state: b.state === "OPEN" ? "open" : "closed",
     })),
+    parent: node.parent ? { slug: node.parent.repository.nameWithOwner, number: node.parent.number } : null,
+    hasSubIssues: node.subIssuesSummary.total > 0,
   };
 }

@@ -66,8 +66,9 @@ export function isReady(issue: GitHubIssue, viewer: string) {
   );
 }
 
+/** Ready but for its Blockers: not a Spec, open, labelled `ready-for-agent`, and unassigned or assigned only to the user. */
 export function canStart(issue: GitHubIssue, viewer: string) {
-  return issue.state === "open" && issue.labels.includes(READY_LABEL) &&
+  return !issue.hasSubIssues && issue.state === "open" && issue.labels.includes(READY_LABEL) &&
     issue.assignees.every((login) => login.toLowerCase() === viewer.toLowerCase());
 }
 
@@ -122,53 +123,79 @@ export function everyBlocker(blockers: BlockerPrs[]): StackOption[] {
  * from: the Repo's entry in `lastBases` while origin still has it.
  */
 export async function loadBoard(world: World, repos: Repo[], dispatches: Dispatch[], prs: PrLookup, lastBases: Record<string, string> = {}): Promise<Board> {
-  const [{ linear, viewer, ...ready }, inFlight] = await Promise.all([loadReady(world, repos, dispatches, lastBases), loadInFlight(world, dispatches, prs)]);
+  const [{ github, githubViewer, linear, viewer, ...ready }, inFlight] = await Promise.all([loadReady(world, repos, dispatches, lastBases), loadInFlight(world, dispatches, prs)]);
   const board: Board = { ...ready, inFlight, specs: [] };
-  if (viewer !== undefined) board.specs = await loadLinearSpecs(world, board, linear, viewer);
+  // Each Repo's Specs from every Source, so the Spec rules see the Repo whole.
+  const specs = new Map<Repo, SpecFacts[]>();
+  const gather = async <I>(issues: Map<Repo, I[]>, source: "Linear" | undefined, load: (repo: Repo, issues: I[]) => Promise<SpecFacts[]>) => {
+    const results = await Promise.allSettled([...issues].map(([repo, list]) => load(repo, list)));
+    results.forEach((result, i) => {
+      const repo = [...issues.keys()][i]!;
+      if (result.status === "fulfilled") specs.set(repo, [...(specs.get(repo) ?? []), ...result.value]);
+      else board.errors.push({ repo: repo.slug, ...(source && { source }), error: worldErrorMessage(result.reason) });
+    });
+  };
+  if (githubViewer !== undefined) await gather(github, undefined, (repo, issues) => githubSpecFacts(world, repo, issues, inFlight, githubViewer));
+  if (viewer !== undefined) await gather(linear, "Linear", (repo, issues) => linearSpecFacts(world, repo, issues, inFlight, viewer));
+  const facts = await Promise.allSettled([...specs].map(async ([repo, repoSpecs]): Promise<RepoFacts> => ({
+    repo: repo.slug, defaultBranch: await world.gitDefaultBranch(repo.path),
+    specs: repoSpecs.sort((a, b) => a.spec.localeCompare(b.spec, undefined, { numeric: true })),
+  })));
+  const loaded: RepoFacts[] = [];
+  facts.forEach((result, i) => {
+    const repo = [...specs.keys()][i]!;
+    if (result.status === "fulfilled") loaded.push(result.value);
+    else board.errors.push({ repo: repo.slug, source: "git", error: worldErrorMessage(result.reason) });
+  });
+  board.specs = decideSpecs(loaded).filter((r) => r.specs.length > 0);
   return board;
 }
 
 /**
- * The facts the Spec rules need about each Repo's Linear Specs: those its
- * issues belong to, those they are, and its loose issues as Specs of one.
+ * The facts the Spec rules need about a Repo's GitHub Specs: those its issues
+ * belong to, those they are, and its loose issues as Specs of one. A Spec's
+ * sub-issues in other repos belong to Stacks there, so they are left out.
  */
-async function loadLinearSpecs(world: World, board: Omit<Board, "specs">, linear: Map<Repo, LinearIssue[]>, viewer: string): Promise<RepoDecision[]> {
-  const facts = await Promise.allSettled([...linear].map(async ([repo, issues]): Promise<RepoFacts> => {
-    const inFlight = board.inFlight.filter((row) => sameSlug(row.dispatch.repo, repo.slug) && linearIdentifier(row.dispatch.issue) !== null);
-    const known = new Map(issues.map((i) => [i.identifier, i]));
-    const parents = new Set(issues.flatMap((i) => i.hasSubIssues ? [i.identifier] : i.parent ? [i.parent] : []));
-    const facts = async (issue: LinearIssue): Promise<IssueFacts> => {
-      const row = inFlight.find((r) => r.dispatch.issue === issue.identifier);
-      const closed = isLinearClosed(issue.state);
-      return {
-        issue: issue.identifier, closed, startable: canStartLinear(issue, viewer), inFlight: row !== undefined,
-        pr: row ? row.pr : closed ? null : linkedPr(await linearPullRequests(world, issue.identifier, repo.slug), repo.slug),
-        blockers: issue.blockers.map((b) => ({ issue: b.identifier, closed: isLinearClosed(b.state) })),
-        ...(row && await holdFacts(world, row)),
-      };
+async function githubSpecFacts(world: World, repo: Repo, issues: GitHubIssue[], rows: InFlightRow[], viewer: string): Promise<SpecFacts[]> {
+  const key = (slug: string, number: number) => `${sameSlug(slug, repo.slug) ? repo.slug : slug}#${number}`;
+  const inFlight = rows.filter((row) => sameSlug(row.dispatch.repo, repo.slug) && linearIdentifier(row.dispatch.issue) === null);
+  const rowOf = (issue: string) => inFlight.find((r) => sameSlug(r.dispatch.issue, issue));
+  const facts = async (issue: GitHubIssue): Promise<IssueFacts> => {
+    const name = key(repo.slug, issue.number);
+    const row = rowOf(name);
+    const closed = issue.state === "closed";
+    return {
+      issue: name, closed, startable: canStart(issue, viewer), inFlight: row !== undefined,
+      pr: row ? row.pr : closed ? null : linkedPr(await world.githubLinkedPullRequests(repo.slug, issue.number), repo.slug),
+      blockers: issue.blockers.map((b) => ({ issue: key(b.slug, b.number), closed: b.state === "closed" })),
+      ...(row && await holdFacts(world, row)),
     };
-    const specs: SpecFacts[] = await Promise.all([...parents].map(async (spec) => {
-      const [parent, subIssues] = await Promise.all([known.get(spec) ?? world.linearIssue(spec), world.linearSubIssues(spec)]);
-      return { spec, title: parent?.title ?? spec, url: parent?.url ?? "", issues: await Promise.all(subIssues.map(facts)) };
-    }));
-    const inSpec = new Set(specs.flatMap((s) => s.issues.map((i) => i.issue)));
-    const loose = issues.filter((i) => !i.parent && !i.hasSubIssues && (canStartLinear(i, viewer) || inFlight.some((r) => r.dispatch.issue === i.identifier)));
-    for (const issue of loose) specs.push({ spec: issue.identifier, title: issue.title, url: issue.url, issues: [await facts(issue)] });
-    for (const row of inFlight) {
-      if (inSpec.has(row.dispatch.issue) || loose.some((i) => i.identifier === row.dispatch.issue)) continue;
-      const { issue, title, url } = row.dispatch;
-      specs.push({ spec: issue, title, url, issues: [{ issue, closed: false, startable: false, inFlight: true, pr: row.pr, blockers: [], ...await holdFacts(world, row) }] });
-    }
-    specs.sort((a, b) => a.spec.localeCompare(b.spec, undefined, { numeric: true }));
-    return { repo: repo.slug, defaultBranch: await world.gitDefaultBranch(repo.path), specs };
+  };
+  const parents = new Map<string, { slug: string; number: number }>();
+  for (const issue of issues) {
+    const parent = issue.hasSubIssues ? { slug: repo.slug, number: issue.number } : issue.parent;
+    if (parent) parents.set(key(parent.slug, parent.number), parent);
+  }
+  const specs: SpecFacts[] = await Promise.all([...parents].map(async ([spec, { slug, number }]) => {
+    const known = sameSlug(slug, repo.slug) ? issues.find((i) => i.number === number) : undefined;
+    const [parent, subIssues] = await Promise.all([known ?? world.githubIssue(slug, number), world.githubSubIssues(slug, number)]);
+    const own = subIssues.filter((sub) => sameSlug(sub.slug, repo.slug));
+    return { spec, title: parent?.title ?? spec, url: parent?.url ?? "", issues: await Promise.all(own.map(facts)) };
   }));
-  const loaded: RepoFacts[] = [];
-  facts.forEach((result, i) => {
-    const repo = [...linear.keys()][i]!;
-    if (result.status === "fulfilled") loaded.push(result.value);
-    else board.errors.push({ repo: repo.slug, source: "Linear", error: worldErrorMessage(result.reason) });
-  });
-  return decideSpecs(loaded).filter((r) => r.specs.length > 0);
+  const inSpec = new Set(specs.flatMap((s) => s.issues.map((i) => i.issue)));
+  const loose = issues.filter((i) => !i.parent && !i.hasSubIssues && (canStart(i, viewer) || rowOf(key(repo.slug, i.number))));
+  for (const issue of loose) specs.push({ spec: key(repo.slug, issue.number), title: issue.title, url: issue.url, issues: [await facts(issue)] });
+  for (const row of inFlight) {
+    if (inSpec.has(row.dispatch.issue) || specs.some((s) => s.spec === row.dispatch.issue)) continue;
+    specs.push(await looseInFlight(world, row));
+  }
+  return specs;
+}
+
+/** A Dispatch In flight whose issue was found in no Spec counts as a Spec of one. */
+async function looseInFlight(world: World, row: InFlightRow): Promise<SpecFacts> {
+  const { issue, title, url } = row.dispatch;
+  return { spec: issue, title, url, issues: [{ issue, closed: false, startable: false, inFlight: true, pr: row.pr, blockers: [], ...await holdFacts(world, row) }] };
 }
 
 /** What an In-flight Dispatch tells the Spec rules about holds. */
@@ -199,8 +226,41 @@ async function closedBelow(world: World, repo: string, branch: string): Promise<
   return undefined;
 }
 
+/**
+ * The facts the Spec rules need about a Repo's Linear Specs: those its issues
+ * belong to, those they are, and its loose issues as Specs of one.
+ */
+async function linearSpecFacts(world: World, repo: Repo, issues: LinearIssue[], rows: InFlightRow[], viewer: string): Promise<SpecFacts[]> {
+  const inFlight = rows.filter((row) => sameSlug(row.dispatch.repo, repo.slug) && linearIdentifier(row.dispatch.issue) !== null);
+  const known = new Map(issues.map((i) => [i.identifier, i]));
+  const parents = new Set(issues.flatMap((i) => i.hasSubIssues ? [i.identifier] : i.parent ? [i.parent] : []));
+  const facts = async (issue: LinearIssue): Promise<IssueFacts> => {
+    const row = inFlight.find((r) => r.dispatch.issue === issue.identifier);
+    const closed = isLinearClosed(issue.state);
+    return {
+      issue: issue.identifier, closed, startable: canStartLinear(issue, viewer), inFlight: row !== undefined,
+      pr: row ? row.pr : closed ? null : linkedPr(await linearPullRequests(world, issue.identifier, repo.slug), repo.slug),
+      blockers: issue.blockers.map((b) => ({ issue: b.identifier, closed: isLinearClosed(b.state) })),
+      ...(row && await holdFacts(world, row)),
+    };
+  };
+  const specs: SpecFacts[] = await Promise.all([...parents].map(async (spec) => {
+    const [parent, subIssues] = await Promise.all([known.get(spec) ?? world.linearIssue(spec), world.linearSubIssues(spec)]);
+    return { spec, title: parent?.title ?? spec, url: parent?.url ?? "", issues: await Promise.all(subIssues.map(facts)) };
+  }));
+  const inSpec = new Set(specs.flatMap((s) => s.issues.map((i) => i.issue)));
+  const loose = issues.filter((i) => !i.parent && !i.hasSubIssues && (canStartLinear(i, viewer) || inFlight.some((r) => r.dispatch.issue === i.identifier)));
+  for (const issue of loose) specs.push({ spec: issue.identifier, title: issue.title, url: issue.url, issues: [await facts(issue)] });
+  for (const row of inFlight) {
+    if (inSpec.has(row.dispatch.issue) || loose.some((i) => i.identifier === row.dispatch.issue)) continue;
+    specs.push(await looseInFlight(world, row));
+  }
+  return specs;
+}
+
 async function loadReady(world: World, repos: Repo[], inFlight: Dispatch[], lastBases: Record<string, string>) {
-  const board: Omit<Board, "inFlight" | "specs"> & { linear: Map<Repo, LinearIssue[]>; viewer?: string } = { ready: [], stackable: [], bases: {}, errors: [], linear: new Map() };
+  const board: Omit<Board, "inFlight" | "specs"> & { github: Map<Repo, GitHubIssue[]>; githubViewer?: string; linear: Map<Repo, LinearIssue[]>; viewer?: string } =
+    { ready: [], stackable: [], bases: {}, errors: [], github: new Map(), linear: new Map() };
   if (repos.length === 0) return board;
   const dispatched = new Set(inFlight.map((d) => d.issue));
   const github = async () => {
@@ -210,11 +270,14 @@ async function loadReady(world: World, repos: Repo[], inFlight: Dispatch[], last
       board.errors.push(...repos.map((r) => ({ repo: r.slug, error: worldErrorMessage(e) })));
       return;
     }
+    board.githubViewer = viewer;
     const results = await Promise.allSettled(repos.map(async (repo) => {
-      const issues = (await world.githubIssues(repo.slug))
+      const all = await world.githubIssues(repo.slug);
+      board.github.set(repo, all);
+      const issues = all
         .filter((issue) => canStart(issue, viewer) && !dispatched.has(`${repo.slug}#${issue.number}`))
         .sort((a, b) => a.number - b.number);
-      return Promise.all(issues.map(async (issue) => ({ issue, blockers: await stackOptions(world, repo.slug, issue) })));
+      return Promise.all(issues.map(async (issue) => ({ issue, blockers: githubStacksAcrossSpecs(repo.slug, issue, all) ? [] : await stackOptions(world, repo.slug, issue) })));
     }));
     results.forEach((result, i) => {
       const repo = repos[i]!;
@@ -286,6 +349,17 @@ async function loadReady(world: World, repos: Repo[], inFlight: Dispatch[], last
 function worldErrorMessage(e: unknown) {
   if (e instanceof WorldError) return e.message;
   throw e;
+}
+
+/** A GitHub issue of a Spec with an open Blocker outside it would stack across Specs, so it waits for that Blocker instead. */
+function githubStacksAcrossSpecs(slug: string, issue: GitHubIssue, known: GitHubIssue[]) {
+  const { parent } = issue;
+  if (!parent) return false;
+  return issue.blockers.some((b) => {
+    if (b.state === "closed") return false;
+    const blockerParent = sameSlug(b.slug, slug) ? known.find((k) => k.number === b.number)?.parent : undefined;
+    return !blockerParent || !sameSlug(blockerParent.slug, parent.slug) || blockerParent.number !== parent.number;
+  });
 }
 
 /** An issue of a Spec with an unresolved Blocker outside it would stack across Specs, so it waits for that Blocker instead. */

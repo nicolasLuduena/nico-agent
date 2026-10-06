@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import type { Address, LinearIssue, GitHubIssue, PullRequest, RequestHandler, World } from "../src/world";
+import type { Address, LinearIssue, GitHubIssue, GitHubSubIssue, PullRequest, RequestHandler, World } from "../src/world";
 import { WorldError } from "../src/world";
 
 export class FakeWorld implements World {
@@ -146,9 +146,34 @@ export class FakeWorld implements World {
       labels: ["ready-for-agent"],
       assignees: [],
       blockers: [],
+      parent: null,
+      hasSubIssues: false,
       ...issue,
     };
     this.issues.set(slug, [...(this.issues.get(slug) ?? []), full]);
+  }
+
+  /** Sub-issues of each GitHub parent issue, by `slug#N`, in sub-issue order. */
+  githubChildren = new Map<string, { slug: string; number: number }[]>();
+
+  /** Add a GitHub Spec: a parent issue of `slug` and its native sub-issues, in sub-issue order, in `slug` unless they name another. */
+  addGitHubSpec(slug: string, parent: Partial<GitHubIssue> & { number: number }, ...subIssues: (Partial<GitHubIssue> & { number: number; slug?: string })[]) {
+    this.addIssue(slug, { ...parent, hasSubIssues: true });
+    for (const { slug: subSlug = slug, ...sub } of subIssues) this.addIssue(subSlug, { ...sub, parent: { slug, number: parent.number } });
+    const key = `${slug}#${parent.number}`;
+    this.githubChildren.set(key, [...(this.githubChildren.get(key) ?? []), ...subIssues.map((s) => ({ slug: s.slug ?? slug, number: s.number }))]);
+  }
+
+  /** The GitHub issue `slug#number`, to change it as a test goes on. */
+  githubIssueNamed(slug: string, number: number) {
+    const issue = this.issues.get(slug)?.find((i) => i.number === number);
+    if (!issue) throw new Error(`no GitHub issue ${slug}#${number}`);
+    return issue;
+  }
+
+  async githubSubIssues(slug: string, number: number): Promise<GitHubSubIssue[]> {
+    this.call(`github sub-issues ${slug}#${number}`);
+    return (this.githubChildren.get(`${slug}#${number}`) ?? []).map((c) => ({ ...this.githubIssueNamed(c.slug, c.number), slug: c.slug }));
   }
 
   /** Link a PR to an issue, as a closing reference would. */
@@ -233,7 +258,8 @@ export class FakeWorld implements World {
     this.calls.push(`github issues ${slug}`);
     const failure = this.failures.get(slug);
     if (failure) throw new WorldError(failure);
-    return this.issues.get(slug) ?? [];
+    // Like the adapter, only open `ready-for-agent` issues: a Spec is found through its sub-issues.
+    return (this.issues.get(slug) ?? []).filter((i) => i.state === "open" && i.labels.includes("ready-for-agent"));
   }
 
   async githubIssue(slug: string, number: number) {
