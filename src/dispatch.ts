@@ -136,6 +136,7 @@ export async function dispatch(world: World, configDir: string, request: Dispatc
   const issue = await world.githubIssue(repo.slug, number);
   if (!issue) throw new DispatchError(`${key} was not found on GitHub`, [`Check the issue number on https://github.com/${repo.slug}/issues`]);
   if (issue.state !== "open") throw new DispatchError(`${key} is closed`, ["Run `nico-agent` to see the Ready issues"]);
+  if (issue.hasSubIssues) throw new DispatchError(`${key} is a Spec; dispatch its issues instead`, ["Run `nico-agent` to see the Ready issues"]);
   let blockers: BlockerPrs[] = [];
   if (issue.blockers.some((b) => b.state === "open")) {
     if (!canStart(issue, await world.githubViewer())) {

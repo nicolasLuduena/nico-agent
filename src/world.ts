@@ -29,6 +29,11 @@ export interface World {
   /** One issue of a GitHub repo, or null if there is no such issue. */
   githubIssue(slug: string, number: number): Promise<GitHubIssue | null>;
   /**
+   * A GitHub issue's native sub-issues, in sub-issue order: the order of work
+   * when the issue is a Spec. Empty for an issue without any.
+   */
+  githubSubIssues(slug: string, number: number): Promise<GitHubSubIssue[]>;
+  /**
    * The repos (`owner/name`) the bot's GitHub App is installed on, as the
    * App's installation sees them through `ghbot`.
    */
@@ -110,7 +115,14 @@ export interface GitHubIssue {
   labels: string[];
   assignees: string[];
   blockers: { slug: string; number: number; state: "open" | "closed" }[];
+  /** The parent issue: the Spec this issue belongs to, if any. */
+  parent: { slug: string; number: number } | null;
+  /** Whether the issue has sub-issues, which makes it a Spec. */
+  hasSubIssues: boolean;
 }
+
+/** A sub-issue, with the repo it lives in, which may differ from its parent's. */
+export type GitHubSubIssue = GitHubIssue & { slug: string };
 
 export interface PullRequest {
   /** `owner/name` of the repo the PR is in. */
