@@ -53,12 +53,20 @@ export function freshPrs(world: World): PrLookup {
 /**
  * The PRs linked to a Dispatch's issue (ADR-0003): GitHub's closing
  * references, or for a Linear issue its GitHub PR attachments in the
- * dispatched Repo, with their state read from GitHub.
+ * dispatched Repo, with their state read from GitHub. Then the PRs opened
+ * from the Dispatch's branch: GitHub records closing references only for a
+ * PR into the default branch, so a stacked PR, or one into another Base,
+ * is found by its branch alone. Closed unmerged ones are left out, as the
+ * closing references leave them out.
  */
 export async function linkedPrs(world: World, dispatch: Dispatch): Promise<PullRequest[]> {
   const identifier = linearIdentifier(dispatch.issue);
-  if (!identifier) return world.githubLinkedPullRequests(dispatch.repo, issueNumber(dispatch));
-  return linearPullRequests(world, identifier, dispatch.repo);
+  const [linked, branch] = await Promise.all([
+    identifier ? linearPullRequests(world, identifier, dispatch.repo) : world.githubLinkedPullRequests(dispatch.repo, issueNumber(dispatch)),
+    world.githubBranchPullRequests(dispatch.repo, dispatch.branch),
+  ]);
+  const urls = new Set(linked.map((pr) => pr.url));
+  return [...linked, ...branch.filter((pr) => pr.state !== "closed" && !urls.has(pr.url))];
 }
 
 /**
