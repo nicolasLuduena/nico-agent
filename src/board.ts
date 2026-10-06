@@ -1,4 +1,4 @@
-import type { LinearSelector, Repo } from "./config";
+import { DEFAULT_RUNNING_SPECS, type LinearSelector, type Repo } from "./config";
 import { type InFlightRow, type PrLookup, linearPullRequests, linkedPr, loadInFlight } from "./stage";
 import { type IssueFacts, type RepoDecision, type RepoFacts, type SpecFacts, decideSpecs } from "./spec";
 import type { Dispatch } from "./state";
@@ -138,7 +138,7 @@ export async function loadBoard(world: World, repos: Repo[], dispatches: Dispatc
   if (githubViewer !== undefined) await gather(github, undefined, (repo, issues) => githubSpecFacts(world, repo, issues, inFlight, githubViewer));
   if (viewer !== undefined) await gather(linear, "Linear", (repo, issues) => linearSpecFacts(world, repo, issues, inFlight, viewer));
   const facts = await Promise.allSettled([...specs].map(async ([repo, repoSpecs]): Promise<RepoFacts> => ({
-    repo: repo.slug, defaultBranch: await world.gitDefaultBranch(repo.path),
+    repo: repo.slug, defaultBranch: await world.gitDefaultBranch(repo.path), runningSpecs: repo.runningSpecs ?? DEFAULT_RUNNING_SPECS,
     specs: repoSpecs.sort((a, b) => a.spec.localeCompare(b.spec, undefined, { numeric: true })),
   })));
   const loaded: RepoFacts[] = [];
@@ -180,11 +180,11 @@ async function githubSpecFacts(world: World, repo: Repo, issues: GitHubIssue[], 
     const known = sameSlug(slug, repo.slug) ? issues.find((i) => i.number === number) : undefined;
     const [parent, subIssues] = await Promise.all([known ?? world.githubIssue(slug, number), world.githubSubIssues(slug, number)]);
     const own = subIssues.filter((sub) => sameSlug(sub.slug, repo.slug));
-    return { spec, title: parent?.title ?? spec, url: parent?.url ?? "", issues: await Promise.all(own.map(facts)) };
+    return { spec, title: parent?.title ?? spec, url: parent?.url ?? "", body: parent?.body ?? "", issues: await Promise.all(own.map(facts)) };
   }));
   const inSpec = new Set(specs.flatMap((s) => s.issues.map((i) => i.issue)));
   const loose = issues.filter((i) => !i.parent && !i.hasSubIssues && (canStart(i, viewer) || rowOf(key(repo.slug, i.number))));
-  for (const issue of loose) specs.push({ spec: key(repo.slug, issue.number), title: issue.title, url: issue.url, issues: [await facts(issue)] });
+  for (const issue of loose) specs.push({ spec: key(repo.slug, issue.number), title: issue.title, url: issue.url, body: issue.body, issues: [await facts(issue)] });
   for (const row of inFlight) {
     if (inSpec.has(row.dispatch.issue) || specs.some((s) => s.spec === row.dispatch.issue)) continue;
     specs.push(await looseInFlight(world, row));
@@ -195,7 +195,7 @@ async function githubSpecFacts(world: World, repo: Repo, issues: GitHubIssue[], 
 /** A Dispatch In flight whose issue was found in no Spec counts as a Spec of one. */
 async function looseInFlight(world: World, row: InFlightRow): Promise<SpecFacts> {
   const { issue, title, url } = row.dispatch;
-  return { spec: issue, title, url, issues: [{ issue, closed: false, startable: false, inFlight: true, pr: row.pr, blockers: [], ...await holdFacts(world, row) }] };
+  return { spec: issue, title, url, body: "", issues: [{ issue, closed: false, startable: false, inFlight: true, pr: row.pr, blockers: [], ...await holdFacts(world, row) }] };
 }
 
 /** What an In-flight Dispatch tells the Spec rules about holds. */
@@ -246,11 +246,11 @@ async function linearSpecFacts(world: World, repo: Repo, issues: LinearIssue[], 
   };
   const specs: SpecFacts[] = await Promise.all([...parents].map(async (spec) => {
     const [parent, subIssues] = await Promise.all([known.get(spec) ?? world.linearIssue(spec), world.linearSubIssues(spec)]);
-    return { spec, title: parent?.title ?? spec, url: parent?.url ?? "", issues: await Promise.all(subIssues.map(facts)) };
+    return { spec, title: parent?.title ?? spec, url: parent?.url ?? "", body: parent?.body ?? "", issues: await Promise.all(subIssues.map(facts)) };
   }));
   const inSpec = new Set(specs.flatMap((s) => s.issues.map((i) => i.issue)));
   const loose = issues.filter((i) => !i.parent && !i.hasSubIssues && (canStartLinear(i, viewer) || inFlight.some((r) => r.dispatch.issue === i.identifier)));
-  for (const issue of loose) specs.push({ spec: issue.identifier, title: issue.title, url: issue.url, issues: [await facts(issue)] });
+  for (const issue of loose) specs.push({ spec: issue.identifier, title: issue.title, url: issue.url, body: issue.body, issues: [await facts(issue)] });
   for (const row of inFlight) {
     if (inSpec.has(row.dispatch.issue) || loose.some((i) => i.identifier === row.dispatch.issue)) continue;
     specs.push(await looseInFlight(world, row));

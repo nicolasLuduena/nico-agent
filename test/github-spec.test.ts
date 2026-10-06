@@ -82,7 +82,7 @@ describe("GitHub Specs", () => {
 
     const board = (await cli("--json")).json();
     expect(board.specs.find((s: { spec: string }) => s.spec === "acme/api#10")).toEqual({
-      spec: "acme/api#10", title: "Billing", repo: "acme/api", issues: ["acme/api#11", "acme/api#12"], running: true,
+      spec: "acme/api#10", title: "Billing", repo: "acme/api", issues: ["acme/api#11", "acme/api#12"], running: false,
       waiting: { issue: "acme/api#12", blocker: "acme/api#21", reason: "acme/api#12 waits for acme/api#21, in another Spec, to close; a Stack never mixes Specs" },
     });
     expect(board.stackable).toBeUndefined();

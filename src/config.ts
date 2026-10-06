@@ -7,7 +7,12 @@ export interface Repo {
   slug: string;
   path: string;
   linear?: LinearSelector;
+  /** How many Specs may run in the Repo at once; DEFAULT_RUNNING_SPECS when unset. */
+  runningSpecs?: number;
 }
+
+/** The running Specs a Repo allows unless config sets its own cap. */
+export const DEFAULT_RUNNING_SPECS = 2;
 
 export interface LinearSelector {
   team: string;
@@ -200,7 +205,7 @@ export function loadConfig(dir: string): Config {
   } catch {
     throw new ConfigError(`${file} is not valid JSON`);
   }
-  const config: Config = { repos: parsed.repos ?? [] };
+  const config: Config = { repos: checkRepos(file, parsed.repos ?? []) };
   if (parsed.prompts !== undefined) config.prompts = checkPrompts(file, parsed.prompts);
   if (parsed.harnesses !== undefined) config.harnesses = checkHarnesses(file, parsed.harnesses);
   if (parsed.scheduler !== undefined) config.scheduler = checkScheduler(file, parsed.scheduler);
@@ -226,6 +231,14 @@ function checkPrompts(file: string, prompts: unknown): Partial<Prompts> {
     }
   }
   return prompts;
+}
+
+function checkRepos(file: string, repos: Repo[]): Repo[] {
+  repos.forEach((repo, i) => {
+    const cap = repo.runningSpecs;
+    if (cap !== undefined && !(Number.isInteger(cap) && cap > 0)) throw new ConfigError(`${file}: repos[${i}].runningSpecs is not a positive integer`);
+  });
+  return repos;
 }
 
 function checkScheduler(file: string, scheduler: unknown): Partial<SchedulerDefaults> {

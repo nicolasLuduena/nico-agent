@@ -88,7 +88,7 @@ async function herdr(args: string[]): Promise<any> {
 }
 
 const ISSUE_FIELDS = `
-        number title url state
+        number title url body state
         labels(first: 50) { nodes { name } }
         assignees(first: 20) { nodes { login } }
         blockedBy(first: 50) { nodes { number state repository { nameWithOwner } } }
@@ -144,6 +144,7 @@ interface IssueNode {
   number: number;
   title: string;
   url: string;
+  body: string;
   state: string;
   labels: { nodes: { name: string }[] };
   assignees: { nodes: { login: string }[] };
@@ -455,6 +456,7 @@ function toIssue(node: IssueNode): GitHubIssue {
     number: node.number,
     title: node.title,
     url: node.url,
+    body: node.body ?? "",
     state: node.state === "OPEN" ? "open" : "closed",
     labels: node.labels.nodes.map((l) => l.name),
     assignees: node.assignees.nodes.map((a) => a.login),

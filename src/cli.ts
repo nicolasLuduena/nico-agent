@@ -139,9 +139,11 @@ const commands: Command[] = [
     name: "advance",
     usage: "nico-agent advance",
     summary: "Dispatch each running Spec's next issue with the Scheduler defaults from config (skips Held Specs)",
-    flags: {},
+    flags: {
+      "--start": { value: true, description: "candidate Spec to start too, named as on the Board; refused unless its Repo has room" },
+    },
     positionals: [],
-    examples: ["nico-agent advance", "nico-agent advance --json"],
+    examples: ["nico-agent advance", "nico-agent advance --start BLE-10 --json"],
     run: advanceCommand,
   },
   {
@@ -408,8 +410,9 @@ async function dispatchCommand(args: Args, ctx: RunContext): Promise<Output> {
   });
 }
 
-async function advanceCommand(_args: Args, ctx: RunContext): Promise<Output> {
-  const { specs, errors, help } = await advance(ctx.world, ctx.configDir);
+async function advanceCommand(args: Args, ctx: RunContext): Promise<Output> {
+  const start = args.flags["--start"];
+  const { specs, errors, help } = await advance(ctx.world, ctx.configDir, typeof start === "string" ? { start } : {});
   return {
     data: { specs, ...(errors.length && { errors }) },
     help: [...help, BOARD_HELP],
@@ -682,9 +685,16 @@ async function board(ctx: RunContext): Promise<Output> {
     data.specs = specRows.map(({ spec, title, repo, issues, running, held, next, waiting, reason }) => ({
       spec, title, repo, issues, running,
       ...(held && { held }),
-      ...(next && { next: { issue: next.issue, ...(next.stackOn && { stackOn: next.stackOn.url }), base: next.base, reason: next.reason } }),
+      // A candidate's first issue is listed under `rooms`.
+      ...(running && next && { next: { issue: next.issue, ...(next.stackOn && { stackOn: next.stackOn.url }), base: next.base, reason: next.reason } }),
       ...(waiting && { waiting }),
       ...(reason && { reason }),
+    }));
+    // What the Scheduler chooses from: each candidate's body lets it judge priority without reaching the Source.
+    data.rooms = specs.map(({ repo, specs: decided, room, candidates }) => ({
+      repo, running: decided.filter((s) => s.running).map((s) => s.spec), room,
+      candidates: decided.filter((s) => candidates.includes(s.spec))
+        .map(({ spec, title, url, next, body }) => ({ spec, title, url, issue: next!.issue, body })),
     }));
   }
   Object.assign(data, inFlightData);

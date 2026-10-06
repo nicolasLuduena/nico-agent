@@ -87,7 +87,7 @@ describe("Linear Specs", () => {
 
     const board = (await cli("--json")).json();
     expect(board.specs.find((s: { spec: string }) => s.spec === "BLE-10")).toEqual({
-      spec: "BLE-10", title: "PDF diffing", repo: "bleentr/pdf-diff", issues: ["BLE-11", "BLE-12"], running: true,
+      spec: "BLE-10", title: "PDF diffing", repo: "bleentr/pdf-diff", issues: ["BLE-11", "BLE-12"], running: false,
       waiting: { issue: "BLE-12", blocker: "BLE-21", reason: "BLE-12 waits for BLE-21, in another Spec, to close; a Stack never mixes Specs" },
     });
     expect(board.stackable).toBeUndefined();
