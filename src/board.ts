@@ -1,9 +1,11 @@
 import type { LinearSelector, Repo } from "./config";
-import { type InFlightRow, type PrLookup, linearPullRequests, loadInFlight } from "./stage";
+import { type InFlightRow, type PrLookup, linearPullRequests, linkedPr, loadInFlight } from "./stage";
+import { type IssueFacts, type RepoDecision, type RepoFacts, type SpecFacts, decideSpecs } from "./spec";
 import type { Dispatch } from "./state";
 import type { GitHubIssue, LinearIssue, World } from "./world";
 import { READY_LABEL, WorldError } from "./world";
 import { sameSlug } from "./slug";
+import { linearIdentifier } from "./linear";
 import type { PullRequest } from "./world";
 
 export interface StackOption {
@@ -30,6 +32,8 @@ export type BoardIssue = {
 
 export interface Board {
   ready: BoardIssue[];
+  /** Each Repo's Specs as the Spec rules decide them; Repos without Specs are left out. */
+  specs: RepoDecision[];
   stackable: StackableIssue[];
   inFlight: InFlightRow[];
   /** The Base choice of each Repo with Ready issues, by slug. */
@@ -101,12 +105,56 @@ function everyBlocker(options: StackOption[][]) {
  * from: the Repo's entry in `lastBases` while origin still has it.
  */
 export async function loadBoard(world: World, repos: Repo[], dispatches: Dispatch[], prs: PrLookup, lastBases: Record<string, string> = {}): Promise<Board> {
-  const [ready, inFlight] = await Promise.all([loadReady(world, repos, dispatches, lastBases), loadInFlight(world, dispatches, prs)]);
-  return { ...ready, inFlight };
+  const [{ linear, viewer, ...ready }, inFlight] = await Promise.all([loadReady(world, repos, dispatches, lastBases), loadInFlight(world, dispatches, prs)]);
+  const board: Board = { ...ready, inFlight, specs: [] };
+  if (viewer !== undefined) board.specs = await loadLinearSpecs(world, board, linear, viewer);
+  return board;
+}
+
+/**
+ * The facts the Spec rules need about each Repo's Linear Specs: those its
+ * issues belong to, those they are, and its loose issues as Specs of one.
+ */
+async function loadLinearSpecs(world: World, board: Omit<Board, "specs">, linear: Map<Repo, LinearIssue[]>, viewer: string): Promise<RepoDecision[]> {
+  const facts = await Promise.allSettled([...linear].map(async ([repo, issues]): Promise<RepoFacts> => {
+    const inFlight = board.inFlight.filter((row) => sameSlug(row.dispatch.repo, repo.slug) && linearIdentifier(row.dispatch.issue) !== null);
+    const known = new Map(issues.map((i) => [i.identifier, i]));
+    const parents = new Set(issues.flatMap((i) => i.hasSubIssues ? [i.identifier] : i.parent ? [i.parent] : []));
+    const facts = async (issue: LinearIssue): Promise<IssueFacts> => {
+      const row = inFlight.find((r) => r.dispatch.issue === issue.identifier);
+      const closed = isLinearClosed(issue.state);
+      return {
+        issue: issue.identifier, closed, startable: canStartLinear(issue, viewer), inFlight: row !== undefined,
+        pr: row ? row.pr : closed ? null : linkedPr(await linearPullRequests(world, issue.identifier, repo.slug), repo.slug),
+        blockers: issue.blockers.map((b) => ({ issue: b.identifier, closed: isLinearClosed(b.state) })),
+      };
+    };
+    const specs: SpecFacts[] = await Promise.all([...parents].map(async (spec) => {
+      const [parent, subIssues] = await Promise.all([known.get(spec) ?? world.linearIssue(spec), world.linearSubIssues(spec)]);
+      return { spec, title: parent?.title ?? spec, url: parent?.url ?? "", issues: await Promise.all(subIssues.map(facts)) };
+    }));
+    const inSpec = new Set(specs.flatMap((s) => s.issues.map((i) => i.issue)));
+    const loose = issues.filter((i) => !i.parent && !i.hasSubIssues && (canStartLinear(i, viewer) || inFlight.some((r) => r.dispatch.issue === i.identifier)));
+    for (const issue of loose) specs.push({ spec: issue.identifier, title: issue.title, url: issue.url, issues: [await facts(issue)] });
+    for (const row of inFlight) {
+      if (inSpec.has(row.dispatch.issue) || loose.some((i) => i.identifier === row.dispatch.issue)) continue;
+      const { issue, title, url } = row.dispatch;
+      specs.push({ spec: issue, title, url, issues: [{ issue, closed: false, startable: false, inFlight: true, pr: row.pr, blockers: [] }] });
+    }
+    specs.sort((a, b) => a.spec.localeCompare(b.spec, undefined, { numeric: true }));
+    return { repo: repo.slug, defaultBranch: await world.gitDefaultBranch(repo.path), specs };
+  }));
+  const loaded: RepoFacts[] = [];
+  facts.forEach((result, i) => {
+    const repo = [...linear.keys()][i]!;
+    if (result.status === "fulfilled") loaded.push(result.value);
+    else board.errors.push({ repo: repo.slug, source: "Linear", error: worldErrorMessage(result.reason) });
+  });
+  return decideSpecs(loaded).filter((r) => r.specs.length > 0);
 }
 
 async function loadReady(world: World, repos: Repo[], inFlight: Dispatch[], lastBases: Record<string, string>) {
-  const board: Omit<Board, "inFlight"> = { ready: [], stackable: [], bases: {}, errors: [] };
+  const board: Omit<Board, "inFlight" | "specs"> & { linear: Map<Repo, LinearIssue[]>; viewer?: string } = { ready: [], stackable: [], bases: {}, errors: [], linear: new Map() };
   if (repos.length === 0) return board;
   const dispatched = new Set(inFlight.map((d) => d.issue));
   const github = async () => {
@@ -145,13 +193,16 @@ async function loadReady(world: World, repos: Repo[], inFlight: Dispatch[], last
       board.errors.push(...selected.map((r) => ({ repo: r.slug, source: "Linear" as const, error: worldErrorMessage(e) })));
       return;
     }
+    board.viewer = viewer;
     const teams = [...new Set(selected.map((r) => r.linear!.team))];
     const issues = await Promise.allSettled(teams.map((team) => world.linearIssues(team)));
     // A Repo's Stackable issues are those with a Blocker PR in it, so each Repo is asked on its own.
     const results = await Promise.allSettled(selected.map(async (repo) => {
       const result = issues[teams.indexOf(repo.linear!.team)]!;
       if (result.status === "rejected") throw result.reason;
-      const startable = result.value.filter((i) => matchesSelector(i, repo.linear!) && canStartLinear(i, viewer) && !dispatched.has(i.identifier))
+      const claimed = result.value.filter((i) => matchesSelector(i, repo.linear!));
+      board.linear.set(repo, claimed);
+      const startable = claimed.filter((i) => canStartLinear(i, viewer) && !dispatched.has(i.identifier))
         .sort((a, b) => a.identifier.localeCompare(b.identifier, undefined, { numeric: true }));
       return Promise.all(startable.map(async (issue) => {
         const ready = isLinearReady(issue, viewer);
