@@ -13,7 +13,7 @@ const TOOLS = [
     name: "board",
     title: "Board",
     description:
-      "Read the Board: Ready issues, Specs (running, Held, next issue) and each Repo's room and candidate Specs. Same JSON as `nico-agent --json`.",
+      "Read the Board as the Scheduler needs it: running and Held Specs, and each Repo's room and candidate Specs (bodies cut short). A view of `nico-agent --json`.",
     inputSchema: { type: "object", additionalProperties: false },
   },
   {
@@ -105,7 +105,30 @@ function initialize(params: unknown) {
 async function callTool(runCli: CliRunner, params: unknown) {
   const argv = toolArgv(params);
   const { stdout, exitCode } = await runCli(argv);
-  return { content: [{ type: "text", text: stdout }], structuredContent: JSON.parse(stdout), isError: exitCode !== 0 };
+  const json = JSON.parse(stdout);
+  const view = argv[0] === "--json" ? schedulerView(json) : json;
+  const text = view === json ? stdout : JSON.stringify(view, null, 2);
+  return { content: [{ type: "text", text }], structuredContent: view, isError: exitCode !== 0 };
+}
+
+/** The longest candidate body `board` returns: enough to judge priority, short enough that many candidates fit one tool result. */
+const BODY_LIMIT = 500;
+
+/**
+ * The Board as the Scheduler reads it. A client cuts a long tool result short
+ * (Hermes past 50K characters), and the whole Board outgrows that with the
+ * Ready list, the Dispatches and every candidate's full body. The Scheduler
+ * only picks Specs, so it gets the running and Held ones and the rooms. A
+ * Board without rooms (an error, or no Specs) passes through whole.
+ */
+function schedulerView(board: Record<string, unknown>) {
+  if (!Array.isArray(board.rooms)) return board;
+  const specs = (board.specs as { running: boolean; held?: unknown }[]).filter((s) => s.running || s.held);
+  const rooms = (board.rooms as { candidates: { body: string }[] }[]).map((room) => ({
+    ...room,
+    candidates: room.candidates.map((c) => ({ ...c, body: c.body.length > BODY_LIMIT ? `${c.body.slice(0, BODY_LIMIT)}…` : c.body })),
+  }));
+  return { specs, rooms, ...(board.errors !== undefined && { errors: board.errors }), help: board.help };
 }
 
 function toolArgv(params: unknown): string[] {
