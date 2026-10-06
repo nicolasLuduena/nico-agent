@@ -12,6 +12,11 @@ export interface World {
   linearIssues(team: string): Promise<LinearIssue[]>;
   /** One Linear issue by identifier (`BLE-27`), or null if there is no such issue. */
   linearIssue(identifier: string): Promise<LinearIssue | null>;
+  /**
+   * A Linear issue's sub-issues (its children), in sub-issue order: the order
+   * of work when the issue is a Spec. Empty for an issue without any.
+   */
+  linearSubIssues(identifier: string): Promise<LinearIssue[]>;
   /** The URLs of a Linear issue's attachments, GitHub PRs among them. */
   linearAttachmentUrls(identifier: string): Promise<string[]>;
   /** Assign a Linear issue to the API key's owner (the Claim, ADR-0007). */
@@ -24,6 +29,11 @@ export interface World {
   /** One issue of a GitHub repo, or null if there is no such issue. */
   githubIssue(slug: string, number: number): Promise<GitHubIssue | null>;
   /**
+   * A GitHub issue's native sub-issues, in sub-issue order: the order of work
+   * when the issue is a Spec. Empty for an issue without any.
+   */
+  githubSubIssues(slug: string, number: number): Promise<GitHubSubIssue[]>;
+  /**
    * The repos (`owner/name`) the bot's GitHub App is installed on, as the
    * App's installation sees them through `ghbot`.
    */
@@ -35,7 +45,7 @@ export interface World {
   githubLinkedPullRequests(slug: string, number: number): Promise<PullRequest[]>;
   /** One PR of a GitHub repo, or null if there is no such PR. */
   githubPullRequest(slug: string, number: number): Promise<PullRequest | null>;
-  /** All PRs on a Dispatch's head branch, including closed unmerged PRs. */
+  /** All PRs whose head is `branch` (a Dispatch's, or a Stack's next one down), including closed unmerged PRs. */
   githubBranchPullRequests(slug: string, branch: string): Promise<PullRequest[]>;
   /** Assign an issue to the user's own GitHub session (the Claim, ADR-0007). */
   githubAssignSelf(slug: string, number: number): Promise<void>;
@@ -88,7 +98,14 @@ export interface World {
   now(): Date;
   /** Start answering HTTP requests on `hostname:port`; resolves once listening. */
   serve(address: Address, handler: RequestHandler): Promise<void>;
+  /**
+   * Answer each stdin line with `handler`, writing its reply (if any) as one
+   * stdout line; resolves when stdin closes.
+   */
+  serveStdio(handler: LineHandler): Promise<void>;
 }
+
+export type LineHandler = (line: string) => Promise<string | null>;
 
 export interface Address {
   hostname: string;
@@ -101,11 +118,20 @@ export interface GitHubIssue {
   number: number;
   title: string;
   url: string;
+  /** The issue's description, as written; a Spec's says what it builds. */
+  body: string;
   state: "open" | "closed";
   labels: string[];
   assignees: string[];
   blockers: { slug: string; number: number; state: "open" | "closed" }[];
+  /** The parent issue: the Spec this issue belongs to, if any. */
+  parent: { slug: string; number: number } | null;
+  /** Whether the issue has sub-issues, which makes it a Spec. */
+  hasSubIssues: boolean;
 }
+
+/** A sub-issue, with the repo it lives in, which may differ from its parent's. */
+export type GitHubSubIssue = GitHubIssue & { slug: string };
 
 export interface PullRequest {
   /** `owner/name` of the repo the PR is in. */
@@ -123,10 +149,18 @@ export const READY_LABEL = "ready-for-agent";
 /** A failure reported by an adapter, already stripped of tool noise. */
 export class WorldError extends Error {}
 
+/** The message of an adapter failure; anything else is a bug and propagates. */
+export function worldErrorMessage(e: unknown) {
+  if (e instanceof WorldError) return e.message;
+  throw e;
+}
+
 export interface LinearIssue {
   identifier: string;
   title: string;
   url: string;
+  /** The issue's description, as written; empty without one. A Spec's says what it builds. */
+  body: string;
   /** The branch Linear suggests, which its GitHub integration links PRs by. */
   branchName: string;
   team: { id: string; key: string; name: string };
@@ -136,4 +170,8 @@ export interface LinearIssue {
   assignee: string | null;
   /** Issues blocking this one, by identifier, with their Linear state type. */
   blockers: { identifier: string; state: string }[];
+  /** The parent issue, by identifier: the Spec this issue belongs to, if any. */
+  parent: string | null;
+  /** Whether the issue has sub-issues, which makes it a Spec. */
+  hasSubIssues: boolean;
 }

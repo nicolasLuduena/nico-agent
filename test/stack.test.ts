@@ -30,7 +30,7 @@ test("dispatch starts on the chosen Blocker PR and keeps its stacking context", 
   const shown = (await cli("show", "acme/api#7", "--json")).json();
   expect(shown.base).toBe("origin/agent/blocker-6");
   expect(world.calls).toContain("git -C /src/api fetch origin +refs/heads/agent/blocker-6:refs/remotes/origin/agent/blocker-6");
-  expect(shown.stackedOn).toMatchObject({ blocker: "acme/api#6", pr: { url: "https://github.com/acme/api/pull/16" } });
+  expect(shown.stackedOn).toMatchObject({ issue: "acme/api#6", pr: { url: "https://github.com/acme/api/pull/16" } });
   expect(world.calls).toContain("herdr worktree create --cwd /src/api --branch agent/api-7 --base origin/agent/blocker-6 --label api#7 --no-focus");
   expect(world.calls.find((c) => c.startsWith("herdr agent prompt"))).toContain("as the top of the stacked PRs on top of https://github.com/acme/api/pull/16 - check gh-stack if you are not aware of github's stacked PRs");
 });
@@ -38,7 +38,7 @@ test("dispatch starts on the chosen Blocker PR and keeps its stacking context", 
 test("ambiguous stacking lists the choices and --stack-on selects a Blocker", async () => {
   const { cli, world } = await stackable();
   world.issues.get("acme/api")![0]!.blockers.push({ slug: "acme/api", number: 5, state: "open" });
-  world.linkPr("acme/api", 5, { number: 15, headBranch: "agent/blocker-5" });
+  world.linkPr("acme/api", 5, { number: 15, headBranch: "agent/blocker-5", baseBranch: "agent/blocker-6" });
   const failed = await cli("dispatch", "acme/api#7", ...FLAGS, "--json");
   expect(failed.exitCode).toBe(1);
   expect(failed.json().help).toEqual([
@@ -53,7 +53,7 @@ test("ambiguous stacking lists the choices and --stack-on selects a Blocker", as
 test("the web offers Blocker choices and preserves the selection when the Harness changes", async () => {
   const { web, world, cli } = await stackable();
   world.issues.get("acme/api")![0]!.blockers.push({ slug: "acme/api", number: 5, state: "open" });
-  world.linkPr("acme/api", 5, { number: 15, headBranch: "agent/blocker-5" });
+  world.linkPr("acme/api", 5, { number: 15, headBranch: "agent/blocker-5", baseBranch: "agent/blocker-6" });
   const { body } = await web("/");
   expect(body).toContain("<h3>Stackable</h3>");
   expect(body).toContain('<select name="stackOn">');
@@ -66,10 +66,8 @@ test("the web offers Blocker choices and preserves the selection when the Harnes
   expect((await cli("board", "--json")).json().stackable).toBeUndefined();
 });
 
-test("dispatch refuses Ready issues with --stack-on and Blockers without same-Repo open PRs", async () => {
+test("dispatch refuses Blockers without same-Repo open PRs", async () => {
   const { cli, world } = await stackable();
-  world.addIssue("acme/api", { number: 8 });
-  expect((await cli("dispatch", "acme/api#8", ...FLAGS, "--stack-on", "6")).exitCode).toBe(1);
   world.linkedPrs.clear();
   expect((await cli("dispatch", "acme/api#7", ...FLAGS)).exitCode).toBe(1);
   world.linkPr("acme/api", 6, { number: 16, repo: "acme/other" });
@@ -112,7 +110,8 @@ test("the real CLI recognizes a same-Repo PR closing a Blocker from another repo
   mkdirSync(binDir);
   const issue = { number: 7, title: "Issue 7", url: "https://github.com/acme/api/issues/7", state: "OPEN",
     labels: { nodes: [{ name: "ready-for-agent" }] }, assignees: { nodes: [] },
-    blockedBy: { nodes: [{ number: 6, state: "OPEN", repository: { nameWithOwner: "acme/other" } }] } };
+    blockedBy: { nodes: [{ number: 6, state: "OPEN", repository: { nameWithOwner: "acme/other" } }] },
+    parent: null, subIssuesSummary: { total: 0 } };
   const pr = { number: 16, url: "https://github.com/acme/api/pull/16", state: "OPEN", baseRefName: "main",
     headRefName: "agent/blocker-6", headRepository: { nameWithOwner: "acme/api" }, repository: { nameWithOwner: "acme/api" } };
   writeFileSync(join(binDir, "issues.json"), JSON.stringify({ data: { repository: { issues: { nodes: [issue], pageInfo: { hasNextPage: false } } } } }));

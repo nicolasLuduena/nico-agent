@@ -7,7 +7,12 @@ export interface Repo {
   slug: string;
   path: string;
   linear?: LinearSelector;
+  /** How many Specs may run in the Repo at once; DEFAULT_MAX_RUNNING_SPECS when unset. */
+  maxRunningSpecs?: number;
 }
+
+/** The running Specs a Repo allows unless config sets its own cap. */
+export const DEFAULT_MAX_RUNNING_SPECS = 2;
 
 export interface LinearSelector {
   team: string;
@@ -21,7 +26,18 @@ export interface Config {
   prompts?: Partial<Prompts>;
   /** Harness settings the user set, by Harness, over HARNESSES; a new name defines a new Harness. */
   harnesses?: Record<string, Partial<HarnessConfig>>;
+  /** The launch `advance` dispatches with, so the Scheduler never chooses it (ADR-0008). */
+  scheduler?: Partial<SchedulerDefaults>;
 }
+
+/** The Harness, model and Effort of every Dispatch `advance` starts. */
+export interface SchedulerDefaults {
+  harness: string;
+  model: string;
+  effort: string;
+}
+
+export const SCHEDULER_DEFAULTS = ["harness", "model", "effort"] as const;
 
 /**
  * How a Harness is launched (ADR-0005). `modelArgs` and `effortArgs` hold the
@@ -189,9 +205,10 @@ export function loadConfig(dir: string): Config {
   } catch {
     throw new ConfigError(`${file} is not valid JSON`);
   }
-  const config: Config = { repos: parsed.repos ?? [] };
+  const config: Config = { repos: checkRepos(file, parsed.repos ?? []) };
   if (parsed.prompts !== undefined) config.prompts = checkPrompts(file, parsed.prompts);
   if (parsed.harnesses !== undefined) config.harnesses = checkHarnesses(file, parsed.harnesses);
+  if (parsed.scheduler !== undefined) config.scheduler = checkScheduler(file, parsed.scheduler);
   return config;
 }
 
@@ -214,6 +231,25 @@ function checkPrompts(file: string, prompts: unknown): Partial<Prompts> {
     }
   }
   return prompts;
+}
+
+function checkRepos(file: string, repos: Repo[]): Repo[] {
+  repos.forEach((repo, i) => {
+    const cap = repo.maxRunningSpecs;
+    if (cap !== undefined && !(Number.isInteger(cap) && cap > 0)) throw new ConfigError(`${file}: repos[${i}].maxRunningSpecs is not a positive integer`);
+  });
+  return repos;
+}
+
+function checkScheduler(file: string, scheduler: unknown): Partial<SchedulerDefaults> {
+  if (!isObject(scheduler)) throw new ConfigError(`${file}: scheduler is not an object`);
+  for (const [key, value] of Object.entries(scheduler)) {
+    if (!(SCHEDULER_DEFAULTS as readonly string[]).includes(key)) {
+      throw new ConfigError(`${file}: scheduler.${key} is not a Scheduler default`, `Scheduler defaults: ${SCHEDULER_DEFAULTS.join(", ")}`);
+    }
+    if (typeof value !== "string") throw new ConfigError(`${file}: scheduler.${key} is not a string`);
+  }
+  return scheduler as Partial<SchedulerDefaults>;
 }
 
 function checkHarnesses(file: string, harnesses: unknown): Record<string, Partial<HarnessConfig>> {

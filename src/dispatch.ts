@@ -18,27 +18,20 @@ import {
   saveDispatch,
 } from "./state";
 import { type LinearIssue, type World, WorldError } from "./world";
-import { baseChoice, canStart, isLinearClosed, linearStackOptions, matchesSelector, stackChoice, stackOptions, type StackOption } from "./board";
+import { type BlockerPrs, baseChoice, blockerPrs, matchesSelector } from "./board";
+import { canStart, githubSource, isLinearClosed, linearSource } from "./source";
+import { type StackTarget, chooseStackTarget } from "./stack";
+
+import { DispatchError, LaunchError } from "./dispatch-error";
 
 const DISPATCH_HINT = "nico-agent dispatch <issue> --harness <harness> --model <model> --effort <effort>";
-
-/** A request the user can fix; `usage` marks a malformed one (CLI exit 2). */
-export class DispatchError extends Error {
-  constructor(
-    message: string,
-    readonly help: string[],
-    readonly usage = false,
-  ) {
-    super(message);
-  }
-}
 
 export interface DispatchRequest {
   issue: string;
   harness: string;
   model: string;
   effort: string;
-  /** Blocker issue reference to stack on; omitted when there is a single option. */
+  /** Open PR in the Repo to stack on, by its issue or URL; omitted when a single Blocker PR is the only option. */
   stackOn?: string;
   /** Branch on origin to use as the Base; omitted for the last one used in the Repo, else the default branch. */
   base?: string;
@@ -135,17 +128,16 @@ export async function dispatch(world: World, configDir: string, request: Dispatc
   const issue = await world.githubIssue(repo.slug, number);
   if (!issue) throw new DispatchError(`${key} was not found on GitHub`, [`Check the issue number on https://github.com/${repo.slug}/issues`]);
   if (issue.state !== "open") throw new DispatchError(`${key} is closed`, ["Run `nico-agent` to see the Ready issues"]);
-  let stackedOn: StackOption | undefined;
+  if (issue.hasSubIssues) throw new DispatchError(`${key} is a Spec; dispatch its issues instead`, ["Run `nico-agent` to see the Ready issues"]);
+  let blockers: BlockerPrs[] = [];
   if (issue.blockers.some((b) => b.state === "open")) {
     if (!canStart(issue, await world.githubViewer())) {
       throw new DispatchError(`${key} is not Stackable`, ["Run `nico-agent` to see the Board"]);
     }
-    const options = await stackOptions(world, repo.slug, issue);
-    if (!options.length) throw new DispatchError(`${key} has open Blockers without same-Repo open PRs`, ["Run `nico-agent` to see the Board"]);
-    stackedOn = chooseStack(key, repo.slug, options, request.stackOn);
-  } else if (request.stackOn) {
-    throw new DispatchError(`${key} has no open Blockers to stack on`, ["Dispatch it without `--stack-on`"]);
+    blockers = await blockerPrs(githubSource(world, repo.slug), issue);
   }
+  const stackedOn = await chooseStackTarget(world, key, repo.slug, blockers, request.stackOn,
+    () => new DispatchError(`${key} has open Blockers without same-Repo open PRs`, ["Run `nico-agent` to see the Board"]));
   const base = await chooseBase(world, configDir, ref, request, stackedOn);
   const url = `https://github.com/${repo.slug}/issues/${number}`;
   return startDispatch(world, configDir, ref, harness, templates, request, { title: issue.title, url, branch: `agent/${repoName(repo)}-${number}`, base, stackedOn });
@@ -160,34 +152,20 @@ async function newLinearDispatch(world: World, configDir: string, identifier: st
   const issue = await world.linearIssue(identifier);
   if (!issue) throw new DispatchError(`${identifier} was not found on Linear`, ["Check the identifier in Linear"]);
   if (isLinearClosed(issue.state)) throw new DispatchError(`${identifier} is closed`, ["Run `nico-agent` to see the Ready issues"]);
+  if (issue.hasSubIssues) throw new DispatchError(`${identifier} is a Spec; dispatch its issues instead`, ["Run `nico-agent` to see the Ready issues"]);
   // Linear has one assignee, so the Claim would replace someone else.
   if (issue.assignee !== null && issue.assignee !== await world.linearViewer()) {
     throw new DispatchError(`${identifier} is assigned to someone else on Linear`, ["Run `nico-agent` to see the Ready issues"]);
   }
   const ref: IssueRef = { repo: claimingRepo(configDir, issue, request.repo), identifier, key: identifier };
-  let stackedOn: StackOption | undefined;
-  if (issue.blockers.some((b) => !isLinearClosed(b.state))) {
-    const options = await linearStackOptions(world, ref.repo.slug, issue);
-    if (!options.length) {
-      throw new DispatchError(`${identifier} has unresolved Blockers without open PRs in ${ref.repo.slug}`, [
-        "Dispatch it once its Blockers are done, or once each has an open PR in the Repo",
-        "Run `nico-agent` to see the Board",
-      ]);
-    }
-    stackedOn = chooseStack(identifier, ref.repo.slug, options, request.stackOn);
-  } else if (request.stackOn) {
-    throw new DispatchError(`${identifier} has no unresolved Blockers to stack on`, ["Dispatch it without `--stack-on`"]);
-  }
+  const blockers = await blockerPrs(linearSource(world, ref.repo.slug), issue);
+  const stackedOn = await chooseStackTarget(world, identifier, ref.repo.slug, blockers, request.stackOn,
+    () => new DispatchError(`${identifier} has unresolved Blockers without open PRs in ${ref.repo.slug}`, [
+      "Dispatch it once its Blockers are done, or once each has an open PR in the Repo",
+      "Run `nico-agent` to see the Board",
+    ]));
   const base = await chooseBase(world, configDir, ref, request, stackedOn);
   return startDispatch(world, configDir, ref, harness, templates, request, { title: issue.title, url: issue.url, branch: issue.branchName, base, stackedOn });
-}
-
-/** The one option `choice` selects, or the only option when there is no choice. */
-function chooseStack(key: string, repo: string, options: StackOption[], choice?: string) {
-  const selected = choice ? options.filter((o) => matchesStack(choice, repo, o)) : options;
-  if (selected.length === 1) return selected[0]!;
-  const help = options.map((o) => `Stack on ${o.pr.url} with \`--stack-on ${stackChoice(o, options)}\``);
-  throw new DispatchError(`${key} needs a unique Blocker choice with --stack-on`, help);
 }
 
 /** The Repo a Linear issue is dispatched into: `choice`, which must claim it, else the only Repo that does. */
@@ -214,7 +192,7 @@ async function startDispatch(
   harness: Harness,
   templates: Prompts,
   request: DispatchRequest,
-  { title, url, branch, base, stackedOn }: { title: string; url: string; branch: string; base: string; stackedOn?: StackOption },
+  { title, url, branch, base, stackedOn }: { title: string; url: string; branch: string; base: string; stackedOn?: StackTarget },
 ): Promise<DispatchResult> {
   const { repo, key } = ref;
   const now = world.now().toISOString();
@@ -403,6 +381,11 @@ async function runReview(world: World, configDir: string, ref: IssueRef, harness
   return record;
 }
 
+/** Refuse a launch whose Harness, model or Effort is unknown, before any Dispatch is made with it. */
+export async function checkLaunch(world: World, configDir: string, launch: Pick<DispatchRequest, "harness" | "model" | "effort">) {
+  await chooseLaunch(world, configDir, { issue: "", ...launch });
+}
+
 /**
  * The Harness of a request, once its model is one of the Harness's and its
  * Effort one that model supports. Which models and Efforts are valid comes
@@ -413,7 +396,7 @@ async function chooseLaunch(world: World, configDir: string, request: DispatchRe
   const catalog = await harnessCatalog(world, configDir, request.harness);
   if (!catalog) {
     const names = harnesses(configDir).map((h) => h.name);
-    throw new DispatchError(`unknown Harness \`${request.harness}\``, [`Valid Harnesses: ${names.join(", ")}`], true);
+    throw new LaunchError("harness", `unknown Harness \`${request.harness}\``, [`Valid Harnesses: ${names.join(", ")}`], true);
   }
   const { harness, models, error } = catalog;
   const choice = models.find((m) => m.model === request.model);
@@ -424,13 +407,13 @@ async function chooseLaunch(world: World, configDir: string, request: DispatchRe
     ]);
   }
   if (!choice) {
-    throw new DispatchError(`unknown model \`${request.model}\` for ${harness.name}`, [
+    throw new LaunchError("model", `unknown model \`${request.model}\` for ${harness.name}`, [
       `Valid models for ${harness.name}: ${models.map((m) => m.model).join(", ")}`,
     ], true);
   }
   if (!choice.efforts.includes(request.effort)) {
     const launch = `${harness.name} ${choice.model}`;
-    throw new DispatchError(`Effort \`${request.effort}\` is not valid for ${launch}`, [
+    throw new LaunchError("effort", `Effort \`${request.effort}\` is not valid for ${launch}`, [
       `Valid Efforts for ${launch}: ${choice.efforts.join(", ")}`,
     ]);
   }
@@ -439,11 +422,11 @@ async function chooseLaunch(world: World, configDir: string, request: DispatchRe
 
 /**
  * The Base of a new Dispatch, without the remote prefix. A Stacked dispatch's
- * is its Blocker's PR head branch, with no choice. Otherwise it is the
+ * is the head branch of the PR it stacks on, with no choice. Otherwise it is the
  * requested branch, which origin must have, else the last one used in the
  * Repo while origin still has it, else origin's default branch.
  */
-async function chooseBase(world: World, configDir: string, { repo, key }: IssueRef, request: DispatchRequest, stackedOn?: StackOption) {
+async function chooseBase(world: World, configDir: string, { repo, key }: IssueRef, request: DispatchRequest, stackedOn?: StackTarget) {
   if (stackedOn) {
     if (request.base) throw stackedBase(key);
     return stackedOn.pr.headBranch;
@@ -458,7 +441,7 @@ async function chooseBase(world: World, configDir: string, { repo, key }: IssueR
 }
 
 function stackedBase(key: string) {
-  return new DispatchError(`${key} is Stacked; its Base is its Blocker's PR head branch`, ["Dispatch it without `--base`"]);
+  return new DispatchError(`${key} is Stacked; its Base is the head branch of the PR it stacks on`, ["Dispatch it without `--base`"]);
 }
 
 /**
@@ -719,11 +702,11 @@ function sameLaunch(existing: Dispatch, request: DispatchRequest) {
   ]);
 }
 
-/** A local Blocker number, issue reference/URL, Linear identifier/URL, or an exact PR URL. */
-function matchesStack(choice: string, repo: string, option: StackOption) {
+/** A local issue number, issue reference/URL, Linear identifier/URL, or an exact PR URL naming what a Dispatch stacked on. */
+function matchesStack(choice: string, repo: string, target: StackTarget) {
   const url = choice.match(/^https?:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/issues\/(\d+)\/?$/i);
   const key = /^\d+$/.test(choice) ? `${repo}#${choice}` : url ? `${url[1]}#${url[2]}` : linearIdentifier(choice) ?? choice;
-  return sameSlug(key, option.blocker) || sameSlug(choice, option.pr.url);
+  return (target.issue !== undefined && sameSlug(key, target.issue)) || sameSlug(choice, target.pr.url);
 }
 
 /** A Dispatch's Base without the remote prefix; unset only on a record from before the fetch step chose it. */

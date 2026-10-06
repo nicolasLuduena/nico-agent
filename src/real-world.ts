@@ -1,6 +1,7 @@
 import { LinearSource } from "./linear";
 import { realpathSync } from "node:fs";
-import type { Address, GitHubIssue, PullRequest, RequestHandler, World } from "./world";
+import { createInterface } from "node:readline";
+import type { Address, GitHubIssue, GitHubSubIssue, LineHandler, PullRequest, RequestHandler, World } from "./world";
 import { READY_LABEL, WorldError } from "./world";
 
 interface Exec {
@@ -88,10 +89,27 @@ async function herdr(args: string[]): Promise<any> {
 }
 
 const ISSUE_FIELDS = `
-        number title url state
+        number title url body state
         labels(first: 50) { nodes { name } }
         assignees(first: 20) { nodes { login } }
-        blockedBy(first: 50) { nodes { number state repository { nameWithOwner } } }`;
+        blockedBy(first: 50) { nodes { number state repository { nameWithOwner } } }
+        parent { number repository { nameWithOwner } }
+        subIssuesSummary { total }`;
+
+// Native sub-issues come in sub-issue order, the order of work of a Spec.
+const SUB_ISSUES_QUERY = `
+query($owner: String!, $name: String!, $number: Int!, $cursor: String) {
+  repository(owner: $owner, name: $name) {
+    issue(number: $number) {
+      subIssues(first: 100, after: $cursor) {
+        pageInfo { hasNextPage endCursor }
+        nodes {${ISSUE_FIELDS}
+          repository { nameWithOwner }
+        }
+      }
+    }
+  }
+}`;
 
 const ISSUE_QUERY = `
 query($owner: String!, $name: String!, $number: Int!) {
@@ -127,10 +145,13 @@ interface IssueNode {
   number: number;
   title: string;
   url: string;
+  body: string;
   state: string;
   labels: { nodes: { name: string }[] };
   assignees: { nodes: { login: string }[] };
   blockedBy: { nodes: { number: number; state: string; repository: { nameWithOwner: string } }[] };
+  parent: { number: number; repository: { nameWithOwner: string } } | null;
+  subIssuesSummary: { total: number };
 }
 
 export class RealWorld implements World {
@@ -139,6 +160,7 @@ export class RealWorld implements World {
   linearViewer() { return this.linear.viewer(); }
   linearIssues(team: string) { return this.linear.issues(team); }
   linearIssue(identifier: string) { return this.linear.issue(identifier); }
+  linearSubIssues(identifier: string) { return this.linear.subIssues(identifier); }
   linearAttachmentUrls(identifier: string) { return this.linear.attachmentUrls(identifier); }
   linearAssignSelf(identifier: string) { return this.linear.assignSelf(identifier); }
 
@@ -193,6 +215,22 @@ export class RealWorld implements World {
       throw new WorldError("repository not found on GitHub, or not visible to your account");
     }
     return repository.issue ? toIssue(repository.issue) : null;
+  }
+
+  async githubSubIssues(slug: string, number: number) {
+    const [owner, name] = slug.split("/") as [string, string];
+    const subIssues: GitHubSubIssue[] = [];
+    let cursor: string | null = null;
+    do {
+      const args = ["api", "graphql", "-f", `query=${SUB_ISSUES_QUERY}`, "-f", `owner=${owner}`, "-f", `name=${name}`, "-F", `number=${number}`];
+      if (cursor) args.push("-f", `cursor=${cursor}`);
+      const page = JSON.parse(await gh(args)).data?.repository?.issue?.subIssues;
+      if (!page) throw new WorldError(`${slug}#${number} was not found on GitHub`);
+      const nodes = page.nodes as (IssueNode & { repository: { nameWithOwner: string } })[];
+      subIssues.push(...nodes.map((node) => ({ ...toIssue(node), slug: node.repository.nameWithOwner })));
+      cursor = page.pageInfo.hasNextPage ? page.pageInfo.endCursor : null;
+    } while (cursor);
+    return subIssues;
   }
 
   // A read, but through `ghbot`: only the App's installation token can list its repositories.
@@ -255,11 +293,12 @@ export class RealWorld implements World {
   }
 
   async githubBranchPullRequests(slug: string, branch: string): Promise<PullRequest[]> {
-    const result = await gh(["pr", "list", "--repo", slug, "--head", branch, "--state", "all", "--limit", "100", "--json", "number,url,state,baseRefName"]);
-    const prs = JSON.parse(result) as { number: number; url: string; state: string; baseRefName: string }[];
+    const result = await gh(["pr", "list", "--repo", slug, "--head", branch, "--state", "all", "--limit", "100", "--json", "number,url,state,baseRefName,headRefName,isCrossRepository"]);
+    const prs = JSON.parse(result) as { number: number; url: string; state: string; baseRefName: string; headRefName: string; isCrossRepository: boolean }[];
     // gh lists newest first; linkedPr expects the latest at the end.
     return prs.reverse().map((pr) => ({ repo: slug, number: pr.number, url: pr.url,
-      state: pr.state.toLowerCase() as PullRequest["state"], baseBranch: pr.baseRefName }));
+      state: pr.state.toLowerCase() as PullRequest["state"], baseBranch: pr.baseRefName,
+      ...(!pr.isCrossRepository && { headBranch: pr.headRefName }) }));
   }
 
   async gitFetch(path: string, branch?: string) {
@@ -411,6 +450,16 @@ export class RealWorld implements World {
       throw e;
     }
   }
+
+  async serveStdio(handler: LineHandler) {
+    const lines = createInterface({ input: process.stdin, crlfDelay: Infinity });
+    // One line at a time, so two `advance` calls never race each other.
+    for await (const line of lines) {
+      if (!line.trim()) continue;
+      const reply = await handler(line);
+      if (reply !== null) process.stdout.write(`${reply}\n`);
+    }
+  }
 }
 
 function toIssue(node: IssueNode): GitHubIssue {
@@ -418,6 +467,7 @@ function toIssue(node: IssueNode): GitHubIssue {
     number: node.number,
     title: node.title,
     url: node.url,
+    body: node.body ?? "",
     state: node.state === "OPEN" ? "open" : "closed",
     labels: node.labels.nodes.map((l) => l.name),
     assignees: node.assignees.nodes.map((a) => a.login),
@@ -426,5 +476,7 @@ function toIssue(node: IssueNode): GitHubIssue {
       number: b.number,
       state: b.state === "OPEN" ? "open" : "closed",
     })),
+    parent: node.parent ? { slug: node.parent.repository.nameWithOwner, number: node.parent.number } : null,
+    hasSubIssues: node.subIssuesSummary.total > 0,
   };
 }

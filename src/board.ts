@@ -1,10 +1,11 @@
 import type { LinearSelector, Repo } from "./config";
-import { type InFlightRow, type PrLookup, linearPullRequests, loadInFlight } from "./stage";
-import type { Dispatch } from "./state";
-import type { GitHubIssue, LinearIssue, World } from "./world";
-import { READY_LABEL, WorldError } from "./world";
 import { sameSlug } from "./slug";
-import type { PullRequest } from "./world";
+import { type SourceAdapter, type SourceIssue, canStart, canStartLinear, githubSource, isLinearReady, isReady, linearSource } from "./source";
+import type { RepoDecision } from "./spec";
+import { type SourceIssues, loadSpecs } from "./spec-facts";
+import { type InFlightRow, type PrLookup, loadInFlight } from "./stage";
+import type { Dispatch } from "./state";
+import { type GitHubIssue, type LinearIssue, type PullRequest, type World, worldErrorMessage } from "./world";
 
 export interface StackOption {
   blocker: string;
@@ -30,6 +31,8 @@ export type BoardIssue = {
 
 export interface Board {
   ready: BoardIssue[];
+  /** Each Repo's Specs as the Spec rules decide them; Repos without Specs are left out. */
+  specs: RepoDecision[];
   stackable: StackableIssue[];
   inFlight: InFlightRow[];
   /** The Base choice of each Repo with Ready issues, by slug. */
@@ -51,48 +54,32 @@ export async function baseChoice(world: World, repo: Repo, wanted?: string): Pro
   return { branches, selected };
 }
 
-/**
- * Ready: open, labelled `ready-for-agent`, unassigned or assigned only to the
- * user, and every Blocker closed.
- */
-export function isReady(issue: GitHubIssue, viewer: string) {
-  return (
-    canStart(issue, viewer) &&
-    issue.blockers.every((blocker) => blocker.state === "closed")
-  );
+/** Each unresolved Blocker of an issue, with its open PRs whose head can be fetched from a Repo. */
+export interface BlockerPrs {
+  blocker: string;
+  prs: (PullRequest & { headBranch: string })[];
 }
 
-export function canStart(issue: GitHubIssue, viewer: string) {
-  return issue.state === "open" && issue.labels.includes(READY_LABEL) &&
-    issue.assignees.every((login) => login.toLowerCase() === viewer.toLowerCase());
+/** Each unresolved Blocker of an issue, with its open PRs in the adapter's Repo. */
+export async function blockerPrs<I extends SourceIssue>(source: SourceAdapter<I>, issue: I): Promise<BlockerPrs[]> {
+  const blockers = source.blockers(issue).filter((b) => !b.closed);
+  return Promise.all(blockers.map(async (b) => ({ blocker: b.issue, prs: openPrsIn(await source.linkedPrs(b.issue), source.repo) })));
 }
 
-/** Each open Blocker must have an open PR whose head can be fetched from this Repo. */
-export async function stackOptions(world: World, repo: string, issue: GitHubIssue): Promise<StackOption[]> {
-  const blockers = issue.blockers.filter((b) => b.state === "open");
-  const options = await Promise.all(blockers.map(async (b) => {
-    const prs = await world.githubLinkedPullRequests(b.slug, b.number);
-    return stackable(prs, repo).map((pr) => ({ blocker: `${b.slug}#${b.number}`, pr }));
-  }));
-  return everyBlocker(options);
+/** Each unresolved Blocker must have an open PR whose head can be fetched from the adapter's Repo. */
+export async function stackOptions<I extends SourceIssue>(source: SourceAdapter<I>, issue: I): Promise<StackOption[]> {
+  return everyBlocker(await blockerPrs(source, issue));
 }
 
-/** Each unresolved Blocker of a Linear issue must have an open PR attached whose head can be fetched from this Repo. */
-export async function linearStackOptions(world: World, repo: string, issue: LinearIssue): Promise<StackOption[]> {
-  const blockers = issue.blockers.filter((b) => !isLinearClosed(b.state));
-  const options = await Promise.all(blockers.map(async (b) =>
-    stackable(await linearPullRequests(world, b.identifier, repo), repo).map((pr) => ({ blocker: b.identifier, pr }))));
-  return everyBlocker(options);
-}
-
-function stackable(prs: PullRequest[], repo: string) {
+/** Open PRs in `repo` whose head branch can be fetched from it. */
+export function openPrsIn(prs: PullRequest[], repo: string) {
   return prs.filter((pr): pr is PullRequest & { headBranch: string } =>
     pr.state === "open" && sameSlug(pr.repo, repo) && Boolean(pr.headBranch));
 }
 
 /** The options of each Blocker, or none when some Blocker has none. */
-function everyBlocker(options: StackOption[][]) {
-  return options.some((prs) => prs.length === 0) ? [] : options.flat();
+export function everyBlocker(blockers: BlockerPrs[]): StackOption[] {
+  return blockers.some((b) => b.prs.length === 0) ? [] : blockers.flatMap((b) => b.prs.map((pr) => ({ blocker: b.blocker, pr })));
 }
 
 /**
@@ -101,26 +88,30 @@ function everyBlocker(options: StackOption[][]) {
  * from: the Repo's entry in `lastBases` while origin still has it.
  */
 export async function loadBoard(world: World, repos: Repo[], dispatches: Dispatch[], prs: PrLookup, lastBases: Record<string, string> = {}): Promise<Board> {
-  const [ready, inFlight] = await Promise.all([loadReady(world, repos, dispatches, lastBases), loadInFlight(world, dispatches, prs)]);
-  return { ...ready, inFlight };
+  const [{ sources, ...ready }, inFlight] = await Promise.all([loadReady(world, repos, dispatches, lastBases), loadInFlight(world, dispatches, prs)]);
+  const { specs, errors } = await loadSpecs(world, sources, inFlight);
+  return { ...ready, errors: [...ready.errors, ...errors], inFlight, specs };
 }
 
 async function loadReady(world: World, repos: Repo[], inFlight: Dispatch[], lastBases: Record<string, string>) {
-  const board: Omit<Board, "inFlight"> = { ready: [], stackable: [], bases: {}, errors: [] };
+  const board: Omit<Board, "inFlight" | "specs"> & { sources: SourceIssues<any>[] } = { ready: [], stackable: [], bases: {}, errors: [], sources: [] };
   if (repos.length === 0) return board;
   const dispatched = new Set(inFlight.map((d) => d.issue));
   const github = async () => {
-    let viewer: string;
-    try { viewer = await world.githubViewer(); }
+    let githubViewer: string;
+    try { githubViewer = await world.githubViewer(); }
     catch (e) {
       board.errors.push(...repos.map((r) => ({ repo: r.slug, error: worldErrorMessage(e) })));
       return;
     }
     const results = await Promise.allSettled(repos.map(async (repo) => {
-      const issues = (await world.githubIssues(repo.slug))
-        .filter((issue) => canStart(issue, viewer) && !dispatched.has(`${repo.slug}#${issue.number}`))
+      const source = githubSource(world, repo.slug);
+      const all = await world.githubIssues(repo.slug);
+      board.sources.push({ repo, adapter: source, issues: all, viewer: githubViewer });
+      const issues = all
+        .filter((issue) => canStart(issue, githubViewer) && !dispatched.has(`${repo.slug}#${issue.number}`))
         .sort((a, b) => a.number - b.number);
-      return Promise.all(issues.map(async (issue) => ({ issue, blockers: await stackOptions(world, repo.slug, issue) })));
+      return Promise.all(issues.map(async (issue) => ({ issue, blockers: stacksAcrossSpecs(source, issue, all) ? [] : await stackOptions(source, issue) })));
     }));
     results.forEach((result, i) => {
       const repo = repos[i]!;
@@ -131,7 +122,7 @@ async function loadReady(world: World, repos: Repo[], inFlight: Dispatch[], last
       for (const { issue, blockers } of result.value) {
         const { number, title, url } = issue;
         const row = { repo: repo.slug, number, title, url };
-        if (isReady(issue, viewer)) board.ready.push(row);
+        if (isReady(issue, githubViewer)) board.ready.push(row);
         else if (blockers.length) board.stackable.push({ ...row, blockers });
       }
     });
@@ -139,8 +130,8 @@ async function loadReady(world: World, repos: Repo[], inFlight: Dispatch[], last
   const linear = async () => {
     const selected = repos.filter((r) => r.linear);
     if (!selected.length) return;
-    let viewer: string;
-    try { viewer = await world.linearViewer(); }
+    let linearViewer: string;
+    try { linearViewer = await world.linearViewer(); }
     catch (e) {
       board.errors.push(...selected.map((r) => ({ repo: r.slug, source: "Linear" as const, error: worldErrorMessage(e) })));
       return;
@@ -151,11 +142,14 @@ async function loadReady(world: World, repos: Repo[], inFlight: Dispatch[], last
     const results = await Promise.allSettled(selected.map(async (repo) => {
       const result = issues[teams.indexOf(repo.linear!.team)]!;
       if (result.status === "rejected") throw result.reason;
-      const startable = result.value.filter((i) => matchesSelector(i, repo.linear!) && canStartLinear(i, viewer) && !dispatched.has(i.identifier))
+      const source = linearSource(world, repo.slug);
+      const claimed = result.value.filter((i) => matchesSelector(i, repo.linear!));
+      board.sources.push({ repo, adapter: source, issues: claimed, viewer: linearViewer });
+      const startable = claimed.filter((i) => canStartLinear(i, linearViewer) && !dispatched.has(i.identifier))
         .sort((a, b) => a.identifier.localeCompare(b.identifier, undefined, { numeric: true }));
       return Promise.all(startable.map(async (issue) => {
-        const ready = isLinearReady(issue, viewer);
-        return { issue, ready, blockers: ready ? [] : await linearStackOptions(world, repo.slug, issue) };
+        const ready = isLinearReady(issue, linearViewer);
+        return { issue, ready, blockers: ready || stacksAcrossSpecs(source, issue, claimed) ? [] : await stackOptions(source, issue) };
       }));
     }));
     results.forEach((result, i) => {
@@ -174,6 +168,8 @@ async function loadReady(world: World, repos: Repo[], inFlight: Dispatch[], last
   // GitHub rows precede Linear rows.
   await github();
   await linear();
+  // In config order whichever Repo loaded first; stable, so GitHub stays before Linear.
+  board.sources.sort((a, b) => repos.indexOf(a.repo) - repos.indexOf(b.repo));
   await Promise.all(repos.filter((r) => board.ready.some((i) => i.repo === r.slug)).map(async (repo) => {
     try { board.bases[repo.slug] = await baseChoice(world, repo, lastBases[repo.slug]); }
     catch (e) { board.errors.push({ repo: repo.slug, source: "git", error: worldErrorMessage(e) }); }
@@ -185,10 +181,15 @@ async function loadReady(world: World, repos: Repo[], inFlight: Dispatch[], last
   return board;
 }
 
-/** The message of an adapter failure; anything else is a bug and propagates. */
-function worldErrorMessage(e: unknown) {
-  if (e instanceof WorldError) return e.message;
-  throw e;
+/** An issue of a Spec with an unresolved Blocker outside it would stack across Specs, so it waits for that Blocker instead. */
+function stacksAcrossSpecs<I extends SourceIssue>(source: SourceAdapter<I>, issue: I, known: I[]) {
+  const parent = source.parent(issue);
+  if (!parent) return false;
+  return source.blockers(issue).some((b) => {
+    if (b.closed) return false;
+    const blocker = known.find((k) => source.name(k) === b.issue);
+    return !blocker || source.parent(blocker) !== parent;
+  });
 }
 
 export function matchesSelector(issue: LinearIssue, selector: LinearSelector) {
@@ -197,17 +198,3 @@ export function matchesSelector(issue: LinearIssue, selector: LinearSelector) {
     (!selector.label || issue.labels.includes(selector.label));
 }
 
-export function isLinearReady(issue: LinearIssue, viewer: string) {
-  return canStartLinear(issue, viewer) && issue.blockers.every((b) => isLinearClosed(b.state));
-}
-
-/** Ready but for its Blockers: not started, labelled `ready-for-agent`, and unassigned or assigned to the user. */
-export function canStartLinear(issue: LinearIssue, viewer: string) {
-  return ["backlog", "unstarted"].includes(issue.state) && issue.labels.includes(READY_LABEL) &&
-    (issue.assignee === null || issue.assignee === viewer);
-}
-
-/** Whether a Linear state type is closed: completed or canceled. */
-export function isLinearClosed(state: string) {
-  return ["completed", "canceled"].includes(state);
-}

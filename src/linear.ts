@@ -104,10 +104,26 @@ export class LinearSource {
     const labels = await this.remaining(node.id, "labels", node.labels, "name");
     const relations = await this.remaining(node.id, "inverseRelations", node.inverseRelations, "type issue { identifier state { type } }");
     return {
-      identifier: node.identifier, title: node.title, url: node.url, branchName: node.branchName, team: node.team, project: node.project,
+      identifier: node.identifier, title: node.title, url: node.url, body: node.description ?? "", branchName: node.branchName, team: node.team, project: node.project,
       labels: labels.map((l) => l.name), state: node.state.type, assignee: node.assignee?.id ?? null,
       blockers: relations.filter((r) => r.type === "blocks").map((r) => ({ identifier: r.issue.identifier, state: r.issue.state.type })),
+      parent: node.parent?.identifier ?? null, hasSubIssues: (node.children?.nodes.length ?? 0) > 0,
     };
+  }
+
+  /** Every child of an issue, in Linear's sub-issue order. */
+  async subIssues(identifier: string): Promise<LinearIssue[]> {
+    const nodes: (IssueNode & { subIssueSortOrder: number | null })[] = [];
+    let cursor: string | null = null;
+    do {
+      const data: { issue: { children: Connection<IssueNode & { subIssueSortOrder: number | null }> } } = await this.query(SUB_ISSUES_QUERY, { id: identifier, cursor });
+      nodes.push(...data.issue.children.nodes);
+      cursor = nextCursor(data.issue.children);
+    } while (cursor);
+    // Linear leaves the order unset until sub-issues are reordered; fall back to creation order.
+    const ordered = nodes.map((node, i) => ({ node, i }))
+      .sort((a, b) => (a.node.subIssueSortOrder ?? a.i) - (b.node.subIssueSortOrder ?? b.i) || a.i - b.i);
+    return Promise.all(ordered.map(({ node }) => this.toIssue(node)));
   }
 
   private async remaining<T>(id: string, field: string, initial: Connection<T>, fields: string): Promise<T[]> {
@@ -141,6 +157,7 @@ interface IssueNode {
   identifier: string;
   title: string;
   url: string;
+  description: string | null;
   branchName: string;
   team: LinearIssue["team"];
   project: LinearIssue["project"];
@@ -148,19 +165,33 @@ interface IssueNode {
   assignee: { id: string } | null;
   labels: Connection<{ name: string }>;
   inverseRelations: Connection<{ type: string; issue: { identifier: string; state: { type: string } } }>;
+  parent?: { identifier: string } | null;
+  children?: { nodes: { id: string }[] };
 }
 
 const ISSUE_FIELDS = `
-      id identifier title url branchName team { id key name } project { id name }
+      id identifier title url description branchName team { id key name } project { id name }
       state { type } assignee { id }
       labels(first: 100) { nodes { name } pageInfo { hasNextPage endCursor } }
-      inverseRelations(first: 100) { nodes { type issue { identifier state { type } } } pageInfo { hasNextPage endCursor } }`;
+      inverseRelations(first: 100) { nodes { type issue { identifier state { type } } } pageInfo { hasNextPage endCursor } }
+      parent { identifier } children(first: 1) { nodes { id } }`;
 
 const ISSUES_QUERY = `query($filter: IssueFilter!, $cursor: String) {
   issues(first: 100, after: $cursor, filter: $filter) {
     nodes {${ISSUE_FIELDS}
     }
     pageInfo { hasNextPage endCursor }
+  }
+}`;
+
+const SUB_ISSUES_QUERY = `query($id: String!, $cursor: String) {
+  issue(id: $id) {
+    children(first: 100, after: $cursor) {
+      nodes {${ISSUE_FIELDS}
+        subIssueSortOrder
+      }
+      pageInfo { hasNextPage endCursor }
+    }
   }
 }`;
 

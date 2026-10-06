@@ -1,6 +1,6 @@
 import { closeSync, mkdirSync, openSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { StackOption } from "./board";
+import type { StackTarget } from "./stack";
 
 /** The steps of a Dispatch, in order; each runs once, and a failed one is resumed. */
 export const STEPS = ["fetch", "worktree", "tab", "agent start", "agent ready", "prompt"] as const;
@@ -23,8 +23,8 @@ export interface Dispatch {
   repo: string;
   branch: string;
   base?: string;
-  /** The chosen Blocker's PR, kept across interrupted dispatches. */
-  stackedOn?: StackOption;
+  /** The PR a Stacked dispatch started on, kept across interrupted dispatches. */
+  stackedOn?: StackTarget;
   worktree?: string;
   workspace?: string;
   implementer: Launch;
@@ -138,7 +138,18 @@ function read(dir: string): StateFile {
     if ((e as NodeJS.ErrnoException).code === "ENOENT") return { dispatches: {} };
     throw e;
   }
-  return JSON.parse(text) as StateFile;
+  const state = JSON.parse(text) as StateFile;
+  for (const dispatch of Object.values(state.dispatches)) migrate(dispatch);
+  return state;
+}
+
+/** Bring a record written by an older nico-agent to the current shape. */
+function migrate(dispatch: Dispatch) {
+  // Records from before any open PR could be stacked on name the Blocker.
+  const legacy = dispatch.stackedOn as (StackTarget & { blocker?: string }) | undefined;
+  if (legacy?.blocker === undefined) return;
+  const { blocker, ...target } = legacy;
+  dispatch.stackedOn = { issue: target.issue ?? blocker, pr: target.pr };
 }
 
 /** Atomic replace, so readers never need the lock. */

@@ -1,11 +1,15 @@
 import { resolve } from "node:path";
+import { advance } from "./advance";
 import { loadBoard } from "./board";
 import { ConfigError, findRepo, loadConfig, saveConfig } from "./config";
-import { DispatchError, StepFailed, baseBranch, closeDispatch, dispatch, eachIssue, resolveIssue, review } from "./dispatch";
+import { StepFailed, baseBranch, closeDispatch, dispatch, eachIssue, resolveIssue, review } from "./dispatch";
+import { DispatchError } from "./dispatch-error";
 import { PANE_ARGS } from "./opencode";
 import { type Catalog, harnessCatalogs, harnesses, refreshHarnesses, rememberedLaunches } from "./harness";
 import { linearIdentifier } from "./linear";
+import { mcpHandler } from "./mcp";
 import { type Output, plural, render } from "./output";
+import skill from "./skill.md" with { type: "text" };
 import { VERSION } from "./version";
 import { sameSlug, slugOfRemote } from "./slug";
 import { cachedPrs, currentStage, freshPrs, loadInFlight, stageOf } from "./stage";
@@ -63,6 +67,8 @@ interface Command {
   /** A last one ending in `...` takes any number of arguments. */
   positionals: string[];
   examples: string[];
+  /** Next steps shown with the command's `--help`. */
+  help?: string[];
   run(args: Args, ctx: RunContext): Promise<Output>;
 }
 
@@ -79,7 +85,7 @@ const commands: Command[] = [
     flags: {},
     positionals: [],
     examples: ["nico-agent", "nico-agent board --json"],
-    run: (_args, ctx) => board(ctx),
+    run: (args, ctx) => board(ctx, args.flags["--json"] === true),
   },
   {
     name: "repo add",
@@ -119,8 +125,8 @@ const commands: Command[] = [
     summary: "Start an Implementer on each issue in a new herdr worktree workspace (resumes a failed one)",
     flags: {
       ...LAUNCH_FLAGS,
-      "--stack-on": { value: true, description: "Blocker to stack on: its issue reference, Linear identifier, or PR URL; required when ambiguous" },
-      "--base": { value: true, description: "branch on origin to start from and open the PR against (default: the last one used in the Repo, else the default branch); not for a Stackable issue" },
+      "--stack-on": { value: true, description: "open PR in the Repo to stack on, named by its issue or its PR URL; each Blocker's PR must be it or below it in its Stack; required for a Stackable issue with several Blocker PRs" },
+      "--base": { value: true, description: "branch on origin to start from and open the PR against (default: the last one used in the Repo, else the default branch); not for a Stacked dispatch" },
       "--repo": { value: true, description: "Repo to dispatch a Linear issue into; required when several Repos claim it" },
     },
     positionals: ["issue..."],
@@ -130,8 +136,20 @@ const commands: Command[] = [
       "nico-agent dispatch acme/api#7 acme/api#8 --harness codex --model gpt-5.5 --effort high",
       "nico-agent dispatch https://github.com/acme/api/issues/7 --harness claude --model sonnet --effort max",
       "nico-agent dispatch BLE-27 --harness claude --model opus --effort high --repo acme/api",
+      "nico-agent dispatch acme/api#9 --harness claude --model opus --effort high --stack-on acme/api#8",
     ],
     run: dispatchCommand,
+  },
+  {
+    name: "advance",
+    usage: "nico-agent advance",
+    summary: "Dispatch each running Spec's next issue with the Scheduler defaults from config (skips Held Specs)",
+    flags: {
+      "--start": { value: true, description: "candidate Spec to start too, named as on the Board; refused unless its Repo has room" },
+    },
+    positionals: [],
+    examples: ["nico-agent advance", "nico-agent advance --start BLE-10 --json"],
+    run: advanceCommand,
   },
   {
     name: "review",
@@ -187,12 +205,31 @@ const commands: Command[] = [
     examples: ["nico-agent serve", "nico-agent serve --port 8080"],
     run: serve,
   },
+  {
+    name: "mcp",
+    usage: "nico-agent mcp",
+    summary: "Serve the Scheduler's MCP server on stdio, with two tools: board (the Board) and advance (with an optional Spec to start)",
+    flags: {},
+    positionals: [],
+    examples: ["nico-agent mcp"],
+    help: [
+      "Register with Hermes: `hermes mcp add nico-agent --command nico-agent --args mcp`",
+      "Register with Claude Code: `claude mcp add nico-agent -- nico-agent mcp`",
+      'Or in an MCP client\'s config: {"mcpServers": {"nico-agent": {"command": "nico-agent", "args": ["mcp"]}}}',
+    ],
+    run: async (_args, ctx) => {
+      await ctx.world.serveStdio(mcpHandler((argv) => run(argv, ctx)));
+      // stdout is the MCP channel: nothing else may be written on it.
+      return { data: {} };
+    },
+  },
 ];
 
 export async function run(argv: string[], ctx: RunContext): Promise<RunResult> {
   if (argv.length === 1 && ["-v", "-V", "--version"].includes(argv[0]!)) {
     return { stdout: `${VERSION}\n`, exitCode: 0 };
   }
+  if (argv.length === 1 && argv[0] === "--skill") return { stdout: skill, exitCode: 0 };
   const json = argv.includes("--json");
   try {
     const { command, rest } = findCommand(argv);
@@ -290,7 +327,10 @@ function topLevelHelp(ctx: RunContext): Output {
       description: DESCRIPTION,
       commands: commands.map((c) => ({ usage: c.usage, description: c.summary })),
     },
-    help: ["Run `nico-agent <command> --help` for its flags and examples"],
+    help: [
+      "Run `nico-agent <command> --help` for its flags and examples",
+      "Run `nico-agent --skill` to print the Scheduler skill",
+    ],
   };
 }
 
@@ -306,6 +346,7 @@ function commandHelp(command: Command): Output {
       })),
       examples: command.examples,
     },
+    help: command.help,
   };
 }
 
@@ -395,6 +436,16 @@ async function dispatchCommand(args: Args, ctx: RunContext): Promise<Output> {
     };
     return { output: { data, help }, issue: record.issue, result, stage };
   });
+}
+
+async function advanceCommand(args: Args, ctx: RunContext): Promise<Output> {
+  const start = args.flags["--start"];
+  const { specs, errors, help } = await advance(ctx.world, ctx.configDir, typeof start === "string" ? { start } : {});
+  return {
+    data: { specs, ...(errors.length && { errors }) },
+    help: [...help, BOARD_HELP],
+    exitCode: errors.length || specs.some((s) => s.result === "failed") ? 1 : 0,
+  };
 }
 
 async function reviewCommand(args: Args, ctx: RunContext): Promise<Output> {
@@ -596,13 +647,13 @@ async function serve(args: Args, ctx: RunContext): Promise<Output> {
   };
 }
 
-async function board(ctx: RunContext): Promise<Output> {
+async function board(ctx: RunContext, json: boolean): Promise<Output> {
   const { repos } = loadConfig(ctx.configDir);
   const header = { bin: ctx.bin, description: DESCRIPTION, repos: `${repos.length} configured` };
   if (repos.length === 0) {
     return { data: { ...header, ready: "0 issues (no Repos configured)" }, help: [ADD_REPO_HELP] };
   }
-  const { ready, stackable, inFlight, errors } = await loadBoard(ctx.world, repos, loadDispatches(ctx.configDir), cachedPrs(ctx.world), rememberedLaunches(ctx.configDir).bases);
+  const { ready, stackable, specs, inFlight, errors } = await loadBoard(ctx.world, repos, loadDispatches(ctx.configDir), cachedPrs(ctx.world), rememberedLaunches(ctx.configDir).bases);
   const help = ["Run `nico-agent repo list` to see the Repos", ADD_REPO_HELP];
   if (inFlight.length) help.unshift("Run `nico-agent show <issue>` to see a Dispatch");
   const blocked = inFlight.flatMap(({ dispatch: d, implementerState, reviewerState }) => [
@@ -656,6 +707,27 @@ async function board(ctx: RunContext): Promise<Output> {
     data.stackable = stackable.map((i) => ({ issue: i.identifier ?? `${i.repo}#${i.number}`, title: i.title, ...(i.identifier && { repo: i.repo }),
       blockers: i.blockers.map((b) => ({ issue: b.blocker, pr: b.pr.url, base: b.pr.headBranch })) }));
     help.unshift("Run `nico-agent dispatch <issue> --stack-on <blocker> --harness <harness> --model <model> --effort <effort>` to dispatch a Stackable issue");
+  }
+  const allSpecs = specs.flatMap((r) => r.specs);
+  // In TOON, Specs of one would only repeat the Ready and In-flight lists, unless Held.
+  const specRows = json ? allSpecs : allSpecs.filter((s) => s.held || s.issues.length !== 1 || s.issues[0] !== s.spec);
+  if (specRows.length) {
+    data.specs = specRows.map(({ spec, title, repo, issues, running, held, next, waiting, reason }) => ({
+      spec, title, repo, issues, running,
+      ...(held && { held }),
+      // A candidate's first issue is listed under `rooms`.
+      ...(running && next && { next: { issue: next.issue, ...(next.stackOn && { stackOn: next.stackOn.url }), base: next.base, reason: next.reason } }),
+      ...(waiting && { waiting }),
+      ...(reason && { reason }),
+    }));
+  }
+  if (allSpecs.length) {
+    // What the Scheduler chooses from: each candidate's body lets it judge priority without reaching the Source.
+    data.rooms = specs.map(({ repo, specs: decided, room, candidates }) => ({
+      repo, running: decided.filter((s) => s.running).map((s) => s.spec), room,
+      candidates: decided.filter((s) => candidates.includes(s.spec))
+        .map(({ spec, title, url, next, body }) => ({ spec, title, url, issue: next!.issue, body })),
+    }));
   }
   Object.assign(data, inFlightData);
   if (errors.length) data.errors = errors;
