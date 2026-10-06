@@ -388,6 +388,11 @@ async function runReview(world: World, configDir: string, ref: IssueRef, harness
   return record;
 }
 
+/** Refuse a launch whose Harness, model or Effort is unknown, before any Dispatch is made with it. */
+export async function checkLaunch(world: World, configDir: string, launch: Pick<DispatchRequest, "harness" | "model" | "effort">) {
+  await chooseLaunch(world, configDir, { issue: "", ...launch });
+}
+
 /**
  * The Harness of a request, once its model is one of the Harness's and its
  * Effort one that model supports. Which models and Efforts are valid comes
