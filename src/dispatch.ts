@@ -37,6 +37,8 @@ export interface DispatchRequest {
   base?: string;
   /** Repo to dispatch a Linear issue into; omitted when a single Repo claims it. */
   repo?: string;
+  /** Started by `advance`: its Base is the Scheduler's, not the user's choice, so it is not remembered. */
+  scheduled?: boolean;
 }
 
 /**
@@ -212,7 +214,7 @@ async function startDispatch(
   };
   // Recorded before any side effect, so a concurrent dispatch of the issue finds it.
   if (!(await addDispatch(configDir, record))) throw alreadyInFlight(key);
-  rememberLaunch(configDir, harness.name, request.model, request.effort, stackedOn ? undefined : { repo: repo.slug, branch: base });
+  rememberLaunch(configDir, harness.name, request.model, request.effort, stackedOn || request.scheduled ? undefined : { repo: repo.slug, branch: base });
   return { dispatch: await runSteps(world, configDir, ref, harness, templates, record), outcome: "new" };
 }
 
@@ -431,7 +433,7 @@ async function chooseBase(world: World, configDir: string, { repo, key }: IssueR
     if (request.base) throw stackedBase(key);
     return stackedOn.pr.headBranch;
   }
-  const { branches, selected } = await baseChoice(world, repo, request.base ?? rememberedLaunches(configDir).bases[repo.slug]);
+  const { branches, selected } = await baseChoice(world, repo, request.base ?? repo.base ?? rememberedLaunches(configDir).bases[repo.slug]);
   if (request.base && selected !== request.base) {
     throw new DispatchError(`\`${request.base}\` is not a branch on origin of ${repo.slug}`, [
       `Pass \`--base\` one of origin's branches: ${branches.join(", ")}`,

@@ -141,7 +141,7 @@ async function carryOut(world: World, configDir: string, launch: SchedulerDefaul
   }
   // A resumed Dispatch keeps its own launch and stacking, so `dispatch` sees the same request again.
   const request: DispatchRequest = plan.action === "start"
-    ? { issue: plan.issue, ...launch, ...(plan.stackOn ? { stackOn: plan.stackOn } : { base: plan.base }) }
+    ? { issue: plan.issue, ...launch, ...(plan.stackOn ? { stackOn: plan.stackOn } : { base: plan.base }), scheduled: true }
     : { issue: plan.dispatch.issue, harness: plan.dispatch.implementer.harness, model: plan.dispatch.implementer.model, effort: plan.dispatch.implementer.effort };
   if (linearIdentifier(request.issue)) request.repo = spec.repo;
   const issue = request.issue;

@@ -98,9 +98,10 @@ const commands: Command[] = [
       "--linear-team": { value: true, description: "Linear team key, name or ID" },
       "--linear-project": { value: true, description: "Narrow to a Linear project name or ID" },
       "--linear-label": { value: true, description: "Narrow to a Linear label name" },
+      "--base": { value: true, description: "Base every Dispatch starts from unless stacked (default: origin's default branch)" },
     },
     positionals: ["owner/name"],
-    examples: ["nico-agent repo add acme/api --path ~/src/api"],
+    examples: ["nico-agent repo add acme/api --path ~/src/api", "nico-agent repo add acme/api --path ~/src/api --base beta"],
     run: repoAdd,
   },
   {
@@ -571,6 +572,7 @@ async function repoAdd(args: Args, ctx: RunContext): Promise<Output> {
   const label = args.flags["--linear-label"];
   if ((project || label) && !team) throw new CliError("--linear-project and --linear-label require --linear-team", [`Usage: \`${usage}\``], 2);
   const linear = typeof team === "string" ? { team, ...(typeof project === "string" && { project }), ...(typeof label === "string" && { label }) } : undefined;
+  const base = typeof args.flags["--base"] === "string" ? args.flags["--base"] : undefined;
   const remotes = await ctx.world.gitRemotes(path);
   if (!remotes) {
     throw new CliError(`${path} is not a git clone`, [
@@ -589,13 +591,13 @@ async function repoAdd(args: Args, ctx: RunContext): Promise<Output> {
   const help = [BOARD_HELP, "Run `nico-agent repo list` to see all Repos"];
   const config = loadConfig(ctx.configDir);
   const existing = findRepo(config, slug);
-  if (existing?.path === path && (!linear || JSON.stringify(existing.linear) === JSON.stringify(linear))) {
+  if (existing?.path === path && (!linear || JSON.stringify(existing.linear) === JSON.stringify(linear)) && (!base || existing.base === base)) {
     return { data: { repo: `${existing.slug} already added (no-op)`, path }, help };
   }
   const canonical = existing?.slug ?? slug;
   const repos = existing
-    ? config.repos.map((r) => (r === existing ? { ...r, path, ...(linear && { linear }) } : r))
-    : [...config.repos, { slug: canonical, path, ...(linear && { linear }) }];
+    ? config.repos.map((r) => (r === existing ? { ...r, path, ...(linear && { linear }), ...(base && { base }) } : r))
+    : [...config.repos, { slug: canonical, path, ...(linear && { linear }), ...(base && { base }) }];
   saveConfig(ctx.configDir, { ...config, repos });
   const outcome = existing ? (existing.path === path ? "selector updated" : "path updated") : "added";
   return { data: { repo: `${canonical} ${outcome}`, path }, help };

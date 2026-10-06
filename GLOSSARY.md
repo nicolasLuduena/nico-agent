@@ -61,6 +61,9 @@ _Avoid_: Job, run, task
 **Base**:
 The branch a Dispatch's worktree starts from and its PR targets, chosen per
 Dispatch. A Stacked dispatch's Base is the head branch of the PR it stacks on.
+Otherwise it is `--base`, else the Repo's configured `base`, else the last one
+used in the Repo, else origin's default branch. A Spec's first issue started by
+`advance` uses the Repo's `base`, else origin's default branch.
 _Avoid_: Target branch, trunk
 
 **Stack**:

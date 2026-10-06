@@ -34,7 +34,7 @@ export async function loadSpecs(world: World, sources: SourceIssues<any>[], inFl
     else loaded.errors.push({ repo: repo.slug, ...(adapter.source && { source: adapter.source }), error: worldErrorMessage(result.reason) });
   });
   const facts = await Promise.allSettled([...byRepo].map(async ([repo, specs]): Promise<RepoFacts> => ({
-    repo: repo.slug, defaultBranch: await world.gitDefaultBranch(repo.path), maxRunningSpecs: repo.maxRunningSpecs ?? DEFAULT_MAX_RUNNING_SPECS,
+    repo: repo.slug, defaultBranch: repo.base ?? await world.gitDefaultBranch(repo.path), maxRunningSpecs: repo.maxRunningSpecs ?? DEFAULT_MAX_RUNNING_SPECS,
     specs: specs.sort((a, b) => a.spec.localeCompare(b.spec, undefined, { numeric: true })),
   })));
   const repos: RepoFacts[] = [];

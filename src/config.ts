@@ -9,6 +9,8 @@ export interface Repo {
   linear?: LinearSelector;
   /** How many Specs may run in the Repo at once; DEFAULT_MAX_RUNNING_SPECS when unset. */
   maxRunningSpecs?: number;
+  /** The Base a Dispatch starts from unless stacked or given `--base`; origin's default branch when unset. */
+  base?: string;
 }
 
 /** The running Specs a Repo allows unless config sets its own cap. */
@@ -237,6 +239,7 @@ function checkRepos(file: string, repos: Repo[]): Repo[] {
   repos.forEach((repo, i) => {
     const cap = repo.maxRunningSpecs;
     if (cap !== undefined && !(Number.isInteger(cap) && cap > 0)) throw new ConfigError(`${file}: repos[${i}].maxRunningSpecs is not a positive integer`);
+    if (repo.base !== undefined && (typeof repo.base !== "string" || repo.base === "")) throw new ConfigError(`${file}: repos[${i}].base is not a branch name`);
   });
   return repos;
 }

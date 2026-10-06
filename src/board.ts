@@ -171,7 +171,7 @@ async function loadReady(world: World, repos: Repo[], inFlight: Dispatch[], last
   // In config order whichever Repo loaded first; stable, so GitHub stays before Linear.
   board.sources.sort((a, b) => repos.indexOf(a.repo) - repos.indexOf(b.repo));
   await Promise.all(repos.filter((r) => board.ready.some((i) => i.repo === r.slug)).map(async (repo) => {
-    try { board.bases[repo.slug] = await baseChoice(world, repo, lastBases[repo.slug]); }
+    try { board.bases[repo.slug] = await baseChoice(world, repo, repo.base ?? lastBases[repo.slug]); }
     catch (e) { board.errors.push({ repo: repo.slug, source: "git", error: worldErrorMessage(e) }); }
   }));
   for (const issue of board.ready) {
