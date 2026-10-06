@@ -23,7 +23,8 @@ steps; follow `help` when a result carries it.
 
 - `board` reads the Board. `rooms` lists, per Repo, its running Specs, its
   `room` (how many more Specs it can start), and its `candidates`, each with
-  title and body. A Spec under `specs` with `held` set is Held, with the reason.
+  title and the start of its body. `specs` lists the running and Held Specs; a
+  Spec with `held` set is Held, with the reason.
 - `advance` dispatches each running Spec's next issue and reports one row per
   Spec. `advance` with `start` set to a candidate's name also starts that Spec;
   nico-agent refuses it, with the reason, unless its Repo has room.
@@ -63,7 +64,7 @@ changed; a run with nothing new ends silently.
    - each `failed` row, with its reason.
 
    Rows that are `started` or `resumed` for an already-running Spec need no
-   message. Done when every newly Held Spec is in your memory as reported.
+   message, nor do the Dispatches listed under `closed`. Done when every newly Held Spec is in your memory as reported.
 4. **Fill the room.** For each Repo with room above 0 and at least one
    candidate, act on the user's state:
    - Present, no open proposal: send a proposal (see below).

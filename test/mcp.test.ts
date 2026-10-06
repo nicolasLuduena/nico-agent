@@ -59,20 +59,35 @@ describe("the MCP handler", () => {
     for (const tool of tools) expect(tool.description).toBeString();
   });
 
-  test("the board tool returns what `nico-agent --json` prints", async () => {
-    const { mcp, cli, world } = setup();
-    world.addClone("/src/api", "git@github.com:acme/api.git");
-    await cli("repo", "add", "acme/api", "--path", "/src/api");
-    world.addIssue("acme/api", { number: 7, title: "Add retries" });
+  test("the board tool returns the Scheduler's view of `nico-agent --json`: rooms, running and Held Specs, errors and help", async () => {
+    const { mcp, cli, world, configDir } = await linearRepo();
+    setConfig(configDir, { scheduler: { harness: "claude", model: "opus", effort: "high" } });
+    world.addLinearSpec({ identifier: "BLE-10", title: "PDF diffing" }, { identifier: "BLE-11" });
+    await cli("advance", "--start", "BLE-10");
+    const longBody = "A".repeat(600);
+    world.addLinearSpec({ identifier: "BLE-20", title: "Parser", body: longBody }, { identifier: "BLE-21" });
+    world.addLinearIssue({ identifier: "BLE-30", title: "A bug from triage", body: "It crashes." });
 
     const reply = await mcp({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "board", arguments: {} } });
+    const board = JSON.parse((await cli("--json")).stdout);
+    const view = reply.result.structuredContent;
+    expect(reply.result).toEqual({ content: [{ type: "text", text: JSON.stringify(view, null, 2) }], structuredContent: view, isError: false });
+    expect(Object.keys(view)).toEqual(["specs", "rooms", "help"]);
+    expect(view.help).toEqual(board.help);
+    expect(view.specs).toEqual(board.specs.filter((s: { spec: string }) => s.spec === "BLE-10"));
+    const [room] = view.rooms;
+    expect(room).toMatchObject({ repo: "bleentr/pdf-diff", running: ["BLE-10"], room: board.rooms[0].room });
+    expect(room.candidates).toEqual([
+      { spec: "BLE-20", title: "Parser", url: "https://linear.app/bleentr/issue/BLE-20/title", issue: "BLE-21", body: `${"A".repeat(500)}…` },
+      { spec: "BLE-30", title: "A bug from triage", url: "https://linear.app/bleentr/issue/BLE-30/title", issue: "BLE-30", body: "It crashes." },
+    ]);
+  });
+
+  test("the board tool passes an error Board through whole", async () => {
+    const { mcp, cli } = setup();
+    const reply = await mcp({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "board", arguments: {} } });
     const expected = (await cli("--json")).stdout;
-    expect(reply.result).toEqual({
-      content: [{ type: "text", text: expected }],
-      structuredContent: JSON.parse(expected),
-      isError: false,
-    });
-    expect(reply.result.structuredContent.issues[0]).toMatchObject({ issue: "acme/api#7" });
+    expect(reply.result).toEqual({ content: [{ type: "text", text: expected }], structuredContent: JSON.parse(expected), isError: false });
   });
 
   test("the advance tool returns what `nico-agent advance --json` prints", async () => {

@@ -255,6 +255,58 @@ describe("advance", () => {
     expect(world.calls).toContain("herdr worktree create --cwd /src/pdf --branch nico/ble-22 --base origin/nico/ble-21 --label pdf-diff:BLE-22 --no-focus");
   });
 
+  test("it Closes a Dispatch once its PR is ready, and the Spec still counts that issue done by its branch's PR", async () => {
+    const { cli, world, configDir } = setup();
+    world.addClone("/src/api", "git@github.com:acme/api.git");
+    await cli("repo", "add", "acme/api", "--path", "/src/api");
+    setConfig(configDir, { scheduler: SCHEDULER });
+    world.addGitHubSpec("acme/api", { number: 10, title: "Billing" }, { number: 11 }, { number: 12 });
+    expect((await cli("dispatch", "acme/api#11", "--harness", "claude", "--model", "opus", "--effort", "high")).exitCode).toBe(0);
+    // A stacked PR: GitHub links it to no issue, so only its branch finds it.
+    world.addPr({ repo: "acme/api", number: 16, headBranch: "agent/api-11", baseBranch: "beta" });
+    world.agentStates.set("impl-api-11", "idle");
+    world.calls.length = 0;
+
+    const first = (await cli("advance", "--json")).json();
+    expect(first.specs).toMatchObject([{ spec: "acme/api#10", result: "started", issue: "acme/api#12" }]);
+    expect(first.closed).toEqual(["acme/api#11"]);
+    expect(world.calls).toContain("herdr worktree remove --workspace w1");
+    expect((await cli("show", "acme/api#11")).exitCode).toBe(1);
+
+    world.calls.length = 0;
+    const again = (await cli("advance", "--json")).json();
+    expect(again).toEqual({ specs: [], help: ["Run `nico-agent` to see the Board"] });
+    expect(world.calls.some((c) => c.startsWith("herdr worktree"))).toBe(false);
+    expect((await cli("--json")).json().specs[0]).toMatchObject({ spec: "acme/api#10", running: true, reason: "acme/api#12 is Implementing; a Spec has one Implementer at a time" });
+
+    world.addPr({ repo: "acme/api", number: 17, headBranch: "agent/api-12", baseBranch: "agent/api-11" });
+    world.agentStates.set("impl-api-12", "idle");
+    expect((await cli("advance", "--json")).json().closed).toEqual(["acme/api#12"]);
+    world.calls.length = 0;
+    // Neither Dispatch is left, yet both issues stay done by their branches' PRs.
+    expect((await cli("advance", "--json")).json()).toEqual({ specs: [], help: ["Run `nico-agent` to see the Board"] });
+    expect(world.calls.some((c) => c.startsWith("herdr worktree"))).toBe(false);
+  });
+
+  test("it leaves a Dispatch open while it Implements, or while its Implementer still works or waits on its PR", async () => {
+    const { cli, world, configDir } = setup();
+    world.addClone("/src/api", "git@github.com:acme/api.git");
+    await cli("repo", "add", "acme/api", "--path", "/src/api");
+    setConfig(configDir, { scheduler: SCHEDULER });
+    for (const number of [7, 8, 9]) {
+      world.addIssue("acme/api", { number });
+      expect((await cli("dispatch", `acme/api#${number}`, "--harness", "claude", "--model", "opus", "--effort", "high")).exitCode).toBe(0);
+    }
+    world.linkPr("acme/api", 8, { number: 18 });
+    world.agentStates.set("impl-api-8", "working");
+    world.linkPr("acme/api", 9, { number: 19 });
+    world.agentStates.set("impl-api-9", "blocked");
+    world.calls.length = 0;
+
+    expect((await cli("advance", "--json")).json().closed).toBeUndefined();
+    expect(world.calls.some((c) => c.startsWith("herdr worktree remove"))).toBe(false);
+  });
+
   test("it starts a running GitHub Spec's next issue, stacked on the Spec's newest open PR", async () => {
     const { cli, world, configDir } = setup();
     world.addClone("/src/api", "git@github.com:acme/api.git");

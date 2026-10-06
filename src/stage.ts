@@ -53,12 +53,25 @@ export function freshPrs(world: World): PrLookup {
 /**
  * The PRs linked to a Dispatch's issue (ADR-0003): GitHub's closing
  * references, or for a Linear issue its GitHub PR attachments in the
- * dispatched Repo, with their state read from GitHub.
+ * dispatched Repo, with their state read from GitHub. Then the PRs opened
+ * from the Dispatch's branch: GitHub records closing references only for a
+ * PR into the default branch, so a stacked PR, or one into another Base,
+ * is found by its branch alone. Closed unmerged ones are left out, as the
+ * closing references leave them out.
  */
 export async function linkedPrs(world: World, dispatch: Dispatch): Promise<PullRequest[]> {
   const identifier = linearIdentifier(dispatch.issue);
-  if (!identifier) return world.githubLinkedPullRequests(dispatch.repo, issueNumber(dispatch));
-  return linearPullRequests(world, identifier, dispatch.repo);
+  const linked = identifier
+    ? linearPullRequests(world, identifier, dispatch.repo)
+    : world.githubLinkedPullRequests(dispatch.repo, issueNumber(dispatch));
+  return withBranchPrs(world, dispatch.repo, dispatch.branch, linked);
+}
+
+/** `linked` and, after them, the open and merged PRs from `branch` in `repo` it lacks. */
+export async function withBranchPrs(world: World, repo: string, branch: string, linked: Promise<PullRequest[]>): Promise<PullRequest[]> {
+  const [own, fromBranch] = await Promise.all([linked, world.githubBranchPullRequests(repo, branch)]);
+  const urls = new Set(own.map((pr) => pr.url));
+  return [...own, ...fromBranch.filter((pr) => pr.state !== "closed" && !urls.has(pr.url))];
 }
 
 /**

@@ -36,6 +36,18 @@ describe("Stage", () => {
     }
   });
 
+  test("a PR from the Dispatch's branch is its PR even when GitHub links it to no issue, as for a base other than the default branch", async () => {
+    const { cli, world } = await dispatched();
+    const pr = { repo: "acme/api", url: "https://github.com/acme/api/pull/9", baseBranch: "agent/api-5", headBranch: "agent/api-7" };
+    world.branchPrs.set("acme/api:agent/api-7", [{ ...pr, number: 8, state: "closed" }]);
+    expect(await stage(cli)).toBe("Implementing");
+
+    world.branchPrs.set("acme/api:agent/api-7", [{ ...pr, number: 8, state: "closed" }, { ...pr, number: 9, state: "open" }]);
+    const shown = (await cli("show", "acme/api#7", "--json")).json();
+    expect(shown.stage).toBe("PR ready");
+    expect((await cli("--json")).json().dispatches[0]).toMatchObject({ issue: "acme/api#7", stage: "PR ready", pr: "https://github.com/acme/api/pull/9" });
+  });
+
   test("a closing PR in another repo is not the Dispatch's PR; an open one is preferred over a merged one", async () => {
     const { cli, world } = await dispatched();
     world.linkPr("acme/api", 7, { repo: "acme/web", number: 3, url: "https://github.com/acme/web/pull/3" });
@@ -58,6 +70,7 @@ describe("review", () => {
     expect(exitCode).toBe(0);
     expect(world.calls).toEqual([
       "github linked prs acme/api#7",
+      "github branch prs acme/api:agent/api-7",
       "herdr tab create --workspace w1 --cwd /worktrees/api-7 --label reviewer --no-focus",
       "herdr agent start rev-api-7 --kind claude --pane w1:p3 -- --model sonnet --effort max",
       "herdr agent prompt rev-api-7 /code-review https://github.com/acme/api/pull/9 against trunk for the spec at https://github.com/acme/api/issues/7",
@@ -103,7 +116,7 @@ describe("review", () => {
         "",
       ].join("\n"),
     );
-    expect(world.calls).toEqual(["github linked prs acme/api#7"]);
+    expect(world.calls).toEqual(["github linked prs acme/api#7", "github branch prs acme/api:agent/api-7"]);
   });
 
   test("a Failed Dispatch can't be reviewed until it is resumed", async () => {

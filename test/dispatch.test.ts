@@ -158,7 +158,7 @@ describe("dispatch", () => {
       ].join("\n"),
     );
     // A no-op only reads the Stage.
-    expect(world.calls).toEqual(["github linked prs acme/api#7"]);
+    expect(world.calls).toEqual(["github linked prs acme/api#7", "github branch prs acme/api:agent/api-7"]);
   });
 
   test("rejects an unknown Harness or model before any outside-world call", async () => {
@@ -592,7 +592,7 @@ describe("Claim", () => {
     expect(again.exitCode).toBe(0);
     expect(again.stdout).toStartWith("dispatched: acme/api#7 already In flight (no-op)\n");
     // A no-op only reads the Stage.
-    expect(world.calls).toEqual(["github linked prs acme/api#7"]);
+    expect(world.calls).toEqual(["github linked prs acme/api#7", "github branch prs acme/api:agent/api-7"]);
   });
 });
 
@@ -624,7 +624,7 @@ describe("interrupted Dispatch", () => {
     expect(during.exitCode).toBe(0);
     expect(during.stdout).toStartWith("dispatched: acme/api#7 already In flight (no-op)\n");
     // A no-op only reads the Stage.
-    expect(world.calls).toEqual(["github linked prs acme/api#7"]);
+    expect(world.calls).toEqual(["github linked prs acme/api#7", "github branch prs acme/api:agent/api-7"]);
 
     // The first process was killed mid-step; a later one takes over.
     world.deadPids.add(world.pid);

@@ -2,7 +2,7 @@ import { type Prompts, type Repo, fillTemplate, findRepo, loadConfig, prompts } 
 import { type Harness, harnessCatalog, harnesses, launchArgs, rememberLaunch, rememberedLaunches } from "./harness";
 import { linearIdentifier } from "./linear";
 import { paneCommand, saveVariant } from "./opencode";
-import { sameSlug } from "./slug";
+import { githubBranch, sameSlug } from "./slug";
 import { freshPrs, isReviewLaunched, linkedPr, linkedPrs } from "./stage";
 import {
   type Dispatch,
@@ -140,7 +140,7 @@ export async function dispatch(world: World, configDir: string, request: Dispatc
     () => new DispatchError(`${key} has open Blockers without same-Repo open PRs`, ["Run `nico-agent` to see the Board"]));
   const base = await chooseBase(world, configDir, ref, request, stackedOn);
   const url = `https://github.com/${repo.slug}/issues/${number}`;
-  return startDispatch(world, configDir, ref, harness, templates, request, { title: issue.title, url, branch: `agent/${repoName(repo)}-${number}`, base, stackedOn });
+  return startDispatch(world, configDir, ref, harness, templates, request, { title: issue.title, url, branch: githubBranch(repo.slug, number), base, stackedOn });
 }
 
 /**

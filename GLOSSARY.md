@@ -121,7 +121,9 @@ _Avoid_: Lock, reserve
 **Close**:
 Ending a Dispatch: removing its worktree and workspace and forgetting it.
 Allowed once it has a PR. While it is still Implementing, Close needs
-confirmation.
+confirmation. `advance` Closes each Dispatch whose PR is ready once its
+Implementer neither works nor waits on the user, to free the disk; the
+branch and PR stay.
 _Avoid_: Cleanup, archive, delete
 
 ### Harnesses
