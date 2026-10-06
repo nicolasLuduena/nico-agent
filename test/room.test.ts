@@ -59,6 +59,18 @@ describe("room per Repo", () => {
     expect((await cli("--json")).json().rooms[0]).toMatchObject({ running: [], room: 1 });
   });
 
+  test("a GitHub candidate Spec carries its body too", async () => {
+    const { cli, world } = setup();
+    world.addClone("/src/api", "git@github.com:acme/api.git");
+    await cli("repo", "add", "acme/api", "--path", "/src/api");
+    world.addGitHubSpec("acme/api", { number: 10, title: "Retries", body: "Retry failed calls." }, { number: 11 });
+
+    expect((await cli("--json")).json().rooms).toEqual([{
+      repo: "acme/api", running: [], room: 2,
+      candidates: [{ spec: "acme/api#10", title: "Retries", url: "https://github.com/acme/api/issues/10", issue: "acme/api#11", body: "Retry failed calls." }],
+    }]);
+  });
+
   test("a running-Specs cap that is not a positive integer is a config error", async () => {
     const { cli, configDir } = await linearRepo({ runningSpecs: 0 });
     expect((await cli("--json")).json()).toEqual({
@@ -114,6 +126,23 @@ describe("advance --start", () => {
     expect((await cli("advance", "--start", "BLE-99", "--json")).json()).toEqual({
       error: "BLE-99 is not a candidate Spec: no Spec of a Repo has that name",
       help: ["Run `nico-agent` to see the candidate Specs of each Repo"],
+    });
+    expect(world.calls.some((c) => c.startsWith("herdr") && c !== "herdr agent list")).toBe(false);
+  });
+
+  test("it refuses a Held Spec with the hold's reason", async () => {
+    const { cli, world } = await linearRepo();
+    world.addLinearSpec({ identifier: "BLE-20" }, { identifier: "BLE-21" }, { identifier: "BLE-22" });
+    world.failHerdr("agent start", "herdr is not running");
+    expect((await cli("advance", "--start", "BLE-20", "--json")).json().specs[0]).toMatchObject({ spec: "BLE-20", result: "failed" });
+    world.clearFailures();
+    world.calls.length = 0;
+
+    const held = await cli("advance", "--start", "BLE-20", "--json");
+    expect(held.exitCode).toBe(1);
+    expect(held.json()).toEqual({
+      error: "BLE-20 is Held: BLE-21's Dispatch Failed at agent start: herdr is not running",
+      help: ["Run `nico-agent` to see the Board"],
     });
     expect(world.calls.some((c) => c.startsWith("herdr") && c !== "herdr agent list")).toBe(false);
   });

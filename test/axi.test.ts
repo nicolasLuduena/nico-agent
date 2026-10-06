@@ -98,7 +98,7 @@ describe("AXI conventions", () => {
         "  nico-agent repo rm <owner/name>,Remove a Repo (its clone is left untouched)",
         "  nico-agent repo list,List the configured Repos",
         "  nico-agent dispatch <issue>... --harness <harness> --model <model> --effort <effort>,Start an Implementer on each issue in a new herdr worktree workspace (resumes a failed one)",
-        "  nico-agent advance,Dispatch each running Spec's next issue with the Scheduler defaults from config (resumes a failed one)",
+        "  nico-agent advance,Dispatch each running Spec's next issue with the Scheduler defaults from config (skips Held Specs)",
         '  nico-agent review <issue>... --harness <harness> --model <model> --effort <effort>,"Start a Reviewer on each In-flight issue\'s linked PR, in its workspace (resumes a failed one)"',
         '  "nico-agent close <issue>... [--confirm]","Remove each Dispatch\'s workspace and forget it, keeping its branch"',
         "  nico-agent harness list,List the Harnesses with their models and Effort levels (discovers uncached ones)",

@@ -19,6 +19,10 @@ export interface IssueFacts {
   pr: PullRequest | null;
   /** Its Blockers, named like `issue`, and whether each is closed. */
   blockers: { issue: string; closed: boolean }[];
+  /** The step its In-flight Dispatch Failed at, until a re-run gets past it or the Dispatch is Closed. */
+  failed?: { step: string; error: string };
+  /** The PR closed without merging that its In-flight Dispatch's Stack is built on. */
+  orphanedBy?: PullRequest;
 }
 
 /** A Spec and its issues in sub-issue order; a loose issue is a Spec of one, named after itself. */
@@ -57,6 +61,12 @@ export interface Waiting {
   reason: string;
 }
 
+/** Why the Scheduler does not dispatch into a Spec until the user acts, and the issue whose Dispatch needs it. */
+export interface Hold {
+  issue: string;
+  reason: string;
+}
+
 export interface SpecDecision {
   spec: string;
   title: string;
@@ -77,6 +87,8 @@ export interface SpecDecision {
   waiting?: Waiting;
   /** Why a running Spec has no next issue. */
   reason?: string;
+  /** Set when the Spec is Held; a Held Spec has no next issue and is never started. */
+  held?: Hold;
 }
 
 export interface RepoDecision {
@@ -85,7 +97,7 @@ export interface RepoDecision {
   specs: SpecDecision[];
   /** How many more Specs may start: the Repo's cap less its running Specs. */
   room: number;
-  /** The Specs that could start, as not started and with a first issue Ready: the Scheduler's choice when there is room. */
+  /** The Specs that could start, as not started, not Held, and with a first issue Ready: the Scheduler's choice when there is room. */
   candidates: string[];
 }
 
@@ -95,7 +107,7 @@ export function decideSpecs(repos: RepoFacts[]): RepoDecision[] {
     return {
       repo: repo.repo, specs,
       room: Math.max(0, repo.runningSpecs - specs.filter((s) => s.running).length),
-      candidates: specs.filter((s) => !s.running && s.next).map((s) => s.spec),
+      candidates: specs.filter((s) => !s.running && !s.held && s.next).map((s) => s.spec),
     };
   });
 }
@@ -110,6 +122,8 @@ function decideSpec(repo: RepoFacts, spec: SpecFacts): SpecDecision {
     spec: spec.spec, title: spec.title, url: spec.url, body: spec.body, repo: repo.repo,
     issues: spec.issues.map((i) => i.issue), running: false,
   };
+  const held = holdOf(spec);
+  if (held) decision.held = held;
   const remaining = spec.issues.filter((i) => !done(i));
   const started = spec.issues.some((i) => i.inFlight || i.closed || i.pr);
   if (remaining.length === 0) return decision;
@@ -119,6 +133,7 @@ function decideSpec(repo: RepoFacts, spec: SpecFacts): SpecDecision {
     return decision;
   }
   decision.running = true;
+  if (held) return decision;
   const implementing = remaining.find((i) => i.inFlight);
   if (implementing) {
     decision.implementing = implementing.issue;
@@ -156,6 +171,22 @@ function nextIssue(repo: RepoFacts, spec: SpecFacts, remaining: IssueFacts[]): N
       (stackOn ? "it stacks on the Spec's newest open PR" : `the Spec has no open PR, so it starts from ${repo.defaultBranch}`),
     ...(stackOn && { stackOn }),
   };
+}
+
+/**
+ * Holds are derived from the facts on every read, so they clear once the user
+ * resumes or Closes the Dispatch that caused them.
+ */
+function holdOf(spec: SpecFacts): Hold | undefined {
+  const failed = spec.issues.find((i) => i.failed);
+  if (failed?.failed) {
+    return { issue: failed.issue, reason: `${failed.issue}'s Dispatch Failed at ${failed.failed.step}: ${failed.failed.error}` };
+  }
+  const orphaned = spec.issues.find((i) => i.orphanedBy);
+  if (orphaned?.orphanedBy) {
+    return { issue: orphaned.issue, reason: `${orphaned.issue}'s Stack is built on ${orphaned.orphanedBy.url}, closed without merging` };
+  }
+  return undefined;
 }
 
 /** An issue is done for its Spec once it is closed or has a PR. */

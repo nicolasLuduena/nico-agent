@@ -168,6 +168,7 @@ async function githubSpecFacts(world: World, repo: Repo, issues: GitHubIssue[], 
       issue: name, closed, startable: canStart(issue, viewer), inFlight: row !== undefined,
       pr: row ? row.pr : closed ? null : linkedPr(await world.githubLinkedPullRequests(repo.slug, issue.number), repo.slug),
       blockers: issue.blockers.map((b) => ({ issue: key(b.slug, b.number), closed: b.state === "closed" })),
+      ...(row && await holdFacts(world, row)),
     };
   };
   const parents = new Map<string, { slug: string; number: number }>();
@@ -186,15 +187,43 @@ async function githubSpecFacts(world: World, repo: Repo, issues: GitHubIssue[], 
   for (const issue of loose) specs.push({ spec: key(repo.slug, issue.number), title: issue.title, url: issue.url, body: issue.body, issues: [await facts(issue)] });
   for (const row of inFlight) {
     if (inSpec.has(row.dispatch.issue) || specs.some((s) => s.spec === row.dispatch.issue)) continue;
-    specs.push(looseInFlight(row));
+    specs.push(await looseInFlight(world, row));
   }
   return specs;
 }
 
 /** A Dispatch In flight whose issue was found in no Spec counts as a Spec of one. */
-function looseInFlight(row: InFlightRow): SpecFacts {
+async function looseInFlight(world: World, row: InFlightRow): Promise<SpecFacts> {
   const { issue, title, url } = row.dispatch;
-  return { spec: issue, title, url, body: "", issues: [{ issue, closed: false, startable: false, inFlight: true, pr: row.pr, blockers: [] }] };
+  return { spec: issue, title, url, body: "", issues: [{ issue, closed: false, startable: false, inFlight: true, pr: row.pr, blockers: [], ...await holdFacts(world, row) }] };
+}
+
+/** What an In-flight Dispatch tells the Spec rules about holds. */
+async function holdFacts(world: World, row: InFlightRow): Promise<Pick<IssueFacts, "failed" | "orphanedBy">> {
+  const { failure, stackedOn, repo } = row.dispatch;
+  if (failure) return { failed: { step: failure.step, error: failure.error } };
+  if (!stackedOn) return {};
+  // The Stack under the Dispatch's own open PR, else under the PR it was dispatched on.
+  const from = row.pr?.state === "open" ? row.pr.baseBranch : stackedOn.pr.headBranch;
+  const orphanedBy = await closedBelow(world, repo, from);
+  return orphanedBy ? { orphanedBy } : {};
+}
+
+/**
+ * The PR closed without merging that a Stack is built on, walking down from
+ * `branch` through the head branches of its PRs; undefined once the walk
+ * reaches a branch without an open PR on it, such as the default branch.
+ */
+async function closedBelow(world: World, repo: string, branch: string): Promise<PullRequest | undefined> {
+  const seen = new Set<string>();
+  while (!seen.has(branch)) {
+    seen.add(branch);
+    const prs = (await world.githubBranchPullRequests(repo, branch)).filter((pr) => sameSlug(pr.repo, repo));
+    const open = prs.find((pr) => pr.state === "open");
+    if (!open) return prs.at(-1)?.state === "closed" ? prs.at(-1) : undefined;
+    branch = open.baseBranch;
+  }
+  return undefined;
 }
 
 /**
@@ -212,6 +241,7 @@ async function linearSpecFacts(world: World, repo: Repo, issues: LinearIssue[], 
       issue: issue.identifier, closed, startable: canStartLinear(issue, viewer), inFlight: row !== undefined,
       pr: row ? row.pr : closed ? null : linkedPr(await linearPullRequests(world, issue.identifier, repo.slug), repo.slug),
       blockers: issue.blockers.map((b) => ({ issue: b.identifier, closed: isLinearClosed(b.state) })),
+      ...(row && await holdFacts(world, row)),
     };
   };
   const specs: SpecFacts[] = await Promise.all([...parents].map(async (spec) => {
@@ -223,7 +253,7 @@ async function linearSpecFacts(world: World, repo: Repo, issues: LinearIssue[], 
   for (const issue of loose) specs.push({ spec: issue.identifier, title: issue.title, url: issue.url, body: issue.body, issues: [await facts(issue)] });
   for (const row of inFlight) {
     if (inSpec.has(row.dispatch.issue) || loose.some((i) => i.identifier === row.dispatch.issue)) continue;
-    specs.push(looseInFlight(row));
+    specs.push(await looseInFlight(world, row));
   }
   return specs;
 }

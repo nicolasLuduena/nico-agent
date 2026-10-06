@@ -138,7 +138,7 @@ const commands: Command[] = [
   {
     name: "advance",
     usage: "nico-agent advance",
-    summary: "Dispatch each running Spec's next issue with the Scheduler defaults from config (resumes a failed one)",
+    summary: "Dispatch each running Spec's next issue with the Scheduler defaults from config (skips Held Specs)",
     flags: {
       "--start": { value: true, description: "candidate Spec to start too, named as on the Board; refused unless its Repo has room" },
     },
@@ -682,8 +682,9 @@ async function board(ctx: RunContext): Promise<Output> {
   }
   const specRows = specs.flatMap((r) => r.specs);
   if (specRows.length) {
-    data.specs = specRows.map(({ spec, title, repo, issues, running, next, waiting, reason }) => ({
+    data.specs = specRows.map(({ spec, title, repo, issues, running, held, next, waiting, reason }) => ({
       spec, title, repo, issues, running,
+      ...(held && { held }),
       // A candidate's first issue is listed under `rooms`.
       ...(running && next && { next: { issue: next.issue, ...(next.stackOn && { stackOn: next.stackOn.url }), base: next.base, reason: next.reason } }),
       ...(waiting && { waiting }),

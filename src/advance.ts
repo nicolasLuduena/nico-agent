@@ -33,7 +33,7 @@ export interface AdvanceReport {
 export type SpecPlan =
   | { action: "start"; issue: string; stackOn?: string; base: string; reason: string }
   | { action: "resume"; dispatch: Dispatch }
-  | { action: "skip"; issue: string; reason: string };
+  | { action: "skip"; issue: string; reason: string; help?: string };
 
 const SHOW_HELP = "Run `nico-agent show <issue>` to see a Dispatch";
 
@@ -72,6 +72,7 @@ function startable(repos: RepoDecision[], name: string): SpecDecision {
   const notCandidate = (why: string) => new DispatchError(`${name} is not a candidate Spec: ${why}`, ["Run `nico-agent` to see the candidate Specs of each Repo"]);
   const help = ["Run `nico-agent advance` to keep the running Specs moving", "Run `nico-agent` to see the Board"];
   if (!repo || !spec) throw notCandidate("no Spec of a Repo has that name");
+  if (spec.held) throw new DispatchError(`${spec.spec} is Held: ${spec.held.reason}`, ["Run `nico-agent` to see the Board"]);
   if (spec.running) throw new DispatchError(`${spec.spec} is already running`, help);
   if (!repo.candidates.includes(spec.spec)) throw notCandidate(spec.waiting ? "it has already started" : "none of its issues is Ready");
   if (repo.room === 0) {
@@ -86,6 +87,7 @@ function startable(repos: RepoDecision[], name: string): SpecDecision {
  * (ADR-0006); else starts its next issue; else is skipped with the reason.
  */
 export function planSpec(spec: SpecDecision, dispatches: Dispatch[]): SpecPlan {
+  if (spec.held) return { action: "skip", issue: spec.held.issue, reason: `Held: ${spec.held.reason}`, help: clearHoldHelp(spec, dispatches) };
   const unfinished = dispatches.find((d) => spec.issues.includes(d.issue) && !isFinished(d));
   if (unfinished) return { action: "resume", dispatch: unfinished };
   if (spec.next) {
@@ -96,6 +98,17 @@ export function planSpec(spec: SpecDecision, dispatches: Dispatch[]): SpecPlan {
   return { action: "skip", issue: spec.implementing ?? "", reason: spec.reason ?? "" };
 }
 
+/** How the user clears a Spec's hold: resume the Failed Dispatch with its own launch, or Close it or the orphaned one. */
+function clearHoldHelp(spec: SpecDecision, dispatches: Dispatch[]) {
+  const issue = spec.held!.issue;
+  const d = dispatches.find((d) => d.issue === issue);
+  if (!d) return SHOW_HELP;
+  if (!d.failure) return `Run \`nico-agent close ${issue}\` to Close the orphaned Dispatch, or retarget its Stack`;
+  const { harness, model, effort } = d.implementer;
+  const resume = `nico-agent dispatch ${issue} --harness ${harness} --model ${model} --effort ${effort}${linearIdentifier(issue) ? ` --repo ${d.repo}` : ""}`;
+  return `Run \`${resume}\` to resume the Failed Dispatch, or \`nico-agent close ${issue}\` to Close it`;
+}
+
 /** Every step done and the Claim decided: nothing left for a re-run to do. */
 function isFinished(d: Dispatch) {
   return d.failure === undefined && STEPS.every((s) => d.completed.includes(s)) && d.claimed !== undefined;
@@ -103,7 +116,10 @@ function isFinished(d: Dispatch) {
 
 async function carryOut(world: World, configDir: string, launch: SchedulerDefaults, spec: SpecDecision, plan: SpecPlan, help: string[]): Promise<AdvanceRow> {
   const row = { spec: spec.spec, repo: spec.repo };
-  if (plan.action === "skip") return { ...row, result: "skipped", issue: plan.issue, reason: plan.reason };
+  if (plan.action === "skip") {
+    if (plan.help) addHelp(help, plan.help);
+    return { ...row, result: "skipped", issue: plan.issue, reason: plan.reason };
+  }
   // A resumed Dispatch keeps its own launch and stacking, so `dispatch` sees the same request again.
   const request: DispatchRequest = plan.action === "start"
     ? { issue: plan.issue, ...launch, ...(plan.stackOn ? { stackOn: plan.stackOn } : { base: plan.base }) }
