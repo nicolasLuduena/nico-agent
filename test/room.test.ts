@@ -48,7 +48,7 @@ describe("room per Repo", () => {
   });
 
   test("the cap is read per Repo from config, and a Spec whose issues all have PRs or that only waits on another Spec's merges frees its slot", async () => {
-    const { cli, world } = await linearRepo({ runningSpecs: 1 });
+    const { cli, world } = await linearRepo({ maxRunningSpecs: 1 });
     world.addLinearSpec({ identifier: "BLE-10" }, { identifier: "BLE-11", state: "started" }, { identifier: "BLE-12" });
     world.addLinearSpec({ identifier: "BLE-20" }, { identifier: "BLE-21" });
     world.linearAttachments.set("BLE-11", ["https://github.com/bleentr/pdf-diff/pull/11"]);
@@ -107,9 +107,9 @@ describe("room per Repo", () => {
   });
 
   test("a running-Specs cap that is not a positive integer is a config error", async () => {
-    const { cli, configDir } = await linearRepo({ runningSpecs: 0 });
+    const { cli, configDir } = await linearRepo({ maxRunningSpecs: 0 });
     expect((await cli("--json")).json()).toEqual({
-      error: `${join(configDir, "config.json")}: repos[0].runningSpecs is not a positive integer`,
+      error: `${join(configDir, "config.json")}: repos[0].maxRunningSpecs is not a positive integer`,
       help: ["Fix or delete the file and run `nico-agent repo add` again"],
     });
   });
@@ -136,7 +136,7 @@ describe("advance --start", () => {
   });
 
   test("it refuses a full Repo, a Spec that is not a candidate, and one already running, before dispatching anything", async () => {
-    const { cli, world } = await linearRepo({ runningSpecs: 1 });
+    const { cli, world } = await linearRepo({ maxRunningSpecs: 1 });
     world.addLinearSpec({ identifier: "BLE-10" }, { identifier: "BLE-11" });
     world.addLinearSpec({ identifier: "BLE-20" }, { identifier: "BLE-21" });
     world.addLinearSpec({ identifier: "BLE-40" }, { identifier: "BLE-41", labels: [] });

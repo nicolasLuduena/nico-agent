@@ -40,7 +40,7 @@ export interface RepoFacts {
   /** The default branch of the Repo's origin, which every Stack is anchored on. */
   defaultBranch: string;
   /** How many Specs may run in the Repo at once. */
-  runningSpecs: number;
+  maxRunningSpecs: number;
   specs: SpecFacts[];
 }
 
@@ -106,7 +106,7 @@ export function decideSpecs(repos: RepoFacts[]): RepoDecision[] {
     const specs = repo.specs.filter(hasWorkLeft).map((spec) => decideSpec(repo, spec));
     return {
       repo: repo.repo, specs,
-      room: Math.max(0, repo.runningSpecs - specs.filter((s) => s.running).length),
+      room: Math.max(0, repo.maxRunningSpecs - specs.filter((s) => s.running).length),
       candidates: specs.filter((s) => !s.running && !s.held && s.next).map((s) => s.spec),
     };
   });

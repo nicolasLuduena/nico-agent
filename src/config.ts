@@ -7,12 +7,12 @@ export interface Repo {
   slug: string;
   path: string;
   linear?: LinearSelector;
-  /** How many Specs may run in the Repo at once; DEFAULT_RUNNING_SPECS when unset. */
-  runningSpecs?: number;
+  /** How many Specs may run in the Repo at once; DEFAULT_MAX_RUNNING_SPECS when unset. */
+  maxRunningSpecs?: number;
 }
 
 /** The running Specs a Repo allows unless config sets its own cap. */
-export const DEFAULT_RUNNING_SPECS = 2;
+export const DEFAULT_MAX_RUNNING_SPECS = 2;
 
 export interface LinearSelector {
   team: string;
@@ -235,8 +235,8 @@ function checkPrompts(file: string, prompts: unknown): Partial<Prompts> {
 
 function checkRepos(file: string, repos: Repo[]): Repo[] {
   repos.forEach((repo, i) => {
-    const cap = repo.runningSpecs;
-    if (cap !== undefined && !(Number.isInteger(cap) && cap > 0)) throw new ConfigError(`${file}: repos[${i}].runningSpecs is not a positive integer`);
+    const cap = repo.maxRunningSpecs;
+    if (cap !== undefined && !(Number.isInteger(cap) && cap > 0)) throw new ConfigError(`${file}: repos[${i}].maxRunningSpecs is not a positive integer`);
   });
   return repos;
 }

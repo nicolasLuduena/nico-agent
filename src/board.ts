@@ -1,4 +1,4 @@
-import { DEFAULT_RUNNING_SPECS, type LinearSelector, type Repo } from "./config";
+import { DEFAULT_MAX_RUNNING_SPECS, type LinearSelector, type Repo } from "./config";
 import { type InFlightRow, type PrLookup, linearPullRequests, linkedPr, loadInFlight } from "./stage";
 import { type IssueFacts, type RepoDecision, type RepoFacts, type SpecFacts, decideSpecs } from "./spec";
 import type { Dispatch } from "./state";
@@ -138,7 +138,7 @@ export async function loadBoard(world: World, repos: Repo[], dispatches: Dispatc
   if (githubViewer !== undefined) await gather(github, undefined, (repo, issues) => githubSpecFacts(world, repo, issues, inFlight, githubViewer));
   if (viewer !== undefined) await gather(linear, "Linear", (repo, issues) => linearSpecFacts(world, repo, issues, inFlight, viewer));
   const facts = await Promise.allSettled([...specs].map(async ([repo, repoSpecs]): Promise<RepoFacts> => ({
-    repo: repo.slug, defaultBranch: await world.gitDefaultBranch(repo.path), runningSpecs: repo.runningSpecs ?? DEFAULT_RUNNING_SPECS,
+    repo: repo.slug, defaultBranch: await world.gitDefaultBranch(repo.path), maxRunningSpecs: repo.maxRunningSpecs ?? DEFAULT_MAX_RUNNING_SPECS,
     specs: repoSpecs.sort((a, b) => a.spec.localeCompare(b.spec, undefined, { numeric: true })),
   })));
   const loaded: RepoFacts[] = [];
