@@ -19,21 +19,19 @@ export interface AdvanceRow {
 }
 
 export interface AdvanceReport {
-  /** One row per running Spec, in Board order; empty when no Spec is running. */
+  /** One row per Spec acted on or stopped, in Board order; empty when there is nothing to do. */
   specs: AdvanceRow[];
   /** Repos whose Specs could not be loaded, so were not advanced. */
   errors: { repo: string; error: string }[];
   help: string[];
 }
 
-/**
- * What `advance` does with a running Spec. The one place that decides it, so
- * holds (#41) change only this.
- */
+/** What `advance` does with a running Spec; `wait` is nothing to do while its Implementer works, so it is not reported. */
 export type SpecPlan =
   | { action: "start"; issue: string; stackOn?: string; base: string; reason: string }
   | { action: "resume"; dispatch: Dispatch }
-  | { action: "skip"; issue: string; reason: string; help?: string };
+  | { action: "skip"; issue: string; reason: string; help?: string }
+  | { action: "wait" };
 
 const SHOW_HELP = "Run `nico-agent show <issue>` to see a Dispatch";
 
@@ -60,7 +58,10 @@ export async function advance(world: World, configDir: string, { start }: Advanc
   const plans = board.specs.flatMap((r) => r.specs).filter((s) => s.running || s.waiting || s === started)
     .map((spec) => ({ spec, plan: planSpec(spec, dispatches) }));
   if (plans.some(({ plan }) => plan.action === "start")) await checkDefaults(world, configDir, launch);
-  for (const { spec, plan } of plans) report.specs.push(await carryOut(world, configDir, launch, spec, plan, report.help));
+  for (const { spec, plan } of plans) {
+    const row = await carryOut(world, configDir, launch, spec, plan, report.help);
+    if (row) report.specs.push(row);
+  }
   return report;
 }
 
@@ -95,7 +96,8 @@ export function planSpec(spec: SpecDecision, dispatches: Dispatch[]): SpecPlan {
     return { action: "start", issue, base, reason, ...(stackOn && { stackOn: stackOn.url }) };
   }
   if (spec.waiting) return { action: "skip", issue: spec.waiting.issue, reason: spec.waiting.reason };
-  return { action: "skip", issue: spec.implementing ?? "", reason: spec.reason ?? "" };
+  if (spec.implementing) return { action: "wait" };
+  return { action: "skip", issue: "", reason: spec.reason ?? "" };
 }
 
 /** How the user clears a Spec's hold: resume the Failed Dispatch with its own launch, or Close it or the orphaned one. */
@@ -114,8 +116,9 @@ function isFinished(d: Dispatch) {
   return d.failure === undefined && STEPS.every((s) => d.completed.includes(s)) && d.claimed !== undefined;
 }
 
-async function carryOut(world: World, configDir: string, launch: SchedulerDefaults, spec: SpecDecision, plan: SpecPlan, help: string[]): Promise<AdvanceRow> {
+async function carryOut(world: World, configDir: string, launch: SchedulerDefaults, spec: SpecDecision, plan: SpecPlan, help: string[]): Promise<AdvanceRow | undefined> {
   const row = { spec: spec.spec, repo: spec.repo };
+  if (plan.action === "wait") return undefined;
   if (plan.action === "skip") {
     if (plan.help) addHelp(help, plan.help);
     return { ...row, result: "skipped", issue: plan.issue, reason: plan.reason };
@@ -128,8 +131,9 @@ async function carryOut(world: World, configDir: string, launch: SchedulerDefaul
   const issue = request.issue;
   try {
     const { outcome, resumedFrom } = await dispatch(world, configDir, request);
+    // Already In flight and its runner still going: nothing to do.
+    if (outcome === "existing") return undefined;
     addHelp(help, SHOW_HELP);
-    if (outcome === "existing") return { ...row, result: "skipped", issue, reason: `${issue} is already In flight (no-op)` };
     if (outcome === "resumed") return { ...row, result: "resumed", issue, reason: `${issue} resumed from ${resumedFrom}` };
     return { ...row, result: "started", issue, reason: plan.action === "start" ? plan.reason : "" };
   } catch (e) {

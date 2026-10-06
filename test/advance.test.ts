@@ -57,7 +57,7 @@ describe("advance", () => {
     expect((await cli("show", "BLE-12", "--json")).json()).toMatchObject({ stackedOn: { pr: { url: "https://github.com/bleentr/pdf-diff/pull/16" } } });
   });
 
-  test("a running Spec without an open PR starts from the default branch, and re-running is a no-op while it Implements", async () => {
+  test("a running Spec without an open PR starts from the default branch, and re-running while it Implements is quiet and stable", async () => {
     const { cli, world } = await linearRepo();
     world.defaultBranches.set("/src/pdf", "trunk");
     world.remoteBranches.set("/src/pdf", ["trunk", "beta"]);
@@ -74,12 +74,9 @@ describe("advance", () => {
     expect(world.calls).toContain("herdr worktree create --cwd /src/pdf --branch nico/ble-12 --base origin/trunk --label pdf-diff:BLE-12 --no-focus");
 
     world.calls.length = 0;
-    const again = await cli("advance", "--json");
-    expect(again.exitCode).toBe(0);
-    expect(again.json().specs).toEqual([
-      { spec: "BLE-10", repo: "bleentr/pdf-diff", result: "skipped", issue: "BLE-12", reason: "BLE-12 is Implementing; a Spec has one Implementer at a time" },
-      { spec: "BLE-99", repo: "bleentr/pdf-diff", result: "skipped", issue: "BLE-99", reason: "BLE-99 is Implementing; a Spec has one Implementer at a time" },
-    ]);
+    const again = await cli("advance");
+    expect(again).toMatchObject({ exitCode: 0, stdout: "specs: []\nhelp[1]:\n  Run `nico-agent` to see the Board\n" });
+    expect((await cli("advance")).stdout).toBe(again.stdout);
     expect(world.calls.filter((c) => c.startsWith("herdr") && c !== "herdr agent list")).toEqual([]);
   });
 
@@ -125,9 +122,7 @@ describe("advance", () => {
     expect(resumed.exitCode).toBe(0);
     const spec = (await cli("--json")).json().specs.find((s: { spec: string }) => s.spec === "BLE-10");
     expect(spec.held).toBeUndefined();
-    expect((await cli("advance", "--json")).json().specs).toEqual([
-      { spec: "BLE-10", repo: "bleentr/pdf-diff", result: "skipped", issue: "BLE-12", reason: "BLE-12 is Implementing; a Spec has one Implementer at a time" },
-    ]);
+    expect((await cli("advance", "--json")).json()).toEqual({ specs: [], help: ["Run `nico-agent` to see the Board"] });
   });
 
   test("Closing the Failed Dispatch clears the hold, and the Spec dispatches the issue again", async () => {
