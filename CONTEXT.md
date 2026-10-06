@@ -27,10 +27,18 @@ An issue that must be resolved before another can start, as recorded by the
 Source's native dependency relation.
 _Avoid_: Dependency, prerequisite
 
+**Spec**:
+An issue whose sub-issues are the tickets that build it, as `/to-spec` and
+`/to-tickets` write them. A Spec is never dispatched itself; an issue outside
+any Spec counts as a Spec of its own. A Spec is running from the dispatch of
+its first issue until each of its issues has a PR, except while its remaining
+issues only wait on another Spec's PRs to merge.
+_Avoid_: Epic, feature, parent issue
+
 **Ready**:
 An issue labelled `ready-for-agent`, open and not started, unassigned or
 assigned only to the user (an issue shared with someone else is theirs too),
-whose Blockers are all resolved.
+whose Blockers are all resolved, and which is not itself a Spec.
 _Avoid_: Available, eligible, todo
 
 **Stackable**:
@@ -52,17 +60,34 @@ _Avoid_: Job, run, task
 
 **Base**:
 The branch a Dispatch's worktree starts from and its PR targets, chosen per
-Dispatch. A Stacked dispatch's Base is its Blocker's PR head branch.
+Dispatch. A Stacked dispatch's Base is the head branch of the PR it stacks on.
 _Avoid_: Target branch, trunk
 
+**Stack**:
+A chain of open PRs in one Repo, each targeting the head branch of the one
+below it, the bottom one targeting another branch of the Repo.
+_Avoid_: Chain, train
+
 **Stacked dispatch**:
-A Dispatch of a Stackable issue, started on the head branch of its Blocker's
-PR so its PR joins that stack.
+A Dispatch started on the head branch of an open PR in the same Repo, so its
+PR joins that PR's Stack. For a Stackable issue, every Blocker's PR must be
+the PR it stacks on or below it in that Stack.
 _Avoid_: Dependent dispatch
 
 **In flight**:
 The state of an issue that has a Dispatch which has not been Closed.
 _Avoid_: Active, running, in progress
+
+**Scheduler**:
+An agent outside nico-agent that keeps Specs moving without the user: it
+chooses which Spec to start when a Repo has room, and has each running Spec's
+next issue dispatched, one Implementer per Spec at a time.
+_Avoid_: Orchestrator, pilot, autopilot
+
+**Held**:
+A Spec the Scheduler does not dispatch into until the user acts: one of its
+Dispatches Failed, or its Stack is built on a PR closed without merging.
+_Avoid_: Paused, blocked, stuck
 
 **Implementer**:
 The agent a Dispatch starts to implement the issue and open a draft PR.

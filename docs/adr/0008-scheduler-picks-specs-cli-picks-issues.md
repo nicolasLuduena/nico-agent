@@ -1,0 +1,17 @@
+# nico-agent orders the issues of a Spec; the Scheduler only picks Specs
+
+A Scheduler (Hermes, or any agent) dispatches without the user, so we keep its
+judgment, and the damage it can do, as small as possible. Everything that can
+be decided mechanically lives in nico-agent with tests: a Spec's next issue
+(the first unblocked sub-issue, in sub-issue order), the PR it stacks on (the
+Spec's newest, so each Spec is one Stack of unlimited height), the cap on
+Specs running per Repo, and whether a Spec is Held. The Scheduler decides only
+which Spec starts when a Repo has room, which needs reading the Specs and
+asking the user. We rejected letting the Scheduler order issues itself or
+predict which files they will touch: an LLM guessing is less trustworthy than
+a rule, and a Stack per Spec makes overlap within a Spec harmless anyway.
+
+The Scheduler's reach is enforced, not requested: it gets no shell, only an MCP
+server from nico-agent with two tools, reading the Board and `advance`, which
+dispatches running Specs' next issues and starts a Spec only when its Repo has
+room. The worst a wrong judgment can do is start the wrong Spec.
