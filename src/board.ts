@@ -206,7 +206,7 @@ async function loadReady(world: World, repos: Repo[], inFlight: Dispatch[], last
         .sort((a, b) => a.identifier.localeCompare(b.identifier, undefined, { numeric: true }));
       return Promise.all(startable.map(async (issue) => {
         const ready = isLinearReady(issue, viewer);
-        return { issue, ready, blockers: ready ? [] : await linearStackOptions(world, repo.slug, issue) };
+        return { issue, ready, blockers: ready || stacksAcrossSpecs(issue, claimed) ? [] : await linearStackOptions(world, repo.slug, issue) };
       }));
     }));
     results.forEach((result, i) => {
@@ -240,6 +240,12 @@ async function loadReady(world: World, repos: Repo[], inFlight: Dispatch[], last
 function worldErrorMessage(e: unknown) {
   if (e instanceof WorldError) return e.message;
   throw e;
+}
+
+/** An issue of a Spec with an unresolved Blocker outside it would stack across Specs, so it waits for that Blocker instead. */
+function stacksAcrossSpecs(issue: LinearIssue, known: LinearIssue[]) {
+  if (!issue.parent) return false;
+  return issue.blockers.some((b) => !isLinearClosed(b.state) && known.find((k) => k.identifier === b.identifier)?.parent !== issue.parent);
 }
 
 export function matchesSelector(issue: LinearIssue, selector: LinearSelector) {

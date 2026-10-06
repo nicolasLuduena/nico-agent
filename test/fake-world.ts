@@ -46,9 +46,10 @@ export class FakeWorld implements World {
     return this.linearUser;
   }
 
+  /** Like the adapter, only `ready-for-agent` issues: a Spec is found through its sub-issues. */
   async linearIssues(team: string) {
     if (this.linearFailure) throw new WorldError(this.linearFailure);
-    return [...this.linear.values()].flat().filter((i) => [i.team.key, i.team.id, i.team.name].includes(team));
+    return [...this.linear.values()].flat().filter((i) => [i.team.key, i.team.id, i.team.name].includes(team) && i.labels.includes("ready-for-agent"));
   }
 
   /** Attachment URLs of each Linear issue, by identifier. */

@@ -111,6 +111,16 @@ function decideSpec(repo: RepoFacts, spec: SpecFacts): SpecDecision {
     };
     return decision;
   }
+  for (const issue of remaining.filter((i) => i.startable)) {
+    const blocker = issue.blockers.find((b) => !b.closed && !spec.issues.some((i) => i.issue === b.issue));
+    if (!blocker) continue;
+    decision.waiting = {
+      issue: issue.issue, blocker: blocker.issue,
+      reason: `${issue.issue} waits for ${blocker.issue}, in another Spec, to close; a Stack never mixes Specs`,
+    };
+    return decision;
+  }
+  decision.reason = "no remaining issue is Ready or unblocked";
   return decision;
 }
 
