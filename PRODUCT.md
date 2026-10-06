@@ -56,7 +56,7 @@ open PR.
 - **CLI parity:** every Board action must also be possible from the CLI, which
   follows AXI (ADR 0006). Mutations are idempotent, and the CLI never prompts
   interactively.
-- **Domain vocabulary:** UI copy uses the `CONTEXT.md` terms exactly (Source,
+- **Domain vocabulary:** UI copy uses the `GLOSSARY.md` terms exactly (Source,
   Repo, Ready, Stackable, Board, Dispatch, Base, In flight, Stage, Agent state,
   Claim, Close, Harness, Effort). Use those terms, not the listed "Avoid"
   synonyms.
@@ -71,7 +71,7 @@ open PR.
 
 ## Evidence on Hand
 
-- Domain glossary: `CONTEXT.md`. Decisions: `docs/adr/`. Linear notes:
+- Domain glossary: `GLOSSARY.md`. Decisions: `docs/adr/`. Linear notes:
   `docs/linear.md`.
 - No screenshots, testimonials, or usage data exist. Do not invent them.
 

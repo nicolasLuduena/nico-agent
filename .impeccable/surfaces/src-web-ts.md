@@ -11,7 +11,7 @@ Scope: the web Board (`/`), plus the pages that share its shell (batch forms, re
 
 Audience and job: one developer keeps the Board open all day as a monitor. They glance at it for Stage changes and blocked agents, then dispatch, launch reviews, and Close in short bursts.
 
-Constraints: CLI parity; CONTEXT.md vocabulary; light and dark; no external assets; existing row markup is pinned by tests.
+Constraints: CLI parity; GLOSSARY.md vocabulary; light and dark; no external assets; existing row markup is pinned by tests.
 
 User red lines: sci-fi costume (HUD chrome, neon glow, scanlines), anything harder to scan than before, external assets.
 
