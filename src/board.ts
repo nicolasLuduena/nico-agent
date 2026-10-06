@@ -166,7 +166,7 @@ async function githubSpecFacts(world: World, repo: Repo, issues: GitHubIssue[], 
     const closed = issue.state === "closed";
     return {
       issue: name, closed, startable: canStart(issue, viewer), inFlight: row !== undefined,
-      pr: row ? row.pr : closed ? null : linkedPr(await world.githubLinkedPullRequests(repo.slug, issue.number), repo.slug),
+      pr: row ? row.pr : linkedPr(await world.githubLinkedPullRequests(repo.slug, issue.number), repo.slug),
       blockers: issue.blockers.map((b) => ({ issue: key(b.slug, b.number), closed: b.state === "closed" })),
       ...(row && await holdFacts(world, row)),
     };
@@ -239,7 +239,7 @@ async function linearSpecFacts(world: World, repo: Repo, issues: LinearIssue[], 
     const closed = isLinearClosed(issue.state);
     return {
       issue: issue.identifier, closed, startable: canStartLinear(issue, viewer), inFlight: row !== undefined,
-      pr: row ? row.pr : closed ? null : linkedPr(await linearPullRequests(world, issue.identifier, repo.slug), repo.slug),
+      pr: row ? row.pr : linkedPr(await linearPullRequests(world, issue.identifier, repo.slug), repo.slug),
       blockers: issue.blockers.map((b) => ({ issue: b.identifier, closed: isLinearClosed(b.state) })),
       ...(row && await holdFacts(world, row)),
     };

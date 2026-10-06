@@ -20,6 +20,13 @@ function setConfig(configDir: string, settings: Record<string, unknown>) {
   writeFileSync(file, JSON.stringify({ ...JSON.parse(readFileSync(file, "utf8")), ...settings }));
 }
 
+/** A Linear issue's merged PR in bleentr/pdf-diff: what a finished Dispatch leaves. */
+function mergedPr(world: ReturnType<typeof setup>["world"], identifier: string) {
+  const number = Number(identifier.split("-")[1]);
+  world.linearAttachments.set(identifier, [`https://github.com/bleentr/pdf-diff/pull/${number}`]);
+  world.addPr({ repo: "bleentr/pdf-diff", number, headBranch: `nico/${identifier.toLowerCase()}`, state: "merged" });
+}
+
 describe("advance", () => {
   test("without Scheduler defaults in config it fails before any outside call, saying what to set", async () => {
     const { cli, world, configDir } = await linearRepo(null);
@@ -64,6 +71,7 @@ describe("advance", () => {
     world.addLinearIssue({ identifier: "BLE-99" });
     await cli("dispatch", "BLE-99", "--harness", "claude", "--model", "opus", "--effort", "high", "--base", "beta");
     world.addLinearSpec({ identifier: "BLE-10" }, { identifier: "BLE-11", state: "completed" }, { identifier: "BLE-12" }, { identifier: "BLE-13" });
+    mergedPr(world, "BLE-11");
     world.calls.length = 0;
 
     const first = (await cli("advance", "--json")).json();
@@ -83,6 +91,7 @@ describe("advance", () => {
   test("a Spec whose Dispatch Failed is Held: the Board shows why, advance skips it, and other Specs keep moving", async () => {
     const { cli, world } = await linearRepo();
     world.addLinearSpec({ identifier: "BLE-10" }, { identifier: "BLE-11", state: "completed" }, { identifier: "BLE-12" });
+    mergedPr(world, "BLE-11");
     world.failHerdr("agent start", "herdr is not running");
 
     const failed = await cli("advance", "--json");
@@ -94,6 +103,7 @@ describe("advance", () => {
 
     world.clearFailures();
     world.addLinearSpec({ identifier: "BLE-20" }, { identifier: "BLE-21", state: "completed" }, { identifier: "BLE-22" });
+    mergedPr(world, "BLE-21");
     const board = (await cli("--json")).json();
     expect(board.specs.find((s: { spec: string }) => s.spec === "BLE-10")).toMatchObject({
       running: true, held: { issue: "BLE-12", reason: "BLE-12's Dispatch Failed at agent start: herdr is not running" },
@@ -114,6 +124,7 @@ describe("advance", () => {
   test("resuming the Failed Dispatch clears the hold without any other action", async () => {
     const { cli, world } = await linearRepo();
     world.addLinearSpec({ identifier: "BLE-10" }, { identifier: "BLE-11", state: "completed" }, { identifier: "BLE-12" });
+    mergedPr(world, "BLE-11");
     world.failHerdr("agent start", "herdr is not running");
     await cli("advance");
     world.clearFailures();
@@ -128,6 +139,7 @@ describe("advance", () => {
   test("Closing the Failed Dispatch clears the hold, and the Spec dispatches the issue again", async () => {
     const { cli, world } = await linearRepo();
     world.addLinearSpec({ identifier: "BLE-10" }, { identifier: "BLE-11", state: "completed" }, { identifier: "BLE-12" });
+    mergedPr(world, "BLE-11");
     world.failHerdr("agent start", "herdr is not running");
     await cli("advance");
     world.clearFailures();
@@ -149,6 +161,7 @@ describe("advance", () => {
     world.addPr({ repo: "bleentr/pdf-diff", number: 16, headBranch: "nico/ble-11" });
     world.addPr({ repo: "bleentr/pdf-diff", number: 17, headBranch: "nico/ble-12", baseBranch: "nico/ble-11" });
     world.addLinearSpec({ identifier: "BLE-20" }, { identifier: "BLE-21", state: "completed" }, { identifier: "BLE-22" }, { identifier: "BLE-23" });
+    mergedPr(world, "BLE-21");
     expect((await cli("advance", "--json")).json().specs.map((s: { result: string; issue: string }) => `${s.result} ${s.issue}`)).toEqual(["started BLE-13", "started BLE-22"]);
     world.linearIssueNamed("BLE-13")!.state = "started";
     world.linearIssueNamed("BLE-22")!.state = "started";
@@ -216,6 +229,7 @@ describe("advance", () => {
     world.addLinearSpec({ identifier: "BLE-20" }, { identifier: "BLE-21", state: "started" }, { identifier: "BLE-22" });
     world.addLinearSpec({ identifier: "BLE-10" },
       { identifier: "BLE-11", state: "completed" }, { identifier: "BLE-12", blockers: [{ identifier: "BLE-21", state: "started" }] });
+    mergedPr(world, "BLE-11");
     world.linearAttachments.set("BLE-21", ["https://github.com/bleentr/pdf-diff/pull/21"]);
     world.addPr({ repo: "bleentr/pdf-diff", number: 21, headBranch: "nico/ble-21" });
 
@@ -269,6 +283,7 @@ describe("advance", () => {
   test("Scheduler defaults naming an unknown Harness or model are a config error, not a skipped Spec", async () => {
     const { cli, world, configDir } = await linearRepo({ harness: "claude", model: "gpt-9", effort: "high" });
     world.addLinearSpec({ identifier: "BLE-10" }, { identifier: "BLE-11", state: "completed" }, { identifier: "BLE-12" });
+    mergedPr(world, "BLE-11");
 
     const { exitCode, stdout } = await cli("advance", "--json");
     expect(exitCode).toBe(1);

@@ -19,6 +19,13 @@ async function linearRepo(repo: Record<string, unknown> = {}) {
   return ctx;
 }
 
+/** A Linear issue's merged PR in bleentr/pdf-diff: what a finished Dispatch leaves. */
+function mergedPr(world: ReturnType<typeof setup>["world"], identifier: string) {
+  const number = Number(identifier.split("-")[1]);
+  world.linearAttachments.set(identifier, [`https://github.com/bleentr/pdf-diff/pull/${number}`]);
+  world.addPr({ repo: "bleentr/pdf-diff", number, headBranch: `nico/${identifier.toLowerCase()}`, state: "merged" });
+}
+
 describe("room per Repo", () => {
   test("the Board shows per Repo the running Specs, the room left, and the candidate Specs with their bodies", async () => {
     const { cli, world } = await linearRepo();
@@ -56,6 +63,7 @@ describe("room per Repo", () => {
     expect((await cli("--json")).json().rooms[0]).toMatchObject({ running: [], room: 1 });
 
     world.addLinearSpec({ identifier: "BLE-30" }, { identifier: "BLE-31", state: "completed" }, { identifier: "BLE-32", blockers: [{ identifier: "BLE-21", state: "unstarted" }] });
+    mergedPr(world, "BLE-31");
     expect((await cli("--json")).json().rooms[0]).toMatchObject({ running: [], room: 1 });
   });
 
@@ -71,6 +79,19 @@ describe("room per Repo", () => {
 
     world.linearIssueNamed("BLE-33").blockers = [{ identifier: "BLE-32", state: "unstarted" }];
     expect((await cli("--json")).json().rooms[0]).toMatchObject({ running: [], room: 2 });
+  });
+
+  test("a Spec runs from a Dispatch, so an issue closed by hand alone leaves it a candidate until a PR shows one", async () => {
+    const { cli, world } = await linearRepo();
+    world.addLinearSpec({ identifier: "BLE-10" }, { identifier: "BLE-11", state: "completed" }, { identifier: "BLE-12" });
+
+    const room = (await cli("--json")).json().rooms[0];
+    expect(room).toMatchObject({ running: [], room: 2 });
+    expect(room.candidates.map((c: { spec: string; issue: string }) => `${c.spec} ${c.issue}`)).toEqual(["BLE-10 BLE-12"]);
+    expect((await cli("advance", "--json")).json().specs).toEqual([]);
+
+    mergedPr(world, "BLE-11");
+    expect((await cli("--json")).json().rooms[0]).toMatchObject({ running: ["BLE-10"], room: 1, candidates: [] });
   });
 
   test("a GitHub candidate Spec carries its body too", async () => {

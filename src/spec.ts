@@ -15,7 +15,7 @@ export interface IssueFacts {
   startable: boolean;
   /** It has a Dispatch that has not been Closed. */
   inFlight: boolean;
-  /** Its PR in the Repo: the open one, else a merged one; null without any. */
+  /** Its PR in the Repo, closed issue or not: the open one, else the latest; null without any. */
   pr: PullRequest | null;
   /** Its Blockers, named like `issue`, and whether each is closed. */
   blockers: { issue: string; closed: boolean }[];
@@ -125,7 +125,8 @@ function decideSpec(repo: RepoFacts, spec: SpecFacts): SpecDecision {
   const held = holdOf(spec);
   if (held) decision.held = held;
   const remaining = spec.issues.filter((i) => !done(i));
-  const started = spec.issues.some((i) => i.inFlight || i.closed || i.pr);
+  // Started by a Dispatch: one is In flight, or one left a PR. An issue closed by hand is no evidence.
+  const started = spec.issues.some((i) => i.inFlight || i.pr);
   if (remaining.length === 0) return decision;
   if (!started) {
     const first = nextIssue(repo, spec, remaining);
