@@ -684,7 +684,8 @@ async function board(ctx: RunContext): Promise<Output> {
   if (specRows.length) {
     data.specs = specRows.map(({ spec, title, repo, issues, running, next, waiting, reason }) => ({
       spec, title, repo, issues, running,
-      ...(next && { next: { issue: next.issue, ...(next.stackOn && { stackOn: next.stackOn.url }), base: next.base, reason: next.reason } }),
+      // A candidate's first issue is listed under `rooms`.
+      ...(running && next && { next: { issue: next.issue, ...(next.stackOn && { stackOn: next.stackOn.url }), base: next.base, reason: next.reason } }),
       ...(waiting && { waiting }),
       ...(reason && { reason }),
     }));
