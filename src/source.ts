@@ -33,7 +33,7 @@ export interface SourceAdapter<I extends SourceIssue> {
   owns(dispatch: Dispatch): boolean;
 }
 
-export type SourceIssue = { title: string; url: string; body: string };
+export type SourceIssue = { title: string; url: string };
 
 export function githubSource(world: World, repo: string): SourceAdapter<GitHubIssue> {
   const nameOf = (slug: string, number: number) => `${sameSlug(slug, repo) ? repo : slug}#${number}`;

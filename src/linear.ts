@@ -104,7 +104,7 @@ export class LinearSource {
     const labels = await this.remaining(node.id, "labels", node.labels, "name");
     const relations = await this.remaining(node.id, "inverseRelations", node.inverseRelations, "type issue { identifier state { type } }");
     return {
-      identifier: node.identifier, title: node.title, url: node.url, body: node.description ?? "", branchName: node.branchName, team: node.team, project: node.project,
+      identifier: node.identifier, title: node.title, url: node.url, branchName: node.branchName, team: node.team, project: node.project,
       labels: labels.map((l) => l.name), state: node.state.type, assignee: node.assignee?.id ?? null,
       blockers: relations.filter((r) => r.type === "blocks").map((r) => ({ identifier: r.issue.identifier, state: r.issue.state.type })),
       parent: node.parent?.identifier ?? null, hasSubIssues: (node.children?.nodes.length ?? 0) > 0,
@@ -157,7 +157,6 @@ interface IssueNode {
   identifier: string;
   title: string;
   url: string;
-  description: string | null;
   branchName: string;
   team: LinearIssue["team"];
   project: LinearIssue["project"];
@@ -170,7 +169,7 @@ interface IssueNode {
 }
 
 const ISSUE_FIELDS = `
-      id identifier title url description branchName team { id key name } project { id name }
+      id identifier title url branchName team { id key name } project { id name }
       state { type } assignee { id }
       labels(first: 100) { nodes { name } pageInfo { hasNextPage endCursor } }
       inverseRelations(first: 100) { nodes { type issue { identifier state { type } } } pageInfo { hasNextPage endCursor } }

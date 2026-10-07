@@ -1,7 +1,7 @@
 import type { PullRequest } from "./world";
 
 /**
- * The Spec rules (ADR-0008): a pure decision over facts already fetched, the
+ * The Spec rules (ADR-0009): a pure decision over facts already fetched, the
  * same for every Source. The Board and `advance` both ask it, so there is one
  * source of truth for which Specs run and what each does next.
  */
@@ -30,8 +30,6 @@ export interface SpecFacts {
   spec: string;
   title: string;
   url: string;
-  /** What the Spec says it builds, for the Scheduler to judge priority by. */
-  body: string;
   issues: IssueFacts[];
 }
 
@@ -71,7 +69,6 @@ export interface SpecDecision {
   spec: string;
   title: string;
   url: string;
-  body: string;
   repo: string;
   /** Its issues, in sub-issue order. */
   issues: string[];
@@ -119,7 +116,7 @@ function hasWorkLeft(spec: SpecFacts) {
 
 function decideSpec(repo: RepoFacts, spec: SpecFacts): SpecDecision {
   const decision: SpecDecision = {
-    spec: spec.spec, title: spec.title, url: spec.url, body: spec.body, repo: repo.repo,
+    spec: spec.spec, title: spec.title, url: spec.url, repo: repo.repo,
     issues: spec.issues.map((i) => i.issue), running: false,
   };
   const held = holdOf(spec);

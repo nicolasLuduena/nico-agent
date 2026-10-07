@@ -68,11 +68,11 @@ async function specFacts<I extends SourceIssue>(world: World, { repo, adapter, i
   const parents = new Set(issues.flatMap((i) => adapter.isSpec(i) ? [adapter.name(i)] : adapter.parent(i) ?? []));
   const specs: SpecFacts[] = await Promise.all([...parents].map(async (spec) => {
     const { parent, subIssues } = await adapter.spec(spec, issues);
-    return { spec, title: parent?.title ?? spec, url: parent?.url ?? "", body: parent?.body ?? "", issues: await Promise.all(subIssues.map(facts)) };
+    return { spec, title: parent?.title ?? spec, url: parent?.url ?? "", issues: await Promise.all(subIssues.map(facts)) };
   }));
   const inSpec = new Set(specs.flatMap((s) => s.issues.map((i) => i.issue)));
   const loose = issues.filter((i) => !adapter.parent(i) && !adapter.isSpec(i) && (adapter.startable(i, viewer) || rowOf(adapter.name(i))));
-  for (const issue of loose) specs.push({ spec: adapter.name(issue), title: issue.title, url: issue.url, body: issue.body, issues: [await facts(issue)] });
+  for (const issue of loose) specs.push({ spec: adapter.name(issue), title: issue.title, url: issue.url, issues: [await facts(issue)] });
   for (const row of inFlight) {
     if (inSpec.has(row.dispatch.issue) || specs.some((s) => s.spec === row.dispatch.issue)) continue;
     specs.push(await looseInFlight(world, row));
@@ -83,7 +83,7 @@ async function specFacts<I extends SourceIssue>(world: World, { repo, adapter, i
 /** A Dispatch In flight whose issue was found in no Spec counts as a Spec of one. */
 async function looseInFlight(world: World, row: InFlightRow): Promise<SpecFacts> {
   const { issue, title, url } = row.dispatch;
-  return { spec: issue, title, url, body: "", issues: [{ issue, closed: false, startable: false, inFlight: true, pr: row.pr, blockers: [], ...await holdFacts(world, row) }] };
+  return { spec: issue, title, url, issues: [{ issue, closed: false, startable: false, inFlight: true, pr: row.pr, blockers: [], ...await holdFacts(world, row) }] };
 }
 
 /** What an In-flight Dispatch tells the Spec rules about holds. */

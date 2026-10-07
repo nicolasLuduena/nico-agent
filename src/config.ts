@@ -28,7 +28,7 @@ export interface Config {
   prompts?: Partial<Prompts>;
   /** Harness settings the user set, by Harness, over HARNESSES; a new name defines a new Harness. */
   harnesses?: Record<string, Partial<HarnessConfig>>;
-  /** The launch `advance` dispatches with, so the Scheduler never chooses it (ADR-0008). */
+  /** The launch `advance` dispatches with, so no one chooses it at start time (ADR-0009). */
   scheduler?: Partial<SchedulerDefaults>;
 }
 

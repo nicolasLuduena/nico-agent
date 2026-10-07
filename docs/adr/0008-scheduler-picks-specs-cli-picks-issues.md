@@ -1,3 +1,7 @@
+---
+status: superseded by ADR-0009
+---
+
 # nico-agent orders the issues of a Spec; the Scheduler only picks Specs
 
 A Scheduler (Hermes, or any agent) dispatches without the user, so we keep its

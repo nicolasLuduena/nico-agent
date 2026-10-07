@@ -42,28 +42,23 @@ export type SpecPlan =
 
 const SHOW_HELP = "Run `nico-agent show <issue>` to see a Dispatch";
 
-export interface AdvanceOptions {
-  /** A candidate Spec to start too, the Scheduler's one judgment call; refused unless its Repo has room. */
-  start?: string;
-}
-
 /**
- * Keep running Specs moving (ADR-0008): dispatch each one's next issue on the
- * PR the Spec rules chose, with the Scheduler defaults from config, one Spec
- * at a time. Idempotent like `dispatch` (ADR-0006).
+ * Keep running Specs moving and fill each Repo's room from its Queue
+ * (ADR-0009): dispatch each one's next issue on the PR the Spec rules chose,
+ * with the Scheduler defaults from config, one Spec at a time. Idempotent
+ * like `dispatch` (ADR-0006).
  */
-export async function advance(world: World, configDir: string, { start }: AdvanceOptions = {}): Promise<AdvanceReport> {
+export async function advance(world: World, configDir: string): Promise<AdvanceReport> {
   const launch = schedulerDefaults(configDir);
   const report: AdvanceReport = { specs: [], errors: [], closed: [], warnings: [], help: [] };
   const { repos } = loadConfig(configDir);
-  if (!repos.length && start === undefined) return report;
+  if (!repos.length) return report;
   const dispatches = loadDispatches(configDir);
   const board = await loadBoard(world, repos, dispatches, freshPrs(world));
   report.errors = board.errors.filter((e) => e.source !== "git").map(({ repo, error }) => ({ repo, error }));
-  const started = start === undefined ? undefined : startable(board.specs, start);
-  const queued = fromQueues(await pruneBoardQueues(configDir, board), board.specs, started);
+  const queued = fromQueues(await pruneBoardQueues(configDir, board), board.specs);
   // A Spec waiting on another Spec's merges frees its slot, but is still reported.
-  const plans = board.specs.flatMap((r) => r.specs).filter((s) => s.running || s.waiting || s === started)
+  const plans = board.specs.flatMap((r) => r.specs).filter((s) => s.running || s.waiting)
     .map((spec) => ({ spec, plan: planSpec(spec, dispatches) }))
     .concat(queued.map((spec) => ({ spec, plan: fromQueue(planSpec(spec, dispatches), spec) })));
   if (plans.some(({ plan }) => plan.action === "start")) await checkDefaults(world, configDir, launch);
@@ -86,17 +81,14 @@ export async function advance(world: World, configDir: string, { start }: Advanc
 
 /**
  * The queued Specs each Repo has room for, head first: room is counted before
- * the run, and each start takes one slot, `started` too. Every queued Spec is
- * a candidate, as the Queues were just pruned.
+ * the run, and each start takes one slot. Every queued Spec is a candidate,
+ * as the Queues were just pruned.
  */
-function fromQueues(queues: Queues, repos: RepoDecision[], started: SpecDecision | undefined): SpecDecision[] {
-  return repos.flatMap((repo) => {
-    const room = repo.room - (started?.repo === repo.repo ? 1 : 0);
-    return queueOf(queues, repo.repo)
-      .map((name) => repo.specs.find((s) => s.spec.toLowerCase() === name.toLowerCase()))
-      .filter((s): s is SpecDecision => s !== undefined && s !== started)
-      .slice(0, Math.max(0, room));
-  });
+function fromQueues(queues: Queues, repos: RepoDecision[]): SpecDecision[] {
+  return repos.flatMap((repo) => queueOf(queues, repo.repo)
+    .map((name) => repo.specs.find((s) => s.spec.toLowerCase() === name.toLowerCase()))
+    .filter((s): s is SpecDecision => s !== undefined)
+    .slice(0, repo.room));
 }
 
 /** A queued Spec's start says it came from the Queue. */
@@ -147,24 +139,6 @@ const showHelp = (issue: string) => `Run \`nico-agent show ${issue}\` to see the
  */
 function prunable(row: InFlightRow) {
   return row.stage === "PR ready" && row.implementerState !== "working" && row.implementerState !== "blocked";
-}
-
-/** The candidate Spec named `name`, refusing one that is not a candidate, already running, or whose Repo is full. */
-function startable(repos: RepoDecision[], name: string): SpecDecision {
-  const named = (s: SpecDecision) => s.spec.toLowerCase() === name.toLowerCase();
-  const repo = repos.find((r) => r.specs.some(named));
-  const spec = repo?.specs.find(named);
-  const notCandidate = (why: string) => new DispatchError(`${name} is not a candidate Spec: ${why}`, ["Run `nico-agent` to see the candidate Specs of each Repo"]);
-  const help = ["Run `nico-agent advance` to keep the running Specs moving", "Run `nico-agent` to see the Board"];
-  if (!repo || !spec) throw notCandidate("no Spec of a Repo has that name");
-  if (spec.held) throw new DispatchError(`${spec.spec} is Held: ${spec.held.reason}`, ["Run `nico-agent` to see the Board"]);
-  if (spec.running) throw new DispatchError(`${spec.spec} is already running`, help);
-  if (!repo.candidates.includes(spec.spec)) throw notCandidate(spec.waiting ? "it has already started" : "none of its issues is Ready");
-  if (repo.room === 0) {
-    const running = repo.specs.filter((s) => s.running).map((s) => s.spec);
-    throw new DispatchError(`${repo.repo} has no room for ${spec.spec}; its running Specs: ${running.join(", ")}`, help);
-  }
-  return spec;
 }
 
 /**

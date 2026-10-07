@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import type { Address, LinearIssue, GitHubIssue, GitHubSubIssue, LineHandler, PullRequest, RequestHandler, World } from "../src/world";
+import type { Address, LinearIssue, GitHubIssue, GitHubSubIssue, PullRequest, RequestHandler, World } from "../src/world";
 import { WorldError } from "../src/world";
 
 export class FakeWorld implements World {
@@ -10,7 +10,7 @@ export class FakeWorld implements World {
 
   addLinearIssue(issue: Partial<LinearIssue> & { identifier: string }) {
     const full: LinearIssue = {
-      title: issue.identifier, url: `https://linear.app/bleentr/issue/${issue.identifier}/title`, body: "",
+      title: issue.identifier, url: `https://linear.app/bleentr/issue/${issue.identifier}/title`,
       branchName: `nico/${issue.identifier.toLowerCase()}`,
       team: { id: "team-ble", key: "BLE", name: "Bleentr" }, project: null,
       labels: ["ready-for-agent"], state: "unstarted", assignee: null, blockers: [], parent: null, hasSubIssues: false, ...issue,
@@ -100,8 +100,6 @@ export class FakeWorld implements World {
   /** What the last `serve` call would be answering, for tests to send requests to. */
   server: { address: Address; handler: RequestHandler } | null = null;
   serveFailure: string | null = null;
-  /** What the last `serveStdio` call would be answering, for tests to send lines to. */
-  stdio: LineHandler | null = null;
   /** Default branch of each clone's origin; `main` when unset. */
   defaultBranches = new Map<string, string>();
   /** Branches on each clone's origin; just its default branch when unset. */
@@ -146,7 +144,6 @@ export class FakeWorld implements World {
     const full: GitHubIssue = {
       title: `Issue ${issue.number}`,
       url: `https://github.com/${slug}/issues/${issue.number}`,
-      body: "",
       state: "open",
       labels: ["ready-for-agent"],
       assignees: [],
@@ -408,12 +405,6 @@ export class FakeWorld implements World {
     this.calls.push(`serve ${address.hostname}:${address.port}`);
     if (this.serveFailure) throw new WorldError(this.serveFailure);
     this.server = { address, handler };
-  }
-
-  /** As if stdin closed at once; tests send lines to the recorded handler. */
-  async serveStdio(handler: LineHandler) {
-    this.calls.push("serve stdio");
-    this.stdio = handler;
   }
 }
 

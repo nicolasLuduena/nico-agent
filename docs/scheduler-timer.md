@@ -67,3 +67,21 @@ systemctl --user stop nico-agent-advance.timer           # pause until the next 
 systemctl --user disable --now nico-agent-advance.timer  # pause until re-enabled
 scripts/install-timer.sh --remove                        # disable and delete the units
 ```
+
+## Remove the old Hermes Scheduler
+
+Before this timer, Hermes was the Scheduler (ADR-0008, superseded by
+ADR-0009). nico-agent no longer has `nico-agent mcp` or `--skill`, so a
+leftover Hermes setup only fails. Remove it by hand, in `~/.hermes` (or
+`$HERMES_HOME`):
+
+- **The cron job.** Find `nico-agent-scheduler` with `hermes cron list` and
+  delete it with Hermes's cron commands. Its monitor script,
+  `scripts/nico-agent-monitor.sh`, can go too.
+- **The MCP registration.** Delete the `mcp_servers.nico-agent` entry from
+  `config.yaml` (the setup wizard left a backup at
+  `config.yaml.bak-before-nico-agent-mcp`), then `hermes gateway restart`.
+- **The skill copy.** Delete `skills/nico-agent/`.
+
+Remove the cron job before installing the timer, so the two don't both run
+`advance`.

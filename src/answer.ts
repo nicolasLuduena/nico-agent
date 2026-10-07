@@ -21,7 +21,7 @@ export interface Asking {
 
 /** The last lines of a screen the Board quotes, enough for a question and its choices. */
 const QUESTION_LINES = 20;
-/** The longest question the Board quotes, so the Scheduler's `board` stays one tool result. */
+/** The longest question the Board quotes, so `nico-agent --json` stays readable. */
 const QUESTION_LIMIT = 1000;
 
 /**
@@ -57,8 +57,8 @@ export interface Answered {
 }
 
 /**
- * Relay the user's answer, verbatim, to a Dispatch's Implementer, only while
- * it waits on the user (ADR-0008): one that works, or whose question was
+ * Submit the user's answer, verbatim, to a Dispatch's Implementer, only while
+ * it waits on the user: one that works, or whose question was
  * already answered, is refused.
  */
 export async function answer(world: World, configDir: string, issue: string, text: string): Promise<Answered> {
