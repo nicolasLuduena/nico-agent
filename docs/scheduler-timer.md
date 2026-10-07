@@ -68,6 +68,24 @@ systemctl --user disable --now nico-agent-advance.timer  # pause until re-enable
 scripts/install-timer.sh --remove                        # disable and delete the units
 ```
 
+## Keep the Board running too (optional)
+
+The timer doesn't need the web Board: `advance` reads the Queue from the
+config dir. To have the Board always there for queuing, run it as a user
+service that starts at login and restarts if it crashes:
+
+```bash
+scripts/install-board-service.sh             # asks before each change; --yes skips
+systemctl --user status nico-agent-board     # is it up?
+journalctl --user -u nico-agent-board -f     # its log
+scripts/install-board-service.sh --remove    # stop it and delete the unit
+```
+
+It serves on `http://127.0.0.1:42069`; set `NICO_AGENT_PORT` when installing
+to pick another port. Like the timer's service, it puts mise's shims first on
+`PATH`, since launching from the Board dispatches too. Re-run the script after
+`scripts/install.sh` to restart the Board on the new binary.
+
 ## Remove the old Hermes Scheduler
 
 Before this timer, Hermes was the Scheduler (ADR-0008, superseded by
