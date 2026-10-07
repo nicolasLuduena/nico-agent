@@ -1,6 +1,6 @@
 import htmx from "htmx.org/dist/htmx.min.js" with { type: "text" };
 import { type BaseChoice, type Board, type BoardIssue, type StackOption, type StackableIssue, baseChoice, loadBoard, stackChoice, stackOptions } from "./board";
-import type { RepoDecision, SpecDecision } from "./spec";
+import { type RepoDecision, type SpecDecision, isCandidate, sameSpec } from "./spec";
 import { githubSource, linearSource } from "./source";
 import { type Repo, ConfigError, findRepo, loadConfig } from "./config";
 import { type IssueOutcome, CloseConfirmationRequired, StepFailed, baseBranch, closeDispatch, dispatch, eachIssue, review, resolveIssue } from "./dispatch";
@@ -34,9 +34,9 @@ export function webHandler(context: WebContext) {
       if (pathname === "/batch/review" && request.method === "POST") return await postBatch(ctx, request, "review");
       if (pathname === "/close" && request.method === "POST") return await postClose(ctx, request);
       if (pathname === "/harnesses/refresh" && request.method === "POST") return await postRefresh(ctx);
-      if (pathname === "/queue" && request.method === "POST") return await postQueue(ctx, request, "queue");
-      if (pathname === "/unqueue" && request.method === "POST") return await postQueue(ctx, request, "unqueue");
-      if (pathname === "/move" && request.method === "POST") return await postQueue(ctx, request, "move");
+      if (pathname === "/queue" && request.method === "POST") return await postQueue(ctx, request);
+      if (pathname === "/unqueue" && request.method === "POST") return await postUnqueue(ctx, request);
+      if (pathname === "/move" && request.method === "POST") return await postMove(ctx, request);
       if (request.method !== "GET") return new Response("Method Not Allowed\n", { status: 405 });
       if (pathname === "/htmx.min.js") {
         return new Response(htmx, { headers: { "content-type": "text/javascript; charset=utf-8" } });
@@ -124,32 +124,50 @@ async function loadRendered(ctx: ServerContext, repos: Repo[]) {
   return { board, queues, choices: await choicesFor(ctx, launchable) };
 }
 
-/**
- * Queue, unqueue or move a Spec of a Repo. htmx gets the Repo's section back to swap
- * in, its launch forms preserved; a plain form post goes back to the Board.
- */
-async function postQueue(ctx: ServerContext, request: Request, change: "queue" | "unqueue" | "move") {
+/** Queue a candidate Spec of a Repo, last in its Queue. */
+async function postQueue(ctx: ServerContext, request: Request) {
+  const { repo, spec } = await queueForm(ctx, request);
+  const board = await loadBoard(ctx.world, [repo], loadDispatches(ctx.configDir), ctx.prs);
+  const decision = board.specs.find((d) => sameSlug(d.repo, repo.slug));
+  if (!decision || !isCandidate(decision, spec)) {
+    throw new WebFailure("Not queued", `${spec} is not a candidate Spec of ${repo.slug}`, ["Only a candidate Spec, not started, not Held and with a Ready first issue, can be queued"], 409);
+  }
+  await enqueue(ctx.configDir, repo.slug, spec);
+  return queueAnswer(ctx, request, repo);
+}
+
+/** Take a Spec out of its Repo's Queue. */
+async function postUnqueue(ctx: ServerContext, request: Request) {
+  const { repo, spec } = await queueForm(ctx, request);
+  await dequeue(ctx.configDir, repo.slug, spec);
+  return queueAnswer(ctx, request, repo);
+}
+
+/** Move a queued Spec one place up or down its Repo's Queue. */
+async function postMove(ctx: ServerContext, request: Request) {
+  const { repo, spec, form } = await queueForm(ctx, request);
+  const direction = String(form.get("direction") ?? "");
+  if (direction !== "up" && direction !== "down") throw badQueueRequest(`\`${direction}\` is not a direction; move a queued Spec \`up\` or \`down\``);
+  await move(ctx.configDir, repo.slug, spec, direction);
+  return queueAnswer(ctx, request, repo);
+}
+
+/** The Repo and Spec a Queue control posts. */
+async function queueForm(ctx: ServerContext, request: Request) {
   const form = await request.formData();
   const spec = String(form.get("spec") ?? "");
-  const config = loadConfig(ctx.configDir);
-  const repo = findRepo(config, String(form.get("repo") ?? ""));
-  const bad = (message: string) => new WebFailure("Bad request", message, ["Queue a candidate Spec from its Repo on the Board"], 400);
-  if (!repo) throw bad(`\`${String(form.get("repo") ?? "")}\` is not a configured Repo`);
-  if (!spec) throw bad("no Spec was named");
-  if (change === "queue") {
-    const board = await loadBoard(ctx.world, [repo], loadDispatches(ctx.configDir), ctx.prs);
-    const decision = board.specs.find((d) => d.repo === repo.slug);
-    if (!decision?.candidates.some((c) => c.toLowerCase() === spec.toLowerCase())) {
-      throw new WebFailure("Not queued", `${spec} is not a candidate Spec of ${repo.slug}`, ["Only a candidate Spec, not started, not Held and with a Ready first issue, can be queued"], 409);
-    }
-    await enqueue(ctx.configDir, repo.slug, spec);
-  } else if (change === "move") {
-    const direction = String(form.get("direction") ?? "");
-    if (direction !== "up" && direction !== "down") throw bad(`\`${direction}\` is not a direction; move a queued Spec \`up\` or \`down\``);
-    await move(ctx.configDir, repo.slug, spec, direction);
-  } else {
-    await dequeue(ctx.configDir, repo.slug, spec);
-  }
+  const repo = findRepo(loadConfig(ctx.configDir), String(form.get("repo") ?? ""));
+  if (!repo) throw badQueueRequest(`\`${String(form.get("repo") ?? "")}\` is not a configured Repo`);
+  if (!spec) throw badQueueRequest("no Spec was named");
+  return { repo, spec, form };
+}
+
+function badQueueRequest(message: string) {
+  return new WebFailure("Bad request", message, ["Queue a candidate Spec from its Repo on the Board"], 400);
+}
+
+/** htmx gets the Repo's section back to swap in, its launch forms preserved; a plain form post goes back to the Board. */
+async function queueAnswer(ctx: ServerContext, request: Request, repo: Repo) {
   if (request.headers.get("hx-request") !== "true") return new Response(null, { status: 303, headers: { location: "/" } });
   const { board, queues, choices } = await loadRendered(ctx, [repo]);
   return new Response(renderRepo(repo, board, choices, queueOf(queues, repo.slug)), { headers: HTML_HEADERS });
@@ -514,9 +532,9 @@ function renderRepo(repo: Repo, board: Board, choices: Choices, queue: string[])
   const stackRow = (i: StackableIssue) => i.identifier
     ? `<li>${issueLink(i.identifier, i.title, i.url)}\n${form(i.identifier, { repo: repo.slug }, i.blockers)}</li>`
     : `<li>${pick(boardKey(i), "ready")}${issueLink(`#${i.number}`, i.title, i.url)}\n${form(boardKey(i), {}, i.blockers)}</li>`;
-  const isCandidate = (spec: string) => decision?.candidates.includes(spec) ?? false;
+  const candidate = (spec: string) => decision !== undefined && isCandidate(decision, spec);
   // A candidate Spec of one is its own row, so its Queue control sits there.
-  const looseRow = (i: BoardIssue) => readyRow(i, isCandidate(boardKey(i)) ? queueControl(repo.slug, boardKey(i), queue) : "");
+  const looseRow = (i: BoardIssue) => readyRow(i, candidate(boardKey(i)) ? queueControl(repo.slug, boardKey(i), queue) : "");
   // An issue's row sits under its Spec; the rest are Specs of one, listed as before.
   const looseReady = ready.filter((i) => !grouped.has(boardKey(i)));
   const looseStackable = stackable.filter((i) => !grouped.has(boardKey(i)));
@@ -531,7 +549,7 @@ function renderRepo(repo: Repo, board: Board, choices: Choices, queue: string[])
     return s ? [stackRow(s)] : [];
   });
   const specSections = groups.map((spec) =>
-    renderSpec(spec, specState(spec, decision!), rowsOf(spec), flightOf(spec.spec), repo.slug, isCandidate(spec.spec) ? queueControl(repo.slug, spec.spec, queue) : ""));
+    renderSpec(spec, specState(spec, decision!), rowsOf(spec), flightOf(spec.spec), repo.slug, candidate(spec.spec) ? queueControl(repo.slug, spec.spec, queue) : ""));
   return [
     '<section class="repo">',
     `<header><h2>${escape(repo.slug)}</h2><span class="count">${ready.length + stackable.length}</span>${decision ? roomReadout(decision, queue) : ""}</header>`,
@@ -573,19 +591,25 @@ const SPEC_STATES: Record<SpecState, string> = { held: "Held", running: "Running
 function specState(spec: SpecDecision, decision: RepoDecision): SpecState {
   if (spec.held) return "held";
   if (spec.running) return "running";
-  if (decision.candidates.includes(spec.spec)) return "candidate";
+  if (isCandidate(decision, spec.spec)) return "candidate";
   return spec.waiting ? "waiting" : "not-startable";
 }
 
-/** The Repo's Specs as the Scheduler sees them: a slot per Spec that may run, filled while one does. */
+/**
+ * The Repo's Specs as the Scheduler sees them: a slot per Spec that may run,
+ * filled while one does, and the Queue in the order its Specs will start.
+ */
 function roomReadout({ repo, specs, room, candidates }: RepoDecision, queue: string[]) {
   const running = specs.filter((s) => s.running).length;
   const slots = [...Array(running).fill('<i class="taken"></i>'), ...Array(room).fill("<i></i>")].join("");
   const figure = (label: string, n: number) => `<span>${label} <b>${n}</b></span>`;
+  // Named as the Board names the Spec, whatever case it was queued in.
+  const name = (queued: string) => repoKey(specs.find((s) => sameSpec(s.spec, queued))?.spec ?? queued, repo);
   return [
     `<div class="room" role="group" aria-label="Specs of ${escape(repo)}">`,
     `<span class="slots" aria-hidden="true">${slots}</span>`,
     figure("Running", running), figure("Room", room), figure("Candidates", candidates.length), figure("Queue", queue.length),
+    ...(queue.length ? [`<ol class="queue-order" aria-label="Queue of ${escape(repo)}">${queue.map((s) => `<li>${escape(name(s))}</li>`).join("")}</ol>`] : []),
     "</div>",
   ].join("");
 }
@@ -612,7 +636,7 @@ function renderSpec(spec: SpecDecision, state: SpecState, rows: string[], ownFli
  * the Repo's section it answers with.
  */
 function queueControl(repo: string, spec: string, queue: string[]) {
-  const place = queue.findIndex((s) => s.toLowerCase() === spec.toLowerCase());
+  const place = queue.findIndex((s) => sameSpec(s, spec));
   const action = place < 0 ? "queue" : "unqueue";
   const open = (action: string, cls: string) =>
     `<form method="post" action="/${action}" class="${cls}" hx-post="/${action}" hx-target="closest section.repo" hx-swap="outerHTML">` +
@@ -748,11 +772,11 @@ function retryForm(action: Action, issue: string, { harness, model, effort }: La
 
 /**
  * A Board row's checkbox, belonging to the action bar's form wherever it sits.
- * `preserve` names the id prefix that keeps its tick across htmx swaps; each
+ * `idPrefix` names the id prefix that keeps its tick across htmx swaps; each
  * section has its own, so a swap never moves a box from one to the other.
  */
-function pick(issue: string, preserve?: "pick" | "ready") {
-  const id = preserve ? ` id="${preserve}-${escape(issue.replace(/[^\w-]/g, "-"))}" hx-preserve="true"` : "";
+function pick(issue: string, idPrefix?: "pick" | "ready") {
+  const id = idPrefix ? ` id="${idPrefix}-${escape(issue.replace(/[^\w-]/g, "-"))}" hx-preserve="true"` : "";
   return `<input type="checkbox" class="pick" name="issue" value="${escape(issue)}" form="batch" autocomplete="off"${id} aria-label="Select ${escape(issue)}"> `;
 }
 
@@ -1116,6 +1140,10 @@ section li:hover, section li.lit { background: var(--panel-2); }
 /* A Repo's Specs as the Scheduler sees them: one slot per Spec that may run, filled while one does. */
 .room { display: flex; align-items: center; gap: 0.9rem; margin-left: auto; font-size: 12px; color: var(--ink-2); white-space: nowrap; }
 .room b { font-weight: 650; color: var(--ink); margin-left: 0.2rem; }
+/* The Queue in start order, numbered from its head. */
+.room ol.queue-order { display: flex; gap: 0.6rem; margin: 0; padding: 0; list-style: none; counter-reset: queue; }
+.room ol.queue-order li { border: none; counter-increment: queue; color: var(--ink); font-variant-numeric: tabular-nums; }
+.room ol.queue-order li::before { content: counter(queue) ". "; color: var(--ink-2); }
 .slots { display: inline-flex; gap: 3px; }
 .slots i, .spec-state::before { width: 10px; height: 6px; border-radius: 1px; border: 1px solid var(--ink-2); }
 .slots i.taken { background: var(--ink-2); }

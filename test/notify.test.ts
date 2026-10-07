@@ -63,7 +63,7 @@ describe("advance notifies the user", () => {
     expect(world.notifications).toEqual([HELD, HELD]);
   });
 
-  test("once when a Dispatch fails, with its issue and step, and not again for the Spec it Holds", async () => {
+  test("once when a Dispatch fails, with its issue, step and how to resume it, and not again for the Spec it Holds", async () => {
     const { cli, world } = await linearRepo();
     world.addLinearSpec({ identifier: "BLE-20" }, { identifier: "BLE-21", state: "completed" }, { identifier: "BLE-22" });
     world.linearAttachments.set("BLE-21", ["https://github.com/bleentr/pdf-diff/pull/21"]);
@@ -73,7 +73,9 @@ describe("advance notifies the user", () => {
     expect((await cli("advance")).exitCode).toBe(1);
     const failed = {
       title: "BLE-22's Dispatch failed at fetch",
-      body: "`git fetch origin` failed in /src/pdf: Permission denied (publickey)\nRun `nico-agent show BLE-22` to see the Dispatch",
+      body: "`git fetch origin` failed in /src/pdf: Permission denied (publickey)\n"
+        + "Run `nico-agent dispatch BLE-22 --harness claude --model opus --effort high --repo bleentr/pdf-diff` to resume the Failed Dispatch, or `nico-agent close BLE-22` to Close it\n"
+        + "Run `nico-agent show BLE-22` to see the Dispatch",
     };
     expect(world.notifications).toEqual([failed]);
 
@@ -99,6 +101,28 @@ describe("advance notifies the user", () => {
     world.agentStates.set("impl-pdf-diff-ble-13", "blocked");
     await cli("advance");
     expect(world.notifications).toEqual([asking, asking]);
+  });
+
+  test("not again for a Held Spec whose Repo could not be loaded for a run", async () => {
+    const { cli, world } = await stackedSpec();
+    world.addPr({ repo: "bleentr/pdf-diff", number: 16, headBranch: "nico/ble-11", state: "closed" });
+    await cli("advance");
+    world.linearFailure = "Linear down";
+    await cli("advance");
+    world.linearFailure = null;
+    await cli("advance");
+    expect(world.notifications).toEqual([HELD]);
+  });
+
+  test("not again for an Asking Implementer while herdr could not be read for a run", async () => {
+    const { cli, world } = await stackedSpec();
+    world.agentStates.set("impl-pdf-diff-ble-13", "blocked");
+    await cli("advance");
+    world.failHerdr("agent list", "herdr is not running");
+    await cli("advance");
+    world.clearFailures();
+    await cli("advance");
+    expect(world.notifications.map((n) => n.title)).toEqual(["BLE-13 is Asking"]);
   });
 
   test("a notification that fails to send is a warning, not a failed run, and is sent once it can be", async () => {

@@ -152,11 +152,14 @@ function migrate(dispatch: Dispatch) {
   dispatch.stackedOn = { issue: target.issue ?? blocker, pr: target.pr };
 }
 
-/** Atomic replace, so readers never need the lock. */
 function write(dir: string, state: StateFile) {
-  const file = join(dir, FILE);
+  writeJsonAtomic(join(dir, FILE), state);
+}
+
+/** Replace `file` with `value` as JSON atomically, so readers never need the lock and an interrupted write leaves the last state whole. */
+export function writeJsonAtomic(file: string, value: unknown) {
   const tmp = `${file}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
-  writeFileSync(tmp, `${JSON.stringify(state, null, 2)}\n`);
+  writeFileSync(tmp, `${JSON.stringify(value, null, 2)}\n`);
   renameSync(tmp, file);
 }
 

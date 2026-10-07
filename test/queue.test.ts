@@ -63,6 +63,23 @@ describe("the Queue fills a Repo's room", () => {
     expect(await advanced(cli)).toEqual(["started BLE-21"]);
   });
 
+  test("a queued Spec whose start is refused stays queued and leaves its slot to the next queued Spec", async () => {
+    const { cli, world, queue, web } = await linearRepo({ maxRunningSpecs: 1 });
+    world.addLinearSpec({ identifier: "BLE-20" }, { identifier: "BLE-21" });
+    world.addLinearSpec({ identifier: "BLE-30" }, { identifier: "BLE-31" });
+    await queue("BLE-20");
+    await queue("BLE-30");
+    // Someone takes BLE-21 on Linear after the Board was loaded.
+    const linearIssue = world.linearIssue.bind(world);
+    world.linearIssue = async (identifier) => {
+      const issue = await linearIssue(identifier);
+      return issue && identifier === "BLE-21" ? { ...issue, assignee: "someone-else" } : issue;
+    };
+
+    expect(await advanced(cli)).toEqual(["skipped BLE-21", "started BLE-31"]);
+    expect((await web("/")).body).toContain('<span class="queued">Queued 1 of 1</span>');
+  });
+
   test("with room for two and two queued, one run starts both", async () => {
     const { cli, world, queue } = await linearRepo();
     world.addLinearSpec({ identifier: "BLE-20" }, { identifier: "BLE-21" });
@@ -193,6 +210,28 @@ describe("the Queue on the web Board", () => {
     expect((await post(web, "/move", { repo: "bleentr/pdf-diff", spec: "BLE-20", direction: "sideways" })).status).toBe(400);
   });
 
+  test("the Queue is listed in order beside the Repo's room readout, and follows a move", async () => {
+    const { world, queue, web } = await linearRepo();
+    world.addLinearSpec({ identifier: "BLE-20" }, { identifier: "BLE-21" });
+    world.addLinearSpec({ identifier: "BLE-30" }, { identifier: "BLE-31" });
+    expect((await web("/")).body).not.toContain('class="queue-order"');
+    await queue("BLE-30");
+    await queue("BLE-20");
+
+    const order = (body: string) => body.match(/<ol class="queue-order"[^>]*>(.*?)<\/ol>/)?.[0];
+    expect(order((await web("/")).body)).toBe('<ol class="queue-order" aria-label="Queue of bleentr/pdf-diff"><li>BLE-30</li><li>BLE-20</li></ol>');
+    const moved = await post(web, "/move", { repo: "bleentr/pdf-diff", spec: "BLE-20", direction: "up" });
+    expect(order(moved.body)).toBe('<ol class="queue-order" aria-label="Queue of bleentr/pdf-diff"><li>BLE-20</li><li>BLE-30</li></ol>');
+  });
+
+  test("a Spec is the same Spec whatever its case: queued in lower case, it shows queued and starts", async () => {
+    const { cli, world, queue, web } = await linearRepo();
+    world.addLinearSpec({ identifier: "BLE-20" }, { identifier: "BLE-21" });
+    expect((await queue("ble-20")).status).toBe(200);
+    expect((await web("/")).body).toContain('<span class="queued">Queued 1 of 1</span>');
+    expect(await advanced(cli)).toEqual(["started BLE-21"]);
+  });
+
   test("after reordering, advance starts the new head first", async () => {
     const { cli, world, queue, web } = await linearRepo({ maxRunningSpecs: 1 });
     world.addLinearSpec({ identifier: "BLE-20" }, { identifier: "BLE-21" });
@@ -202,6 +241,18 @@ describe("the Queue on the web Board", () => {
     await post(web, "/move", { repo: "bleentr/pdf-diff", spec: "BLE-20", direction: "down" });
 
     expect(await advanced(cli)).toEqual(["started BLE-31"]);
+  });
+
+  test("the CLI Board lists each Repo's Queue in order, read-only", async () => {
+    const { cli, world, queue } = await linearRepo();
+    world.addLinearSpec({ identifier: "BLE-20" }, { identifier: "BLE-21" });
+    world.addLinearSpec({ identifier: "BLE-30" }, { identifier: "BLE-31" });
+    expect((await cli("--json")).json().rooms[0].queue).toEqual([]);
+    await queue("BLE-30");
+    await queue("BLE-20");
+
+    expect((await cli("--json")).json().rooms[0].queue).toEqual(["BLE-30", "BLE-20"]);
+    expect((await cli()).stdout).toContain("    queue[2]: BLE-30,BLE-20\n");
   });
 
   test("a plain form post goes back to the Board, and the Queue survives a restart", async () => {

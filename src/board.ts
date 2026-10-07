@@ -16,6 +16,11 @@ export type StackableIssue = BoardIssue & {
   blockers: StackOption[];
 };
 
+/** The errors that kept a Repo's issues, and so its Specs, from loading; a failed branch listing (`git`) did not. */
+export function specLoadErrors<E extends { source?: string }>(errors: E[]): E[] {
+  return errors.filter((e) => e.source !== "git");
+}
+
 /** A Blocker names its sole PR; several PRs need an exact URL. */
 export function stackChoice(option: StackOption, options: StackOption[]) {
   return options.filter((other) => sameSlug(other.blocker, option.blocker)).length > 1 ? option.pr.url : option.blocker;

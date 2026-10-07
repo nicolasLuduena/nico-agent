@@ -64,6 +64,7 @@ describe("board", () => {
         '      acme/api#1,Unassigned,"https://github.com/acme/api/issues/1",acme/api#1',
         '      acme/api#2,Assigned to me,"https://github.com/acme/api/issues/2",acme/api#2',
         '      acme/api#7,Blocker closed,"https://github.com/acme/api/issues/7",acme/api#7',
+        "    queue: []",
         "inFlight: 0 Dispatches",
         "help[3]:",
         "  Run `nico-agent dispatch <issue> --harness claude --model <model> --effort <effort>` to dispatch a Ready issue",
@@ -108,7 +109,7 @@ describe("board", () => {
       issues: [{ issue: "acme/web#4", title: "Fix header", base: "main" }],
       specs: [{ spec: "acme/web#4", title: "Fix header", repo: "acme/web", issues: ["acme/web#4"], running: false }],
       rooms: [{ repo: "acme/web", running: [], room: 2,
-        candidates: [{ spec: "acme/web#4", title: "Fix header", url: "https://github.com/acme/web/issues/4", issue: "acme/web#4" }] }],
+        candidates: [{ spec: "acme/web#4", title: "Fix header", url: "https://github.com/acme/web/issues/4", issue: "acme/web#4" }], queue: [] }],
       inFlight: "0 Dispatches",
       errors: [{ repo: "acme/api", error: "GitHub is not reachable" }],
       help: [

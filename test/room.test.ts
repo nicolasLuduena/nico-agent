@@ -44,6 +44,7 @@ describe("room per Repo", () => {
         { spec: "BLE-20", title: "Parser", url: "https://linear.app/bleentr/issue/BLE-20/title", issue: "BLE-21" },
         { spec: "BLE-30", title: "A bug from triage", url: "https://linear.app/bleentr/issue/BLE-30/title", issue: "BLE-30" },
       ],
+      queue: [],
     }]);
   });
 
@@ -103,6 +104,7 @@ describe("room per Repo", () => {
     expect((await cli("--json")).json().rooms).toEqual([{
       repo: "acme/api", running: [], room: 2,
       candidates: [{ spec: "acme/api#10", title: "Retries", url: "https://github.com/acme/api/issues/10", issue: "acme/api#11" }],
+      queue: [],
     }]);
   });
 

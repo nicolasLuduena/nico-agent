@@ -1,8 +1,9 @@
-import { readFileSync, renameSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { specLoadErrors } from "./board";
 import { sameSlug } from "./slug";
-import type { RepoDecision } from "./spec";
-import { withFileLock } from "./state";
+import { type RepoDecision, isCandidate, sameSpec } from "./spec";
+import { withFileLock, writeJsonAtomic } from "./state";
 
 /**
  * The Queue of each Repo: the candidate Specs the user approved to start,
@@ -56,32 +57,26 @@ export function move(dir: string, repo: string, spec: string, direction: "up" | 
  * Held, closed, or no longer Ready. Repos left out of `decisions` (say, ones
  * that could not be loaded) keep their Queue. Returns the Queues left.
  */
-export async function pruneQueues(dir: string, decisions: RepoDecision[]): Promise<Queues> {
-  const stale = (queues: Queues) => decisions.some((d) => queueOf(queues, d.repo).some((s) => !isCandidate(d, s)));
-  if (!stale(loadQueues(dir))) return loadQueues(dir);
+export function pruneQueues(dir: string, decisions: RepoDecision[]): Promise<Queues> {
   return withFileLock(dir, FILE, () => {
     const queues = loadQueues(dir);
+    let stale = false;
     for (const decision of decisions) {
       const slug = Object.keys(queues).find((s) => sameSlug(s, decision.repo));
-      if (slug) queues[slug] = queues[slug]!.filter((s) => isCandidate(decision, s));
+      if (!slug) continue;
+      const kept = queues[slug]!.filter((s) => isCandidate(decision, s));
+      stale ||= kept.length !== queues[slug]!.length;
+      queues[slug] = kept;
     }
-    write(dir, queues);
+    if (stale) write(dir, queues);
     return queues;
   });
 }
 
 /** Prune the Queues against a loaded Board, leaving alone each Repo whose Specs could not all be loaded. */
 export function pruneBoardQueues(dir: string, board: { specs: RepoDecision[]; errors: { repo: string; source?: string }[] }): Promise<Queues> {
-  const loaded = board.specs.filter((d) => !board.errors.some((e) => e.source !== "git" && sameSlug(e.repo, d.repo)));
-  return pruneQueues(dir, loaded);
-}
-
-function isCandidate(decision: RepoDecision, spec: string) {
-  return decision.candidates.some((c) => sameSpec(c, spec));
-}
-
-function sameSpec(a: string, b: string) {
-  return a.toLowerCase() === b.toLowerCase();
+  const failed = specLoadErrors(board.errors);
+  return pruneQueues(dir, board.specs.filter((d) => !failed.some((e) => sameSlug(e.repo, d.repo))));
 }
 
 function update(dir: string, repo: string, change: (queue: string[]) => string[]) {
@@ -93,10 +88,6 @@ function update(dir: string, repo: string, change: (queue: string[]) => string[]
   });
 }
 
-/** Atomic replace, so readers never need the lock. */
 function write(dir: string, queues: Queues) {
-  const file = join(dir, FILE);
-  const tmp = `${file}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
-  writeFileSync(tmp, `${JSON.stringify({ queues }, null, 2)}\n`);
-  renameSync(tmp, file);
+  writeJsonAtomic(join(dir, FILE), { queues });
 }

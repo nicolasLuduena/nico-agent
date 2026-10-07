@@ -9,6 +9,8 @@ import { PANE_ARGS } from "./opencode";
 import { type Catalog, harnessCatalogs, harnesses, refreshHarnesses, rememberedLaunches } from "./harness";
 import { linearIdentifier } from "./linear";
 import { type Output, plural, render } from "./output";
+import { pruneBoardQueues, queueOf } from "./queue";
+import { sameSpec } from "./spec";
 import { VERSION } from "./version";
 import { sameSlug, slugOfRemote } from "./slug";
 import { cachedPrs, currentStage, freshPrs, loadInFlight, stageOf } from "./stage";
@@ -663,7 +665,8 @@ async function board(ctx: RunContext, json: boolean): Promise<Output> {
   if (repos.length === 0) {
     return { data: { ...header, ready: "0 issues (no Repos configured)" }, help: [ADD_REPO_HELP] };
   }
-  const { ready, stackable, specs, inFlight, errors } = await loadBoard(ctx.world, repos, loadDispatches(ctx.configDir), cachedPrs(ctx.world), rememberedLaunches(ctx.configDir).bases);
+  const loaded = await loadBoard(ctx.world, repos, loadDispatches(ctx.configDir), cachedPrs(ctx.world), rememberedLaunches(ctx.configDir).bases);
+  const { ready, stackable, specs, inFlight, errors } = loaded;
   const help = ["Run `nico-agent repo list` to see the Repos", ADD_REPO_HELP];
   if (inFlight.length) help.unshift("Run `nico-agent show <issue>` to see a Dispatch");
   const blocked = inFlight.flatMap(({ dispatch: d, implementerState, reviewerState }) => [
@@ -735,11 +738,13 @@ async function board(ctx: RunContext, json: boolean): Promise<Output> {
     }));
   }
   if (allSpecs.length) {
-    // Each Repo's room, and the candidate Specs the user may queue on the web Board.
+    // Each Repo's room, its candidate Specs, and its Queue head first; the Queue is edited on the web Board only (ADR-0009).
+    const queues = await pruneBoardQueues(ctx.configDir, loaded);
     data.rooms = specs.map(({ repo, specs: decided, room, candidates }) => ({
       repo, running: decided.filter((s) => s.running).map((s) => s.spec), room,
       candidates: decided.filter((s) => candidates.includes(s.spec))
         .map(({ spec, title, url, next }) => ({ spec, title, url, issue: next!.issue })),
+      queue: queueOf(queues, repo).map((queued) => decided.find((s) => sameSpec(s.spec, queued))?.spec ?? queued),
     }));
   }
   Object.assign(data, inFlightData);

@@ -340,6 +340,7 @@ describe("In flight on the Board", () => {
         "    room: 1",
         "    candidates[1]{spec,title,url,issue}:",
         '      acme/api#8,Fix login,"https://github.com/acme/api/issues/8",acme/api#8',
+        "    queue: []",
         "inFlight: 1 Dispatch",
         "dispatches[1]{issue,title,stage,pr,implementer,reviewer,harness,model,effort,base,workspace}:",
         '  acme/api#7,Add retries,Implementing,"",working,"",claude,opus,high,main,w1',

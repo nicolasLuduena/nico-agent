@@ -1,10 +1,16 @@
-import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { withFileLock, writeJsonAtomic } from "./state";
 import { type World, WorldError } from "./world";
 
-/** Something that needs the user, keyed by its condition so it is notified once while it holds. */
+/**
+ * Something that needs the user, keyed by its condition so it is notified once
+ * while it holds. `scope` names what must be observed to tell the condition
+ * cleared: a Repo's Specs, or one Implementer's Agent state.
+ */
 export interface Notice {
   key: string;
+  scope: string;
   title: string;
   body: string;
 }
@@ -12,18 +18,25 @@ export interface Notice {
 /** The conditions already notified, so a timer running `advance` doesn't repeat them. */
 const FILE = "notified.json";
 
+interface Notified {
+  key: string;
+  scope: string;
+}
+
 /**
  * Notify each Notice whose condition is new since the last run, and forget
- * the conditions that cleared, so a recurrence notifies again. A notification
- * that fails to send is a warning, retried on the next run.
+ * the conditions that cleared, so a recurrence notifies again. A condition in
+ * one of the `unobserved` scopes, which this run could not see, is neither
+ * cleared nor notified anew. A notification that fails to send is a warning,
+ * retried on the next run.
  */
-export async function notifyOnce(world: World, configDir: string, notices: Notice[]): Promise<string[]> {
-  const notified = new Set(load(configDir));
-  const keep: string[] = [];
+export async function notifyOnce(world: World, configDir: string, notices: Notice[], unobserved: string[] = []): Promise<string[]> {
+  const notified = load(configDir);
+  const keep: Notified[] = notified.filter((n) => unobserved.includes(n.scope));
   const warnings: string[] = [];
   for (const notice of notices) {
-    if (keep.includes(notice.key)) continue;
-    if (!notified.has(notice.key)) {
+    if (keep.some((n) => n.key === notice.key)) continue;
+    if (!notified.some((n) => n.key === notice.key)) {
       try {
         await world.notify(notice.title, notice.body);
       } catch (e) {
@@ -32,22 +45,16 @@ export async function notifyOnce(world: World, configDir: string, notices: Notic
         continue;
       }
     }
-    keep.push(notice.key);
+    keep.push({ key: notice.key, scope: notice.scope });
   }
-  if (keep.length || notified.size) save(configDir, keep);
+  if (keep.length || notified.length) await withFileLock(configDir, FILE, () => writeJsonAtomic(join(configDir, FILE), { notified: keep }));
   return warnings;
 }
 
-function load(configDir: string): string[] {
+/** What was notified; a key written before scopes existed has none, so it is never kept unobserved. */
+function load(configDir: string): Notified[] {
   const file = join(configDir, FILE);
   if (!existsSync(file)) return [];
-  return JSON.parse(readFileSync(file, "utf8")).notified ?? [];
-}
-
-/** Atomic replace, so an interrupted run leaves the last state whole. */
-function save(configDir: string, keys: string[]) {
-  const file = join(configDir, FILE);
-  const tmp = `${file}.${process.pid}.tmp`;
-  writeFileSync(tmp, `${JSON.stringify({ notified: keys }, null, 2)}\n`);
-  renameSync(tmp, file);
+  const notified: (string | Notified)[] = JSON.parse(readFileSync(file, "utf8")).notified ?? [];
+  return notified.map((n) => (typeof n === "string" ? { key: n, scope: "" } : n));
 }

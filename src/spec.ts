@@ -1,7 +1,7 @@
 import type { PullRequest } from "./world";
 
 /**
- * The Spec rules (ADR-0009): a pure decision over facts already fetched, the
+ * The Spec rules (ADR-0008, kept by ADR-0009): a pure decision over facts already fetched, the
  * same for every Source. The Board and `advance` both ask it, so there is one
  * source of truth for which Specs run and what each does next.
  */
@@ -107,6 +107,16 @@ export function decideSpecs(repos: RepoFacts[]): RepoDecision[] {
       candidates: specs.filter((s) => !s.running && !s.held && s.next).map((s) => s.spec),
     };
   });
+}
+
+/** Whether two names are the same Spec, as the user may type a Linear key in any case. */
+export function sameSpec(a: string, b: string) {
+  return a.toLowerCase() === b.toLowerCase();
+}
+
+/** Whether `spec` is one of the Repo's candidate Specs. */
+export function isCandidate(decision: RepoDecision, spec: string) {
+  return decision.candidates.some((c) => sameSpec(c, spec));
 }
 
 /** A Spec drops off once every issue is closed and none is still In flight. */
