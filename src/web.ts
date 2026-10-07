@@ -9,7 +9,7 @@ import { type Catalog, type Remembered, harnessCatalogs, refreshHarnesses, remem
 import { type InFlightRow, type PrLookup, cachedPrs, loadInFlight } from "./stage";
 import { type Dispatch, type Launch, findDispatch, loadDispatches } from "./state";
 import { plural } from "./output";
-import { type Queues, dequeue, enqueue, pruneBoardQueues, queueOf } from "./queue";
+import { type Queues, dequeue, enqueue, move, pruneBoardQueues, queueOf } from "./queue";
 import { sameSlug } from "./slug";
 import { type PullRequest, type World, WorldError } from "./world";
 
@@ -36,6 +36,7 @@ export function webHandler(context: WebContext) {
       if (pathname === "/harnesses/refresh" && request.method === "POST") return await postRefresh(ctx);
       if (pathname === "/queue" && request.method === "POST") return await postQueue(ctx, request, "queue");
       if (pathname === "/unqueue" && request.method === "POST") return await postQueue(ctx, request, "unqueue");
+      if (pathname === "/move" && request.method === "POST") return await postQueue(ctx, request, "move");
       if (request.method !== "GET") return new Response("Method Not Allowed\n", { status: 405 });
       if (pathname === "/htmx.min.js") {
         return new Response(htmx, { headers: { "content-type": "text/javascript; charset=utf-8" } });
@@ -124,10 +125,10 @@ async function loadRendered(ctx: ServerContext, repos: Repo[]) {
 }
 
 /**
- * Queue or unqueue a Spec of a Repo. htmx gets the Repo's section back to swap
+ * Queue, unqueue or move a Spec of a Repo. htmx gets the Repo's section back to swap
  * in, its launch forms preserved; a plain form post goes back to the Board.
  */
-async function postQueue(ctx: ServerContext, request: Request, change: "queue" | "unqueue") {
+async function postQueue(ctx: ServerContext, request: Request, change: "queue" | "unqueue" | "move") {
   const form = await request.formData();
   const spec = String(form.get("spec") ?? "");
   const config = loadConfig(ctx.configDir);
@@ -142,6 +143,10 @@ async function postQueue(ctx: ServerContext, request: Request, change: "queue" |
       throw new WebFailure("Not queued", `${spec} is not a candidate Spec of ${repo.slug}`, ["Only a candidate Spec, not started, not Held and with a Ready first issue, can be queued"], 409);
     }
     await enqueue(ctx.configDir, repo.slug, spec);
+  } else if (change === "move") {
+    const direction = String(form.get("direction") ?? "");
+    if (direction !== "up" && direction !== "down") throw bad(`\`${direction}\` is not a direction; move a queued Spec \`up\` or \`down\``);
+    await move(ctx.configDir, repo.slug, spec, direction);
   } else {
     await dequeue(ctx.configDir, repo.slug, spec);
   }
@@ -603,17 +608,24 @@ function renderSpec(spec: SpecDecision, state: SpecState, rows: string[], ownFli
 
 /**
  * A candidate Spec's Queue control: Queue, or once queued its place in the
- * Queue and Unqueue. htmx swaps in the Repo's section it answers with.
+ * Queue, Unqueue, and moves up and down (none past either end). htmx swaps in
+ * the Repo's section it answers with.
  */
 function queueControl(repo: string, spec: string, queue: string[]) {
   const place = queue.findIndex((s) => s.toLowerCase() === spec.toLowerCase());
   const action = place < 0 ? "queue" : "unqueue";
+  const open = (action: string, cls: string) =>
+    `<form method="post" action="/${action}" class="${cls}" hx-post="/${action}" hx-target="closest section.repo" hx-swap="outerHTML">` +
+    `<input type="hidden" name="repo" value="${escape(repo)}"><input type="hidden" name="spec" value="${escape(spec)}">`;
+  const moveForm = (direction: "up" | "down", arrow: string) =>
+    `${open("move", "queue move")}<input type="hidden" name="direction" value="${direction}"><button aria-label="Move ${escape(spec)} ${direction}">${arrow}</button></form>`;
   return [
-    `<form method="post" action="/${action}" class="queue" hx-post="/${action}" hx-target="closest section.repo" hx-swap="outerHTML">`,
-    `<input type="hidden" name="repo" value="${escape(repo)}"><input type="hidden" name="spec" value="${escape(spec)}">`,
+    open(action, "queue"),
     ...(place < 0 ? [] : [`<span class="queued">Queued ${place + 1} of ${queue.length}</span>`]),
     `<button>${place < 0 ? "Queue" : "Unqueue"}</button>`,
     "</form>",
+    ...(place > 0 ? [moveForm("up", "&uarr;")] : []),
+    ...(place >= 0 && place < queue.length - 1 ? [moveForm("down", "&darr;")] : []),
   ].join("");
 }
 
@@ -1131,6 +1143,7 @@ a.title:hover { color: var(--link); text-decoration: none; }
 .num { color: var(--ink-2); font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; margin-right: 0.3rem; }
 form.dispatch { display: flex; align-items: center; gap: 0.35rem; margin: 0; flex: none; }
 form.queue { display: inline-flex; align-items: center; gap: 0.5rem; margin: 0 0 0 auto; flex: none; }
+form.queue.move { margin-left: 0.25rem; }
 .queued { font-size: 12px; font-weight: 650; color: var(--ink); white-space: nowrap; }
 li:not(:hover) form.dispatch select:not(:focus) { border-color: var(--rule); }
 

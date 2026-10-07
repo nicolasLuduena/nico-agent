@@ -135,7 +135,7 @@ describe("the Queue on the web Board", () => {
       '<span class="num">BLE-20</span> Parser</a>',
       '<form method="post" action="/unqueue" class="queue" hx-post="/unqueue" hx-target="closest section.repo" hx-swap="outerHTML">',
       '<input type="hidden" name="repo" value="bleentr/pdf-diff"><input type="hidden" name="spec" value="BLE-20">',
-      '<span class="queued">Queued 2 of 2</span><button>Unqueue</button></form></header>',
+      '<span class="queued">Queued 2 of 2</span><button>Unqueue</button></form>',
     ].join(""));
     expect(body).toContain('<span class="queued">Queued 1 of 2</span>');
     // htmx keeps an open launch form across the swap by its id.
@@ -163,6 +163,45 @@ describe("the Queue on the web Board", () => {
       expect(refused.body).toContain(`${spec} is not a candidate Spec of bleentr/pdf-diff`);
     }
     expect((await post(web, "/queue", { repo: "acme/nope", spec: "BLE-20" })).status).toBe(400);
+  });
+
+  test("queued Specs move up and down the Queue, none past either end, and the Board renders the new order", async () => {
+    const { world, queue, web } = await linearRepo();
+    world.addLinearSpec({ identifier: "BLE-20" }, { identifier: "BLE-21" });
+    world.addLinearSpec({ identifier: "BLE-30" }, { identifier: "BLE-31" });
+    world.addLinearSpec({ identifier: "BLE-40" }, { identifier: "BLE-41" });
+    for (const spec of ["BLE-20", "BLE-30", "BLE-40"]) await queue(spec);
+    const moves = (body: string) => body.match(/hx-post="\/move"[^]*?name="spec" value="[^"]+"[^]*?name="direction" value="(?:up|down)"/g)!
+      .map((m) => `${m.match(/name="spec" value="([^"]+)"/)![1]} ${m.match(/name="direction" value="(up|down)"/)![1]}`);
+
+    const board = (await web("/")).body;
+    expect(moves(board)).toEqual(["BLE-20 down", "BLE-30 up", "BLE-30 down", "BLE-40 up"]);
+    expect(board).toContain('<button aria-label="Move BLE-30 up">');
+
+    const moved = await post(web, "/move", { repo: "bleentr/pdf-diff", spec: "BLE-40", direction: "up" });
+    expect(moved.status).toBe(200);
+    expect(moved.body).toStartWith('<section class="repo">');
+    const place = (body: string, spec: string) => body.match(new RegExp(`value="${spec}">(?:[^]*?)<span class="queued">Queued (\\d) of 3`))?.[1];
+    expect(["BLE-20", "BLE-30", "BLE-40"].map((s) => place(moved.body, s))).toEqual(["1", "3", "2"]);
+
+    // Past either end, nothing moves.
+    await post(web, "/move", { repo: "bleentr/pdf-diff", spec: "BLE-20", direction: "up" });
+    await post(web, "/move", { repo: "bleentr/pdf-diff", spec: "BLE-30", direction: "down" });
+    await post(web, "/move", { repo: "bleentr/pdf-diff", spec: "BLE-20", direction: "down" });
+    const after = (await web("/")).body;
+    expect(["BLE-20", "BLE-30", "BLE-40"].map((s) => place(after, s))).toEqual(["2", "3", "1"]);
+    expect((await post(web, "/move", { repo: "bleentr/pdf-diff", spec: "BLE-20", direction: "sideways" })).status).toBe(400);
+  });
+
+  test("after reordering, advance starts the new head first", async () => {
+    const { cli, world, queue, web } = await linearRepo({ maxRunningSpecs: 1 });
+    world.addLinearSpec({ identifier: "BLE-20" }, { identifier: "BLE-21" });
+    world.addLinearSpec({ identifier: "BLE-30" }, { identifier: "BLE-31" });
+    await queue("BLE-20");
+    await queue("BLE-30");
+    await post(web, "/move", { repo: "bleentr/pdf-diff", spec: "BLE-20", direction: "down" });
+
+    expect(await advanced(cli)).toEqual(["started BLE-31"]);
   });
 
   test("a plain form post goes back to the Board, and the Queue survives a restart", async () => {

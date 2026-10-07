@@ -6,7 +6,7 @@ import { withFileLock } from "./state";
 
 /**
  * The Queue of each Repo: the candidate Specs the user approved to start,
- * oldest first. Local state nico-agent owns, like the Dispatch record
+ * in the order the user set. Local state nico-agent owns, like the Dispatch record
  * (ADR-0002); nothing is written to a Source.
  */
 export type Queues = Record<string, string[]>;
@@ -24,7 +24,7 @@ export function loadQueues(dir: string): Queues {
   return (JSON.parse(text) as { queues: Queues }).queues;
 }
 
-/** The Queue of `repo`, oldest first. */
+/** The Queue of `repo`, head first. */
 export function queueOf(queues: Queues, repo: string): string[] {
   return Object.entries(queues).find(([slug]) => sameSlug(slug, repo))?.[1] ?? [];
 }
@@ -37,6 +37,18 @@ export function enqueue(dir: string, repo: string, spec: string): Promise<void> 
 /** Take `spec` out of `repo`'s Queue. */
 export function dequeue(dir: string, repo: string, spec: string): Promise<void> {
   return update(dir, repo, (queue) => queue.filter((s) => !sameSpec(s, spec)));
+}
+
+/** Swap `spec` with its neighbour toward the head (`up`) or the tail (`down`); at that end, or not queued, nothing moves. */
+export function move(dir: string, repo: string, spec: string, direction: "up" | "down"): Promise<void> {
+  return update(dir, repo, (queue) => {
+    const from = queue.findIndex((s) => sameSpec(s, spec));
+    const to = from + (direction === "up" ? -1 : 1);
+    if (from < 0 || to < 0 || to >= queue.length) return queue;
+    const moved = [...queue];
+    [moved[from], moved[to]] = [moved[to]!, moved[from]!];
+    return moved;
+  });
 }
 
 /**
