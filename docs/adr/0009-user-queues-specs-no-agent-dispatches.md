@@ -21,6 +21,12 @@ ADR-0008's amendment on relaying answers is withdrawn with the agent that did
 the relaying. `nico-agent answer` stays as the user's own CLI path to answer an
 Asking Implementer, still refused unless that Implementer waits on the user.
 
+The Queue is edited on the web Board only, a deliberate exception to ADR-0006's
+"the CLI covers everything the web app does": queuing is the user choosing
+work, and no agent should, so the CLI has no command to queue, unqueue or
+reorder. The CLI Board still shows each Repo's Queue, head first, read-only
+(`rooms[].queue`), so an agent or the user can see what will start next.
+
 ## Considered Options
 
 - **Fix the chat channel and keep Hermes.** The judgment is still made at the
