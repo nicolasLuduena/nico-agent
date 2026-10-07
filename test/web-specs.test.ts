@@ -10,6 +10,11 @@ async function githubRepo() {
   return ctx;
 }
 
+/** A candidate Spec's Queue button, as its heading or row shows it. */
+function queueButton(spec: string, repo = "acme/api") {
+  return `<form method="post" action="/queue" class="queue" hx-post="/queue" hx-target="closest section.repo" hx-swap="outerHTML"><input type="hidden" name="repo" value="${repo}"><input type="hidden" name="spec" value="${spec}"><button>Queue</button></form>`;
+}
+
 /** The Repo section of `slug` on the web Board. */
 async function repoSection(web: Awaited<ReturnType<typeof githubRepo>>["web"], slug: string) {
   const { body } = await web("/");
@@ -27,7 +32,7 @@ describe("web Board grouped by Spec", () => {
     const section = await repoSection(web, "acme/api");
     const spec = section.indexOf([
       '<div class="spec candidate">',
-      '<header><span class="spec-state">Candidate</span><a class="title" href="https://github.com/acme/api/issues/10"><span class="num">#10</span> Billing</a></header>',
+      '<header><span class="spec-state">Candidate</span><a class="title" href="https://github.com/acme/api/issues/10"><span class="num">#10</span> Billing</a>' + queueButton("acme/api#10") + '</header>',
       '<p class="spec-note">acme/api#11 is the first unblocked issue of acme/api#10; the Spec has no open PR, so it starts from main</p>',
       '<ul class="issues">',
       '<li><input type="checkbox" class="pick" name="issue" value="acme/api#11"',
@@ -37,7 +42,7 @@ describe("web Board grouped by Spec", () => {
     expect(loose).toBeGreaterThan(spec);
     // Each issue is listed once, and the Spec itself is never a row.
     expect(section.split('class="pick" name="issue" value="acme/api#11"').length).toBe(2);
-    expect(section).not.toContain('value="acme/api#10"');
+    expect(section).not.toContain('name="issue" value="acme/api#10"');
   });
 
   test("each Repo shows its running Specs, the room left and its candidate Specs", async () => {
@@ -52,7 +57,7 @@ describe("web Board grouped by Spec", () => {
     expect(section).toContain([
       '<div class="room" role="group" aria-label="Specs of acme/api">',
       '<span class="slots" aria-hidden="true"><i class="taken"></i><i></i></span>',
-      "<span>Running <b>1</b></span><span>Room <b>1</b></span><span>Candidates <b>2</b></span>",
+      "<span>Running <b>1</b></span><span>Room <b>1</b></span><span>Candidates <b>2</b></span><span>Queue <b>0</b></span>",
       "</div>",
     ].join(""));
     expect(section).toContain([
@@ -63,7 +68,7 @@ describe("web Board grouped by Spec", () => {
       '<li class="member" data-issue="acme/api#11"><a class="title" href="https://github.com/acme/api/issues/11"><span class="num">#11</span> Issue 11</a><span class="stage pr-ready">PR ready</span><a class="pr" href="https://github.com/acme/api/pull/16">PR #16</a></li>',
       '<li><input type="checkbox" class="pick" name="issue" value="acme/api#12"',
     ].join("\n"));
-    expect(section).toContain('<div class="spec candidate">\n<header><span class="spec-state">Candidate</span><a class="title" href="https://github.com/acme/api/issues/30"><span class="num">#30</span> Search</a></header>');
+    expect(section).toContain('<div class="spec candidate">\n<header><span class="spec-state">Candidate</span><a class="title" href="https://github.com/acme/api/issues/30"><span class="num">#30</span> Search</a>' + queueButton("acme/api#30") + '</header>');
     // Running Specs come first, then the candidates.
     expect(section.indexOf('class="spec running"')).toBeLessThan(section.indexOf('class="spec candidate"'));
   });

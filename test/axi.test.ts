@@ -26,7 +26,23 @@ describe("AXI conventions", () => {
     const { cli } = setup();
     const { stdout, exitCode } = await cli("dispatch-all");
     expect(exitCode).toBe(2);
-    expect(stdout).toStartWith("error: unknown command `dispatch-all`\nhelp[14]:\n  Run `nico-agent [board]` to show Ready issues");
+    expect(stdout).toStartWith("error: unknown command `dispatch-all`\nhelp[13]:\n  Run `nico-agent [board]` to show Ready issues");
+  });
+
+  test("the retired Scheduler entry points are unknown: `mcp`, `--skill` and `advance --start` (ADR-0009)", async () => {
+    const { cli, world } = setup();
+    const mcp = await cli("mcp");
+    expect(mcp.exitCode).toBe(2);
+    expect(mcp.stdout).toStartWith("error: unknown command `mcp`\nhelp[13]:\n  Run `nico-agent [board]` to show Ready issues");
+    expect(await cli("--skill")).toMatchObject({
+      stdout: ["error: unknown flag --skill for `board`", "help[1]:", "  Valid flags for `board`: --json, --help", ""].join("\n"),
+      exitCode: 2,
+    });
+    expect(await cli("advance", "--start", "BLE-10")).toMatchObject({
+      stdout: ["error: unknown flag --start for `advance`", "help[1]:", "  Valid flags for `advance`: --json, --help", ""].join("\n"),
+      exitCode: 2,
+    });
+    expect(world.calls).toEqual([]);
   });
 
   test("a missing required flag is a usage error with the usage line", async () => {
@@ -93,13 +109,13 @@ describe("AXI conventions", () => {
       [
         "bin: ~/.local/bin/nico-agent",
         "description: Dispatch coding agents onto ready-for-agent issues",
-        "commands[14]{usage,description}:",
+        "commands[13]{usage,description}:",
         '  "nico-agent [board]",Show Ready issues across all Repos (the default view)',
         "  nico-agent repo add <owner/name> --path <clone>,Add a Repo after checking the path is a clone of it",
         "  nico-agent repo rm <owner/name>,Remove a Repo (its clone is left untouched)",
         "  nico-agent repo list,List the configured Repos",
         "  nico-agent dispatch <issue>... --harness <harness> --model <model> --effort <effort>,Start an Implementer on each issue in a new herdr worktree workspace (resumes a failed one)",
-        "  nico-agent advance,Dispatch each running Spec's next issue with the Scheduler defaults from config (skips Held Specs)",
+        '  nico-agent advance,"Dispatch each running Spec\'s next issue and start the head of each Repo\'s Queue while it has room, with the Scheduler defaults from config (skips Held Specs)"',
         '  nico-agent review <issue>... --harness <harness> --model <model> --effort <effort>,"Start a Reviewer on each In-flight issue\'s linked PR, in its workspace (resumes a failed one)"',
         '  "nico-agent close <issue>... [--confirm]","Remove each Dispatch\'s workspace and forget it, keeping its branch"',
         `  nico-agent answer <issue> <text>,"Submit text, as typed, to an In-flight issue's Implementer while it waits on the user"`,
@@ -107,10 +123,8 @@ describe("AXI conventions", () => {
         "  nico-agent harness refresh,Discover the Harnesses' models and Effort levels again and replace the cache",
         "  nico-agent show <issue>,Print the full Dispatch record of an In-flight issue",
         '  "nico-agent serve [--port <port>]",Start the web app on 127.0.0.1 (port 42069 by default)',
-        `  nico-agent mcp,"Serve the Scheduler's MCP server on stdio, with three tools: board (the Board), advance (with an optional Spec to start) and answer (relay the user's answer to a waiting Implementer)"`,
-        "help[2]:",
+        "help[1]:",
         "  Run `nico-agent <command> --help` for its flags and examples",
-        "  Run `nico-agent --skill` to print the Scheduler skill",
         "",
       ].join("\n"),
     );

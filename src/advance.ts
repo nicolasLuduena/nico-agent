@@ -1,10 +1,12 @@
 import { join } from "node:path";
-import { loadBoard } from "./board";
+import { loadBoard, specLoadErrors } from "./board";
 import { ConfigError, SCHEDULER_DEFAULTS, type SchedulerDefaults, loadConfig } from "./config";
 import { type DispatchRequest, StepFailed, checkLaunch, closeDispatch, dispatch } from "./dispatch";
 import { DispatchError, LaunchError } from "./dispatch-error";
 import { linearIdentifier } from "./linear";
-import type { RepoDecision, SpecDecision } from "./spec";
+import { type Notice, notifyOnce } from "./notify";
+import { type Queues, dequeue, pruneBoardQueues, queueOf } from "./queue";
+import { type RepoDecision, type SpecDecision, sameSpec } from "./spec";
 import { type InFlightRow, freshPrs } from "./stage";
 import { type Dispatch, STEPS, loadDispatches } from "./state";
 import { type World, WorldError } from "./world";
@@ -26,6 +28,8 @@ export interface AdvanceReport {
   errors: { repo: string; error: string }[];
   /** Dispatches Closed because their PR is ready. */
   closed: string[];
+  /** What went wrong without stopping the run, such as a notification that could not be sent. */
+  warnings: string[];
   help: string[];
 }
 
@@ -36,40 +40,124 @@ export type SpecPlan =
   | { action: "skip"; issue: string; reason: string; help?: string }
   | { action: "wait" };
 
-const SHOW_HELP = "Run `nico-agent show <issue>` to see a Dispatch";
-
-export interface AdvanceOptions {
-  /** A candidate Spec to start too, the Scheduler's one judgment call; refused unless its Repo has room. */
-  start?: string;
-}
-
 /**
- * Keep running Specs moving (ADR-0008): dispatch each one's next issue on the
- * PR the Spec rules chose, with the Scheduler defaults from config, one Spec
- * at a time. Idempotent like `dispatch` (ADR-0006).
+ * Keep running Specs moving and fill each Repo's room from its Queue
+ * (ADR-0009): dispatch each one's next issue on the PR the Spec rules chose,
+ * with the Scheduler defaults from config, one Spec at a time. Idempotent
+ * like `dispatch` (ADR-0006).
  */
-export async function advance(world: World, configDir: string, { start }: AdvanceOptions = {}): Promise<AdvanceReport> {
+export async function advance(world: World, configDir: string): Promise<AdvanceReport> {
   const launch = schedulerDefaults(configDir);
-  const report: AdvanceReport = { specs: [], errors: [], closed: [], help: [] };
+  const report: AdvanceReport = { specs: [], errors: [], closed: [], warnings: [], help: [] };
   const { repos } = loadConfig(configDir);
-  if (!repos.length && start === undefined) return report;
+  if (!repos.length) return report;
   const dispatches = loadDispatches(configDir);
   const board = await loadBoard(world, repos, dispatches, freshPrs(world));
-  report.errors = board.errors.filter((e) => e.source !== "git").map(({ repo, error }) => ({ repo, error }));
-  const started = start === undefined ? undefined : startable(board.specs, start);
+  const failedRepos = specLoadErrors(board.errors);
+  report.errors = failedRepos.map(({ repo, error }) => ({ repo, error }));
+  const queued = fromQueues(await pruneBoardQueues(configDir, board), board.specs);
   // A Spec waiting on another Spec's merges frees its slot, but is still reported.
-  const plans = board.specs.flatMap((r) => r.specs).filter((s) => s.running || s.waiting || s === started)
+  const running = board.specs.flatMap((r) => r.specs).filter((s) => s.running || s.waiting)
     .map((spec) => ({ spec, plan: planSpec(spec, dispatches) }));
-  if (plans.some(({ plan }) => plan.action === "start")) await checkDefaults(world, configDir, launch);
-  for (const { spec, plan } of plans) {
+  if (running.some(({ plan }) => plan.action === "start") || queued.length) await checkDefaults(world, configDir, launch);
+  const plans: { spec: SpecDecision; plan: SpecPlan }[] = [];
+  const carry = async (spec: SpecDecision, plan: SpecPlan) => {
+    plans.push({ spec, plan });
     const row = await carryOut(world, configDir, launch, spec, plan, report.help);
     if (row) report.specs.push(row);
+    return row;
+  };
+  for (const { spec, plan } of running) await carry(spec, plan);
+  for (const { room, specs } of queued) {
+    let left = room;
+    for (const spec of specs) {
+      if (left === 0) break;
+      const row = await carry(spec, fromQueue(planSpec(spec, dispatches), spec));
+      // A refused start stays queued and leaves its slot to the next queued Spec.
+      if (row?.result === "skipped") continue;
+      left--;
+      // Started, or Held by its failed start: either way no longer a candidate.
+      if (row?.result === "started" || row?.result === "failed") await dequeue(configDir, spec.repo, spec.spec);
+    }
   }
   for (const row of board.inFlight.filter(prunable)) {
     await closeDispatch(world, configDir, row.dispatch.issue, true);
     report.closed.push(row.dispatch.issue);
   }
+  // A condition this run could not see neither clears nor notifies anew.
+  const unobserved = [
+    ...failedRepos.map((e) => repoScope(e.repo)),
+    ...board.inFlight.filter((row) => row.implementerState === "unknown").map((row) => agentScope(row.dispatch.implementer.agent)),
+  ];
+  report.warnings = await notifyOnce(world, configDir, [
+    ...notices(plans, report.specs, loadDispatches(configDir)),
+    ...askingNotices(board.inFlight, board.specs),
+  ], unobserved);
   return report;
+}
+
+/**
+ * Each Repo's queued Specs, head first, with the room it has: room is counted
+ * before the run, and each start takes one slot. Every queued Spec is a
+ * candidate, as the Queues were just pruned.
+ */
+function fromQueues(queues: Queues, repos: RepoDecision[]): { room: number; specs: SpecDecision[] }[] {
+  return repos.map((repo) => ({
+    room: repo.room,
+    specs: queueOf(queues, repo.repo)
+      .map((name) => repo.specs.find((s) => sameSpec(s.spec, name)))
+      .filter((s): s is SpecDecision => s !== undefined),
+  })).filter(({ room, specs }) => room > 0 && specs.length > 0);
+}
+
+/** What a Notice's condition is observed through: its Repo's Specs, or its Implementer's Agent state. */
+const repoScope = (repo: string) => `repo ${repo.toLowerCase()}`;
+const agentScope = (agent: string) => `agent ${agent}`;
+
+/** A queued Spec's start says it came from the Queue. */
+function fromQueue(plan: SpecPlan, spec: SpecDecision): SpecPlan {
+  return plan.action === "start" ? { ...plan, reason: `${spec.spec} is the head of the Queue; ${plan.reason}` } : plan;
+}
+
+/**
+ * What needs the user after this run: each Held Spec, and each failed
+ * Dispatch. A Spec Held by a Failed Dispatch is that failure, so the user
+ * hears of it once, with how to resume it.
+ */
+function notices(plans: { spec: SpecDecision; plan: SpecPlan }[], rows: AdvanceRow[], dispatches: Dispatch[]): Notice[] {
+  const failedAt = (issue: string, repo: string, fallback: string): Notice[] => {
+    const { step = "dispatch", error = fallback } = dispatches.find((d) => d.issue === issue)?.failure ?? {};
+    const help = [...new Set([holdHelp(issue, dispatches), showHelp(issue)])];
+    return [{ key: `failed ${issue} ${step}`, scope: repoScope(repo), title: `${issue}'s Dispatch failed at ${step}`, body: [error, ...help].join("\n") }];
+  };
+  const held = plans.flatMap(({ spec, plan }): Notice[] => {
+    if (!spec.held || plan.action !== "skip") return [];
+    const { issue, reason } = spec.held;
+    if (dispatches.some((d) => d.issue === issue && d.failure)) return failedAt(issue, spec.repo, reason);
+    return [{ key: `held ${spec.spec} ${issue} ${reason}`, scope: repoScope(spec.repo), title: `${spec.spec} is Held`, body: [reason, plan.help].filter(Boolean).join("\n") }];
+  });
+  const failed = rows.filter((r) => r.result === "failed").flatMap((r) => failedAt(r.issue, r.repo, r.reason));
+  return [...held, ...failed];
+}
+
+/** Each Implementer waiting on the user, as herdr reported it before this run. */
+function askingNotices(inFlight: InFlightRow[], repos: RepoDecision[]): Notice[] {
+  const specs = repos.flatMap((r) => r.specs);
+  return inFlight.filter((row) => row.implementerState === "blocked").map(({ dispatch: { issue, implementer } }) => {
+    const spec = specs.find((s) => s.issues.includes(issue))?.spec;
+    const of = spec && spec !== issue ? ` (Spec ${spec})` : "";
+    return {
+      key: `asking ${issue}`,
+      scope: agentScope(implementer.agent),
+      title: `${issue} is Asking`,
+      body: `The Implementer of ${issue}${of} is waiting on you.\nAnswer it in herdr (agent ${implementer.agent}), or run \`nico-agent answer ${issue} <text>\``,
+    };
+  });
+}
+
+/** How to see the Dispatch of `issue`, or of any issue when none is named. */
+function showHelp(issue?: string) {
+  return issue ? `Run \`nico-agent show ${issue}\` to see the Dispatch` : "Run `nico-agent show <issue>` to see a Dispatch";
 }
 
 /**
@@ -81,30 +169,12 @@ function prunable(row: InFlightRow) {
   return row.stage === "PR ready" && row.implementerState !== "working" && row.implementerState !== "blocked";
 }
 
-/** The candidate Spec named `name`, refusing one that is not a candidate, already running, or whose Repo is full. */
-function startable(repos: RepoDecision[], name: string): SpecDecision {
-  const named = (s: SpecDecision) => s.spec.toLowerCase() === name.toLowerCase();
-  const repo = repos.find((r) => r.specs.some(named));
-  const spec = repo?.specs.find(named);
-  const notCandidate = (why: string) => new DispatchError(`${name} is not a candidate Spec: ${why}`, ["Run `nico-agent` to see the candidate Specs of each Repo"]);
-  const help = ["Run `nico-agent advance` to keep the running Specs moving", "Run `nico-agent` to see the Board"];
-  if (!repo || !spec) throw notCandidate("no Spec of a Repo has that name");
-  if (spec.held) throw new DispatchError(`${spec.spec} is Held: ${spec.held.reason}`, ["Run `nico-agent` to see the Board"]);
-  if (spec.running) throw new DispatchError(`${spec.spec} is already running`, help);
-  if (!repo.candidates.includes(spec.spec)) throw notCandidate(spec.waiting ? "it has already started" : "none of its issues is Ready");
-  if (repo.room === 0) {
-    const running = repo.specs.filter((s) => s.running).map((s) => s.spec);
-    throw new DispatchError(`${repo.repo} has no room for ${spec.spec}; its running Specs: ${running.join(", ")}`, help);
-  }
-  return spec;
-}
-
 /**
  * A running Spec resumes its unfinished Dispatch, as `dispatch` would
  * (ADR-0006); else starts its next issue; else is skipped with the reason.
  */
 export function planSpec(spec: SpecDecision, dispatches: Dispatch[]): SpecPlan {
-  if (spec.held) return { action: "skip", issue: spec.held.issue, reason: `Held: ${spec.held.reason}`, help: clearHoldHelp(spec, dispatches) };
+  if (spec.held) return { action: "skip", issue: spec.held.issue, reason: `Held: ${spec.held.reason}`, help: holdHelp(spec.held.issue, dispatches) };
   const unfinished = dispatches.find((d) => spec.issues.includes(d.issue) && !isFinished(d));
   if (unfinished) return { action: "resume", dispatch: unfinished };
   if (spec.next) {
@@ -116,11 +186,10 @@ export function planSpec(spec: SpecDecision, dispatches: Dispatch[]): SpecPlan {
   return { action: "skip", issue: "", reason: spec.reason ?? "" };
 }
 
-/** How the user clears a Spec's hold: resume the Failed Dispatch with its own launch, or Close the one whose Stack is built on a PR closed without merging. */
-function clearHoldHelp(spec: SpecDecision, dispatches: Dispatch[]) {
-  const issue = spec.held!.issue;
+/** How the user clears the hold `issue` puts on its Spec: resume its Failed Dispatch with its own launch, or Close the one whose Stack is built on a PR closed without merging. */
+function holdHelp(issue: string, dispatches: Dispatch[]) {
   const d = dispatches.find((d) => d.issue === issue);
-  if (!d) return SHOW_HELP;
+  if (!d) return showHelp(issue);
   if (!d.failure) return `Run \`nico-agent close ${issue}\` to Close its Dispatch, whose Stack is built on a PR closed without merging, or retarget that Stack`;
   const { harness, model, effort } = d.implementer;
   const resume = `nico-agent dispatch ${issue} --harness ${harness} --model ${model} --effort ${effort}${linearIdentifier(issue) ? ` --repo ${d.repo}` : ""}`;
@@ -149,7 +218,7 @@ async function carryOut(world: World, configDir: string, launch: SchedulerDefaul
     const { outcome, resumedFrom } = await dispatch(world, configDir, request);
     // Already In flight and its runner still going: nothing to do.
     if (outcome === "existing") return undefined;
-    addHelp(help, SHOW_HELP);
+    addHelp(help, showHelp());
     if (outcome === "resumed") return { ...row, result: "resumed", issue, reason: `${issue} resumed from ${resumedFrom}` };
     return { ...row, result: "started", issue, reason: plan.action === "start" ? plan.reason : "" };
   } catch (e) {

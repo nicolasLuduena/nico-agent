@@ -8,9 +8,9 @@ import { DispatchError } from "./dispatch-error";
 import { PANE_ARGS } from "./opencode";
 import { type Catalog, harnessCatalogs, harnesses, refreshHarnesses, rememberedLaunches } from "./harness";
 import { linearIdentifier } from "./linear";
-import { mcpHandler } from "./mcp";
 import { type Output, plural, render } from "./output";
-import skill from "./skill.md" with { type: "text" };
+import { pruneBoardQueues, queueOf } from "./queue";
+import { sameSpec } from "./spec";
 import { VERSION } from "./version";
 import { sameSlug, slugOfRemote } from "./slug";
 import { cachedPrs, currentStage, freshPrs, loadInFlight, stageOf } from "./stage";
@@ -146,12 +146,10 @@ const commands: Command[] = [
   {
     name: "advance",
     usage: "nico-agent advance",
-    summary: "Dispatch each running Spec's next issue with the Scheduler defaults from config (skips Held Specs)",
-    flags: {
-      "--start": { value: true, description: "candidate Spec to start too, named as on the Board; refused unless its Repo has room" },
-    },
+    summary: "Dispatch each running Spec's next issue and start the head of each Repo's Queue while it has room, with the Scheduler defaults from config (skips Held Specs)",
+    flags: {},
     positionals: [],
-    examples: ["nico-agent advance", "nico-agent advance --start BLE-10 --json"],
+    examples: ["nico-agent advance", "nico-agent advance --json"],
     run: advanceCommand,
   },
   {
@@ -222,31 +220,12 @@ const commands: Command[] = [
     examples: ["nico-agent serve", "nico-agent serve --port 8080"],
     run: serve,
   },
-  {
-    name: "mcp",
-    usage: "nico-agent mcp",
-    summary: "Serve the Scheduler's MCP server on stdio, with three tools: board (the Board), advance (with an optional Spec to start) and answer (relay the user's answer to a waiting Implementer)",
-    flags: {},
-    positionals: [],
-    examples: ["nico-agent mcp"],
-    help: [
-      "Register with Hermes: `hermes mcp add nico-agent --command nico-agent --args mcp`",
-      "Register with Claude Code: `claude mcp add nico-agent -- nico-agent mcp`",
-      'Or in an MCP client\'s config: {"mcpServers": {"nico-agent": {"command": "nico-agent", "args": ["mcp"]}}}',
-    ],
-    run: async (_args, ctx) => {
-      await ctx.world.serveStdio(mcpHandler((argv) => run(argv, ctx)));
-      // stdout is the MCP channel: nothing else may be written on it.
-      return { data: {} };
-    },
-  },
 ];
 
 export async function run(argv: string[], ctx: RunContext): Promise<RunResult> {
   if (argv.length === 1 && ["-v", "-V", "--version"].includes(argv[0]!)) {
     return { stdout: `${VERSION}\n`, exitCode: 0 };
   }
-  if (argv.length === 1 && argv[0] === "--skill") return { stdout: skill, exitCode: 0 };
   // After `--`, every token is an argument, `--json` included.
   const end = argv.indexOf("--");
   const json = (end === -1 ? argv : argv.slice(0, end)).includes("--json");
@@ -350,10 +329,7 @@ function topLevelHelp(ctx: RunContext): Output {
       description: DESCRIPTION,
       commands: commands.map((c) => ({ usage: c.usage, description: c.summary })),
     },
-    help: [
-      "Run `nico-agent <command> --help` for its flags and examples",
-      "Run `nico-agent --skill` to print the Scheduler skill",
-    ],
+    help: ["Run `nico-agent <command> --help` for its flags and examples"],
   };
 }
 
@@ -461,11 +437,10 @@ async function dispatchCommand(args: Args, ctx: RunContext): Promise<Output> {
   });
 }
 
-async function advanceCommand(args: Args, ctx: RunContext): Promise<Output> {
-  const start = args.flags["--start"];
-  const { specs, errors, closed, help } = await advance(ctx.world, ctx.configDir, typeof start === "string" ? { start } : {});
+async function advanceCommand(_args: Args, ctx: RunContext): Promise<Output> {
+  const { specs, errors, closed, warnings, help } = await advance(ctx.world, ctx.configDir);
   return {
-    data: { specs, ...(errors.length && { errors }), ...(closed.length && { closed }) },
+    data: { specs, ...(errors.length && { errors }), ...(closed.length && { closed }), ...(warnings.length && { warnings }) },
     help: [...help, BOARD_HELP],
     exitCode: errors.length || specs.some((s) => s.result === "failed") ? 1 : 0,
   };
@@ -690,7 +665,8 @@ async function board(ctx: RunContext, json: boolean): Promise<Output> {
   if (repos.length === 0) {
     return { data: { ...header, ready: "0 issues (no Repos configured)" }, help: [ADD_REPO_HELP] };
   }
-  const { ready, stackable, specs, inFlight, errors } = await loadBoard(ctx.world, repos, loadDispatches(ctx.configDir), cachedPrs(ctx.world), rememberedLaunches(ctx.configDir).bases);
+  const loaded = await loadBoard(ctx.world, repos, loadDispatches(ctx.configDir), cachedPrs(ctx.world), rememberedLaunches(ctx.configDir).bases);
+  const { ready, stackable, specs, inFlight, errors } = loaded;
   const help = ["Run `nico-agent repo list` to see the Repos", ADD_REPO_HELP];
   if (inFlight.length) help.unshift("Run `nico-agent show <issue>` to see a Dispatch");
   const blocked = inFlight.flatMap(({ dispatch: d, implementerState, reviewerState }) => [
@@ -710,7 +686,7 @@ async function board(ctx: RunContext, json: boolean): Promise<Output> {
   // Agents waiting on the user come first.
   if (inFlight.some((row) => row.implementerState === "blocked")) blocked.push("Run `nico-agent answer <issue> <text>` to answer an Implementer waiting on you");
   help.unshift(...blocked);
-  // What the Scheduler relays; the TOON Board points at `herdr agent read` instead.
+  // The question `nico-agent answer` replies to, for a user away from herdr; the TOON Board points at `herdr agent read` instead.
   const asking = json ? await loadAsking(ctx.world, inFlight, specs) : [];
   const inFlightData = {
     inFlight: plural(inFlight.length, "Dispatch", "Dispatches"),
@@ -762,11 +738,13 @@ async function board(ctx: RunContext, json: boolean): Promise<Output> {
     }));
   }
   if (allSpecs.length) {
-    // What the Scheduler chooses from: each candidate's body lets it judge priority without reaching the Source.
+    // Each Repo's room, its candidate Specs, and its Queue head first; the Queue is edited on the web Board only (ADR-0009).
+    const queues = await pruneBoardQueues(ctx.configDir, loaded);
     data.rooms = specs.map(({ repo, specs: decided, room, candidates }) => ({
       repo, running: decided.filter((s) => s.running).map((s) => s.spec), room,
       candidates: decided.filter((s) => candidates.includes(s.spec))
-        .map(({ spec, title, url, next, body }) => ({ spec, title, url, issue: next!.issue, body })),
+        .map(({ spec, title, url, next }) => ({ spec, title, url, issue: next!.issue })),
+      queue: queueOf(queues, repo).map((queued) => decided.find((s) => sameSpec(s.spec, queued))?.spec ?? queued),
     }));
   }
   Object.assign(data, inFlightData);

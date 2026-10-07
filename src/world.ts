@@ -96,16 +96,11 @@ export interface World {
   processId(): number;
   processAlive(pid: number): boolean;
   now(): Date;
+  /** Show the user a desktop notification. */
+  notify(title: string, body: string): Promise<void>;
   /** Start answering HTTP requests on `hostname:port`; resolves once listening. */
   serve(address: Address, handler: RequestHandler): Promise<void>;
-  /**
-   * Answer each stdin line with `handler`, writing its reply (if any) as one
-   * stdout line; resolves when stdin closes.
-   */
-  serveStdio(handler: LineHandler): Promise<void>;
 }
-
-export type LineHandler = (line: string) => Promise<string | null>;
 
 export interface Address {
   hostname: string;
@@ -118,8 +113,6 @@ export interface GitHubIssue {
   number: number;
   title: string;
   url: string;
-  /** The issue's description, as written; a Spec's says what it builds. */
-  body: string;
   state: "open" | "closed";
   labels: string[];
   assignees: string[];
@@ -159,8 +152,6 @@ export interface LinearIssue {
   identifier: string;
   title: string;
   url: string;
-  /** The issue's description, as written; empty without one. A Spec's says what it builds. */
-  body: string;
   /** The branch Linear suggests, which its GitHub integration links PRs by. */
   branchName: string;
   team: { id: string; key: string; name: string };

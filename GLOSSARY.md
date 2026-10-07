@@ -48,7 +48,15 @@ _Avoid_: Blocked, pending
 
 **Board**:
 The view of Ready, Stackable and In-flight issues across all Repos.
-_Avoid_: Dashboard, queue
+_Avoid_: Dashboard, list of work (a **Queue** is the user's ordered pick of Specs, not the Board)
+
+**Queue**:
+A Repo's ordered list of candidate Specs the user picked on the Board, in the
+order the user set (oldest first until reordered). A queued Spec is approved to start: `advance` starts the head of the
+Queue while the Repo has room, and never a Spec that isn't queued. A started
+Spec leaves the Queue, and one that is no longer a candidate drops off quietly.
+Local state in the config directory; nothing is written to a Source.
+_Avoid_: Backlog, wishlist, schedule
 
 ### Dispatching
 
@@ -82,14 +90,17 @@ The state of an issue that has a Dispatch which has not been Closed.
 _Avoid_: Active, running, in progress
 
 **Scheduler**:
-An agent outside nico-agent that keeps Specs moving without the user: it
-chooses which Spec to start when a Repo has room, and has each running Spec's
-next issue dispatched, one Implementer per Spec at a time.
-_Avoid_: Orchestrator, pilot, autopilot
+`nico-agent advance` run every 10 minutes by a systemd user timer, keeping
+Specs moving without the user: it dispatches each running Spec's next issue,
+one Implementer per Spec at a time, and starts the head of each Repo's Queue
+while the Repo has room. It makes no judgment, and the launch comes from the
+Scheduler defaults in config. It notifies the user of what needs them.
+_Avoid_: Orchestrator, pilot, autopilot, agent (no agent dispatches)
 
 **Held**:
-A Spec the Scheduler does not dispatch into until the user acts: one of its
-Dispatches Failed, or its Stack is built on a PR closed without merging.
+A Spec `advance` does not dispatch into until the user acts: one of its
+Dispatches Failed, or its Stack is built on a PR closed without merging. The
+user is notified once when a Spec becomes Held.
 _Avoid_: Paused, blocked, stuck
 
 **Implementer**:
@@ -98,7 +109,8 @@ _Avoid_: Worker, coder
 
 **Asking**:
 An Implementer waiting on the user (Agent state `blocked`), with the question
-its screen shows. The Scheduler relays the user's answer to it, word for word.
+its screen shows. The user is notified once, and answers it in herdr or with
+`nico-agent answer`.
 _Avoid_: Stuck, blocked (a Blocker is an issue)
 
 **Reviewer**:

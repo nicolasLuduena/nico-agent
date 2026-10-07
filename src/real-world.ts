@@ -1,7 +1,6 @@
 import { LinearSource } from "./linear";
 import { realpathSync } from "node:fs";
-import { createInterface } from "node:readline";
-import type { Address, GitHubIssue, GitHubSubIssue, LineHandler, PullRequest, RequestHandler, World } from "./world";
+import type { Address, GitHubIssue, GitHubSubIssue, PullRequest, RequestHandler, World } from "./world";
 import { READY_LABEL, WorldError } from "./world";
 
 interface Exec {
@@ -92,7 +91,7 @@ const LINKED_PR_FIELDS = "number url state baseRefName headRefName headRepositor
 
 // Closing PRs come along, so a Board asks GitHub once per page of issues, not once per issue.
 const ISSUE_FIELDS = `
-        number title url body state
+        number title url state
         labels(first: 50) { nodes { name } }
         assignees(first: 20) { nodes { login } }
         blockedBy(first: 50) { nodes { number state repository { nameWithOwner } } }
@@ -149,7 +148,6 @@ interface IssueNode {
   number: number;
   title: string;
   url: string;
-  body: string;
   state: string;
   labels: { nodes: { name: string }[] };
   assignees: { nodes: { login: string }[] };
@@ -470,6 +468,11 @@ export class RealWorld implements World {
     return new Date();
   }
 
+  async notify(title: string, body: string) {
+    const result = await exec(["notify-send", "--app-name", "nico-agent", "--", title, body]);
+    if (result.exitCode !== 0) throw new WorldError(`\`notify-send\` failed: ${result.stderr.trim().split("\n")[0] || `exit code ${result.exitCode}`}`);
+  }
+
   async serve(address: Address, handler: RequestHandler) {
     try {
       // A Board asks GitHub per issue and can take longer than Bun's 10s default; 255s is Bun's maximum.
@@ -479,16 +482,6 @@ export class RealWorld implements World {
         throw new WorldError(`port ${address.port} is already in use`);
       }
       throw e;
-    }
-  }
-
-  async serveStdio(handler: LineHandler) {
-    const lines = createInterface({ input: process.stdin, crlfDelay: Infinity });
-    // One line at a time, so two `advance` calls never race each other.
-    for await (const line of lines) {
-      if (!line.trim()) continue;
-      const reply = await handler(line);
-      if (reply !== null) process.stdout.write(`${reply}\n`);
     }
   }
 }
@@ -510,7 +503,6 @@ function toIssue(node: IssueNode): GitHubIssue {
     number: node.number,
     title: node.title,
     url: node.url,
-    body: node.body ?? "",
     state: node.state === "OPEN" ? "open" : "closed",
     labels: node.labels.nodes.map((l) => l.name),
     assignees: node.assignees.nodes.map((a) => a.login),
