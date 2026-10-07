@@ -463,9 +463,9 @@ async function dispatchCommand(args: Args, ctx: RunContext): Promise<Output> {
 
 async function advanceCommand(args: Args, ctx: RunContext): Promise<Output> {
   const start = args.flags["--start"];
-  const { specs, errors, closed, help } = await advance(ctx.world, ctx.configDir, typeof start === "string" ? { start } : {});
+  const { specs, errors, closed, warnings, help } = await advance(ctx.world, ctx.configDir, typeof start === "string" ? { start } : {});
   return {
-    data: { specs, ...(errors.length && { errors }), ...(closed.length && { closed }) },
+    data: { specs, ...(errors.length && { errors }), ...(closed.length && { closed }), ...(warnings.length && { warnings }) },
     help: [...help, BOARD_HELP],
     exitCode: errors.length || specs.some((s) => s.result === "failed") ? 1 : 0,
   };
