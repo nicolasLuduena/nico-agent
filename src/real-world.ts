@@ -470,6 +470,11 @@ export class RealWorld implements World {
     return new Date();
   }
 
+  async notify(title: string, body: string) {
+    const result = await exec(["notify-send", "--app-name", "nico-agent", "--", title, body]);
+    if (result.exitCode !== 0) throw new WorldError(`\`notify-send\` failed: ${result.stderr.trim().split("\n")[0] || `exit code ${result.exitCode}`}`);
+  }
+
   async serve(address: Address, handler: RequestHandler) {
     try {
       // A Board asks GitHub per issue and can take longer than Bun's 10s default; 255s is Bun's maximum.

@@ -4,6 +4,7 @@ import { ConfigError, SCHEDULER_DEFAULTS, type SchedulerDefaults, loadConfig } f
 import { type DispatchRequest, StepFailed, checkLaunch, closeDispatch, dispatch } from "./dispatch";
 import { DispatchError, LaunchError } from "./dispatch-error";
 import { linearIdentifier } from "./linear";
+import { type Notice, notifyOnce } from "./notify";
 import type { RepoDecision, SpecDecision } from "./spec";
 import { type InFlightRow, freshPrs } from "./stage";
 import { type Dispatch, STEPS, loadDispatches } from "./state";
@@ -26,6 +27,8 @@ export interface AdvanceReport {
   errors: { repo: string; error: string }[];
   /** Dispatches Closed because their PR is ready. */
   closed: string[];
+  /** What went wrong without stopping the run, such as a notification that could not be sent. */
+  warnings: string[];
   help: string[];
 }
 
@@ -50,7 +53,7 @@ export interface AdvanceOptions {
  */
 export async function advance(world: World, configDir: string, { start }: AdvanceOptions = {}): Promise<AdvanceReport> {
   const launch = schedulerDefaults(configDir);
-  const report: AdvanceReport = { specs: [], errors: [], closed: [], help: [] };
+  const report: AdvanceReport = { specs: [], errors: [], closed: [], warnings: [], help: [] };
   const { repos } = loadConfig(configDir);
   if (!repos.length && start === undefined) return report;
   const dispatches = loadDispatches(configDir);
@@ -69,8 +72,48 @@ export async function advance(world: World, configDir: string, { start }: Advanc
     await closeDispatch(world, configDir, row.dispatch.issue, true);
     report.closed.push(row.dispatch.issue);
   }
+  report.warnings = await notifyOnce(world, configDir, [
+    ...notices(plans, report.specs, loadDispatches(configDir)),
+    ...askingNotices(board.inFlight, board.specs),
+  ]);
   return report;
 }
+
+/**
+ * What needs the user after this run: each Held Spec, and each failed
+ * Dispatch. A Spec Held by a Failed Dispatch is that failure, so the user
+ * hears of it once.
+ */
+function notices(plans: { spec: SpecDecision; plan: SpecPlan }[], rows: AdvanceRow[], dispatches: Dispatch[]): Notice[] {
+  const failedAt = (issue: string, fallback: string): Notice[] => {
+    const { step = "dispatch", error = fallback } = dispatches.find((d) => d.issue === issue)?.failure ?? {};
+    return [{ key: `failed ${issue} ${step}`, title: `${issue}'s Dispatch failed at ${step}`, body: `${error}\n${showHelp(issue)}` }];
+  };
+  const held = plans.flatMap(({ spec, plan }): Notice[] => {
+    if (!spec.held || plan.action !== "skip") return [];
+    const { issue, reason } = spec.held;
+    if (dispatches.some((d) => d.issue === issue && d.failure)) return failedAt(issue, reason);
+    return [{ key: `held ${spec.spec} ${issue} ${reason}`, title: `${spec.spec} is Held`, body: [reason, plan.help].filter(Boolean).join("\n") }];
+  });
+  const failed = rows.filter((r) => r.result === "failed").flatMap((r) => failedAt(r.issue, r.reason));
+  return [...held, ...failed];
+}
+
+/** Each Implementer waiting on the user, as herdr reported it before this run. */
+function askingNotices(inFlight: InFlightRow[], repos: RepoDecision[]): Notice[] {
+  const specs = repos.flatMap((r) => r.specs);
+  return inFlight.filter((row) => row.implementerState === "blocked").map(({ dispatch: { issue, implementer } }) => {
+    const spec = specs.find((s) => s.issues.includes(issue))?.spec;
+    const of = spec && spec !== issue ? ` (Spec ${spec})` : "";
+    return {
+      key: `asking ${issue}`,
+      title: `${issue} is Asking`,
+      body: `The Implementer of ${issue}${of} is waiting on you.\nAnswer it in herdr (agent ${implementer.agent}), or run \`nico-agent answer ${issue} <text>\``,
+    };
+  });
+}
+
+const showHelp = (issue: string) => `Run \`nico-agent show ${issue}\` to see the Dispatch`;
 
 /**
  * A Dispatch is done with its workspace once its PR is ready and its

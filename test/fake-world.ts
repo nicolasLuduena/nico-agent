@@ -396,6 +396,14 @@ export class FakeWorld implements World {
     return this.clock;
   }
 
+  /** Desktop notifications shown, in order. */
+  notifications: { title: string; body: string }[] = [];
+
+  async notify(title: string, body: string) {
+    this.call(`notify ${title}`);
+    this.notifications.push({ title, body });
+  }
+
   async serve(address: Address, handler: RequestHandler) {
     this.calls.push(`serve ${address.hostname}:${address.port}`);
     if (this.serveFailure) throw new WorldError(this.serveFailure);

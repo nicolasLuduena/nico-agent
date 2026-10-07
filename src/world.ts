@@ -96,6 +96,8 @@ export interface World {
   processId(): number;
   processAlive(pid: number): boolean;
   now(): Date;
+  /** Show the user a desktop notification. */
+  notify(title: string, body: string): Promise<void>;
   /** Start answering HTTP requests on `hostname:port`; resolves once listening. */
   serve(address: Address, handler: RequestHandler): Promise<void>;
   /**
