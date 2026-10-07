@@ -1,6 +1,6 @@
 import { LinearSource } from "./linear";
 import { realpathSync } from "node:fs";
-import type { Address, GitHubIssue, GitHubSubIssue, PullRequest, RequestHandler, World } from "./world";
+import type { Address, GitHubIssue, IssueDescription, GitHubSubIssue, PullRequest, RequestHandler, World } from "./world";
 import { READY_LABEL, WorldError } from "./world";
 
 interface Exec {
@@ -185,6 +185,7 @@ export class RealWorld implements World {
   linearViewer() { return this.linear.viewer(); }
   linearIssues(team: string) { return this.linear.issues(team); }
   linearIssue(identifier: string) { return this.linear.issue(identifier); }
+  linearIssueDescription(identifier: string) { return this.linear.description(identifier); }
   linearSubIssues(identifier: string) { return this.linear.subIssues(identifier); }
   linearAttachmentUrls(identifier: string) { return this.linear.attachmentUrls(identifier); }
   linearAssignSelf(identifier: string) { return this.linear.assignSelf(identifier); }
@@ -242,6 +243,16 @@ export class RealWorld implements World {
     }
     if (repository.issue) this.rememberLinked(slug, repository.issue);
     return repository.issue ? toIssue(repository.issue) : null;
+  }
+
+  async githubIssueDescription(slug: string, number: number): Promise<IssueDescription | null> {
+    const result = await exec(["gh", "api", `repos/${slug}/issues/${number}`], GH_ENV);
+    if (result.exitCode !== 0) {
+      if (/HTTP 404/i.test(result.stderr)) return null;
+      throw ghFailure(result.stderr);
+    }
+    const issue: { title: string; body: string | null; labels: { name: string }[] } = JSON.parse(result.stdout);
+    return { title: issue.title, labels: issue.labels.map((l) => l.name), body: issue.body ?? "" };
   }
 
   async githubSubIssues(slug: string, number: number) {

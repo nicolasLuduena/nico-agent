@@ -1,7 +1,7 @@
 import { readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { defaultConfigDir } from "./config";
-import { type LinearIssue, WorldError } from "./world";
+import { type IssueDescription, type LinearIssue, WorldError } from "./world";
 
 /** A Linear identifier, whether supplied directly or in a Linear issue URL. */
 export function linearIdentifier(ref: string): string | null {
@@ -66,6 +66,14 @@ export class LinearSource {
   async issue(identifier: string): Promise<LinearIssue | null> {
     const data = await this.queryOrNotFound<{ issue: IssueNode | null }>(ISSUE_QUERY, { id: identifier });
     return data?.issue ? this.toIssue(data.issue) : null;
+  }
+
+  async description(identifier: string): Promise<IssueDescription | null> {
+    const data = await this.queryOrNotFound<{ issue: { title: string; description: string | null; labels: { nodes: { name: string }[] } } | null }>(
+      "query($id: String!) { issue(id: $id) { title description labels(first: 50) { nodes { name } } } }", { id: identifier },
+    );
+    const issue = data?.issue;
+    return issue ? { title: issue.title, labels: issue.labels.nodes.map((l) => l.name), body: issue.description ?? "" } : null;
   }
 
   async attachmentUrls(identifier: string): Promise<string[]> {

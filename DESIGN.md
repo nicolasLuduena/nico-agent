@@ -300,6 +300,11 @@ Corners are small and functional: 3px for chips, counts, inline code, and the bl
 ### Icons
 - Icons are authored inline SVG in the brand glyph's stroke language: no fill, a `currentColor` stroke (1.2 at 11px), and round caps, so they take their container's ink. The branch mark in the Base chip is the reference.
 
+### Issue Card
+- **Trigger:** resting the pointer on any issue or Spec title link for 400ms, or focusing it with the keyboard. It stays while the pointer is on the card, so a long description can be scrolled, and hides 200ms after leaving both, on Escape, or on scroll.
+- **Style:** one fixed, raised panel (rule-strong border, 6px corners, a soft drop shadow, the only one besides the Ambient panel), up to 480px wide and 440px tall, placed under the link (or over it near the bottom of the window). 13px body text.
+- **Content:** the issue's key in mono and its title at 600; its labels as 11px/600 muted pills; then the start of its description as Markdown (headings at 13px/650, code on panel-2, tables with rule borders), cut at a paragraph after about a screen of text with a 12px/600 "Read the rest" link to the issue. Raw HTML in a description is shown as text and images as their alt text in muted italics, so nothing an issue says can act on the Board. "No description." in muted text when there is none.
+
 ### Spec Group and Room Readout
 - **Room readout:** right-aligned in a Repo header, a row of slots (10×6px, 1px corners), one per Spec that may run, filled in muted ink while one runs and outlined while free. Beside it, Running, Room, Candidates and Queue in 12px muted labels with 650-weight ink counts, then, while the Queue is not empty, the queued Specs in start order: a compact inline list of Spec keys in ink, each numbered from the head (`1. BLE-30  2. BLE-20`) in muted tabular figures. It wraps under the slug below 760px.
 - **Queue controls:** at the right end of a candidate Spec's heading (or a candidate Spec of one's row). Unqueued, a lone **Queue** button. Queued, a 12px/650 ink "Queued n of m" (its place, head first, and the Queue's length), an **Unqueue** button, then ↑ and ↓ buttons to swap it with its neighbour toward the head or the tail; neither shows at its end of the Queue. Each control posts and swaps in the Repo's section alone, keeping open launch forms.

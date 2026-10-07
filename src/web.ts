@@ -8,7 +8,9 @@ import { DispatchError } from "./dispatch-error";
 import { type Catalog, type Remembered, harnessCatalogs, refreshHarnesses, rememberedLaunches } from "./harness";
 import { type InFlightRow, type PrLookup, cachedPrs, loadInFlight } from "./stage";
 import { type Dispatch, type Launch, findDispatch, loadDispatches } from "./state";
+import { escape } from "./html";
 import { plural } from "./output";
+import { type PreviewLookup, cachedPreviews } from "./preview";
 import { type Queues, dequeue, enqueue, move, pruneBoardQueues, queueOf } from "./queue";
 import { sameSlug } from "./slug";
 import { type PullRequest, type World, WorldError } from "./world";
@@ -23,7 +25,8 @@ const HTML_HEADERS = { "content-type": "text/html; charset=utf-8" };
 /** The web app: server-rendered pages over the same core operations as the CLI. */
 export function webHandler(context: WebContext) {
   // One cache for the server's life, so polling the In-flight section asks GitHub only every ~30s.
-  const ctx: ServerContext = { ...context, prs: cachedPrs(context.world) };
+  // Likewise hovering an issue again shows its card without asking its Source.
+  const ctx: ServerContext = { ...context, prs: cachedPrs(context.world), previews: cachedPreviews(context.world) };
   return async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
     const { pathname } = url;
@@ -47,6 +50,7 @@ export function webHandler(context: WebContext) {
       if (pathname === "/action-bar") return await getActionBar(ctx, url.searchParams);
       if (pathname === "/batch-form") return await getBatchForm(ctx, url.searchParams);
       if (pathname === "/batch-row") return await getBatchRow(ctx, url.searchParams);
+      if (pathname === "/preview") return await getPreview(ctx, url.searchParams);
       if (pathname !== "/") return new Response(page("Not found", `<p class="error">No page at ${escape(pathname)}</p>`), { status: 404, headers: HTML_HEADERS });
       return await getBoard(ctx);
     } catch (e) {
@@ -107,6 +111,7 @@ function closeForm(issues: string[], confirm = false) {
 
 interface ServerContext extends WebContext {
   prs: PrLookup;
+  previews: PreviewLookup;
 }
 
 async function getBoard(ctx: ServerContext) {
@@ -174,6 +179,13 @@ async function queueAnswer(ctx: ServerContext, request: Request, repo: Repo) {
 }
 
 /** The In-flight section alone, for the Board to poll. */
+/** An issue's hover card, by its URL, as the Board's links carry it. */
+async function getPreview(ctx: ServerContext, params: URLSearchParams) {
+  const card = await ctx.previews(params.get("url") ?? "");
+  if (card === null) return new Response('<div class="card"><p class="error">Not a GitHub or Linear issue URL</p></div>', { status: 400, headers: HTML_HEADERS });
+  return new Response(card, { headers: HTML_HEADERS });
+}
+
 async function getInFlight(ctx: ServerContext) {
   const rows = await loadInFlight(ctx.world, loadDispatches(ctx.configDir), ctx.prs);
   const choices = await choicesFor(ctx, rows.some(canLaunchReview));
@@ -950,6 +962,7 @@ ${tools}
 ${main}
 </main>
 <script>${LINK_TRACKS}</script>
+<script>${PREVIEW_CARDS}</script>
 </body>
 </html>
 `;
@@ -957,6 +970,65 @@ ${main}
 
 /** The brand: a detector seen end-on, one track leaving the vertex. */
 const GLYPH = '<svg class="glyph" viewBox="-12 -12 24 24" aria-hidden="true"><circle r="4.5"/><circle r="8"/><circle r="11"/><path class="trail" d="M0 0 Q4 -1 8.5 -7"/></svg>';
+
+/**
+ * Resting on an issue's link (or focusing it) shows its card: key, title,
+ * labels and the start of its description, fetched once and kept for the
+ * page's life. The card stays while the pointer is on it, so it can be read
+ * and scrolled; leaving both, or Escape, hides it.
+ */
+const PREVIEW_CARDS = `
+const preview = document.createElement("aside");
+preview.className = "preview";
+preview.hidden = true;
+document.body.append(preview);
+const cards = new Map();
+let shownFor = null, showing = null, hiding = null;
+const cardFor = (url) => {
+  if (!cards.has(url)) cards.set(url, fetch("/preview?url=" + encodeURIComponent(url)).then((r) => r.text()).catch(() => '<div class="card"><p class="error">Could not load the preview</p></div>'));
+  return cards.get(url);
+};
+const place = (link) => {
+  const at = link.getBoundingClientRect();
+  const width = Math.min(480, innerWidth - 16);
+  preview.style.width = width + "px";
+  preview.style.left = Math.max(8, Math.min(at.left, innerWidth - width - 8)) + "px";
+  const below = innerHeight - at.bottom, above = at.top;
+  preview.style.maxHeight = Math.max(160, Math.min(440, (below > 240 || below > above ? below : above) - 16)) + "px";
+  if (below > 240 || below > above) { preview.style.top = at.bottom + 6 + "px"; preview.style.bottom = "auto"; }
+  else { preview.style.bottom = innerHeight - at.top + 6 + "px"; preview.style.top = "auto"; }
+};
+const show = async (link) => {
+  shownFor = link;
+  const html = await cardFor(link.href);
+  if (shownFor !== link || !link.isConnected) return;
+  preview.innerHTML = html;
+  preview.scrollTop = 0;
+  place(link);
+  preview.hidden = false;
+};
+const hide = () => { shownFor = null; preview.hidden = true; };
+const linkOf = (e) => e.target.closest?.("a.title");
+const enter = (link, delay) => {
+  clearTimeout(hiding);
+  if (link === shownFor) return;
+  clearTimeout(showing);
+  showing = setTimeout(() => show(link), delay);
+};
+const leave = () => { clearTimeout(showing); clearTimeout(hiding); hiding = setTimeout(hide, 200); };
+document.addEventListener("mouseover", (e) => {
+  const link = linkOf(e);
+  if (link) enter(link, 400);
+  else if (e.target.closest?.("aside.preview")) clearTimeout(hiding);
+});
+document.addEventListener("mouseout", (e) => {
+  if (linkOf(e) || e.target.closest?.("aside.preview")) leave();
+});
+document.addEventListener("focusin", (e) => { const link = linkOf(e); if (link) enter(link, 0); });
+document.addEventListener("focusout", (e) => { if (linkOf(e)) leave(); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") hide(); });
+addEventListener("scroll", hide, { passive: true });
+`;
 
 /** Hovering a track lights its row and the reverse; clicking a track brings its row into view. */
 const LINK_TRACKS = `
@@ -1202,6 +1274,30 @@ a.pr { font-size: 12px; font-weight: 600; white-space: nowrap; }
 .agent.unknown i { border-style: dashed; }
 .agent.blocked { color: var(--blocked-ink); background: var(--blocked); border-radius: 3px; padding: 0 0.45rem; font-weight: 650; }
 .agent.blocked i { border-color: var(--blocked-ink); background: var(--blocked-ink); }
+/* An issue's card, shown on resting on its link: a raised panel over the Board. */
+aside.preview { position: fixed; z-index: 10; overflow: auto; background: var(--panel); border: 1px solid var(--rule-strong); border-radius: 6px; box-shadow: 0 8px 28px -8px rgb(17 21 27 / 0.28); padding: 0.75rem 0.9rem; font-size: 13px; line-height: 1.45; }
+aside.preview[hidden] { display: none; }
+.card > p { margin: 0 0 0.4rem; }
+.card .card-title { font-weight: 600; }
+.card .labels { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.card .label { font-size: 11px; font-weight: 600; color: var(--ink-2); border: 1px solid var(--rule-strong); border-radius: 999px; padding: 0 0.45rem; line-height: 18px; }
+.card .empty { padding: 0; }
+.card .markdown { color: var(--ink); overflow-wrap: anywhere; }
+.card .markdown > :first-child { margin-top: 0; }
+.card .markdown :is(h1, h2, h3, h4) { font-size: 13px; font-weight: 650; margin: 0.8rem 0 0.3rem; }
+.card .markdown :is(p, ul, ol, pre, table, blockquote) { margin: 0 0 0.5rem; }
+.card .markdown :is(ul, ol) { padding-left: 1.2rem; }
+.card .markdown li { border: none; }
+.card .markdown li.task-list-item { list-style: none; margin-left: -1.2rem; }
+.card .markdown pre { background: var(--panel-2); padding: 0.5rem; border-radius: 4px; overflow: auto; }
+.card .markdown pre code { padding: 0; background: none; }
+.card .markdown blockquote { margin-left: 0; padding-left: 0.6rem; border-left: 2px solid var(--rule-strong); color: var(--ink-2); }
+.card .markdown table { border-collapse: collapse; }
+.card .markdown :is(th, td) { border: 1px solid var(--rule); padding: 0.15rem 0.4rem; }
+.card .image { color: var(--ink-2); font-style: italic; }
+.card .image::before { content: "[image: "; }
+.card .image::after { content: "]"; }
+.card a.more { font-size: 12px; font-weight: 600; }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 
 main > ul { list-style: none; padding: 0; margin: 0 0 1rem; background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; }
@@ -1240,8 +1336,4 @@ fieldset.row legend { float: left; margin-right: auto; font: 600 13px ui-monospa
 }
 `;
 
-const ENTITIES: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
 
-function escape(text: string) {
-  return text.replace(/[&<>"']/g, (c) => ENTITIES[c]!);
-}

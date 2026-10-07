@@ -17,6 +17,8 @@ export interface World {
    * of work when the issue is a Spec. Empty for an issue without any.
    */
   linearSubIssues(identifier: string): Promise<LinearIssue[]>;
+  /** A Linear issue's title, labels and description, or null if there is no such issue. */
+  linearIssueDescription(identifier: string): Promise<IssueDescription | null>;
   /** The URLs of a Linear issue's attachments, GitHub PRs among them. */
   linearAttachmentUrls(identifier: string): Promise<string[]>;
   /** Assign a Linear issue to the API key's owner (the Claim, ADR-0007). */
@@ -28,6 +30,8 @@ export interface World {
   githubIssues(slug: string): Promise<GitHubIssue[]>;
   /** One issue of a GitHub repo, or null if there is no such issue. */
   githubIssue(slug: string, number: number): Promise<GitHubIssue | null>;
+  /** A GitHub issue's title, labels and description, or null if there is no such issue. */
+  githubIssueDescription(slug: string, number: number): Promise<IssueDescription | null>;
   /**
    * A GitHub issue's native sub-issues, in sub-issue order: the order of work
    * when the issue is a Spec. Empty for an issue without any.
@@ -125,6 +129,14 @@ export interface GitHubIssue {
 
 /** A sub-issue, with the repo it lives in, which may differ from its parent's. */
 export type GitHubSubIssue = GitHubIssue & { slug: string };
+
+/** What an issue says about itself, for a person deciding what to work on. */
+export interface IssueDescription {
+  title: string;
+  labels: string[];
+  /** The description as written, in Markdown; empty without one. */
+  body: string;
+}
 
 export interface PullRequest {
   /** `owner/name` of the repo the PR is in. */

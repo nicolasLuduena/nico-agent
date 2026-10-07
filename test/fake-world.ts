@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import type { Address, LinearIssue, GitHubIssue, GitHubSubIssue, PullRequest, RequestHandler, World } from "../src/world";
+import type { Address, IssueDescription, LinearIssue, GitHubIssue, GitHubSubIssue, PullRequest, RequestHandler, World } from "../src/world";
 import { WorldError } from "../src/world";
 
 export class FakeWorld implements World {
@@ -56,6 +56,8 @@ export class FakeWorld implements World {
   linearAttachments = new Map<string, string[]>();
   /** Identifiers each `linearAssignSelf` assigned. */
   linearClaimed: string[] = [];
+  /** Each issue's description, by `slug#N` or Linear identifier; empty when unset. */
+  descriptions = new Map<string, string>();
   /** PRs `githubPullRequest` finds, by `slug#N`, besides linked ones. */
   prs = new Map<string, PullRequest>();
 
@@ -63,6 +65,13 @@ export class FakeWorld implements World {
     this.call(`linear issue ${identifier}`);
     if (this.linearFailure) throw new WorldError(this.linearFailure);
     return [...this.linear.values()].flat().find((i) => i.identifier === identifier) ?? null;
+  }
+
+  async linearIssueDescription(identifier: string): Promise<IssueDescription | null> {
+    this.call(`linear issue description ${identifier}`);
+    if (this.linearFailure) throw new WorldError(this.linearFailure);
+    const issue = [...this.linear.values()].flat().find((i) => i.identifier === identifier);
+    return issue ? { title: issue.title, labels: issue.labels, body: this.descriptions.get(identifier) ?? "" } : null;
   }
 
   async linearAttachmentUrls(identifier: string) {
@@ -267,6 +276,12 @@ export class FakeWorld implements World {
   async githubIssue(slug: string, number: number) {
     this.calls.push(`github issue ${slug}#${number}`);
     return this.issues.get(slug)?.find((i) => i.number === number) ?? null;
+  }
+
+  async githubIssueDescription(slug: string, number: number): Promise<IssueDescription | null> {
+    this.call(`github issue description ${slug}#${number}`);
+    const issue = this.issues.get(slug)?.find((i) => i.number === number);
+    return issue ? { title: issue.title, labels: issue.labels, body: this.descriptions.get(`${slug}#${number}`) ?? "" } : null;
   }
 
   async githubLinkedPullRequests(slug: string, number: number) {
