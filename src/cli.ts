@@ -146,7 +146,7 @@ const commands: Command[] = [
   {
     name: "advance",
     usage: "nico-agent advance",
-    summary: "Dispatch each running Spec's next issue with the Scheduler defaults from config (skips Held Specs)",
+    summary: "Dispatch each running Spec's next issue and start the head of each Repo's Queue while it has room, with the Scheduler defaults from config (skips Held Specs)",
     flags: {
       "--start": { value: true, description: "candidate Spec to start too, named as on the Board; refused unless its Repo has room" },
     },

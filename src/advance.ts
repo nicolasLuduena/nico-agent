@@ -4,6 +4,7 @@ import { ConfigError, SCHEDULER_DEFAULTS, type SchedulerDefaults, loadConfig } f
 import { type DispatchRequest, StepFailed, checkLaunch, closeDispatch, dispatch } from "./dispatch";
 import { DispatchError, LaunchError } from "./dispatch-error";
 import { linearIdentifier } from "./linear";
+import { type Queues, dequeue, pruneBoardQueues, queueOf } from "./queue";
 import type { RepoDecision, SpecDecision } from "./spec";
 import { type InFlightRow, freshPrs } from "./stage";
 import { type Dispatch, STEPS, loadDispatches } from "./state";
@@ -57,19 +58,43 @@ export async function advance(world: World, configDir: string, { start }: Advanc
   const board = await loadBoard(world, repos, dispatches, freshPrs(world));
   report.errors = board.errors.filter((e) => e.source !== "git").map(({ repo, error }) => ({ repo, error }));
   const started = start === undefined ? undefined : startable(board.specs, start);
+  const queued = fromQueues(await pruneBoardQueues(configDir, board), board.specs, started);
   // A Spec waiting on another Spec's merges frees its slot, but is still reported.
   const plans = board.specs.flatMap((r) => r.specs).filter((s) => s.running || s.waiting || s === started)
-    .map((spec) => ({ spec, plan: planSpec(spec, dispatches) }));
+    .map((spec) => ({ spec, plan: planSpec(spec, dispatches) }))
+    .concat(queued.map((spec) => ({ spec, plan: fromQueue(planSpec(spec, dispatches), spec) })));
   if (plans.some(({ plan }) => plan.action === "start")) await checkDefaults(world, configDir, launch);
   for (const { spec, plan } of plans) {
     const row = await carryOut(world, configDir, launch, spec, plan, report.help);
     if (row) report.specs.push(row);
+    // Started, or Held by its failed start: either way no longer a candidate.
+    if (queued.includes(spec) && (row?.result === "started" || row?.result === "failed")) await dequeue(configDir, spec.repo, spec.spec);
   }
   for (const row of board.inFlight.filter(prunable)) {
     await closeDispatch(world, configDir, row.dispatch.issue, true);
     report.closed.push(row.dispatch.issue);
   }
   return report;
+}
+
+/**
+ * The queued Specs each Repo has room for, head first: room is counted before
+ * the run, and each start takes one slot, `started` too. Every queued Spec is
+ * a candidate, as the Queues were just pruned.
+ */
+function fromQueues(queues: Queues, repos: RepoDecision[], started: SpecDecision | undefined): SpecDecision[] {
+  return repos.flatMap((repo) => {
+    const room = repo.room - (started?.repo === repo.repo ? 1 : 0);
+    return queueOf(queues, repo.repo)
+      .map((name) => repo.specs.find((s) => s.spec.toLowerCase() === name.toLowerCase()))
+      .filter((s): s is SpecDecision => s !== undefined && s !== started)
+      .slice(0, Math.max(0, room));
+  });
+}
+
+/** A queued Spec's start says it came from the Queue. */
+function fromQueue(plan: SpecPlan, spec: SpecDecision): SpecPlan {
+  return plan.action === "start" ? { ...plan, reason: `${spec.spec} is the head of the Queue; ${plan.reason}` } : plan;
 }
 
 /**

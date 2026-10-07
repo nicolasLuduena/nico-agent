@@ -161,9 +161,14 @@ function write(dir: string, state: StateFile) {
 }
 
 /** Run `fn` holding an exclusive lock file shared by the CLI and a running server. */
-async function withLock<T>(dir: string, fn: () => T): Promise<T> {
+function withLock<T>(dir: string, fn: () => T): Promise<T> {
+  return withFileLock(dir, FILE, fn);
+}
+
+/** Run `fn` holding the exclusive lock on `file` in `dir`, shared by the CLI and a running server. */
+export async function withFileLock<T>(dir: string, file: string, fn: () => T): Promise<T> {
   mkdirSync(dir, { recursive: true });
-  const lock = join(dir, `${FILE}.lock`);
+  const lock = join(dir, `${file}.lock`);
   const deadline = Date.now() + LOCK_TIMEOUT_MS;
   for (;;) {
     try {

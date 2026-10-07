@@ -9,6 +9,7 @@ import { type Catalog, type Remembered, harnessCatalogs, refreshHarnesses, remem
 import { type InFlightRow, type PrLookup, cachedPrs, loadInFlight } from "./stage";
 import { type Dispatch, type Launch, findDispatch, loadDispatches } from "./state";
 import { plural } from "./output";
+import { type Queues, dequeue, enqueue, pruneBoardQueues, queueOf } from "./queue";
 import { sameSlug } from "./slug";
 import { type PullRequest, type World, WorldError } from "./world";
 
@@ -33,6 +34,8 @@ export function webHandler(context: WebContext) {
       if (pathname === "/batch/review" && request.method === "POST") return await postBatch(ctx, request, "review");
       if (pathname === "/close" && request.method === "POST") return await postClose(ctx, request);
       if (pathname === "/harnesses/refresh" && request.method === "POST") return await postRefresh(ctx);
+      if (pathname === "/queue" && request.method === "POST") return await postQueue(ctx, request, "queue");
+      if (pathname === "/unqueue" && request.method === "POST") return await postQueue(ctx, request, "unqueue");
       if (request.method !== "GET") return new Response("Method Not Allowed\n", { status: 405 });
       if (pathname === "/htmx.min.js") {
         return new Response(htmx, { headers: { "content-type": "text/javascript; charset=utf-8" } });
@@ -107,11 +110,44 @@ interface ServerContext extends WebContext {
 
 async function getBoard(ctx: ServerContext) {
   const { repos } = loadConfig(ctx.configDir);
+  const { board, queues, choices } = await loadRendered(ctx, repos);
+  return new Response(page("Board", renderBoard(repos, board, choices, queues), repos.length ? REFRESH : ""), { headers: HTML_HEADERS });
+}
+
+/** The Board to render, its Queues pruned of Specs that are no longer candidates, and the launch choices it needs. */
+async function loadRendered(ctx: ServerContext, repos: Repo[]) {
   const board = await loadBoard(ctx.world, repos, loadDispatches(ctx.configDir), ctx.prs, rememberedLaunches(ctx.configDir).bases);
+  const queues = await pruneBoardQueues(ctx.configDir, board);
   // Discovery may run a Harness's CLI, so only when there is something to launch.
   const launchable = board.ready.length > 0 || board.stackable.length > 0 || board.inFlight.some(canLaunchReview);
-  const choices = await choicesFor(ctx, launchable);
-  return new Response(page("Board", renderBoard(repos, board, choices), repos.length ? REFRESH : ""), { headers: HTML_HEADERS });
+  return { board, queues, choices: await choicesFor(ctx, launchable) };
+}
+
+/**
+ * Queue or unqueue a Spec of a Repo. htmx gets the Repo's section back to swap
+ * in, its launch forms preserved; a plain form post goes back to the Board.
+ */
+async function postQueue(ctx: ServerContext, request: Request, change: "queue" | "unqueue") {
+  const form = await request.formData();
+  const spec = String(form.get("spec") ?? "");
+  const config = loadConfig(ctx.configDir);
+  const repo = findRepo(config, String(form.get("repo") ?? ""));
+  const bad = (message: string) => new WebFailure("Bad request", message, ["Queue a candidate Spec from its Repo on the Board"], 400);
+  if (!repo) throw bad(`\`${String(form.get("repo") ?? "")}\` is not a configured Repo`);
+  if (!spec) throw bad("no Spec was named");
+  if (change === "queue") {
+    const board = await loadBoard(ctx.world, [repo], loadDispatches(ctx.configDir), ctx.prs);
+    const decision = board.specs.find((d) => d.repo === repo.slug);
+    if (!decision?.candidates.some((c) => c.toLowerCase() === spec.toLowerCase())) {
+      throw new WebFailure("Not queued", `${spec} is not a candidate Spec of ${repo.slug}`, ["Only a candidate Spec, not started, not Held and with a Ready first issue, can be queued"], 409);
+    }
+    await enqueue(ctx.configDir, repo.slug, spec);
+  } else {
+    await dequeue(ctx.configDir, repo.slug, spec);
+  }
+  if (request.headers.get("hx-request") !== "true") return new Response(null, { status: 303, headers: { location: "/" } });
+  const { board, queues, choices } = await loadRendered(ctx, [repo]);
+  return new Response(renderRepo(repo, board, choices, queueOf(queues, repo.slug)), { headers: HTML_HEADERS });
 }
 
 /** The In-flight section alone, for the Board to poll. */
@@ -202,12 +238,12 @@ function failureOf(e: unknown): { title: string; message: string; help: string[]
   return null;
 }
 
-function renderBoard(repos: Repo[], board: Board, choices: Choices) {
+function renderBoard(repos: Repo[], board: Board, choices: Choices, queues: Queues) {
   if (repos.length === 0) {
     return '<p class="empty">No Repos configured. Run <code>nico-agent repo add &lt;owner/name&gt; --path &lt;clone&gt;</code> to add one.</p>';
   }
   const warnings = choices.catalogs.flatMap((c) => (c.error ? [`<p class="warning">${escape(c.error)}</p>`] : []));
-  const sections = repos.map((repo) => renderRepo(repo, board, choices));
+  const sections = repos.map((repo) => renderRepo(repo, board, choices, queueOf(queues, repo.slug)));
   return [...warnings, renderEvent(board.inFlight), actionBar({ dispatch: 0, review: 0, close: 0 }), renderInFlight(board.inFlight, choices), ...sections].join("\n");
 }
 
@@ -406,7 +442,7 @@ function renderInFlightRow(row: InFlightRow, choices: Choices) {
   const failure = d.failure ?? d.reviewer?.failure;
   const head = [
     // Preserved across polls, so a ticked row stays ticked.
-    pick(d.issue, true),
+    pick(d.issue, "pick"),
     // The Repo's name is enough to tell issues apart; the owner is in the link.
     issueLink(d.issue.slice(d.issue.indexOf("/") + 1), d.title, d.url),
     stageKey(row),
@@ -454,7 +490,7 @@ function agentState(role: string, state: string) {
   return `<span class="agent ${escape(state)}"><i></i>${role} ${escape(state)}</span>`;
 }
 
-function renderRepo(repo: Repo, board: Board, choices: Choices) {
+function renderRepo(repo: Repo, board: Board, choices: Choices, queue: string[]) {
   const errors = board.errors.filter((e) => e.repo === repo.slug)
     .map((e) => `<p class="error">Could not load: ${e.source ? `${e.source}: ` : ""}${escape(e.error)}</p>`);
   const ready = board.ready.filter((i) => i.repo === repo.slug);
@@ -463,13 +499,19 @@ function renderRepo(repo: Repo, board: Board, choices: Choices) {
   const groups = decision ? groupsOf(decision) : [];
   const grouped = new Set(groups.flatMap((s) => s.issues));
   const list = (rows: string[]) => ['<ul class="issues">', ...rows, "</ul>"].join("\n");
-  const readyRow = (i: BoardIssue) => i.identifier
+  // Preserved when htmx swaps the section, so a choice in progress isn't reset.
+  const form = (issue: string, chosen: Chosen, stack: StackOption[], base?: BaseChoice) =>
+    `<div id="${escape(`dispatch-${repo.slug}-${issue}`.replace(/[^\w-]/g, "-"))}" hx-preserve="true">\n${launchForm("dispatch", issue, choices, chosen, stack, base)}\n</div>`;
+  const readyRow = (i: BoardIssue, control = "") => i.identifier
     // No tick box: a batch row can't name the Repo of an issue several Repos claim.
-    ? `<li>${issueLink(i.identifier, i.title, i.url)}${i.base ? baseChip(i.base) : ""}\n${launchForm("dispatch", i.identifier, choices, { repo: repo.slug }, [], board.bases[i.repo])}</li>`
-    : `<li>${pick(boardKey(i))}${issueLink(`#${i.number}`, i.title, i.url)}\n${launchForm("dispatch", boardKey(i), choices, {}, [], board.bases[i.repo])}</li>`;
+    ? `<li>${issueLink(i.identifier, i.title, i.url)}${i.base ? baseChip(i.base) : ""}${control}\n${form(i.identifier, { repo: repo.slug }, [], board.bases[i.repo])}</li>`
+    : `<li>${pick(boardKey(i), "ready")}${issueLink(`#${i.number}`, i.title, i.url)}${control}\n${form(boardKey(i), {}, [], board.bases[i.repo])}</li>`;
   const stackRow = (i: StackableIssue) => i.identifier
-    ? `<li>${issueLink(i.identifier, i.title, i.url)}\n${launchForm("dispatch", i.identifier, choices, { repo: repo.slug }, i.blockers)}</li>`
-    : `<li>${pick(boardKey(i))}${issueLink(`#${i.number}`, i.title, i.url)}\n${launchForm("dispatch", boardKey(i), choices, {}, i.blockers)}</li>`;
+    ? `<li>${issueLink(i.identifier, i.title, i.url)}\n${form(i.identifier, { repo: repo.slug }, i.blockers)}</li>`
+    : `<li>${pick(boardKey(i), "ready")}${issueLink(`#${i.number}`, i.title, i.url)}\n${form(boardKey(i), {}, i.blockers)}</li>`;
+  const isCandidate = (spec: string) => decision?.candidates.includes(spec) ?? false;
+  // A candidate Spec of one is its own row, so its Queue control sits there.
+  const looseRow = (i: BoardIssue) => readyRow(i, isCandidate(boardKey(i)) ? queueControl(repo.slug, boardKey(i), queue) : "");
   // An issue's row sits under its Spec; the rest are Specs of one, listed as before.
   const looseReady = ready.filter((i) => !grouped.has(boardKey(i)));
   const looseStackable = stackable.filter((i) => !grouped.has(boardKey(i)));
@@ -484,15 +526,15 @@ function renderRepo(repo: Repo, board: Board, choices: Choices) {
     return s ? [stackRow(s)] : [];
   });
   const specSections = groups.map((spec) =>
-    renderSpec(spec, specState(spec, decision!), rowsOf(spec), flightOf(spec.spec), repo.slug));
+    renderSpec(spec, specState(spec, decision!), rowsOf(spec), flightOf(spec.spec), repo.slug, isCandidate(spec.spec) ? queueControl(repo.slug, spec.spec, queue) : ""));
   return [
     '<section class="repo">',
-    `<header><h2>${escape(repo.slug)}</h2><span class="count">${ready.length + stackable.length}</span>${decision ? roomReadout(decision) : ""}</header>`,
+    `<header><h2>${escape(repo.slug)}</h2><span class="count">${ready.length + stackable.length}</span>${decision ? roomReadout(decision, queue) : ""}</header>`,
     ...errors,
     errors.length || ready.length ? "" : '<p class="empty">No Ready issues.</p>',
     ...specSections,
     ...(looseReady.length && specSections.length ? ["<h3>Specs of one</h3>"] : []),
-    looseReady.length ? list(looseReady.map(readyRow)) : "",
+    looseReady.length ? list(looseReady.map(looseRow)) : "",
     ...(looseStackable.length ? ["<h3>Stackable</h3>", list(looseStackable.map(stackRow))] : []),
     "</section>",
   ].filter(Boolean).join("\n");
@@ -531,20 +573,20 @@ function specState(spec: SpecDecision, decision: RepoDecision): SpecState {
 }
 
 /** The Repo's Specs as the Scheduler sees them: a slot per Spec that may run, filled while one does. */
-function roomReadout({ repo, specs, room, candidates }: RepoDecision) {
+function roomReadout({ repo, specs, room, candidates }: RepoDecision, queue: string[]) {
   const running = specs.filter((s) => s.running).length;
   const slots = [...Array(running).fill('<i class="taken"></i>'), ...Array(room).fill("<i></i>")].join("");
   const figure = (label: string, n: number) => `<span>${label} <b>${n}</b></span>`;
   return [
     `<div class="room" role="group" aria-label="Specs of ${escape(repo)}">`,
     `<span class="slots" aria-hidden="true">${slots}</span>`,
-    figure("Running", running), figure("Room", room), figure("Candidates", candidates.length),
+    figure("Running", running), figure("Room", room), figure("Candidates", candidates.length), figure("Queue", queue.length),
     "</div>",
   ].join("");
 }
 
 /** A Spec's group: its state, what it does next or why not, and its issues' rows in sub-issue order. */
-function renderSpec(spec: SpecDecision, state: SpecState, rows: string[], ownFlight: InFlightRow | undefined, repo: string) {
+function renderSpec(spec: SpecDecision, state: SpecState, rows: string[], ownFlight: InFlightRow | undefined, repo: string, control: string) {
   const note = spec.held?.reason ?? spec.waiting?.reason ?? spec.next?.reason ?? spec.reason ??
     (state === "not-startable" ? "None of its issues is Ready" : undefined);
   const key = repoKey(spec.spec, repo);
@@ -552,11 +594,27 @@ function renderSpec(spec: SpecDecision, state: SpecState, rows: string[], ownFli
   return [
     `<div class="spec ${state}">`,
     // A Spec of one In flight is its own issue, so its Stage sits in its heading.
-    `<header><span class="spec-state">${SPEC_STATES[state]}</span>${title}${ownFlight ? stageKey(ownFlight) : ""}</header>`,
+    `<header><span class="spec-state">${SPEC_STATES[state]}</span>${title}${ownFlight ? stageKey(ownFlight) : ""}${control}</header>`,
     ...(note ? [`<p class="spec-note${spec.held ? " error" : ""}">${escape(note)}</p>`] : []),
     ...(rows.length ? ['<ul class="issues">', ...rows, "</ul>"] : []),
     "</div>",
   ].join("\n");
+}
+
+/**
+ * A candidate Spec's Queue control: Queue, or once queued its place in the
+ * Queue and Unqueue. htmx swaps in the Repo's section it answers with.
+ */
+function queueControl(repo: string, spec: string, queue: string[]) {
+  const place = queue.findIndex((s) => s.toLowerCase() === spec.toLowerCase());
+  const action = place < 0 ? "queue" : "unqueue";
+  return [
+    `<form method="post" action="/${action}" class="queue" hx-post="/${action}" hx-target="closest section.repo" hx-swap="outerHTML">`,
+    `<input type="hidden" name="repo" value="${escape(repo)}"><input type="hidden" name="spec" value="${escape(spec)}">`,
+    ...(place < 0 ? [] : [`<span class="queued">Queued ${place + 1} of ${queue.length}</span>`]),
+    `<button>${place < 0 ? "Queue" : "Unqueue"}</button>`,
+    "</form>",
+  ].join("");
 }
 
 /** An In-flight issue of a Spec, read-only: its row to act on is In flight, and hovering lights its track. */
@@ -676,9 +734,13 @@ function retryForm(action: Action, issue: string, { harness, model, effort }: La
   return [`<form method="post" action="/${action}" class="dispatch">`, ...hidden, "<button>Retry</button>", "</form>"].join("\n");
 }
 
-/** A Board row's checkbox, belonging to the action bar's form wherever it sits. */
-function pick(issue: string, preserve = false) {
-  const id = preserve ? ` id="pick-${escape(issue.replace(/[^\w-]/g, "-"))}" hx-preserve="true"` : "";
+/**
+ * A Board row's checkbox, belonging to the action bar's form wherever it sits.
+ * `preserve` names the id prefix that keeps its tick across htmx swaps; each
+ * section has its own, so a swap never moves a box from one to the other.
+ */
+function pick(issue: string, preserve?: "pick" | "ready") {
+  const id = preserve ? ` id="${preserve}-${escape(issue.replace(/[^\w-]/g, "-"))}" hx-preserve="true"` : "";
   return `<input type="checkbox" class="pick" name="issue" value="${escape(issue)}" form="batch" autocomplete="off"${id} aria-label="Select ${escape(issue)}"> `;
 }
 
@@ -1068,6 +1130,8 @@ a.title { flex: 1; min-width: 0; color: var(--ink); white-space: nowrap; overflo
 a.title:hover { color: var(--link); text-decoration: none; }
 .num { color: var(--ink-2); font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; margin-right: 0.3rem; }
 form.dispatch { display: flex; align-items: center; gap: 0.35rem; margin: 0; flex: none; }
+form.queue { display: inline-flex; align-items: center; gap: 0.5rem; margin: 0 0 0 auto; flex: none; }
+.queued { font-size: 12px; font-weight: 650; color: var(--ink); white-space: nowrap; }
 li:not(:hover) form.dispatch select:not(:focus) { border-color: var(--rule); }
 
 ul.flights li { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "head actions" "meta actions" "notes notes"; column-gap: 1rem; row-gap: 0.3rem; padding: 0.7rem 1rem; }
