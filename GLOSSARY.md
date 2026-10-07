@@ -51,8 +51,8 @@ The view of Ready, Stackable and In-flight issues across all Repos.
 _Avoid_: Dashboard, list of work (a **Queue** is the user's ordered pick of Specs, not the Board)
 
 **Queue**:
-A Repo's ordered list of candidate Specs the user picked on the Board, oldest
-first. A queued Spec is approved to start: `advance` starts the head of the
+A Repo's ordered list of candidate Specs the user picked on the Board, in the
+order the user set (oldest first until reordered). A queued Spec is approved to start: `advance` starts the head of the
 Queue while the Repo has room, and never a Spec that isn't queued. A started
 Spec leaves the Queue, and one that is no longer a candidate drops off quietly.
 Local state in the config directory; nothing is written to a Source.
