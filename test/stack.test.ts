@@ -117,7 +117,7 @@ test("the real CLI recognizes a same-Repo PR closing a Blocker from another repo
   writeFileSync(join(binDir, "issues.json"), JSON.stringify({ data: { repository: { issues: { nodes: [issue], pageInfo: { hasNextPage: false } } } } }));
   writeFileSync(join(binDir, "prs.json"), JSON.stringify({ data: { repository: { issue: { closedByPullRequestsReferences: { nodes: [pr] } } } } }));
   const gh = join(binDir, "gh");
-  writeFileSync(gh, `#!/bin/sh\ncase "$*" in\n*"api user"*) printf 'me';;\n*"issues(first"*) cat "${binDir}/issues.json";;\n*closedByPullRequestsReferences*) cat "${binDir}/prs.json";;\n*"pr list"*) printf '[]';;\n*) cat "${binDir}/issues.json";;\nesac\n`);
+  writeFileSync(gh, `#!/bin/sh\ncase "$*" in\n*"api user"*) printf 'me';;\n*"issues(first"*) cat "${binDir}/issues.json";;\n*closedByPullRequestsReferences*"number=6"*) cat "${binDir}/prs.json";;\n*closedByPullRequestsReferences*) printf '{"data":{"repository":{"issue":{"closedByPullRequestsReferences":{"nodes":[]}}}}}';;\n*"pr list"*) printf '[]';;\n*) cat "${binDir}/issues.json";;\nesac\n`);
   chmodSync(gh, 0o755);
   const cliPath = new URL("../src/cli.ts", import.meta.url).pathname;
   const worldPath = new URL("../src/real-world.ts", import.meta.url).pathname;

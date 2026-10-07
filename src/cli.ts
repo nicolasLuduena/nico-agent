@@ -666,7 +666,7 @@ async function board(ctx: RunContext, json: boolean): Promise<Output> {
     return { data: { ...header, ready: "0 issues (no Repos configured)" }, help: [ADD_REPO_HELP] };
   }
   const loaded = await loadBoard(ctx.world, repos, loadDispatches(ctx.configDir), cachedPrs(ctx.world), rememberedLaunches(ctx.configDir).bases);
-  const { ready, stackable, specs, inFlight, errors } = loaded;
+  const { ready, stackable, withPr, specs, inFlight, errors } = loaded;
   const help = ["Run `nico-agent repo list` to see the Repos", ADD_REPO_HELP];
   if (inFlight.length) help.unshift("Run `nico-agent show <issue>` to see a Dispatch");
   const blocked = inFlight.flatMap(({ dispatch: d, implementerState, reviewerState }) => [
@@ -723,6 +723,10 @@ async function board(ctx: RunContext, json: boolean): Promise<Output> {
     data.stackable = stackable.map((i) => ({ issue: i.identifier ?? `${i.repo}#${i.number}`, title: i.title, ...(i.identifier && { repo: i.repo }),
       blockers: i.blockers.map((b) => ({ issue: b.blocker, pr: b.pr.url, base: b.pr.headBranch })) }));
     help.unshift("Run `nico-agent dispatch <issue> --stack-on <blocker> --harness <harness> --model <model> --effort <effort>` to dispatch a Stackable issue");
+  }
+  if (withPr.length) {
+    // Started outside a Dispatch nico-agent still tracks: review or merge the PR, then close the issue.
+    data.prOpen = withPr.map((i) => ({ issue: i.identifier ?? `${i.repo}#${i.number}`, title: i.title, ...(i.identifier && { repo: i.repo }), pr: i.pr.url, state: i.pr.state }));
   }
   const allSpecs = specs.flatMap((r) => r.specs);
   // In TOON, Specs of one would only repeat the Ready and In-flight lists, unless Held.

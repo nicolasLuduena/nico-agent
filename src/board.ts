@@ -39,6 +39,8 @@ export interface Board {
   /** Each Repo's Specs as the Spec rules decide them; Repos without Specs are left out. */
   specs: RepoDecision[];
   stackable: StackableIssue[];
+  /** Issues that would be Ready or Stackable but already have an open or merged PR, with no Dispatch In flight. */
+  withPr: (BoardIssue & { pr: PullRequest })[];
   inFlight: InFlightRow[];
   /** The Base choice of each Repo with Ready issues, by slug. */
   bases: Record<string, BaseChoice>;
@@ -94,12 +96,22 @@ export function everyBlocker(blockers: BlockerPrs[]): StackOption[] {
  */
 export async function loadBoard(world: World, repos: Repo[], dispatches: Dispatch[], prs: PrLookup, lastBases: Record<string, string> = {}): Promise<Board> {
   const [{ sources, ...ready }, inFlight] = await Promise.all([loadReady(world, repos, dispatches, lastBases), loadInFlight(world, dispatches, prs)]);
-  const { specs, errors } = await loadSpecs(world, sources, inFlight);
-  return { ...ready, errors: [...ready.errors, ...errors], inFlight, specs };
+  const { specs, prs: started, errors } = await loadSpecs(world, sources, inFlight);
+  // An issue with a PR is started, so it isn't Ready: it is listed with its PR instead.
+  const prOf = (i: BoardIssue) => started.find((p) => p.repo === i.repo && p.issue === (i.identifier ?? `${i.repo}#${i.number}`))?.pr;
+  const withPr = [...ready.ready, ...ready.stackable].flatMap((i): Board["withPr"] => {
+    const pr = prOf(i);
+    const { repo, title, url } = i;
+    return pr ? [{ repo, title, url, ...(i.identifier ? { identifier: i.identifier } : { number: i.number! }), pr }] : [];
+  });
+  return {
+    ...ready, ready: ready.ready.filter((i) => !prOf(i)), stackable: ready.stackable.filter((i) => !prOf(i)), withPr,
+    errors: [...ready.errors, ...errors], inFlight, specs,
+  };
 }
 
 async function loadReady(world: World, repos: Repo[], inFlight: Dispatch[], lastBases: Record<string, string>) {
-  const board: Omit<Board, "inFlight" | "specs"> & { sources: SourceIssues<any>[] } = { ready: [], stackable: [], bases: {}, errors: [], sources: [] };
+  const board: Omit<Board, "inFlight" | "specs" | "withPr"> & { sources: SourceIssues<any>[] } = { ready: [], stackable: [], bases: {}, errors: [], sources: [] };
   if (repos.length === 0) return board;
   const dispatched = new Set(inFlight.map((d) => d.issue));
   const github = async () => {

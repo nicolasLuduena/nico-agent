@@ -17,6 +17,8 @@ export interface SourceIssues<I extends SourceIssue = SourceIssue> {
 export interface LoadedSpecs {
   /** Each Repo's Specs as the Spec rules decide them; Repos without Specs are left out. */
   specs: RepoDecision[];
+  /** Open issues with an open or merged PR but no Dispatch In flight, as each Repo names them: no longer Ready, though no Stage tracks them. */
+  prs: { repo: string; issue: string; pr: PullRequest }[];
   errors: { repo: string; error: string; source?: "Linear" | "git" }[];
 }
 
@@ -25,7 +27,7 @@ export interface LoadedSpecs {
  * rules see the Repo whole, and decide its Specs.
  */
 export async function loadSpecs(world: World, sources: SourceIssues<any>[], inFlight: InFlightRow[]): Promise<LoadedSpecs> {
-  const loaded: LoadedSpecs = { specs: [], errors: [] };
+  const loaded: LoadedSpecs = { specs: [], prs: [], errors: [] };
   const byRepo = new Map<Repo, SpecFacts[]>();
   const results = await Promise.allSettled(sources.map((s) => specFacts(world, s, inFlight)));
   results.forEach((result, i) => {
@@ -33,6 +35,11 @@ export async function loadSpecs(world: World, sources: SourceIssues<any>[], inFl
     if (result.status === "fulfilled") byRepo.set(repo, [...(byRepo.get(repo) ?? []), ...result.value]);
     else loaded.errors.push({ repo: repo.slug, ...(adapter.source && { source: adapter.source }), error: worldErrorMessage(result.reason) });
   });
+  for (const [repo, specs] of byRepo) {
+    for (const i of specs.flatMap((s) => s.issues)) {
+      if (!i.closed && !i.inFlight && i.pr && !loaded.prs.some((p) => p.repo === repo.slug && p.issue === i.issue)) loaded.prs.push({ repo: repo.slug, issue: i.issue, pr: i.pr });
+    }
+  }
   const facts = await Promise.allSettled([...byRepo].map(async ([repo, specs]): Promise<RepoFacts> => ({
     repo: repo.slug, defaultBranch: repo.base ?? await world.gitDefaultBranch(repo.path), maxRunningSpecs: repo.maxRunningSpecs ?? DEFAULT_MAX_RUNNING_SPECS,
     specs: specs.sort((a, b) => a.spec.localeCompare(b.spec, undefined, { numeric: true })),

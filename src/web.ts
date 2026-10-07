@@ -530,6 +530,7 @@ function renderRepo(repo: Repo, board: Board, choices: Choices, queue: string[])
     .map((e) => `<p class="error">Could not load: ${e.source ? `${e.source}: ` : ""}${escape(e.error)}</p>`);
   const ready = board.ready.filter((i) => i.repo === repo.slug);
   const stackable = board.stackable.filter((i) => i.repo === repo.slug);
+  const withPr = board.withPr.filter((i) => i.repo === repo.slug);
   const decision = board.specs.find((r) => r.repo === repo.slug);
   const groups = decision ? groupsOf(decision) : [];
   const grouped = new Set(groups.flatMap((s) => s.issues));
@@ -550,6 +551,9 @@ function renderRepo(repo: Repo, board: Board, choices: Choices, queue: string[])
   // An issue's row sits under its Spec; the rest are Specs of one, listed as before.
   const looseReady = ready.filter((i) => !grouped.has(boardKey(i)));
   const looseStackable = stackable.filter((i) => !grouped.has(boardKey(i)));
+  const looseWithPr = withPr.filter((i) => !grouped.has(boardKey(i)));
+  // Started already, so read-only: its PR is what to act on.
+  const prRow = (i: Board["withPr"][number]) => `<li class="member">${issueLink(i.identifier ?? `#${i.number}`, i.title, i.url)}${prLink(i.pr)}</li>`;
   // A Linear issue several Repos claim is In flight only in the Repo it was dispatched in.
   const flightOf = (issue: string) => board.inFlight.find((r) => sameSlug(r.dispatch.repo, repo.slug) && sameSlug(r.dispatch.issue, issue));
   const rowsOf = (spec: SpecDecision) => spec.issues.flatMap((issue) => {
@@ -558,7 +562,9 @@ function renderRepo(repo: Repo, board: Board, choices: Choices, queue: string[])
     const r = ready.find((i) => boardKey(i) === issue);
     if (r) return [readyRow(r)];
     const s = stackable.find((i) => boardKey(i) === issue);
-    return s ? [stackRow(s)] : [];
+    if (s) return [stackRow(s)];
+    const p = withPr.find((i) => boardKey(i) === issue);
+    return p ? [prRow(p)] : [];
   });
   const specSections = groups.map((spec) =>
     renderSpec(spec, specState(spec, decision!), rowsOf(spec), flightOf(spec.spec), repo.slug, candidate(spec.spec) ? queueControl(repo.slug, spec.spec, queue) : ""));
@@ -571,6 +577,7 @@ function renderRepo(repo: Repo, board: Board, choices: Choices, queue: string[])
     ...(looseReady.length && specSections.length ? ["<h3>Specs of one</h3>"] : []),
     looseReady.length ? list(looseReady.map(looseRow)) : "",
     ...(looseStackable.length ? ["<h3>Stackable</h3>", list(looseStackable.map(stackRow))] : []),
+    ...(looseWithPr.length ? ["<h3>PR open</h3>", list(looseWithPr.map(prRow))] : []),
     "</section>",
   ].filter(Boolean).join("\n");
 }

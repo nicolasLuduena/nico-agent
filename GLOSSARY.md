@@ -47,7 +47,9 @@ an open PR in the same Repo, so work can start on top of that PR.
 _Avoid_: Blocked, pending
 
 **Board**:
-The view of Ready, Stackable and In-flight issues across all Repos.
+The view of Ready, Stackable and In-flight issues across all Repos, and of
+issues already started outside any Dispatch nico-agent tracks: open, with an
+open or merged PR, listed as "PR open" with that PR instead of as Ready.
 _Avoid_: Dashboard, list of work (a **Queue** is the user's ordered pick of Specs, not the Board)
 
 **Queue**:

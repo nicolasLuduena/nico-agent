@@ -244,7 +244,7 @@ Stage hues. Each appears in three places for one Dispatch: its track, its legend
 - **Title** (650, 14px, -0.005em): section headings (Repo slug, In flight).
 - **Body** (400, 14px, 1.45, tabular): issue titles and page text.
 - **Control** (500, 13px): buttons and selects. Filled amber buttons use 600.
-- **Label** (650, 12px): Stage keys, Stackable sub-headings, counts. Plain 12px for field labels and agent states.
+- **Label** (650, 12px): Stage keys, Stackable and PR open sub-headings, counts. Plain 12px for field labels and agent states.
 - **Mono** (12px): issue numbers and keys, Base branches, the harness · model · effort launch triple, herdr workspace names, and code.
 - **Display label** (600, 10px; subdetector key 500, 7.5px): track labels and the Tracker/ECAL/HCAL/Muon key inside the SVG. Each label has a display-field halo stroke.
 
