@@ -1,3 +1,4 @@
+import { closeSync, mkdirSync, openSync, readFileSync, unlinkSync, writeSync } from "node:fs";
 import { join } from "node:path";
 import { loadBoard, specLoadErrors } from "./board";
 import { ConfigError, SCHEDULER_DEFAULTS, type SchedulerDefaults, loadConfig } from "./config";
@@ -47,6 +48,45 @@ export type SpecPlan =
  * like `dispatch` (ADR-0006).
  */
 export async function advance(world: World, configDir: string): Promise<AdvanceReport> {
+  const holder = takeAdvanceLock(world, configDir);
+  if (holder !== null) {
+    return { specs: [], errors: [], closed: [], warnings: [`another advance is running (pid ${holder}); left it to finish`], help: [] };
+  }
+  try {
+    return await advanceOnce(world, configDir);
+  } finally {
+    unlinkSync(join(configDir, ADVANCE_LOCK));
+  }
+}
+
+const ADVANCE_LOCK = "advance.lock";
+
+/**
+ * One `advance` at a time across processes (the timer, the CLI, the Board's
+ * button), so two runs never start the same queued Spec. Takes the lock and
+ * returns null, or returns the pid of the live process holding it. A lock
+ * whose process is gone is taken over.
+ */
+function takeAdvanceLock(world: World, configDir: string): number | null {
+  mkdirSync(configDir, { recursive: true });
+  const file = join(configDir, ADVANCE_LOCK);
+  for (;;) {
+    try {
+      const fd = openSync(file, "wx");
+      writeSync(fd, String(world.processId()));
+      closeSync(fd);
+      return null;
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
+    }
+    let pid = NaN;
+    try { pid = Number(readFileSync(file, "utf8").trim()); } catch {}
+    if (Number.isInteger(pid) && pid > 0 && world.processAlive(pid)) return pid;
+    try { unlinkSync(file); } catch {}
+  }
+}
+
+async function advanceOnce(world: World, configDir: string): Promise<AdvanceReport> {
   const launch = schedulerDefaults(configDir);
   const report: AdvanceReport = { specs: [], errors: [], closed: [], warnings: [], help: [] };
   const { repos } = loadConfig(configDir);

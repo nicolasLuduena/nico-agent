@@ -283,7 +283,7 @@ Corners are small and functional: 3px for chips, counts, inline code, and the bl
 ### Buttons
 - **Shape:** gently squared (4px), 28px tall, 13px weight 500.
 - **Default:** raised panel with a rule-strong border. Hover darkens the border to muted ink. Disabled is 60% opacity.
-- **Fire (Dispatch, Retry of a failed Dispatch):** amber fill and border, near-black ink, weight 600. Hover lightens to fire-hover.
+- **Fire (Dispatch, Retry of a failed Dispatch, Advance now):** amber fill and border, near-black ink, weight 600. Hover lightens to fire-hover.
 - **Review (Launch review, Retry of a failed review):** raised panel with a Muon Blue border and review-ink text. Hover tints the fill 14% blue.
 - **Close:** default shape with muted text. Hover turns the text and border red.
 - **Focus:** a 2px link-coloured outline with a 2px offset, on every interactive element.
@@ -299,6 +299,9 @@ Corners are small and functional: 3px for chips, counts, inline code, and the bl
 
 ### Icons
 - Icons are authored inline SVG in the brand glyph's stroke language: no fill, a `currentColor` stroke (1.2 at 11px), and round caps, so they take their container's ink. The branch mark in the Base chip is the reference.
+
+### Advance Now
+- **Placement:** the first tool at the right of the top bar, before Refresh harnesses, in the Fire style: it can start tracks, like Dispatch. It posts and answers with an Advance page: any warning (another run is going) and Repo errors first, then one line per Spec acted on (a bold result, Started, Resumed, Skipped or Failed, then the issue, its Spec and the reason), the Dispatches Closed, the help, and Back to the Board. With nothing done it says so in muted text.
 
 ### Issue Card
 - **Trigger:** resting the pointer on any issue or Spec title link for 400ms, or focusing it with the keyboard. It stays while the pointer is on the card, so a long description can be scrolled, and hides 200ms after leaving both, on Escape, or on scroll.

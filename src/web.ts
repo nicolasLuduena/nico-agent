@@ -9,6 +9,7 @@ import { type Catalog, type Remembered, harnessCatalogs, refreshHarnesses, remem
 import { type InFlightRow, type PrLookup, cachedPrs, loadInFlight } from "./stage";
 import { type Dispatch, type Launch, findDispatch, loadDispatches } from "./state";
 import { escape } from "./html";
+import { type AdvanceRow, advance } from "./advance";
 import { plural } from "./output";
 import { type PreviewLookup, cachedPreviews } from "./preview";
 import { type Queues, dequeue, enqueue, move, pruneBoardQueues, queueOf } from "./queue";
@@ -37,6 +38,7 @@ export function webHandler(context: WebContext) {
       if (pathname === "/batch/review" && request.method === "POST") return await postBatch(ctx, request, "review");
       if (pathname === "/close" && request.method === "POST") return await postClose(ctx, request);
       if (pathname === "/harnesses/refresh" && request.method === "POST") return await postRefresh(ctx);
+      if (pathname === "/advance" && request.method === "POST") return await postAdvance(ctx);
       if (pathname === "/queue" && request.method === "POST") return await postQueue(ctx, request);
       if (pathname === "/unqueue" && request.method === "POST") return await postUnqueue(ctx, request);
       if (pathname === "/move" && request.method === "POST") return await postMove(ctx, request);
@@ -252,6 +254,25 @@ async function postRefresh(ctx: WebContext) {
   return new Response(null, { status: 303, headers: { location: "/" } });
 }
 
+/** Run `advance` now, as the timer would, and show what it did. */
+async function postAdvance(ctx: WebContext) {
+  const { specs, errors, closed, warnings, help } = await advance(ctx.world, ctx.configDir);
+  const RESULTS = { started: "Started", resumed: "Resumed", skipped: "Skipped", failed: "Failed" } as const;
+  const row = (r: AdvanceRow) =>
+    `<li class="${r.result}"><b>${RESULTS[r.result]}</b> ${escape([r.issue && `${r.issue} of`, r.spec].filter(Boolean).join(" "))}: ${escape(r.reason)}</li>`;
+  const nothing = !specs.length && !closed.length && !errors.length && !warnings.length;
+  const body = [
+    ...warnings.map((w) => `<p class="warning">${escape(w)}</p>`),
+    ...errors.map((e) => `<p class="error">Could not load ${escape(e.repo)}: ${escape(e.error)}</p>`),
+    nothing ? '<p class="empty">Nothing to do: no running Spec needs a step and no queued Spec could start.</p>' : "",
+    specs.length ? ['<ul class="advanced">', ...specs.map(row), "</ul>"].join("\n") : "",
+    closed.length ? `<p>Closed, their PR ready: ${closed.map(escape).join(", ")}</p>` : "",
+    ...help.map((h) => `<p>${escape(h)}</p>`),
+    '<p><a href="/">Back to the Board</a></p>',
+  ].filter(Boolean).join("\n");
+  return new Response(page("Advance", body), { headers: HTML_HEADERS });
+}
+
 class WebFailure extends Error {
   constructor(
     readonly title: string,
@@ -443,7 +464,7 @@ function renderTrack(row: InFlightRow, reach: Reach, waiting: boolean, angle: nu
   ].join("");
 }
 
-const REFRESH = '<form method="post" action="/harnesses/refresh" class="refresh"><button>Refresh harnesses</button></form>';
+const REFRESH = '<form method="post" action="/advance" class="advance"><button>Advance now</button></form>\n<form method="post" action="/harnesses/refresh" class="refresh"><button>Refresh harnesses</button></form>';
 
 /** A branch mark, drawn in the brand glyph's stroke. */
 const BRANCH = '<svg class="icon" viewBox="0 0 12 12" aria-hidden="true"><circle cx="3" cy="2.5" r="1.5"/><circle cx="3" cy="9.5" r="1.5"/><circle cx="9" cy="3.5" r="1.5"/><path d="M3 4v4M9 5c0 2.5-6 1.5-6 3"/></svg>';
@@ -1125,7 +1146,9 @@ header.top { display: flex; align-items: center; gap: 0.75rem; max-width: 76rem;
 .glyph .trail { stroke: var(--implementing); stroke-width: 2; stroke-linecap: round; }
 header.top h1 { margin: 0; font-size: 18px; font-weight: 500; color: var(--ink-2); }
 header.top h1::before { content: "/"; margin-right: 0.75rem; color: var(--rule-strong); }
-header.top .refresh { margin-left: auto; }
+header.top .advance { margin-left: auto; }
+header.top .advance button { background: var(--fire); border-color: var(--fire); color: var(--fire-ink); font-weight: 600; }
+header.top .advance button:hover { background: var(--fire-hover); border-color: var(--fire-hover); }
 main { max-width: 76rem; margin: 0 auto; padding: 0 1.5rem 3rem; }
 
 button, select { font: inherit; font-size: 13px; color: var(--ink); background: var(--panel); border: 1px solid var(--rule-strong); border-radius: 4px; height: 28px; padding: 0 0.6rem; transition: border-color 120ms, background-color 120ms, color 120ms; }
