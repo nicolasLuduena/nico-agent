@@ -6,7 +6,7 @@ import { withFileLock, writeJsonAtomic } from "./state";
 export type ProposalStatus = "open" | "approved" | "declined" | "failed";
 
 /** Markdown the Lead would write to a Repo's Source: a Spec and its tickets. */
-export interface Write {
+export interface SourceWrite {
   /** The Repo whose Source it goes to, as `owner/name`. */
   repo: string;
   text: string;
@@ -17,7 +17,7 @@ export interface Write {
  * `nico-agent` and `--json`, in nico-agent; or let the Lead `write` the text
  * to a Source with its own shell (ADR-0010: nico-agent never writes it).
  */
-export type Proposed = { action: string[] } | { write: Write };
+export type Proposed = { action: string[] } | { write: SourceWrite };
 
 /**
  * An action the Lead may not take under its Standing orders, held until the
@@ -101,14 +101,19 @@ export function settle(dir: string, id: number, outcome: Record<string, unknown>
   });
 }
 
-/** What approving does, in a line: the command line it runs, or the write the Lead makes. */
-export function proposedLine(proposed: Proposed): string {
-  return "action" in proposed ? commandLine(proposed.action) : `write a Spec to ${proposed.write.repo}'s Source`;
-}
-
-/** Just what approving `proposal` does, as a Proposal or a decision carries it. */
-export function proposedOf(proposal: Proposed): Proposed {
-  return "action" in proposal ? { action: proposal.action } : { write: proposal.write };
+/**
+ * What approving does, every way it is shown: `proposed` alone, as a
+ * decision carries it; `line`, a sentence; `summary`, a field naming the
+ * command line or the Repo; `shown`, as `proposals` lists it, the write whole
+ * to read before approving.
+ */
+export function describeProposed(proposal: Proposed) {
+  if ("action" in proposal) {
+    const action = commandLine(proposal.action);
+    return { proposed: { action: proposal.action }, line: action, summary: { action }, shown: { action } };
+  }
+  const { write } = proposal;
+  return { proposed: { write }, line: `write a Spec to ${write.repo}'s Source`, summary: { write: write.repo }, shown: { write } };
 }
 
 /** `action` as the command line the user would type. */

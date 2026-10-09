@@ -15,7 +15,7 @@ import { linearIdentifier } from "./linear";
 import { PROPOSABLE, withJson } from "./mcp";
 import { PROPOSALS_SCOPE, notifyOnce } from "./notify";
 import { type Output, plural, render } from "./output";
-import { type Proposal, type Proposed, ProposalRefused, type Write, addProposal, commandLine, decide, loadProposals, openProposals, proposedLine, proposedOf, settle } from "./proposals";
+import { type Proposal, type Proposed, ProposalRefused, type SourceWrite, addProposal, commandLine, decide, describeProposed, loadProposals, openProposals, settle } from "./proposals";
 import { dequeue, enqueue, loadQueues, move, pruneBoardQueues, queueOf } from "./queue";
 import { RECORDS, type RecordName, StaleRecord, noneYet, readRecord, replaceRecord } from "./records";
 import { isCandidate, sameSpec } from "./spec";
@@ -848,7 +848,7 @@ async function leadProposeCommand(args: Args, ctx: RunContext): Promise<Output> 
   const open = openProposals(ctx.configDir);
   const warnings = await notifyOnce(ctx.world, ctx.configDir, open.map(proposalNotice), (scope) => scope === PROPOSALS_SCOPE);
   return {
-    data: { proposed: proposal.id, ...proposedSummary(proposed), ...(warnings.length && { warnings }) },
+    data: { proposed: proposal.id, ...describeProposed(proposed).summary, ...(warnings.length && { warnings }) },
     help: [`The user approves or declines it with \`nico-agent proposals\`; the decision arrives in your Inbox naming Proposal ${proposal.id}`],
   };
 }
@@ -861,7 +861,7 @@ async function proposedWrite(args: Args, ctx: RunContext): Promise<Proposed> {
   if (!repo) throw new CliError(`${slug} is not a configured Repo`, ["Run `nico-agent repo list` to see the Repos"]);
   const { "--file": file, "--text": inline } = args.flags;
   if (typeof file === "string" && typeof inline === "string") throw new CliError("--file and --text give the Markdown two ways; pass one", [`Usage: \`${PROPOSE_USAGE}\``], 2);
-  const text = typeof inline === "string" ? inline : typeof file === "string" ? readMarkdown(file) : await readStdin(ctx, PROPOSE_USAGE);
+  const text = typeof inline === "string" ? inline : typeof file === "string" ? readMarkdown(file) : await readStdin(ctx, PROPOSE_USAGE, "nothing to write: pass --file or --text, or pipe the Markdown in");
   if (!text.trim()) throw new CliError("the Markdown to write is empty", ["Pass the Spec and its tickets as --text, --file or standard input"], 2);
   return { write: { repo: repo.slug, text } };
 }
@@ -899,20 +899,10 @@ function proposalNotice(proposal: Proposal) {
     ...("action" in proposal
       ? { title: `The Lead proposes: ${commandLine(proposal.action)}`, body: `${reason}\nRun \`nico-agent proposals approve ${id}\` to run it, or ${decline}` }
       : {
-          title: `The Lead proposes to ${proposedLine(proposal)}`,
+          title: `The Lead proposes to ${describeProposed(proposal).line}`,
           body: `${reason}\nRun \`nico-agent proposals\` to read it, then \`nico-agent proposals approve ${id}\` to have the Lead write it, or ${decline}`,
         }),
   };
-}
-
-/** What a Proposal does, in a field: the command line it runs, or the Repo whose Source the Lead would write to. */
-function proposedSummary(proposal: Proposed) {
-  return "action" in proposal ? { action: commandLine(proposal.action) } : { write: proposal.write.repo };
-}
-
-/** What a Proposal does as `proposals` lists it: the command line it runs, or the write whole, to read before approving. */
-function shownProposed(proposal: Proposed) {
-  return "action" in proposal ? { action: commandLine(proposal.action) } : { write: proposal.write };
 }
 
 async function proposalsList(args: Args, ctx: RunContext): Promise<Output> {
@@ -923,12 +913,13 @@ async function proposalsList(args: Args, ctx: RunContext): Promise<Output> {
     : [];
   if (args.flags["--all"] === true) {
     const rows = proposals.map((p) => {
-      const { action: _, write: __, ...rest } = p as Proposal & { action?: string[]; write?: Write };
-      return { ...rest, ...shownProposed(p) };
+      const { proposed, shown } = describeProposed(p);
+      const decided = Object.fromEntries(Object.entries(p).filter(([key]) => !(key in proposed)));
+      return { ...decided, ...shown };
     });
     return { data: { proposals: rows }, help: [...help, LOG_HELP] };
   }
-  const rows = open.map((p) => ({ id: p.id, at: p.at, ...shownProposed(p), reason: p.reason }));
+  const rows = open.map((p) => ({ id: p.id, at: p.at, ...describeProposed(p).shown, reason: p.reason }));
   return { data: { proposals: `${open.length} open`, open: rows }, help: [...help, "Run `nico-agent proposals --all` to see decided ones too"] };
 }
 
@@ -990,7 +981,7 @@ async function proposalsApprove(args: Args, ctx: RunContext): Promise<Output> {
  * An approved write runs nothing in nico-agent: the Lead writes it with its
  * own shell (ADR-0010), so the decision, carrying the text, goes to its Inbox.
  */
-async function approveWrite(ctx: RunContext, id: number, write: Write): Promise<Output> {
+async function approveWrite(ctx: RunContext, id: number, write: SourceWrite): Promise<Output> {
   await append(ctx.configDir, { type: "decision", proposal: id, decision: "approved", write, text: "" }, ctx.world.now());
   const warnings = await nudgeLead(ctx.world, ctx.configDir);
   return {
@@ -1022,9 +1013,9 @@ async function proposalsDecline(args: Args, ctx: RunContext): Promise<Output> {
   const reason = args.positionals.slice(1).join(" ").trim();
   const proposal = await decideProposal(ctx, idArg(args, DECLINE_USAGE), "declined", reason || undefined);
   const { id } = proposal;
-  await append(ctx.configDir, { type: "decision", proposal: id, decision: "declined", ...proposedOf(proposal), text: reason }, ctx.world.now());
+  await append(ctx.configDir, { type: "decision", proposal: id, decision: "declined", ...describeProposed(proposal).proposed, text: reason }, ctx.world.now());
   const warnings = await nudgeLead(ctx.world, ctx.configDir);
-  return { data: { declined: id, ...proposedSummary(proposal), ...(warnings.length && { warnings }) }, help: [`The Lead reads the decision in its Inbox`, PROPOSALS_HELP] };
+  return { data: { declined: id, ...describeProposed(proposal).summary, ...(warnings.length && { warnings }) }, help: [`The Lead reads the decision in its Inbox`, PROPOSALS_HELP] };
 }
 
 async function reviewCommand(args: Args, ctx: RunContext): Promise<Output> {
@@ -1235,7 +1226,7 @@ function recordCommands(record: RecordName, example: string): Command[] {
       run: async (args, ctx) => {
         const { "--file": file, "--text": inline, "--version": version } = args.flags;
         if (typeof file === "string" && typeof inline === "string") throw new CliError("--file and --text replace it two ways; pass one", [`Usage: \`${setUsage}\``], 2);
-        const text = typeof inline === "string" ? inline : typeof file === "string" ? readMarkdown(file) : await readStdin(ctx, setUsage);
+        const text = typeof inline === "string" ? inline : typeof file === "string" ? readMarkdown(file) : await readStdin(ctx, setUsage, "nothing to replace it with: pass --file, or pipe the Markdown in");
         try {
           const replaced = await replaceRecord(ctx.configDir, record, text, typeof version === "string" ? version : undefined);
           return { data: { replaced: replaced.path, version: replaced.version }, help: [`Run \`nico-agent ${record}\` to see it`] };
@@ -1259,8 +1250,8 @@ function readMarkdown(file: string) {
   }
 }
 
-async function readStdin(ctx: RunContext, usage: string) {
-  if (!ctx.stdin) throw new CliError("nothing to replace it with: pass --file, or pipe the Markdown in", [`Usage: \`${usage}\``], 2);
+async function readStdin(ctx: RunContext, usage: string, missing: string) {
+  if (!ctx.stdin) throw new CliError(missing, [`Usage: \`${usage}\``], 2);
   return await ctx.stdin();
 }
 

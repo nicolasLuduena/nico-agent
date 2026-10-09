@@ -1,5 +1,5 @@
 import type { Authored } from "../conversation";
-import type { ProposalStatus, Write } from "../proposals";
+import type { ProposalStatus, SourceWrite } from "../proposals";
 import { type HarnessesJson, type LaunchChoice, advanceReport, launchChoice } from "./actions";
 
 /**
@@ -10,7 +10,7 @@ export interface ProposalJson {
   id: number;
   at: string;
   action?: string;
-  write?: Write;
+  write?: SourceWrite;
   reason: string;
   status: ProposalStatus;
   decidedAt?: string;

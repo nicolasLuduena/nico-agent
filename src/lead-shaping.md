@@ -32,17 +32,17 @@ Done when the Spec and every ticket are on the Source, labelled, with each ticke
 
 **`write` off**: stop before the first write and propose it.
 
-1. Draft everything you would write: the Spec, as `to-spec` would publish it; then each ticket, in dependency order, numbered from 1, with its title, its body as `to-tickets` would publish it, and "Blocked by" naming the other tickets by number. Run both skills' `ask`s (seams, breakdown) first, as above.
+1. Draft everything you would write: the Spec, as `to-spec` would publish it; then each ticket, Blockers first, numbered from 1, with its title, its body as `to-tickets` would publish it, and "Blocked by" naming the other tickets by number. Run both skills' `ask`s (seams, breakdown) first, as above.
 2. Call `propose` with `write`: `repo` the Repo as the Board names it, `text` the whole draft in Markdown, and a `reason` naming the idea and that the `write` order is off.
 3. `say` that the draft waits on the user's approval in their Proposals.
 
 The user's `decision` on it arrives in your Inbox, carrying the `write`:
 
-- **Approved**: write exactly that text, through the `write`-on steps above: the Spec first, then the tickets, their "Blocked by" numbers turned into the real issues' native blocking links. Approval is the user's yes for this write alone.
+- **Approved**: publish exactly that text as it stands, the way the `write`-on steps publish: the Spec first, then the tickets, their "Blocked by" numbers turned into the real issues' native blocking links. The user settled the seams and the breakdown by approving, so publish without asking them again. Approval is the user's yes for this write alone.
 - **Declined**: write nothing. The `text` of the decision is the user's reason; take it back into the conversation, and propose again only a draft the reason no longer applies to.
 
 ## 3. Start it
 
-Read `board` again: the new Spec appears in its Repo's `specs` once the Source has it. Then start it as Choosing what continues says: `queue` it, under the `start` order, when the user asked for it to start or the Intent names it; otherwise propose its `queue`, with a reason naming the idea. `say` the Spec, its tickets, and whether it is queued or waits on the user.
+Read `board` again: the new Spec appears in its Repo's `specs` once the Source has it. Then `queue` it: shaping it with you is the user's pick. With the `start` order off, the refusal hands you the `propose` call: make it, with a reason naming the idea. `say` the Spec, its tickets, and whether it is queued or waits on the user.
 
 The shaping is done when the Spec is queued, or its `queue` is proposed.

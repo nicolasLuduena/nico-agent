@@ -256,9 +256,8 @@ const MCP_CONFIG = "mcp.json";
  * Write the Lead's home: its skill and the skill's shaping page where the
  * Harness finds a project's skills, the MCP config naming `serve`'s server,
  * and links to the shaping skills of the nico-agent checkout when it is a
- * configured Repo. The skills
- * an earlier start wrote for another Harness are removed, so no stale copy
- * is left. Returns a warning for each shaping skill left out.
+ * configured Repo. The skills an earlier start wrote for another Harness are
+ * removed, so no stale copy is left. Returns a warning for each shaping skill left out.
  */
 function writeHome(configDir: string, harness: Harness, mcpUrl: string): string[] {
   const home = leadHome(configDir);

@@ -434,8 +434,8 @@ function toolRun(params: unknown): ToolRun {
       if (write !== undefined) {
         if (!isObject(write)) throw new RpcError(-32602, "propose's write must be an object with repo and text");
         onlyArguments("propose's write", write, ["repo", "text"]);
-        const markdown = text("propose's write", write, "text");
-        return { argv: ["lead", "propose", "--json", "--reason", text(name, args, "reason"), "--write", text("propose's write", write, "repo"), "--text", markdown] };
+        const part = "propose's write";
+        return { argv: ["lead", "propose", "--json", "--reason", text(name, args, "reason"), "--write", text(part, write, "repo"), "--text", text(part, write, "text")] };
       }
       if (!Array.isArray(action) || !action.length || !action.every((t) => typeof t === "string")) {
         throw new RpcError(-32602, "propose needs action, the command as a list of strings");

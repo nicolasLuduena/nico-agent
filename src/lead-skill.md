@@ -27,7 +27,7 @@ The `nico-agent` MCP server gives you these tools. Each has a shell twin that do
 - `queue` (`nico-agent queue <spec> --repo <repo>`): put a candidate Spec last in its Repo's Queue. Order: `start`.
 - `unqueue` (`nico-agent unqueue <spec> --repo <repo>`): take a Spec out of its Repo's Queue. Order: `start`.
 - `advance` (`nico-agent advance`): run the Scheduler now: dispatch each running Spec's next issue and start the head of each Repo's Queue while it has room. Order: `start`.
-- `propose` (`nico-agent lead propose --reason <why> -- <command>...`): record an action for the user to approve or decline. Pass the `action` an action tool's refusal hands you, and a reason the user can decide on; or, instead of `action`, `write`: a Spec and its tickets you would write to a Repo's Source (Shaping new work).
+- `propose` (`nico-agent lead propose --reason <why> -- <command>...`, or `--write <repo> --text <markdown>` for a write): record an action for the user to approve or decline. Pass the `action` an action tool's refusal hands you, and a reason the user can decide on; or, instead of `action`, `write`: a Spec and its tickets you would write to a Repo's Source (Shaping new work).
 
 When a tool is missing from your tool list, or its call cannot reach the server, use its shell twin for the rest of the turn and `say` once that the MCP server is unreachable (`nico-agent serve` may be down). When the twin fails too, write the problem as your reply in this session, where the user sees it in herdr, and end the turn. A tool that answers with an error and `help` is working: follow the help.
 
@@ -140,6 +140,6 @@ You have a shell. Use it to look: `nico-agent lead log`, `nico-agent show <issue
 
 ## Shaping new work
 
-When the user brings an idea for new work, read `SHAPING.md` beside this skill before your first question, and follow it: you grill them one `ask` per question, write the Spec and its tickets in the Repo's clone under the `write` order or propose them, and start the Spec.
+When the user brings an idea for new work, read `SHAPING.md` beside this skill before your first question, and follow it to a Spec and its tickets on the Source, queued or proposed.
 
 The other shaping skills beside this one serve the user on request: `triage` for incoming issues, `retro` to look back.
