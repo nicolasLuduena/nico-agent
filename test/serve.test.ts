@@ -111,6 +111,26 @@ describe("serve ticks", () => {
     expect(log).toEqual(["advance: specs: []", "advance: specs: []"]);
   });
 
+  test("the app polling the Board asks GitHub for a Repo's issues once a minute", async () => {
+    const { cli, world } = setup();
+    world.addClone("/src/api", "git@github.com:acme/api.git");
+    await cli("repo", "add", "acme/api", "--path", "/src/api");
+    world.addIssue("acme/api", { number: 7, title: "Add retries" });
+    expect((await cli("serve")).exitCode).toBe(0);
+    world.calls.length = 0;
+    const board = () => world.server!.handler(new Request("http://127.0.0.1:42069/api/board"));
+    const asked = () => world.calls.filter((c) => c === "github issues acme/api").length;
+
+    expect((await board()).status).toBe(200);
+    await world.tick(10_000);
+    expect((await board()).status).toBe(200);
+    expect(asked()).toBe(1);
+
+    await world.tick(50_000);
+    expect((await board()).status).toBe(200);
+    expect(asked()).toBe(2);
+  });
+
   test("each tick tells the app the Board may have changed", async () => {
     const { world } = await serving();
     const stream = await events(world.server!.handler);

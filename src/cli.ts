@@ -24,6 +24,7 @@ import { RECORDS, type RecordName, StaleRecord, noneYet, readRecord, replaceReco
 import { isCandidate, sameSpec } from "./spec";
 import { VERSION } from "./version";
 import { sameSlug, slugOfRemote } from "./slug";
+import { cachingGitHubReads } from "./cached-world";
 import { type PrLookup, cachedPrs, currentStage, freshPrs, loadInFlight, stageOf } from "./stage";
 import { type Dispatch, findDispatch, loadDispatches } from "./state";
 import { probeVoice } from "./voice";
@@ -1419,8 +1420,9 @@ async function serve(args: Args, ctx: RunContext): Promise<Output> {
   const events = new Events();
   const look = lookAtLead(ctx, events);
   // Its runs come from the app and the Lead's tools, never from serve's own standard input.
-  const { stdin: _, ...served } = ctx;
-  const shared = { ...served, prs: ctx.prs ?? cachedPrs(ctx.world) };
+  // They read GitHub through a cache, so the app's polling costs GitHub a read a minute.
+  const { stdin: _, ...served } = { ...ctx, world: cachingGitHubReads(ctx.world) };
+  const shared = { ...served, prs: ctx.prs ?? cachedPrs(served.world) };
   try {
     const runCli = (argv: string[]) => run(argv, shared);
     await ctx.world.serve({ hostname: HOSTNAME, port }, webHandler({ ...ctx, events, look, runCli }), { "/": app }, webSockets({ ...ctx, runCli, events }));
