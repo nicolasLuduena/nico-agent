@@ -9,7 +9,7 @@ related_targets: ["src/app/lead-panel.tsx","src/app/lead-drawer.tsx","src/app/ap
 
 Scope: the React app at `/` (`src/app/`): the Lead panel (head, Conversation, question and Proposal cards, drawer, composer) beside the Board (event display, action bar, In flight, Repo sections with Spec groups and room readouts, launch and batch forms, Advance now and Refresh harnesses reports, issue cards). `serve`'s `/api` behind it runs the CLI (ADR-0006) and is not a surface. Mode: Operate.
 
-Audience and job: one developer keeps the app open all day as a monitor. They glance at the Board for Stage changes and blocked agents and at the panel for what the Lead said, asked or proposes. Then they answer, approve or decline, dispatch, launch reviews, and Close in short bursts.
+Audience and job: one developer keeps the app open all day as a monitor. They glance at the Board for Stage changes and Agent blocked and at the panel for what the Lead said, asked or proposes. Then they answer, approve or decline, dispatch, launch reviews, and Close in short bursts.
 
 Constraints: CLI parity (the app adds no action of its own); GLOSSARY.md vocabulary; light and dark from the system scheme; no external assets; one stylesheet of DESIGN.md tokens, no CSS framework; client tests cover state logic, not markup.
 
@@ -21,7 +21,7 @@ THESIS: The In-flight work drawn as a particle-detector event display, with each
 
 OWN-WORLD: The dark display field (#0a0d12) is a fixed instrument canvas in both schemes, with grey detector geometry: tracker rings, segmented ECAL/HCAL bands, and muon stations. Stage palette: Implementing amber, PR ready ECAL green, Review launched blue, Failed red. Agent blocked is magenta, the highlight. Dispatch buttons are amber, the colour that starts a track; a decision in the Lead panel (Approve, Save, a switch on) is filled ink, and what waits on one carries a 2px ink rule. Hairline rules, 3–6px corners, system sans, and monospace only for keys, branches, launch triples and code.
 
-STORY: The user sees at a glance how far each Dispatch has reached and what is blocked, hovers a track to find its row, and acts in the row; on the left they read what the Lead says and decide what it asks or proposes in one click.
+STORY: The user sees at a glance how far each Dispatch has reached and which agent is Asking, hovers a track to find its row, and acts in the row; on the left they read what the Lead says and decide what it asks or proposes in one click.
 
 FIRST VIEWPORT: On a wide screen, the Lead panel (20–26rem, sticky, window-tall) on the left: its head (Lead, the drawer button, Agent state and launch triple, Harness pickers with Start/Stop), the Conversation kept at its end, and the composer. On the right, the event display (a transverse view of at most 460px beside the readout: the explanatory sentence, Stage legend keys with counts, Agent blocked, the Sampled time), then the action bar and the In flight rows. Below 1100px the panel stacks above the Board.
 

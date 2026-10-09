@@ -286,7 +286,7 @@ aside.lead-panel > p.error { margin: 0; padding: 0.5rem 1rem; border-bottom: 1px
 .lead-status { display: flex; align-items: center; gap: 0.5rem; min-width: 0; }
 .lead-status > :not(.chip) { flex: none; }
 .lead-status .chip { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.lead-status .agent { padding-left: 0; }
+.lead-status .agent:not(.blocked) { padding-left: 0; }
 .lead-line h2 { margin: 0; font-size: 14px; font-weight: 650; letter-spacing: -0.005em; }
 .lead-state { font-size: 12px; color: var(--ink-muted); }
 .lead-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; }
@@ -329,8 +329,9 @@ ol.conversation li > .outcome { margin-top: 0.3rem; padding-left: 0; }
 .card-proposal.approved .status { color: var(--ink); }
 .card-proposal.declined .status { color: var(--ink-muted); }
 .card-proposal.failed .status { color: var(--failed-ink); }
-button.approve { background: var(--ink); border-color: var(--ink); color: var(--panel); font-weight: 600; }
-button.approve:hover:not(:disabled) { background: color-mix(in srgb, var(--ink) 85%, var(--panel)); }
+/* Deciding is not starting a track: Approve, and the drawer's Save, fill with ink (DESIGN.md's Ink Decides rule). */
+:is(button.approve, .record-foot button.save) { background: var(--ink); border-color: var(--ink); color: var(--panel); font-weight: 600; }
+:is(button.approve, .record-foot button.save):hover:not(:disabled) { background: color-mix(in srgb, var(--ink) 85%, var(--panel)); }
 form.composer { display: flex; align-items: flex-end; gap: 0.4rem; padding: 0.6rem 1rem; border-top: 1px solid var(--rule); background: var(--panel-raised); }
 form.composer textarea { resize: vertical; min-height: 2.6rem; max-height: 12rem; line-height: 1.4; }
 /* The talk button: held or tapped, so a long press must not select text or open a menu on a phone. */
@@ -361,9 +362,6 @@ button.talk:is(.holding, .hands-free) svg { fill: currentColor; }
 .drawer-tab.record textarea:disabled { color: var(--ink-muted); background: var(--panel-raised); }
 .record-foot { display: flex; align-items: center; gap: 0.35rem; }
 .record-foot .status { margin-right: auto; font-size: 12px; color: var(--ink-muted); }
-/* Saving is deciding, not starting a track: filled ink, as Approve. */
-.record-foot button.save { background: var(--ink); border-color: var(--ink); color: var(--panel); font-weight: 600; }
-.record-foot button.save:hover:not(:disabled) { background: color-mix(in srgb, var(--ink) 85%, var(--panel)); }
 /* A change made while the user edited waits on them, as an open question does: a 2px ink rule. */
 .conflict { display: grid; gap: 0.4rem; padding: 0.6rem 0.75rem; background: var(--panel-raised); border-radius: 4px; box-shadow: inset 2px 0 0 var(--ink); font-size: 13px; }
 .conflict b { font-weight: 650; }
@@ -398,7 +396,7 @@ ul.orders input[role="switch"]:disabled { opacity: 0.6; cursor: default; }
   /* 16px keeps Safari from zooming in on focus. */
   aside.lead-panel form.composer textarea { flex-basis: 100%; font-size: 16px; }
   form.composer button { height: 44px; }
-  .drawer-tab.record textarea { font-size: 16px; }
+  .drawer-tab.record textarea, :is(form.free-answer, form.decline) input { font-size: 16px; }
   button.talk { flex: 1; }
   figure.event { grid-template-columns: 1fr; gap: 1rem; padding: 1rem; }
   figure.event svg { max-width: 300px; margin: 0 auto; }
@@ -424,7 +422,7 @@ ul.orders input[role="switch"]:disabled { opacity: 0.6; cursor: default; }
   form.launch select, select[name] { flex: 1 1 6rem; width: auto; max-width: none; }
   form.launch label { flex: 1 1 100%; }
   form.launch label select { flex: 1; }
-  /* The Lead's three picks and Stop share one line on a phone. */
+  /* The Lead's three picks and Stop share one line on a phone; Start, when shown, may wrap. */
   .lead-controls select { flex: 1 1 4.5rem; }
   .queue { margin-left: 0; }
   header.top { flex-wrap: wrap; }

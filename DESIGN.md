@@ -270,7 +270,7 @@ Stage hues. Each appears in three places for one Dispatch: its track, its legend
 
 **The Amber Starts a Track Rule.** A filled amber button starts a track: Dispatch, or Retry of a failed Dispatch. Review actions, including a review's Retry, are outlined in Muon Blue. Close is muted and turns red on hover.
 
-**The Ink Decides Rule.** A filled ink control is a decision the user makes in the Lead panel: Approve a Proposal, Save the Intent or the Notes, a Standing order switched on, the talk button while it records. A card or change waiting on that decision carries a 2px ink rule on its left edge. Neither ever takes amber or a Stage hue.
+**The Ink Decides Rule.** A filled ink control is a decision the user makes in the Lead panel: Approve a Proposal, Save the Intent or the Notes, a Standing order switched on. The talk button takes the same inverted ink while it records, a state the user holds. A card or change waiting on a decision carries a 2px ink rule on its left edge. None of them ever takes amber or a Stage hue.
 
 ## Typography
 
@@ -360,8 +360,8 @@ Corners are small and functional: 3px for chips, counts, inline code, and the bl
 - **Member line:** an In-flight issue of a Spec, read-only (its row to act on is In flight): muted title, Stage key and PR link. Hovering it lights its track, as an In-flight row does.
 
 ### Lead Panel
-- **Placement:** the left column on a wide screen, sticky and as tall as the window less the header; above the Board below 1100px, at most 75% of the window tall. One section panel: the head, then the Conversation or the drawer, then the composer. Nothing inside it is a card of its own.
-- **Head:** a raised strip. Its first line is "Lead" (14px/650) with the drawer button at its end. Its second line is where the Lead stands: its Agent state as an Agent State dot ("lead working"), or, when it is not running, its status in 12px muted text, then its launch triple chip. A launch triple too long for the panel is cut with an ellipsis rather than wrapping, and its title holds it whole. A failure follows in error text, warnings in Tracker Amber. Under them, the Harness, model and Effort selects share one line with Start (or Restart, once the picks differ from the running Lead's) in the default style and Stop in the Close style.
+- **Placement:** the left column on a wide screen, sticky and as tall as the window less the header; above the Board below 1100px, at most 75% of the window tall. One section panel: the head, then the Conversation or the drawer, then the composer, divided by hairlines. Nothing inside it has a border, corner or shadow of its own.
+- **Head:** a raised strip. Its first line is "Lead" (14px/650) with the drawer button at its end. Its second line is where the Lead stands: its Agent state as an Agent State dot ("lead working"), or, when it is not running, where it stands ("not running") in 12px muted text, then its launch triple chip. A launch triple too long for the panel is cut with an ellipsis rather than wrapping, and its title holds it whole. A failure follows in error text, warnings in Tracker Amber. Under them, the Harness, model and Effort selects, then Start (or Restart, once the picks differ from the running Lead's) in the default style and Stop in the Close style. The picks and Stop share one line even on a phone; Start, when shown there, may wrap.
 - **Conversation:** a scrolling list of cards divided by hairlines, oldest first, kept at its end as cards arrive unless the user scrolled up. Each card leads with a 12px byline: "You" or "Lead" at 650 in ink, the time in muted text, then a muted note ("sending…", "spoke", "asks", "corrects", "corrected below"). The user's messages sit on the raised panel and the Lead's on the panel; text keeps its line breaks. A spoken message the Scribe changed shows what was heard beside it, under a 12px "Heard" label at 650, in muted 12px text, side by side while the panel fits two 11rem columns. A message a Correction ("No, I said …") superseded keeps its card, its text muted and struck through in rule-strong.
 - **Composer:** a raised strip at the panel's foot with a textarea, the talk button and Send. Enter sends, Shift+Enter breaks the line. A message shows at once in muted ink until `serve` has it; one that failed keeps its error with Send again and Dismiss. The talk button is held or tapped to speak; while it records it is filled ink. Below 760px the textarea takes the full width at 16px and the talk button and Send take a 44px row.
 
@@ -421,4 +421,4 @@ Corners are small and functional: 3px for chips, counts, inline code, and the bl
 - **Don't** render Stage as a filled pill. The filled badge belongs to Agent blocked alone.
 - **Don't** load external fonts, images, or icon sets. Every mark is inline SVG or CSS.
 - **Don't** stand a Unicode glyph in for an icon. Draw it as inline SVG with a currentColor stroke and round caps.
-- **Don't** nest a card inside the Lead panel. The drawer, the cards and the composer sit flat in it, divided by hairlines.
+- **Don't** nest a boxed panel inside the Lead panel. The drawer, the cards and the composer sit flat in it, divided by hairlines.

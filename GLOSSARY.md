@@ -172,7 +172,7 @@ _Avoid_: Permissions, policy, guardrails
 
 **Proposal**:
 An action the Lead wants to take that its Standing orders do not allow, held
-in nico-agent until the user approves or declines it on the Board or CLI.
+in nico-agent until the user approves or declines it in the Lead panel or CLI.
 Approving runs it in nico-agent, not in the Lead; except a write Proposal (a
 Spec and its tickets drafted while the `write` order is off), whose approval
 lets the Lead write it to the Source itself.

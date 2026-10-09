@@ -111,7 +111,7 @@
       },
       "display-muon": {
         "role": "neutral",
-        "displayName": "Muon Station",
+        "displayName": "Display Muon",
         "canonical": "oklch(39.0% 0.030 254)"
       },
       "display-rule-strong": {
@@ -906,7 +906,8 @@
       },
       {
         "name": "The Ink Decides Rule",
-        "body": "A filled ink control is a decision the user makes in the Lead panel: Approve a Proposal, Save the Intent or the Notes, a Standing order switched on, the talk button while it records. A card or change waiting on that decision carries a 2px ink rule on its left edge. Neither ever takes amber or a Stage hue."
+        "body": "A filled ink control is a decision the user makes in the Lead panel: Approve a Proposal, Save the Intent or the Notes, a Standing order switched on. The talk button takes the same inverted ink while it records, a state the user holds. A card or change waiting on a decision carries a 2px ink rule on its left edge. None of them ever takes amber or a Stage hue.",
+        "section": "colors"
       }
     ],
     "dos": [
@@ -927,7 +928,7 @@
       "**Don't** render Stage as a filled pill. The filled badge belongs to Agent blocked alone.",
       "**Don't** load external fonts, images, or icon sets. Every mark is inline SVG or CSS.",
       "**Don't** stand a Unicode glyph in for an icon. Draw it as inline SVG with a currentColor stroke and round caps.",
-      "**Don't** nest a card inside the Lead panel. The drawer, the cards and the composer sit flat in it, divided by hairlines."
+      "**Don't** nest a boxed panel inside the Lead panel. The drawer, the cards and the composer sit flat in it, divided by hairlines."
     ]
   }
 }
