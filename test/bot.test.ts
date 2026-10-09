@@ -124,7 +124,7 @@ describe("bot-aware implement prompt", () => {
     const form = new URLSearchParams({ issue: "acme/api#7", harness: "claude", model: "opus", effort: "high" });
     expect((await web("/dispatch", { method: "POST", body: form })).status).toBe(303);
 
-    const { body } = await web("/");
+    const { body } = await web("/classic");
     expect(body).toContain(
       '<div class="notes"><p class="warning">could not check the GitHub App on acme/api, so the prompt has no bot suffix: GitHub request failed</p></div>',
     );

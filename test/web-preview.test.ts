@@ -103,7 +103,7 @@ describe("web Board issue previews", () => {
 
   test("the Board loads the hover script that asks for previews", async () => {
     const { web } = setup();
-    const { body } = await web("/");
+    const { body } = await web("/classic");
     expect(body).toContain('fetch("/preview?url="');
   });
 });

@@ -22,6 +22,8 @@ import { sameSlug, slugOfRemote } from "./slug";
 import { cachedPrs, currentStage, freshPrs, loadInFlight, stageOf } from "./stage";
 import { findDispatch, loadDispatches } from "./state";
 import { webHandler } from "./web";
+import { Events } from "./events";
+import app from "./app/index.html";
 import { type World, WorldError } from "./world";
 
 export interface RunContext {
@@ -1151,14 +1153,17 @@ function mcpUrl(port: number) {
 
 async function serve(args: Args, ctx: RunContext): Promise<Output> {
   const port = portFlag(args, "nico-agent serve [--port <port>]");
+  const events = new Events();
   try {
-    await ctx.world.serve({ hostname: HOSTNAME, port }, webHandler({ ...ctx, runCli: (argv) => run(argv, ctx) }));
+    await ctx.world.serve({ hostname: HOSTNAME, port }, webHandler({ ...ctx, events, runCli: (argv) => run(argv, ctx) }), { "/": app });
   } catch (e) {
     if (!(e instanceof WorldError)) throw e;
     throw new CliError(e.message, ["Run `nico-agent serve --port <port>` with a free port"]);
   }
   // A Nudge recorded while the Lead worked waits for serve to see it idle.
   ctx.world.every(NUDGE_INTERVAL_MS, async () => {
+    // Agent states change outside nico-agent, so the app refetches the Board on every tick.
+    events.emit("board-changed");
     for (const warning of await sendPendingNudge(ctx.world, ctx.configDir)) console.error(warning);
   });
   // The Board is tended while it is up; the timer stays as the floor, and the advance lock keeps the two apart.
@@ -1169,6 +1174,8 @@ async function serve(args: Args, ctx: RunContext): Promise<Output> {
     } catch (e) {
       // A failed tick is only logged: the next one tries again.
       console.error(`advance failed: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      events.emit("board-changed");
     }
   });
   const mcp = mcpUrl(port);

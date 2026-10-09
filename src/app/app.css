@@ -1,0 +1,86 @@
+/* DESIGN.md's colours, by their token names; the page follows the system colour scheme. */
+:root {
+  color-scheme: light dark;
+  --display-field: #0a0d12;
+  --ground: #f3f5f8; --panel: #ffffff; --panel-raised: #eef1f5;
+  --rule: #dce1e8; --rule-strong: #c2c9d3;
+  --ink: #11151b; --ink-muted: #566170; --link: #1d5bb8;
+  --implementing: #c06a00; --implementing-ink: #8f4f00;
+  --pr-ready: #10874a; --pr-ready-ink: #0b6b3a;
+  --review: #1c6dd0; --review-ink: #1756a6;
+  --failed: #d1262b; --failed-ink: #b01e22;
+  --blocked: #b5129a; --blocked-ink: #ffffff;
+  --unknown: #8a94a2;
+  --fire: #f2a516; --fire-hover: #ffb52e; --fire-ink: #211400;
+  --shadow: 0 1px 2px rgb(17 21 27 / 0.06), 0 4px 14px -6px rgb(17 21 27 / 0.08);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ground: #06080b; --panel: #0b0f14; --panel-raised: #11161d;
+    --rule: #19202a; --rule-strong: #283240;
+    --ink: #e3e7ed; --ink-muted: #8d97a6; --link: #84b6ff;
+    --implementing: #f5a524; --implementing-ink: #f5a524;
+    --pr-ready: #3bd47b; --pr-ready-ink: #3bd47b;
+    --review: #52b5ff; --review-ink: #52b5ff;
+    --failed: #ff5757; --failed-ink: #ff6b6b;
+    --blocked: #ff4fd6; --blocked-ink: #1a0015;
+    --unknown: #6b7584;
+    --shadow: none;
+  }
+}
+
+* { box-sizing: border-box; }
+html { background: var(--ground); }
+body { margin: 0; font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: var(--ink); background: var(--ground); font-variant-numeric: tabular-nums; }
+a { color: var(--link); text-decoration: none; }
+a:hover { text-decoration: underline; text-underline-offset: 0.2em; text-decoration-thickness: 1px; }
+:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
+
+header.top { display: flex; align-items: center; gap: 0.75rem; max-width: 76rem; margin: 0 auto; padding: 1.1rem 1.5rem 0.9rem; }
+.brand { font-size: 18px; font-weight: 700; color: var(--ink); letter-spacing: -0.015em; }
+.brand:hover { text-decoration: none; }
+header.top h1 { margin: 0; font-size: 18px; font-weight: 500; color: var(--ink-muted); }
+header.top h1::before { content: "/"; margin-right: 0.75rem; color: var(--rule-strong); }
+header.top .classic { margin-left: auto; font-size: 13px; font-weight: 500; }
+
+main { max-width: 76rem; margin: 0 auto; padding: 0 1.5rem 2.5rem; }
+section { background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; box-shadow: var(--shadow); overflow: hidden; }
+section > header { display: flex; align-items: center; gap: 0.6rem; background: var(--panel-raised); padding: 0.65rem 1rem; border-bottom: 1px solid var(--rule); }
+section h2 { margin: 0; font-size: 14px; font-weight: 650; letter-spacing: -0.005em; }
+.count { font-size: 12px; font-weight: 650; color: var(--ink-muted); border: 1px solid var(--rule-strong); border-radius: 3px; padding: 0 0.35rem; line-height: 18px; }
+.empty { margin: 0; padding: 1rem; color: var(--ink-muted); }
+.error { color: var(--failed-ink); margin: 0 0 0.6rem; }
+
+ul.flights { list-style: none; margin: 0; padding: 0; }
+.flights li { display: grid; gap: 0.35rem; min-height: 44px; padding: 0.6rem 1rem; border-top: 1px solid var(--rule); }
+.flights li:first-child { border-top: 0; }
+.flights li:hover { background: var(--panel-raised); }
+.flights .error { margin: 0; font-size: 12px; }
+.head, .meta { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 0.6rem; }
+.key { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--ink-muted); }
+.title { font-weight: 500; }
+a.pr { font-size: 12px; font-weight: 600; }
+
+.chip { display: inline-flex; align-items: center; font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--ink-muted); background: var(--panel-raised); border: 1px solid var(--rule); border-radius: 3px; padding: 0 0.4rem; line-height: 20px; white-space: nowrap; }
+
+/* A Stage reads as its track's legend key. */
+.stage { --c: var(--unknown); display: inline-flex; align-items: center; gap: 0.45rem; font-size: 12px; font-weight: 650; white-space: nowrap; color: var(--c-ink, var(--ink-muted)); }
+.stage::before { content: ""; width: 14px; height: 2px; border-radius: 1px; background: var(--c); }
+.stage.implementing { --c: var(--implementing); --c-ink: var(--implementing-ink); }
+.stage.pr-ready { --c: var(--pr-ready); --c-ink: var(--pr-ready-ink); }
+.stage.review-launched { --c: var(--review); --c-ink: var(--review-ink); }
+.stage.failed { --c: var(--failed); --c-ink: var(--failed-ink); }
+.stage.unknown::before { background: repeating-linear-gradient(90deg, var(--c) 0 3px, transparent 3px 5px); }
+
+.agent { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 12px; color: var(--ink-muted); padding: 0 0.3rem; line-height: 20px; }
+.agent i { width: 7px; height: 7px; border-radius: 50%; border: 1.5px solid var(--rule-strong); }
+.agent.working i { border-color: var(--ink); background: var(--ink); }
+.agent.idle i { border-color: var(--ink-muted); }
+.agent.done i { border-color: var(--pr-ready); background: var(--pr-ready); }
+.agent.unknown i { border-style: dashed; }
+.agent.blocked { color: var(--blocked-ink); background: var(--blocked); border-radius: 3px; padding: 0 0.45rem; font-weight: 650; }
+.agent.blocked i { border-color: var(--blocked-ink); background: var(--blocked-ink); }
+
+@media (max-width: 760px) {
+  header.top, main { padding-left: 1rem; padding-right: 1rem; }
+}

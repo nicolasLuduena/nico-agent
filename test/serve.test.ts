@@ -2,7 +2,7 @@ import { mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { ADVANCE_INTERVAL_MS as TEN_MINUTES } from "../src/advance";
-import { setup } from "./harness";
+import { events, setup } from "./harness";
 
 describe("serve", () => {
   test("serves the web Board on 127.0.0.1:42069", async () => {
@@ -24,8 +24,10 @@ describe("serve", () => {
       ].join("\n"),
     );
     expect(world.calls).toContain("serve 127.0.0.1:42069");
+    // `/` is the app's page, bundled by Bun; the build smoke test serves it.
+    expect(Object.keys(world.server!.pages)).toEqual(["/"]);
 
-    const response = await world.server!.handler(new Request("http://127.0.0.1:42069/"));
+    const response = await world.server!.handler(new Request("http://127.0.0.1:42069/classic"));
     expect(await response.text()).toContain('<a class="title" href="https://github.com/acme/api/issues/7"><span class="num">#7</span> Add retries</a>');
 
     const mcp = await world.server!.handler(
@@ -107,6 +109,21 @@ describe("serve ticks", () => {
     await world.tick(TEN_MINUTES);
     expect(nudges(world.calls)).toEqual([NUDGE, NUDGE]);
     expect(log).toEqual(["advance: specs: []", "advance: specs: []"]);
+  });
+
+  test("each tick tells the app the Board may have changed", async () => {
+    const { world } = await serving();
+    const stream = await events(world.server!.handler);
+    await world.tick(10_000);
+    expect(await stream.next()).toEqual({ event: "board-changed", data: "{}" });
+    expect(await stream.next(50)).toBeNull();
+
+    await world.tick(TEN_MINUTES - 10_000);
+    // One per Nudge tick, and one more for the advance tick.
+    const sent = [];
+    for (let event = await stream.next(50); event; event = await stream.next(50)) sent.push(event.event);
+    expect(sent).toEqual(Array(TEN_MINUTES / 10_000).fill("board-changed"));
+    await stream.close();
   });
 
   test("a tick while another advance holds the lock skips with its warning, and the next tick runs", async () => {

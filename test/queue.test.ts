@@ -43,7 +43,7 @@ describe("the Queue fills a Repo's room", () => {
       reason: "BLE-20 is the head of the Queue; BLE-21 is the first unblocked issue of BLE-20; the Spec has no open PR, so it starts from main",
     }]);
     expect(world.calls).toContain("herdr worktree create --cwd /src/pdf --branch nico/ble-21 --base origin/main --label pdf-diff:BLE-21 --no-focus");
-    expect((await web("/")).body).toContain("<span>Queue <b>0</b></span>");
+    expect((await web("/classic")).body).toContain("<span>Queue <b>0</b></span>");
   });
 
   test("with room for one and two queued, only the head starts; the second starts in a later run once room frees up", async () => {
@@ -77,7 +77,7 @@ describe("the Queue fills a Repo's room", () => {
     };
 
     expect(await advanced(cli)).toEqual(["skipped BLE-21", "started BLE-31"]);
-    expect((await web("/")).body).toContain('<span class="queued">Queued 1 of 1</span>');
+    expect((await web("/classic")).body).toContain('<span class="queued">Queued 1 of 1</span>');
   });
 
   test("with room for two and two queued, one run starts both", async () => {
@@ -108,7 +108,7 @@ describe("the Queue fills a Repo's room", () => {
     for (const spec of ["BLE-20", "BLE-30", "BLE-40"]) await queue(spec);
     world.linearIssueNamed("BLE-31").state = "completed";
     world.linearIssueNamed("BLE-41").labels = [];
-    expect((await web("/")).body).toContain("<span>Queue <b>1</b></span>");
+    expect((await web("/classic")).body).toContain("<span>Queue <b>1</b></span>");
 
     world.addLinearSpec({ identifier: "BLE-50" }, { identifier: "BLE-51" }, { identifier: "BLE-52" });
     await queue("BLE-50");
@@ -117,7 +117,7 @@ describe("the Queue fills a Repo's room", () => {
     world.clearFailures();
     // Held now, both are off the Queue: re-queuing is refused, and a later run resumes rather than starts them anew.
     expect((await queue("BLE-50")).status).toBe(409);
-    expect((await web("/")).body).toContain("<span>Queue <b>0</b></span>");
+    expect((await web("/classic")).body).toContain("<span>Queue <b>0</b></span>");
     expect(world.calls.filter((c) => c.startsWith("herdr worktree create"))).toHaveLength(2);
   });
 
@@ -172,7 +172,7 @@ describe("the Queue on the web Board", () => {
     world.addLinearSpec({ identifier: "BLE-20" }, { identifier: "BLE-21" }, { identifier: "BLE-22" });
     await cli("advance");
 
-    const { body } = await web("/");
+    const { body } = await web("/classic");
     expect(body.match(/name="spec" value="[^"]+"/g)).toEqual(['name="spec" value="BLE-20"']);
     for (const spec of ["BLE-10", "BLE-40", "BLE-99"]) {
       const refused = await queue(spec);
@@ -191,7 +191,7 @@ describe("the Queue on the web Board", () => {
     const moves = (body: string) => body.match(/hx-post="\/move"[^]*?name="spec" value="[^"]+"[^]*?name="direction" value="(?:up|down)"/g)!
       .map((m) => `${m.match(/name="spec" value="([^"]+)"/)![1]} ${m.match(/name="direction" value="(up|down)"/)![1]}`);
 
-    const board = (await web("/")).body;
+    const board = (await web("/classic")).body;
     expect(moves(board)).toEqual(["BLE-20 down", "BLE-30 up", "BLE-30 down", "BLE-40 up"]);
     expect(board).toContain('<button aria-label="Move BLE-30 up">');
 
@@ -205,7 +205,7 @@ describe("the Queue on the web Board", () => {
     await post(web, "/move", { repo: "bleentr/pdf-diff", spec: "BLE-20", direction: "up" });
     await post(web, "/move", { repo: "bleentr/pdf-diff", spec: "BLE-30", direction: "down" });
     await post(web, "/move", { repo: "bleentr/pdf-diff", spec: "BLE-20", direction: "down" });
-    const after = (await web("/")).body;
+    const after = (await web("/classic")).body;
     expect(["BLE-20", "BLE-30", "BLE-40"].map((s) => place(after, s))).toEqual(["2", "3", "1"]);
     expect((await post(web, "/move", { repo: "bleentr/pdf-diff", spec: "BLE-20", direction: "sideways" })).status).toBe(400);
   });
@@ -214,12 +214,12 @@ describe("the Queue on the web Board", () => {
     const { world, queue, web } = await linearRepo();
     world.addLinearSpec({ identifier: "BLE-20" }, { identifier: "BLE-21" });
     world.addLinearSpec({ identifier: "BLE-30" }, { identifier: "BLE-31" });
-    expect((await web("/")).body).not.toContain('class="queue-order"');
+    expect((await web("/classic")).body).not.toContain('class="queue-order"');
     await queue("BLE-30");
     await queue("BLE-20");
 
     const order = (body: string) => body.match(/<ol class="queue-order"[^>]*>(.*?)<\/ol>/)?.[0];
-    expect(order((await web("/")).body)).toBe('<ol class="queue-order" aria-label="Queue of bleentr/pdf-diff"><li>BLE-30</li><li>BLE-20</li></ol>');
+    expect(order((await web("/classic")).body)).toBe('<ol class="queue-order" aria-label="Queue of bleentr/pdf-diff"><li>BLE-30</li><li>BLE-20</li></ol>');
     const moved = await post(web, "/move", { repo: "bleentr/pdf-diff", spec: "BLE-20", direction: "up" });
     expect(order(moved.body)).toBe('<ol class="queue-order" aria-label="Queue of bleentr/pdf-diff"><li>BLE-20</li><li>BLE-30</li></ol>');
   });
@@ -228,7 +228,7 @@ describe("the Queue on the web Board", () => {
     const { cli, world, queue, web } = await linearRepo();
     world.addLinearSpec({ identifier: "BLE-20" }, { identifier: "BLE-21" });
     expect((await queue("ble-20")).status).toBe(200);
-    expect((await web("/")).body).toContain('<span class="queued">Queued 1 of 1</span>');
+    expect((await web("/classic")).body).toContain('<span class="queued">Queued 1 of 1</span>');
     expect(await advanced(cli)).toEqual(["started BLE-21"]);
   });
 
@@ -262,7 +262,7 @@ describe("the Queue on the web Board", () => {
     expect(plain.status).toBe(303);
 
     const restarted = webHandler({ world, configDir, runCli: () => Promise.reject(new Error("no MCP calls here")) });
-    const body = await (await restarted(new Request("http://127.0.0.1:42069/"))).text();
+    const body = await (await restarted(new Request("http://127.0.0.1:42069/classic"))).text();
     expect(body).toContain('<span class="queued">Queued 1 of 1</span>');
   });
 });
@@ -280,7 +280,7 @@ describe("the Queue from the CLI", () => {
       queued: "BLE-20", place: "2 of 2", queue: ["BLE-30", "BLE-20"],
       help: ["Run `nico-agent move BLE-20 up --repo bleentr/pdf-diff` to start it sooner", "Run `nico-agent` to see the Board"],
     });
-    expect((await web("/")).body).toContain('<ol class="queue-order" aria-label="Queue of bleentr/pdf-diff"><li>BLE-30</li><li>BLE-20</li></ol>');
+    expect((await web("/classic")).body).toContain('<ol class="queue-order" aria-label="Queue of bleentr/pdf-diff"><li>BLE-30</li><li>BLE-20</li></ol>');
 
     const again = await cli("queue", "ble-20", "--repo", "bleentr/pdf-diff", "--json");
     expect(again.exitCode).toBe(0);
@@ -339,7 +339,7 @@ describe("the Queue from the CLI", () => {
     expect((await cli("move", "BLE-30", "down", "--repo", "bleentr/pdf-diff", "--json")).json())
       .toMatchObject({ moved: "BLE-30 already at the tail (no-op)", place: "3 of 3" });
     expect((await cli("move", "BLE-20", "down", "--repo", "bleentr/pdf-diff")).exitCode).toBe(0);
-    expect((await web("/")).body).toContain('<ol class="queue-order" aria-label="Queue of bleentr/pdf-diff"><li>BLE-40</li><li>BLE-20</li><li>BLE-30</li></ol>');
+    expect((await web("/classic")).body).toContain('<ol class="queue-order" aria-label="Queue of bleentr/pdf-diff"><li>BLE-40</li><li>BLE-20</li><li>BLE-30</li></ol>');
     expect(await advanced(cli)).toEqual(["started BLE-41"]);
   });
 

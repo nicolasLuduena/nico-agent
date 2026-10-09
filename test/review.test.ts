@@ -276,7 +276,7 @@ describe("In flight on the CLI Board", () => {
 describe("In flight on the web", () => {
   test("the section polls every 5s and the fragment refreshes it without a full page", async () => {
     const { web, world } = await dispatched();
-    const { body } = await web("/");
+    const { body } = await web("/classic");
     expect(body).toContain('<section class="in-flight" hx-get="/in-flight" hx-trigger="every 5s" hx-swap="outerHTML">');
 
     world.linkPr("acme/api", 7, { number: 9 });

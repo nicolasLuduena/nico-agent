@@ -54,7 +54,7 @@ test("the web offers Blocker choices and preserves the selection when the Harnes
   const { web, world, cli } = await stackable();
   world.issues.get("acme/api")![0]!.blockers.push({ slug: "acme/api", number: 5, state: "open" });
   world.linkPr("acme/api", 5, { number: 15, headBranch: "agent/blocker-5", baseBranch: "agent/blocker-6" });
-  const { body } = await web("/");
+  const { body } = await web("/classic");
   expect(body).toContain("<h3>Stackable</h3>");
   expect(body).toContain('<select name="stackOn">');
   expect(body).toContain('value="acme/api#5"');
@@ -82,7 +82,7 @@ test("a failed Stacked dispatch retries with its saved PR even after the Blocker
   const { cli, web, world } = await stackable();
   world.failHerdr("tab create", "workspace_not_found");
   expect((await cli("dispatch", "acme/api#7", ...FLAGS, "--stack-on", "6")).exitCode).toBe(1);
-  const { body } = await web("/");
+  const { body } = await web("/classic");
   expect(body).toContain('<input type="hidden" name="stackOn" value="https://github.com/acme/api/pull/16">');
   world.issues.get("acme/api")![0]!.blockers[0]!.state = "closed";
   world.linkedPrs.clear();

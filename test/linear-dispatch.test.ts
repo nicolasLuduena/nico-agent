@@ -180,7 +180,7 @@ describe("Linear Stage and review", () => {
 describe("Linear dispatch on the web", () => {
   test("a Linear Ready row has a dispatch form naming its Repo, which dispatches into it", async () => {
     const { web, world } = await withLinearRepo("web");
-    const page = (await web("/")).body;
+    const page = (await web("/classic")).body;
     expect(page).toContain('<input type="hidden" name="issue" value="BLE-27">');
     expect(page).toContain('<input type="hidden" name="repo" value="bleentr/web">');
 

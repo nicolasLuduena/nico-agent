@@ -1,6 +1,6 @@
 import { LinearSource } from "./linear";
 import { realpathSync } from "node:fs";
-import type { Address, GitHubIssue, IssueDescription, GitHubSubIssue, PullRequest, RequestHandler, World } from "./world";
+import type { Address, GitHubIssue, IssueDescription, GitHubSubIssue, PullRequest, Pages, RequestHandler, World } from "./world";
 import { READY_LABEL, WorldError } from "./world";
 
 interface Exec {
@@ -497,10 +497,11 @@ export class RealWorld implements World {
     if (result.exitCode !== 0) throw new WorldError(`\`notify-send\` failed: ${result.stderr.trim().split("\n")[0] || `exit code ${result.exitCode}`}`);
   }
 
-  async serve(address: Address, handler: RequestHandler) {
+  async serve(address: Address, handler: RequestHandler, pages: Pages) {
     try {
       // A Board asks GitHub per issue and can take longer than Bun's 10s default; 255s is Bun's maximum.
-      Bun.serve({ ...address, fetch: handler, idleTimeout: 255 });
+      // Not `development`: the pages are served as bundled, with no hot reloading, from source as from the binary.
+      Bun.serve({ ...address, routes: pages, fetch: handler, idleTimeout: 255, development: false });
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code === "EADDRINUSE") {
         throw new WorldError(`port ${address.port} is already in use`);
