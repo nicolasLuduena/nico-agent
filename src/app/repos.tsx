@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
+import type { LaunchAction } from "./actions";
 import { type BoardJson, agentClass, stageClass } from "./board";
-import { type DispatchLine, type RepoRow, repoRows } from "./repo-rows";
+import { BUTTONS, CloseButton, IssueOutcome, LaunchForm } from "./forms";
+import { type DispatchLine, type IssueLine, type RepoRow, repoRows } from "./repo-rows";
 
 /** Where the expanded Repos are remembered, in this browser only. */
 const EXPANDED_KEY = "nico-agent.repos.expanded";
@@ -31,8 +33,11 @@ function useExpanded() {
 /**
  * The Repos pane: a row per configured Repo of `board` (null until it loads),
  * each summarising its work while collapsed and, expanded, listing its
- * In-flight Dispatches, its Held Specs and what starts next. A Board that
- * could not be read says why in the notices.
+ * In-flight Dispatches, its Held Specs, what starts next and its Ready and
+ * Stackable issues, with the Board's actions: dispatch, launch a review and
+ * Close, their state kept in the App's `Actions`. An action's failure shows under its issue; what it did shows once
+ * `serve` says the Board changed. A Board that could not be read says why in
+ * the notices.
  */
 export function ReposPane({ board }: { board: BoardJson | null }) {
   const { expanded, toggle } = useExpanded();
@@ -86,6 +91,11 @@ function RepoItem({ row: r, open, toggle }: { row: RepoRow; open: boolean; toggl
               </ul>
             </Group>
           )}
+          {r.issues.length > 0 && (
+            <Group title="To dispatch">
+              <ul className="dispatchable">{r.issues.map((i) => <Dispatchable key={i.target.issue} line={i} />)}</ul>
+            </Group>
+          )}
           {r.queue.length > 0 && (
             <Group title="Queue">
               <ol className="queue" aria-label={`Queue of ${r.repo}`}>
@@ -108,6 +118,7 @@ function Summary({ row: r }: { row: RepoRow }) {
       {inFlight > 0 && <span>{`${inFlight} In flight`}</span>}
       {asking > 0 && <span className="asking">{`${asking} Asking`}</span>}
       {held > 0 && <span className="held-count">{held === 1 ? "Held" : `${held} Held`}</span>}
+      {r.issues.length > 0 && <span>{`${r.issues.length} to dispatch`}</span>}
       {r.empty && <span>Idle</span>}
     </span>
   );
@@ -166,6 +177,7 @@ function useScreenLine(issue: string, reading: boolean) {
 }
 
 function Dispatch({ line: d }: { line: DispatchLine }) {
+  const [open, setOpen] = useState(false);
   // An Asking Implementer's question already shows its screen.
   const asking = Boolean(d.question);
   const doing = useScreenLine(d.issue, usePageShown() && !asking);
@@ -179,7 +191,38 @@ function Dispatch({ line: d }: { line: DispatchLine }) {
       </div>
       {d.question && <pre className="question">{d.question}</pre>}
       {!asking && doing && <p className="doing" title={doing}>{doing}</p>}
+      <div className="row-actions">
+        {d.review && <Toggle action="review" issue={d.issue} open={open} setOpen={setOpen} />}
+        <CloseButton issue={d.issue} confirm={d.confirmClose} />
+      </div>
+      {open && <LaunchForm action="review" target={{ issue: d.issue }} onDone={() => setOpen(false)} />}
+      <IssueOutcome issue={d.issue} />
     </li>
+  );
+}
+
+/** A Ready or Stackable issue, with its dispatch form a click away. */
+function Dispatchable({ line: i }: { line: IssueLine }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <li>
+      <IssueLink {...i} />
+      <div className="facts">
+        {i.kind === "stackable" && <span className="kind">Stackable</span>}
+        <Toggle action="dispatch" issue={i.target.issue} open={open} setOpen={setOpen} />
+      </div>
+      {open && <LaunchForm action="dispatch" target={i.target} onDone={() => setOpen(false)} />}
+      <IssueOutcome issue={i.target.issue} />
+    </li>
+  );
+}
+
+/** Opens and closes an issue's launch form. */
+function Toggle({ action, issue, open, setOpen }: { action: LaunchAction; issue: string; open: boolean; setOpen: (open: boolean) => void }) {
+  return (
+    <button type="button" className="quiet" aria-expanded={open} aria-label={`${open ? "Cancel" : BUTTONS[action]} ${issue}`} onClick={() => setOpen(!open)}>
+      {open ? "Cancel" : `${BUTTONS[action]}…`}
+    </button>
   );
 }
 

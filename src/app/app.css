@@ -183,6 +183,17 @@ label.switch:has(:checked) { color: var(--ink); }
   margin: 0.4rem 0 0; padding: 0.5rem 0.65rem; max-height: 10rem; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere;
   font-size: 12px; background: var(--ground); border-radius: 10px; box-shadow: inset 3px 0 0 var(--blocked);
 }
+/* A row's actions: quiet until a launch form opens under it, whose submit is the group's one filled control. */
+.repo-group .row-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.35rem; }
+.repo-group .row-actions button, .repo-group .facts button { min-height: 28px; font-size: 13px; }
+.repo-group .kind { font-size: 12px; color: var(--ink-muted); }
+.repo-group form.launch { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; margin-top: 0.5rem; animation: appear 160ms var(--ease); }
+.repo-group form.launch label { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 13px; color: var(--ink-muted); }
+.repo-group form.launch select { min-height: 30px; font-size: 13px; max-width: 100%; }
+.repo-group form.launch > button { background: var(--accent); color: var(--accent-ink); min-height: 30px; }
+.repo-group form.launch > button:hover:not(:disabled) { background: var(--accent-hover); }
+.repo-group .confirm { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; font-size: 13px; color: var(--ink-muted); }
+.repo-group .outcome { margin-top: 0.35rem; }
 
 .lead-panel { display: flex; flex-direction: column; min-height: 0; background: var(--surface); border-radius: 18px; overflow: hidden; }
 .lead-bar { position: relative; display: flex; align-items: center; gap: 1rem; padding: 0.9rem 1.25rem; border-bottom: 1px solid var(--rule); }

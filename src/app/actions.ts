@@ -162,6 +162,11 @@ export function closePlan(board: BoardJson, issues: string[]) {
   return { now: flights.filter((d) => d.pr).map((d) => d.issue), confirm: flights.filter((d) => !d.pr).map((d) => d.issue) };
 }
 
+/** The CLI arguments Close posts: the issue, and `--confirm` once the user confirmed closing one with no PR yet. */
+export function closeArgs(issue: string, confirmed: boolean) {
+  return confirmed ? [issue, "--confirm"] : [issue];
+}
+
 /** An action's answer, as the app shows it in place: its lines, and the CLI's help when it failed. */
 export interface Outcome {
   failed: boolean;
