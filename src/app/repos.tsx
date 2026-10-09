@@ -41,7 +41,7 @@ export function ReposPane({ board }: { board: BoardJson | null }) {
     <section className="side repos" aria-labelledby="side-title">
       <h1 id="side-title">Repos</h1>
       {!board && <p className="loading">Reading the Repos…</p>}
-      {board?.error && <p className="empty">The Repos could not be read.</p>}
+      {board?.error && <p className="error">The Repos could not be read.</p>}
       {rows?.length === 0 && <p className="lede">No Repos yet. Run <code>nico-agent repo add</code> to add one.</p>}
       {rows && rows.length > 0 && (
         <ul className="repo-rows">
@@ -104,7 +104,7 @@ function Summary({ row: r }: { row: RepoRow }) {
   const { inFlight, asking, held } = r.summary;
   return (
     <span className="summary">
-      {r.errors.length > 0 && <span className="error">Could not load</span>}
+      {r.errors.length > 0 && <span className="error" title={r.errors.join("\n")}>Could not load</span>}
       {inFlight > 0 && <span>{`${inFlight} In flight`}</span>}
       {asking > 0 && <span className="asking">{`${asking} Asking`}</span>}
       {held > 0 && <span className="held-count">{held === 1 ? "Held" : `${held} Held`}</span>}

@@ -149,7 +149,7 @@ label.switch:has(:checked) { color: var(--ink); }
 .side .lede { font-size: 14px; max-width: 32ch; }
 
 /* The Repos pane: a row per Repo, divided by hairlines, each expanding in place. */
-.repos .loading, .repos > .empty { font-size: 14px; }
+.repos > .loading, .repos > .error { font-size: 14px; }
 .repo-rows { list-style: none; margin: 0.25rem -0.5rem 0; padding: 0; }
 .repo-row + .repo-row { border-top: 1px solid var(--rule); }
 .repo-head {

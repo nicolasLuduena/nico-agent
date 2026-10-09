@@ -39,7 +39,7 @@ export interface QueuedLine extends Named {
   spec: string;
 }
 
-/** A Repo's row in the Repos pane: a summary while collapsed, its work in progress and what starts next once expanded. */
+/** A Repo's row in the Repos pane: a summary while collapsed, its In-flight work, Held Specs and what starts next once expanded. */
 export interface RepoRow {
   repo: string;
   errors: string[];
@@ -58,12 +58,14 @@ const ASKING = "blocked";
 
 /** A row per configured Repo, in config order, from the same Board the app's Board model reads. */
 export function repoRows(board: BoardJson): RepoRow[] {
-  return repoSections(board).map(({ repo, errors }) => {
+  return repoSections(board).map(({ repo, errors: failed }) => {
     const mine = <T extends { repo: string }>(items: T[] = []) => items.filter((i) => sameSlug(i.repo, repo));
     const specs = mine(board.specs);
     const issues = [...mine(board.issues), ...mine(board.stackable), ...mine(board.prOpen)];
-    const named = (key: string, title?: string, url?: string): Named =>
-      ({ label: repoKey(key, repo), title: title ?? issues.find((i) => i.issue === key)?.title ?? key, url: url ?? issues.find((i) => i.issue === key)?.url ?? "" });
+    const named = (key: string, title?: string, url?: string): Named => {
+      const issue = issues.find((i) => i.issue === key);
+      return { label: repoKey(key, repo), title: title ?? issue?.title ?? key, url: url ?? issue?.url ?? "" };
+    };
 
     const dispatches = mine(board.dispatches).map((d): DispatchLine => {
       const asking = d.implementer === ASKING ? board.asking?.find((a) => a.issue === d.issue) : undefined;
@@ -82,6 +84,9 @@ export function repoRows(board: BoardJson): RepoRow[] {
       const spec = specs.find((s) => sameSpec(s.spec, key));
       return { spec: key, ...named(key, spec?.title, spec?.url) };
     });
+    const nothing = !dispatches.length && !held.length && !next.length && !queue.length;
+    // A rate-limited read is one Board warning, not each Repo's error; a Repo it left with nothing was not read, not Idle.
+    const errors = !failed.length && nothing && board.warning ? [`Could not load: ${board.warning}`] : failed;
     return {
       repo,
       errors,
@@ -90,7 +95,7 @@ export function repoRows(board: BoardJson): RepoRow[] {
       held,
       next,
       queue,
-      empty: !errors.length && !dispatches.length && !held.length && !next.length && !queue.length,
+      empty: !errors.length && nothing,
     };
   });
 }

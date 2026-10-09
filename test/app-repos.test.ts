@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { BoardJson } from "../src/app/board";
 import { repoRows } from "../src/app/repo-rows";
+import { RateLimited } from "../src/world";
 import { setup } from "./harness";
 
 const FLAGS = ["--harness", "claude", "--model", "opus", "--effort", "high"];
@@ -25,6 +26,16 @@ describe("the Repos pane's rows", () => {
       ["acme/web", ["Could not load: GitHub is not reachable"], false],
     ]);
     expect(rows[0]).toMatchObject({ summary: { inFlight: 0, asking: 0, held: 0 }, dispatches: [], held: [], next: [], queue: [] });
+  });
+
+  test("a rate-limited GitHub leaves a Repo it could not read saying so, not Idle", async () => {
+    const { world, board } = await githubRepo();
+    const reset = new Date(world.now().getTime() + 5 * 60_000);
+    world.failGitHub("acme/api", new RateLimited(reset));
+
+    const [api] = repoRows(await board());
+    expect(api!.errors).toEqual([`Could not load: GitHub rate limit exceeded; nico-agent asks it again at ${reset.toISOString()}`]);
+    expect(api!.empty).toBe(false);
   });
 
   test("each In-flight Dispatch with its title, Stage, Agent state and PR, and an Asking Implementer's question; counted while collapsed", async () => {

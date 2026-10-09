@@ -31,7 +31,7 @@ interface JsonIssue {
   url: string;
 }
 
-export interface JsonSpec {
+interface JsonSpec {
   spec: string;
   title: string;
   url: string;

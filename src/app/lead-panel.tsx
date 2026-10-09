@@ -44,9 +44,9 @@ const inConversation = (key: string) => `conversation-${key}`;
 
 /**
  * The Lead panel: the Voice switch and the drawer's button, the one quiet
- * place for warnings (the Board's own among them), the Questions list (`questions`, null while hidden),
- * the conversation as cards, and the composer, which stays put and keeps its
- * draft while entries arrive.
+ * place for warnings (the Board's among them), the Questions list
+ * (`questions`, null while hidden), the conversation as cards, and the
+ * composer, which stays put and keeps its draft while entries arrive.
  */
 export function LeadPanel({ status, conversation, questions, board }: {
   status: LeadStatusJson | null; conversation: ConversationState; questions: OpenItem[] | null; board: BoardJson | null;
