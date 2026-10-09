@@ -1,6 +1,6 @@
 import { LinearSource } from "./linear";
 import { realpathSync } from "node:fs";
-import type { Address, GitHubIssue, IssueDescription, GitHubSubIssue, PullRequest, Pages, RequestHandler, SocketPeer, SocketSession, Sockets, World } from "./world";
+import type { Address, CheckResult, GitHubIssue, IssueDescription, GitHubSubIssue, PullRequest, PullRequestActivity, PullRequestComment, Pages, RequestHandler, SocketPeer, SocketSession, Sockets, World } from "./world";
 import { READY_LABEL, WorldError } from "./world";
 
 interface Exec {
@@ -170,6 +170,57 @@ interface LinkedPrNode {
 /** How long a Repo's PR listing and an issue's closing PRs are reused: within one Board, and a little longer for a polling web Board. */
 const PR_SNAPSHOT_MS = 20_000;
 
+const PR_ACTIVITY_QUERY = `
+query($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) {
+      state isDraft
+      comments(last: 100) { nodes { id author { login } createdAt body } }
+      reviews(last: 100) {
+        nodes {
+          id author { login } submittedAt state body
+          comments(first: 100) { nodes { id author { login } publishedAt body path } }
+        }
+      }
+      commits(last: 1) {
+        nodes { commit { statusCheckRollup { contexts(first: 100) { nodes {
+          __typename
+          ... on CheckRun { name status conclusion }
+          ... on StatusContext { context state }
+        } } } } }
+      }
+    }
+  }
+}`;
+
+interface PrActivityNode {
+  state: string;
+  isDraft: boolean;
+  comments: { nodes: { id: string; author: { login: string } | null; createdAt: string; body: string }[] };
+  reviews: {
+    nodes: {
+      id: string; author: { login: string } | null; submittedAt: string | null; state: string; body: string;
+      comments: { nodes: { id: string; author: { login: string } | null; publishedAt: string | null; body: string; path: string }[] };
+    }[];
+  };
+  commits: {
+    nodes: { commit: { statusCheckRollup: { contexts: { nodes: (
+      | { __typename: "CheckRun"; name: string; status: string; conclusion: string | null }
+      | { __typename: "StatusContext"; context: string; state: string }
+    )[] } } | null } }[];
+  };
+}
+
+/** A submitted review's verdict; pending and dismissed reviews are left out. */
+const REVIEW_VERDICTS: Record<string, PullRequestComment["review"]> = {
+  APPROVED: "approved",
+  CHANGES_REQUESTED: "changes requested",
+  COMMENTED: "commented",
+};
+
+/** Check run conclusions that count as passed; every other completed one failed. */
+const PASSED = ["SUCCESS", "NEUTRAL", "SKIPPED"];
+
 export class RealWorld implements World {
   private readonly linear = new LinearSource();
   /** Closing PRs of each issue (`owner/name#n`), as the issue queries brought them. */
@@ -309,6 +360,34 @@ export class RealWorld implements World {
       state: pr.state.toLowerCase() as PullRequest["state"],
       baseBranch: pr.baseRefName,
       ...(!pr.isCrossRepository && { headBranch: pr.headRefName }),
+    };
+  }
+
+  async githubPullRequestActivity(slug: string, number: number, since?: Date): Promise<PullRequestActivity> {
+    const [owner, name] = slug.split("/") as [string, string];
+    const args = ["api", "graphql", "-f", `query=${PR_ACTIVITY_QUERY}`, "-f", `owner=${owner}`, "-f", `name=${name}`, "-F", `number=${number}`];
+    const pr = JSON.parse(await gh(args)).data?.repository?.pullRequest as PrActivityNode | null | undefined;
+    if (!pr) throw new WorldError(`${slug}#${number} was not found on GitHub`);
+    const login = (author: { login: string } | null) => author?.login ?? "ghost";
+    const comments: PullRequestComment[] = [
+      ...pr.comments.nodes.map((c) => ({ id: c.id, author: login(c.author), at: c.createdAt, body: c.body })),
+      ...pr.reviews.nodes.flatMap((r) => {
+        const review = REVIEW_VERDICTS[r.state];
+        if (!review || !r.submittedAt) return [];
+        // An inline comment shows once its review is submitted, whenever it was drafted.
+        const inline = r.comments.nodes.map((c) => ({ id: c.id, author: login(c.author), at: c.publishedAt ?? r.submittedAt!, body: c.body, path: c.path }));
+        return [{ id: r.id, author: login(r.author), at: r.submittedAt, body: r.body, review }, ...inline];
+      }),
+    ];
+    const contexts = pr.commits.nodes[0]?.commit.statusCheckRollup?.contexts.nodes ?? [];
+    const result = (passed: boolean, pending: boolean): CheckResult => (pending ? "pending" : passed ? "passed" : "failed");
+    return {
+      state: pr.state.toLowerCase() as PullRequest["state"],
+      draft: pr.isDraft,
+      comments: comments.filter((c) => !since || new Date(c.at) >= since).sort((a, b) => Date.parse(a.at) - Date.parse(b.at)),
+      checks: contexts.map((c) => c.__typename === "CheckRun"
+        ? { name: c.name, result: result(PASSED.includes(c.conclusion ?? ""), c.status !== "COMPLETED") }
+        : { name: c.context, result: result(c.state === "SUCCESS", ["PENDING", "EXPECTED"].includes(c.state)) }),
     };
   }
 

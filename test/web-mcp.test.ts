@@ -41,19 +41,22 @@ describe("MCP over HTTP at /mcp", () => {
     expect(await version("2099-01-01")).toBe("2025-11-25");
   });
 
-  test("tools/list offers board, the conversation tools inbox, recall, say and ask, intent and notes, then the action tools and propose", async () => {
+  test("tools/list offers board, the conversation tools inbox and recall, peek, say and ask, intent and notes, then the action tools and propose", async () => {
     const { web } = setup();
     const reply = (await post(web, { jsonrpc: "2.0", id: "list", method: "tools/list" })).json();
     expect(reply.id).toBe("list");
     const tools = reply.result.tools;
-    expect(tools.map((t: { name: string }) => t.name)).toEqual(["board", "inbox", "recall", "say", "ask", "intent", "notes", "dispatch", "review", "close", "answer", "queue", "unqueue", "advance", "propose"]);
+    expect(tools.map((t: { name: string }) => t.name)).toEqual(["board", "inbox", "recall", "peek", "say", "ask", "intent", "notes", "dispatch", "review", "close", "answer", "queue", "unqueue", "advance", "propose"]);
     expect(tools[0]).toEqual({
       name: "board", title: "Board", description: expect.stringContaining("nico-agent board --json"), inputSchema: { type: "object", additionalProperties: false },
     });
     expect(tools[1].inputSchema).toEqual({ type: "object", additionalProperties: false });
     expect(tools[2].inputSchema).toMatchObject({ required: ["query"], properties: { since: { type: "string" }, until: { type: "string" } }, additionalProperties: false });
-    expect(tools[3].inputSchema).toMatchObject({ required: ["text"], additionalProperties: false });
-    expect(tools[4].inputSchema).toMatchObject({ required: ["question"], properties: { choices: { type: "array" } }, additionalProperties: false });
+    expect(tools[3].inputSchema).toEqual({
+      type: "object", properties: { issue: expect.objectContaining({ type: "string" }), reviewer: expect.objectContaining({ type: "boolean" }) }, additionalProperties: false,
+    });
+    expect(tools[4].inputSchema).toMatchObject({ required: ["text"], additionalProperties: false });
+    expect(tools[5].inputSchema).toMatchObject({ required: ["question"], properties: { choices: { type: "array" } }, additionalProperties: false });
   });
 
   test("the board tool returns what `nico-agent board --json` prints, as structured content and text", async () => {
@@ -98,7 +101,7 @@ describe("MCP over HTTP at /mcp", () => {
       expect(await call(params)).toEqual({ jsonrpc: "2.0", id: 7, error: { code: -32602, message: expect.any(String) } });
     }
     expect((await call({ name: "start" })).error.message)
-      .toBe("Unknown tool: start (the tools are board, inbox, recall, say, ask, intent, notes, dispatch, review, close, answer, queue, unqueue, advance, propose)");
+      .toBe("Unknown tool: start (the tools are board, inbox, recall, peek, say, ask, intent, notes, dispatch, review, close, answer, queue, unqueue, advance, propose)");
     expect(world.calls).toEqual([]);
   });
 

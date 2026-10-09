@@ -13,6 +13,8 @@ import { type Catalog, harnessCatalogs, harnesses, refreshHarnesses, rememberedL
 import { LEAD_AGENT, NICO_AGENT_SLUG, leadStatus, startLead, stopLead } from "./lead";
 import { NUDGE_INTERVAL_MS, nudgeLead, sendPendingNudge } from "./nudge";
 import { linearIdentifier } from "./linear";
+import { peek } from "./peek";
+import { PR_WATCH_INTERVAL_MS, watchPrs } from "./pr-events";
 import { PROPOSABLE, withJson } from "./mcp";
 import { PROPOSALS_SCOPE, notifyOnce } from "./notify";
 import { type Output, plural, render } from "./output";
@@ -56,6 +58,7 @@ const DISPATCH_USAGE = "nico-agent dispatch <issue>... --harness <harness> --mod
 const REVIEW_USAGE = "nico-agent review <issue>... --harness <harness> --model <model> --effort <effort>";
 const CLOSE_USAGE = "nico-agent close <issue>... [--confirm]";
 const ANSWER_USAGE = "nico-agent answer <issue> <text>";
+const PEEK_USAGE = "nico-agent peek [<issue>] [--reviewer]";
 const ORDERS_SET_USAGE = "nico-agent orders set <order> on|off";
 const SAY_USAGE = "nico-agent say [--answer <id> | --raw <transcript>] <text>";
 const LEAD_SAY_USAGE = "nico-agent lead say <text>";
@@ -246,6 +249,15 @@ const commands: Command[] = [
     ],
     help: ["Run `nico-agent --json` to see which Implementers are waiting on you, under `asking`"],
     run: answerCommand,
+  },
+  {
+    name: "peek",
+    usage: PEEK_USAGE,
+    summary: "Show what an In-flight issue's Implementer (or Reviewer) has on screen right now; with no issue, the Lead's own",
+    flags: { "--reviewer": { value: false, description: "the issue's Reviewer instead of its Implementer" } },
+    positionals: ["issue"],
+    examples: ["nico-agent peek acme/api#7", "nico-agent peek BLE-27 --reviewer --json", "nico-agent peek"],
+    run: peekCommand,
   },
   {
     name: "orders",
@@ -770,6 +782,15 @@ async function answerCommand(args: Args, ctx: RunContext): Promise<Output> {
     data: { answered: key, agent, ...(!started && { warning: "the answer was submitted, but the Implementer has not started working" }) },
     help,
   };
+}
+
+async function peekCommand(args: Args, ctx: RunContext): Promise<Output> {
+  const [issue] = args.positionals;
+  const reviewer = args.flags["--reviewer"] === true;
+  if (reviewer && !issue) throw new CliError("--reviewer needs an <issue>", [`Usage: \`${PEEK_USAGE}\``], 2);
+  const peeked = await peek(ctx.world, ctx.configDir, issue, reviewer);
+  const help = peeked.issue ? [`Run \`nico-agent show ${peeked.issue}\` to see the Dispatch`, BOARD_HELP] : [LEAD_STATUS_HELP];
+  return { data: { ...peeked }, help };
 }
 
 async function sayCommand(args: Args, ctx: RunContext): Promise<Output> {
@@ -1324,10 +1345,10 @@ async function serve(args: Args, ctx: RunContext): Promise<Output> {
   const port = portFlag(args, "nico-agent serve [--port <port>]");
   const events = new Events();
   const look = lookAtLead(ctx, events);
+  // Its runs come from the app and the Lead's tools, never from serve's own standard input.
+  const { stdin: _, ...served } = ctx;
+  const shared = { ...served, prs: ctx.prs ?? cachedPrs(ctx.world) };
   try {
-    // Its runs come from the app and the Lead's tools, never from serve's own standard input.
-    const { stdin: _, ...served } = ctx;
-    const shared = { ...served, prs: ctx.prs ?? cachedPrs(ctx.world) };
     const runCli = (argv: string[]) => run(argv, shared);
     await ctx.world.serve({ hostname: HOSTNAME, port }, webHandler({ ...ctx, events, look, runCli }), { "/": app }, webSockets({ ...ctx, runCli }));
   } catch (e) {
@@ -1341,6 +1362,16 @@ async function serve(args: Args, ctx: RunContext): Promise<Output> {
     events.emit("board-changed");
     await look();
     for (const warning of await sendPendingNudge(ctx.world, ctx.configDir)) console.error(warning);
+  });
+  // What changes on a PR reaches the Lead as events in its Inbox.
+  ctx.world.every(PR_WATCH_INTERVAL_MS, async () => {
+    try {
+      const { events: written, warnings } = await watchPrs(ctx.world, ctx.configDir, shared.prs);
+      for (const warning of warnings) console.error(`PR events: ${warning}`);
+      if (written.length) for (const warning of await nudgeLead(ctx.world, ctx.configDir)) console.error(warning);
+    } catch (e) {
+      console.error(`PR events failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
   });
   // The Board is tended while it is up; the timer stays as the floor, and the advance lock keeps the two apart.
   ctx.world.every(ADVANCE_INTERVAL_MS, async () => {
