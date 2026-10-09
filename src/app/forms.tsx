@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import {
   type BatchPlan, type Chosen, type DispatchTarget, type HarnessesJson, type LaunchAction, type LaunchChoice, type Outcome,
-  advanceReport, batchPlan, closePlan, launchArgs, launchChoice, outcomeOf,
+  advanceReport, baseOf, batchPlan, closePlan, launchArgs, launchChoice, outcomeOf, stackOnOf,
 } from "./actions";
 import type { BoardJson, InFlightDispatch, QueueStatus } from "./board";
 
@@ -34,6 +34,9 @@ const BUTTONS: Record<LaunchAction, string> = { dispatch: "Dispatch", review: "L
 
 const UNREACHABLE: Outcome = { failed: true, lines: [{ text: "Could not reach nico-agent serve; try again.", error: true }], help: [] };
 
+/** What an action's answer says, or that `serve` could not be reached. */
+const answerOf = (json: Record<string, unknown> | null) => (json ? outcomeOf(json) : UNREACHABLE);
+
 /** Post the CLI's arguments to an `/api` action; null when `serve` could not be reached. */
 async function post(path: string, args: string[] = []): Promise<Record<string, unknown> | null> {
   try {
@@ -56,7 +59,7 @@ function useAction(key: string) {
     report(key, null);
     const json = await post(path, args);
     setBusy(false);
-    const outcome = json ? outcomeOf(json) : UNREACHABLE;
+    const outcome = answerOf(json);
     if (outcome.failed) report(key, outcome);
     return !outcome.failed;
   };
@@ -87,16 +90,19 @@ function LaunchFields({ target, choice, chosen, onChoose }: { target: DispatchTa
     </select>
   );
   const { stack, base } = target;
+  // The same fallbacks as what the form posts, so it shows what it will send.
+  const stackOn = stackOnOf(target, chosen);
+  const baseValue = baseOf(target, chosen);
   return (
     <>
-      {stack?.length ? (
+      {stack && stackOn ? (
         <label>Stack on{" "}
-          <select name="stackOn" value={stack.find((s) => s.value === chosen.stackOn)?.value ?? stack[0]!.value} onChange={(e) => onChoose({ stackOn: e.target.value })}>
+          <select name="stackOn" value={stackOn} onChange={(e) => onChoose({ stackOn: e.target.value })}>
             {stack.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
           </select>
         </label>
-      ) : base && (
-        <label>Base {select("base", base.branches, chosen.base && base.branches.includes(chosen.base) ? chosen.base : base.selected, "Base")}</label>
+      ) : base && baseValue && (
+        <label>Base {select("base", base.branches, baseValue, "Base")}</label>
       )}
       {select("harness", choice.harnesses, choice.harness, "Harness")}
       {select("model", choice.models, choice.model, "Model")}
@@ -108,32 +114,43 @@ function LaunchFields({ target, choice, chosen, onChoose }: { target: DispatchTa
 /** A form's choices are kept by action and issue, so a batch row starts from the row's own form. */
 const formKey = (action: LaunchAction, issue: string) => `${action} ${issue}`;
 
+/** The choices in progress in `action`'s form of `issue`, and how to change them. */
+function useChosen(action: LaunchAction, issue: string) {
+  const { chosen, choose } = useActions();
+  const key = formKey(action, issue);
+  return { chosen: chosen[key] ?? {}, choose: (patch: Chosen) => choose(key, patch) };
+}
+
 const NO_HARNESS = <p className="empty">No Harness has models to launch with.</p>;
 
 /** An issue's dispatch or review form; its failure is shown under the issue. */
 export function LaunchForm({ action, target }: { action: LaunchAction; target: DispatchTarget }) {
-  const { harnesses, chosen, choose } = useActions();
+  const { harnesses } = useActions();
+  const { chosen, choose } = useChosen(action, target.issue);
   const { busy, run } = useAction(target.issue);
-  const key = formKey(action, target.issue);
   if (!harnesses) return <span className="loading">Loading Harnesses…</span>;
-  const choice = launchChoice(harnesses, chosen[key] ?? {});
+  const choice = launchChoice(harnesses, chosen);
   if (!choice) return NO_HARNESS;
   return (
     <form className={`launch ${action}`} onSubmit={(e) => {
       e.preventDefault();
-      void run(`/api/${action}`, launchArgs(action, target, choice, chosen[key] ?? {}));
+      void run(`/api/${action}`, launchArgs(action, target, choice, chosen));
     }}>
-      <LaunchFields target={target} choice={choice} chosen={chosen[key] ?? {}} onChoose={(patch) => choose(key, patch)} />
+      <LaunchFields target={target} choice={choice} chosen={chosen} onChoose={choose} />
       <button disabled={busy}>{BUTTONS[action]}</button>
     </form>
   );
 }
 
-/** Retry posts the failed launch's own arguments, which resume it from its failed step (ADR-0006). */
+/**
+ * Retry posts the failed launch's own arguments, which resume it from its
+ * failed step (ADR-0006). A Dispatch's Retry starts a track, so it is amber;
+ * a review's is outlined in Muon Blue.
+ */
 export function RetryButton({ issue, retry }: { issue: string; retry: string[] }) {
   const { busy, run } = useAction(issue);
   const [command, ...args] = retry;
-  return <button className="retry" disabled={busy} onClick={() => void run(`/api/${command}`, args)}>Retry</button>;
+  return <button className={`retry ${command === "dispatch" ? "fire" : "review"}`} disabled={busy} onClick={() => void run(`/api/${command}`, args)}>Retry</button>;
 }
 
 /** Close an In-flight issue: straight away once it has a PR, else only after confirming, since it is still Implementing. */
@@ -211,13 +228,14 @@ function BatchLaunch({ action, plan, onDone }: { action: LaunchAction; plan: Bat
   const [skipped] = useState(() => plan.skipped[action]);
   const [results, setResults] = useState<Outcome[] | null>(null);
   const [busy, setBusy] = useState(false);
-  const choices = harnesses && targets.map((t) => launchChoice(harnesses, chosen[formKey(action, t.issue)] ?? {}));
+  const chosenOf = (issue: string) => chosen[formKey(action, issue)] ?? {};
+  const choices = harnesses && targets.map((t) => launchChoice(harnesses, chosenOf(t.issue)));
   const submit = async () => {
     setBusy(true);
     const done: Outcome[] = [];
     for (const [i, target] of targets.entries()) {
-      const json = await post(`/api/${action}`, launchArgs(action, target, choices![i]!, chosen[formKey(action, target.issue)] ?? {}));
-      const outcome = json ? outcomeOf(json) : UNREACHABLE;
+      const json = await post(`/api/${action}`, launchArgs(action, target, choices![i]!, chosenOf(target.issue)));
+      const outcome = answerOf(json);
       // The CLI says `acme/api#7`, `acme/api#7 (resumed from tab)` or `acme/api#7 already In flight (no-op)` under its verb.
       const verb = action === "dispatch" ? "dispatched" : "reviewing";
       const said = String(json?.[verb] ?? "");
@@ -243,7 +261,7 @@ function BatchLaunch({ action, plan, onDone }: { action: LaunchAction; plan: Bat
                 {targets.map((t, i) => (
                   <fieldset key={t.issue} className="row">
                     <legend>{t.issue}</legend>
-                    <LaunchFields target={t} choice={choices[i]!} chosen={chosen[formKey(action, t.issue)] ?? {}} onChoose={(patch) => choose(formKey(action, t.issue), patch)} />
+                    <LaunchFields target={t} choice={choices[i]!} chosen={chosenOf(t.issue)} onChoose={(patch) => choose(formKey(action, t.issue), patch)} />
                   </fieldset>
                 ))}
                 <div className="buttons">
@@ -268,8 +286,10 @@ function BatchClose({ issues, onDone }: { issues: string[]; onDone: () => void }
   const close = async (issues: string[], confirm: boolean) => {
     setBusy(true);
     const json = await post("/api/close", [...issues, ...(confirm ? ["--confirm"] : [])]);
-    const outcome = json ? outcomeOf(json) : UNREACHABLE;
-    setResults((r) => [...r, outcome.lines.length ? outcome : { failed: false, lines: [{ text: `Closed ${issues.join(", ")}`, error: false }], help: [] }]);
+    const outcome = answerOf(json);
+    // One issue closed says only `closed: <issue>`; several say a line each.
+    const closed = { failed: false, lines: [{ text: `Closed ${String(json?.closed ?? issues.join(", "))}`, error: false }], help: [] };
+    setResults((r) => [...r, outcome.lines.length ? outcome : closed]);
     pick(issues, false);
     setBusy(false);
   };
@@ -317,13 +337,15 @@ export function TopActions({ onReport }: { onReport: (report: React.ReactNode) =
   };
   const refresh = async () => {
     setBusy("refresh");
-    const json = (await post("/api/harness/refresh")) as { refreshed?: { harness: string; error?: string }[] } | null;
+    const json = await post("/api/harness/refresh");
     setBusy(null);
     reloadHarnesses();
-    const failed = json?.refreshed?.filter((r) => r.error) ?? [];
-    if (!json) onReport(<OutcomeNote outcome={UNREACHABLE} />);
-    else if (failed.length) onReport(<OutcomeNote outcome={{ failed: true, lines: failed.map((r) => ({ text: r.error!, error: true })), help: ["Run `nico-agent harness refresh` for details"] }} />);
-    else onReport(null);
+    // A Harness whose discovery failed says why in its row; the CLI's help says what to do next.
+    const failed = ((json?.refreshed ?? []) as { error?: string }[]).filter((r) => r.error);
+    const outcome = failed.length && json
+      ? { failed: true, lines: failed.map((r) => ({ text: r.error!, error: true })), help: (json.help ?? []) as string[] }
+      : answerOf(json);
+    onReport(outcome.failed ? <OutcomeNote outcome={outcome} /> : null);
   };
   return (
     <div className="top-actions">

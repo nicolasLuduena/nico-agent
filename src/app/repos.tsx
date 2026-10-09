@@ -1,5 +1,5 @@
 import { type IssueRow, type RepoSection, type RoomReadout, type SpecGroup, SPEC_STATES } from "./board";
-import { dispatchTarget } from "./actions";
+import { dispatchTarget, isLinear } from "./actions";
 import { reachOf } from "./event";
 import { IssueOutcome, LaunchForm, Pick, QueueControl, useActions } from "./forms";
 
@@ -66,7 +66,7 @@ function Row({ repo, row: r, lit, onLight }: { repo: string; row: IssueRow; lit:
   return (
     <li>
       {/* No tick box for a Linear issue: a batch can't name the Repo of one several Repos claim. */}
-      {r.key.includes("#") && <Pick issue={r.key} />}
+      {!isLinear(r.key) && <Pick issue={r.key} />}
       {link}
       {r.kind === "ready" && r.queue && <QueueControl repo={repo} spec={r.key} status={r.queue} />}
       {target && <LaunchForm action="dispatch" target={target} />}

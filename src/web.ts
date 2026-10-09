@@ -85,12 +85,26 @@ async function postApi(ctx: WebContext, request: Request, pathname: string) {
     const read = API_READS.includes(pathname);
     return apiError(read ? 405 : 404, read ? `${pathname} is read with GET` : `no action at ${pathname}`);
   }
-  const body: unknown = await request.json().catch(() => null);
-  const args = body !== null && typeof body === "object" && "args" in body ? body.args : undefined;
+  // A browser says when another site's page sends the request; only the app's own page may act.
+  const site = request.headers.get("sec-fetch-site");
+  if (site && site !== "same-origin" && site !== "none") return apiError(403, "only the app itself can act on the Board");
+  const text = await request.text();
+  // No body is no arguments; a body that is not a JSON object is refused.
+  const body: unknown = text.trim() ? parseJson(text) : {};
+  const args = body !== null && typeof body === "object" ? (body as { args?: unknown }).args : null;
   if (!(args === undefined || (Array.isArray(args) && args.every((a) => typeof a === "string")))) {
     return apiError(400, 'the body must be {"args": [...]}, the CLI\'s arguments');
   }
   return cliJson(ctx, [...command, ...(args ?? [])]);
+}
+
+/** `text` as JSON, or null when it is not. */
+function parseJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
 }
 
 function apiError(status: number, error: string) {

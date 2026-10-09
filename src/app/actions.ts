@@ -68,7 +68,7 @@ export interface DispatchTarget {
 }
 
 /** A Linear key, such as `BLE-27`, names no Repo; a GitHub one, `acme/api#7`, does. */
-const isLinear = (issue: string) => !issue.includes("#");
+export const isLinear = (issue: string) => !issue.includes("#");
 
 /** The dispatch form of an issue in `repo`'s section: a Ready or Stackable one, else null. */
 export function dispatchTarget(board: BoardJson, issue: string, repo: string): DispatchTarget | null {
@@ -95,14 +95,25 @@ export function dispatchTarget(board: BoardJson, issue: string, repo: string): D
 
 export type LaunchAction = "dispatch" | "review";
 
+/** The PR a Stackable issue's form stacks on: the one chosen while offered, else the first. */
+export function stackOnOf({ stack = [] }: DispatchTarget, chosen: Chosen) {
+  return stack.find((s) => s.value === chosen.stackOn)?.value ?? stack[0]?.value;
+}
+
+/** The Base a Ready issue's form starts from: the one chosen while origin has it, else the issue's own. */
+export function baseOf({ base }: DispatchTarget, chosen: Chosen) {
+  return base && (chosen.base && base.branches.includes(chosen.base) ? chosen.base : base.selected);
+}
+
 /** The CLI arguments a launch form posts after its command: the issue, the launch, and the Repo, Base or PR it stacks on. */
 export function launchArgs(action: LaunchAction, target: DispatchTarget, { harness, model, effort }: LaunchChoice, chosen: Chosen): string[] {
   const args = [target.issue, "--harness", harness, "--model", model, "--effort", effort];
   if (action === "review") return args;
-  const { base, stack } = target;
   if (target.repo) args.push("--repo", target.repo);
-  if (stack?.length) args.push("--stack-on", stack.find((s) => s.value === chosen.stackOn)?.value ?? stack[0]!.value);
-  else if (base) args.push("--base", chosen.base && base.branches.includes(chosen.base) ? chosen.base : base.selected);
+  const stackOn = stackOnOf(target, chosen);
+  const base = baseOf(target, chosen);
+  if (stackOn) args.push("--stack-on", stackOn);
+  else if (base) args.push("--base", base);
   return args;
 }
 
@@ -139,9 +150,8 @@ export function batchPlan(board: BoardJson, picked: string[]): BatchPlan {
     }
     plan.close.push(issue);
     plan.skipped.dispatch.push(`${issue}: ${issue} is already In flight`);
-    const why = flight.reviewer ? "already has a Reviewer" : flight.failure ? "is Failed" : !flight.pr || !flight.workspace ? null : "";
-    if (why === "") plan.review.push(issue);
-    else plan.skipped.review.push(why === null ? `${issue}: no PR is linked to ${issue} yet` : `${issue}: ${issue} ${why}`);
+    if (canReview(flight)) plan.review.push(issue);
+    else plan.skipped.review.push(`${issue}: ${flight.reviewer ? `${issue} already has a Reviewer` : flight.failure ? `${issue} is Failed` : `no PR is linked to ${issue} yet`}`);
   }
   return plan;
 }

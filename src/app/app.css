@@ -65,8 +65,8 @@ button:disabled { opacity: 0.6; cursor: default; }
 /* The one action a form is for fires in amber; a review launches in its Stage's blue; Close reads as removal only on hover. */
 button.fire, form.launch.dispatch > button { background: var(--fire); border-color: var(--fire); color: var(--fire-ink); font-weight: 600; }
 button.fire:hover:not(:disabled), form.launch.dispatch > button:hover:not(:disabled) { background: var(--fire-hover); border-color: var(--fire-hover); }
-form.launch.review > button { border-color: var(--review); color: var(--review-ink); }
-form.launch.review > button:hover:not(:disabled) { background: color-mix(in srgb, var(--review) 14%, var(--panel)); border-color: var(--review); }
+:is(form.launch.review > button, button.retry.review) { border-color: var(--review); color: var(--review-ink); }
+:is(form.launch.review > button, button.retry.review):hover:not(:disabled) { background: color-mix(in srgb, var(--review) 14%, var(--panel)); border-color: var(--review); }
 button.close { color: var(--ink-muted); }
 button.close:hover:not(:disabled) { color: var(--failed-ink); border-color: var(--failed); }
 label { display: inline-flex; align-items: center; gap: 0.3rem; color: var(--ink-muted); font-size: 12px; }

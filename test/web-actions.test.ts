@@ -121,6 +121,26 @@ describe("/api actions", () => {
     expect(world.calls).toEqual([]);
   });
 
+  test("a body that is not JSON runs nothing", async () => {
+    const { web, world } = await mixed();
+    const { status, body } = await web("/api/advance", { method: "POST", body: "args=x" });
+    expect(status).toBe(400);
+    expect(JSON.parse(body).error).toBe('the body must be {"args": [...]}, the CLI\'s arguments');
+    expect(world.calls).toEqual([]);
+  });
+
+  test("another site's page cannot act through the browser", async () => {
+    const { web, world, cli } = await mixed();
+    const crossSite = { method: "POST", body: JSON.stringify({ args: ["acme/api#1", ...FLAGS] }), headers: { "sec-fetch-site": "cross-site" } };
+    const { status, body } = await web("/api/dispatch", crossSite);
+    expect(status).toBe(403);
+    expect(JSON.parse(body).error).toBe("only the app itself can act on the Board");
+    expect(world.calls).toEqual([]);
+    expect((await cli("show", "acme/api#1")).exitCode).toBe(1);
+    // The app's own page is same-origin.
+    expect((await web("/api/dispatch", { ...crossSite, headers: { "sec-fetch-site": "same-origin" } })).status).toBe(200);
+  });
+
   test("an action sends board-changed, even a failed one", async () => {
     const { handler, post } = await mixed();
     const stream = await events(handler);
