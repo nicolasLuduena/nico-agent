@@ -15,6 +15,9 @@ export interface Notice {
   body: string;
 }
 
+/** The scope of open Proposals' Notices: only `propose` observes it. */
+export const PROPOSALS_SCOPE = "proposals";
+
 /** The conditions already notified, so a timer running `advance` doesn't repeat them. */
 const FILE = "notified.json";
 
@@ -26,13 +29,13 @@ interface Notified {
 /**
  * Notify each Notice whose condition is new since the last run, and forget
  * the conditions that cleared, so a recurrence notifies again. A condition in
- * one of the `unobserved` scopes, which this run could not see, is neither
- * cleared nor notified anew. A notification that fails to send is a warning,
- * retried on the next run.
+ * a scope this run does not observe (one it could not see, or another
+ * caller's) is neither cleared nor notified anew. A notification that fails to
+ * send is a warning, retried on the next run.
  */
-export async function notifyOnce(world: World, configDir: string, notices: Notice[], unobserved: string[] = []): Promise<string[]> {
+export async function notifyOnce(world: World, configDir: string, notices: Notice[], observed: (scope: string) => boolean = () => true): Promise<string[]> {
   const notified = load(configDir);
-  const keep: Notified[] = notified.filter((n) => unobserved.includes(n.scope));
+  const keep: Notified[] = notified.filter((n) => !observed(n.scope));
   const warnings: string[] = [];
   for (const notice of notices) {
     if (keep.some((n) => n.key === notice.key)) continue;

@@ -11,7 +11,10 @@ import { type Catalog, harnessCatalogs, harnesses, refreshHarnesses, rememberedL
 import { LEAD_AGENT, NICO_AGENT_SLUG, leadStatus, startLead, stopLead } from "./lead";
 import { NUDGE_INTERVAL_MS, nudgeLead, sendPendingNudge } from "./nudge";
 import { linearIdentifier } from "./linear";
+import { PROPOSABLE, withJson } from "./mcp";
+import { PROPOSALS_SCOPE, notifyOnce } from "./notify";
 import { type Output, plural, render } from "./output";
+import { type Proposal, ProposalRefused, addProposal, commandLine, decide, loadProposals, settle } from "./proposals";
 import { dequeue, enqueue, loadQueues, move, pruneBoardQueues, queueOf } from "./queue";
 import { isCandidate, sameSpec } from "./spec";
 import { VERSION } from "./version";
@@ -48,6 +51,10 @@ const RECALL_USAGE = "nico-agent lead recall <query> [--since <time>] [--until <
 const QUEUE_USAGE = "nico-agent queue <spec> --repo <owner/name>";
 const UNQUEUE_USAGE = "nico-agent unqueue <spec> --repo <owner/name>";
 const MOVE_USAGE = "nico-agent move <spec> up|down --repo <owner/name>";
+const PROPOSE_USAGE = "nico-agent lead propose --reason <why> -- <command>...";
+const APPROVE_USAGE = "nico-agent proposals approve <id>";
+const DECLINE_USAGE = "nico-agent proposals decline <id> [reason]";
+const PROPOSALS_HELP = "Run `nico-agent proposals` to see the open Proposals";
 const LOG_HELP = "Run `nico-agent lead log` to see the conversation with the Lead";
 const LEAD_START_USAGE = "nico-agent lead start [--harness <harness>] [--model <model>] [--effort <effort>] [--port <port>]";
 const LEAD_STATUS_HELP = "Run `nico-agent lead status` to see the Lead";
@@ -246,6 +253,35 @@ const commands: Command[] = [
     run: ordersSet,
   },
   {
+    name: "proposals",
+    usage: "nico-agent proposals [--all]",
+    summary: "List the Lead's open Proposals: what each would run and why",
+    flags: { "--all": { value: false, description: "list decided Proposals too, with their status and outcome" } },
+    positionals: [],
+    examples: ["nico-agent proposals", "nico-agent proposals --all --json"],
+    run: proposalsList,
+  },
+  {
+    name: "proposals approve",
+    usage: APPROVE_USAGE,
+    summary: "Run an open Proposal's action in nico-agent and report the outcome; one no longer possible is closed as failed",
+    flags: {},
+    positionals: ["id"],
+    examples: ["nico-agent proposals approve 3"],
+    help: [PROPOSALS_HELP],
+    run: proposalsApprove,
+  },
+  {
+    name: "proposals decline",
+    usage: DECLINE_USAGE,
+    summary: "Turn down an open Proposal, telling the Lead why",
+    flags: {},
+    positionals: ["id", "reason..."],
+    examples: ["nico-agent proposals decline 3", "nico-agent proposals decline 3 \"Finish billing first\""],
+    help: [PROPOSALS_HELP],
+    run: proposalsDecline,
+  },
+  {
     name: "say",
     usage: SAY_USAGE,
     summary: "Write to the Lead, or answer one of its open questions with --answer",
@@ -309,6 +345,16 @@ const commands: Command[] = [
     positionals: ["query..."],
     examples: ["nico-agent lead recall billing", "nico-agent lead recall \"Stripe contract\" --since 2026-09-01 --json"],
     run: leadRecallCommand,
+  },
+  {
+    name: "lead propose",
+    usage: PROPOSE_USAGE,
+    summary: "Propose an action for the user to approve or decline, as the Lead (its MCP `propose` tool)",
+    flags: { "--reason": { value: true, description: "why, in a sentence the user can decide on (required)" } },
+    positionals: ["command..."],
+    examples: ["nico-agent lead propose --reason \"Smallest unblocked Spec\" -- queue --repo acme/api -- acme/api#10"],
+    help: [`A Proposal runs one of: ${PROPOSABLE.join(", ")}`],
+    run: leadProposeCommand,
   },
   {
     name: "harness list",
@@ -751,6 +797,111 @@ async function leadLogCommand(_args: Args, ctx: RunContext): Promise<Output> {
   const help = [`Run \`${SAY_USAGE}\` to write to the Lead`];
   if (open.length) help.unshift(`Run \`nico-agent say --answer <id> <text>\` to answer the Lead's open questions (${open.join(", ")})`);
   return { data: { log: plural(entries.length, "entry", "entries"), entries }, help };
+}
+
+async function leadProposeCommand(args: Args, ctx: RunContext): Promise<Output> {
+  const reason = required(args, "--reason", PROPOSE_USAGE);
+  if (!reason.trim()) throw new CliError("--reason needs a value", [`Usage: \`${PROPOSE_USAGE}\``], 2);
+  const action = args.positionals;
+  const command = commands.find((c) => c.name === action[0] && PROPOSABLE.includes(c.name));
+  if (!command) {
+    throw new CliError(action[0] ? `\`${action[0]}\` is not an action a Proposal can run` : "<command> is required", [
+      `A Proposal runs one of: ${PROPOSABLE.join(", ")}`,
+      `Usage: \`${PROPOSE_USAGE}\``,
+    ], 2);
+  }
+  // Checked now, so the user is never asked to approve a command line that cannot run.
+  try {
+    if (parseArgs(command, action.slice(1)).flags["--help"]) throw new CliError("--help shows help; it is not an action", [], 2);
+  } catch (e) {
+    if (!(e instanceof CliError)) throw e;
+    throw new CliError(`the action is not a valid \`${command.name}\` command: ${e.message}`, [`Usage: \`${command.usage}\``], 2);
+  }
+  const proposal = await addProposal(ctx.configDir, action, reason, ctx.world.now());
+  const open = loadProposals(ctx.configDir).filter((p) => p.status === "open");
+  const warnings = await notifyOnce(ctx.world, ctx.configDir, open.map(proposalNotice), (scope) => scope === PROPOSALS_SCOPE);
+  return {
+    data: { proposed: proposal.id, action: commandLine(action), ...(warnings.length && { warnings }) },
+    help: [`The user approves or declines it with \`nico-agent proposals\`; the decision arrives in your Inbox naming Proposal ${proposal.id}`],
+  };
+}
+
+/** A new Proposal, for the user away from the Board. */
+function proposalNotice({ id, action, reason }: Proposal) {
+  return {
+    key: `proposal ${id}`,
+    scope: PROPOSALS_SCOPE,
+    title: `The Lead proposes: ${commandLine(action)}`,
+    body: `${reason}\nRun \`nico-agent proposals approve ${id}\` to run it, or \`nico-agent proposals decline ${id} [reason]\``,
+  };
+}
+
+async function proposalsList(args: Args, ctx: RunContext): Promise<Output> {
+  const proposals = loadProposals(ctx.configDir);
+  const open = proposals.filter((p) => p.status === "open");
+  const help = open.length
+    ? [`Run \`nico-agent proposals approve ${open[0]!.id}\` to run one, or \`nico-agent proposals decline ${open[0]!.id} [reason]\` to turn it down`]
+    : [];
+  if (args.flags["--all"] === true) {
+    const rows = proposals.map(({ action, ...p }) => ({ ...p, action: commandLine(action) }));
+    return { data: { proposals: rows }, help: [...help, LOG_HELP] };
+  }
+  const rows = open.map(({ id, at, action, reason }) => ({ id, at, action: commandLine(action), reason }));
+  return { data: { proposals: `${open.length} open`, open: rows }, help: [...help, "Run `nico-agent proposals --all` to see decided ones too"] };
+}
+
+/** Decide Proposal `id`, turning a refusal into the CLI's own. */
+async function decideProposal(ctx: RunContext, id: string, status: "approved" | "declined", declined?: string) {
+  try {
+    return await decide(ctx.configDir, id, status, ctx.world.now(), declined);
+  } catch (e) {
+    if (!(e instanceof ProposalRefused)) throw e;
+    const open = e.open.length ? `the open ones are ${e.open.join(", ")}` : "none is open";
+    throw new CliError(e.message, [`Run \`nico-agent proposals --all\` to see every Proposal (${open})`]);
+  }
+}
+
+function idArg(args: Args, usage: string) {
+  const id = args.positionals[0];
+  if (!id) throw new CliError("<id> is required", [`Usage: \`${usage}\``, PROPOSALS_HELP], 2);
+  return id;
+}
+
+/**
+ * Run an approved Proposal's action as the CLI command it is. An action that
+ * fails, or finds nothing left to do (`(no-op)`), is no longer possible: the
+ * Proposal is closed as failed, with the reason.
+ */
+async function proposalsApprove(args: Args, ctx: RunContext): Promise<Output> {
+  const { id, action } = await decideProposal(ctx, idArg(args, APPROVE_USAGE), "approved");
+  const { stdout, exitCode } = await run(withJson(action), ctx);
+  const { help = [], ...outcome } = JSON.parse(stdout) as { help?: string[] } & Record<string, unknown>;
+  const noOps = exitCode === 0 ? noOpsIn(outcome) : [];
+  const why = exitCode !== 0 ? String(outcome.error) : noOps.length ? `nothing left to do: ${noOps.join("; ")}` : "";
+  await settle(ctx.configDir, id, outcome, why !== "");
+  const decision = why ? "failed" : "approved";
+  await append(ctx.configDir, { type: "decision", proposal: id, decision, action, text: why, outcome }, ctx.world.now());
+  if (why) {
+    throw new CliError(`Proposal ${id} is no longer possible, so it was closed as failed: ${why}`, [...help, PROPOSALS_HELP], 1, {
+      proposal: id, action: commandLine(action), outcome,
+    });
+  }
+  return { data: { approved: id, action: commandLine(action), outcome }, help: [...help, PROPOSALS_HELP] };
+}
+
+/** The `(no-op)` results anywhere in a command's output. */
+function noOpsIn(value: unknown): string[] {
+  if (typeof value === "string") return value.endsWith("(no-op)") ? [value] : [];
+  if (Array.isArray(value)) return value.flatMap(noOpsIn);
+  if (typeof value === "object" && value !== null) return Object.values(value).flatMap(noOpsIn);
+  return [];
+}
+
+async function proposalsDecline(args: Args, ctx: RunContext): Promise<Output> {
+  const reason = args.positionals.slice(1).join(" ").trim();
+  const { id, action } = await decideProposal(ctx, idArg(args, DECLINE_USAGE), "declined", reason || undefined);
+  await append(ctx.configDir, { type: "decision", proposal: id, decision: "declined", action, text: reason }, ctx.world.now());
+  return { data: { declined: id, action: commandLine(action) }, help: [`The Lead reads the decision in its Inbox`, PROPOSALS_HELP] };
 }
 
 async function reviewCommand(args: Args, ctx: RunContext): Promise<Output> {

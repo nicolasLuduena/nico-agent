@@ -5,7 +5,7 @@ import { ConfigError, SCHEDULER_DEFAULTS, type LaunchDefaults, loadConfig } from
 import { type DispatchRequest, StepFailed, checkLaunch, closeDispatch, dispatch } from "./dispatch";
 import { DispatchError, LaunchError } from "./dispatch-error";
 import { linearIdentifier } from "./linear";
-import { type Notice, notifyOnce } from "./notify";
+import { type Notice, PROPOSALS_SCOPE, notifyOnce } from "./notify";
 import { nudgeLead } from "./nudge";
 import { type Queues, dequeue, pruneBoardQueues, queueOf } from "./queue";
 import { type RepoDecision, type SpecDecision, sameSpec } from "./spec";
@@ -132,15 +132,16 @@ async function advanceOnce(world: World, configDir: string): Promise<AdvanceRepo
     await closeDispatch(world, configDir, row.dispatch.issue, true);
     report.closed.push(row.dispatch.issue);
   }
-  // A condition this run could not see neither clears nor notifies anew.
+  // A condition this run could not see neither clears nor notifies anew; Proposals are `propose`'s to notify.
   const unobserved = [
+    PROPOSALS_SCOPE,
     ...failedRepos.map((e) => repoScope(e.repo)),
     ...board.inFlight.filter((row) => row.implementerState === "unknown").map((row) => agentScope(row.dispatch.implementer.agent)),
   ];
   report.warnings = await notifyOnce(world, configDir, [
     ...notices(plans, report.specs, loadDispatches(configDir)),
     ...askingNotices(board.inFlight, board.specs),
-  ], unobserved);
+  ], (scope) => !unobserved.includes(scope));
   return report;
 }
 

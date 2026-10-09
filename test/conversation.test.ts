@@ -157,6 +157,7 @@ describe("the conversation with the Lead", () => {
       intent: `none yet: ${join(configDir, "intent.md")} is missing or empty`,
       notes: `none yet: ${join(configDir, "notes.md")} is missing or empty`,
       open: [],
+      proposals: [],
       last: [],
     });
 

@@ -1,10 +1,11 @@
 import { appendFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { type Proposal, loadProposals } from "./proposals";
 import { withFileLock, writeJsonAtomic } from "./state";
 
 /**
  * One entry of the conversation between the user and the Lead (ADR-0010),
- * kept append-only. Later kinds (proposal, decision, event) join as new types
+ * kept append-only. Later kinds (event) join as new types
  * without changing the shape: an id, a type, a time.
  */
 export type Entry = { id: number; at: string } & (
@@ -14,6 +15,11 @@ export type Entry = { id: number; at: string } & (
   | { type: "ask"; text: string; choices?: string[] }
   /** The user's answer to the `ask` entry `question`. */
   | { type: "answer"; question: number; text: string }
+  /**
+   * The user's decision on the Proposal `proposal`, with its action and what
+   * running it printed; `text` is why it was declined or failed, if known.
+   */
+  | { type: "decision"; proposal: number; decision: "approved" | "declined" | "failed"; action: string[]; text: string; outcome?: Record<string, unknown> }
 );
 
 type Body = Entry extends infer E ? (E extends Entry ? Omit<E, "id" | "at"> : never) : never;
@@ -24,7 +30,7 @@ export type InboxEntry = Entry | (Answer & { asked: string });
 /**
  * What the Lead needs to know where it stands after a restart or a compacted
  * context, handed over with every Inbox: the Intent and Notes, its open
- * questions, and the last exchanges. nico-agent keeps them, not the Harness.
+ * questions and Proposals, and the last exchanges. nico-agent keeps them, not the Harness.
  */
 export interface Orient {
   /** The Intent's Markdown, or a line saying there is none yet. */
@@ -33,6 +39,8 @@ export interface Orient {
   notes: string;
   /** The Lead's questions not answered yet, oldest first. */
   open: Entry[];
+  /** The Lead's Proposals the user has not decided yet, oldest first. */
+  proposals: Proposal[];
   /** The last entries, oldest first, with who wrote each. */
   last: Authored[];
 }
@@ -53,6 +61,7 @@ function author(entry: Entry): "user" | "lead" {
   switch (entry.type) {
     case "user":
     case "answer":
+    case "decision":
       return "user";
     case "lead":
     case "ask":
@@ -153,6 +162,7 @@ export function readInbox(dir: string): Promise<{ entries: InboxEntry[]; orient:
       intent: markdown(dir, INTENT_FILE),
       notes: markdown(dir, NOTES_FILE),
       open: openAsks(entries),
+      proposals: loadProposals(dir).filter((p) => p.status === "open"),
       last: entries.slice(-LAST).map(authored),
     };
     return { entries: inbox, orient };
