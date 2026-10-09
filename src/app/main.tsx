@@ -4,6 +4,7 @@ import type { HarnessesJson } from "./actions";
 import type { BoardJson } from "./board";
 import { type LeadStatusJson, openItems } from "./lead";
 import { LeadMenu } from "./lead-menu";
+import { Actions, useBoardActions } from "./forms";
 import { LeadPanel, useConversation } from "./lead-panel";
 import { ReposPane } from "./repos";
 import { StatsPane } from "./stats-page";
@@ -50,10 +51,11 @@ function usePage(): Page {
  * more often than that.
  */
 function App() {
-  const { harnesses } = useHarnesses();
+  const { harnesses, reload } = useHarnesses();
   const page = usePage();
   const { data: status = null } = useResource<LeadStatusJson>("/api/lead/status", ["lead-state"]);
   const { data: board = null } = useResource<BoardJson>("/api/board", ["board-changed"]);
+  const actions = useBoardActions(board ?? {}, harnesses, reload);
   const conversation = useConversation();
   const questions = openItems(conversation.state);
   const [questionsShown, showQuestions] = useState(true);
@@ -81,7 +83,7 @@ function App() {
       </header>
       <main className={`shell ${page}`}>
         <LeadPanel status={status} conversation={conversation} questions={questionsShown ? questions : null} board={board} />
-        {page === "stats" ? <StatsPane /> : <ReposPane board={board} />}
+        {page === "stats" ? <StatsPane /> : <Actions.Provider value={actions}><ReposPane board={board} /></Actions.Provider>}
       </main>
     </>
   );
