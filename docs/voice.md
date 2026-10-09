@@ -61,10 +61,11 @@ the Lead as your message at once, with the raw transcript kept on the entry
 (`nico-agent say --raw <raw> -- <text>`). The card shows the two side by side.
 
 - **Hold** the button (or Space or Enter on it) to talk; release to send.
-- **Tap** it to start a hands-free session (below): a pause of about a
-  second after you spoke sends it, a second tap sends at once, and six
-  seconds of silence drops it unsent. An utterance stops at one minute
-  either way.
+- **Tap** it to start a hands-free session (below): a pause of half a
+  second once you finished a sentence sends it (two seconds while you are
+  still thinking; see **Hearing speech** below), a second tap sends at once,
+  and six seconds without speech drops it unsent. An utterance stops at one
+  minute either way.
 
 Every request carries a vocabulary hint as the transcription `prompt`, built
 for each utterance: the terms each Repo's `GLOSSARY.md` defines (its
@@ -85,7 +86,7 @@ end it. A walkthrough, with Voice on:
 
 1. Press the key (or tap **Talk**). The strip above the composer reads
    **Listening**, with what it hears as you say "What is running?".
-2. You stop talking; a second later it is sent. **Thinking**:
+2. You stop talking; half a second later it is sent. **Thinking**:
    "Transcribing…", then, once the Lead has your message, "The Lead is
    working on it."
 3. The Lead says "Checking the Board." within a few seconds (its skill
@@ -105,12 +106,42 @@ the Lead speaks it stops the Lead (the talk button reads **Stop**); either
 way the session goes on. A failure ends it too: the microphone, `serve` or
 the transcription service, shown as a warning.
 
-The microphone watches for any fifth of a second of unbroken sound over the
-room all through a session, so a cough or a door may start an utterance;
-what transcription hears in it is sent, and "Heard nothing; try again." shows
-when it hears nothing. Headphones and a quiet room keep a session clean. Holding the
-button to talk is never a session: it sends one utterance and stops, as
-does talking over the Lead outside a session.
+The microphone watches for a fifth of a second of unbroken speech all
+through a session; a cough, a door or a knock is not speech, and starts
+nothing. "Heard nothing; try again." shows when transcription hears nothing
+in what was sent. Holding the button to talk is never a session: it sends
+one utterance and stops, as does talking over the Lead outside a session.
+
+### Hearing speech
+
+The page tells speech from silence and noise itself, with two small models
+that `serve` embeds and serves at `/voice/` (the page loads them, about 11MB
+and onnxruntime-web's 14MB of WebAssembly, the first time it uses the
+microphone):
+
+- **[Silero VAD](https://github.com/snakers4/silero-vad)** (MIT) hears each
+  32ms of audio and says how likely it is speech. Speech starts at 0.5 and
+  goes on down to 0.35, so a word's quiet end stays in it; a fifth of a second
+  of it starts an utterance, or talks over the Lead.
+- **[Smart Turn v3](https://github.com/pipecat-ai/smart-turn)** (BSD-2) hears
+  the utterance so far, from its tone and its words, and says whether you
+  finished it. The page asks it 0.2s into each pause; it answers within the
+  pause (about 0.3s). Said finished, the utterance ends at half a second of
+  pause; not finished ("I can't seem to, um …"), it waits for more, up to two
+  seconds of pause.
+
+The half second is also why a pause mid-sentence of under half a second
+(Kokoro's comma or colon in the fixture set) is never cut, however Smart
+Turn judges it. When the models cannot load, the microphone fails with a
+warning, and typing still works.
+
+The models are `src/app/models/silero-vad.onnx` (Silero VAD v5, from its
+repo's `src/silero_vad/data/`) and `src/app/models/smart-turn-v3.2-cpu.onnx`
+(the int8 model, from [`pipecat-ai/smart-turn-v3`](https://huggingface.co/pipecat-ai/smart-turn-v3)
+on Hugging Face). Smart Turn hears Whisper's log-mel features of the last 8
+seconds, which `src/app/hearing.ts` makes as its own Python code does;
+`test/app-hearing.test.ts` checks them against that code's output, and plays
+the fixture set and some noise through both models.
 
 Without Voice on, a session works the same, and the Lead's replies only
 show.
@@ -211,12 +242,13 @@ reply shows in the Lead panel as ever, with a warning above the conversation.
 
 `serve` logs every spoken message to `voice-timing.jsonl` in the config
 directory (`~/.config/nico-agent/`), one JSON line each, to tell where the
-wait between talking and hearing the Lead goes. A line has seven times, in
+wait between talking and hearing the Lead goes. A line has eight times, in
 order:
 
 | Field | When | Taken by |
 | --- | --- | --- |
 | `spoke` | you stopped talking: the release, the tap, or where the pause began | the page |
+| `ended` | the page ended the utterance: at once on a release or a tap, after the pause (see **Hearing speech**) hands-free | `serve`, on hearing it |
 | `transcribed` | `voice.transcribe` returned the final transcript | `serve` |
 | `scribed` | the Scribe returned its text (and its choice, answering a question) | `serve` |
 | `written` | the message's entry was written to the conversation | the entry's `at` |
@@ -226,13 +258,14 @@ order:
 
 Each is an ISO time, or `null` for a step that did not happen: no Scribe
 configured or it failed (`scribed`), the Lead not running (`nudged`), Voice
-off (`played`), or the transcription failing (all after `spoke`). A step
+off (`played`), or the transcription failing (all after `ended`). A step
 that did not happen leaves its time to the next: with the Scribe failing,
 its wait shows in `written`. `took` is
 how long each step took after the last one that happened, in ms; `total` is
 `spoke` to `played`; `slowest` names the step with the longest `took`. The
 page and `serve` share a clock, being on one machine (on the phone the
-phone's clock takes `spoke` and `played`).
+phone's clock takes `spoke` and `played`, so `ended` is off by the
+difference between the clocks).
 
 A line is written once the page plays the Lead's reply; with Voice off, once
 the Lead first says something; for a failed or empty transcript, at once;

@@ -121,52 +121,68 @@ export function indicator(state: Talk, { speaking, working }: { speaking: boolea
   return null;
 }
 
-/** Below this level nothing counts as speech, however quiet the room. */
-const MIN_LEVEL = 0.015;
-/** Speech is this many times louder than the room's floor. */
-const OVER_FLOOR = 3;
+/** Silero VAD's probability that a frame is speech, from which it counts as speech, and down to which speech goes on. */
+const SPEECH_STARTS = 0.5;
+const SPEECH_GOES_ON = 0.35;
 /** Less speech than this is a click or a knock, not words. */
 const MIN_SPEECH_MS = 200;
-/** This much quiet after speech ends the utterance. */
-const PAUSE_MS = 800;
+/** This much quiet after speech asks Smart Turn whether the user finished, so its answer comes during the pause. */
+export const ASK_MS = 200;
+/** This much quiet after speech ends the utterance once Smart Turn said the user finished. */
+export const TURN_PAUSE_MS = 500;
+/** This much quiet after speech ends the utterance, finished or not: the user thinking aloud has stopped. */
+export const LONGEST_PAUSE_MS = 2000;
 /** With no speech for this long, hands-free listening gives up. */
 const NOTHING_MS = 6000;
 /** The longest utterance sent. */
 export const LIMIT_MS = 60_000;
-/** How fast the floor rises to a steadily louder room. */
-const FLOOR_RISE_MS = 2000;
 
-/** What hands-free listening has heard so far: the room's floor, how much speech and quiet, and how long the speech going on now has lasted. */
+/**
+ * What hands-free listening has heard so far: whether speech goes on, how
+ * much speech and quiet, how long the speech going on now has lasted, and
+ * whether Smart Turn said the user finished in the pause going on now (null
+ * until it answers).
+ */
 export interface Listening {
-  floor: number;
+  speaking: boolean;
   speech: number;
   quiet: number;
   voiced: number;
   elapsed: number;
+  finished: boolean | null;
 }
 
-/** Listening before any audio: the floor at the least level that could be speech. */
-export const LISTENING: Listening = { floor: MIN_LEVEL, speech: 0, quiet: 0, voiced: 0, elapsed: 0 };
+/** Listening before any audio. */
+export const LISTENING: Listening = { speaking: false, speech: 0, quiet: 0, voiced: 0, elapsed: 0, finished: null };
+
+/** How listening ends: a pause after speech, nothing heard for a while, or the limit. */
+export type Ending = "pause" | "nothing" | "limit";
 
 /**
- * Listening after `ms` more of audio at `level` (see `level`): speech is
- * what stands out from the room's floor, which drops at once to a quieter
- * room and rises slowly to a louder one, never while speech goes on. It ends
- * on a pause after enough speech, on nothing heard for a while, or at the limit.
+ * Listening after `ms` more of audio that Silero VAD heard as speech with
+ * `probability`: speech starts over SPEECH_STARTS and goes on down to
+ * SPEECH_GOES_ON, so a word's quiet end stays in it. Once a pause after
+ * speech reaches ASK_MS, `ask` says to ask Smart Turn whether the user
+ * finished (its answer goes in `finished`). It ends on a pause of
+ * TURN_PAUSE_MS the user finished, or of LONGEST_PAUSE_MS either way, on
+ * nothing heard for a while, or at the limit.
  */
-export function listen(state: Listening, level: number, ms: number): { state: Listening; speaking: boolean; ended?: "pause" | "nothing" | "limit" } {
-  const speaking = level > Math.max(MIN_LEVEL, state.floor * OVER_FLOOR);
-  const floor = level < state.floor ? level : speaking ? state.floor : state.floor + (level - state.floor) * (1 - Math.exp(-ms / FLOOR_RISE_MS));
-  const next = {
-    floor,
+export function listen(state: Listening, probability: number, ms: number): { state: Listening; ended?: Ending; ask?: true } {
+  const speaking = probability >= SPEECH_STARTS || (state.speaking && probability >= SPEECH_GOES_ON);
+  const next: Listening = {
+    speaking,
     speech: state.speech + (speaking ? ms : 0),
     quiet: speaking ? 0 : state.quiet + ms,
     voiced: speaking ? state.voiced + ms : 0,
     elapsed: state.elapsed + ms,
+    // Speech again makes the answer about the pause before it stale.
+    finished: speaking ? null : state.finished,
   };
   const heard = next.speech >= MIN_SPEECH_MS;
-  const ended = next.elapsed >= LIMIT_MS ? "limit" : heard && next.quiet >= PAUSE_MS ? "pause" : !heard && next.elapsed >= NOTHING_MS ? "nothing" : undefined;
-  return { state: next, speaking, ...(ended && { ended }) };
+  const ask = heard && state.quiet < ASK_MS && next.quiet >= ASK_MS;
+  const paused = next.quiet >= (next.finished ? TURN_PAUSE_MS : LONGEST_PAUSE_MS);
+  const ended = next.elapsed >= LIMIT_MS ? "limit" : heard && paused ? "pause" : !heard && next.elapsed >= NOTHING_MS ? "nothing" : undefined;
+  return { state: next, ...(ended && { ended }), ...(ask && !ended && { ask }) };
 }
 
 /**
@@ -182,14 +198,6 @@ export function bargesIn(state: Listening): boolean {
 export function pcmSamples(pcm: ArrayBuffer): Float32Array<ArrayBuffer> {
   const view = new DataView(pcm);
   return Float32Array.from({ length: Math.floor(pcm.byteLength / 2) }, (_, i) => view.getInt16(i * 2, true) / 32768);
-}
-
-/** The loudness of a batch of samples, as their root mean square. */
-export function level(samples: Float32Array): number {
-  if (samples.length === 0) return 0;
-  let sum = 0;
-  for (const s of samples) sum += s * s;
-  return Math.sqrt(sum / samples.length);
 }
 
 /**
