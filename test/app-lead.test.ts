@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 import type { HarnessesJson } from "../src/app/actions";
 import {
-  type Conversation, type LeadStatusJson, type ProposalJson, cards, declineArgs, leadChoice, leadControl, leadStartArgs, followsNewEntries, notices, proposalLines, reduce, sayArgs,
+  type Conversation, type LeadStatusJson, type ProposalJson, cards, declineArgs, leadChoice, leadControl, leadStartArgs, followsNewEntries, notices, proposalLines, reduce, researchMessage, sayArgs,
 } from "../src/app/lead";
 import { setup } from "./harness";
 
@@ -168,6 +168,19 @@ describe("what the panel posts", () => {
     expect(sayArgs("Billing", 4, "the first one")).toEqual(["--answer", "4", "--raw", "the first one", "--", "Billing"]);
     expect(declineArgs(3, "  ")).toEqual(["3"]);
     expect(declineArgs(3, "Finish billing first")).toEqual(["3", "--", "Finish billing first"]);
+  });
+
+  test("a research request is the question after the research mark, with the Repo when one is named", () => {
+    expect(sayArgs(researchMessage("How does codex load skills?"))).toEqual(["--", "Research request: How does codex load skills?"]);
+    expect(sayArgs(researchMessage("  How does codex load skills?\n", " acme/api "))).toEqual(["--", "Research request: How does codex load skills?\nRepo: acme/api"]);
+    expect(sayArgs(researchMessage("--help, or not?", "  "))).toEqual(["--", "Research request: --help, or not?"]);
+  });
+
+  test("a research request reaches the Lead as the user's message, and shows in the conversation like any other", async () => {
+    const { loaded, post } = withSay();
+    const text = researchMessage("How does codex load skills?", "acme/api");
+    const { said } = await post(sayArgs(text));
+    expect(cards(await loaded())).toEqual([{ kind: "message", key: `entry-${said}`, who: "user", text, at: expect.any(String) }]);
   });
 
   test("a spoken message keeps what was heard, so the entry carries the raw transcript", () => {

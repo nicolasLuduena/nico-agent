@@ -1,6 +1,6 @@
 # Research
 
-The user asks you to research a question: in the conversation ("find out how codex loads skills"), or with the app's Research button, which sends their question to you as a message marked as a research request. You write a Research issue on the Repo's Source and start it. Its Implementer researches instead of building: it writes the findings, with their sources, to one Markdown file in the Repo's `docs/research/`, opened as a draft PR.
+The user asks you to research a question: in the conversation ("find out how codex loads skills"), or with the app's Research button, which sends their question to you as a message starting `Research request:`, with a `Repo:` line when they named the Repo. You write a Research issue on the Repo's Source and start it. Its Implementer researches instead of building: it writes the findings, with their sources, to one Markdown file in the Repo's `docs/research/`, opened as a draft PR.
 
 Research issues are yours to write when the user asks: the user decided that this write needs no Proposal, whatever the `write` order says, and the same holds for linking it into a Spec as a sub-issue and a Blocker (Start it, below). A Research issue you were not asked for is a new idea: shape it (`SHAPING.md`). Starting it is the `start` order's, like any Spec.
 

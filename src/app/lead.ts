@@ -196,6 +196,15 @@ export function sayArgs(text: string, question?: number, raw?: string): string[]
   return [...(question !== undefined ? ["--answer", String(question)] : []), ...(raw !== undefined ? ["--raw", raw] : []), "--", text];
 }
 
+/**
+ * What the Research button sends the Lead, as the user's message: the
+ * question after the mark the Lead's `RESEARCH.md` reads as a research
+ * request, and the Repo on a line of its own when one is named.
+ */
+export function researchMessage(question: string, repo = ""): string {
+  return `Research request: ${question.trim()}${repo.trim() ? `\nRepo: ${repo.trim()}` : ""}`;
+}
+
 /** `proposals decline`'s arguments, the reason only when one was given. */
 export function declineArgs(id: number, reason: string): string[] {
   return reason.trim() ? [String(id), "--", reason] : [String(id)];

@@ -188,7 +188,7 @@ Every text pair is checked against WCAG AA (4.5:1) in both schemes: ink, muted i
 
 - **Header:** 52px, sticky, translucent (the ground at 80% in light, black at 72% in dark, with a 20px blur and 180% saturation), a hairline under it. The brand, then the pages (**Lead**, **Stats**) as pill links, the current one on fill, then at the far end the Lead's button.
 - **Shell:** a grid of the Lead panel (the rest of the width) and the right column (20 to 28rem), 1.5rem apart and 1.5rem from the edges, at most 88rem wide, filling the window under the header. Each column is a panel.
-- **Lead panel:** a column of the bar (Lead, the Voice switch, the drawer's button), the notices when there are any, the conversation (which scrolls) or the drawer, and the composer, which stays at the foot.
+- **Lead panel:** a column of the bar (Lead, the Voice switch, the Research button, the drawer's button), the notices when there are any, the conversation (which scrolls) or the drawer, and the composer, which stays at the foot.
 - **Narrow window (900px and below):** one column, the Lead panel first and as tall as the window, then the right column below it. Under 560px the brand hides, the talk button narrows to 5.5rem beside the text field, and fields use 16px text so a phone does not zoom.
 - **Pages:** `#/` is the Lead page, `#/stats` the Stats page; the Lead panel stays on both.
 
@@ -209,7 +209,7 @@ Subtle and short. A new card arrives with a 240ms fade and a 6px lift; the Lead 
 ### Buttons
 - **Default:** a fill pill, 32px tall, 14px/500. Hover deepens the fill. Disabled is 45% opacity.
 - **Primary (Send, Start, Approve, Save):** an accent pill with white text; hover darkens it.
-- **Quiet ("Intent & orders"):** link-coloured text, no fill until hovered.
+- **Quiet ("Research", "Intent & orders"):** link-coloured text, no fill until hovered.
 - **Close / Stop:** a default pill whose text turns failed red on hover.
 
 ### Header and the Lead menu
@@ -230,6 +230,9 @@ The one quiet place for warnings, under the Lead panel's bar: serve unreachable,
 
 ### Composer
 At the Lead panel's foot, always. The text field (a 22px-cornered box on the ground, which takes the accent's border while focused, with Send inside it at its end) and the **Talk** button (a 48px fill pill with a drawn microphone, at least 8.5rem wide) sit side by side as equals. Enter sends, Shift+Enter breaks the line; the draft is the composer's own, so arriving entries never touch it. Talk is held or tapped (see `docs/voice.md`); while it records it fills with the accent. Above the row, the talk status shows only during a conversation by voice: a dot (filled while someone is heard, outlined while the Lead thinks), **Listening**, **Thinking** or **Speaking**, a muted note or what is heard in italic, and Stop or End.
+
+### Research box
+"Research" drops a box from the Lead bar over the conversation, as wide as the panel allows (24rem at most), raised like the Lead's controls: the question (Enter sends, Shift+Enter a new line), an optional Repo, a muted line saying the Lead writes the issue, and Send to the Lead (primary) and Cancel. Opening it focuses the question; Escape, a click elsewhere or Cancel closes it with the draft kept; sending closes it, and the message shows in the conversation like any other.
 
 ### Drawer
 "Intent & orders" swaps the conversation for the drawer; the composer stays. Tabs (Intent, Notes, Standing orders) are pills, the selected one on fill; one with an unsaved edit carries a 6px accent dot. The arrow keys, Home and End move between them. Intent and Notes are a Markdown textarea that fills the tab, with a foot of status, Revert and Save (primary). A change made meanwhile shows above the textarea as a waiting card with Keep my edit and Use this instead. Standing orders are rows of switches divided by hairlines, each with what it lets the Lead do in muted text.

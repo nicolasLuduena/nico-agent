@@ -144,8 +144,20 @@ label.switch:has(:checked) { color: var(--ink); }
 .side .lede { font-size: 14px; max-width: 32ch; }
 
 .lead-panel { display: flex; flex-direction: column; min-height: 0; background: var(--surface); border-radius: 18px; overflow: hidden; }
-.lead-bar { display: flex; align-items: center; gap: 1rem; padding: 0.9rem 1.25rem; border-bottom: 1px solid var(--rule); }
+.lead-bar { position: relative; display: flex; align-items: center; gap: 1rem; padding: 0.9rem 1.25rem; border-bottom: 1px solid var(--rule); }
 .lead-bar h1 { font-size: 17px; font-weight: 600; margin-right: auto; }
+
+/* The Research box: it drops from the Lead bar over the conversation, as wide as the panel allows. */
+.research-menu button[aria-expanded="true"] { background: var(--fill); }
+.research-box {
+  position: absolute; z-index: 5; right: 1.25rem; top: calc(100% + 6px); width: min(24rem, calc(100% - 2.5rem)); padding: 1rem;
+  background: var(--surface); border-radius: 16px; box-shadow: var(--lift);
+  display: grid; gap: 0.6rem; animation: appear 200ms var(--ease);
+}
+.research-box label { display: grid; gap: 0.25rem; font-size: 12px; color: var(--ink-muted); }
+.research-box .optional { font-weight: 400; }
+.research-box textarea { resize: vertical; min-height: 4.5rem; }
+.research-box .lede { font-size: 13px; }
 
 /* The one quiet place for warnings. */
 .notices { display: grid; gap: 0.35rem; padding: 0.6rem 1.25rem; background: color-mix(in srgb, var(--implementing) 8%, var(--surface)); border-bottom: 1px solid var(--rule); font-size: 13px; }
@@ -239,11 +251,14 @@ ul.orders p { font-size: 13px; color: var(--ink-muted); margin: 0.25rem 0 0 calc
   .shell { grid-template-columns: minmax(0, 1fr); height: auto; padding: 0.75rem; gap: 0.75rem; }
   .lead-panel { height: calc(100dvh - 52px - 1.5rem); }
   .lead-bar, .composer, .conversation, .notices { padding-left: 1rem; padding-right: 1rem; }
+  .lead-bar { gap: 0.5rem; }
+  .research-box { right: 1rem; }
   .lead-button .agent { max-width: 9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
 @media (max-width: 560px) {
   .brand { display: none; }
   button.talk { min-width: 5.5rem; }
+  .research-box { width: calc(100% - 2rem); }
   input[type="text"], textarea, select { font-size: 16px; }
 }
 
