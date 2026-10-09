@@ -170,7 +170,7 @@ export function cards({ entries, proposals, sends }: Conversation): Card[] {
   return timeline;
 }
 
-/** An item of the Questions list: a question of the Lead's or one of its Proposals, as its card in the chat. */
+/** An item of the Questions list: a question of the Lead's or one of its Proposals, as its card in the conversation. */
 export type OpenItem = Extract<Card, { kind: "question" | "proposal" }>;
 
 /**
@@ -183,7 +183,7 @@ export function openItems(conversation: Conversation): OpenItem[] {
     (c.kind === "question" && !c.answer) || (c.kind === "proposal" && c.status === "open"));
 }
 
-/** A message's marks when it was spoken:that it was, and what was heard when the Scribe changed it. */
+/** A message's marks when it was spoken: that it was, and what was heard when the Scribe changed it. */
 function spoken(text: string, raw: string | undefined) {
   if (raw === undefined) return {};
   return { spoken: true as const, ...(raw !== text && { raw }) };

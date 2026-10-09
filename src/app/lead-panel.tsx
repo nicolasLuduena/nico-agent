@@ -3,7 +3,7 @@ import type { Authored } from "../conversation";
 import { OutcomeNote, answerOf, post, usePost } from "./forms";
 import {
   type Card, type Conversation, type LeadStatusJson, type OpenItem, type ProposalJson,
-  cards, declineArgs, followsNewEntries, notices, openItems, proposalLines, reduce, sayArgs,
+  cards, declineArgs, followsNewEntries, notices, proposalLines, reduce, sayArgs,
 } from "./lead";
 import { LeadDrawer } from "./lead-drawer";
 import { useResource } from "./stream";
@@ -38,16 +38,18 @@ export function useConversation() {
 
 export type ConversationState = ReturnType<typeof useConversation>;
 
-/** The id of a card's place in the chat, which the Questions list jumps to. */
-const inChat = (key: string) => `chat-${key}`;
+/** The id of a card's place in the conversation, which the Questions list jumps to. */
+const inConversation = (key: string) => `conversation-${key}`;
 
 /**
  * The Lead panel: the Voice switch and the drawer's button, the one quiet
- * place for warnings, the Questions list when it is shown, the conversation
- * as cards, and the composer, which stays put and keeps its draft while
- * entries arrive.
+ * place for warnings, the Questions list (`questions`, null while hidden),
+ * the conversation as cards, and the composer, which stays put and keeps its
+ * draft while entries arrive.
  */
-export function LeadPanel({ status, conversation, questions }: { status: LeadStatusJson | null; conversation: ConversationState; questions: boolean }) {
+export function LeadPanel({ status, conversation, questions }: {
+  status: LeadStatusJson | null; conversation: ConversationState; questions: OpenItem[] | null;
+}) {
   const { state, send, dismiss, failure } = conversation;
   const [drawer, setDrawer] = useState(false);
   const voice = useResource<{ voice?: string }>("/api/voice/state", ["voice-changed"]).data?.voice === "on";
@@ -66,20 +68,25 @@ export function LeadPanel({ status, conversation, questions }: { status: LeadSta
     atEnd.current = true;
     return send(text, question, raw);
   };
-  /** The card the Questions list asked to show, scrolled to once the conversation is drawn. */
-  const [shownInChat, showInChat] = useState<{ key: string } | null>(null);
+  /**
+   * The card the Questions list asked to show, scrolled to once the
+   * conversation is drawn. Each ask is a new object, so asking for the same
+   * card again scrolls to it again.
+   */
+  const [jumped, setJumped] = useState<{ key: string } | null>(null);
   useEffect(() => {
-    if (!shownInChat) return;
-    const card = document.getElementById(inChat(shownInChat.key));
+    if (!jumped) return;
+    const card = document.getElementById(inConversation(jumped.key));
     if (!card) return;
     // Reading back now: new entries leave the user where the card is.
     atEnd.current = false;
     card.scrollIntoView({ block: "center", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
     card.focus({ preventScroll: true });
-  }, [shownInChat]);
+  }, [jumped]);
+  /** Show the card `key` in the conversation, closing the drawer if it is open. */
   const jump = (key: string) => {
     setDrawer(false);
-    showInChat({ key });
+    setJumped({ key });
   };
   const talking = useTalk((text, heard, answers) => void sendAndFollow(text, answers, heard), voice);
   const warnings = notices({ failure, status, talk: talking.warning });
@@ -103,7 +110,7 @@ export function LeadPanel({ status, conversation, questions }: { status: LeadSta
           {outcome && <OutcomeNote outcome={outcome} />}
         </div>
       )}
-      {questions && <QuestionsList items={openItems(state)} send={send} dismiss={dismiss} jump={jump} />}
+      <QuestionsList items={questions} send={send} dismiss={dismiss} jump={jump} />
       <LeadDrawer open={drawer} />
       <ol
         className="conversation"
@@ -115,7 +122,7 @@ export function LeadPanel({ status, conversation, questions }: { status: LeadSta
         onScroll={(e) => { atEnd.current = followsNewEntries(e.currentTarget); }}
       >
         {shown.length
-          ? shown.map((card) => <CardView key={card.key} card={card} send={send} dismiss={dismiss} id={inChat(card.key)} />)
+          ? shown.map((card) => <CardView key={card.key} card={card} send={send} dismiss={dismiss} id={inConversation(card.key)} />)
           : <li className="empty">No conversation yet. Write or talk to the Lead below; it reads your message when it next looks at its Inbox.</li>}
       </ol>
       <Composer send={sendAndFollow} talk={talking} working={status?.lead === "running" && status.state === "working"} />
@@ -128,20 +135,37 @@ type SendText = (text: string, question?: number, raw?: string) => Promise<void>
 
 /**
  * The Questions list: each open question and Proposal of the Lead's, oldest
- * first, answered or decided right here as in the chat. Clicking an item
- * (away from its controls) or its "Show in chat" scrolls the chat to it.
+ * first, answered or decided right here as in the conversation; hidden while
+ * `items` is null or empty. Clicking an item (away from its controls) or its
+ * "Show in conversation" scrolls the conversation to it. An item answered or
+ * decided from the keyboard hands focus to the next one, not to the page.
  */
-function QuestionsList({ items, send, dismiss, jump }: { items: OpenItem[]; send: SendText; dismiss: (key: string) => void; jump: (key: string) => void }) {
-  if (!items.length) return null;
+function QuestionsList({ items, send, dismiss, jump }: {
+  items: OpenItem[] | null; send: SendText; dismiss: (key: string) => void; jump: (key: string) => void;
+}) {
+  const list = useRef<HTMLElement>(null);
+  // Read while rendering, before an item that leaves takes the focus with it.
+  const focused = list.current?.contains(document.activeElement) ?? false;
+  const keys = items?.map((i) => i.key).join(" ");
+  useLayoutEffect(() => {
+    const section = list.current;
+    if (!focused || !section || section.contains(document.activeElement)) return;
+    // The focused item left the list: the next one takes focus, or the conversation once none is left.
+    const next = section.querySelector<HTMLElement>("li :is(button, input):not(:disabled)") ?? document.querySelector<HTMLElement>(".conversation");
+    next?.focus();
+  }, [keys]);
   return (
-    <section id="questions" className="questions" aria-label="Questions">
+    <section
+      id="questions"
+      className="questions"
+      aria-label="Questions"
+      ref={list}
+      hidden={!items?.length}
+    >
       <ol>
-        {items.map((item) => {
-          const show = { jump: () => jump(item.key) };
-          return item.kind === "question"
-            ? <QuestionCard key={item.key} card={item} send={send} dismiss={dismiss} {...show} />
-            : <ProposalCard key={item.key} card={item} {...show} />;
-        })}
+        {items?.map((item) => item.kind === "question"
+          ? <QuestionCard key={item.key} card={item} send={send} dismiss={dismiss} jump={() => jump(item.key)} />
+          : <ProposalCard key={item.key} card={item} jump={() => jump(item.key)} />)}
       </ol>
     </section>
   );
@@ -155,12 +179,12 @@ function onItem(jump: (() => void) | undefined) {
   };
 }
 
-/** The Questions list's way to an item in the chat, for the keyboard. */
-function ShowInChat({ jump }: { jump: (() => void) | undefined }) {
-  return jump ? <button type="button" className="quiet show" onClick={jump}>Show in chat</button> : null;
+/** The Questions list's way to an item in the conversation, for the keyboard. */
+function ShowInConversation({ jump }: { jump: (() => void) | undefined }) {
+  return jump ? <button type="button" className="quiet show" onClick={jump}>Show in conversation</button> : null;
 }
 
-/** A card as the chat draws it, `id` naming its place for the Questions list. */
+/** A card as the conversation draws it, `id` naming its place for the Questions list. */
 function CardView({ card, send, dismiss, id }: { card: Card; send: SendText; dismiss: (key: string) => void; id: string }) {
   switch (card.kind) {
     case "message":
@@ -213,8 +237,8 @@ function Byline({ who, at, note, status }: { who: "user" | "lead"; at: string; n
 
 /**
  * A question from the Lead: its choices as buttons and a free-text answer
- * while open, then the answer. In the chat it has an `id`; in the Questions
- * list, a `jump` to it in the chat.
+ * while open, then the answer. In the conversation it has an `id`; in the
+ * Questions list, a `jump` to it in the conversation.
  */
 function QuestionCard({ card, send, dismiss, id, jump }: {
   card: Card & { kind: "question" }; send: SendText; dismiss: (key: string) => void; id?: string; jump?: () => void;
@@ -257,7 +281,7 @@ function QuestionCard({ card, send, dismiss, id, jump }: {
             {card.failure && <p className="error">{`“${card.failure.text}” was not sent: ${card.failure.error}`}</p>}
           </>
         )}
-      <ShowInChat jump={jump} />
+      <ShowInConversation jump={jump} />
     </li>
   );
 }
@@ -266,8 +290,8 @@ const STATUS: Record<ProposalJson["status"], string> = { open: "Proposes", appro
 
 /**
  * A Proposal: its action or write and reason with Approve and Decline while
- * open, then how it was decided and what it did. In the chat it has an `id`;
- * in the Questions list, a `jump` to it in the chat.
+ * open, then how it was decided and what it did. In the conversation it has
+ * an `id`; in the Questions list, a `jump` to it in the conversation.
  */
 function ProposalCard({ card, id, jump }: { card: Card & { kind: "proposal" }; id?: string; jump?: () => void }) {
   const [declining, setDeclining] = useState(false);
@@ -307,7 +331,7 @@ function ProposalCard({ card, id, jump }: { card: Card & { kind: "proposal" }; i
         </form>
       )}
       {open && outcome && <OutcomeNote outcome={outcome} />}
-      <ShowInChat jump={jump} />
+      <ShowInConversation jump={jump} />
     </li>
   );
 }

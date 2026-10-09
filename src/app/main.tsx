@@ -49,8 +49,8 @@ function App() {
   const page = usePage();
   const { data: status = null } = useResource<LeadStatusJson>("/api/lead/status", ["lead-state"]);
   const conversation = useConversation();
-  const [questions, setQuestions] = useState(true);
-  const open = openItems(conversation.state).length;
+  const questions = openItems(conversation.state);
+  const [questionsShown, showQuestions] = useState(true);
   return (
     <>
       <header className="top">
@@ -61,20 +61,20 @@ function App() {
         <div className="top-end">
           <button
             type="button"
-            className={`questions-count${open ? " waiting" : ""}`}
-            aria-expanded={questions}
+            className={`questions-count${questions.length ? " waiting" : ""}`}
+            aria-expanded={questionsShown}
             aria-controls="questions"
-            aria-label={`Questions, ${open} open`}
-            title={questions ? "Hide the Questions list" : "Show the Questions list"}
-            onClick={() => setQuestions(!questions)}
+            aria-label={`Questions, ${questions.length} open`}
+            title={questionsShown ? "Hide the Questions list" : "Show the Questions list"}
+            onClick={() => showQuestions(!questionsShown)}
           >
-            Questions<b>{open}</b>
+            Questions<b>{questions.length}</b>
           </button>
           <LeadMenu harnesses={harnesses} status={status} />
         </div>
       </header>
       <main className="shell">
-        <LeadPanel status={status} conversation={conversation} questions={questions} />
+        <LeadPanel status={status} conversation={conversation} questions={questionsShown ? questions : null} />
         {page === "stats"
           ? <Side title="Stats" lede="Merged PRs and issues defined per day will show here, counted from what nico-agent has seen." />
           : <Side title="Repos" lede="Your Repos and the work in them will show here." />}
