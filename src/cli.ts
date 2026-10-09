@@ -9,6 +9,7 @@ import { DispatchError } from "./dispatch-error";
 import { PANE_ARGS } from "./opencode";
 import { type Catalog, harnessCatalogs, harnesses, refreshHarnesses, rememberedLaunches } from "./harness";
 import { LEAD_AGENT, NICO_AGENT_SLUG, leadStatus, startLead, stopLead } from "./lead";
+import { NUDGE_INTERVAL_MS, nudgeLead, sendPendingNudge } from "./nudge";
 import { linearIdentifier } from "./linear";
 import { type Output, plural, render } from "./output";
 import { pruneBoardQueues, queueOf } from "./queue";
@@ -225,7 +226,7 @@ const commands: Command[] = [
       "nico-agent say --answer 4 \"Yes, close it\"",
       "nico-agent say --json -- \"--force is fine here\"",
     ],
-    help: [LOG_HELP],
+    help: ["The Lead is Nudged to read its Inbox: now if it is idle, else by `nico-agent serve` once it is", LOG_HELP],
     run: sayCommand,
   },
   {
@@ -591,18 +592,22 @@ async function sayCommand(args: Args, ctx: RunContext): Promise<Output> {
   const text = args.positionals.join(" ");
   if (!text.trim()) throw new CliError("<text> is required", [`Usage: \`${SAY_USAGE}\``], 2);
   const flag = args.flags["--answer"];
+  let data: Record<string, unknown>;
   if (typeof flag !== "string") {
     const entry = await append(ctx.configDir, { type: "user", text }, ctx.world.now());
-    return { data: { said: entry.id }, help: [LOG_HELP] };
+    data = { said: entry.id };
+  } else {
+    try {
+      const answer = await answerQuestion(ctx.configDir, flag, text, ctx.world.now());
+      data = { answered: answer.question, id: answer.id };
+    } catch (e) {
+      if (!(e instanceof AnswerRefused)) throw e;
+      const open = e.open.length ? `the open ones are ${e.open.join(", ")}` : "none is open";
+      throw new CliError(e.message, [`Run \`nico-agent lead log\` to see the Lead's questions (${open})`]);
+    }
   }
-  try {
-    const answer = await answerQuestion(ctx.configDir, flag, text, ctx.world.now());
-    return { data: { answered: answer.question, id: answer.id }, help: [LOG_HELP] };
-  } catch (e) {
-    if (!(e instanceof AnswerRefused)) throw e;
-    const open = e.open.length ? `the open ones are ${e.open.join(", ")}` : "none is open";
-    throw new CliError(e.message, [`Run \`nico-agent lead log\` to see the Lead's questions (${open})`]);
-  }
+  const warnings = await nudgeLead(ctx.world, ctx.configDir);
+  return { data: { ...data, ...(warnings.length && { warnings }) }, help: [LOG_HELP] };
 }
 
 async function leadInboxCommand(_args: Args, ctx: RunContext): Promise<Output> {
@@ -881,6 +886,10 @@ async function serve(args: Args, ctx: RunContext): Promise<Output> {
     if (!(e instanceof WorldError)) throw e;
     throw new CliError(e.message, ["Run `nico-agent serve --port <port>` with a free port"]);
   }
+  // A Nudge recorded while the Lead worked waits for serve to see it idle.
+  ctx.world.every(NUDGE_INTERVAL_MS, async () => {
+    for (const warning of await sendPendingNudge(ctx.world, ctx.configDir)) console.error(warning);
+  });
   const mcp = mcpUrl(port);
   return {
     data: { url: `http://${HOSTNAME}:${port}/`, mcp },

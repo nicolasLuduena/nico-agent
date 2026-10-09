@@ -508,6 +508,13 @@ export class RealWorld implements World {
       throw e;
     }
   }
+
+  every(ms: number, task: () => Promise<void>) {
+    const run = () => {
+      task().catch((e) => console.error(e)).finally(() => setTimeout(run, ms));
+    };
+    setTimeout(run, ms);
+  }
 }
 
 function toPullRequest(pr: LinkedPrNode): PullRequest {

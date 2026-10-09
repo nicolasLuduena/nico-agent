@@ -437,6 +437,18 @@ export class FakeWorld implements World {
     if (this.serveFailure) throw new WorldError(this.serveFailure);
     this.server = { address, handler };
   }
+
+  /** Tasks `every` would repeat, run once each by `tick`. */
+  private repeated: (() => Promise<void>)[] = [];
+
+  every(_ms: number, task: () => Promise<void>) {
+    this.repeated.push(task);
+  }
+
+  /** As if each repeated task's interval elapsed once. */
+  async tick() {
+    for (const task of this.repeated) await task();
+  }
 }
 
 /** `codex debug models` from codex-cli 0.159.0, trimmed to the fields nico-agent reads and their neighbours. */

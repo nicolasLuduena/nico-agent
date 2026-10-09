@@ -108,6 +108,8 @@ export interface World {
   notify(title: string, body: string): Promise<void>;
   /** Start answering HTTP requests on `hostname:port`; resolves once listening. */
   serve(address: Address, handler: RequestHandler): Promise<void>;
+  /** Run `task` every `ms` milliseconds for the life of the process, the next run only once the last is done. */
+  every(ms: number, task: () => Promise<void>): void;
 }
 
 export interface Address {
