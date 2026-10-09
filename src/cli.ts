@@ -21,7 +21,7 @@ import { VERSION } from "./version";
 import { sameSlug, slugOfRemote } from "./slug";
 import { type PrLookup, cachedPrs, currentStage, freshPrs, loadInFlight, stageOf } from "./stage";
 import { type Dispatch, findDispatch, loadDispatches } from "./state";
-import { webHandler } from "./web";
+import { lookAtLead, webHandler } from "./web";
 import { Events } from "./events";
 import app from "./app/index.html";
 import { type World, WorldError } from "./world";
@@ -1162,17 +1162,20 @@ function mcpUrl(port: number) {
 async function serve(args: Args, ctx: RunContext): Promise<Output> {
   const port = portFlag(args, "nico-agent serve [--port <port>]");
   const events = new Events();
+  const look = lookAtLead(ctx, events);
   try {
     const shared = { ...ctx, prs: ctx.prs ?? cachedPrs(ctx.world) };
-    await ctx.world.serve({ hostname: HOSTNAME, port }, webHandler({ ...ctx, events, runCli: (argv) => run(argv, shared) }), { "/": app });
+    await ctx.world.serve({ hostname: HOSTNAME, port }, webHandler({ ...ctx, events, look, runCli: (argv) => run(argv, shared) }), { "/": app });
   } catch (e) {
     if (!(e instanceof WorldError)) throw e;
     throw new CliError(e.message, ["Run `nico-agent serve --port <port>` with a free port"]);
   }
   // A Nudge recorded while the Lead worked waits for serve to see it idle.
   ctx.world.every(NUDGE_INTERVAL_MS, async () => {
-    // Agent states change outside nico-agent, so the app refetches the Board on every tick.
+    // Agent states change outside nico-agent, so the app refetches the Board on every tick,
+    // and hears of the Lead's, and of what the CLI wrote to the conversation and the Proposals.
     events.emit("board-changed");
+    await look();
     for (const warning of await sendPendingNudge(ctx.world, ctx.configDir)) console.error(warning);
   });
   // The Board is tended while it is up; the timer stays as the floor, and the advance lock keeps the two apart.

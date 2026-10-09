@@ -1,59 +1,32 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { type Chosen, type HarnessesJson, type Outcome, canReview, harnessWarnings } from "./actions";
-import { type BoardJson, type InFlightDispatch, agentClass, prOf, repoSections } from "./board";
+import { type BoardJson, type InFlightDispatch, prOf, repoSections } from "./board";
 import { EventDisplay, reducedMotion } from "./event-display";
 import { ActionBar, Actions, type BoardActions, CloseButton, IssueOutcome, LaunchForm, Pick, RetryButton, TopActions } from "./forms";
+import { LeadPanel } from "./lead-panel";
 import { installPreviews } from "./preview";
-import { BaseChip, IssueLink, PrLink, Repo, StageKey } from "./repos";
+import { Agent, BaseChip, IssueLink, PrLink, Repo, StageKey } from "./repos";
+import { useResource } from "./stream";
 
 /** The Board, fetched on load, on each `board-changed`, and on reconnecting to `serve`, with when it was sampled. */
 function useBoard() {
-  const [loaded, setLoaded] = useState<{ board: BoardJson; sampled: Date } | null>(null);
-  const [failure, setFailure] = useState<string | null>(null);
-  useEffect(() => {
-    let latest = 0;
-    const load = async () => {
-      // A slow answer must not overwrite a newer one.
-      const request = ++latest;
-      try {
-        const response = await fetch("/api/board");
-        const json = (await response.json()) as BoardJson;
-        if (request !== latest) return;
-        setLoaded({ board: json, sampled: new Date() });
-        setFailure(null);
-      } catch {
-        if (request === latest) setFailure("Could not reach nico-agent serve; retrying.");
-      }
-    };
-    const events = new EventSource("/api/events");
-    // `open` fires on the first connection and after each reconnection, such as a restarted serve.
-    events.addEventListener("open", load);
-    events.addEventListener("board-changed", load);
-    events.addEventListener("error", () => setFailure("Lost nico-agent serve; reconnecting."));
-    return () => events.close();
-  }, []);
-  return { ...loaded, failure };
-}
-
-/** Whether the Board offers a launch, so its forms need the Harnesses' models. */
-function launchable(board: BoardJson | undefined) {
-  return Boolean(board?.issues?.length || board?.stackable?.length || board?.dispatches?.some(canReview));
+  const { data: board, sampled, failure } = useResource<BoardJson>("/api/board", ["board-changed"]);
+  return { board, sampled, failure };
 }
 
 /**
- * The Harnesses' models and the remembered launch, asked once the Board has
- * something to launch (discovery may run a Harness's CLI), and again on `reload`.
+ * The Harnesses' models and the remembered launch, for the Board's launch
+ * forms and the Lead's pickers, asked on load and again on `reload`.
  */
-function useHarnesses(needed: boolean) {
+function useHarnesses() {
   const [harnesses, setHarnesses] = useState<HarnessesJson | null>(null);
   const [asked, setAsked] = useState(0);
   useEffect(() => {
-    if (!needed) return;
     let current = true;
     fetch("/api/harnesses").then((r) => r.json() as Promise<HarnessesJson>).then((json) => { if (current) setHarnesses(json); }).catch(() => {});
     return () => { current = false; };
-  }, [needed, asked]);
+  }, [asked]);
   return { harnesses, reload: useCallback(() => setAsked((n) => n + 1), []) };
 }
 
@@ -69,7 +42,7 @@ function App() {
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [outcomes, setOutcomes] = useState<Record<string, Outcome>>({});
   const [report, setReport] = useState<ReactNode>(null);
-  const { harnesses, reload } = useHarnesses(launchable(board));
+  const { harnesses, reload } = useHarnesses();
   const actions = useMemo((): BoardActions | null => board ? {
     board, harnesses, chosen, picked, outcomes, reloadHarnesses: reload,
     choose: (key, patch) => setChosen((c) => ({ ...c, [key]: { ...c[key], ...patch } })),
@@ -94,29 +67,32 @@ function App() {
         <h1>Board</h1>
         {actions && board?.configured?.length ? <Actions.Provider value={actions}><TopActions onReport={setReport} /></Actions.Provider> : null}
       </header>
-      <main aria-busy={board === undefined}>
-        {failure && <p className="error" role="status">{failure}</p>}
-        {board?.error && <p className="error">{board.error}</p>}
-        {report && <div className="top-report">{report}<button className="dismiss" onClick={() => setReport(null)}>Dismiss</button></div>}
-        {board === undefined || sampled === undefined || actions === null
-          ? <p className="empty">Loading the Board…</p>
-          : board.configured?.length
-            ? (
-              <Actions.Provider value={actions}>
-                {harnesses && harnessWarnings(harnesses).map((w) => <p key={w} className="warning">{w}</p>)}
-                <EventDisplay rows={rows} sampled={sampled} lit={lit} onLight={setLit} onPick={pick} />
-                <ActionBar />
-                <section className="in-flight">
-                  <header><h2>In flight</h2><span className="count">{rows.length}</span></header>
-                  {rows.length
-                    ? <ul className="flights">{rows.map((d) => <Flight key={d.issue} dispatch={d} lit={lit === d.issue} onLight={setLit} />)}</ul>
-                    : <p className="empty">Nothing in flight.</p>}
-                </section>
-                {repoSections(board).map((s) => <Repo key={s.repo} section={s} lit={lit} onLight={setLit} />)}
-              </Actions.Provider>
-            )
-            : <p className="empty">No Repos configured. Run <code>nico-agent repo add &lt;owner/name&gt; --path &lt;clone&gt;</code> to add one.</p>}
-      </main>
+      <div className="layout">
+        <LeadPanel harnesses={harnesses} />
+        <main aria-busy={board === undefined}>
+          {failure && <p className="error" role="status">{failure}</p>}
+          {board?.error && <p className="error">{board.error}</p>}
+          {report && <div className="top-report">{report}<button className="dismiss" onClick={() => setReport(null)}>Dismiss</button></div>}
+          {board === undefined || sampled === undefined || actions === null
+            ? <p className="empty">Loading the Board…</p>
+            : board.configured?.length
+              ? (
+                <Actions.Provider value={actions}>
+                  {harnesses && harnessWarnings(harnesses).map((w) => <p key={w} className="warning">{w}</p>)}
+                  <EventDisplay rows={rows} sampled={sampled} lit={lit} onLight={setLit} onPick={pick} />
+                  <ActionBar />
+                  <section className="in-flight">
+                    <header><h2>In flight</h2><span className="count">{rows.length}</span></header>
+                    {rows.length
+                      ? <ul className="flights">{rows.map((d) => <Flight key={d.issue} dispatch={d} lit={lit === d.issue} onLight={setLit} />)}</ul>
+                      : <p className="empty">Nothing in flight.</p>}
+                  </section>
+                  {repoSections(board).map((s) => <Repo key={s.repo} section={s} lit={lit} onLight={setLit} />)}
+                </Actions.Provider>
+              )
+              : <p className="empty">No Repos configured. Run <code>nico-agent repo add &lt;owner/name&gt; --path &lt;clone&gt;</code> to add one.</p>}
+        </main>
+      </div>
     </>
   );
 }
@@ -159,11 +135,6 @@ function Glyph() {
       <circle r="4.5" /><circle r="8" /><circle r="11" /><path className="trail" d="M0 0 Q4 -1 8.5 -7" />
     </svg>
   );
-}
-
-/** An agent's Agent state as herdr reports it; `blocked` stands out since it waits on the user. */
-function Agent({ role, state }: { role: string; state: string }) {
-  return <span className={`agent ${agentClass(state)}`}><i aria-hidden="true" />{`${role} ${state}`}</span>;
 }
 
 createRoot(document.getElementById("root")!).render(<App />);

@@ -253,7 +253,7 @@ Stage hues. Each appears in three places for one Dispatch: its track, its legend
 
 ## Layout
 
-A single column, max 76rem, centered, with 1.5rem side padding (1rem below 760px). The first viewport is the event display. It is a two-column grid: the transverse view (at most 460px) on the left and the readout on the right, with a 2.5rem gap. Below it is a sticky action bar ("With selected" Dispatch / Review / Close with counts), then the In flight section, then one section per Repo.
+Two columns, max 104rem, centered, with 1.5rem side padding (1rem below 760px): the Lead panel (20 to 26rem) on the left, sticky and as tall as the window, and the Board on the right, 1.5rem apart. Below 1100px they stack, the panel first and at most 75% of the window tall. The Board's first viewport is the event display. It is a two-column grid: the transverse view (at most 460px) on the left and the readout on the right, with a 2.5rem gap. Below it is a sticky action bar ("With selected" Dispatch / Review / Close with counts), then the In flight section, then one section per Repo.
 
 Each Repo section groups its rows by Spec: running Specs first, then Held, then candidates, then the rest, each under a heading. Loose issues follow, under "Specs of one" when any Spec heading is above them. A Spec's own rows hang from a 1px rule indented to its title, in sub-issue order.
 
@@ -314,6 +314,12 @@ Corners are small and functional: 3px for chips, counts, inline code, and the bl
 - **Spec state:** a 6.5rem column leading the Spec heading, the same slot glyph plus a 12px/650 label. Running is a filled ink slot in ink; Candidate an outlined slot; Held a dashed Burst Red slot with failed-ink text; Waiting and Not startable a dashed rule-strong slot. It is never a Stage key: Spec states carry no Stage hue except Held, whose reason is error text.
 - **Spec heading:** the Spec's key in mono and its title at 600, then one 12px muted note saying what the rules decided (its next issue and Base, why it waits, or the hold's reason in failed-ink).
 - **Member line:** an In-flight issue of a Spec, read-only (its row to act on is In flight): muted title, Stage key and PR link. Hovering it lights its track, as an In-flight row does.
+
+### Lead Panel
+- **Head:** a raised strip with "Lead" (14px/650), the Lead's Agent state as an Agent State dot (or where it stands, such as "not running", in 12px muted text; a failure in error text below), and its launch triple chip. Under it the Harness, model and Effort selects and Start (or Restart, once the picks differ from the running Lead's) in the default style, and Stop in the Close style.
+- **Conversation:** a scrolling list of cards divided by hairlines, oldest first, kept at its end as cards arrive unless the user scrolled up. Each card leads with a 12px byline: "You" or "Lead" at 650 in ink, then the time in muted text. The user's messages sit on the raised panel; text keeps its line breaks.
+- **Waiting cards:** an open question or Proposal carries a 2px ink rule on its left edge, gone once decided. A question's choices are default buttons that wrap, then a free-text field and Answer; once answered, a muted 12px/650 "You answered" before the answer. A Proposal shows its action as code, the reason, and Approve (filled ink, the one ink-filled button: deciding is not starting a track) beside Decline, which opens an optional reason field. Decided, its status sits at the byline's end in 12px/650 (Approved in ink, Declined muted, Failed in failed-ink) with what the action did below.
+- **Composer:** a raised strip at the panel's foot with a textarea and Send. Enter sends, Shift+Enter breaks the line. A message shows at once in muted ink until `serve` has it; one that failed keeps its error with Send again and Dismiss.
 
 ### Named Rules
 **The Drawn Icon Rule.** Every icon is drawn as inline SVG in the glyph's stroke language. Never use a Unicode glyph, an emoji, or an icon font in place of an icon.
