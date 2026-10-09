@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import leadSkill from "./lead-skill.md" with { type: "text" };
-import { LEAD_DEFAULTS, type SchedulerDefaults, fillTemplate, findRepo, loadConfig, prompts, writeJson } from "./config";
+import { LEAD_DEFAULTS, type LaunchDefaults, fillTemplate, findRepo, harnessConfigs, loadConfig, prompts, writeJson } from "./config";
 import { type Progress, agentSteps, chooseLaunch, prompt, runPhase } from "./dispatch";
 import { DispatchError, LaunchError } from "./dispatch-error";
 import { type Harness, MCP_SERVER } from "./harness";
@@ -17,13 +17,18 @@ export const LEAD_STEPS = ["home", "workspace", "tab", "agent start", "agent rea
 export type LeadStep = (typeof LEAD_STEPS)[number];
 
 /** The skills the Lead shapes work with, linked into its home from the nico-agent checkout. */
-export const SHAPING_SKILLS = ["grilling", "to-spec", "to-tickets", "triage", "retro"];
+const SHAPING_SKILLS = ["grilling", "to-spec", "to-tickets", "triage", "retro"];
 
 /** The Repo whose clone the shaping skills come from. */
 export const NICO_AGENT_SLUG = "nicolasLuduena/nico-agent";
 
 /** Where a Harness without its own `skillsDir` finds a project's skills. */
 const DEFAULT_SKILLS_DIR = ".agents/skills";
+
+/** Where the nico-agent checkout keeps its skills. */
+const CHECKOUT_SKILLS_DIR = ".agents/skills";
+
+const STATUS_HELP = "Run `nico-agent lead status` to see the Lead";
 
 /**
  * The local record of the running Lead (ADR-0002), like a Dispatch's: where
@@ -45,7 +50,7 @@ export interface LeadRecord extends Progress<LeadStep> {
   updatedAt: string;
 }
 
-export interface LeadRequest extends Partial<SchedulerDefaults> {
+export interface LeadRequest extends Partial<LaunchDefaults> {
   /** `serve`'s MCP server URL. */
   mcpUrl: string;
 }
@@ -66,7 +71,7 @@ export interface LeadStart {
 const FILE = "lead.json";
 
 /** The Lead's record, if it was started and not stopped. */
-export function readLead(configDir: string): LeadRecord | null {
+function readLead(configDir: string): LeadRecord | null {
   try {
     return JSON.parse(readFileSync(join(configDir, FILE), "utf8")) as LeadRecord;
   } catch (e) {
@@ -75,7 +80,7 @@ export function readLead(configDir: string): LeadRecord | null {
   }
 }
 
-export function leadHome(configDir: string) {
+function leadHome(configDir: string) {
   return join(configDir, "lead");
 }
 
@@ -106,41 +111,61 @@ export async function startLead(world: World, configDir: string, request: LeadRe
   let outcome: LeadStart["outcome"] = "new";
   let replaced: Launch | undefined;
   if (!leased.created) {
-    const same = sameLaunch(record, launch, request.mcpUrl);
-    const done = record.completed.length === LEAD_STEPS.length && !record.failure;
-    if (same && done && (await isRunning(world))) {
+    // Whatever throws before the steps run must not leave the Lead leased.
+    try {
+      const same = sameLaunch(record, launch, request.mcpUrl);
+      const done = record.completed.length === LEAD_STEPS.length && !record.failure;
+      if (same && done && (await isRunning(world))) {
+        await release(world, configDir, record);
+        return { lead: record, outcome: "existing" };
+      }
+      if (same && !done) {
+        const resumedFrom = record.failure?.step ?? LEAD_STEPS.find((s) => !record.completed.includes(s))!;
+        return { lead: await runLead(world, configDir, harness, record), outcome: "resumed", resumedFrom };
+      }
+      // Launched differently, or its agent is gone: stop the old Lead and start afresh.
+      if (record.workspace) await closeWorkspace(world, configDir, record);
+      replaced = record.agent;
+      record = { ...fresh(), runner: world.processId() };
+      await saveLead(world, configDir, record);
+      outcome = "restarted";
+    } catch (e) {
       await release(world, configDir, record);
-      return { lead: record, outcome: "existing" };
+      throw e;
     }
-    if (same && !done) {
-      const resumedFrom = record.failure?.step ?? LEAD_STEPS.find((s) => !record.completed.includes(s))!;
-      return { lead: await runLead(world, configDir, harness, record), outcome: "resumed", resumedFrom };
-    }
-    // Launched differently, or its agent is gone: stop the old Lead and start afresh.
-    if (record.workspace) await closeWorkspace(world, configDir, record);
-    replaced = record.agent;
-    record = { ...fresh(), runner: world.processId() };
-    await saveLead(world, configDir, record);
-    outcome = "restarted";
   }
   return { lead: await runLead(world, configDir, harness, record), outcome, ...(replaced && { replaced }) };
 }
 
-/** What `lead status` reports: the record, and the Lead's Agent state as herdr reports it. */
+/**
+ * What `lead status` reports: the record, where the Lead stands (`running`,
+ * `starting`, `Failed at <step>`, `interrupted before <step>`, or `gone from
+ * herdr`), and its Agent state as herdr reports it. Null without a Lead.
+ */
 export async function leadStatus(world: World, configDir: string) {
   const record = readLead(configDir);
   if (!record) return null;
   const agent = (await world.herdrAgents()).find((a) => a.name === LEAD_AGENT);
-  return { record, state: agent?.state ?? "unknown", listed: agent !== undefined };
+  const next = LEAD_STEPS.find((s) => !record.completed.includes(s));
+  const lead = record.failure
+    ? `Failed at ${record.failure.step}`
+    : record.runner !== undefined && world.processAlive(record.runner)
+      ? "starting"
+      : next
+        ? `interrupted before ${next}`
+        : agent
+          ? "running"
+          : "gone from herdr";
+  return { record, lead, state: agent?.state ?? "unknown" };
 }
 
 /**
  * Stop the Lead: close its workspace and forget its record. Its home and the
  * conversation stay for the next start. A no-op without a Lead.
  */
-export async function stopLead(world: World, configDir: string): Promise<{ outcome: "stopped" | "existing"; workspace?: string }> {
+export async function stopLead(world: World, configDir: string): Promise<{ outcome: "stopped" | "none"; workspace?: string }> {
   const leased = await leaseLead(world, configDir);
-  if (!leased) return { outcome: "existing" };
+  if (!leased) return { outcome: "none" };
   const { record } = leased;
   const { workspace } = record;
   if (workspace) await closeWorkspace(world, configDir, record);
@@ -149,9 +174,9 @@ export async function stopLead(world: World, configDir: string): Promise<{ outco
 }
 
 /** The launch of a request, each choice not given taken from the `lead` defaults in config. */
-function leadLaunch(configDir: string, request: LeadRequest): SchedulerDefaults {
+function leadLaunch(configDir: string, request: LeadRequest): LaunchDefaults {
   const { lead = {} } = loadConfig(configDir);
-  const launch = Object.fromEntries(LEAD_DEFAULTS.map((key) => [key, request[key] ?? lead[key]])) as Partial<SchedulerDefaults>;
+  const launch = Object.fromEntries(LEAD_DEFAULTS.map((key) => [key, request[key] ?? lead[key]])) as Partial<LaunchDefaults>;
   const missing = LEAD_DEFAULTS.filter((key) => launch[key] === undefined);
   if (missing.length) {
     throw new DispatchError(
@@ -162,14 +187,14 @@ function leadLaunch(configDir: string, request: LeadRequest): SchedulerDefaults 
       ],
     );
   }
-  return launch as SchedulerDefaults;
+  return launch as LaunchDefaults;
 }
 
 /** The launch's Harness, once valid; a bad default is named as the config's fault. */
-async function chooseLeadHarness(world: World, configDir: string, request: LeadRequest, launch: SchedulerDefaults): Promise<Harness> {
+async function chooseLeadHarness(world: World, configDir: string, request: LeadRequest, launch: LaunchDefaults): Promise<Harness> {
   let harness: Harness;
   try {
-    harness = await chooseLaunch(world, configDir, { issue: "", ...launch });
+    harness = await chooseLaunch(world, configDir, launch);
   } catch (e) {
     if (!(e instanceof LaunchError) || request[e.key] !== undefined) throw e;
     throw new DispatchError(`lead.${e.key} in ${join(configDir, "config.json")}: ${e.message}`, e.help);
@@ -183,7 +208,7 @@ async function chooseLeadHarness(world: World, configDir: string, request: LeadR
   return harness;
 }
 
-function sameLaunch(record: LeadRecord, launch: SchedulerDefaults, mcpUrl: string) {
+function sameLaunch(record: LeadRecord, launch: LaunchDefaults, mcpUrl: string) {
   const { harness, model, effort } = record.agent;
   return harness === launch.harness && model === launch.model && effort === launch.effort && record.mcpUrl === mcpUrl;
 }
@@ -215,7 +240,7 @@ async function runLead(world: World, configDir: string, harness: Harness, record
     await runPhase(record, record, LEAD_STEPS, steps, save, (step, e) =>
       new DispatchError(`the Lead failed at ${step}: ${e.message}`, [
         ...(e instanceof DispatchError ? e.help : []),
-        "Run `nico-agent lead status` to see the Lead",
+        STATUS_HELP,
         `Run \`nico-agent lead start\` again to resume from ${step}`,
       ]));
   } finally {
@@ -229,12 +254,17 @@ const MCP_CONFIG = "mcp.json";
 /**
  * Write the Lead's home: its skill where the Harness finds a project's
  * skills, the MCP config naming `serve`'s server, and links to the shaping
- * skills of the nico-agent checkout when it is a configured Repo. Returns a
- * warning for each shaping skill left out.
+ * skills of the nico-agent checkout when it is a configured Repo. The skills
+ * an earlier start wrote for another Harness are removed, so no stale copy
+ * is left. Returns a warning for each shaping skill left out.
  */
 function writeHome(configDir: string, harness: Harness, mcpUrl: string): string[] {
   const home = leadHome(configDir);
-  const skills = join(home, harness.skillsDir ?? DEFAULT_SKILLS_DIR);
+  const skillsDir = harness.skillsDir ?? DEFAULT_SKILLS_DIR;
+  const skills = join(home, skillsDir);
+  for (const other of new Set(Object.values(harnessConfigs(loadConfig(configDir))).map((h) => h.skillsDir ?? DEFAULT_SKILLS_DIR))) {
+    if (other !== skillsDir) rmSync(join(home, other), { recursive: true, force: true });
+  }
   mkdirSync(join(skills, "lead"), { recursive: true });
   writeFileSync(join(skills, "lead", "SKILL.md"), leadSkill);
   writeJson(home, MCP_CONFIG, { mcpServers: { [MCP_SERVER]: { type: "http", url: mcpUrl } } });
@@ -244,7 +274,7 @@ function writeHome(configDir: string, harness: Harness, mcpUrl: string): string[
   }
   const warnings: string[] = [];
   for (const name of SHAPING_SKILLS) {
-    const source = join(repo.path, DEFAULT_SKILLS_DIR, name);
+    const source = join(repo.path, CHECKOUT_SKILLS_DIR, name);
     const link = join(skills, name);
     // Ours to replace: a link from an earlier start, maybe to a moved clone.
     rmSync(link, { recursive: true, force: true });
@@ -279,7 +309,7 @@ async function leaseLead(world: World, configDir: string, fresh?: () => LeadReco
   return withFileLock(configDir, FILE, () => {
     const existing = readLead(configDir);
     if (existing?.runner !== undefined && existing.runner !== world.processId() && world.processAlive(existing.runner)) {
-      throw new DispatchError("the Lead is busy with another nico-agent", ["Try again once it is done", "Run `nico-agent lead status` to see the Lead"]);
+      throw new DispatchError("the Lead is busy with another nico-agent", ["Try again once it is done", STATUS_HELP]);
     }
     const record = existing ?? fresh?.();
     if (!record) return null;

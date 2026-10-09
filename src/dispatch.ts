@@ -385,7 +385,7 @@ async function runReview(world: World, configDir: string, ref: IssueRef, harness
 
 /** Refuse a launch whose Harness, model or Effort is unknown, before any Dispatch is made with it. */
 export async function checkLaunch(world: World, configDir: string, launch: Pick<DispatchRequest, "harness" | "model" | "effort">) {
-  await chooseLaunch(world, configDir, { issue: "", ...launch });
+  await chooseLaunch(world, configDir, launch);
 }
 
 /**
@@ -394,7 +394,7 @@ export async function checkLaunch(world: World, configDir: string, launch: Pick<
  * from config and discovery, so only an unknown Harness or model is a usage
  * error; an Effort the model does not support fails like a Source would.
  */
-export async function chooseLaunch(world: World, configDir: string, request: DispatchRequest): Promise<Harness> {
+export async function chooseLaunch(world: World, configDir: string, request: Pick<DispatchRequest, "harness" | "model" | "effort">): Promise<Harness> {
   const catalog = await harnessCatalog(world, configDir, request.harness);
   if (!catalog) {
     const names = harnesses(configDir).map((h) => h.name);

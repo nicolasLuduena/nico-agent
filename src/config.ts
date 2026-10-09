@@ -29,9 +29,9 @@ export interface Config {
   /** Harness settings the user set, by Harness, over HARNESSES; a new name defines a new Harness. */
   harnesses?: Record<string, Partial<HarnessConfig>>;
   /** The launch `advance` dispatches with, so no one chooses it at start time (ADR-0009). */
-  scheduler?: Partial<SchedulerDefaults>;
+  scheduler?: Partial<LaunchDefaults>;
   /** The launch `lead start` uses for each of `--harness`, `--model` and `--effort` it isn't given. */
-  lead?: Partial<SchedulerDefaults>;
+  lead?: Partial<LaunchDefaults>;
   /** The Standing orders the user set; unset ones take their default from ORDERS (ADR-0010). */
   orders?: Partial<Orders>;
 }
@@ -60,8 +60,8 @@ export function standingOrders(config: Config): Orders {
   return { ...defaults, ...config.orders };
 }
 
-/** The Harness, model and Effort of every Dispatch `advance` starts. */
-export interface SchedulerDefaults {
+/** A launch chosen ahead in config: the Scheduler's for every Dispatch `advance` starts, the Lead's. */
+export interface LaunchDefaults {
   harness: string;
   model: string;
   effort: string;
@@ -292,7 +292,7 @@ function checkRepos(file: string, repos: Repo[]): Repo[] {
 }
 
 /** The `scheduler` or `lead` launch defaults, each a string. */
-function checkLaunchDefaults(file: string, section: "scheduler" | "lead", owner: string, defaults: unknown): Partial<SchedulerDefaults> {
+function checkLaunchDefaults(file: string, section: "scheduler" | "lead", owner: string, defaults: unknown): Partial<LaunchDefaults> {
   if (!isObject(defaults)) throw new ConfigError(`${file}: ${section} is not an object`);
   for (const [key, value] of Object.entries(defaults)) {
     if (!(SCHEDULER_DEFAULTS as readonly string[]).includes(key)) {
@@ -300,7 +300,7 @@ function checkLaunchDefaults(file: string, section: "scheduler" | "lead", owner:
     }
     if (typeof value !== "string") throw new ConfigError(`${file}: ${section}.${key} is not a string`);
   }
-  return defaults as Partial<SchedulerDefaults>;
+  return defaults as Partial<LaunchDefaults>;
 }
 
 function checkOrders(file: string, orders: unknown): Partial<Orders> {

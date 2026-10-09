@@ -168,6 +168,8 @@ describe("lead start again", () => {
     expect(exitCode).toBe(0);
     expect(json()).toMatchObject({ lead: "restarted, replacing claude opus high", workspace: "w2", harness: "codex", model: "gpt-5.5", effort: "high" });
     expect(herdrCalls(world.calls).slice(0, 2)).toEqual(["herdr workspace close w1", `herdr workspace create --cwd ${home} --label lead --no-focus`]);
+    expect(existsSync(join(home, ".agents/skills/lead/SKILL.md"))).toBe(true);
+    expect(existsSync(join(home, ".claude/skills"))).toBe(false);
   });
 
   test("whose agent is gone from herdr: starts it afresh", async () => {
