@@ -143,7 +143,9 @@ export const HARNESSES: Record<string, HarnessConfig> = {
     // codex asks to trust the clone (not the worktree) even when herdr reports it ready; this
     // form of -c answers it for this session without writing ~/.codex/config.toml.
     trustArgs: ["-c", 'projects={"{repoPath}"={trust_level="trusted"}}'],
-    mcpArgs: ["-c", 'mcp_servers.nico-agent.url="{mcpUrl}"'],
+    // The Lead's home is no git repo, and codex looks for a project's skills only at its root,
+    // found by `.git` unless no markers are set: then the cwd is the root.
+    mcpArgs: ["-c", 'mcp_servers.nico-agent.url="{mcpUrl}"', "-c", "project_root_markers=[]"],
     skillsDir: ".agents/skills",
     discovery: "codex",
   },
