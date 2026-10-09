@@ -71,7 +71,7 @@ const LAUNCH = { harness: "claude", model: "opus", effort: "high" };
 const NUDGE = "herdr agent prompt lead Read your Inbox";
 
 function nudges(calls: string[]) {
-  return calls.filter((c) => c === NUDGE);
+  return calls.filter((c) => c.startsWith(NUDGE)).map(() => NUDGE);
 }
 
 describe("serve ticks", () => {

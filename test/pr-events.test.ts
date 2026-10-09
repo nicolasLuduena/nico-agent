@@ -62,7 +62,7 @@ describe("PR events", () => {
       { id: 3, who: "nico-agent", at: "2026-09-30T12:01:00.000Z", type: "event", pr: PR, issue: "acme/api#7", change: "check", text: `${PR}: check test failed` },
       { id: 4, who: "nico-agent", at: "2026-09-30T12:01:00.000Z", type: "event", pr: PR, issue: "acme/api#7", change: "check", text: `${PR}: check lint passed` },
     ]);
-    expect(world.calls.filter((c) => c === NUDGE)).toEqual([NUDGE]);
+    expect(world.calls.filter((c) => c.startsWith(NUDGE))).toHaveLength(1);
 
     await world.tick(MINUTE);
     expect(await logged(cli)).toHaveLength(4);

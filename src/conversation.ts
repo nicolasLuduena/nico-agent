@@ -113,9 +113,10 @@ export function openQuestions(entries: Entry[]): number[] {
   return openAsks(entries).map((e) => e.id);
 }
 
-function openAsks(entries: Entry[]): Entry[] {
+/** The Lead's questions not answered yet, oldest first. */
+export function openAsks(entries: Entry[]): Ask[] {
   const answered = new Set(entries.flatMap((e) => (e.type === "answer" ? [e.question] : [])));
-  return entries.filter((e) => e.type === "ask" && !answered.has(e.id));
+  return entries.filter((e): e is Ask => e.type === "ask" && !answered.has(e.id));
 }
 
 /**
@@ -141,6 +142,7 @@ export function append(dir: string, body: Body, at: Date): Promise<Entry> {
   return withFileLock(dir, FILE, () => write(dir, loadConversation(dir), body, at));
 }
 
+type Ask = Extract<Entry, { type: "ask" }>;
 type Answer = Extract<Entry, { type: "answer" }>;
 type User = Extract<Entry, { type: "user" }>;
 

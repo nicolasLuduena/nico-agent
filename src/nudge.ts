@@ -4,8 +4,17 @@ import { LEAD_AGENT, leadStatus } from "./lead";
 import { withFileLock, writeJsonAtomic } from "./state";
 import { type World, WorldError } from "./world";
 
-/** The Nudge's fixed text, as the Lead's skill expects it. */
+/** The Nudge's fixed text, as the Lead's skill expects it; the local time follows it. */
 export const NUDGE = "Read your Inbox";
+
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+/** The Nudge at `now`: its text and the local time, so the Lead can tell a new day began (its daily brief). */
+export function nudgeText(now: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const date = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  return `${NUDGE} (local time: ${WEEKDAYS[now.getDay()]} ${date} ${pad(now.getHours())}:${pad(now.getMinutes())})`;
+}
 
 /** How often `serve` looks for an idle Lead to send a pending Nudge to. */
 export const NUDGE_INTERVAL_MS = 10_000;
@@ -40,7 +49,7 @@ export async function nudgeLead(world: World, configDir: string): Promise<string
   // Cleared first, so a message arriving while the prompt is sent records a Nudge of its own.
   await setPending(configDir, false);
   try {
-    const { started } = await world.herdrAgentPrompt(LEAD_AGENT, NUDGE);
+    const { started } = await world.herdrAgentPrompt(LEAD_AGENT, nudgeText(world.now()));
     return started ? [] : [`the Lead was Nudged, but has not started working; run \`herdr agent read ${LEAD_AGENT}\` to see its screen`];
   } catch (e) {
     return failed(configDir, e);
