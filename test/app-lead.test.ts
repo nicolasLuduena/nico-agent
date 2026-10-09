@@ -410,7 +410,7 @@ describe("the Lead's context", () => {
 
   test("the panel shows how full it is, quietly below the threshold", () => {
     expect(contextMeter({ ...RUNNING, context: context(62, false) })).toEqual({
-      text: "Context 62%", percent: 62, warning: false, title: "The Lead's context is 62% full: 124,000 of 200,000 tokens",
+      text: "Context 62%", percent: 62, fill: 62, warning: false, title: "The Lead's context is 62% full: 124,000 of 200,000 tokens",
     });
     expect(notices({ failure: null, status: { ...RUNNING, context: context(62, false) }, talk: null })).toEqual([]);
   });

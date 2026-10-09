@@ -1,4 +1,5 @@
 import { closeSync, fstatSync, openSync, readSync, readdirSync, statSync } from "node:fs";
+import { homedir } from "node:os";
 import { basename, join } from "node:path";
 
 /** The window a Lead's model is taken to have when config sets none; Claude Code records none in its transcript. */
@@ -24,8 +25,8 @@ export interface LeadContext {
 }
 
 export interface LeadContextRequest {
-  /** Claude Code's config directory, `~/.claude` unless `CLAUDE_CONFIG_DIR` says otherwise. */
-  claude: string;
+  /** Claude Code's config directory, as {@link claudeConfigDir} finds it. */
+  claudeConfigDir: string;
   /** The Lead's home, which is its cwd. */
   home: string;
   /** When the running Lead was started: a transcript last written before is an earlier Lead's. */
@@ -34,8 +35,8 @@ export interface LeadContextRequest {
   model: string;
   /** The window config sets, over the model's default. */
   window?: number;
-  /** The warning threshold config sets, in percent. */
-  warning?: number;
+  /** The percent config sets, above which the context is a warning. */
+  warnAbove?: number;
 }
 
 /**
@@ -45,13 +46,18 @@ export interface LeadContextRequest {
  * another Harness or one that has not answered yet.
  */
 export function leadContext(request: LeadContextRequest): LeadContext | null {
-  const session = currentSession(join(request.claude, "projects", sessionsDirName(request.home)), request.startedAt);
+  const session = currentSession(join(request.claudeConfigDir, "projects", sessionsDirName(request.home)), request.startedAt);
   if (!session) return null;
   const tokens = lastContextTokens(session);
   if (tokens === null) return null;
   const window = request.window ?? defaultWindow(request.model);
   const percent = Math.round((tokens / window) * 100);
-  return { tokens, window, percent, warning: percent > (request.warning ?? DEFAULT_CONTEXT_WARNING), session: basename(session, ".jsonl") };
+  return { tokens, window, percent, warning: percent > (request.warnAbove ?? DEFAULT_CONTEXT_WARNING), session: basename(session, ".jsonl") };
+}
+
+/** Where Claude Code keeps its sessions and settings: `$CLAUDE_CONFIG_DIR`, else `~/.claude`. */
+export function claudeConfigDir(env: (name: string) => string | undefined): string {
+  return env("CLAUDE_CONFIG_DIR") ?? join(homedir(), ".claude");
 }
 
 /** Claude Code's directory name for a cwd's sessions: every character but a letter or digit made `-`. */

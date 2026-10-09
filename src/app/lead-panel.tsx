@@ -136,12 +136,13 @@ function ContextMeterView({ meter }: { meter: ContextMeter | null }) {
       aria-label="The Lead's context"
       aria-valuemin={0}
       aria-valuemax={100}
-      aria-valuenow={Math.min(meter.percent, 100)}
+      aria-valuenow={meter.fill}
       aria-valuetext={meter.text}
       title={meter.title}
     >
-      <span className="track" aria-hidden="true"><i style={{ width: `${Math.min(meter.percent, 100)}%` }} /></span>
-      {meter.text}
+      <span className="track" aria-hidden="true"><i style={{ width: `${meter.fill}%` }} /></span>
+      {/* Under 560px only the figure shows; the meter's value text still names it. */}
+      <span><span className="word">Context </span>{meter.percent}%</span>
     </span>
   );
 }

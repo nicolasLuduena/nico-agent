@@ -39,6 +39,8 @@ export interface LeadStatusJson {
 export interface ContextMeter {
   text: string;
   percent: number;
+  /** How full the meter's track is, 0 to 100: the percent, held at 100 past a full window. */
+  fill: number;
   warning: boolean;
   title: string;
 }
@@ -49,7 +51,7 @@ export function contextMeter(status: LeadStatusJson | null): ContextMeter | null
   if (!context) return null;
   const { percent, warning, tokens, window } = context;
   return {
-    text: `Context ${percent}%`, percent, warning,
+    text: `Context ${percent}%`, percent, fill: Math.min(percent, 100), warning,
     title: `The Lead's context is ${percent}% full: ${tokens.toLocaleString("en-US")} of ${window.toLocaleString("en-US")} tokens`,
   };
 }

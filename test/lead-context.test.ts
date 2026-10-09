@@ -25,7 +25,7 @@ function claudeDir(sessions: { id: string; at: Date; source?: string }[]) {
 describe("the Lead's context", () => {
   test("is the newest assistant entry's input, cache creation and cache read tokens, over the window", () => {
     const claude = claudeDir([{ id: "f3c4210e", at: new Date("2026-10-09T15:00:13.000Z") }]);
-    expect(leadContext({ claude, home: HOME, startedAt: STARTED, model: "opus" })).toEqual({
+    expect(leadContext({ claudeConfigDir: claude, home: HOME, startedAt: STARTED, model: "opus" })).toEqual({
       tokens: 156_000, window: 200_000, percent: 78, warning: false, session: "f3c4210e",
     });
   });
@@ -37,15 +37,15 @@ describe("the Lead's context", () => {
       { id: "old", at: new Date("2026-10-09T15:00:13.000Z") },
       { id: "new", at: new Date("2026-10-09T16:00:00.000Z"), source: short },
     ]);
-    expect(leadContext({ claude, home: HOME, startedAt: STARTED, model: "opus" })).toMatchObject({ tokens: 10_000, percent: 5, session: "new" });
+    expect(leadContext({ claudeConfigDir: claude, home: HOME, startedAt: STARTED, model: "opus" })).toMatchObject({ tokens: 10_000, percent: 5, session: "new" });
     // Restarted after the newest was written: the new Lead has not answered yet.
-    expect(leadContext({ claude, home: HOME, startedAt: new Date("2026-10-09T16:30:00.000Z"), model: "opus" })).toBeNull();
+    expect(leadContext({ claudeConfigDir: claude, home: HOME, startedAt: new Date("2026-10-09T16:30:00.000Z"), model: "opus" })).toBeNull();
   });
 
   test("warns above the threshold, 80% unless config sets another", () => {
     const claude = claudeDir([{ id: "s", at: new Date("2026-10-09T15:00:13.000Z") }]);
     const at = (window: number, warning?: number) =>
-      leadContext({ claude, home: HOME, startedAt: STARTED, model: "opus", window, ...(warning !== undefined && { warning }) });
+      leadContext({ claudeConfigDir: claude, home: HOME, startedAt: STARTED, model: "opus", window, ...(warning !== undefined && { warnAbove: warning }) });
     expect(at(195_000)).toMatchObject({ percent: 80, warning: false });
     expect(at(190_000)).toMatchObject({ percent: 82, warning: true });
     expect(at(260_000, 50)).toMatchObject({ percent: 60, warning: true });
@@ -53,14 +53,14 @@ describe("the Lead's context", () => {
 
   test("takes a 1M window for a [1m] model, and the window config sets over either", () => {
     const claude = claudeDir([{ id: "s", at: new Date("2026-10-09T15:00:13.000Z") }]);
-    expect(leadContext({ claude, home: HOME, startedAt: STARTED, model: "opus[1m]" })).toMatchObject({ window: 1_000_000, percent: 16 });
-    expect(leadContext({ claude, home: HOME, startedAt: STARTED, model: "opus[1m]", window: 400_000 })).toMatchObject({ window: 400_000, percent: 39 });
+    expect(leadContext({ claudeConfigDir: claude, home: HOME, startedAt: STARTED, model: "opus[1m]" })).toMatchObject({ window: 1_000_000, percent: 16 });
+    expect(leadContext({ claudeConfigDir: claude, home: HOME, startedAt: STARTED, model: "opus[1m]", window: 400_000 })).toMatchObject({ window: 400_000, percent: 39 });
   });
 
   test("is nothing without a transcript for the Lead's home", () => {
     const claude = claudeDir([]);
-    expect(leadContext({ claude, home: HOME, startedAt: STARTED, model: "opus" })).toBeNull();
-    expect(leadContext({ claude, home: "/somewhere/else", startedAt: STARTED, model: "opus" })).toBeNull();
+    expect(leadContext({ claudeConfigDir: claude, home: HOME, startedAt: STARTED, model: "opus" })).toBeNull();
+    expect(leadContext({ claudeConfigDir: claude, home: "/somewhere/else", startedAt: STARTED, model: "opus" })).toBeNull();
   });
 
   test("finds the newest assistant entry behind a long tail of other entries", () => {
@@ -69,6 +69,6 @@ describe("the Lead's context", () => {
     const assistant = (read: number) => JSON.stringify({ type: "assistant", message: { usage: { input_tokens: 1, cache_creation_input_tokens: 0, cache_read_input_tokens: read } } });
     writeFileSync(long, [assistant(1), result, assistant(120_000 - 1), ...Array(5).fill(result), ""].join("\n"));
     const claude = claudeDir([{ id: "long", at: new Date("2026-10-09T15:00:13.000Z"), source: long }]);
-    expect(leadContext({ claude, home: HOME, startedAt: STARTED, model: "opus" })).toMatchObject({ tokens: 120_000, percent: 60 });
+    expect(leadContext({ claudeConfigDir: claude, home: HOME, startedAt: STARTED, model: "opus" })).toMatchObject({ tokens: 120_000, percent: 60 });
   });
 });

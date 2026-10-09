@@ -495,6 +495,8 @@ button:disabled, button:disabled:hover, .repo-group form.launch > button:disable
   .lead-bar h1, .questions-count .label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .lead-bar label.switch { margin-right: auto; }
   .lead-bar .context-meter + label.switch { margin-right: 0.25rem; }
+  .context-meter { padding: 0.2rem 0.45rem; }
+  .context-meter .track, .context-meter .word { display: none; }
   .lead-bar button.quiet { padding: 0 0.55rem; }
   .card-message.lead .text { font-size: 16px; }
   button.talk { min-width: 5.5rem; }

@@ -1,6 +1,5 @@
 import { readFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { resolve } from "node:path";
 import { ADVANCE_INTERVAL_MS, type AdvanceReport, advance } from "./advance";
 import { answer, loadAsking } from "./answer";
 import { type BoardIssue, loadBoard } from "./board";
@@ -12,7 +11,7 @@ import { DispatchError } from "./dispatch-error";
 import { PANE_ARGS } from "./opencode";
 import { type Catalog, harnessCatalogs, harnesses, refreshHarnesses, rememberedLaunches } from "./harness";
 import { LEAD_AGENT, NICO_AGENT_SLUG, leadStatus, startLead, stopLead } from "./lead";
-import { leadContext } from "./lead-context";
+import { claudeConfigDir, leadContext } from "./lead-context";
 import { describePrs, garden, gardenRepo, gardenerRows, startWaitingGardeners } from "./gardener";
 import { NUDGE_INTERVAL_MS, nudgeLead, sendPendingNudge } from "./nudge";
 import { linearIdentifier } from "./linear";
@@ -1699,12 +1698,12 @@ async function leadStatusCommand(ctx: RunContext): Promise<Output> {
   const { contextWindow, contextWarning } = loadConfig(ctx.configDir).lead ?? {};
   // Read from Claude Code's transcript of the Lead: no GitHub request, and nothing for a Lead on another Harness.
   const context = leadContext({
-    claude: ctx.world.env("CLAUDE_CONFIG_DIR") ?? join(homedir(), ".claude"),
+    claudeConfigDir: claudeConfigDir((name) => ctx.world.env(name)),
     home: record.home,
     startedAt: new Date(record.createdAt),
     model,
     ...(contextWindow !== undefined && { window: contextWindow }),
-    ...(contextWarning !== undefined && { warning: contextWarning }),
+    ...(contextWarning !== undefined && { warnAbove: contextWarning }),
   });
   const help = lead === "running"
     ? [LEAD_SCREEN_HELP, "Run `nico-agent lead stop` to stop it"]
