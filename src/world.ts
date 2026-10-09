@@ -1,5 +1,3 @@
-import type { RateLimit } from "./github-calls";
-
 /**
  * The outside-world port: every interaction with git, GitHub, herdr, the
  * network, the clock and Linear goes through here. Tests swap in an
@@ -219,6 +217,21 @@ export interface PullRequestComment {
   path?: string;
   /** Set on a review itself: its verdict. */
   review?: "approved" | "changes requested" | "commented";
+}
+
+/** An account budget, as `gh api rate_limit` or a response's `X-Ratelimit-*` headers report it. */
+export interface Budget {
+  limit: number;
+  remaining: number;
+  used: number;
+  /** When the hour's budget starts over. */
+  reset: string;
+}
+
+/** The account's budgets, as `gh api rate_limit` reports them. */
+export interface RateLimit {
+  core: Budget;
+  graphql: Budget;
 }
 
 export const READY_LABEL = "ready-for-agent";

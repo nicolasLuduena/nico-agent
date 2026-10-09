@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import type { Budget, RateLimit } from "./world";
 
 /** The log of nico-agent's own GitHub calls, one JSON line each, in the config dir. */
 export const GITHUB_CALLS_FILE = "github-calls.jsonl";
@@ -10,15 +11,6 @@ export const GITHUB_CALLS_KEPT_MS = 7 * 24 * 60 * 60 * 1000;
 
 /** How often one process checks the log for calls older than GITHUB_CALLS_KEPT_MS. */
 const PRUNE_EVERY_MS = 60 * 60 * 1000;
-
-/** An account budget, as `gh api rate_limit` or a response's `X-Ratelimit-*` headers report it. */
-export interface Budget {
-  limit: number;
-  remaining: number;
-  used: number;
-  /** When the hour's budget starts over. */
-  reset: string;
-}
 
 /** One `gh` (or `ghbot`) call nico-agent made. */
 export interface GitHubCall {
@@ -112,13 +104,12 @@ export function readGitHubCalls(file: string): GitHubCall[] {
   });
 }
 
-/** The account's budgets, as `gh api rate_limit` reports them. */
-export interface RateLimit {
-  core: Budget;
-  graphql: Budget;
-}
-
 const HOUR_MS = 60 * 60 * 1000;
+
+/** Whether a call spent budget: reading `rate_limit` spends none. */
+function spends(call: GitHubCall) {
+  return call.query !== "rate_limit";
+}
 
 /** How many calls, and how many of them failed. */
 function count(calls: GitHubCall[]) {
@@ -133,7 +124,7 @@ function countBy<K extends "caller" | "query">(calls: GitHubCall[], key: K) {
 }
 
 /** Calls made in a window: counted, by caller and by query, and the minute (UTC) with the most. */
-function window(calls: GitHubCall[]) {
+function callsIn(calls: GitHubCall[]) {
   const minutes = [...Map.groupBy(calls, (c) => `${c.at.slice(0, 16)}Z`)].map(([minute, group]) => ({ minute, calls: group.length }));
   const busiestMinute = minutes.reduce<{ minute: string; calls: number } | null>((best, m) => (!best || m.calls > best.calls ? m : best), null);
   return { ...count(calls), busiestMinute, byCaller: countBy(calls, "caller"), byQuery: countBy(calls, "query") };
@@ -146,15 +137,15 @@ function window(calls: GitHubCall[]) {
  */
 export function githubUsage(calls: GitHubCall[], now: Date, quota: RateLimit | string, since?: Date) {
   const after = (from: number) => calls.filter((c) => Date.parse(c.at) >= from);
-  const last = calls.at(-1);
-  const resets = last?.budget?.reset ?? (typeof quota === "string" || last?.resource === "app" ? undefined : quota[last?.resource ?? "graphql"].reset);
+  // `github usage` logs its own quota read; the call before it is the one that tells.
+  const last = calls.findLast(spends);
   const windows = since
-    ? { since: { from: since.toISOString(), ...window(after(since.getTime())) } }
-    : { lastHour: window(after(now.getTime() - HOUR_MS)), last24Hours: window(after(now.getTime() - 24 * HOUR_MS)) };
+    ? { since: { from: since.toISOString(), ...callsIn(after(since.getTime())) } }
+    : { lastHour: callsIn(after(now.getTime() - HOUR_MS)), last24Hours: callsIn(after(now.getTime() - 24 * HOUR_MS)) };
   const failed = after(since?.getTime() ?? now.getTime() - 24 * HOUR_MS).filter((c) => c.outcome !== "ok");
   return {
     ...(last?.outcome === "rate limited" && {
-      rateLimited: `the last GitHub call, ${last.query} for ${last.caller} at ${last.at}, hit the ${last.resource} rate limit; it resets at ${resets ?? "an unknown time"}`,
+      rateLimited: `the last GitHub call, ${last.query} for ${last.caller} at ${last.at}, hit the ${last.resource} rate limit; it resets at ${resetOf(last, quota) ?? "an unknown time"}`,
     }),
     ...windows,
     failures: failed.reverse().slice(0, 10).map(({ at, caller, query, repo, outcome, error }) => ({ at, caller, query, ...(repo && { repo }), outcome, ...(error && { error }) })),
@@ -165,6 +156,13 @@ export function githubUsage(calls: GitHubCall[], now: Date, quota: RateLimit | s
   };
 }
 
+/** When the budget `call` spent starts over: as its headers said, else as `rate_limit` says. */
+function resetOf(call: GitHubCall, quota: RateLimit | string) {
+  if (call.budget) return call.budget.reset;
+  if (typeof quota === "string" || call.resource === "app") return undefined;
+  return quota[call.resource].reset;
+}
+
 /**
  * A budget with the calls nico-agent logged against it since its hour began;
  * the rest of what was spent is everyone else on the account. A GraphQL call
@@ -172,8 +170,7 @@ export function githubUsage(calls: GitHubCall[], now: Date, quota: RateLimit | s
  */
 function spent(calls: GitHubCall[], resource: "graphql" | "core", budget: Budget) {
   const began = Date.parse(budget.reset) - HOUR_MS;
-  // Reading `rate_limit` spends nothing.
-  const byNicoAgent = calls.filter((c) => c.resource === resource && c.query !== "rate_limit" && Date.parse(c.at) >= began).length;
+  const byNicoAgent = calls.filter((c) => c.resource === resource && spends(c) && Date.parse(c.at) >= began).length;
   const seen = calls.findLast((c) => c.budget?.resource === resource);
   return {
     ...budget,

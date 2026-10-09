@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
-import type { GitHubCall } from "../src/github-calls";
+import { GITHUB_CALLS_FILE, type GitHubCall } from "../src/github-calls";
 import { setup } from "./harness";
 
 const call = (at: string, caller: string, query: string, more: Partial<GitHubCall> = {}): GitHubCall =>
@@ -9,7 +9,7 @@ const call = (at: string, caller: string, query: string, more: Partial<GitHubCal
 
 function writeLog(configDir: string, calls: GitHubCall[]) {
   mkdirSync(configDir, { recursive: true });
-  writeFileSync(join(configDir, "github-calls.jsonl"), calls.map((c) => `${JSON.stringify(c)}\n`).join(""));
+  writeFileSync(join(configDir, GITHUB_CALLS_FILE), calls.map((c) => `${JSON.stringify(c)}\n`).join(""));
 }
 
 // The fake clock reads 2026-09-30T12:00:00Z.
@@ -64,6 +64,19 @@ describe("github usage", () => {
       "rateLimited: \"the last GitHub call, ISSUES_QUERY for board at 2026-09-30T11:59:55.000Z, hit the graphql rate limit; it resets at 2026-09-30T12:20:00.000Z\"",
     );
     expect(stdout).toContain("lastHour:");
+  });
+
+  test("its own quota reads, logged after the rate-limited call, don't hide it", async () => {
+    const { cli, configDir } = setup();
+    writeLog(configDir, [
+      ...WEEK,
+      call("2026-09-30T11:59:55.000Z", "board", "ISSUES_QUERY", { outcome: "rate limited", error: "gh: API rate limit exceeded" }),
+      call("2026-09-30T11:59:58.000Z", "cli github usage", "rate_limit", { resource: "core" }),
+    ]);
+    const { json } = await cli("github", "usage", "--json");
+    expect(json().rateLimited).toBe(
+      "the last GitHub call, ISSUES_QUERY for board at 2026-09-30T11:59:55.000Z, hit the graphql rate limit; it resets at 2026-09-30T12:30:00.000Z",
+    );
   });
 
   test("--since counts from that time instead, and a failed quota read still shows the log", async () => {

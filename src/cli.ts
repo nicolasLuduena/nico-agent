@@ -932,7 +932,7 @@ async function githubUsageCommand(args: Args, ctx: RunContext): Promise<Output> 
   // Read before asking for the quota, so the last call is the last one before this command.
   const calls = readGitHubCalls(resolve(ctx.configDir, GITHUB_CALLS_FILE));
   const quota = await ctx.world.githubRateLimit().catch((e) => worldErrorMessage(e));
-  const help = since ? [] : ["Run `nico-agent github usage --since <time>` to count from another time"];
+  const help = [since ? "Run `nico-agent github usage` for the last hour and 24 hours" : "Run `nico-agent github usage --since <time>` to count from another time"];
   return { data: githubUsage(calls, ctx.world.now(), quota, since), help };
 }
 
