@@ -56,7 +56,8 @@ export async function advance(world: World, configDir: string): Promise<AdvanceR
   try {
     // The Lead is Nudged at the end of every run, even one that failed.
     const report = await advanceOnce(world, configDir).catch(async (e) => {
-      await nudgeLead(world, configDir);
+      // The run's own error is the one to report, not the Nudge's.
+      await nudgeLead(world, configDir).catch(() => {});
       throw e;
     });
     report.warnings.push(...(await nudgeLead(world, configDir)));

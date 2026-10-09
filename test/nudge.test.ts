@@ -45,6 +45,15 @@ describe("say Nudges the Lead", () => {
     expect(nudges(world.calls)).toEqual([NUDGE]);
   });
 
+  test("a Lead herdr reports done with its turn is prompted too; a blocked one waits", async () => {
+    const { cli, world } = await lead("blocked");
+    await cli("say", "one");
+    expect(nudges(world.calls)).toEqual([]);
+    world.agentStates.set("lead", "done");
+    await cli("say", "two");
+    expect(nudges(world.calls)).toEqual([NUDGE]);
+  });
+
   test("an answer to the Lead's question Nudges it too", async () => {
     const { cli, world } = await lead("working");
     expect((await cli("lead", "ask", "Close acme/api#7?", "yes", "no")).exitCode).toBe(0);

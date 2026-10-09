@@ -58,7 +58,7 @@ If `serve` listens on another port, pass it to `lead start --port <port>`.
 
 When something arrives for the Lead (your `say`, your `say --answer`, the end
 of an `advance` run), nico-agent Nudges it: it prompts the Lead with "Read your
-Inbox" if herdr reports it idle. While the Lead is working, one pending Nudge
+Inbox" if herdr reports it idle (or `done` with its turn). While the Lead is working, one pending Nudge
 is kept in `nudge.json` in the config directory, and `serve` sends it within
 about 10 seconds of seeing the Lead idle, so three messages sent while it
 works bring one Nudge. A Lead that isn't running gets none; your messages

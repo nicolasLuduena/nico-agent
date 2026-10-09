@@ -13,6 +13,9 @@ export const NUDGE_INTERVAL_MS = 10_000;
 /** Present while a Nudge waits for the Lead to be idle; one at most, so Nudges never pile up. */
 const FILE = "nudge.json";
 
+/** The Agent states in which the Lead waits for input: idle, or `done` with a finished turn. */
+const READY = ["idle", "done"];
+
 /**
  * Nudge the Lead because something arrived for it: prompt it to read its
  * Inbox if herdr reports it idle, else record a pending Nudge for `serve` to
@@ -20,29 +23,17 @@ const FILE = "nudge.json";
  * A Nudge that fails to send is a warning, kept pending to be retried.
  */
 export async function nudgeLead(world: World, configDir: string): Promise<string[]> {
-  return send(world, configDir, true);
-}
-
-/** Send the pending Nudge, if any, once the Lead is idle; `serve` calls this every `NUDGE_INTERVAL_MS`. */
-export async function sendPendingNudge(world: World, configDir: string): Promise<string[]> {
-  if (!existsSync(join(configDir, FILE))) return [];
-  return send(world, configDir, false);
-}
-
-async function send(world: World, configDir: string, arrived: boolean): Promise<string[]> {
-  let status;
+  let lead;
   try {
-    status = await leadStatus(world, configDir);
+    lead = await leadStatus(world, configDir);
   } catch (e) {
-    if (!(e instanceof WorldError)) throw e;
-    if (arrived) await setPending(configDir, true);
-    return [`could not Nudge the Lead: ${e.message}`];
+    return failed(configDir, e);
   }
-  if (status?.lead !== "running") {
+  if (lead?.lead !== "running") {
     await setPending(configDir, false);
     return [];
   }
-  if (status.state !== "idle") {
+  if (!READY.includes(lead.state)) {
     await setPending(configDir, true);
     return [];
   }
@@ -50,17 +41,26 @@ async function send(world: World, configDir: string, arrived: boolean): Promise<
   await setPending(configDir, false);
   try {
     const { started } = await world.herdrAgentPrompt(LEAD_AGENT, NUDGE);
-    return started ? [] : ["the Lead was Nudged, but has not started working; run `herdr agent read lead` to see its screen"];
+    return started ? [] : [`the Lead was Nudged, but has not started working; run \`herdr agent read ${LEAD_AGENT}\` to see its screen`];
   } catch (e) {
-    if (!(e instanceof WorldError)) throw e;
-    await setPending(configDir, true);
-    return [`could not Nudge the Lead: ${e.message}`];
+    return failed(configDir, e);
   }
+}
+
+/** Send the pending Nudge, if any, once the Lead is idle; `serve` calls this every `NUDGE_INTERVAL_MS`. */
+export async function sendPendingNudge(world: World, configDir: string): Promise<string[]> {
+  return existsSync(join(configDir, FILE)) ? nudgeLead(world, configDir) : [];
+}
+
+/** A Nudge herdr could not take stays pending, as a warning. */
+async function failed(configDir: string, e: unknown): Promise<string[]> {
+  if (!(e instanceof WorldError)) throw e;
+  await setPending(configDir, true);
+  return [`could not Nudge the Lead: ${e.message}`];
 }
 
 async function setPending(configDir: string, pending: boolean) {
   const file = join(configDir, FILE);
-  if (existsSync(file) === pending) return;
   await withFileLock(configDir, FILE, () => {
     if (pending) writeJsonAtomic(file, { pending: true });
     else if (existsSync(file)) unlinkSync(file);
