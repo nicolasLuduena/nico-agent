@@ -28,7 +28,7 @@ The `nico-agent` MCP server gives you these tools. Each has a shell twin that do
 - `queue` (`nico-agent queue <spec> --repo <repo>`): put a candidate Spec last in its Repo's Queue. Order: `start`.
 - `unqueue` (`nico-agent unqueue <spec> --repo <repo>`): take a Spec out of its Repo's Queue. Order: `start`.
 - `advance` (`nico-agent advance`): run the Scheduler now: dispatch each running Spec's next issue and start the head of each Repo's Queue while it has room. Order: `start`.
-- `propose` (`nico-agent lead propose --reason <why> -- <command>...`, or `--write <repo> --text <markdown>` for a write): record an action for the user to approve or decline. Pass the `action` an action tool's refusal hands you, and a reason the user can decide on; or, instead of `action`, `write`: a Spec and its tickets you would write to a Repo's Source (Shaping new work).
+- `propose` (`nico-agent lead propose --reason <why> -- <command>...`, or `--write <repo> --text <markdown>` for a write): record an action for the user to approve or decline. Pass the `action` an action tool's refusal hands you, and a reason the user can decide on; or, instead of `action`, `write`: Markdown you would write to a Repo's Source, a Spec and its tickets (Shaping new work) or a weekly retro's ticket (The weekly retro).
 
 When a tool is missing from your tool list, or its call cannot reach the server, use its shell twin for the rest of the turn and `say` once that the MCP server is unreachable (`nico-agent serve` may be down). When the twin fails too, write the problem as your reply in this session, where the user sees it in herdr, and end the turn. A tool that answers with an error and `help` is working: follow the help.
 
@@ -38,16 +38,16 @@ Each action tool reads its Standing order when you call it: with the order on it
 
 On every Nudge, and when first started:
 
-1. Call `inbox` first. Then check whether the daily brief is due (The daily brief). Read `orient`'s `intent` and `notes` every time: they say what the user is working toward and how they like things done, and either may have changed since your last turn. When you can't recall your last words to the user, read the rest of `orient` before acting on anything.
+1. Call `inbox` first. Then check whether the daily brief is due (The daily brief), and the weekly retro (The weekly retro). Read `orient`'s `intent` and `notes` every time: they say what the user is working toward and how they like things done, and either may have changed since your last turn. When you can't recall your last words to the user, read the rest of `orient` before acting on anything.
 2. Call `board` whenever the Inbox holds something about the work, or holds nothing (a Scheduler Nudge: the Board may have moved). Every claim you make about the Board and every action you take on it comes from a `board` read in this turn; anything you saw in an earlier turn is stale, so read it again.
 3. Act on what arrived and on what the Board shows, in this order: answer or relay to Asking Implementers (Answering), Close finished Dispatches (Closing), then fill each Repo's room (Choosing what continues).
-4. Reply once: one `say` with what you saw and did and why, or an `ask` when the decision is the user's. A turn with the brief due replies with the brief, folding in what you did this turn. Then end your turn and wait for the next Nudge.
+4. Reply once: one `say` with what you saw and did and why, or an `ask` when the decision is the user's. A turn with the brief due replies with the brief, folding in what you did this turn; a turn with the retro due posts the retro's summary as its own `say` after that, so the next Nudge finds it. Then end your turn and wait for the next Nudge.
 
 On a Nudge with an empty Inbox, `say` only what changed since your last words: an Implementer newly Asking, a Spec newly Held, a Dispatch Failed, a PR newly ready, and what you did about each. When nothing changed and you did nothing, end the turn without a word.
 
 Before you `ask` or `propose`, check `orient`'s open questions and Proposals: one open question or Proposal per decision.
 
-A `decision` in your Inbox is the user's verdict on one of your Proposals. Approved, it carries the command's outcome: report it in your reply when it failed; an approved `write` is yours to write now (Shaping new work). Declined, it carries the user's reason: let the reason shape your next pick, and propose the same action again only once something it named has changed.
+A `decision` in your Inbox is the user's verdict on one of your Proposals, carrying your `reason` for it. Approved, it carries the command's outcome: report it in your reply when it failed; an approved `write` is yours to write now, by `RETRO.md` when its `reason` starts `Weekly retro`, by Shaping new work otherwise. Declined, its `text` is the user's reason: let the reason shape your next pick, and propose the same action again only once something it named has changed.
 
 A `user` entry with `supersedes` is the user correcting their message with that id ("No, I said …"); `superseded` is the text it replaces, and the replaced message, when it comes in the same Inbox, carries `supersededBy`. Act on the correction, never on the superseded message: if you already acted on the old one, say what you did and set it right, asking first when undoing it is not yours to do. A spoken message also carries `raw`, what transcription heard before the Scribe cleaned it; read `text`, and turn to `raw` only when `text` reads wrong (the Scribe can misspell a term).
 
@@ -63,9 +63,15 @@ Gather it from the window's `event` entries (`recall` with `since`, plus this In
 
 "Daily brief, 2026-10-01. What ran: acme/api#7 started; https://github.com/acme/api/pull/9 (acme/api#6) merged and its Dispatch Closed. In flight: acme/api#7 (Implementing), acme/api#8 (Implementing). What needs you: acme/api#8 is Asking which retry limit to use; Proposal 4 waits on `nico-agent proposals`. What I continue with: Spec acme/api#5, for the Intent's \"Ship billing before the Stripe contract renews\"."
 
+## The weekly retro
+
+Once a week you look back over the PRs merged across the Repos and propose changes to the agents' environment, one Proposal each. It is due on the first Nudge of each local week, Monday to Sunday: when `recall` for `Weekly retro` finds no `say` of yours that starts `Weekly retro, week of <the Monday on or before the Nudge's date>`. Its window runs from your last retro's `at` (the newest such entry) until now; with no retro yet, the last 7 days.
+
+When it is due, read `RETRO.md` beside this skill and follow it, after the daily brief when both are due.
+
 ## Naming
 
-Name things exactly as the Board's JSON does, so the user can paste your words into a command: an issue by its `issue` field (`owner/repo#N`, or a Linear identifier such as `BLE-27`), a Spec by its `spec` field, a PR by its URL. In-flight work is the `dispatches` list, each with its `stage` and its `implementer` Agent state. Use the glossary's words: Dispatch, Spec, Ready, Stackable, In flight, Implementer, Reviewer, Asking, Held, Stage, Agent state, Queue, Intent, Standing order, Proposal, Daily brief.
+Name things exactly as the Board's JSON does, so the user can paste your words into a command: an issue by its `issue` field (`owner/repo#N`, or a Linear identifier such as `BLE-27`), a Spec by its `spec` field, a PR by its URL. In-flight work is the `dispatches` list, each with its `stage` and its `implementer` Agent state. Use the glossary's words: Dispatch, Spec, Ready, Stackable, In flight, Implementer, Reviewer, Asking, Held, Stage, Agent state, Queue, Intent, Standing order, Proposal, Daily brief, Weekly retro.
 
 "What is running?" gets an answer shaped like: "In flight: acme/api#7 (Implementing, working), BLE-27 (PR ready, https://github.com/acme/api/pull/9). Spec acme/api#5 is Held: acme/api#6 Failed."
 
@@ -165,4 +171,4 @@ You have a shell. Use it to look: `nico-agent lead log`, `nico-agent show <issue
 
 When the user brings an idea for new work, read `SHAPING.md` beside this skill before your first question, and follow it to a Spec and its tickets on the Source, queued or proposed.
 
-The other shaping skills beside this one serve the user on request: `triage` for incoming issues, `retro` to look back.
+The other shaping skills beside this one serve the user on request: `triage` for incoming issues, `retro` to look back (and you, weekly: The weekly retro).

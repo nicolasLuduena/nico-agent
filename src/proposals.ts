@@ -5,7 +5,7 @@ import { withFileLock, writeJsonAtomic } from "./state";
 /** Where a Proposal stands: undecided, or how the user decided it and how that went. */
 export type ProposalStatus = "open" | "approved" | "declined" | "failed";
 
-/** Markdown the Lead would write to a Repo's Source: a Spec and its tickets. */
+/** Markdown the Lead would write to a Repo's Source. */
 export interface SourceWrite {
   /** The Repo whose Source it goes to, as `owner/name`. */
   repo: string;
@@ -113,7 +113,7 @@ export function describeProposed(proposal: Proposed) {
     return { proposed: { action: proposal.action }, line: action, summary: { action }, shown: { action } };
   }
   const { write } = proposal;
-  return { proposed: { write }, line: `write a Spec to ${write.repo}'s Source`, summary: { write: write.repo }, shown: { write } };
+  return { proposed: { write }, line: `write to ${write.repo}'s Source`, summary: { write: write.repo }, shown: { write } };
 }
 
 /** `action` as the command line the user would type. */
