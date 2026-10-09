@@ -142,6 +142,14 @@ restarting `nico-agent serve`.
 `write` is the one order nico-agent cannot check: the Lead writes to a Source
 with its own shell, so that order is a rule of the Lead's skill.
 
+## What the Lead does with them
+
+The `lead` skill (`src/lead-skill.md`) sets the Lead's judgment within its
+orders: which candidate Spec takes a Repo's room (the Intent, then the Queue
+head, then the smallest that unblocks the most), when it acts and when it
+proposes, what it answers an Asking Implementer itself, when it Closes, and
+that Held Specs are yours to clear.
+
 ## The Lead's tools
 
 The Lead acts through MCP tools on `nico-agent serve`'s `/mcp`. Each runs the
