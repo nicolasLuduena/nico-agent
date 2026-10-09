@@ -2,6 +2,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 import { sayArgs } from "../src/app/lead";
+import { TIMING_FILE } from "../src/voice-timing";
 import { setup } from "./harness";
 
 const LAUNCH = { harness: "claude", model: "opus", effort: "high" };
@@ -38,9 +39,25 @@ function later(world: { clock: Date }, ms: number) {
 function timings(configDir: string) {
   let text = "";
   try {
-    text = readFileSync(join(configDir, "voice-timing.jsonl"), "utf8");
+    text = readFileSync(join(configDir, TIMING_FILE), "utf8");
   } catch {}
   return text.split("\n").filter(Boolean).map((line) => JSON.parse(line));
+}
+
+type Voiced = Awaited<ReturnType<typeof withVoice>>;
+
+/** Say something into the page as `utterance`, having stopped talking at SPOKE; its final transcript, or the error. */
+async function speak({ talk }: Voiced, utterance: number) {
+  talk.json({ type: "start", utterance });
+  talk.send(AUDIO);
+  talk.json({ type: "end", spokeAt: SPOKE.getTime() });
+  return await talk.next();
+}
+
+/** Post `text` as the page does, heard as `raw` when spoken, and let serve see the new entry. */
+async function post(ctx: Voiced, text: string, raw?: string) {
+  await ctx.web("/api/say", { method: "POST", body: JSON.stringify({ args: sayArgs(text, undefined, raw) }) });
+  await ctx.look();
 }
 
 describe("the voice timing log", () => {
@@ -58,16 +75,12 @@ describe("the voice timing log", () => {
       return Response.json({ choices: [{ message: { role: "assistant", content: "What is running?" } }] });
     });
 
-    talk.json({ type: "start", utterance: 4 });
-    talk.send(AUDIO);
-    talk.json({ type: "end", spokeAt: SPOKE.getTime() });
-    const final = await talk.next();
+    const final = await speak(ctx, 4);
     expect(final).toMatchObject({ type: "final", text: "What is running?" });
 
     // The page posts it 0.1s later, and the idle Lead is Nudged at once.
     later(world, 100);
-    await ctx.web("/api/say", { method: "POST", body: JSON.stringify({ args: sayArgs(final.text, undefined, final.raw) }) });
-    await ctx.look();
+    await post(ctx, final.text, final.raw);
     expect(timings(ctx.configDir)).toEqual([]);
 
     // The Lead says something 6s later, and the page plays it 0.4s after that.
@@ -99,18 +112,14 @@ describe("the voice timing log", () => {
   test("with Voice off the line is written when the Lead first says something, and the steps that did not happen are null", async () => {
     // No Scribe: the transcript is sent as heard. No Lead running: nobody is Nudged.
     const ctx = await withVoice({ voice: { transcribe: TRANSCRIBE }, lead: false });
-    const { world, talk } = ctx;
+    const { world } = ctx;
     world.endpoint(`${TRANSCRIBE.url}/audio/transcriptions`, async () => {
       later(world, 1000);
       return Response.json({ text: "what is running" });
     });
 
-    talk.json({ type: "start", utterance: 1 });
-    talk.send(AUDIO);
-    talk.json({ type: "end", spokeAt: SPOKE.getTime() });
-    const final = await talk.next();
-    await ctx.web("/api/say", { method: "POST", body: JSON.stringify({ args: sayArgs(final.text, undefined, final.raw) }) });
-    await ctx.look();
+    const final = await speak(ctx, 1);
+    await post(ctx, final.text, final.raw);
     later(world, 3000);
     await ctx.cli("lead", "say", "--", "Nothing is running.");
     await ctx.look();
@@ -133,13 +142,10 @@ describe("the voice timing log", () => {
 
   test("an utterance whose transcription fails is a line of its own, with only the end of speech", async () => {
     const ctx = await withVoice();
-    const { world, talk } = ctx;
+    const { world } = ctx;
     world.endpoint(`${TRANSCRIBE.url}/audio/transcriptions`, async () => new Response("model not loaded", { status: 500 }));
 
-    talk.json({ type: "start", utterance: 2 });
-    talk.send(AUDIO);
-    talk.json({ type: "end", spokeAt: SPOKE.getTime() });
-    expect(await talk.next()).toMatchObject({ type: "error", utterance: 2 });
+    expect(await speak(ctx, 2)).toMatchObject({ type: "error", utterance: 2 });
 
     expect(timings(ctx.configDir)).toEqual([{
       utterance: 2,
@@ -159,25 +165,20 @@ describe("the voice timing log", () => {
 
   test("a line is written with what happened once the Lead has not answered in five minutes", async () => {
     const ctx = await withVoice();
-    const { world, talk } = ctx;
+    const { world } = ctx;
     world.endpoint(`${TRANSCRIBE.url}/audio/transcriptions`, async () => Response.json({ text: "what is running" }));
     world.endpoint(`${SCRIBE.url}/chat/completions`, async () => Response.json({ choices: [{ message: { role: "assistant", content: "What is running?" } }] }));
 
-    talk.json({ type: "start", utterance: 3 });
-    talk.send(AUDIO);
-    talk.json({ type: "end", spokeAt: SPOKE.getTime() });
-    const final = await talk.next();
-    await ctx.web("/api/say", { method: "POST", body: JSON.stringify({ args: sayArgs(final.text, undefined, final.raw) }) });
-    await ctx.look();
+    const final = await speak(ctx, 3);
+    await post(ctx, final.text, final.raw);
 
     later(world, 4 * 60_000);
-    await ctx.web("/api/say", { method: "POST", body: JSON.stringify({ args: sayArgs("typed, not spoken") }) });
-    await ctx.look();
+    await post(ctx, "typed, not spoken");
     expect(timings(ctx.configDir)).toEqual([]);
 
     // serve's next tick, or anything else it hears, writes it.
     later(world, 60_000);
-    await ctx.web("/api/say", { method: "POST", body: JSON.stringify({ args: sayArgs("still there?") }) });
+    await post(ctx, "still there?");
     expect(timings(ctx.configDir)).toMatchObject([{ utterance: 3, written: "2026-09-30T12:00:00.000Z", nudged: "2026-09-30T12:00:00.000Z", said: null, played: null, slowest: "transcribed" }]);
   });
 });

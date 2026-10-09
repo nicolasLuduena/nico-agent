@@ -220,13 +220,15 @@ order:
 | `transcribed` | `voice.transcribe` returned the final transcript | `serve` |
 | `scribed` | the Scribe returned its text (and its choice, answering a question) | `serve` |
 | `written` | the message's entry was written to the conversation | the entry's `at` |
-| `nudged` | the Lead was Nudged, the first Nudge sent after the entry | `nudges-sent.json` |
-| `said` | the Lead wrote its first `say` or `ask` after the entry | that entry's `at` |
-| `played` | the page began playing that entry's audio | the page |
+| `nudged` | herdr took the Nudge: the first one sent after the entry, whatever sent it | `nudges-sent.json` |
+| `said` | the Lead wrote its first `say` or `ask` after the entry, whatever it answers | that entry's `at` |
+| `played` | the page began playing that entry's audio: speech made, and any earlier speech played out | the page |
 
 Each is an ISO time, or `null` for a step that did not happen: no Scribe
 configured or it failed (`scribed`), the Lead not running (`nudged`), Voice
-off (`played`), or the transcription failing (all after `spoke`). `took` is
+off (`played`), or the transcription failing (all after `spoke`). A step
+that did not happen leaves its time to the next: with the Scribe failing,
+its wait shows in `written`. `took` is
 how long each step took after the last one that happened, in ms; `total` is
 `spoke` to `played`; `slowest` names the step with the longest `took`. The
 page and `serve` share a clock, being on one machine (on the phone the
