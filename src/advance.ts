@@ -2,6 +2,7 @@ import { closeSync, mkdirSync, openSync, readFileSync, unlinkSync, writeSync } f
 import { join } from "node:path";
 import { loadBoard, specLoadErrors } from "./board";
 import { recordSighting } from "./stats";
+import { removeFinishedGardeners } from "./gardener";
 import { ConfigError, SCHEDULER_DEFAULTS, type LaunchDefaults, loadConfig } from "./config";
 import { type DispatchRequest, StepFailed, checkLaunch, closeDispatch, dispatch } from "./dispatch";
 import { DispatchError, LaunchError } from "./dispatch-error";
@@ -31,6 +32,8 @@ export interface AdvanceReport {
   errors: { repo: string; error: string }[];
   /** Dispatches Closed because their PR is ready. */
   closed: string[];
+  /** Repos whose finished Gardener's workspace was removed. */
+  gardeners: string[];
   /** What went wrong without stopping the run, such as a notification that could not be sent. */
   warnings: string[];
   help: string[];
@@ -51,7 +54,7 @@ export type SpecPlan =
 export async function advance(world: World, configDir: string): Promise<AdvanceReport> {
   const holder = takeAdvanceLock(world, configDir);
   if (holder !== null) {
-    return { specs: [], errors: [], closed: [], warnings: [`another advance is running (pid ${holder}); left it to finish`], help: [] };
+    return { specs: [], errors: [], closed: [], gardeners: [], warnings: [`another advance is running (pid ${holder}); left it to finish`], help: [] };
   }
   try {
     // The Lead is Nudged at the end of every run, even one that failed.
@@ -99,7 +102,7 @@ function takeAdvanceLock(world: World, configDir: string): number | null {
 
 async function advanceOnce(world: World, configDir: string): Promise<AdvanceReport> {
   const launch = schedulerDefaults(configDir);
-  const report: AdvanceReport = { specs: [], errors: [], closed: [], warnings: [], help: [] };
+  const report: AdvanceReport = { specs: [], errors: [], closed: [], gardeners: [], warnings: [], help: [] };
   const { repos } = loadConfig(configDir);
   if (!repos.length) return report;
   const dispatches = loadDispatches(configDir);
@@ -143,6 +146,14 @@ async function advanceOnce(world: World, configDir: string): Promise<AdvanceRepo
     await closeDispatch(world, configDir, row.dispatch.issue, true);
     report.closed.push(row.dispatch.issue);
   }
+  const gardenerWarnings: string[] = [];
+  try {
+    report.gardeners = await removeFinishedGardeners(world, configDir);
+  } catch (e) {
+    // herdr not answering leaves the Gardeners for the next run.
+    if (!(e instanceof WorldError)) throw e;
+    gardenerWarnings.push(`could not remove finished Gardeners: ${e.message}`);
+  }
   // A condition this run could not see neither clears nor notifies anew; Proposals are `propose`'s to notify.
   const unobserved = [
     PROPOSALS_SCOPE,
@@ -153,6 +164,7 @@ async function advanceOnce(world: World, configDir: string): Promise<AdvanceRepo
     ...notices(plans, report.specs, loadDispatches(configDir)),
     ...askingNotices(board.inFlight, board.specs),
   ], (scope) => !unobserved.includes(scope));
+  report.warnings.push(...gardenerWarnings);
   return report;
 }
 

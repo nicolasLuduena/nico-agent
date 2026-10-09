@@ -38,6 +38,8 @@ export interface Config {
   scheduler?: Partial<LaunchDefaults>;
   /** The launch `lead start` uses for each of `--harness`, `--model` and `--effort` it isn't given. */
   lead?: Partial<LaunchDefaults>;
+  /** The launch `garden` starts the Gardener with, each choice unset taken from GARDENER_DEFAULTS. */
+  gardener?: Partial<LaunchDefaults>;
   /** The Standing orders the user set; unset ones take their default from ORDERS (ADR-0010). */
   orders?: Partial<Orders>;
   /** The voice services the user set; voice is off for one left out. */
@@ -87,6 +89,9 @@ export const SCHEDULER_DEFAULTS = ["harness", "model", "effort"] as const;
 
 /** The Lead's defaults have the same keys as the Scheduler's. */
 export const LEAD_DEFAULTS = SCHEDULER_DEFAULTS;
+
+/** The Gardener's launch unless config sets its own, chosen to keep gardening cheap and fast. */
+export const GARDENER_DEFAULTS: LaunchDefaults = { harness: "opencode2", model: "opencode-go/deepseek-v4.1-flash", effort: "max" };
 
 /**
  * How a Harness is launched (ADR-0005). `modelArgs` and `effortArgs` hold the
@@ -206,7 +211,9 @@ export function harnessConfigs(config: Config): Record<string, HarnessConfig> {
  * to either as is, with no separator, when the GitHub App is installed on the
  * Repo, so it carries its own leading punctuation.
  * `{baseBranch}` is the Dispatch's Base. `review` prompts the Reviewer; only it has a PR to fill `{prUrl}` and
- * `{prBaseBranch}` with. `lead` starts the Lead on its skill.
+ * `{prBaseBranch}` with. `lead` starts the Lead on its skill. `garden` prompts
+ * the Gardener, `{repo}` being the Repo's slug and `{prs}` the PRs it tends,
+ * each with what happened to it; the bot suffix is appended to it too.
  */
 export interface Prompts {
   implement: string;
@@ -214,6 +221,7 @@ export interface Prompts {
   botSuffix: string;
   review: string;
   lead: string;
+  garden: string;
 }
 
 export const PROMPTS: Prompts = {
@@ -226,9 +234,16 @@ export const PROMPTS: Prompts = {
     "`Co-authored-by: nicolasluduena-coding-agent[bot] <324920906+nicolasluduena-coding-agent[bot]@users.noreply.github.com>`",
   review: "{sigil}code-review {prUrl} against {prBaseBranch} for the spec at {issueUrl}",
   lead: "{sigil}lead",
+  garden:
+    "Tend these open PRs of {repo}: {prs}. " +
+    "Never merge, close or approve a PR: that stays the user's decision. " +
+    "Check out each PR's branch here; after the PR below it merged, rebase it onto its new base and retarget the PR there; " +
+    "resolve each conflict with its base; run the Repo's checks; and push the fixed branch with `git push --force-with-lease`. " +
+    "When a conflict needs a judgment you can't make from the code and the PRs, ask the user instead of guessing. " +
+    "Comment on each PR you changed saying what you did",
 };
 
-export const PLACEHOLDERS = ["sigil", "issueUrl", "baseBranch", "prUrl", "prBaseBranch"] as const;
+export const PLACEHOLDERS = ["sigil", "issueUrl", "baseBranch", "prUrl", "prBaseBranch", "repo", "prs"] as const;
 export type Placeholder = (typeof PLACEHOLDERS)[number];
 
 const PLACEHOLDER = /\{(\w+)\}/g;
@@ -280,6 +295,7 @@ export function loadConfig(dir: string): Config {
   if (parsed.harnesses !== undefined) config.harnesses = checkHarnesses(file, parsed.harnesses);
   if (parsed.scheduler !== undefined) config.scheduler = checkLaunchDefaults(file, "scheduler", "Scheduler", parsed.scheduler);
   if (parsed.lead !== undefined) config.lead = checkLaunchDefaults(file, "lead", "Lead", parsed.lead);
+  if (parsed.gardener !== undefined) config.gardener = checkLaunchDefaults(file, "gardener", "Gardener", parsed.gardener);
   if (parsed.orders !== undefined) config.orders = checkOrders(file, parsed.orders);
   if (parsed.voice !== undefined) config.voice = checkVoice(file, parsed.voice);
   return config;
@@ -317,8 +333,8 @@ function checkRepos(file: string, repos: Repo[]): Repo[] {
   return repos;
 }
 
-/** The `scheduler` or `lead` launch defaults, each a string. */
-function checkLaunchDefaults(file: string, section: "scheduler" | "lead", owner: string, defaults: unknown): Partial<LaunchDefaults> {
+/** The `scheduler`, `lead` or `gardener` launch defaults, each a string. */
+function checkLaunchDefaults(file: string, section: "scheduler" | "lead" | "gardener", owner: string, defaults: unknown): Partial<LaunchDefaults> {
   if (!isObject(defaults)) throw new ConfigError(`${file}: ${section} is not an object`);
   for (const [key, value] of Object.entries(defaults)) {
     if (!(SCHEDULER_DEFAULTS as readonly string[]).includes(key)) {
