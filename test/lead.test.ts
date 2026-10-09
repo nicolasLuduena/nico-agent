@@ -290,9 +290,10 @@ describe("the lead skill", () => {
   test("outside its Tools section, it names no shell command for something a tool does", async () => {
     const { skill } = await writtenSkill();
     const sections = skill.split(/^## /m);
-    const tools = sections.find((s) => s.startsWith("Tools\n"))!;
+    const tools = sections.find((s) => s.startsWith("Tools\n"));
+    expect(tools).toBeDefined();
     // Each tool's shell twin, as the Tools section names it: `- \`say\` (\`nico-agent lead say <text>\`)`.
-    const twins = [...tools.matchAll(/^- `[a-z]+` \(`nico-agent ([a-z]+(?: [a-z]+)*)/gm)].map((m) => m[1]!);
+    const twins = [...tools!.matchAll(/^- `[a-z]+` \(`nico-agent ([a-z]+(?: [a-z]+)*)/gm)].map((m) => m[1]!);
     expect(twins).toContain("answer");
     const rest = sections.filter((s) => s !== tools).join("\n");
     const named = [...rest.matchAll(/`nico-agent ([a-z]+(?: [a-z]+)*)/g)].map((m) => m[1]!);
