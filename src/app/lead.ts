@@ -224,7 +224,8 @@ export function itemLine(item: OpenItem): ItemLine {
 
 /**
  * The open items not open `before`: a question just asked or a Proposal just
- * made, or a question whose answer was refused. Each expands the toasts.
+ * made, a question whose answer was refused, or an Implementer just Asking.
+ * Each expands the toasts.
  */
 export function freshItems<T extends { key: string }>(before: T[], now: T[]): T[] {
   const known = new Set(before.map((i) => i.key));

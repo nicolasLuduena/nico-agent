@@ -251,7 +251,8 @@ label.switch:has(:checked) { color: var(--ink); }
 .repo-group .pr { font-size: 13px; font-weight: 600; }
 .repo-group .reason, .repo-group .of { display: block; font-size: 13px; color: var(--ink-muted); }
 .repo-group .doing { margin: 0.35rem 0 0; font-family: var(--mono); font-size: 12px; color: var(--ink-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.repo-group .question {
+/* An Asking Implementer's screen, in its Repo row and on its toast: a mono box tinted and edged magenta. */
+.repo-group .question, .asking-screen {
   margin: 0.5rem 0 0; padding: 0.6rem 0.75rem; max-height: 10rem; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere;
   font-size: 12px; color: var(--ink); background: color-mix(in srgb, var(--blocked) 9%, var(--surface)); border-radius: var(--r-md);
   border: 1px solid color-mix(in srgb, var(--blocked) 45%, transparent);
@@ -385,11 +386,7 @@ label.switch:has(:checked) { color: var(--ink); }
 .card-asking .byline b { font-family: var(--mono); font-size: 13px; }
 .card-asking .byline span { color: var(--blocked); font-weight: 700; }
 .card-asking .title { margin: 0; font-weight: 600; }
-.card-asking .screen {
-  margin: 0; padding: 0.6rem 0.75rem; max-height: 10rem; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere;
-  font-size: 12px; color: var(--ink); background: color-mix(in srgb, var(--blocked) 9%, var(--surface)); border-radius: var(--r-md);
-  border: 1px solid color-mix(in srgb, var(--blocked) 45%, transparent);
-}
+.card-asking .asking-screen { margin: 0; }
 .card-asking .choices button { text-align: left; }
 @keyframes toast-in { from { opacity: 0; transform: translateY(12px) scale(0.98); } }
 

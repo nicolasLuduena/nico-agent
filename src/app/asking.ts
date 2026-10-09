@@ -1,6 +1,6 @@
 import type { BoardJson } from "./board";
 
-/** `answer`'s arguments: the issue, then the text after `--`, so it is never read as a flag. */
+/** `answer`'s arguments: the issue and the text, both after `--`, so neither is read as a flag. */
 export function answerArgs(issue: string, text: string): string[] {
   return ["--", issue, text];
 }

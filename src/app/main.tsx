@@ -87,9 +87,9 @@ function useAnswered(board: BoardJson | null) {
 
 /**
  * The app: a header with the brand, the Lead and Stats pages, the count of
- * open questions and Proposals and Asking Implementers (which collapses or expands their toasts) and
- * the Lead's controls and the theme toggle, then the Lead panel on the left
- * and the page's own column on the right: the Repos on the Lead page, the
+ * open questions, Proposals and Asking Implementers (which collapses or
+ * expands their toasts) and the Lead's controls and the theme toggle, then
+ * the Lead panel on the left and the page's own column on the right: the Repos on the Lead page, the
  * charts on the Stats page, and the toasts at the bottom right. The Board is
  * asked of `serve` on load and on each `board-changed`, and `serve` answers
  * from its one-minute cache (ADR-0011), so the page never asks GitHub more
@@ -139,7 +139,7 @@ function App() {
         summoned={toasts.summoned}
         send={conversation.send}
         dismiss={conversation.dismiss}
-        answered={answered.add}
+        markAnswered={answered.add}
       />
     </>
   );

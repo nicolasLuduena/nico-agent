@@ -11,18 +11,18 @@ export type ToastItem = OpenItem | AskingItem;
  * The Questions list as toasts at the bottom right of every page: each open
  * question and Proposal of the Lead's, oldest nearest the corner, then each
  * Asking Implementer, answered or decided right on it; hidden while `shown`
- * is false. The stack scrolls past
- * a modest height. A toast answered or decided from the keyboard hands focus
- * to the next one, or to the conversation once none is left. A new toast is
- * announced politely; those there on load are not. `summoned` asks for a
+ * is false. The stack scrolls past a modest height. A toast answered or
+ * decided from the keyboard hands focus to the next one, or to the
+ * conversation once none is left. A new toast is announced politely; those
+ * there on load are not. `summoned` asks for a
  * toast to come forward and take focus: each ask is a new object, so asking
  * for the same toast again brings it forward again.
  */
-export function Toasts({ items, shown, loaded, summoned, send, dismiss, answered }: {
+export function Toasts({ items, shown, loaded, summoned, send, dismiss, markAnswered }: {
   items: ToastItem[]; shown: boolean; loaded: boolean; summoned: { key: string } | null;
   send: SendText; dismiss: (key: string) => void;
   /** Tells that an Asking Implementer was answered on `question`, so its toast leaves at once. */
-  answered: (issue: string, question: string) => void;
+  markAnswered: (issue: string, question: string) => void;
 }) {
   const stack = useRef<HTMLElement>(null);
   // Read while rendering, before a toast that leaves takes the focus with it.
@@ -54,7 +54,7 @@ export function Toasts({ items, shown, loaded, summoned, send, dismiss, answered
             ? <QuestionToast key={item.key} card={item} send={send} dismiss={dismiss} />
             : item.kind === "proposal"
             ? <ProposalToast key={item.key} card={item} />
-            : <AskingToast key={item.key} item={item} answered={answered} />)}
+            : <AskingToast key={item.key} item={item} markAnswered={markAnswered} />)}
         </ol>
       </section>
     </>
@@ -76,6 +76,7 @@ function useAnnouncement(items: ToastItem[], loaded: boolean) {
   return announced;
 }
 
+/** What a screen reader hears of a new toast. */
 function announcement(item: ToastItem) {
   if (item.kind === "question") return `The Lead asks: ${item.text}`;
   if (item.kind === "proposal") return `The Lead proposes: ${item.reason}`;
@@ -161,13 +162,13 @@ function ProposalToast({ card }: { card: OpenItem & { kind: "proposal" } & Propo
  * free-text answer, each sent straight to the Implementer. It leaves once
  * sent; a refused answer keeps it, saying why.
  */
-function AskingToast({ item, answered }: { item: AskingItem; answered: (issue: string, question: string) => void }) {
+function AskingToast({ item, markAnswered }: { item: AskingItem; markAnswered: (issue: string, question: string) => void }) {
   const [text, setText] = useState("");
   const { busy, outcome, act } = usePost();
   const answer = async (value: string) => {
     if (await act("/api/answer", answerArgs(item.issue, value))) {
       setText("");
-      answered(item.issue, item.question);
+      markAnswered(item.issue, item.question);
     }
   };
   return (
@@ -179,7 +180,7 @@ function AskingToast({ item, answered }: { item: AskingItem; answered: (issue: s
       {item.title && <p className="title">{item.title}</p>}
       {item.error
         ? <p className="error">{`Could not read its screen: ${item.error}`}</p>
-        : <pre className="screen" tabIndex={0} aria-label={`What ${item.issue}'s Implementer shows`}>{item.question}</pre>}
+        : <pre className="asking-screen" tabIndex={0} aria-label={`What ${item.issue}'s Implementer shows`}>{item.question}</pre>}
       {item.choices.length > 0 && (
         <div className="choices">
           {item.choices.map((c) => (
