@@ -438,16 +438,22 @@ export class FakeWorld implements World {
     this.server = { address, handler };
   }
 
-  /** Tasks `every` would repeat, run once each by `tick`. */
-  private repeated: (() => Promise<void>)[] = [];
+  /** Tasks `every` repeats, with the time since each last ran; `tick` runs the ones due. */
+  private repeated: { ms: number; task: () => Promise<void>; elapsed: number }[] = [];
 
-  every(_ms: number, task: () => Promise<void>) {
-    this.repeated.push(task);
+  every(ms: number, task: () => Promise<void>) {
+    this.repeated.push({ ms, task, elapsed: 0 });
   }
 
-  /** As if each repeated task's interval elapsed once. */
-  async tick() {
-    for (const task of this.repeated) await task();
+  /**
+   * Move the clock on by `ms` (the shortest repeated interval by default) and
+   * run each repeated task once per interval of it that elapsed.
+   */
+  async tick(ms = Math.min(...this.repeated.map((r) => r.ms))) {
+    this.clock = new Date(this.clock.getTime() + ms);
+    for (const repeated of this.repeated) {
+      for (repeated.elapsed += ms; repeated.elapsed >= repeated.ms; repeated.elapsed -= repeated.ms) await repeated.task();
+    }
   }
 }
 

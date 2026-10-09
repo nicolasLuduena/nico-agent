@@ -1,5 +1,5 @@
 import { resolve } from "node:path";
-import { advance } from "./advance";
+import { ADVANCE_INTERVAL_MS, type AdvanceReport, advance } from "./advance";
 import { answer, loadAsking } from "./answer";
 import { loadBoard } from "./board";
 import { ConfigError, ORDERS, type Order, ORDERS_HELP, findRepo, isOrder, loadConfig, saveConfig, standingOrders } from "./config";
@@ -643,7 +643,10 @@ async function dispatchCommand(args: Args, ctx: RunContext): Promise<Output> {
 }
 
 async function advanceCommand(_args: Args, ctx: RunContext): Promise<Output> {
-  const { specs, errors, closed, warnings, help } = await advance(ctx.world, ctx.configDir);
+  return advanceOutput(await advance(ctx.world, ctx.configDir));
+}
+
+function advanceOutput({ specs, errors, closed, warnings, help }: AdvanceReport): Output {
   return {
     data: { specs, ...(errors.length && { errors }), ...(closed.length && { closed }), ...(warnings.length && { warnings }) },
     help: [...help, BOARD_HELP],
@@ -1157,6 +1160,16 @@ async function serve(args: Args, ctx: RunContext): Promise<Output> {
   // A Nudge recorded while the Lead worked waits for serve to see it idle.
   ctx.world.every(NUDGE_INTERVAL_MS, async () => {
     for (const warning of await sendPendingNudge(ctx.world, ctx.configDir)) console.error(warning);
+  });
+  // The Board is tended while it is up; the timer stays as the floor, and the advance lock keeps the two apart.
+  ctx.world.every(ADVANCE_INTERVAL_MS, async () => {
+    try {
+      const { data } = advanceOutput(await advance(ctx.world, ctx.configDir));
+      console.error(`advance: ${render({ data }, false).trimEnd()}`);
+    } catch (e) {
+      // A failed tick is only logged: the next one tries again.
+      console.error(`advance failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
   });
   const mcp = mcpUrl(port);
   return {
