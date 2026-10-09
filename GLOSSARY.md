@@ -53,11 +53,12 @@ open or merged PR, listed as "PR open" with that PR instead of as Ready.
 _Avoid_: Dashboard, list of work (a **Queue** is the user's ordered pick of Specs, not the Board)
 
 **Queue**:
-A Repo's ordered list of candidate Specs the user picked on the Board, in the
-order the user set (oldest first until reordered). A queued Spec is approved to start: `advance` starts the head of the
-Queue while the Repo has room, and never a Spec that isn't queued. A started
-Spec leaves the Queue, and one that is no longer a candidate drops off quietly.
-Local state in the config directory; nothing is written to a Source.
+A Repo's ordered list of candidate Specs, picked by the user on the Board or
+CLI, or by the Lead within its Standing orders, in the order set (oldest first
+until reordered). A queued Spec is approved to start: `advance` starts the head
+of the Queue while the Repo has room, and never a Spec that isn't queued. A
+started Spec leaves the Queue, and one that is no longer a candidate drops off
+quietly. Local state in the config directory; nothing is written to a Source.
 _Avoid_: Backlog, wishlist, schedule
 
 ### Dispatching
@@ -92,12 +93,13 @@ The state of an issue that has a Dispatch which has not been Closed.
 _Avoid_: Active, running, in progress
 
 **Scheduler**:
-`nico-agent advance` run every 10 minutes by a systemd user timer, keeping
-Specs moving without the user: it dispatches each running Spec's next issue,
-one Implementer per Spec at a time, and starts the head of each Repo's Queue
-while the Repo has room. It makes no judgment, and the launch comes from the
-Scheduler defaults in config. It notifies the user of what needs them.
-_Avoid_: Orchestrator, pilot, autopilot, agent (no agent dispatches)
+`nico-agent advance` run every 10 minutes by a systemd user timer, the floor
+that keeps Specs moving without the user or the Lead: it dispatches each
+running Spec's next issue, one Implementer per Spec at a time, and starts the
+head of each Repo's Queue while the Repo has room. It makes no judgment, and
+the launch comes from the Scheduler defaults in config. It notifies the user of
+what needs them, and Nudges the Lead.
+_Avoid_: Orchestrator, pilot, autopilot, agent (the Lead is the agent; the Scheduler is a timer)
 
 **Held**:
 A Spec `advance` does not dispatch into until the user acts: one of its
@@ -112,7 +114,8 @@ _Avoid_: Worker, coder
 **Asking**:
 An Implementer waiting on the user (Agent state `blocked`), with the question
 its screen shows. The user is notified once, and answers it in herdr or with
-`nico-agent answer`.
+`nico-agent answer`; the Lead answers it when its Standing orders allow, and
+otherwise relays the user's words.
 _Avoid_: Stuck, blocked (a Blocker is an issue)
 
 **Reviewer**:
@@ -147,6 +150,47 @@ confirmation. `advance` Closes each Dispatch whose PR is ready once its
 Implementer neither works nor waits on the user, to free the disk; the
 branch and PR stay.
 _Avoid_: Cleanup, archive, delete
+
+### The Lead
+
+**Lead**:
+The one agent nico-agent keeps running to manage the work with the user: it
+holds the conversation, keeps the Intent, chooses which Spec continues, and
+acts within its Standing orders, making a Proposal for anything outside them.
+It runs in its own herdr workspace on any Harness and talks to nico-agent
+through its MCP server (ADR-0010).
+_Avoid_: Orchestrator, master agent, pilot, helper, Scheduler (that is `advance`)
+
+**Standing orders**:
+What the Lead may do without asking, each on or off in config: start Specs
+(the Repo's room still caps it), answer Implementers in its own words, launch
+Reviewers, Close Dispatches, write Specs and tickets to a Source. nico-agent
+enforces the ones that pass through its tools; the rest are the Lead's skill's
+rule.
+_Avoid_: Permissions, policy, guardrails
+
+**Proposal**:
+An action the Lead wants to take that its Standing orders do not allow, held
+in nico-agent until the user approves or declines it on the Board or CLI.
+Approving runs it in nico-agent, not in the Lead.
+_Avoid_: Suggestion, request
+
+**Intent**:
+The shared record of what the user is working toward and why, as Markdown in
+the config directory, which both the user and the Lead edit. The Lead reads it
+every turn and checks Specs, Dispatches and PRs against it.
+_Avoid_: Goals, roadmap, memory, context
+
+**Inbox**:
+What the Lead has not seen yet: user messages, decided Proposals, answers to
+its questions, Implementers Asking, Specs Held, Dispatches Failed, PRs changed.
+Read with a cursor, so nothing is lost while the Lead works.
+_Avoid_: Events, feed, notifications (those go to the user)
+
+**Nudge**:
+nico-agent prompting the Lead to read its Inbox: sent when the Lead is idle and
+something arrived, and on every Scheduler run.
+_Avoid_: Wake, ping, trigger
 
 ### Harnesses
 
