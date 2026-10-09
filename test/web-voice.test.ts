@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 import { setup } from "./harness";
 
-const TRANSCRIBE = { url: "http://127.0.0.1:8010/v1", model: "Systran/faster-distil-whisper-small.en" };
+const TRANSCRIBE = { url: "http://127.0.0.1:8010/v1", model: "Systran/faster-whisper-small.en" };
 const ENDPOINT = "http://127.0.0.1:8010/v1/audio/transcriptions";
 
 /** A second of 16kHz mono 16-bit PCM, as the app streams it. */
@@ -54,11 +54,11 @@ describe("/api/voice", () => {
     const sent = transcriber(ctx.world);
     const talk = await open(ctx);
 
-    talk.json({ type: "start" });
+    talk.json({ type: "start", utterance: 1 });
     talk.send(pcm(0.5));
     talk.json({ type: "end" });
 
-    expect(await talk.next()).toEqual({ type: "final", text: "heard 0.5s" });
+    expect(await talk.next()).toEqual({ type: "final", utterance: 1, text: "heard 0.5s" });
     expect(sent).toHaveLength(1);
     const prompt = String(sent[0]!.get("prompt"));
     for (const term of ["acme/api#7", "Add retries to the herdr client", "Stackable", "Held", "claude", "codex", "acme/api"]) {
@@ -80,16 +80,16 @@ describe("/api/voice", () => {
     transcriber(ctx.world);
     const talk = await open(ctx);
 
-    talk.json({ type: "start" });
+    talk.json({ type: "start", utterance: 1 });
     talk.send(pcm(0.5));
     expect(await talk.next(50)).toBeNull();
     talk.send(pcm(0.5));
-    expect(await talk.next()).toEqual({ type: "interim", text: "heard 1s" });
+    expect(await talk.next()).toEqual({ type: "interim", utterance: 1, text: "heard 1s" });
     talk.send(pcm(1));
-    expect(await talk.next()).toEqual({ type: "interim", text: "heard 2s" });
+    expect(await talk.next()).toEqual({ type: "interim", utterance: 1, text: "heard 2s" });
     talk.send(pcm(0.25));
     talk.json({ type: "end" });
-    expect(await talk.next()).toEqual({ type: "final", text: "heard 2.25s" });
+    expect(await talk.next()).toEqual({ type: "final", utterance: 1, text: "heard 2.25s" });
   });
 
   test("each utterance starts afresh on the same socket, and a cancelled one is never transcribed", async () => {
@@ -97,27 +97,45 @@ describe("/api/voice", () => {
     const sent = transcriber(ctx.world);
     const talk = await open(ctx);
 
-    talk.json({ type: "start" });
+    talk.json({ type: "start", utterance: 1 });
     talk.send(pcm(0.5));
     talk.json({ type: "cancel" });
-    talk.json({ type: "start" });
+    talk.json({ type: "start", utterance: 2 });
     talk.send(pcm(0.25));
     talk.json({ type: "end" });
 
-    expect(await talk.next()).toEqual({ type: "final", text: "heard 0.25s" });
+    expect(await talk.next()).toEqual({ type: "final", utterance: 2, text: "heard 0.25s" });
     expect(sent).toHaveLength(1);
+  });
+
+  test("the next utterance may start while the last is transcribed; each answer names its own", async () => {
+    const ctx = await withVoice();
+    transcriber(ctx.world);
+    const talk = await open(ctx);
+
+    talk.json({ type: "start", utterance: 1 });
+    talk.send(pcm(0.5));
+    talk.json({ type: "end" });
+    talk.json({ type: "start", utterance: 2 });
+    talk.send(pcm(0.25));
+    talk.json({ type: "end" });
+
+    const answers = [await talk.next(), await talk.next()];
+    expect(answers).toContainEqual({ type: "final", utterance: 1, text: "heard 0.5s" });
+    expect(answers).toContainEqual({ type: "final", utterance: 2, text: "heard 0.25s" });
   });
 
   test("transcription down: a warning with what to do, and typing still reaches the Lead", async () => {
     const ctx = await withVoice();
     const talk = await open(ctx);
 
-    talk.json({ type: "start" });
+    talk.json({ type: "start", utterance: 1 });
     talk.send(pcm(0.5));
     talk.json({ type: "end" });
 
     expect(await talk.next()).toEqual({
       type: "error",
+      utterance: 1,
       error: `could not reach ${ENDPOINT}: connection refused`,
       help: ["Start the transcribe service (see docs/voice.md) or fix voice.transcribe.url; typing still works"],
     });
@@ -125,26 +143,40 @@ describe("/api/voice", () => {
     expect(said.status).toBe(200);
   });
 
+  test("transcription failing while the user speaks warns at once and drops the utterance", async () => {
+    const ctx = await withVoice();
+    const talk = await open(ctx);
+
+    talk.json({ type: "start", utterance: 1 });
+    talk.send(pcm(1));
+
+    expect(await talk.next()).toMatchObject({ type: "error", utterance: 1, error: `could not reach ${ENDPOINT}: connection refused` });
+    talk.send(pcm(1));
+    talk.json({ type: "end" });
+    expect(await talk.next(50)).toBeNull();
+  });
+
   test("an error answer from the service is the warning, in the service's words", async () => {
     const ctx = await withVoice();
     ctx.world.endpoint(ENDPOINT, () => Response.json({ error: { message: "model not found" } }, { status: 404 }));
     const talk = await open(ctx);
 
-    talk.json({ type: "start" });
+    talk.json({ type: "start", utterance: 1 });
     talk.send(pcm(0.5));
     talk.json({ type: "end" });
 
-    expect(await talk.next()).toMatchObject({ type: "error", error: "answered 404: model not found" });
+    expect(await talk.next()).toMatchObject({ type: "error", utterance: 1, error: "answered 404: model not found" });
   });
 
   test("without a transcription service in config, says where to set one up", async () => {
     const ctx = await withVoice({ speak: { url: "http://127.0.0.1:8880/v1", model: "kokoro" } });
     const talk = await open(ctx);
 
-    talk.json({ type: "start" });
+    talk.json({ type: "start", utterance: 1 });
 
     expect(await talk.next()).toEqual({
       type: "error",
+      utterance: 1,
       error: "no transcription service is configured",
       help: ["Add voice.transcribe to config.json (see docs/voice.md); typing still works"],
     });

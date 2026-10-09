@@ -3,23 +3,26 @@ import { join } from "node:path";
 import { ConfigError, VOICE_DOC, type VoiceEndpoint, loadConfig } from "./config";
 import { harnesses } from "./harness";
 import type { CliRunner } from "./mcp";
+import { SAMPLE_RATE } from "./app/talk";
 import { transcribe, wav } from "./voice";
 import type { SocketPeer, SocketSession, World } from "./world";
-
-/** The audio the app streams: 16-bit little-endian mono PCM at this rate. */
-export const SAMPLE_RATE = 16_000;
 
 /** How much more audio, in bytes, an interim transcript waits for after the last: a second's. */
 const INTERIM_EVERY = SAMPLE_RATE * 2;
 
-/** What the app sends on `/api/voice`, besides the audio itself as binary messages. */
-type Heard = { type: "start" } | { type: "end" } | { type: "cancel" };
+/**
+ * What the app tells `/api/voice`, besides the audio itself as binary
+ * messages: an utterance starts, under the number the app gave it; it ends,
+ * to be transcribed; or it is dropped.
+ */
+export type VoiceCommand = { type: "start"; utterance: number } | { type: "end" } | { type: "cancel" };
 
-/** What `/api/voice` sends the app. */
-export type Transcript =
+/** What `/api/voice` tells the app, each about the utterance it numbered. */
+export type Transcript = { utterance: number } & (
   | { type: "interim"; text: string }
   | { type: "final"; text: string }
-  | { type: "error"; error: string; help: string[] };
+  | { type: "error"; error: string; help: string[] }
+);
 
 /** Typing is the way round any voice failure, so every warning says so. */
 const TYPING = "typing still works";
@@ -36,46 +39,49 @@ interface TranscriptionContext {
  * audio so far is sent at most a second of audio apart, one request at a
  * time, and on `end` the final one. The final one is primed with the
  * vocabulary built when the utterance started; an interim one, not to wait
- * on the Board, with the last vocabulary built.
+ * on the Board, with the last vocabulary built. A failed request drops the
+ * utterance and says why at once.
  */
 export function transcriptionSession(ctx: TranscriptionContext) {
-  /** The last vocabulary built, for any page. */
-  let known = "";
+  /** The last vocabulary built, for any page, and which build it came from, so an older one never replaces it. */
+  let known = { hint: "", build: 0 };
+  let builds = 0;
   const build = () => {
+    const number = ++builds;
     // Without a vocabulary the service still transcribes, only unprimed.
     const hint = vocabularyHint(ctx).catch(() => "");
-    void hint.then((h) => { known = h; });
+    void hint.then((h) => { if (number > known.build) known = { hint: h, build: number }; });
     return hint;
   };
   return (peer: SocketPeer): SocketSession => {
     const send = (message: Transcript) => peer.send(JSON.stringify(message));
-    /** The utterance streaming now, if any; a newer one makes an older one's answers stale. */
+    /** The utterance streaming now, if any; a newer one makes an older one's interims stale. */
     let current: Utterance | null = null;
-    const fail = (error: string, help: string) => send({ type: "error", error, help: [`${help}; ${TYPING}`] });
+    const fail = (utterance: number, error: string, help: string) => send({ type: "error", utterance, error, help: [`${help}; ${TYPING}`] });
 
     const ask = async (utterance: Utterance, kind: "interim" | "final") => {
-      const prompt = kind === "final" ? await utterance.prompt : known;
+      const prompt = kind === "final" ? await utterance.prompt : known.hint;
       const answer = await transcribe(ctx.world, utterance.endpoint, wav(concat(utterance.audio), SAMPLE_RATE), prompt);
       // An interim that comes back after the end, or after another utterance began, is dropped.
       if (kind === "interim" && current !== utterance) return;
       if ("error" in answer) {
-        // A failed interim stays quiet: the final says what went wrong.
-        if (kind === "final") fail(answer.error, answer.help);
-        return;
+        if (current === utterance) current = null;
+        return fail(utterance.number, answer.error, answer.help);
       }
-      send({ type: kind, text: answer.returned });
+      send({ type: kind, utterance: utterance.number, text: answer.returned });
     };
 
-    const start = () => {
+    const start = (number: number) => {
+      current = null;
       let endpoint;
       try {
         endpoint = loadConfig(ctx.configDir).voice?.transcribe;
       } catch (e) {
         if (!(e instanceof ConfigError)) throw e;
-        return fail(e.message, "Fix config.json");
+        return fail(number, e.message, "Fix config.json");
       }
-      if (!endpoint) return fail("no transcription service is configured", `Add voice.transcribe to config.json (see ${VOICE_DOC})`);
-      current = { endpoint, audio: [], bytes: 0, heardUpTo: 0, asking: false, prompt: build() };
+      if (!endpoint) return fail(number, "no transcription service is configured", `Add voice.transcribe to config.json (see ${VOICE_DOC})`);
+      current = { number, endpoint, audio: [], bytes: 0, heardUpTo: 0, asking: false, prompt: build() };
     };
 
     const hear = (chunk: Uint8Array) => {
@@ -86,19 +92,19 @@ export function transcriptionSession(ctx: TranscriptionContext) {
       if (utterance.asking || utterance.bytes - utterance.heardUpTo < INTERIM_EVERY) return;
       utterance.asking = true;
       utterance.heardUpTo = utterance.bytes;
-      void ask(utterance, "interim").catch(report).finally(() => { utterance.asking = false; });
+      void ask(utterance, "interim").catch(report(utterance)).finally(() => { utterance.asking = false; });
     };
 
-    const report = (e: unknown) => fail(e instanceof Error ? e.message : String(e), "Try again");
+    const report = (utterance: Utterance) => (e: unknown) => fail(utterance.number, e instanceof Error ? e.message : String(e), "Try again");
 
     return {
       message(data) {
         if (typeof data !== "string") return hear(data);
-        const heard = parse(data);
-        if (heard?.type === "start") return start();
+        const command = parse(data);
+        if (command?.type === "start") return start(command.utterance);
         const utterance = current;
         current = null;
-        if (heard?.type === "end" && utterance) void ask(utterance, "final").catch(report);
+        if (command?.type === "end" && utterance) void ask(utterance, "final").catch(report(utterance));
       },
       close() {
         current = null;
@@ -109,6 +115,8 @@ export function transcriptionSession(ctx: TranscriptionContext) {
 
 /** An utterance as it streams in. */
 interface Utterance {
+  /** The number the app gave it, which every answer about it carries. */
+  number: number;
   endpoint: VoiceEndpoint;
   audio: Uint8Array[];
   bytes: number;
@@ -119,10 +127,11 @@ interface Utterance {
   prompt: Promise<string>;
 }
 
-function parse(data: string): Heard | null {
+function parse(data: string): VoiceCommand | null {
   try {
-    const message = JSON.parse(data);
-    return ["start", "end", "cancel"].includes(message?.type) ? message : null;
+    const command = JSON.parse(data);
+    if (command?.type === "start") return typeof command.utterance === "number" ? command : null;
+    return command?.type === "end" || command?.type === "cancel" ? command : null;
   } catch {
     return null;
   }

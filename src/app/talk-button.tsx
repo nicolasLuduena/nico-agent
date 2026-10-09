@@ -1,8 +1,6 @@
 import { type KeyboardEvent, useEffect, useRef, useState } from "react";
+import type { Transcript, VoiceCommand } from "../transcription";
 import { type Listening, type Talk, type TalkEvent, LISTENING, level, listen, resampler, talk } from "./talk";
-
-/** What `/api/voice` sends back. */
-type Transcript = { type: "interim" | "final"; text: string } | { type: "error"; error: string; help: string[] };
 
 /** A voice failure as the panel shows it: what went wrong and what to do. */
 interface Warning {
@@ -83,6 +81,11 @@ class VoiceSocket {
 
   constructor(private readonly heard: (message: Transcript) => void, private readonly lost: () => void) {}
 
+  /** Tell `/api/voice` what the utterance does. */
+  command(command: VoiceCommand) {
+    this.send(JSON.stringify(command));
+  }
+
   send(message: string | ArrayBuffer) {
     const socket = this.open();
     if (socket.readyState === WebSocket.OPEN) socket.send(message);
@@ -131,6 +134,8 @@ export function useTalk(onFinal: (text: string) => void) {
   const onFinalRef = useRef(onFinal);
   onFinalRef.current = onFinal;
   const socket = useRef<VoiceSocket | null>(null);
+  /** The number of the utterance last started; answers about an older one never change the button. */
+  const utterance = useRef(0);
 
   const stopMicrophone = () => {
     microphone.current?.stop();
@@ -143,20 +148,27 @@ export function useTalk(onFinal: (text: string) => void) {
     setState(next);
     if (next.mode !== "holding" && next.mode !== "hands-free") stopMicrophone();
     if (send === "start") start();
-    else if (send) socket.current?.send(JSON.stringify({ type: send }));
+    else if (send) socket.current?.command({ type: send });
   };
 
   socket.current ??= new VoiceSocket(
     (message) => {
-      if (message.type === "interim") return setInterim(message.text);
+      const latest = message.utterance === utterance.current;
+      if (message.type === "interim") {
+        if (latest) setInterim(message.text);
+        return;
+      }
       if (message.type === "error") {
         setWarning(message);
-        return dispatch({ type: "failed" });
+        if (latest) dispatch({ type: "failed" });
+        return;
       }
-      setInterim("");
+      // The last utterance's final is still sent while the next one records.
       const text = message.text.trim();
       if (text) onFinalRef.current(text);
-      else setNote("Heard nothing; try again.");
+      if (!latest) return;
+      setInterim("");
+      if (!text) setNote("Heard nothing; try again.");
       dispatch({ type: "final" });
     },
     () => {
@@ -180,7 +192,7 @@ export function useTalk(onFinal: (text: string) => void) {
       return dispatch({ type: "failed" });
     }
     microphone.current = mic;
-    socket.current!.send(JSON.stringify({ type: "start" }));
+    socket.current!.command({ type: "start", utterance: ++utterance.current });
     mic.start((pcm, loudness, ms) => {
       socket.current!.send(pcm.buffer as ArrayBuffer);
       const heard = listen(listening.current, loudness, ms);
@@ -231,6 +243,8 @@ export function TalkButton({ talk: { state, press, release } }: { talk: ReturnTy
       }}
       onPointerUp={release}
       onPointerCancel={release}
+      // A key held while focus leaves never comes up.
+      onBlur={() => { if (state.mode === "holding") release(); }}
       onKeyDown={(e) => key(e, true)}
       onKeyUp={(e) => key(e, false)}
       onContextMenu={(e) => e.preventDefault()}

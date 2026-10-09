@@ -10,6 +10,7 @@ export const TAP_MS = 300;
  */
 export type Talk = { mode: "idle" } | { mode: "holding"; since: number } | { mode: "hands-free" } | { mode: "transcribing" };
 
+/** What happens to the talk button: the user presses or releases it, listening ends, or the transcript comes. */
 export type TalkEvent =
   | { type: "press"; at: number }
   | { type: "release"; at: number }
@@ -24,7 +25,7 @@ export type TalkEvent =
   /** No microphone, the socket gone, or the service down. */
   | { type: "failed" };
 
-/** What to tell `/api/voice`: an utterance starts, ends (transcribe it), or is dropped. */
+/** What to tell `/api/voice` (see VoiceCommand): an utterance starts, ends (transcribe it), or is dropped. */
 export type TalkSend = "start" | "end" | "cancel";
 
 /** The talk button after `event`, and what to tell `/api/voice`, if anything. */
@@ -78,6 +79,7 @@ export interface Listening {
   elapsed: number;
 }
 
+/** Listening before any audio: the floor at the least level that could be speech. */
 export const LISTENING: Listening = { floor: MIN_LEVEL, speech: 0, quiet: 0, elapsed: 0 };
 
 /**
