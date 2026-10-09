@@ -96,7 +96,12 @@ label.switch:has(:checked) { color: var(--ink); }
 .top nav a:hover { color: var(--ink); text-decoration: none; }
 .top nav a[aria-current="page"] { color: var(--ink); background: var(--fill); }
 
-.lead-menu { margin-left: auto; position: relative; }
+.top-end { margin-left: auto; display: flex; align-items: center; gap: 0.5rem; }
+.lead-menu { position: relative; }
+.questions-count { display: inline-flex; align-items: center; background: transparent; gap: 0.45rem; padding: 0 0.6rem; color: var(--ink-muted); }
+.questions-count[aria-expanded="true"] { color: var(--ink); }
+.questions-count b { min-width: 1.4rem; height: 1.4rem; padding: 0 0.35rem; border-radius: 980px; background: var(--fill); color: var(--ink-muted); font-size: 12px; font-weight: 600; display: inline-grid; place-items: center; }
+.questions-count.waiting b { background: var(--accent); color: var(--accent-ink); }
 .lead-button { background: transparent; padding: 0 0.6rem; }
 .lead-button[aria-expanded="true"] { background: var(--fill); }
 .lead-controls {
@@ -153,10 +158,18 @@ label.switch:has(:checked) { color: var(--ink); }
 .notices p::before { content: ""; flex: none; width: 6px; height: 6px; margin: 0.45rem 0.1rem 0 0; border-radius: 50%; background: var(--implementing); }
 .notices .help { font-size: 13px; }
 
+/* The Questions list: what waits on the user, held under the bar until answered or decided. */
+.questions { flex: none; max-height: 40%; overflow-y: auto; overscroll-behavior: contain; border-bottom: 1px solid var(--rule); }
+.questions ol { list-style: none; margin: 0; padding: 0.9rem 1.25rem; display: grid; gap: 0.6rem; }
+.questions li { cursor: pointer; animation: arrive 240ms var(--ease); }
+.questions li .write { max-height: 8rem; }
+.questions .show { justify-self: start; min-height: 28px; font-size: 13px; }
+
 /* The conversation: the Lead's words on the surface, the user's in a bubble at the right. */
 .conversation { flex: 1; min-height: 0; overflow-y: auto; list-style: none; margin: 0; padding: 1.5rem 1.25rem; display: flex; flex-direction: column; gap: 1.25rem; overscroll-behavior: contain; }
 .conversation:focus-visible { outline-offset: -2px; border-radius: 0; }
 .conversation > li { max-width: 46rem; animation: arrive 240ms var(--ease); }
+.conversation > li:focus { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 14px; }
 @keyframes arrive { from { opacity: 0; transform: translateY(6px); } }
 .conversation .empty { margin: auto; text-align: center; max-width: 30ch; }
 .byline { display: flex; align-items: baseline; gap: 0.5rem; font-size: 12px; color: var(--ink-muted); margin-bottom: 0.25rem; }
@@ -238,6 +251,7 @@ ul.orders p { font-size: 13px; color: var(--ink-muted); margin: 0.25rem 0 0 calc
   .top { gap: 0.75rem; padding: 0 1rem; }
   .shell { grid-template-columns: minmax(0, 1fr); height: auto; padding: 0.75rem; gap: 0.75rem; }
   .lead-panel { height: calc(100dvh - 52px - 1.5rem); }
+  .questions ol { padding-left: 1rem; padding-right: 1rem; }
   .lead-bar, .composer, .conversation, .notices { padding-left: 1rem; padding-right: 1rem; }
   .lead-button .agent { max-width: 9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }

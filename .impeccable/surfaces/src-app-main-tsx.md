@@ -7,7 +7,7 @@ related_targets: ["src/app/lead-panel.tsx","src/app/lead-menu.tsx","src/app/lead
 
 # The app: the Lead panel and the Repos
 
-Scope: the React app at `/` (`src/app/`): a header (the brand, the Lead and Stats pages, the Lead menu), the Lead panel (its bar, the notices, the conversation with question and Proposal cards, the drawer, the composer) on the left, and the page's own column on the right (the Repos on the Lead page, the charts on the Stats page). `serve`'s `/api` behind it runs the CLI (ADR-0006) and is not a surface. Mode: Operate.
+Scope: the React app at `/` (`src/app/`): a header (the brand, the Lead and Stats pages, the Questions count, the Lead menu), the Lead panel (its bar, the notices, the Questions list, the conversation with question and Proposal cards, the drawer, the composer) on the left, and the page's own column on the right (the Repos on the Lead page, the charts on the Stats page). `serve`'s `/api` behind it runs the CLI (ADR-0006) and is not a surface. Mode: Operate.
 
 Audience and job: one developer keeps the app open all day and talks to the Lead in it. They read what the Lead says, answer what it asks, approve or decline what it proposes, and glance right to see the work in their Repos.
 

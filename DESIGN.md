@@ -186,9 +186,9 @@ Every text pair is checked against WCAG AA (4.5:1) in both schemes: ink, muted i
 
 ## Layout
 
-- **Header:** 52px, sticky, translucent (the ground at 80% in light, black at 72% in dark, with a 20px blur and 180% saturation), a hairline under it. The brand, then the pages (**Lead**, **Stats**) as pill links, the current one on fill, then at the far end the Lead's button.
+- **Header:** 52px, sticky, translucent (the ground at 80% in light, black at 72% in dark, with a 20px blur and 180% saturation), a hairline under it. The brand, then the pages (**Lead**, **Stats**) as pill links, the current one on fill, then at the far end the Questions count and the Lead's button.
 - **Shell:** a grid of the Lead panel (the rest of the width) and the right column (20 to 28rem), 1.5rem apart and 1.5rem from the edges, at most 88rem wide, filling the window under the header. Each column is a panel.
-- **Lead panel:** a column of the bar (Lead, the Voice switch, the drawer's button), the notices when there are any, the conversation (which scrolls) or the drawer, and the composer, which stays at the foot.
+- **Lead panel:** a column of the bar (Lead, the Voice switch, the drawer's button), the notices when there are any, the Questions list when it holds anything and is shown, the conversation (which scrolls) or the drawer, and the composer, which stays at the foot.
 - **Narrow window (900px and below):** one column, the Lead panel first and as tall as the window, then the right column below it. Under 560px the brand hides, the talk button narrows to 5.5rem beside the text field, and fields use 16px text so a phone does not zoom.
 - **Pages:** `#/` is the Lead page, `#/stats` the Stats page; the Lead panel stays on both.
 
@@ -214,6 +214,10 @@ Subtle and short. A new card arrives with a 240ms fade and a 6px lift; the Lead 
 
 ### Header and the Lead menu
 - The Lead's button at the header's end shows where the Lead stands as an Agent State ("Lead idle", "Lead working") or, not running, its status ("Lead not running", "Lead Failed at agent start") beside a dashed dot; why it failed shows in the notices. It opens the Lead menu below it: the launch the Lead runs on, the Harness, Model and Effort selects with their labels, and Start (or Restart) in the accent and Stop. Opening it moves focus into it; Escape, a click elsewhere or focus leaving it closes it, Escape returning focus to the button.
+
+### Questions count and list
+- **Count:** in the header on every page, a quiet pill reading **Questions** with the number of open questions and Proposals in a small round badge: on fill at zero, filled with the accent while anything waits on the user. It shows or hides the list.
+- **List:** under the Lead panel's bar, every open question and Proposal of the Lead's, oldest first, as the same waiting cards the conversation shows (Source writes at most 8rem tall), at most 40% of the panel and scrolling on its own, a hairline under it. Each is answered, approved or declined right there; an answer takes its question off at once (it comes back, with why, if it was not sent). An answered or decided item leaves the list and stays in the conversation, focus passing to the next item. Clicking an item away from its controls, or its quiet **Show in conversation**, closes the drawer and scrolls the conversation to the card, which takes focus and an accent ring until focus moves on.
 
 ### Notices
 The one quiet place for warnings, under the Lead panel's bar: serve unreachable, the Lead not running or failed (with where to start it), the Lead's launch warnings, and voice failing (the service down, the microphone blocked). A strip tinted 8% Implementing orange, each line a small orange dot, the warning in ink and its help in muted ink, 13px. It shows only while something is wrong.
