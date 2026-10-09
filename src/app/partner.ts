@@ -145,7 +145,7 @@ export function handOffArgs(tab: PartnerTab, draft: { id: number; text: string }
   return [tab, String(draft.id), ...(text === draft.text ? [] : ["--text", text])];
 }
 
-/** What the "Draft a hand-off" button asks the tab's Partner, as the user's message: the Ideas tab, in the parts its Hand-off takes. */
+/** What the "Draft a hand-off" button asks each tab's Partner, as the user's message; the Idea partner's names the parts its `hand_off` takes. */
 export const DRAFT_REQUESTS: Record<PartnerTab, string> = {
   review: "Draft the hand-off for the Lead: what we settled, what the Lead should do with it, and what is still open.",
   idea: "Draft the hand-off for the Lead: the problem, the approach we chose, what we ruled out, and the open questions.",

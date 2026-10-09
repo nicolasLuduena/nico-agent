@@ -13,4 +13,4 @@ When the idea is concrete, its Hand-off is what the Lead turns into a Spec, so `
 - **Ruled out**: each approach you weighed and dropped, with why.
 - **Open questions**: what is still undecided, for the Lead to settle or ask the user.
 
-Leave a part empty only when there truly is nothing to say; an idea with no approach yet is not ready to hand off.
+Leave Ruled out or Open questions empty only when there truly is nothing in them; an idea with no problem or no approach yet is not ready to hand off.

@@ -52,7 +52,7 @@ describe("partner start", () => {
     const skill = readFileSync(join(home, "SKILL.md"), "utf8");
     expect(skill).toStartWith("# A Partner\n");
     expect(skill).toContain("## The Idea partner");
-    for (const forbidden of ["edit", "push", "issue"]) expect(skill.match(/## The Idea partner[\s\S]*/)![0]).toContain(forbidden);
+    expect(skill).toContain("never edit, create or delete a file in the worktree, and never commit, push, or open an issue or a PR");
     for (const section of ["Problem", "Approach", "Ruled out", "Open questions"]) expect(skill).toContain(section);
     // The Review partner's skill holds no idea role.
     await cli("partner", "start", "review", "--repo", "acme/api", ...FLAGS);
@@ -246,5 +246,8 @@ describe("a Partner's MCP server", () => {
     const { json } = await rpc(web, "idea", { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-11-25", capabilities: {} } });
     expect(json.result.instructions).toContain("`hand_off`");
     expect(json.result.instructions).not.toContain("dispatch");
+    expect(json.result.instructions).toContain("the problem, the approach chosen, what was ruled out, and the open questions");
+    const review = await rpc(web, "review", { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-11-25", capabilities: {} } });
+    expect(review.json.result.instructions).not.toContain("Spec");
   });
 });
