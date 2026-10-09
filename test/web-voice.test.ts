@@ -1,9 +1,10 @@
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 import { sayArgs } from "../src/app/lead";
 import { ASKING_THE_LEAD } from "../src/front-voice";
+import { VERSION } from "../src/version";
 import fixtures from "./fixtures/scribe/utterances.json";
 import { setup } from "./harness";
 
@@ -461,6 +462,31 @@ describe("/api/voice", () => {
       expect((await sent[0]!.json()).model).toBe("deepseek-v4.1-flash");
     });
 
+    test("each request names nico-agent as its User-Agent, and one session per conversation, kept across messages and a restart, new once the conversation is reset", async () => {
+      const ctx = await withVoice();
+      const sent: Request[] = [];
+      talker(ctx.world, () => ({ say: ["Hello."] }), (request) => sent.push(request));
+      const session = (i: number) => sent[i]!.headers.get("x-opencode-session");
+
+      (await say(ctx, "hello")).close();
+      await until(async () => (await log(ctx)).length === 1);
+      (await say(ctx, "hello again")).close();
+      await until(async () => (await log(ctx)).length === 2);
+      ctx.restart();
+      (await say(ctx, "still there")).close();
+      await until(async () => (await log(ctx)).length === 3);
+
+      expect(sent.map((r) => r.headers.get("user-agent"))).toEqual(Array(3).fill(`nico-agent/${VERSION}`));
+      expect(session(0)).toMatch(/^\S{16,}$/);
+      expect([session(1), session(2)]).toEqual([session(0), session(0)]);
+
+      rmSync(join(ctx.configDir, "conversation.jsonl"));
+      (await say(ctx, "hello")).close();
+      await until(() => sent.length === 4);
+      expect(session(3)).toMatch(/^\S{16,}$/);
+      expect(session(3)).not.toBe(session(0));
+    });
+
     test("its key not set: what was heard goes to the Lead as it is, with a warning saying which variable", async () => {
       const ctx = await withVoice({ transcribe: TRANSCRIBE });
 
@@ -489,6 +515,21 @@ describe("/api/voice", () => {
       });
       await until(async () => (await log(ctx)).length === 1);
       expect(await log(ctx)).toMatchObject([{ who: "user", text: "dispatch acme api seven", raw: "dispatch acme api seven" }]);
+    });
+
+    test("refused for a missing header: the warning names the header, not voice.front's url and model", async () => {
+      const ctx = await withVoice();
+      const refusal = "Request is missing x-opencode-session and cannot be routed efficiently. Please see https://opencode.ai/docs/go/#where-can-i-use-it";
+      ctx.world.endpoint(CHAT, () => Response.json({ error: { message: refusal } }, { status: 400 }));
+
+      const talk = await say(ctx, "hello");
+
+      expect(await talk.next()).toEqual({
+        type: "warning",
+        utterance: 1,
+        error: `answered 400: ${refusal}`,
+        help: ["Sent to the Lead as heard. The front service wants the x-opencode-session header, which nico-agent did not send: update nico-agent, or set voice.front to another endpoint (see docs/voice.md)"],
+      });
     });
 
     test("an empty reply never drops what was said", async () => {

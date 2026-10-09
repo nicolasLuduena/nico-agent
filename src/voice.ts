@@ -1,6 +1,7 @@
 // A 2.5s WAV, 16kHz mono, of "Dispatch the next issue on the Board."
 import sample from "./voice-sample.wav" with { type: "file" };
 import { VOICE_DOC, VOICE_SERVICES, frontVoiceEndpoint, type VoiceConfig, type VoiceEndpoint, type VoiceService } from "./config";
+import { VERSION } from "./version";
 import { type World, WorldError } from "./world";
 
 /** What `voice check` found of one voice service. */
@@ -45,7 +46,9 @@ const PROBES: Record<VoiceService, Probe> = {
   },
   front: {
     async request(endpoint, headers) {
-      return frontVoiceRequest(endpoint, headers, { heard: RAW_TRANSCRIPT, context: `Terms: ${VOCABULARY.join(", ")}.`, stream: false });
+      // A check is a conversation of its own.
+      const turn = { heard: RAW_TRANSCRIPT, context: `Terms: ${VOCABULARY.join(", ")}.`, session: crypto.randomUUID(), stream: false };
+      return frontVoiceRequest(endpoint, headers, turn);
     },
     async read(response) {
       const choices = (await responseJson(response))?.choices;
@@ -135,7 +138,8 @@ async function reach(
   build: Probe["request"],
 ): Promise<{ response: Response } | { error: string; help: string }> {
   const failed = (error: string, help: string) => ({ error, help });
-  const headers = new Headers();
+  // opencode go asks each client to name itself (https://opencode.ai/docs/go/#where-can-i-use-it).
+  const headers = new Headers({ "user-agent": `nico-agent/${VERSION}` });
   if (endpoint.keyEnv) {
     const key = world.env(endpoint.keyEnv);
     if (!key) {
@@ -154,8 +158,20 @@ async function reach(
     if (!(e instanceof WorldError)) throw e;
     return failed(e.message, `Start the ${service} service (see ${VOICE_DOC}) or fix voice.${service}.url`);
   }
-  if (!response.ok) return failed(`answered ${response.status}: ${await errorMessage(response)}`, checkSettings(service));
+  if (!response.ok) {
+    const message = await errorMessage(response);
+    const header = missingHeader(message);
+    const help = header
+      ? `The ${service} service wants the ${header} header, which nico-agent did not send: update nico-agent, or set voice.${service} to another endpoint (see ${VOICE_DOC})`
+      : checkSettings(service);
+    return failed(`answered ${response.status}: ${message}`, help);
+  }
   return { response };
+}
+
+/** The header an error message says the request is missing, as opencode go's "Request is missing x-opencode-session"; else null. */
+function missingHeader(message: string): string | null {
+  return /\bmissing (?:the )?(?:header )?["'`]?([a-z][a-z0-9]*(?:-[a-z0-9]+)+)\b/i.exec(message)?.[1] ?? null;
 }
 
 /** The rate of the audio `speak` streams: 16-bit mono PCM at 24kHz, OpenAI's `pcm` format, which Kokoro-FastAPI shares. */
@@ -194,12 +210,14 @@ export function transcribe(world: World, endpoint: VoiceEndpoint, audio: Uint8Ar
 
 /**
  * What the Front voice is sent for one thing the user said: `heard`, the raw
- * transcript, and `context`, what it reads (see `readContext` in front-voice.ts); streamed
- * as it is made, or whole for `voice check`.
+ * transcript, and `context`, what it reads (see `readContext` in front-voice.ts),
+ * in the conversation `session`; streamed as it is made, or whole for `voice check`.
  */
 export interface FrontVoiceTurn {
   heard: string;
   context: string;
+  /** The conversation's stable id, sent as `x-opencode-session` for opencode go to route and cache by; other endpoints ignore it. */
+  session: string;
   stream: boolean;
 }
 
@@ -235,8 +253,9 @@ const FRONT_VOICE_RULES = [
 ].join("\n");
 
 /** A request for the Front voice's reply to `turn`, with hand_off its only tool. */
-export function frontVoiceRequest(endpoint: VoiceEndpoint, headers: Headers, { heard, context, stream }: FrontVoiceTurn) {
+export function frontVoiceRequest(endpoint: VoiceEndpoint, headers: Headers, { heard, context, session, stream }: FrontVoiceTurn) {
   headers.set("content-type", "application/json");
+  headers.set("x-opencode-session", session);
   const messages = [{ role: "system", content: `${FRONT_VOICE_RULES}\n\n${context}` }, { role: "user", content: heard }];
   const body = { model: endpoint.model, temperature: 0, stream, tools: [HAND_OFF], messages };
   return new Request(`${base(endpoint)}/chat/completions`, { method: "POST", headers, body: JSON.stringify(body) });

@@ -1,8 +1,11 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { sayArgs } from "./app/lead";
 import { ConfigError, VOICE_DOC, frontVoiceEndpoint, loadConfig } from "./config";
 import { type Ask, type Authored, type Entry, append, isCorrection, loadConversation, orient } from "./conversation";
 import type { CliRunner } from "./mcp";
 import { describeProposed } from "./proposals";
+import { withFileLock, writeJsonAtomic } from "./state";
 import { frontVoiceReply } from "./voice";
 import type { World } from "./world";
 
@@ -11,6 +14,9 @@ export const ASKING_THE_LEAD = "I'll ask the Lead.";
 
 /** How much of the Board, as `board --json` prints it, the Front voice reads: enough for a busy Board, short of a slow request. */
 const BOARD_CHARS = 16_000;
+
+/** The Front voice's session, beside the Conversation it belongs to. */
+const SESSION_FILE = "front-voice-session.json";
 
 /** A warning about the Front voice for the app to show: what went wrong and what to do. */
 export interface FrontVoiceWarning {
@@ -75,7 +81,7 @@ export function frontVoice(ctx: FrontVoiceContext) {
     replying.add(reply);
     try {
       const context = await readContext(vocabulary, question);
-      const answer = await frontVoiceReply(ctx.world, endpoint, { heard: raw, context }, reply.stop.signal);
+      const answer = await frontVoiceReply(ctx.world, endpoint, { heard: raw, context, session: await session(ctx.configDir) }, reply.stop.signal);
       // Talked over while it thought: nothing to say, and nothing it was handing off.
       if ("error" in answer && reply.stop.signal.aborted) return false;
       if ("error" in answer) return await asHeard(answer.error, answer.help);
@@ -162,6 +168,29 @@ export function frontVoice(ctx: FrontVoiceContext) {
       }
     },
   };
+}
+
+/**
+ * The Front voice's session id for the Conversation in `dir`: one per
+ * Conversation, kept in a file so a restart keeps it, and new once the
+ * Conversation is reset. A session belongs to the Conversation whose first
+ * entry was made at `conversation`; one made on an empty Conversation takes
+ * the first entry made after it.
+ */
+function session(dir: string): Promise<string> {
+  return withFileLock(dir, SESSION_FILE, () => {
+    const first = loadConversation(dir)[0]?.at ?? null;
+    let kept: { id: string; conversation: string | null } | null = null;
+    try {
+      kept = JSON.parse(readFileSync(join(dir, SESSION_FILE), "utf8"));
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== "ENOENT" && !(e instanceof SyntaxError)) throw e;
+    }
+    if (kept && kept.conversation === first) return kept.id;
+    const id = kept && kept.conversation === null ? kept.id : crypto.randomUUID();
+    writeJsonAtomic(join(dir, SESSION_FILE), { id, conversation: first });
+    return id;
+  });
 }
 
 /** A reply streaming: whether the user talked over it, whether it began a hand-off, and how to stop its request. */
