@@ -5,7 +5,8 @@ import { join } from "node:path";
 import { run } from "../src/cli";
 import { cachedPrs } from "../src/stage";
 import { Events } from "../src/events";
-import { lookAtLead, webHandler } from "../src/web";
+import { lookAtLead, webHandler, webSockets } from "../src/web";
+import type { SocketHandler } from "../src/world";
 import { FakeWorld } from "./fake-world";
 
 export function setup() {
@@ -28,7 +29,35 @@ export function setup() {
     const response = await handler(new Request(`http://127.0.0.1:42069${path}`, init));
     return { status: response.status, type: response.headers.get("content-type"), body: await response.text() };
   };
-  return { world, configDir, cli, web, handler, look };
+  const sockets = webSockets({ world, configDir, runCli: (argv) => run(argv, served) });
+  /** A WebSocket to the web app, as a page on `origin` opens it: its refusal, or the session. */
+  const socket = (path: string, headers: Record<string, string> = {}) => openSocket(sockets[path], new Request(`http://127.0.0.1:42069${path}`, { headers: { upgrade: "websocket", ...headers } }));
+  return { world, configDir, cli, web, handler, look, socket };
+}
+
+/**
+ * A WebSocket opened on `handler` as `serve` would: `refused` when it answered
+ * with a response; else what the server sent so far, parsed, and the next one.
+ */
+async function openSocket(handler: SocketHandler | undefined, request: Request) {
+  const answer = handler ? handler(request) : new Response("No socket\n", { status: 404 });
+  if (answer instanceof Response) return { refused: { status: answer.status, body: await answer.text() } } as const;
+  const received: any[] = [];
+  let closed = false;
+  const session = answer({ send: (message) => received.push(JSON.parse(message)), close: () => { closed = true; } });
+  let read = 0;
+  return {
+    received,
+    closed: () => closed,
+    send: (data: string | Uint8Array) => session.message(data),
+    json: (message: unknown) => session.message(JSON.stringify(message)),
+    close: () => session.close(),
+    /** The next message the server sends, or null when none comes within `ms`. */
+    async next(ms = 1000): Promise<any> {
+      for (const until = Date.now() + ms; received.length <= read && Date.now() < until;) await Bun.sleep(1);
+      return received.length > read ? received[read++] : null;
+    },
+  };
 }
 
 /** The SSE stream's reader, and the next event it sends: its name and data, or null when none comes within `ms`. */

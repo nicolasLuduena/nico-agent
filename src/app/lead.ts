@@ -32,6 +32,8 @@ export interface PendingSend {
   key: string;
   text: string;
   question?: number;
+  /** What the transcription service heard, for a spoken message. */
+  raw?: string;
   at: string;
   /** The entry `say` wrote, once it answered. */
   id?: number;
@@ -49,7 +51,7 @@ export interface Conversation {
 export type ConversationEvent =
   | { type: "log"; entries: Authored[] | undefined }
   | { type: "proposals"; proposals: ProposalJson[] | undefined }
-  | { type: "send"; key: string; text: string; question?: number; at: string }
+  | { type: "send"; key: string; text: string; question?: number; raw?: string; at: string }
   | { type: "sent"; key: string; id: number }
   | { type: "failed"; key: string; error: string }
   | { type: "dismiss"; key: string };
@@ -79,7 +81,7 @@ export function reduce(state: Conversation, event: ConversationEvent): Conversat
       const logged = state.entries.some((e) => e.id === event.id);
       return {
         ...state,
-        sends: sends((s) => (s.key !== event.key ? s : logged ? null : { key: s.key, text: s.text, at: s.at, id: event.id, ...(s.question !== undefined && { question: s.question }) })),
+        sends: sends((s) => (s.key !== event.key ? s : logged ? null : { ...s, id: event.id })),
       };
     }
     case "failed":
@@ -97,7 +99,7 @@ export interface ShownAnswer {
 
 /** One card of the conversation, as the panel draws it. */
 export type Card =
-  | { kind: "message"; key: string; who: "user" | "lead"; text: string; at: string; sending?: boolean; error?: string }
+  | { kind: "message"; key: string; who: "user" | "lead"; text: string; at: string; spoken?: boolean; sending?: boolean; error?: string }
   | {
     kind: "question"; key: string; id: number; text: string; choices: string[]; at: string;
     answer?: ShownAnswer;
@@ -128,7 +130,7 @@ export function cards({ entries, proposals, sends }: Conversation): Card[] {
     proposalsUntil(e.at);
     const key = `entry-${e.id}`;
     if (e.type !== "ask") {
-      timeline.push({ kind: "message", key, who: e.who, text: e.text, at: e.at });
+      timeline.push({ kind: "message", key, who: e.who, text: e.text, at: e.at, ...(e.type === "user" && e.raw !== undefined && { spoken: true }) });
       continue;
     }
     const given = answers.get(e.id);
@@ -142,7 +144,7 @@ export function cards({ entries, proposals, sends }: Conversation): Card[] {
   proposalsUntil(null);
   for (const s of sends) {
     if (s.question !== undefined) continue;
-    timeline.push({ kind: "message", key: s.key, who: "user", text: s.text, at: s.at, ...(s.error ? { error: s.error } : { sending: true }) });
+    timeline.push({ kind: "message", key: s.key, who: "user", text: s.text, at: s.at, ...(s.raw !== undefined && { spoken: true }), ...(s.error ? { error: s.error } : { sending: true }) });
   }
   return timeline;
 }
@@ -162,9 +164,9 @@ export function proposalLines({ outcome }: Pick<ProposalJson, "outcome">): { tex
   return Object.entries(outcome).flatMap(([key, value]) => (typeof value === "string" ? [{ text: `${key}: ${value}`, error: false }] : []));
 }
 
-/** `say`'s arguments: the text after `--`, so it is never read as a flag. */
-export function sayArgs(text: string, question?: number): string[] {
-  return [...(question !== undefined ? ["--answer", String(question)] : []), "--", text];
+/** `say`'s arguments: the text after `--`, so it is never read as a flag; a spoken message keeps what was heard. */
+export function sayArgs(text: string, question?: number, raw?: string): string[] {
+  return [...(question !== undefined ? ["--answer", String(question)] : raw !== undefined ? ["--raw", raw] : []), "--", text];
 }
 
 /** `proposals decline`'s arguments, the reason only when one was given. */
