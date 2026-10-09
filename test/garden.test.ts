@@ -7,7 +7,7 @@ import { setup } from "./harness";
 const MODEL = "opencode-go/deepseek-v4.1-flash";
 const TRAILER =
   "Co-authored-by: nicolasluduena-coding-agent[bot] <324920906+nicolasluduena-coding-agent[bot]@users.noreply.github.com>";
-const BOT_SUFFIX = `, opened with \`ghbot pr create\` (not \`gh\`); end every commit message with the trailer \`${TRAILER}\``;
+const BOT_SUFFIX = `, posting each comment with \`ghbot pr comment\` (not \`gh\`); end every commit message you write with the trailer \`${TRAILER}\``;
 const RULES =
   "Never merge, close or approve a PR: that stays the user's decision. " +
   "Check out each PR's branch here; after the PR below it merged, rebase it onto its new base and retarget the PR there; " +
@@ -71,6 +71,16 @@ describe("garden again", () => {
     expect(exitCode).toBe(0);
     expect(json()).toMatchObject({ gardener: "already running (no-op)", repo: "acme/api", workspace: "w1", agent: "garden-api" });
     expect(herdrCalls(world.calls)).toEqual(["herdr agent list"]);
+  });
+
+  test("while it runs, other PRs are no GitHub call and no refusal: the running one is returned", async () => {
+    const { cli, world } = await withRepo();
+    await cli("garden", "acme/api");
+    world.calls.length = 0;
+    const { json, exitCode } = await cli("garden", "acme/api", "--pr", "https://github.com/acme/api/pull/99", "--json");
+    expect(exitCode).toBe(0);
+    expect(json().gardener).toBe("already running (no-op)");
+    expect(world.calls.filter((c) => c.startsWith("github "))).toEqual([]);
   });
 
   test("while it asks the user: still the running one", async () => {

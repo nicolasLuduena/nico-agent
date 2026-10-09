@@ -213,7 +213,8 @@ export function harnessConfigs(config: Config): Record<string, HarnessConfig> {
  * `{baseBranch}` is the Dispatch's Base. `review` prompts the Reviewer; only it has a PR to fill `{prUrl}` and
  * `{prBaseBranch}` with. `lead` starts the Lead on its skill. `garden` prompts
  * the Gardener, `{repo}` being the Repo's slug and `{prs}` the PRs it tends,
- * each with what happened to it; the bot suffix is appended to it too.
+ * each with what happened to it; `gardenBotSuffix` is its bot suffix, since
+ * it comments on PRs instead of opening one.
  */
 export interface Prompts {
   implement: string;
@@ -222,6 +223,7 @@ export interface Prompts {
   review: string;
   lead: string;
   garden: string;
+  gardenBotSuffix: string;
 }
 
 export const PROMPTS: Prompts = {
@@ -241,6 +243,9 @@ export const PROMPTS: Prompts = {
     "resolve each conflict with its base; run the Repo's checks; and push the fixed branch with `git push --force-with-lease`. " +
     "When a conflict needs a judgment you can't make from the code and the PRs, ask the user instead of guessing. " +
     "Comment on each PR you changed saying what you did",
+  gardenBotSuffix:
+    ", posting each comment with `ghbot pr comment` (not `gh`); end every commit message you write with the trailer " +
+    "`Co-authored-by: nicolasluduena-coding-agent[bot] <324920906+nicolasluduena-coding-agent[bot]@users.noreply.github.com>`",
 };
 
 export const PLACEHOLDERS = ["sigil", "issueUrl", "baseBranch", "prUrl", "prBaseBranch", "repo", "prs"] as const;

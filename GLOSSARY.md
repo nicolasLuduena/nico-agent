@@ -150,9 +150,10 @@ Agent state is idle or done.
 _Avoid_: Rebaser, merger, maintainer
 
 **Bot suffix**:
-Text appended to the Implementer's (and the Gardener's) prompt when the bot's GitHub App is
+Text appended to the Implementer's prompt when the bot's GitHub App is
 installed on the Repo, telling the agent to open its PR with `ghbot` and to
-add the bot as commit co-author. Checked afresh each time the prompt is sent.
+add the bot as commit co-author; the Gardener's own tells it to post its
+comments with `ghbot`. Checked afresh each time the prompt is sent.
 _Avoid_: Bot mode, attribution prompt
 
 **Stage**:

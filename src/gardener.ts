@@ -43,7 +43,8 @@ export interface Gardener extends Progress<GardenStep> {
 
 export interface GardenRequest {
   repo: string;
-  prs: GardenPr[];
+  /** The PRs to tend, by URL or number; none for every one that needs it. */
+  prs: string[];
 }
 
 export interface GardenStart {
@@ -51,14 +52,14 @@ export interface GardenStart {
   /** `new`, `existing` for a no-op while it runs, or `resumed` from the step that failed or was cut short. */
   outcome: "new" | "existing" | "resumed";
   resumedFrom?: GardenStep;
-  /** A finished Gardener of the Repo removed to make way for this one. */
-  removed?: boolean;
 }
 
 const FILE = "gardeners.json";
 
-/** Agent states of a Gardener that has stopped: what it was sent to do is done. */
-const FINISHED = ["idle", "done"];
+/** Whether a Gardener with this Agent state has stopped, or is gone from herdr (undefined). */
+function isFinished(state: string | undefined) {
+  return state === undefined || state === "idle" || state === "done";
+}
 
 /** Every Gardener's record, by Repo. */
 export function loadGardeners(configDir: string): Gardener[] {
@@ -85,7 +86,7 @@ export function gardenRepo(configDir: string, slug: string): Repo {
  * Start a Gardener in a Repo: fetch the clone, create a worktree workspace on
  * the Repo's Base, start the agent on the `gardener` launch from config in a
  * `gardener` tab, and prompt it with the `garden` prompt naming the PRs and
- * the Bot suffix. One per Repo, idempotent (ADR-0006): while one runs a second
+ * its Bot suffix. One per Repo, idempotent (ADR-0006): while one runs a second
  * start returns it, a failed start is resumed from its step, and a finished
  * one is removed and a new one started.
  */
@@ -97,8 +98,8 @@ export async function garden(world: World, configDir: string, request: GardenReq
   const existing = read(configDir)[repo.slug];
   if (existing && isStarted(existing)) {
     const agents = await world.herdrAgents();
-    const state = agents.find((a) => a.name === existing.agent.agent)?.state;
-    if (state !== undefined && !FINISHED.includes(state)) return { gardener: existing, outcome: "existing" };
+    // The running one is returned as is, without asking GitHub about the PRs (ADR-0006).
+    if (!isFinished(agents.find((a) => a.name === existing.agent.agent)?.state)) return { gardener: existing, outcome: "existing" };
     removed = await removeGardener(world, configDir, existing);
   }
   const fresh = async (): Promise<Gardener> => {
@@ -109,7 +110,7 @@ export async function garden(world: World, configDir: string, request: GardenReq
       branch: `gardener/${name}-${now.toISOString().replace(/\D/g, "").slice(0, 14)}`,
       base: `origin/${repo.base ?? (await world.gitDefaultBranch(repo.path))}`,
       agent: { agent: agentName(name), ...launch },
-      prs: request.prs,
+      prs: await gardenPrs(world, repo, request.prs),
       completed: [],
       createdAt: now.toISOString(),
       updatedAt: now.toISOString(),
@@ -121,7 +122,7 @@ export async function garden(world: World, configDir: string, request: GardenReq
     const resumedFrom = record.failure?.step ?? GARDEN_STEPS.find((s) => !record.completed.includes(s))!;
     return { gardener: await runGardener(world, configDir, repo, harness, record), outcome: "resumed", resumedFrom };
   }
-  return { gardener: await runGardener(world, configDir, repo, harness, leased.record), outcome: "new", ...(removed && { removed }) };
+  return { gardener: await runGardener(world, configDir, repo, harness, leased.record), outcome: "new" };
 }
 
 /**
@@ -136,8 +137,7 @@ export async function removeFinishedGardeners(world: World, configDir: string): 
   const states = new Map((await world.herdrAgents()).map((a) => [a.name, a.state]));
   const removed: string[] = [];
   for (const gardener of started) {
-    const state = states.get(gardener.agent.agent);
-    if (state !== undefined && !FINISHED.includes(state)) continue;
+    if (!isFinished(states.get(gardener.agent.agent))) continue;
     if (await removeGardener(world, configDir, gardener)) removed.push(gardener.repo);
   }
   return removed;
@@ -206,7 +206,7 @@ async function runGardener(world: World, configDir: string, repo: Repo, harness:
     prompt: async () => {
       const templates = prompts(loadConfig(configDir));
       const values = { sigil: harness.sigil, repo: repo.slug, prs: describePrs(repo.slug, record.prs) };
-      const { text, botSuffix, warning } = await withBotSuffix(world, templates, repo, fillTemplate(templates.garden, values), values);
+      const { text, botSuffix, warning } = await withBotSuffix(world, templates.gardenBotSuffix, repo, fillTemplate(templates.garden, values), values);
       await prompt(world, record.agent.agent, text);
       record.botSuffix = botSuffix;
       if (warning) record.warnings = [...(record.warnings ?? []), warning];

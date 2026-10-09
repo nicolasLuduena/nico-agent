@@ -11,7 +11,7 @@ import { DispatchError } from "./dispatch-error";
 import { PANE_ARGS } from "./opencode";
 import { type Catalog, harnessCatalogs, harnesses, refreshHarnesses, rememberedLaunches } from "./harness";
 import { LEAD_AGENT, NICO_AGENT_SLUG, leadStatus, startLead, stopLead } from "./lead";
-import { describePrs, garden, gardenPrs, gardenRepo, gardenerRows } from "./gardener";
+import { describePrs, garden, gardenRepo, gardenerRows } from "./gardener";
 import { NUDGE_INTERVAL_MS, nudgeLead, sendPendingNudge } from "./nudge";
 import { linearIdentifier } from "./linear";
 import { peek } from "./peek";
@@ -1593,8 +1593,7 @@ async function gardenCommand(args: Args, ctx: RunContext): Promise<Output> {
   if (!slug) throw new CliError("<repo> is required", [`Usage: \`${GARDEN_USAGE}\``], 2);
   const repo = gardenRepo(ctx.configDir, slug);
   const refs = args.flags["--pr"];
-  const prs = await gardenPrs(ctx.world, repo, Array.isArray(refs) ? refs : []);
-  const { gardener, outcome, resumedFrom } = await garden(ctx.world, ctx.configDir, { repo: repo.slug, prs });
+  const { gardener, outcome, resumedFrom } = await garden(ctx.world, ctx.configDir, { repo: repo.slug, prs: Array.isArray(refs) ? refs : [] });
   const { agent, harness, model, effort } = gardener.agent;
   const result = { new: "started", existing: "already running (no-op)", resumed: `resumed from ${resumedFrom}` }[outcome];
   return {
@@ -1726,9 +1725,7 @@ async function board(ctx: RunContext, json: boolean): Promise<Output> {
     effort: g.agent.effort,
     ...(json && definedOnly({ failure: g.failure?.error, warnings: g.warnings?.length ? g.warnings : undefined })),
   }));
-  if (gardeners.some((g) => g.state === "blocked")) {
-    help.unshift(...gardeners.filter((g) => g.state === "blocked").map((g) => `Run \`herdr agent read ${g.agent}\` to see what the Gardener of ${g.repo} is asking`));
-  }
+  help.unshift(...gardeners.filter((g) => g.state === "blocked").map((g) => `Run \`herdr agent read ${g.agent}\` to see what the Gardener of ${g.repo} is asking`));
   const inFlightData = {
     ...(gardeners.length > 0 && { gardeners }),
     inFlight: plural(inFlight.length, "Dispatch", "Dispatches"),
