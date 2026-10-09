@@ -367,6 +367,19 @@ export class RealWorld implements World {
     return { workspace: result.workspace.workspace_id as string, path: result.worktree.path as string };
   }
 
+  async herdrWorkspaceCreate({ cwd, label }: { cwd: string; label: string }) {
+    const result = await herdr(["workspace", "create", "--cwd", cwd, "--label", label, "--no-focus"]);
+    return { workspace: result.workspace.workspace_id as string };
+  }
+
+  async herdrWorkspaceClose(workspace: string) {
+    try {
+      await herdr(["workspace", "close", workspace]);
+    } catch (e) {
+      if (!(e instanceof HerdrError && e.code === "workspace_not_found")) throw e;
+    }
+  }
+
   async herdrTabCreate({ workspace, cwd, label }: { workspace: string; cwd: string; label: string }) {
     const result = await herdr(["tab", "create", "--workspace", workspace, "--cwd", cwd, "--label", label, "--no-focus"]);
     return { tab: result.tab.tab_id as string, pane: result.root_pane.pane_id as string };

@@ -66,6 +66,10 @@ export interface World {
   }>;
   /** Remove the workspace's worktree, keeping its branch; no-op if the workspace is gone. */
   herdrWorktreeRemove(workspace: string): Promise<void>;
+  /** Open a plain herdr workspace (no worktree) in `cwd`, without focusing it. */
+  herdrWorkspaceCreate(options: { cwd: string; label: string }): Promise<{ workspace: string }>;
+  /** Close a herdr workspace and the agents in it; no-op if it is gone. */
+  herdrWorkspaceClose(workspace: string): Promise<void>;
   /** Create a labelled tab in a herdr workspace, without focusing it. */
   herdrTabCreate(options: { workspace: string; cwd: string; label: string }): Promise<{ tab: string; pane: string }>;
   /**

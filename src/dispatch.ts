@@ -1,5 +1,5 @@
 import { type Prompts, type Repo, fillTemplate, findRepo, loadConfig, prompts } from "./config";
-import { type Harness, harnessCatalog, harnesses, launchArgs, rememberLaunch, rememberedLaunches } from "./harness";
+import { type Harness, type McpWiring, harnessCatalog, harnesses, launchArgs, rememberLaunch, rememberedLaunches } from "./harness";
 import { linearIdentifier } from "./linear";
 import { paneCommand, saveVariant } from "./opencode";
 import { githubBranch, sameSlug } from "./slug";
@@ -373,19 +373,19 @@ async function runReview(world: World, configDir: string, ref: IssueRef, harness
   const reviewer = { ...dispatch.reviewer!, completed: [...dispatch.reviewer!.completed] };
   const record: Dispatch = { ...dispatch, reviewer };
   const steps: Record<ReviewStep, () => Promise<void>> = {
-    ...agentSteps(world, harness, ref.repo, record, reviewer, "reviewer"),
+    ...agentSteps(world, harness, () => placeOf(ref.repo, record), reviewer, "reviewer"),
     prompt: async () => {
       const values = { sigil: harness.sigil, issueUrl: record.url, baseBranch: baseBranch(record), prUrl: reviewer.prUrl, prBaseBranch: reviewer.prBase };
       await prompt(world, reviewer.agent, fillTemplate(templates.review, values));
     },
   };
-  await runLeased(world, configDir, record, (save) => runPhase(record, reviewer, REVIEW_STEPS, steps, save, "review"));
+  await runLeased(world, configDir, record, (save) => runPhase(record, reviewer, REVIEW_STEPS, steps, save, stepFailed(record, "review")));
   return record;
 }
 
 /** Refuse a launch whose Harness, model or Effort is unknown, before any Dispatch is made with it. */
 export async function checkLaunch(world: World, configDir: string, launch: Pick<DispatchRequest, "harness" | "model" | "effort">) {
-  await chooseLaunch(world, configDir, { issue: "", ...launch });
+  await chooseLaunch(world, configDir, launch);
 }
 
 /**
@@ -394,7 +394,7 @@ export async function checkLaunch(world: World, configDir: string, launch: Pick<
  * from config and discovery, so only an unknown Harness or model is a usage
  * error; an Effort the model does not support fails like a Source would.
  */
-async function chooseLaunch(world: World, configDir: string, request: DispatchRequest): Promise<Harness> {
+export async function chooseLaunch(world: World, configDir: string, request: Pick<DispatchRequest, "harness" | "model" | "effort">): Promise<Harness> {
   const catalog = await harnessCatalog(world, configDir, request.harness);
   if (!catalog) {
     const names = harnesses(configDir).map((h) => h.name);
@@ -486,7 +486,7 @@ async function runSteps(
       record.worktree = worktree.path;
       record.workspace = worktree.workspace;
     },
-    ...agentSteps(world, harness, repo, record, record.implementer, "implementer"),
+    ...agentSteps(world, harness, () => placeOf(repo, record), record.implementer, "implementer"),
     prompt: async () => {
       const { text, botSuffix, warning } = await implementPrompt(world, templates, ref.repo, harness, record);
       await prompt(world, record.implementer.agent, text);
@@ -495,7 +495,7 @@ async function runSteps(
     },
   };
   await runLeased(world, configDir, record, async (save) => {
-    await runPhase(record, record, STEPS, steps, save, "dispatch");
+    await runPhase(record, record, STEPS, steps, save, stepFailed(record, "dispatch"));
     if (record.claimed === undefined) await claim(world, ref, record);
   });
   return record;
@@ -520,24 +520,24 @@ async function runLeased(world: World, configDir: string, record: Dispatch, fn: 
   }
 }
 
-/** How far an agent's steps got: the Dispatch itself for the Implementer, the Reviewer for a review. */
-interface Progress<S extends string> {
+/** How far an agent's steps got: the Dispatch itself for the Implementer, the Reviewer for a review, the Lead's record. */
+export interface Progress<S extends string> {
   completed: S[];
   failure?: { step: S; error: string };
 }
 
 /**
  * Run the `steps` `progress` has not completed, in order, saving after each
- * one. A failing step is recorded and reported as StepFailed; what earlier
- * steps created is kept for inspection and reuse.
+ * one. A failing step is recorded, and reported as the error `failed` makes
+ * of it; what earlier steps created is kept for inspection and reuse.
  */
-async function runPhase<S extends string>(
-  record: Dispatch,
+export async function runPhase<S extends string>(
+  record: { runner?: number },
   progress: Progress<S>,
   order: readonly S[],
   steps: Record<S, () => Promise<void>>,
   save: () => Promise<void>,
-  command: "dispatch" | "review",
+  failed: (step: S, e: DispatchError | WorldError) => Error,
 ) {
   for (const step of order) {
     if (progress.completed.includes(step)) continue;
@@ -549,7 +549,7 @@ async function runPhase<S extends string>(
       await save();
       // Anything but a World or Dispatch failure is a bug: kept as the failure, but still thrown.
       if (!(e instanceof DispatchError || e instanceof WorldError)) throw e;
-      throw new StepFailed(record, step, e.message, e instanceof DispatchError ? e.help : [], command);
+      throw failed(step, e);
     }
     progress.completed.push(step);
     delete progress.failure;
@@ -557,20 +557,43 @@ async function runPhase<S extends string>(
   }
 }
 
+function stepFailed(record: Dispatch, command: "dispatch" | "review") {
+  return (step: string, e: DispatchError | WorldError) => new StepFailed(record, step, e.message, e instanceof DispatchError ? e.help : [], command);
+}
+
 /**
- * The steps that start an agent in a new `label` tab of the Dispatch's
- * workspace, up to where it is ready for its prompt.
+ * Where an agent starts: the herdr workspace, the folder it works in, the
+ * folder its Harness is told to trust, and `serve`'s MCP server for the Lead.
  */
-function agentSteps(world: World, harness: Harness, repo: Repo, record: Dispatch, launch: Launch, label: string) {
+export interface AgentPlace {
+  workspace: string;
+  cwd: string;
+  repoPath: string;
+  mcp?: McpWiring;
+}
+
+/** A Dispatch's agents work in its worktree, trusting the Repo's clone. */
+function placeOf(repo: Repo, record: Dispatch): AgentPlace {
+  return { workspace: record.workspace!, cwd: record.worktree!, repoPath: repo.path };
+}
+
+/**
+ * The steps that start an agent in a new `label` tab of a workspace, up to
+ * where it is ready for its prompt. `place` is read as the steps run, once
+ * earlier steps have made the workspace.
+ */
+export function agentSteps(world: World, harness: Harness, place: () => AgentPlace, launch: Launch, label: string) {
   let ready: boolean | undefined;
   return {
     tab: async () => {
-      const tab = await world.herdrTabCreate({ workspace: record.workspace!, cwd: record.worktree!, label });
+      const { workspace, cwd } = place();
+      const tab = await world.herdrTabCreate({ workspace, cwd, label });
       launch.tab = tab.tab;
       launch.pane = tab.pane;
     },
     "agent start": async () => {
-      const values = { model: launch.model, effort: launch.effort, repoPath: repo.path };
+      const { repoPath, mcp } = place();
+      const values = { model: launch.model, effort: launch.effort, repoPath, ...(mcp && { mcp }) };
       if (harness.launchMode === "pane-command") {
         saveVariant(harness, launch.model, launch.effort);
         await world.herdrPaneRun(launch.pane!, paneCommand(harness, values));
@@ -585,7 +608,7 @@ function agentSteps(world: World, harness: Harness, repo: Repo, record: Dispatch
         await world.herdrAgentDetect(launch.pane!, STARTUP_TIMEOUT_MS);
         await world.herdrAgentRename(launch.pane!, launch.agent);
       }
-      if (!ready) await awaitReady(world, harness, launch.agent, record.worktree!);
+      if (!ready) await awaitReady(world, harness, launch.agent, place().cwd);
     },
   };
 }
@@ -668,7 +691,7 @@ const PROMPT_ATTEMPTS = 3;
  * Prompt until the agent starts working: a Harness still drawing its UI (just
  * after a trust answer, say) drops input without an error.
  */
-async function prompt(world: World, agent: string, text: string) {
+export async function prompt(world: World, agent: string, text: string) {
   for (let attempt = 0; attempt < PROMPT_ATTEMPTS; attempt++) {
     if ((await world.herdrAgentPrompt(agent, text)).started) return;
   }

@@ -74,16 +74,27 @@ export async function refreshHarnesses(world: World, configDir: string): Promise
 export interface Launch {
   model: string;
   effort: string;
-  /** Path of the Repo's clone. */
+  /** Path of the Repo's clone, or of the Lead's home. */
   repoPath: string;
+  /** `serve`'s MCP server, for the Lead only. */
+  mcp?: McpWiring;
 }
 
-/** `modelArgs`, `effortArgs`, `trustArgs` and `extraArgs`, with the placeholders filled. */
+/** The name `serve`'s MCP server goes by in a Harness's config. */
+export const MCP_SERVER = "nico-agent";
+
+/** Where the Lead reaches `serve`'s MCP server: its URL, and a config file naming it. */
+export interface McpWiring {
+  mcpUrl: string;
+  mcpConfig: string;
+}
+
+/** `modelArgs`, `effortArgs`, `trustArgs`, `mcpArgs` (with `mcp` only) and `extraArgs`, with the placeholders filled. */
 export function launchArgs(harness: Harness, launch: Launch): string[] {
-  const fill = (args: string[]) =>
-    args.map((a) => a.replace(/\{(model|effort|repoPath)\}/g, (_, name: keyof Launch) => launch[name]));
-  const { modelArgs, effortArgs, trustArgs = [], extraArgs } = harness;
-  return [...fill(modelArgs), ...fill(effortArgs), ...fill(trustArgs), ...fill(extraArgs)];
+  const values: Record<string, string | undefined> = { model: launch.model, effort: launch.effort, repoPath: launch.repoPath, ...launch.mcp };
+  const fill = (args: string[]) => args.map((a) => a.replace(/\{(model|effort|repoPath|mcpUrl|mcpConfig)\}/g, (match, name: string) => values[name] ?? match));
+  const { modelArgs, effortArgs, trustArgs = [], mcpArgs = [], extraArgs } = harness;
+  return [...fill(modelArgs), ...fill(effortArgs), ...fill(trustArgs), ...(launch.mcp ? fill(mcpArgs) : []), ...fill(extraArgs)];
 }
 
 /** The Harness and model last dispatched with, the Effort last used with each model, and the Base last used in each Repo. */

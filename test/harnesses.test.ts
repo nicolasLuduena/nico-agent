@@ -346,7 +346,7 @@ describe("Harness config", () => {
   test("a malformed Harness config is a config error, before any outside-world call", async () => {
     const cases: [Record<string, unknown>, string, string][] = [
       [{ codex: { extraArgs: "--yolo" } }, "harnesses.codex.extraArgs is not a list of strings", "Fix or delete the file and run `nico-agent repo add` again"],
-      [{ codex: { color: "red" } }, "harnesses.codex.color is not a Harness setting", "Harness settings: launchMode, kind, command, sigil, modelArgs, effortArgs, extraArgs, trustArgs, models, efforts, discovery, trustPrompt, variantFile"],
+      [{ codex: { color: "red" } }, "harnesses.codex.color is not a Harness setting", "Harness settings: launchMode, kind, command, sigil, modelArgs, effortArgs, extraArgs, trustArgs, mcpArgs, skillsDir, models, efforts, discovery, trustPrompt, variantFile"],
       [{ codex: { launchMode: "tmux" } }, "harnesses.codex.launchMode `tmux` is not supported", "Launch modes: herdr-kind, pane-command"],
       [{ codex: { launchMode: "pane-command" } }, "harnesses.codex is missing command", "A pane-command Harness needs command"],
       [{ codex: { discovery: "pi" } }, "harnesses.codex.discovery `pi` is not supported", "Discovery: codex, opencode2"],

@@ -1,7 +1,7 @@
 import { closeSync, mkdirSync, openSync, readFileSync, unlinkSync, writeSync } from "node:fs";
 import { join } from "node:path";
 import { loadBoard, specLoadErrors } from "./board";
-import { ConfigError, SCHEDULER_DEFAULTS, type SchedulerDefaults, loadConfig } from "./config";
+import { ConfigError, SCHEDULER_DEFAULTS, type LaunchDefaults, loadConfig } from "./config";
 import { type DispatchRequest, StepFailed, checkLaunch, closeDispatch, dispatch } from "./dispatch";
 import { DispatchError, LaunchError } from "./dispatch-error";
 import { linearIdentifier } from "./linear";
@@ -241,7 +241,7 @@ function isFinished(d: Dispatch) {
   return d.failure === undefined && STEPS.every((s) => d.completed.includes(s)) && d.claimed !== undefined;
 }
 
-async function carryOut(world: World, configDir: string, launch: SchedulerDefaults, spec: SpecDecision, plan: SpecPlan, help: string[]): Promise<AdvanceRow | undefined> {
+async function carryOut(world: World, configDir: string, launch: LaunchDefaults, spec: SpecDecision, plan: SpecPlan, help: string[]): Promise<AdvanceRow | undefined> {
   const row = { spec: spec.spec, repo: spec.repo };
   if (plan.action === "wait") return undefined;
   if (plan.action === "skip") {
@@ -275,7 +275,7 @@ function addHelp(help: string[], ...lines: string[]) {
 }
 
 /** A bad Scheduler default would refuse every start alike, so it fails the run as the config's fault. */
-async function checkDefaults(world: World, configDir: string, launch: SchedulerDefaults) {
+async function checkDefaults(world: World, configDir: string, launch: LaunchDefaults) {
   try {
     await checkLaunch(world, configDir, launch);
   } catch (e) {
@@ -285,7 +285,7 @@ async function checkDefaults(world: World, configDir: string, launch: SchedulerD
 }
 
 /** The Scheduler defaults from config; each must be set, as the Scheduler never chooses them. */
-export function schedulerDefaults(configDir: string): SchedulerDefaults {
+export function schedulerDefaults(configDir: string): LaunchDefaults {
   const { scheduler = {} } = loadConfig(configDir);
   const missing = SCHEDULER_DEFAULTS.filter((key) => scheduler[key] === undefined);
   if (missing.length) {
@@ -294,5 +294,5 @@ export function schedulerDefaults(configDir: string): SchedulerDefaults {
       `Set "scheduler": {"harness": "claude", "model": "opus", "effort": "high"} (your choice) in ${join(configDir, "config.json")}`,
     );
   }
-  return scheduler as SchedulerDefaults;
+  return scheduler as LaunchDefaults;
 }

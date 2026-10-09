@@ -137,6 +137,8 @@ export class FakeWorld implements World {
   branchPrs = new Map<string, PullRequest[]>();
   /** Agent state of each started agent, as `herdr agent list` reports it. */
   agentStates = new Map<string, string>();
+  /** The pane each named agent runs in. */
+  private agentPanes = new Map<string, string>();
   /** What `herdr agent read` shows of each named agent, besides a startup question. */
   screens = new Map<string, string>();
   private workspaces = 0;
@@ -313,6 +315,18 @@ export class FakeWorld implements World {
     return { workspace: `w${++this.workspaces}`, path: `/worktrees/${branch.split("/").pop()}` };
   }
 
+  async herdrWorkspaceCreate({ cwd, label }: { cwd: string; label: string }) {
+    this.herdr("workspace create", "--cwd", cwd, "--label", label, "--no-focus");
+    return { workspace: `w${++this.workspaces}` };
+  }
+
+  async herdrWorkspaceClose(workspace: string) {
+    this.herdr("workspace close", workspace);
+    for (const [name, pane] of this.agentPanes) {
+      if (pane.startsWith(`${workspace}:`)) this.agentStates.delete(name);
+    }
+  }
+
   async herdrTabCreate({ workspace, cwd, label }: { workspace: string; cwd: string; label: string }) {
     this.herdr("tab create", "--workspace", workspace, "--cwd", cwd, "--label", label, "--no-focus");
     if (this.hangs.has("herdr tab create")) await new Promise(() => {});
@@ -325,6 +339,7 @@ export class FakeWorld implements World {
   async herdrAgentStart({ name, kind, pane, args }: { name: string; kind: string; pane: string; args: string[] }) {
     this.herdr("agent start", name, "--kind", kind, "--pane", pane, "--", ...args);
     this.agentStates.set(name, "idle");
+    this.agentPanes.set(name, pane);
     return { ready: this.blockedScreen === null };
   }
 
@@ -339,6 +354,7 @@ export class FakeWorld implements World {
   async herdrAgentRename(pane: string, name: string) {
     this.herdr("agent rename", pane, name);
     this.agentStates.set(name, "idle");
+    this.agentPanes.set(name, pane);
   }
 
   async herdrWorktreeRemove(workspace: string) {

@@ -8,6 +8,7 @@ import { StepFailed, baseBranch, closeDispatch, dispatch, eachIssue, resolveIssu
 import { DispatchError } from "./dispatch-error";
 import { PANE_ARGS } from "./opencode";
 import { type Catalog, harnessCatalogs, harnesses, refreshHarnesses, rememberedLaunches } from "./harness";
+import { LEAD_AGENT, NICO_AGENT_SLUG, leadStatus, startLead, stopLead } from "./lead";
 import { linearIdentifier } from "./linear";
 import { type Output, plural, render } from "./output";
 import { pruneBoardQueues, queueOf } from "./queue";
@@ -44,6 +45,9 @@ const LEAD_SAY_USAGE = "nico-agent lead say <text>";
 const LEAD_ASK_USAGE = "nico-agent lead ask <question> [<choice>...]";
 const RECALL_USAGE = "nico-agent lead recall <query> [--since <time>] [--until <time>]";
 const LOG_HELP = "Run `nico-agent lead log` to see the conversation with the Lead";
+const LEAD_START_USAGE = "nico-agent lead start [--harness <harness>] [--model <model>] [--effort <effort>] [--port <port>]";
+const LEAD_STATUS_HELP = "Run `nico-agent lead status` to see the Lead";
+const LEAD_SCREEN_HELP = "Run `herdr agent read lead` to see its screen";
 const LAUNCH_FLAGS = {
   "--harness": { value: true, description: "Harness to launch, e.g. claude (see `nico-agent harness list`)" },
   "--model": { value: true, description: "model for the Harness, e.g. opus" },
@@ -301,6 +305,39 @@ const commands: Command[] = [
     positionals: ["issue"],
     examples: ["nico-agent show acme/api#7", "nico-agent show https://github.com/acme/api/issues/7 --json"],
     run: show,
+  },
+  {
+    name: "lead start",
+    usage: LEAD_START_USAGE,
+    summary: "Start the Lead as the herdr agent `lead` in its own workspace, connected to serve's MCP server (no-op while it runs)",
+    flags: {
+      "--harness": { value: true, description: "Harness to run the Lead on (default: lead.harness in config)" },
+      "--model": { value: true, description: "model for the Harness (default: lead.model in config)" },
+      "--effort": { value: true, description: "Effort level for the Harness (default: lead.effort in config)" },
+      "--port": { value: true, description: "port `nico-agent serve` listens on (default 42069)" },
+    },
+    positionals: [],
+    examples: ["nico-agent lead start", "nico-agent lead start --harness codex --model gpt-5.5 --effort high"],
+    help: ["A different launch than the running Lead's stops it and starts the new one; the conversation is kept"],
+    run: leadStartCommand,
+  },
+  {
+    name: "lead status",
+    usage: "nico-agent lead status",
+    summary: "Show whether the Lead runs, in which workspace, on which Harness, model and Effort, and its Agent state",
+    flags: {},
+    positionals: [],
+    examples: ["nico-agent lead status", "nico-agent lead status --json"],
+    run: (_args, ctx) => leadStatusCommand(ctx),
+  },
+  {
+    name: "lead stop",
+    usage: "nico-agent lead stop",
+    summary: "Close the Lead's workspace and forget it, keeping its home and the conversation",
+    flags: {},
+    positionals: [],
+    examples: ["nico-agent lead stop"],
+    run: (_args, ctx) => leadStopCommand(ctx),
   },
   {
     name: "serve",
@@ -822,20 +859,29 @@ async function harnessRefresh(ctx: RunContext): Promise<Output> {
 const HOSTNAME = "127.0.0.1";
 const DEFAULT_PORT = 42069;
 
-async function serve(args: Args, ctx: RunContext): Promise<Output> {
-  const usage = "nico-agent serve [--port <port>]";
+/** The `--port` flag's port, `DEFAULT_PORT` without one. */
+function portFlag(args: Args, usage: string) {
   const flag = args.flags["--port"];
   const port = typeof flag === "string" ? Number(flag) : DEFAULT_PORT;
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
     throw new CliError(`the port must be a number from 1 to 65535 (got \`${flag}\`)`, [`Usage: \`${usage}\``], 2);
   }
+  return port;
+}
+
+function mcpUrl(port: number) {
+  return `http://${HOSTNAME}:${port}/mcp`;
+}
+
+async function serve(args: Args, ctx: RunContext): Promise<Output> {
+  const port = portFlag(args, "nico-agent serve [--port <port>]");
   try {
     await ctx.world.serve({ hostname: HOSTNAME, port }, webHandler({ ...ctx, runCli: (argv) => run(argv, ctx) }));
   } catch (e) {
     if (!(e instanceof WorldError)) throw e;
     throw new CliError(e.message, ["Run `nico-agent serve --port <port>` with a free port"]);
   }
-  const mcp = `http://${HOSTNAME}:${port}/mcp`;
+  const mcp = mcpUrl(port);
   return {
     data: { url: `http://${HOSTNAME}:${port}/`, mcp },
     help: [
@@ -843,6 +889,73 @@ async function serve(args: Args, ctx: RunContext): Promise<Output> {
       `Register the MCP server with Claude Code: \`claude mcp add --transport http nico-agent ${mcp}\``,
     ],
   };
+}
+
+async function leadStartCommand(args: Args, ctx: RunContext): Promise<Output> {
+  const { "--harness": harnessFlag, "--model": modelFlag, "--effort": effortFlag } = args.flags;
+  const request = {
+    mcpUrl: mcpUrl(portFlag(args, LEAD_START_USAGE)),
+    ...(typeof harnessFlag === "string" && { harness: harnessFlag }),
+    ...(typeof modelFlag === "string" && { model: modelFlag }),
+    ...(typeof effortFlag === "string" && { effort: effortFlag }),
+  };
+  const { lead, outcome, resumedFrom, replaced } = await startLead(ctx.world, ctx.configDir, request);
+  const { harness, model, effort } = lead.agent;
+  const result = {
+    new: "started",
+    existing: "already running (no-op)",
+    resumed: `resumed from ${resumedFrom}`,
+    restarted: replaced ? `restarted, replacing ${replaced.harness} ${replaced.model} ${replaced.effort}` : "restarted",
+  }[outcome];
+  const help = [LEAD_STATUS_HELP, LEAD_SCREEN_HELP];
+  if (!findRepo(loadConfig(ctx.configDir), NICO_AGENT_SLUG)) {
+    help.push("Run `nico-agent repo add nicolasLuduena/nico-agent --path <clone>` to give the Lead the shaping skills");
+  }
+  help.push(`Make sure \`nico-agent serve\` runs, so the Lead reaches ${lead.mcpUrl}`);
+  return {
+    data: {
+      lead: result,
+      workspace: lead.workspace,
+      agent: LEAD_AGENT,
+      harness, model, effort,
+      home: lead.home,
+      mcp: lead.mcpUrl,
+      ...(lead.warnings && { warnings: lead.warnings }),
+    },
+    help,
+  };
+}
+
+async function leadStatusCommand(ctx: RunContext): Promise<Output> {
+  const status = await leadStatus(ctx.world, ctx.configDir);
+  if (!status) return { data: { lead: "not running" }, help: [`Run \`${LEAD_START_USAGE}\` to start it`] };
+  const { record, lead, state } = status;
+  const { harness, model, effort } = record.agent;
+  const help = lead === "running"
+    ? [LEAD_SCREEN_HELP, "Run `nico-agent lead stop` to stop it"]
+    : ["Run `nico-agent lead start` to start it again", "Run `nico-agent lead stop` to forget it"];
+  return {
+    data: definedOnly({
+      lead,
+      workspace: record.workspace,
+      agent: LEAD_AGENT,
+      harness, model, effort,
+      state,
+      home: record.home,
+      mcp: record.mcpUrl,
+      failure: record.failure,
+      warnings: record.warnings,
+      startedAt: record.createdAt,
+    }),
+    help,
+  };
+}
+
+async function leadStopCommand(ctx: RunContext): Promise<Output> {
+  const { outcome, workspace } = await stopLead(ctx.world, ctx.configDir);
+  const help = [`Run \`${LEAD_START_USAGE}\` to start it again; the conversation is kept`];
+  if (outcome === "none") return { data: { lead: "not running (no-op)" }, help };
+  return { data: definedOnly({ lead: "stopped", workspace }), help };
 }
 
 async function board(ctx: RunContext, json: boolean): Promise<Output> {
