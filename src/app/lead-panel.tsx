@@ -1,11 +1,14 @@
-import { type FormEvent, type KeyboardEvent, useEffect, useLayoutEffect, useReducer, useRef, useState } from "react";
+import { type FormEvent, type KeyboardEvent, type MouseEvent, useEffect, useLayoutEffect, useReducer, useRef, useState } from "react";
 import type { Authored } from "../conversation";
+import type { BoardJson } from "./board";
 import { OutcomeNote, answerOf, post, usePost } from "./forms";
 import {
-  type Card, type Conversation, type LeadStatusJson, type ProposalJson,
+  type Card, type Conversation, type LeadStatusJson, type OpenItem, type ProposalJson,
   cards, declineArgs, followsNewEntries, notices, proposalLines, reduce, sayArgs,
 } from "./lead";
 import { LeadDrawer } from "./lead-drawer";
+import { sendsOnEnter } from "./popover";
+import { ResearchBox } from "./research-box";
 import { useResource } from "./stream";
 import { TalkButton, TalkStatus, useTalk } from "./talk-button";
 
@@ -14,8 +17,9 @@ const EMPTY: Conversation = { entries: [], proposals: [], sends: [] };
 /**
  * The conversation with the Lead and its Proposals, refetched on
  * `conversation-entry` and `proposal-changed`, with the sends not in it yet.
+ * The App keeps it, so the header counts the Questions list on every page.
  */
-function useConversation() {
+export function useConversation() {
   const log = useResource<{ entries?: Authored[] }>("/api/lead/log", ["conversation-entry"]);
   const proposals = useResource<{ proposals?: ProposalJson[] }>("/api/proposals", ["proposal-changed"]);
   const [state, dispatch] = useReducer(reduce, EMPTY);
@@ -35,13 +39,21 @@ function useConversation() {
   return { state, send, dismiss: (key: string) => dispatch({ type: "dismiss", key }), failure: log.failure ?? proposals.failure };
 }
 
+export type ConversationState = ReturnType<typeof useConversation>;
+
+/** The id of a card's place in the conversation, which the Questions list jumps to. */
+const inConversation = (key: string) => `conversation-${key}`;
+
 /**
- * The Lead panel: the Voice switch and the drawer's button, the one quiet
- * place for warnings, the conversation as cards, and the composer, which
- * stays put and keeps its draft while entries arrive.
+ * The Lead panel: the Voice switch, the Research button and the drawer's
+ * button, the one quiet place for warnings (the Board's among them), the
+ * Questions list (`questions`, null while hidden), the conversation as cards,
+ * and the composer, which stays put and keeps its draft while entries arrive.
  */
-export function LeadPanel({ status }: { status: LeadStatusJson | null }) {
-  const { state, send, dismiss, failure } = useConversation();
+export function LeadPanel({ status, conversation, questions, board }: {
+  status: LeadStatusJson | null; conversation: ConversationState; questions: OpenItem[] | null; board: BoardJson | null;
+}) {
+  const { state, send, dismiss, failure } = conversation;
   const [drawer, setDrawer] = useState(false);
   const voice = useResource<{ voice?: string }>("/api/voice/state", ["voice-changed"]).data?.voice === "on";
   const { busy, outcome, act } = usePost();
@@ -59,8 +71,28 @@ export function LeadPanel({ status }: { status: LeadStatusJson | null }) {
     atEnd.current = true;
     return send(text, question, raw);
   };
+  /**
+   * The card the Questions list asked to show, scrolled to once the
+   * conversation is drawn. Each ask is a new object, so asking for the same
+   * card again scrolls to it again.
+   */
+  const [jumped, setJumped] = useState<{ key: string } | null>(null);
+  useEffect(() => {
+    if (!jumped) return;
+    const card = document.getElementById(inConversation(jumped.key));
+    if (!card) return;
+    // Reading back now: new entries leave the user where the card is.
+    atEnd.current = false;
+    card.scrollIntoView({ block: "center", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+    card.focus({ preventScroll: true });
+  }, [jumped]);
+  /** Show the card `key` in the conversation, closing the drawer if it is open. */
+  const jump = (key: string) => {
+    setDrawer(false);
+    setJumped({ key });
+  };
   const talking = useTalk((text, heard, answers) => void sendAndFollow(text, answers, heard), voice);
-  const warnings = notices({ failure, status, talk: talking.warning });
+  const warnings = notices({ failure, status, talk: talking.warning, board });
   return (
     <section className="lead-panel" aria-label="Conversation with the Lead">
       <div className="lead-bar">
@@ -69,6 +101,11 @@ export function LeadPanel({ status }: { status: LeadStatusJson | null }) {
           <input type="checkbox" role="switch" checked={voice} disabled={busy} onChange={(e) => void act(e.target.checked ? "/api/voice/on" : "/api/voice/off", [])} />
           Voice
         </label>
+        <ResearchBox send={(text) => {
+          // The request shows in the conversation, so it takes the drawer's place.
+          setDrawer(false);
+          void sendAndFollow(text);
+        }} />
         <button type="button" className="quiet" aria-expanded={drawer} aria-controls="lead-drawer" onClick={() => setDrawer(!drawer)}>
           {drawer ? "Conversation" : "Intent & orders"}
         </button>
@@ -81,6 +118,7 @@ export function LeadPanel({ status }: { status: LeadStatusJson | null }) {
           {outcome && <OutcomeNote outcome={outcome} />}
         </div>
       )}
+      <QuestionsList items={questions} send={send} dismiss={dismiss} jump={jump} />
       <LeadDrawer open={drawer} />
       <ol
         className="conversation"
@@ -92,7 +130,7 @@ export function LeadPanel({ status }: { status: LeadStatusJson | null }) {
         onScroll={(e) => { atEnd.current = followsNewEntries(e.currentTarget); }}
       >
         {shown.length
-          ? shown.map((card) => <CardView key={card.key} card={card} send={send} dismiss={dismiss} />)
+          ? shown.map((card) => <CardView key={card.key} card={card} send={send} dismiss={dismiss} id={inConversation(card.key)} />)
           : <li className="empty">No conversation yet. Write or talk to the Lead below; it reads your message when it next looks at its Inbox.</li>}
       </ol>
       <Composer send={sendAndFollow} talk={talking} working={status?.lead === "running" && status.state === "working"} />
@@ -103,11 +141,63 @@ export function LeadPanel({ status }: { status: LeadStatusJson | null }) {
 /** Send a message to the Lead, or the answer to its question `question`; `raw` is what was heard of a spoken one. */
 type SendText = (text: string, question?: number, raw?: string) => Promise<void>;
 
-function CardView({ card, send, dismiss }: { card: Card; send: SendText; dismiss: (key: string) => void }) {
+/**
+ * The Questions list: each open question and Proposal of the Lead's, oldest
+ * first, answered or decided right here as in the conversation; hidden while
+ * `items` is null or empty. Clicking an item (away from its controls) or its
+ * "Show in conversation" scrolls the conversation to it. An item answered or
+ * decided from the keyboard hands focus to the next one, not to the page.
+ */
+function QuestionsList({ items, send, dismiss, jump }: {
+  items: OpenItem[] | null; send: SendText; dismiss: (key: string) => void; jump: (key: string) => void;
+}) {
+  const list = useRef<HTMLElement>(null);
+  // Read while rendering, before an item that leaves takes the focus with it.
+  const focused = list.current?.contains(document.activeElement) ?? false;
+  const keys = items?.map((i) => i.key).join(" ");
+  useLayoutEffect(() => {
+    const section = list.current;
+    if (!focused || !section || section.contains(document.activeElement)) return;
+    // The focused item left the list: the next one takes focus, or the conversation once none is left.
+    const next = section.querySelector<HTMLElement>("li :is(button, input):not(:disabled)") ?? document.querySelector<HTMLElement>(".conversation");
+    next?.focus();
+  }, [keys]);
+  return (
+    <section
+      id="questions"
+      className="questions"
+      aria-label="Questions"
+      ref={list}
+      hidden={!items?.length}
+    >
+      <ol>
+        {items?.map((item) => item.kind === "question"
+          ? <QuestionCard key={item.key} card={item} send={send} dismiss={dismiss} jump={() => jump(item.key)} />
+          : <ProposalCard key={item.key} card={item} jump={() => jump(item.key)} />)}
+      </ol>
+    </section>
+  );
+}
+
+/** A click on an item of the Questions list, unless it was on one of its controls. */
+function onItem(jump: (() => void) | undefined) {
+  if (!jump) return undefined;
+  return (e: MouseEvent) => {
+    if (!(e.target as Element).closest("button, input, form, pre, a")) jump();
+  };
+}
+
+/** The Questions list's way to an item in the conversation, for the keyboard. */
+function ShowInConversation({ jump }: { jump: (() => void) | undefined }) {
+  return jump ? <button type="button" className="quiet show" onClick={jump}>Show in conversation</button> : null;
+}
+
+/** A card as the conversation draws it, `id` naming its place for the Questions list. */
+function CardView({ card, send, dismiss, id }: { card: Card; send: SendText; dismiss: (key: string) => void; id: string }) {
   switch (card.kind) {
     case "message":
       return (
-        <li className={`card-message ${card.who}${card.sending ? " sending" : ""}${card.superseded ? " superseded" : ""}`}>
+        <li id={id} tabIndex={-1} className={`card-message ${card.who}${card.sending ? " sending" : ""}${card.superseded ? " superseded" : ""}`}>
           <Byline who={card.who} at={card.at} note={messageNote(card)} />
           {card.raw === undefined
             ? <p className="text">{card.text}</p>
@@ -127,9 +217,9 @@ function CardView({ card, send, dismiss }: { card: Card; send: SendText; dismiss
         </li>
       );
     case "question":
-      return <QuestionCard card={card} send={send} dismiss={dismiss} />;
+      return <QuestionCard card={card} send={send} dismiss={dismiss} id={id} />;
     case "proposal":
-      return <ProposalCard card={card} />;
+      return <ProposalCard card={card} id={id} />;
   }
 }
 
@@ -153,15 +243,21 @@ function Byline({ who, at, note, status }: { who: "user" | "lead"; at: string; n
   );
 }
 
-/** A question from the Lead: its choices as buttons and a free-text answer while open, then the answer. */
-function QuestionCard({ card, send, dismiss }: { card: Card & { kind: "question" }; send: SendText; dismiss: (key: string) => void }) {
+/**
+ * A question from the Lead: its choices as buttons and a free-text answer
+ * while open, then the answer. In the conversation it has an `id`; in the
+ * Questions list, a `jump` to it in the conversation.
+ */
+function QuestionCard({ card, send, dismiss, id, jump }: {
+  card: Card & { kind: "question" }; send: SendText; dismiss: (key: string) => void; id?: string; jump?: () => void;
+}) {
   const [text, setText] = useState("");
   const answer = (value: string) => {
     if (card.failure) dismiss(card.failure.key);
     void send(value, card.id);
   };
   return (
-    <li className={`card-question${card.answer ? " answered" : ""}`}>
+    <li id={id} tabIndex={id ? -1 : undefined} className={`card-question${card.answer ? " answered" : ""}`} onClick={onItem(jump)}>
       <Byline who="lead" at={card.at} note="asks" />
       <p className="text">{card.text}</p>
       {card.answer
@@ -193,14 +289,19 @@ function QuestionCard({ card, send, dismiss }: { card: Card & { kind: "question"
             {card.failure && <p className="error">{`“${card.failure.text}” was not sent: ${card.failure.error}`}</p>}
           </>
         )}
+      <ShowInConversation jump={jump} />
     </li>
   );
 }
 
 const STATUS: Record<ProposalJson["status"], string> = { open: "Proposes", approved: "Approved", declined: "Declined", failed: "Failed" };
 
-/** A Proposal: its action or write and reason with Approve and Decline while open, then how it was decided and what it did. */
-function ProposalCard({ card }: { card: Card & { kind: "proposal" } }) {
+/**
+ * A Proposal: its action or write and reason with Approve and Decline while
+ * open, then how it was decided and what it did. In the conversation it has
+ * an `id`; in the Questions list, a `jump` to it in the conversation.
+ */
+function ProposalCard({ card, id, jump }: { card: Card & { kind: "proposal" }; id?: string; jump?: () => void }) {
   const [declining, setDeclining] = useState(false);
   const [reason, setReason] = useState("");
   const { busy, outcome, act } = usePost();
@@ -211,7 +312,7 @@ function ProposalCard({ card }: { card: Card & { kind: "proposal" } }) {
   };
   const lines = proposalLines(card);
   return (
-    <li className={`card-proposal ${card.status}`}>
+    <li id={id} tabIndex={id ? -1 : undefined} className={`card-proposal ${card.status}`} onClick={onItem(jump)}>
       <Byline who="lead" at={card.at} status={STATUS[card.status]} />
       {card.write
         ? (
@@ -238,6 +339,7 @@ function ProposalCard({ card }: { card: Card & { kind: "proposal" } }) {
         </form>
       )}
       {open && outcome && <OutcomeNote outcome={outcome} />}
+      <ShowInConversation jump={jump} />
     </li>
   );
 }
@@ -257,7 +359,7 @@ function Composer({ send, talk, working }: { send: SendText; talk: ReturnType<ty
     setText("");
   };
   const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+    if (sendsOnEnter(e)) {
       e.preventDefault();
       submit();
     }

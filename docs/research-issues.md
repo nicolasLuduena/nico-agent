@@ -25,8 +25,11 @@ change a Dispatch already In flight.
 
 ## Asking the Lead
 
-Ask the Lead to research a question in the conversation, and it writes the
-Research issue for you (`RESEARCH.md` in its skill). It finds the Repo the
+Ask the Lead to research a question in the conversation, or with the app's
+**Research** button, and it writes the Research issue for you (`RESEARCH.md`
+in its skill). The button's box takes the question and, optionally, the
+Repo, and sends them to the Lead as your message, starting
+`Research request:`; the app writes nothing to a Source itself. It finds the Repo the
 findings belong in, asking you when that is unclear, and writes the issue on
 the Repo's Source following the Repo's issue tracker doc: the question, what
 a good answer covers, and the `research` and `ready-for-agent` labels. You

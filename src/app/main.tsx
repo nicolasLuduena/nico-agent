@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import type { HarnessesJson } from "./actions";
-import type { LeadStatusJson } from "./lead";
+import type { BoardJson } from "./board";
+import { type LeadStatusJson, openItems } from "./lead";
 import { LeadMenu } from "./lead-menu";
-import { LeadPanel } from "./lead-panel";
+import { LeadPanel, useConversation } from "./lead-panel";
+import { ReposPane } from "./repos";
 import { useResource } from "./stream";
 
 /** The Harnesses' models and the remembered launch, for the Lead's pickers, asked on load and again on `reload`. */
@@ -38,15 +40,21 @@ function usePage(): Page {
 }
 
 /**
- * The app: a header with the brand, the Lead and Stats pages and the Lead's
- * controls, then the Lead panel on the left and the page's own column
- * on the right. The page never asks `/api/board` yet, so it costs GitHub
- * nothing; the Repos come to the right column on the Lead page.
+ * The app: a header with the brand, the Lead and Stats pages, the count of
+ * open questions and Proposals (which shows or hides the Questions list) and
+ * the Lead's controls, then the Lead panel on the left and the page's own column
+ * on the right: the Repos on the Lead page. The Board is asked of `serve` on
+ * load and on each `board-changed`, and `serve` answers from its one-minute
+ * cache (ADR-0011), so the page never asks GitHub more often than that.
  */
 function App() {
   const { harnesses } = useHarnesses();
   const page = usePage();
   const { data: status = null } = useResource<LeadStatusJson>("/api/lead/status", ["lead-state"]);
+  const { data: board = null } = useResource<BoardJson>("/api/board", ["board-changed"]);
+  const conversation = useConversation();
+  const questions = openItems(conversation.state);
+  const [questionsShown, showQuestions] = useState(true);
   return (
     <>
       <header className="top">
@@ -54,13 +62,26 @@ function App() {
         <nav aria-label="Pages">
           {PAGES.map((p) => <a key={p.page} href={p.href} aria-current={page === p.page ? "page" : undefined}>{p.label}</a>)}
         </nav>
-        <LeadMenu harnesses={harnesses} status={status} />
+        <div className="top-end">
+          <button
+            type="button"
+            className={`questions-count${questions.length ? " waiting" : ""}`}
+            aria-expanded={questionsShown}
+            aria-controls="questions"
+            aria-label={`Questions, ${questions.length} open`}
+            title={questionsShown ? "Hide the Questions list" : "Show the Questions list"}
+            onClick={() => showQuestions(!questionsShown)}
+          >
+            Questions<b>{questions.length}</b>
+          </button>
+          <LeadMenu harnesses={harnesses} status={status} />
+        </div>
       </header>
       <main className="shell">
-        <LeadPanel status={status} />
+        <LeadPanel status={status} conversation={conversation} questions={questionsShown ? questions : null} board={board} />
         {page === "stats"
           ? <Side title="Stats" lede="Merged PRs and issues defined per day will show here, counted from what nico-agent has seen." />
-          : <Side title="Repos" lede="Your Repos and the work in them will show here." />}
+          : <ReposPane board={board} />}
       </main>
     </>
   );

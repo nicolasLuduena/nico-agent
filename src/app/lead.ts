@@ -1,6 +1,7 @@
 import type { Authored } from "../conversation";
 import type { ProposalStatus, SourceWrite } from "../proposals";
 import { type HarnessesJson, type LaunchChoice, advanceReport, launchChoice } from "./actions";
+import type { BoardJson } from "./board";
 
 /**
  * A Proposal as `nico-agent proposals --all --json` lists it: its action as
@@ -170,6 +171,19 @@ export function cards({ entries, proposals, sends }: Conversation): Card[] {
   return timeline;
 }
 
+/** An item of the Questions list: a question of the Lead's or one of its Proposals, as its card in the conversation. */
+export type OpenItem = Extract<Card, { kind: "question" | "proposal" }>;
+
+/**
+ * The Questions list: every question of the Lead's not answered yet and
+ * every Proposal not decided, oldest first. An answer on its way takes its
+ * question off the list at once; one not sent puts it back.
+ */
+export function openItems(conversation: Conversation): OpenItem[] {
+  return cards(conversation).filter((c): c is OpenItem =>
+    (c.kind === "question" && !c.answer) || (c.kind === "proposal" && c.status === "open"));
+}
+
 /** A message's marks when it was spoken: that it was, and what was heard when the Scribe changed it. */
 function spoken(text: string, raw: string | undefined) {
   if (raw === undefined) return {};
@@ -194,6 +208,15 @@ export function proposalLines({ outcome }: Pick<ProposalJson, "outcome">): { tex
 /** `say`'s arguments: the text after `--`, so it is never read as a flag; a spoken message or answer keeps what was heard. */
 export function sayArgs(text: string, question?: number, raw?: string): string[] {
   return [...(question !== undefined ? ["--answer", String(question)] : []), ...(raw !== undefined ? ["--raw", raw] : []), "--", text];
+}
+
+/**
+ * What the Research button sends the Lead, as the user's message: the
+ * question after the mark the Lead's `RESEARCH.md` reads as a research
+ * request, and the Repo on a line of its own when one is named.
+ */
+export function researchMessage(question: string, repo = ""): string {
+  return `Research request: ${question.trim()}${repo.trim() ? `\nRepo: ${repo.trim()}` : ""}`;
 }
 
 /** `proposals decline`'s arguments, the reason only when one was given. */
@@ -248,16 +271,21 @@ export interface Notice {
 
 /**
  * Everything wrong at once, in the one quiet place above the conversation: `serve`
- * lost (`failure`), the Lead not running or failed and its launch's warnings,
- * and voice failing (`talk`). Nothing while the Lead's status is still loading.
+ * lost (`failure`), the Board unreadable or GitHub rate limited, the Lead not
+ * running or failed and its launch's warnings, and voice failing (`talk`).
+ * Nothing while the Lead's status is still loading.
  */
-export function notices({ failure, status, talk }: {
+export function notices({ failure, status, talk, board }: {
   failure: string | null | undefined;
   status: LeadStatusJson | null;
   talk: { error: string; help: string[] } | null;
+  /** The Board the Repos pane reads; a Repo's own failure shows on its row instead. */
+  board?: BoardJson | null;
 }): Notice[] {
   const shown: Notice[] = [];
   if (failure) shown.push({ key: "serve", text: failure, help: [] });
+  if (board?.error) shown.push({ key: "board", text: `The Repos could not be read: ${board.error}`, help: board.help ?? [] });
+  if (board?.warning) shown.push({ key: "board-warning", text: board.warning, help: [] });
   if (status?.failure) {
     shown.push({ key: "lead", text: `The Lead failed at ${status.failure.step}: ${status.failure.error}`, help: ["Start it again from Lead in the header"] });
   } else if (status && status.lead !== "running" && status.lead !== "starting") {

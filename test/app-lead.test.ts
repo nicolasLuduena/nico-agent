@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 import type { HarnessesJson } from "../src/app/actions";
 import {
-  type Conversation, type LeadStatusJson, type ProposalJson, cards, declineArgs, leadChoice, leadControl, leadStartArgs, followsNewEntries, notices, proposalLines, reduce, sayArgs,
+  type Conversation, type LeadStatusJson, type ProposalJson, cards, declineArgs, leadChoice, openItems, leadControl, leadStartArgs, followsNewEntries, notices, proposalLines, reduce, researchMessage, sayArgs,
 } from "../src/app/lead";
 import { setup } from "./harness";
 
@@ -107,6 +107,45 @@ describe("the conversation's cards", () => {
   });
 });
 
+describe("the Questions list", () => {
+  test("every open question and Proposal, oldest first; answered and decided ones leave it", async () => {
+    const { cli, loaded } = withLead();
+    await cli("lead", "ask", "Which first?", "billing", "search");
+    await cli("lead", "say", "Meanwhile, a thought");
+    await cli("lead", "propose", "--reason", "It is next in the Queue", "advance");
+    await cli("lead", "ask", "Anything else?");
+    await cli("lead", "propose", "--reason", "Then this", "advance");
+    expect(openItems(await loaded())).toMatchObject([
+      { kind: "question", id: 1, text: "Which first?", choices: ["billing", "search"] },
+      { kind: "proposal", id: 1, reason: "It is next in the Queue" },
+      { kind: "question", id: 3, text: "Anything else?" },
+      { kind: "proposal", id: 2, reason: "Then this" },
+    ]);
+
+    await cli("say", "--answer", "1", "billing");
+    await cli("proposals", "decline", "2", "Not yet");
+    await cli("proposals", "approve", "1");
+    expect(openItems(await loaded())).toMatchObject([{ kind: "question", id: 3 }]);
+    // They stay in the chat, answered and decided.
+    expect(cards(await loaded()).filter((c) => c.kind !== "message")).toHaveLength(4);
+  });
+
+  test("an answer sent from the list takes its question off at once, and is the answer the chat sends; one not sent puts it back", async () => {
+    const { cli, loaded, post } = withSay();
+    await cli("lead", "ask", "Which first?", "billing", "search");
+    await cli("lead", "ask", "Anything else?");
+    const answering = reduce(await loaded(), { type: "send", key: "s1", text: "billing", question: 1, at: NOW });
+    expect(openItems(answering)).toMatchObject([{ kind: "question", id: 2 }]);
+
+    const refused = reduce(answering, { type: "failed", key: "s1", error: "Could not reach nico-agent serve; try again." });
+    expect(openItems(refused)).toMatchObject([{ kind: "question", id: 1, failure: { text: "billing" } }, { kind: "question", id: 2 }]);
+
+    await post(sayArgs("billing", 1));
+    expect(cards(await loaded())[0]).toMatchObject({ kind: "question", id: 1, answer: { text: "billing" } });
+    expect(openItems(await loaded())).toMatchObject([{ kind: "question", id: 2 }]);
+  });
+});
+
 describe("optimistic sends", () => {
   test("a message shows at once, then stays one card once the log has it", async () => {
     const { cli, loaded, post } = withSay();
@@ -168,6 +207,19 @@ describe("what the panel posts", () => {
     expect(sayArgs("Billing", 4, "the first one")).toEqual(["--answer", "4", "--raw", "the first one", "--", "Billing"]);
     expect(declineArgs(3, "  ")).toEqual(["3"]);
     expect(declineArgs(3, "Finish billing first")).toEqual(["3", "--", "Finish billing first"]);
+  });
+
+  test("a research request is the question after the research mark, with the Repo when one is named", () => {
+    expect(sayArgs(researchMessage("How does codex load skills?"))).toEqual(["--", "Research request: How does codex load skills?"]);
+    expect(sayArgs(researchMessage("  How does codex load skills?\n", " acme/api "))).toEqual(["--", "Research request: How does codex load skills?\nRepo: acme/api"]);
+    expect(sayArgs(researchMessage("--help, or not?", "  "))).toEqual(["--", "Research request: --help, or not?"]);
+  });
+
+  test("a research request reaches the Lead as the user's message, and shows in the conversation like any other", async () => {
+    const { loaded, post } = withSay();
+    const text = researchMessage("How does codex load skills?", "acme/api");
+    const { said } = await post(sayArgs(text));
+    expect(cards(await loaded())).toEqual([{ kind: "message", key: `entry-${said}`, who: "user", text, at: expect.any(String) }]);
   });
 
   test("a spoken message keeps what was heard, so the entry carries the raw transcript", () => {
@@ -274,6 +326,16 @@ describe("the one quiet place for warnings", () => {
       { key: "serve", text: "Lost nico-agent serve; reconnecting.", help: [] },
       { key: "lead-warning-0", text: "the shaping skill x is left out", help: [] },
       { key: "voice", text: "The voice service is down", help: ["Typing still works"] },
+    ]);
+  });
+
+  test("a rate-limited GitHub or a Board that could not be read shows here; a Repo's own failure stays on its row", () => {
+    const warning = "GitHub rate limit exceeded; nico-agent asks it again at 2026-10-09T19:00:00.000Z";
+    expect(notices({ failure: null, status: RUNNING, talk: null, board: { warning, errors: [{ repo: "acme/api", error: "not found" }] } })).toEqual([
+      { key: "board-warning", text: warning, help: [] },
+    ]);
+    expect(notices({ failure: null, status: RUNNING, talk: null, board: { error: "config.json is not valid JSON", help: ["Fix or delete the file and run `nico-agent repo add` again"] } })).toEqual([
+      { key: "board", text: "The Repos could not be read: config.json is not valid JSON", help: ["Fix or delete the file and run `nico-agent repo add` again"] },
     ]);
   });
 });

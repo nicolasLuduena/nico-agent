@@ -160,11 +160,11 @@ One colour per Stage, so a Stage is recognisable wherever it appears. Each is us
 Every text pair is checked against WCAG AA (4.5:1) in both schemes: ink, muted ink, link and each Stage hue on surface; muted ink and link on fill; white on the accent and its hover; failed on fill. The accent itself as a graphic (dots, focus ring, edges) needs 3:1 and has it.
 
 ### Named Rules
-**The One Accent Rule.** Blue is the only colour that asks to be pressed or looked at. It fills only the primary action of its group: Send in the composer, Approve on a Proposal, Save in the drawer, Start in the Lead menu; never two in one group.
+**The One Accent Rule.** Blue is the only colour that asks to be pressed or looked at. It fills only the primary action of its group: Send in the composer, Approve on a Proposal, Save in the drawer, Start in the Lead menu, Send to the Lead in the Research box; never two in one group.
 
 **The Stage Owns Its Hue Rule.** Orange, green, indigo, red and grey mean Implementing, PR ready, Review launched, Failed and unknown wherever a Stage is shown. Their only other uses are the ones listed above: orange for the notices, green for a done agent, red for errors and Close on hover.
 
-**The Magenta Means Waiting Rule.** Magenta marks an agent waiting on the user, and nothing else.
+**The Magenta Means Waiting Rule.** Magenta marks an agent waiting on the user (an Asking Implementer, its count and its question's edge), and nothing else.
 
 ## Typography
 
@@ -186,37 +186,44 @@ Every text pair is checked against WCAG AA (4.5:1) in both schemes: ink, muted i
 
 ## Layout
 
-- **Header:** 52px, sticky, translucent (the ground at 80% in light, black at 72% in dark, with a 20px blur and 180% saturation), a hairline under it. The brand, then the pages (**Lead**, **Stats**) as pill links, the current one on fill, then at the far end the Lead's button.
+- **Header:** 52px, sticky, translucent (the ground at 80% in light, black at 72% in dark, with a 20px blur and 180% saturation), a hairline under it. The brand, then the pages (**Lead**, **Stats**) as pill links, the current one on fill, then at the far end the Questions count and the Lead's button.
 - **Shell:** a grid of the Lead panel (the rest of the width) and the right column (20 to 28rem), 1.5rem apart and 1.5rem from the edges, at most 88rem wide, filling the window under the header. Each column is a panel.
-- **Lead panel:** a column of the bar (Lead, the Voice switch, the drawer's button), the notices when there are any, the conversation (which scrolls) or the drawer, and the composer, which stays at the foot.
-- **Narrow window (900px and below):** one column, the Lead panel first and as tall as the window, then the right column below it. Under 560px the brand hides, the talk button narrows to 5.5rem beside the text field, and fields use 16px text so a phone does not zoom.
+- **Lead panel:** a column of the bar (Lead, the Voice switch, the Research button, the drawer's button), the notices when there are any, the Questions list when it holds anything and is shown, the conversation (which scrolls) or the drawer, and the composer, which stays at the foot.
+- **Narrow window (900px and below):** one column, the Lead panel first and as tall as the window, then the right column below it. The Research box keeps 1rem from the panel's edge. Under 560px the brand hides, the talk button narrows to 5.5rem beside the text field, the Research box spans the panel less 1rem each side, and fields use 16px text so a phone does not zoom.
 - **Pages:** `#/` is the Lead page, `#/stats` the Stats page; the Lead panel stays on both.
 
 ## Elevation & Depth
 
-Flat. Panels sit on the ground by tone alone. The only shadow is the Lead menu's, a soft lift (0 4px 24px at 8%, with a 1px contact shadow) that in dark becomes a deeper shadow with a rule-coloured ring.
+Flat. Panels sit on the ground by tone alone. The only shadow is the one on the boxes a button opens (the Lead menu and the Research box), a soft lift (0 4px 24px at 8%, with a 1px contact shadow) that in dark becomes a deeper shadow with a rule-coloured ring.
 
 ## Shapes
 
-Panels 18px; the Lead menu 16px; question and Proposal cards and the user's bubble 14 to 18px; fields 12px (the composer's 22px); selects 10px; chips 6px; buttons, page links, the talk button (48px tall) and Agent blocked are pills. Dots are 6 to 8px circles. Dividers are 1px hairlines.
+Panels 18px; the Lead menu and the Research box 16px; question and Proposal cards and the user's bubble 14 to 18px; fields 12px (the composer's 22px); selects 10px; chips 6px; buttons, page links, the talk button (48px tall) and Agent blocked are pills. Dots are 6 to 8px circles. Dividers are 1px hairlines.
 
 ## Motion
 
-Subtle and short. A new card arrives with a 240ms fade and a 6px lift; the Lead menu appears with a 200ms fade and a 4px drop; colours and switches ease over 160 to 200ms on `cubic-bezier(0.25, 0.1, 0.25, 1)`. Nothing loops or pulses. Under `prefers-reduced-motion` every animation and transition is off.
+Subtle and short. A new card arrives with a 240ms fade and a 6px lift; the Lead menu and the Research box appear with a 200ms fade and a 4px drop; colours and switches ease over 160 to 200ms on `cubic-bezier(0.25, 0.1, 0.25, 1)`. Nothing loops or pulses. Under `prefers-reduced-motion` every animation and transition is off.
 
 ## Components
 
 ### Buttons
 - **Default:** a fill pill, 32px tall, 14px/500. Hover deepens the fill. Disabled is 45% opacity.
 - **Primary (Send, Start, Approve, Save):** an accent pill with white text; hover darkens it.
-- **Quiet ("Intent & orders"):** link-coloured text, no fill until hovered.
+- **Quiet ("Research", "Intent & orders"):** link-coloured text, no fill until hovered.
 - **Close / Stop:** a default pill whose text turns failed red on hover.
 
 ### Header and the Lead menu
 - The Lead's button at the header's end shows where the Lead stands as an Agent State ("Lead idle", "Lead working") or, not running, its status ("Lead not running", "Lead Failed at agent start") beside a dashed dot; why it failed shows in the notices. It opens the Lead menu below it: the launch the Lead runs on, the Harness, Model and Effort selects with their labels, and Start (or Restart) in the accent and Stop. Opening it moves focus into it; Escape, a click elsewhere or focus leaving it closes it, Escape returning focus to the button.
 
+### Questions count and list
+- **Count:** in the header on every page, a quiet pill reading **Questions** with the number of open questions and Proposals in a small round badge: on fill at zero, filled with the accent while anything waits on the user. It shows or hides the list.
+- **List:** under the Lead panel's bar, every open question and Proposal of the Lead's, oldest first, as the same waiting cards the conversation shows (Source writes at most 8rem tall), at most 40% of the panel and scrolling on its own, a hairline under it. Each is answered, approved or declined right there; an answer takes its question off at once (it comes back, with why, if it was not sent). An answered or decided item leaves the list and stays in the conversation, focus passing to the next item. Clicking an item away from its controls, or its quiet **Show in conversation**, closes the drawer and scrolls the conversation to the card, which takes focus and an accent ring until focus moves on.
+
+### Repos pane
+The Lead page's right column: under its **Repos** title, a row per configured Repo in config order, divided by hairlines. A row is a full-width button: a chevron (turning a quarter while open), the Repo's slug in mono, and at its end the summary in muted 13px: "2 In flight", "1 Asking" as the magenta Agent blocked pill, "Held" in failed red, "Could not load" in failed red, or "Idle" with nothing on it. Clicking it, or Enter or Space on it, expands it in place, and which Repos are expanded is remembered in the browser across reloads. Expanded, it lists under small uppercase labels: **In flight**, each Dispatch's issue link with its Stage, its Implementer's Agent State and its PR link, and an Asking Implementer's question in a mono box on the ground with a 3px magenta edge; **Held**, each Held Spec with its reason; **Starts next**, each running Spec's next issue with the Spec it belongs to; and **Queue**, the Repo's Queue numbered in start order. A Repo whose read failed says why in failed red. The pane reads the Board on load and on every Board-changed event, through `serve`'s one-minute cache; a Board that cannot be read at all, or a rate-limited GitHub, shows in the notices.
+
 ### Notices
-The one quiet place for warnings, under the Lead panel's bar: serve unreachable, the Lead not running or failed (with where to start it), the Lead's launch warnings, and voice failing (the service down, the microphone blocked). A strip tinted 8% Implementing orange, each line a small orange dot, the warning in ink and its help in muted ink, 13px. It shows only while something is wrong.
+The one quiet place for warnings, under the Lead panel's bar: serve unreachable, the Board unreadable or GitHub rate limited, the Lead not running or failed (with where to start it), the Lead's launch warnings, and voice failing (the service down, the microphone blocked). A strip tinted 8% Implementing orange, each line a small orange dot, the warning in ink and its help in muted ink, 13px. It shows only while something is wrong.
 
 ### Conversation
 - The Lead's messages sit on the surface, unboxed, left; the user's are a fill bubble (18px corners) on the right. Each leads with its byline: who, the time, then a muted note ("sending…", "spoke", "asks", "corrects", "corrected below").
@@ -230,6 +237,9 @@ The one quiet place for warnings, under the Lead panel's bar: serve unreachable,
 
 ### Composer
 At the Lead panel's foot, always. The text field (a 22px-cornered box on the ground, which takes the accent's border while focused, with Send inside it at its end) and the **Talk** button (a 48px fill pill with a drawn microphone, at least 8.5rem wide) sit side by side as equals. Enter sends, Shift+Enter breaks the line; the draft is the composer's own, so arriving entries never touch it. Talk is held or tapped (see `docs/voice.md`); while it records it fills with the accent. Above the row, the talk status shows only during a conversation by voice: a dot (filled while someone is heard, outlined while the Lead thinks), **Listening**, **Thinking** or **Speaking**, a muted note or what is heard in italic, and Stop or End.
+
+### Research box
+"Research" drops a box from the Lead bar over the conversation, as wide as the panel allows (24rem at most), raised like the Lead's controls: the question (Enter sends, Shift+Enter a new line), an optional Repo, a muted line saying the Lead writes the issue, and Send to the Lead (primary) and Cancel. Opening it focuses the question; Escape, Cancel, a click elsewhere or focus leaving it closes it with the draft kept; sending closes it, and the message shows in the conversation like any other.
 
 ### Drawer
 "Intent & orders" swaps the conversation for the drawer; the composer stays. Tabs (Intent, Notes, Standing orders) are pills, the selected one on fill; one with an unsaved edit carries a 6px accent dot. The arrow keys, Home and End move between them. Intent and Notes are a Markdown textarea that fills the tab, with a foot of status, Revert and Save (primary). A change made meanwhile shows above the textarea as a waiting card with Keep my edit and Use this instead. Standing orders are rows of switches divided by hairlines, each with what it lets the Lead do in muted text.

@@ -132,6 +132,29 @@ describe("serve ticks", () => {
     expect(asked()).toBe(2);
   });
 
+  test("opening the app, Repos pane and all, asks GitHub only for serve's cached Board read", async () => {
+    const { cli, world } = setup();
+    world.addClone("/src/api", "git@github.com:acme/api.git");
+    await cli("repo", "add", "acme/api", "--path", "/src/api");
+    world.addIssue("acme/api", { number: 7, title: "Add retries" });
+    expect((await cli("serve")).exitCode).toBe(0);
+    const github = () => world.calls.filter((c) => c.startsWith("github"));
+    const get = (path: string) => world.server!.handler(new Request(`http://127.0.0.1:42069${path}`));
+    expect((await get("/api/board")).status).toBe(200);
+    const boardRead = github();
+    world.calls.length = 0;
+
+    // The page's reads on load, then again on the Board-changed events of the next ticks.
+    const page = ["/api/board", "/api/harnesses", "/api/lead/status", "/api/lead/log", "/api/proposals", "/api/voice/state", "/api/intent", "/api/notes", "/api/orders"];
+    for (const path of page) expect((await get(path)).status).toBe(200);
+    for (let tick = 0; tick < 5; tick++) {
+      await world.tick(10_000);
+      expect((await get("/api/board")).status).toBe(200);
+    }
+    expect(boardRead.length).toBeGreaterThan(0);
+    expect(github()).toEqual([]);
+  });
+
   test("serve's advance reads GitHub through the Board's cache", async () => {
     const { cli, world, configDir } = setup();
     world.addClone("/src/api", "git@github.com:acme/api.git");
