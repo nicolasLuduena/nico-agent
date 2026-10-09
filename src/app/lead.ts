@@ -95,9 +95,10 @@ export function reduce(state: Conversation, event: ConversationEvent): Conversat
   }
 }
 
-/** An answer as its question's card shows it: given, on its way, or not sent. */
+/** An answer as its question's card shows it: given, on its way, or not sent; with what was heard, when it was spoken and differs. */
 export interface ShownAnswer {
   text: string;
+  raw?: string;
   sending?: boolean;
 }
 
@@ -128,7 +129,7 @@ export type Card =
  */
 export function cards({ entries, proposals, sends }: Conversation): Card[] {
   const superseded = new Set(entries.flatMap((e) => (e.type === "user" && e.supersedes !== undefined ? [e.supersedes] : [])));
-  const answers = new Map(entries.flatMap((e) => (e.type === "answer" ? [[e.question, e.text] as const] : [])));
+  const answers = new Map(entries.flatMap((e) => (e.type === "answer" ? [[e.question, e] as const] : [])));
   const answering = (question: number) => sends.find((s) => s.question === question);
   const timeline: Card[] = [];
   let next = 0;
@@ -154,7 +155,8 @@ export function cards({ entries, proposals, sends }: Conversation): Card[] {
     }
     const given = answers.get(e.id);
     const send = answering(e.id);
-    const answer = given !== undefined ? { text: given } : send && !send.error ? { text: send.text, sending: true } : undefined;
+    const shown = ({ text, raw }: { text: string; raw?: string | undefined }) => ({ text, ...(raw !== undefined && raw !== text && { raw }) });
+    const answer = given ? shown(given) : send && !send.error ? { ...shown(send), sending: true } : undefined;
     timeline.push({
       kind: "question", key, id: e.id, text: e.text, choices: e.choices ?? [], at: e.at, answer,
       ...(!answer && send?.error && { failure: { key: send.key, text: send.text, error: send.error } }),
@@ -189,9 +191,9 @@ export function proposalLines({ outcome }: Pick<ProposalJson, "outcome">): { tex
   return Object.entries(outcome).flatMap(([key, value]) => (typeof value === "string" ? [{ text: `${key}: ${value}`, error: false }] : []));
 }
 
-/** `say`'s arguments: the text after `--`, so it is never read as a flag; a spoken message keeps what was heard. */
+/** `say`'s arguments: the text after `--`, so it is never read as a flag; a spoken message or answer keeps what was heard. */
 export function sayArgs(text: string, question?: number, raw?: string): string[] {
-  return [...(question !== undefined ? ["--answer", String(question)] : raw !== undefined ? ["--raw", raw] : []), "--", text];
+  return [...(question !== undefined ? ["--answer", String(question)] : []), ...(raw !== undefined ? ["--raw", raw] : []), "--", text];
 }
 
 /** `proposals decline`'s arguments, the reason only when one was given. */

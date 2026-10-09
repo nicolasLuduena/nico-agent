@@ -6,6 +6,7 @@ import { type EventName, Events } from "./events";
 import { loadConfig, standingOrders } from "./config";
 import { leadStatus } from "./lead";
 import { RECORDS } from "./records";
+import { speaker } from "./speech";
 import { transcriptionSession } from "./transcription";
 import type { Sockets, World } from "./world";
 
@@ -23,7 +24,7 @@ export interface WebContext {
 /**
  * A look at what the Lead panel shows besides the Board: each call sends
  * `conversation-entry`, `proposal-changed`, `lead-state`, or the drawer's
- * `intent-changed`, `notes-changed` or `orders-changed` for what changed
+ * `intent-changed`, `notes-changed` or `orders-changed`, or `voice-changed` for what changed
  * since the last, whoever changed it (the app, the Lead through MCP, the CLI,
  * an editor, or herdr for the Lead's Agent state).
  */
@@ -40,6 +41,7 @@ export function lookAtLead({ world, configDir }: { world: World; configDir: stri
   const watched: [EventName, () => string | Promise<string>][] = [
     ["conversation-entry", file("conversation.jsonl")],
     ["proposal-changed", file("proposals.json")],
+    ["voice-changed", file("voice-on.json")],
     ["lead-state", async () => {
       const status = await leadStatus(world, configDir);
       if (!status) return "";
@@ -99,6 +101,7 @@ export function webHandler(context: WebContext) {
   return async (request: Request): Promise<Response> => {
     const { pathname } = new URL(request.url);
     if (pathname === "/api/events" && request.method === "GET") return events.stream(request.signal);
+    if (pathname === TALK_PATH && request.method === "POST") return talk(events, request);
     const changes = await changesBoard(request, pathname);
     try {
       return await handle(request);
@@ -113,12 +116,50 @@ export function webHandler(context: WebContext) {
   };
 }
 
-/** What `serve` answers on WebSockets: the app's talk button streams audio to `/api/voice` and hears transcripts back. */
-export function webSockets(context: Pick<WebContext, "world" | "configDir" | "runCli">): Sockets {
+/**
+ * What `serve` answers on WebSockets: on `/api/voice` the app's talk button
+ * streams audio and hears transcripts back, and, with Voice on, the app hears
+ * the Lead speak each entry it writes, as `events` tells of new ones.
+ */
+export function webSockets(context: Pick<WebContext, "world" | "configDir" | "runCli" | "events">): Sockets {
   const transcription = transcriptionSession(context);
+  const speech = speaker(context);
+  context.events?.on("conversation-entry", () => speech.changed());
   return {
-    "/api/voice": (request) => (fromAnotherSite(request) ? apiError(403, "only the app itself can listen") : transcription),
+    "/api/voice": (request) => {
+      if (fromAnotherSite(request)) return apiError(403, "only the app itself can listen");
+      return (peer) => {
+        const talk = transcription(peer);
+        speech.join(peer);
+        return {
+          message(data) {
+            if (typeof data === "string" && (parseJson(data) as { type?: unknown } | null)?.type === "hush") return speech.hush();
+            talk.message(data);
+          },
+          close() {
+            speech.leave(peer);
+            talk.close();
+          },
+        };
+      };
+    },
   };
+}
+
+/** Where `nico-agent voice talk` asks `serve` to start the open page's talk button. */
+export const TALK_PATH = "/api/voice/talk";
+
+/** Press the talk button of the page that connected last, as a tap; refused when no page is open. */
+function talk(events: Events, request: Request) {
+  if (fromAnotherSite(request)) return apiError(403, "only the app itself or the CLI can start the microphone");
+  if (!events.command("listen")) {
+    const { origin } = new URL(request.url);
+    return apiError(422, "no app is open to listen", [`Open ${origin}/ in a browser, allow the microphone and click once on the page; then run \`nico-agent voice talk\` again`]);
+  }
+  return new Response(JSON.stringify({
+    listen: "sent",
+    help: ["The app's talk button listens hands-free; run `nico-agent voice talk` again to send at once, or to end the session"],
+  }), { headers: JSON_HEADERS });
 }
 
 /** Whether a browser says another site's page sent `request`: only the app's own page may act or listen. */
@@ -154,6 +195,8 @@ const API_ACTIONS: Record<string, string[]> = {
   "/api/intent/set": ["intent", "set"],
   "/api/notes/set": ["notes", "set"],
   "/api/orders/set": ["orders", "set"],
+  "/api/voice/on": ["voice", "on"],
+  "/api/voice/off": ["voice", "off"],
 };
 
 /** What the app reads, with GET, by its `/api` path: each the CLI command of the same words. */
@@ -167,6 +210,7 @@ const API_READS: Record<string, string[]> = {
   "/api/intent": ["intent"],
   "/api/notes": ["notes"],
   "/api/orders": ["orders"],
+  "/api/voice/state": ["voice"],
 };
 
 const API_HELP = `Post {"args": [...]} to one of ${Object.keys(API_ACTIONS).join(", ")}`;
@@ -202,8 +246,8 @@ function parseJson(text: string): unknown {
   }
 }
 
-function apiError(status: number, error: string) {
-  return new Response(JSON.stringify({ error, help: [API_HELP] }), { status, headers: JSON_HEADERS });
+function apiError(status: number, error: string, help = [API_HELP]) {
+  return new Response(JSON.stringify({ error, help }), { status, headers: JSON_HEADERS });
 }
 
 /**

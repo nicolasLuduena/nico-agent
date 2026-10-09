@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { type Listening, type Talk, type TalkEvent, LISTENING, level, listen, resampler, talk } from "../src/app/talk";
+import { type Listening, type Talk, type TalkEvent, LISTENING, bargesIn, ends, indicator, level, listen, pcmSamples, resampler, talk } from "../src/app/talk";
+
+/** A talk button state as these tests name it: its mode, and "(session)" in a hands-free session. */
+const named = (state: Talk) => ("session" in state && state.session ? `${state.mode} (session)` : state.mode);
 
 /** The talk button's states after each of `events`, with what each told the socket to do. */
 function run(events: TalkEvent[], from: Talk = { mode: "idle" }) {
@@ -7,7 +10,7 @@ function run(events: TalkEvent[], from: Talk = { mode: "idle" }) {
   return events.map((event) => {
     const next = talk(state, event);
     state = next.state;
-    return [next.state.mode, next.send ?? null];
+    return [named(next.state), next.send ?? null];
   });
 }
 
@@ -20,29 +23,29 @@ describe("the talk button", () => {
     ]);
   });
 
-  test("tapped, it listens hands-free until a pause ends the utterance", () => {
+  test("tapped, it starts a hands-free session: a pause sends the utterance, and it keeps listening", () => {
     expect(run([{ type: "press", at: 0 }, { type: "release", at: 150 }, { type: "pause" }, { type: "final" }])).toEqual([
       ["holding", "start"],
-      ["hands-free", null],
-      ["transcribing", "end"],
-      ["idle", null],
+      ["hands-free (session)", null],
+      ["transcribing (session)", "end"],
+      ["watching (session)", null],
     ]);
   });
 
   test("hands-free, a second tap sends at once, and its release does nothing", () => {
     expect(run([{ type: "press", at: 0 }, { type: "release", at: 150 }, { type: "press", at: 3000 }, { type: "release", at: 3100 }])).toEqual([
       ["holding", "start"],
-      ["hands-free", null],
-      ["transcribing", "end"],
-      ["transcribing", null],
+      ["hands-free (session)", null],
+      ["transcribing (session)", "end"],
+      ["transcribing (session)", null],
     ]);
   });
 
-  test("hands-free with nothing said, it gives up without sending", () => {
+  test("hands-free with nothing said, it drops the utterance without sending and keeps listening", () => {
     expect(run([{ type: "press", at: 0 }, { type: "release", at: 100 }, { type: "nothing" }])).toEqual([
       ["holding", "start"],
-      ["hands-free", null],
-      ["idle", "cancel"],
+      ["hands-free (session)", null],
+      ["watching (session)", "cancel"],
     ]);
   });
 
@@ -69,6 +72,137 @@ describe("the talk button", () => {
       ["holding", "start"],
       ["holding", null],
     ]);
+  });
+});
+
+describe("a hands-free session", () => {
+  const SESSION: Talk = { mode: "watching", session: true };
+
+  test("user speaks, the Lead answers, the user speaks again, touching nothing", () => {
+    expect(run([
+      { type: "lead-speaks" }, { type: "lead-done" },
+      { type: "barge" }, { type: "pause" }, { type: "final" },
+    ], SESSION)).toEqual([
+      ["watching (session)", null],
+      ["watching (session)", null],
+      ["hands-free (session)", "start"],
+      ["transcribing (session)", "end"],
+      ["watching (session)", null],
+    ]);
+  });
+
+  test("the user can talk over the Lead, or start again while the last utterance is transcribed", () => {
+    expect(run([{ type: "lead-speaks" }, { type: "barge" }], SESSION)).toEqual([["watching (session)", null], ["hands-free (session)", "start"]]);
+    expect(run([{ type: "barge" }], { mode: "transcribing", session: true })).toEqual([["hands-free (session)", "start"]]);
+  });
+
+  test("a tap while nobody talks ends it; once ended, the last transcript still comes, and the Lead's voice is only watched", () => {
+    expect(run([{ type: "press", at: 0 }, { type: "release", at: 100 }], SESSION)).toEqual([["idle", null], ["idle", null]]);
+    expect(run([{ type: "press", at: 0 }, { type: "final" }], { mode: "transcribing", session: true })).toEqual([["transcribing", null], ["idle", null]]);
+  });
+
+  test("a tap ends it only while nobody talks", () => {
+    expect(ends(SESSION)).toBe(true);
+    expect(ends({ mode: "transcribing", session: true })).toBe(true);
+    expect(ends({ mode: "hands-free", session: true })).toBe(false);
+    expect(ends({ mode: "watching" })).toBe(false);
+  });
+
+  test("a failure ends it", () => {
+    expect(run([{ type: "failed" }], SESSION)).toEqual([["idle", null]]);
+  });
+
+  test("talking over the Lead outside a session sends that one utterance, then stops", () => {
+    expect(run([{ type: "lead-speaks" }, { type: "barge" }, { type: "pause" }, { type: "final" }])).toEqual([
+      ["watching", null],
+      ["hands-free", "start"],
+      ["transcribing", "end"],
+      ["idle", null],
+    ]);
+  });
+});
+
+describe("the key anywhere (`nico-agent voice talk`)", () => {
+  test("starts a hands-free session from idle, or over the Lead speaking", () => {
+    expect(run([{ type: "key" }])).toEqual([["hands-free (session)", "start"]]);
+    expect(run([{ type: "key" }], { mode: "watching" })).toEqual([["hands-free (session)", "start"]]);
+    expect(run([{ type: "key" }], { mode: "transcribing" })).toEqual([["hands-free (session)", "start"]]);
+  });
+
+  test("again while the user talks, sends at once; held or hands-free", () => {
+    expect(run([{ type: "key" }], { mode: "hands-free", session: true })).toEqual([["transcribing (session)", "end"]]);
+    expect(run([{ type: "key" }], { mode: "holding", since: 0 })).toEqual([["transcribing", "end"]]);
+  });
+
+  test("again while nobody talks, ends the session", () => {
+    expect(run([{ type: "key" }], { mode: "watching", session: true })).toEqual([["idle", null]]);
+    expect(run([{ type: "key" }], { mode: "transcribing", session: true })).toEqual([["transcribing", null]]);
+  });
+});
+
+describe("the indicator", () => {
+  const quiet = { speaking: false, working: false };
+
+  test("shows listening while the user is heard, in a session or recording", () => {
+    expect(indicator({ mode: "holding", since: 0 }, quiet)).toBe("listening");
+    expect(indicator({ mode: "hands-free" }, { speaking: true, working: true })).toBe("listening");
+    expect(indicator({ mode: "watching", session: true }, quiet)).toBe("listening");
+  });
+
+  test("shows speaking while the Lead is heard, over its thinking", () => {
+    expect(indicator({ mode: "watching", session: true }, { speaking: true, working: true })).toBe("speaking");
+    expect(indicator({ mode: "watching" }, { speaking: true, working: false })).toBe("speaking");
+  });
+
+  test("shows thinking while what was said is transcribed or the Lead works on it", () => {
+    expect(indicator({ mode: "transcribing" }, quiet)).toBe("thinking");
+    expect(indicator({ mode: "watching", session: true }, { speaking: false, working: true })).toBe("thinking");
+  });
+
+  test("shows nothing outside a conversation by voice, however busy the Lead", () => {
+    expect(indicator({ mode: "idle" }, { speaking: false, working: true })).toBeNull();
+  });
+});
+
+describe("barge-in, while the Lead speaks", () => {
+  test("the microphone watches for the user's voice, and speech onset starts a hands-free utterance", () => {
+    expect(run([{ type: "lead-speaks" }, { type: "barge" }, { type: "pause" }])).toEqual([
+      ["watching", null],
+      ["hands-free", "start"],
+      ["transcribing", "end"],
+    ]);
+  });
+
+  test("once the Lead is done, or hushed by a tap, it stops watching", () => {
+    expect(run([{ type: "lead-speaks" }, { type: "lead-done" }])).toEqual([["watching", null], ["idle", null]]);
+  });
+
+  test("a press while it watches records as from idle", () => {
+    expect(run([{ type: "lead-speaks" }, { type: "press", at: 0 }, { type: "release", at: 100 }])).toEqual([
+      ["watching", null],
+      ["holding", "start"],
+      ["hands-free (session)", null],
+    ]);
+  });
+
+  test("while the user is recording or waiting on a transcript, the Lead speaking changes nothing", () => {
+    for (const mode of ["holding", "hands-free", "transcribing"] as const) {
+      const from = (mode === "holding" ? { mode, since: 0 } : { mode }) as Talk;
+      expect(run([{ type: "lead-speaks" }, { type: "lead-done" }, { type: "barge" }], from)).toEqual([[mode, null], [mode, null], [mode, null]]);
+    }
+  });
+
+  test("a microphone that fails while watching only stops watching", () => {
+    expect(run([{ type: "failed" }], { mode: "watching" })).toEqual([["idle", null]]);
+  });
+
+  test("speech onset is a fifth of a second of unbroken voice over the room; blips never add up", () => {
+    const onset = (frames: [number, number][]) => {
+      let state: Listening = LISTENING;
+      return frames.map(([l, ms]) => bargesIn((state = listen(state, l, ms).state)));
+    };
+    expect(onset([[QUIET, 100], [SPEECH, 100], [SPEECH, 100]])).toEqual([false, false, true]);
+    expect(onset([[QUIET, 100], [SPEECH, 100], [QUIET, 100], [SPEECH, 100]])).toEqual([false, false, false, false]);
   });
 });
 
@@ -139,5 +273,12 @@ describe("the audio sent", () => {
   test("a batch's level is its root mean square", () => {
     expect(level(Float32Array.from([0.5, -0.5, 0.5, -0.5]))).toBe(0.5);
     expect(level(new Float32Array(0))).toBe(0);
+  });
+});
+
+describe("the Lead's voice as played", () => {
+  test("its 16-bit little-endian PCM becomes samples from -1 to 1", () => {
+    const pcm = new Uint8Array([0x00, 0x00, 0xff, 0x7f, 0x00, 0x80, 0x00, 0x40]).buffer;
+    expect([...pcmSamples(pcm)]).toEqual([0, 32767 / 32768, -1, 0.5]);
   });
 });

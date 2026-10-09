@@ -26,14 +26,14 @@ describe("AXI conventions", () => {
     const { cli } = setup();
     const { stdout, exitCode } = await cli("dispatch-all");
     expect(exitCode).toBe(2);
-    expect(stdout).toStartWith("error: unknown command `dispatch-all`\nhelp[37]:\n  Run `nico-agent [board]` to show Ready issues");
+    expect(stdout).toStartWith("error: unknown command `dispatch-all`\nhelp[41]:\n  Run `nico-agent [board]` to show Ready issues");
   });
 
   test("the retired Scheduler entry points are unknown: `mcp`, `--skill` and `advance --start` (ADR-0009)", async () => {
     const { cli, world } = setup();
     const mcp = await cli("mcp");
     expect(mcp.exitCode).toBe(2);
-    expect(mcp.stdout).toStartWith("error: unknown command `mcp`\nhelp[37]:\n  Run `nico-agent [board]` to show Ready issues");
+    expect(mcp.stdout).toStartWith("error: unknown command `mcp`\nhelp[41]:\n  Run `nico-agent [board]` to show Ready issues");
     expect(await cli("--skill")).toMatchObject({
       stdout: ["error: unknown flag --skill for `board`", "help[1]:", "  Valid flags for `board`: --json, --help", ""].join("\n"),
       exitCode: 2,
@@ -109,7 +109,7 @@ describe("AXI conventions", () => {
       [
         "bin: ~/.local/bin/nico-agent",
         "description: Dispatch coding agents onto ready-for-agent issues",
-        "commands[37]{usage,description}:",
+        "commands[41]{usage,description}:",
         '  "nico-agent [board]",Show Ready issues across all Repos (the default view)',
         "  nico-agent repo add <owner/name> --path <clone>,Add a Repo after checking the path is a clone of it",
         "  nico-agent repo rm <owner/name>,Remove a Repo (its clone is left untouched)",
@@ -132,7 +132,7 @@ describe("AXI conventions", () => {
         '  "nico-agent proposals [--all]","List the Lead\'s open Proposals: what each would run and why"',
         "  nico-agent proposals approve <id>,Run an open Proposal's action in nico-agent and report the outcome; one no longer possible is closed as failed",
         '  "nico-agent proposals decline <id> [reason]","Turn down an open Proposal, telling the Lead why"',
-        '  "nico-agent say [--answer <id> | --raw <transcript>] <text>","Write to the Lead, or answer one of its open questions with --answer"',
+        '  "nico-agent say [--answer <id>] [--raw <transcript>] <text>","Write to the Lead, or answer one of its open questions with --answer"',
         "  nico-agent lead inbox,\"Read the Lead's Inbox: the entries it has not seen, each returned once, with the orient packet (its MCP `inbox` tool)\"",
         "  nico-agent lead say <text>,Write the Lead's reply into the conversation (its MCP `say` tool)",
         '  "nico-agent lead ask <question> [<choice>...]","Ask the user a question for the Lead, with optional choices; it stays open until answered (its MCP `ask` tool)"',
@@ -146,6 +146,10 @@ describe("AXI conventions", () => {
         `  nico-agent lead status,"Show whether the Lead runs, in which workspace, on which Harness, model and Effort, and its Agent state"`,
         `  nico-agent lead stop,"Close the Lead's workspace and forget it, keeping its home and the conversation"`,
         `  nico-agent voice check,"Send each configured voice service a short sample and report whether it answered, what it returned and how long it took"`,
+        `  "nico-agent voice talk [--port <port>]","Start the open app's talk button hands-free, as a tap would: bind it to a key to talk from anywhere; again, it sends what was said, or ends the session"`,
+        `  nico-agent voice,"Show whether Voice is on: the Lead's replies spoken in the app, and the Lead talking for the ear"`,
+        `  nico-agent voice on,"Turn Voice on: the app speaks the Lead's replies, and its Nudge tells the Lead to talk for the ear"`,
+        `  nico-agent voice off,"Turn Voice off: the Lead's replies are only shown, written for the eye"`,
         '  "nico-agent serve [--port <port>]",Start the web app and its MCP server (/mcp) on 127.0.0.1 (port 42069 by default)',
         "help[1]:",
         "  Run `nico-agent <command> --help` for its flags and examples",

@@ -55,6 +55,19 @@ describe("the conversation's cards", () => {
     expect(after[0]).toMatchObject({ kind: "question", id: 1, answer: { text: "billing" } });
   });
 
+  test("a spoken answer shows what was heard beside the choice it picked, and while it is on its way", async () => {
+    const { cli, loaded } = withLead();
+    await cli("lead", "ask", "Which first?", "billing", "search");
+    const answering = reduce(await loaded(), { type: "send", key: "s1", text: "search", question: 1, raw: "the second one", at: NOW });
+    expect(cards(answering)).toMatchObject([{ kind: "question", id: 1, answer: { text: "search", raw: "the second one", sending: true } }]);
+
+    await cli("say", "--answer", "1", "--raw", "the second one", "--", "search");
+    expect(cards(await loaded())).toMatchObject([{ kind: "question", id: 1, answer: { text: "search", raw: "the second one" } }]);
+    await cli("lead", "ask", "And then?", "billing", "search");
+    await cli("say", "--answer", "3", "--raw", "billing", "--", "billing");
+    expect(cards(await loaded())[1]).toEqual(expect.objectContaining({ answer: { text: "billing" } }));
+  });
+
   test("a Proposal is a card in its place in time, with its action, reason and status; its decision is no card of its own", async () => {
     const { cli, loaded } = withLead();
     await cli("say", "Keep going");
@@ -152,6 +165,7 @@ describe("what the panel posts", () => {
   test("a message, an answer and a decline put the text after `--`, so it is never read as a flag", () => {
     expect(sayArgs("--force is fine")).toEqual(["--", "--force is fine"]);
     expect(sayArgs("billing", 4)).toEqual(["--answer", "4", "--", "billing"]);
+    expect(sayArgs("Billing", 4, "the first one")).toEqual(["--answer", "4", "--raw", "the first one", "--", "Billing"]);
     expect(declineArgs(3, "  ")).toEqual(["3"]);
     expect(declineArgs(3, "Finish billing first")).toEqual(["3", "--", "Finish billing first"]);
   });

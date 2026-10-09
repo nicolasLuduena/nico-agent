@@ -1,11 +1,11 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { authored, loadConversation } from "./conversation";
+import { authored, isCorrection, loadConversation } from "./conversation";
 import { ConfigError, VOICE_DOC, type VoiceEndpoint, loadConfig } from "./config";
 import { harnesses } from "./harness";
 import type { CliRunner } from "./mcp";
 import { SAMPLE_RATE } from "./app/talk";
-import { scribe, transcribe, wav } from "./voice";
+import { choose, scribe, transcribe, wav } from "./voice";
 import type { SocketPeer, SocketSession, World } from "./world";
 
 /** How much more audio, in bytes, an interim transcript waits for after the last: a second's. */
@@ -14,9 +14,10 @@ const INTERIM_EVERY = SAMPLE_RATE * 2;
 /**
  * What the app tells `/api/voice`, besides the audio itself as binary
  * messages: an utterance starts, under the number the app gave it; it ends,
- * to be transcribed; or it is dropped.
+ * to be transcribed; or it is dropped. `hush` stops the Lead's speech (see
+ * `speaker`), whatever the utterance does.
  */
-export type VoiceCommand = { type: "start"; utterance: number } | { type: "end" } | { type: "cancel" };
+export type VoiceCommand = { type: "start"; utterance: number } | { type: "end" } | { type: "cancel" } | { type: "hush" };
 
 /** How many of the conversation's last entries the Scribe reads, for context. */
 const RECENT = 4;
@@ -24,11 +25,13 @@ const RECENT = 4;
 /**
  * What `/api/voice` tells the app, each about the utterance it numbered. A
  * final transcript is the Scribe's text, with `raw` what was heard; when the
- * Scribe could not clean it, `text` is the raw and `warning` says why.
+ * Scribe could not clean it, `text` is the raw and `warning` says why. Said
+ * right after the Lead's question, it `answers` that question, and its text
+ * is the choice it picks, if one.
  */
 export type Transcript = { utterance: number } & (
   | { type: "interim"; text: string }
-  | { type: "final"; text: string; raw: string; warning?: { error: string; help: string[] } }
+  | { type: "final"; text: string; raw: string; answers?: number; warning?: { error: string; help: string[] } }
   | { type: "error"; error: string; help: string[] }
 );
 
@@ -81,7 +84,7 @@ export function transcriptionSession(ctx: TranscriptionContext) {
         return failure(utterance.number, answer.error, answer.help);
       }
       if (kind === "interim") return { type: kind, utterance: utterance.number, text: answer.returned };
-      return { type: kind, utterance: utterance.number, ...await clean(ctx, utterance, answer.returned, prompt) };
+      return { type: kind, utterance: utterance.number, ...await answering(ctx, utterance, await clean(ctx, utterance, answer.returned, prompt)) };
     };
 
     const start = (number: number) => {
@@ -146,6 +149,23 @@ async function clean(ctx: TranscriptionContext, utterance: Utterance, raw: strin
   if (words(answer.returned) > words(raw) * 1.5 + 4) return asHeard("the Scribe answered far more than was said", "Check voice.scribe.model, or try a larger one");
   return { text: answer.returned, raw };
 }
+
+/**
+ * `said` as the answer to the Lead's question when that question is the
+ * conversation's last entry: what is said right after it answers it, unless
+ * it is a Correction of the user's last message. A question with choices
+ * takes the one the Scribe finds `said` picks; else what was said, as cleaned.
+ */
+async function answering(ctx: TranscriptionContext, utterance: Utterance, said: Cleaned): Promise<Cleaned & { answers?: number }> {
+  const question = loadConversation(ctx.configDir).at(-1);
+  if (!said.text || question?.type !== "ask" || isCorrection(said)) return said;
+  const choices = question.choices ?? [];
+  const picked = choices.length && utterance.scribe ? await choose(ctx.world, utterance.scribe, { text: question.text, choices }, said.text) : null;
+  return { ...said, ...(picked !== null && { text: choices[picked]! }), answers: question.id };
+}
+
+/** What was said as it is sent: the Scribe's text, else the raw with why. */
+type Cleaned = Awaited<ReturnType<typeof clean>>;
 
 /** How many words `text` has. */
 function words(text: string) {
