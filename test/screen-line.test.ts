@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { meaningfulLine } from "../src/screen-line";
 
-describe("an Implementer's last meaningful screen line", () => {
+describe("an agent's last meaningful screen line", () => {
   test("is the last line with something on it, trimmed", () => {
     expect(meaningfulLine("$ bun test\n 3 pass\n 1 fail  \n\n   \n")).toBe("1 fail");
   });
@@ -25,6 +25,15 @@ describe("an Implementer's last meaningful screen line", () => {
     expect(meaningfulLine("⏺ Running the tests\n\n✻ Thinking… (12s · ↑ 1.2k tokens · esc to interrupt)\n")).toBe("⏺ Running the tests");
     expect(meaningfulLine("Edited src/web.ts\n⠹ Working (3s • esc to interrupt)")).toBe("Edited src/web.ts");
     expect(meaningfulLine("Reading files\n· Pondering…")).toBe("Reading files");
+  });
+
+  test("skips the harness's mode line and hints under its input box", () => {
+    expect(meaningfulLine("Edited src/web.ts\n╭─╮\n│ > │\n╰─╯\n  ⏵⏵ accept edits on (shift+tab to cycle)")).toBe("Edited src/web.ts");
+    expect(meaningfulLine("Ran bun test\n  Context left until auto-compact: 12%")).toBe("Ran bun test");
+  });
+
+  test("keeps a middle-dot bullet that is not a spinner's word", () => {
+    expect(meaningfulLine("Changed:\n· src/web.ts and src/peek.ts")).toBe("· src/web.ts and src/peek.ts");
   });
 
   test("is none for a screen of nothing but chrome", () => {

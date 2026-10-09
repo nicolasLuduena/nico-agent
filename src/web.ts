@@ -94,7 +94,7 @@ export function webHandler(context: WebContext) {
     if (pathname.startsWith("/api/") && request.method === "POST") return await postApi(context, request, pathname);
     if (request.method !== "GET") return new Response("Method Not Allowed\n", { status: 405 });
     const read = API_READS[pathname];
-    if (read) return await cliJson(context, [...read, ...readFlags(pathname, url.searchParams)]);
+    if (read) return await cliJson(context, [...read, ...readArgs(pathname, url.searchParams)]);
     if (pathname === "/preview") return await getPreview(previews, url.searchParams);
     return new Response(`No page at ${pathname}\n`, { status: 404 });
   };
@@ -226,7 +226,7 @@ const API_READ_ARG: Record<string, string> = {
 };
 
 /** `?days=7&repo=acme/api` on `/api/stats` as `--days 7 --repo acme/api`; `?issue=acme/api%237` on `/api/peek` as `-- acme/api#7`. */
-function readFlags(pathname: string, params: URLSearchParams) {
+function readArgs(pathname: string, params: URLSearchParams) {
   const flags = (API_READ_PARAMS[pathname] ?? []).flatMap((name) => {
     const value = params.get(name);
     return value === null ? [] : [`--${name}`, value];

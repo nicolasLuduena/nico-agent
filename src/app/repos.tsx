@@ -118,7 +118,7 @@ function Group({ title, children }: { title: string; children: React.ReactNode }
 }
 
 /** How long a shown Dispatch waits after reading its Implementer's screen before reading it again. */
-const SCREEN_EVERY_MS = 4000;
+const SCREEN_POLL_MS = 4000;
 
 /** Whether the page is shown, not hidden behind another tab or a minimised window. */
 function usePageShown() {
@@ -152,12 +152,14 @@ function useScreenLine(issue: string, reading: boolean) {
       }
       if (!current) return;
       setLine(next);
-      timer = setTimeout(read, SCREEN_EVERY_MS);
+      timer = setTimeout(read, SCREEN_POLL_MS);
     };
     void read();
     return () => {
       current = false;
       clearTimeout(timer);
+      // Not shown again once stale: back on the page, the line waits for a fresh read.
+      setLine(undefined);
     };
   }, [issue, reading]);
   return line;
@@ -165,7 +167,8 @@ function useScreenLine(issue: string, reading: boolean) {
 
 function Dispatch({ line: d }: { line: DispatchLine }) {
   // An Asking Implementer's question already shows its screen.
-  const doing = useScreenLine(d.issue, usePageShown() && !d.question);
+  const asking = Boolean(d.question);
+  const doing = useScreenLine(d.issue, usePageShown() && !asking);
   return (
     <li>
       <IssueLink {...d} />
@@ -175,7 +178,7 @@ function Dispatch({ line: d }: { line: DispatchLine }) {
         {d.pr && <PrLink {...d.pr} />}
       </div>
       {d.question && <pre className="question">{d.question}</pre>}
-      {!d.question && doing && <p className="doing" title={doing}>{doing}</p>}
+      {!asking && doing && <p className="doing" title={doing}>{doing}</p>}
     </li>
   );
 }

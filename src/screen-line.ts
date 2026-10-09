@@ -1,14 +1,17 @@
-/** Box-drawing characters a harness draws its panes and input box with. */
-const BOX = /^[\s\u2500-\u257f]+|[\s\u2500-\u257f]+$/g;
+/** The box-drawing characters, and spaces, at either end of a line: the edges of a harness's panes and input box. */
+const BOX_EDGES = /^[\s\u2500-\u257f]+|[\s\u2500-\u257f]+$/g;
 
 /** An empty prompt: its marker with nothing typed after it. */
 const PROMPT = /^[>›❯$%#]$/;
 
-/** A spinner: a frame of braille dots or Claude Code's stars, or the hint a working harness shows beside one. */
-const SPINNER = /^[\u2800-\u28ff✻✽✶✳✢·◐◓◑◒]\s|\besc to interrupt\b/;
+/**
+ * A spinner: a frame of braille dots or circle quarters, a star or dot beside
+ * its one word ("✻ Thinking…"), or the hint a working harness shows beside one.
+ */
+const SPINNER = /^[\u2800-\u28ff◐◓◑◒]\s|^[✻✽✶✳✢·*]\s+\S+…|\besc to interrupt\b/;
 
-/** A harness's own footer hints under its input box, not work. */
-const HINT = /^\? for shortcuts\b/;
+/** A harness's own footer under its input box, not work: its hints, its mode line, the context it has left. */
+const HINT = /^\? for shortcuts\b|^⏵|\(shift\+tab to cycle\)|^Context left until auto-compact\b/;
 
 /**
  * The last line of an agent's screen that says what it is doing: trimmed of
@@ -18,6 +21,6 @@ const HINT = /^\? for shortcuts\b/;
 export function meaningfulLine(screen: string): string | undefined {
   return screen
     .split("\n")
-    .map((l) => l.replace(BOX, ""))
+    .map((l) => l.replace(BOX_EDGES, ""))
     .findLast((l) => l !== "" && !PROMPT.test(l) && !SPINNER.test(l) && !HINT.test(l));
 }
