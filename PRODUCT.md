@@ -69,7 +69,8 @@ open PR.
   never used to decide Stage.
 - Close is allowed once a Dispatch has a PR. While it is still Implementing,
   Close needs confirmation.
-- Currently built as server-rendered HTML from `src/web.ts` with htmx on Bun.
+- Currently built as a React app (`src/app/`) bundled by Bun into the binary,
+  reading and acting through `serve`'s `/api`, which runs the CLI (ADR 0006).
   This is how it is built today, not a binding commitment.
 
 ## Evidence on Hand

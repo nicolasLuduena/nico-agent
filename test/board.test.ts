@@ -112,6 +112,7 @@ describe("board", () => {
         next: { issue: "acme/web#4", base: "main", reason: "acme/web#4 is the first unblocked issue of acme/web#4; the Spec has no open PR, so it starts from main" } }],
       rooms: [{ repo: "acme/web", running: [], room: 2,
         candidates: [{ spec: "acme/web#4", title: "Fix header", url: "https://github.com/acme/web/issues/4", issue: "acme/web#4" }], queue: [] }],
+      bases: [{ repo: "acme/web", branches: ["main"] }],
       inFlight: "0 Dispatches",
       errors: [{ repo: "acme/api", error: "GitHub is not reachable" }],
       help: [

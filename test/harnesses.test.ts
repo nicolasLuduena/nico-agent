@@ -140,6 +140,8 @@ describe("harness list", () => {
           source: "discovered 2026-09-30T12:00:00.000Z",
         },
       ],
+      // Nothing launched yet, so no last launch to start the app's forms on.
+      remembered: { efforts: {} },
       help: [
         "Run `nico-agent harness refresh` to discover models again",
         "Run `nico-agent dispatch <issue>... --harness <harness> --model <model> --effort <effort>` to dispatch an issue",
@@ -379,94 +381,25 @@ describe("Harness config", () => {
   });
 });
 
-describe("web Harness choices", () => {
-  test("the dispatch form offers every Harness, and the default model's Efforts", async () => {
+describe("Refresh harnesses in the app", () => {
+  test("discovers again, and the app's forms then offer what it found", async () => {
     const { web, world } = await withRepo();
-    world.codexCatalog = CODEX_CATALOG;
-    const { body } = await web("/classic");
-    expect(body).toContain('<select name="harness" hx-get="/dispatch-form" hx-include="closest form" hx-target="closest form" hx-swap="outerHTML"><option selected>claude</option><option>codex</option><option>opencode2</option></select>');
-    expect(body).toContain(
-      '<select name="effort"><option selected>low</option><option>medium</option><option>high</option><option>xhigh</option><option>max</option></select>',
-    );
-    expect(body).toContain('<form method="post" action="/harnesses/refresh" class="refresh"><button>Refresh harnesses</button></form>');
-  });
-
-  test("choosing a Harness and model re-renders the form with only that model's Efforts", async () => {
-    const { web } = await withRepo();
-    const { status, body } = await web("/dispatch-form?issue=acme%2Fapi%237&harness=codex&model=gpt-5.5&effort=ultra");
-    expect(status).toBe(200);
-    expect(body).toStartWith('<form method="post" action="/dispatch" class="dispatch">');
-    expect(body).not.toContain("<html");
-    expect(body).toContain('<input type="hidden" name="issue" value="acme/api#7">');
-    expect(body).toContain('<option selected>codex</option>');
-    expect(body).toContain("<option selected>gpt-5.5</option>");
-    expect(body).toContain(
-      '<select name="effort"><option selected>low</option><option>medium</option><option>high</option><option>xhigh</option></select>',
-    );
-  });
-
-  test("switching Harness falls back to its first model, keeping the Effort when still valid", async () => {
-    const { web } = await withRepo();
-    const { body } = await web("/dispatch-form?issue=acme%2Fapi%237&harness=claude&model=gpt-5.5&effort=high");
-    expect(body).toContain('<select name="model" hx-get="/dispatch-form" hx-include="closest form" hx-target="closest form" hx-swap="outerHTML"><option selected>fable</option>');
-    expect(body).toContain("<option selected>high</option>");
-  });
-
-  test("the form starts on the last dispatched Harness and model, with the Effort last used with that model", async () => {
-    const { cli, web, world } = await withRepo();
-    world.addIssue("acme/api", { number: 8 });
-    await cli("dispatch", "acme/api#7", "--harness", "claude", "--model", "sonnet", "--effort", "max");
-    await cli("dispatch", "acme/api#8", "--harness", "codex", "--model", "gpt-6-sol", "--effort", "xhigh");
-    world.addIssue("acme/api", { number: 9 });
-
-    const { body } = await web("/classic");
-    expect(body).toContain("<option selected>codex</option>");
-    expect(body).toContain("<option selected>gpt-6-sol</option>");
-    expect(body).toContain("<option selected>xhigh</option>");
-
-    // Back to claude sonnet: its own last Effort, not the codex one kept over.
-    const form = await web("/dispatch-form?issue=acme%2Fapi%239&harness=claude&model=sonnet");
-    expect(form.body).toContain("<option selected>sonnet</option>");
-    expect(form.body).toContain("<option selected>max</option>");
-    // A model never dispatched starts on its first Effort.
-    const other = await web("/dispatch-form?issue=acme%2Fapi%239&harness=codex&model=gpt-5.5");
-    expect(other.body).toContain("<option selected>low</option>");
-  });
-
-  test("an Effort chosen in the form is kept across a model switch while still valid", async () => {
-    const { cli, web, world } = await withRepo();
-    world.addIssue("acme/api", { number: 8 });
-    await cli("dispatch", "acme/api#8", "--harness", "codex", "--model", "gpt-6-luna", "--effort", "low");
-    const { body } = await web("/dispatch-form?issue=acme%2Fapi%237&harness=codex&model=gpt-6-luna&effort=high");
-    expect(body).toContain("<option selected>high</option>");
-  });
-
-  test("a Harness whose discovery failed is left out of the form, with its error shown", async () => {
-    const { web, world } = await withRepo();
-    world.failCall("codex debug models", "`codex` is not installed or not on PATH");
-    const { body } = await web("/classic");
-    expect(body).toContain('<option selected>claude</option><option>opencode2</option></select>');
-    expect(body).not.toContain("<option>codex</option>");
-    expect(body).toContain('<p class="warning">could not discover codex models: `codex` is not installed or not on PATH</p>');
-  });
-
-  test("Refresh harnesses discovers again and goes back to the Board", async () => {
-    const { web, world } = await withRepo();
-    await web("/classic");
+    await web("/api/harnesses");
     world.codexCatalog = catalog(["gpt-7", ["low"]]);
     world.calls.length = 0;
 
-    const response = await web("/harnesses/refresh", { method: "POST" });
-    expect(response.status).toBe(303);
+    const response = await web("/api/harness/refresh", { method: "POST", body: "{}" });
+    expect(response.status).toBe(200);
     expect(world.calls).toEqual(DISCOVERIES);
-    expect((await web("/dispatch-form?issue=acme%2Fapi%237&harness=codex")).body).toContain("<option selected>gpt-7</option>");
+    const codex = JSON.parse((await web("/api/harnesses")).body).harnesses.find((h: { name: string }) => h.name === "codex");
+    expect(codex.models).toEqual([{ model: "gpt-7", efforts: ["low"] }]);
   });
 
-  test("a failed refresh is an error page", async () => {
+  test("a failed refresh says which Harness failed, and why", async () => {
     const { web, world } = await withRepo();
     world.failCall("codex debug models", "`codex debug models` failed: exit code 1");
-    const { status, body } = await web("/harnesses/refresh", { method: "POST" });
-    expect(status).toBe(502);
-    expect(body).toContain('<p class="error">could not discover codex models: `codex debug models` failed: exit code 1</p>');
+    const { status, body } = await web("/api/harness/refresh", { method: "POST", body: "{}" });
+    expect(status).toBe(422);
+    expect(JSON.parse(body).refreshed).toContainEqual(expect.objectContaining({ harness: "codex", error: "could not discover codex models: `codex debug models` failed: exit code 1" }));
   });
 });

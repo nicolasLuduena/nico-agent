@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { dispatchTarget, launchArgs, launchChoice } from "../src/app/actions";
 import { setup } from "./harness";
 
 const FLAGS = ["--harness", "claude", "--model", "opus", "--effort", "high"];
@@ -177,25 +178,24 @@ describe("Linear Stage and review", () => {
   });
 });
 
-describe("Linear dispatch on the web", () => {
-  test("a Linear Ready row has a dispatch form naming its Repo, which dispatches into it", async () => {
+describe("Linear dispatch in the app", () => {
+  test("a Linear Ready row's dispatch form names its Repo, and dispatches into it", async () => {
     const { web, world } = await withLinearRepo("web");
-    const page = (await web("/classic")).body;
-    expect(page).toContain('<input type="hidden" name="issue" value="BLE-27">');
-    expect(page).toContain('<input type="hidden" name="repo" value="bleentr/web">');
+    const board = JSON.parse((await web("/api/board")).body);
+    const target = dispatchTarget(board, "BLE-27", "bleentr/web")!;
+    expect(target).toMatchObject({ issue: "BLE-27", repo: "bleentr/web" });
 
-    const form = new URLSearchParams({ issue: "BLE-27", repo: "bleentr/web", harness: "claude", model: "opus", effort: "high", base: "main" });
-    const response = await web("/dispatch", { method: "POST", body: form });
-    expect(response.status).toBe(303);
+    const choice = launchChoice(JSON.parse((await web("/api/harnesses")).body), { harness: "claude", model: "opus", effort: "high" })!;
+    const args = launchArgs("dispatch", target, choice, {});
+    expect(args).toEqual(["BLE-27", "--harness", "claude", "--model", "opus", "--effort", "high", "--repo", "bleentr/web", "--base", "main"]);
+    expect((await web("/api/dispatch", { method: "POST", body: JSON.stringify({ args }) })).status).toBe(200);
     expect(world.calls).toContain("herdr worktree create --cwd /src/web --branch nico/ble-27-compare-pdfs --base origin/main --label web:BLE-27 --no-focus");
   });
 
-  test("its form re-renders with the Repo's Base choice", async () => {
+  test("its form offers the Repo's Base choice", async () => {
     const { web, world } = await withLinearRepo();
     world.remoteBranches.set("/src/pdf-diff", ["main", "beta"]);
-    const form = await web("/dispatch-form?issue=BLE-27&repo=bleentr/pdf-diff&harness=claude&model=opus&base=beta");
-    expect(form.status).toBe(200);
-    expect(form.body).toContain('<input type="hidden" name="repo" value="bleentr/pdf-diff">');
-    expect(form.body).toContain("<option selected>beta</option>");
+    const target = dispatchTarget(JSON.parse((await web("/api/board")).body), "BLE-27", "bleentr/pdf-diff")!;
+    expect(target.base).toEqual({ branches: ["main", "beta"], selected: "main" });
   });
 });

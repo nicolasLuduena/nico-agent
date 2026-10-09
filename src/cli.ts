@@ -19,8 +19,8 @@ import { dequeue, enqueue, loadQueues, move, pruneBoardQueues, queueOf } from ".
 import { isCandidate, sameSpec } from "./spec";
 import { VERSION } from "./version";
 import { sameSlug, slugOfRemote } from "./slug";
-import { cachedPrs, currentStage, freshPrs, loadInFlight, stageOf } from "./stage";
-import { findDispatch, loadDispatches } from "./state";
+import { type PrLookup, cachedPrs, currentStage, freshPrs, loadInFlight, stageOf } from "./stage";
+import { type Dispatch, findDispatch, loadDispatches } from "./state";
 import { webHandler } from "./web";
 import { Events } from "./events";
 import app from "./app/index.html";
@@ -31,6 +31,11 @@ export interface RunContext {
   configDir: string;
   /** Path of the running executable, home collapsed to `~`. */
   bin: string;
+  /**
+   * The Board's PR lookup, shared by every run of a long-lived caller: `serve`
+   * runs `board --json` for the app on each tick, and asks GitHub only every ~30s.
+   */
+  prs?: PrLookup;
 }
 
 export interface RunResult {
@@ -365,7 +370,7 @@ const commands: Command[] = [
     flags: {},
     positionals: [],
     examples: ["nico-agent harness list", "nico-agent harness list --json"],
-    run: (_args, ctx) => harnessList(ctx),
+    run: (args, ctx) => harnessList(ctx, args.flags["--json"] === true),
   },
   {
     name: "harness refresh",
@@ -682,7 +687,7 @@ function queuedName(ctx: RunContext, repo: string, spec: string) {
 
 async function queueCommand(args: Args, ctx: RunContext): Promise<Output> {
   const { spec, repo } = queueArgs(args, ctx, QUEUE_USAGE);
-  const board = await loadBoard(ctx.world, [repo], loadDispatches(ctx.configDir), cachedPrs(ctx.world));
+  const board = await loadBoard(ctx.world, [repo], loadDispatches(ctx.configDir), ctx.prs ?? cachedPrs(ctx.world));
   const decision = board.specs.find((d) => sameSlug(d.repo, repo.slug));
   if (!decision || !isCandidate(decision, spec)) {
     throw new CliError(`${spec} is not a candidate Spec of ${repo.slug}`, [
@@ -1096,8 +1101,10 @@ async function ordersSet(args: Args, ctx: RunContext): Promise<Output> {
 
 const HARNESS_LIST_HELP = "Run `nico-agent harness list` to see the models and Effort levels";
 
-async function harnessList(ctx: RunContext): Promise<Output> {
+async function harnessList(ctx: RunContext, json: boolean): Promise<Output> {
   const catalogs = await harnessCatalogs(ctx.world, ctx.configDir);
+  // The app's launch forms start on the last launch, and on the Effort last used with each model.
+  const { last, efforts } = rememberedLaunches(ctx.configDir);
   return {
     data: {
       count: catalogs.length,
@@ -1113,6 +1120,7 @@ async function harnessList(ctx: RunContext): Promise<Output> {
         source,
         ...(error && { error }),
       })),
+      ...(json && { remembered: { ...(last && { last }), efforts } }),
     },
     help: [
       "Run `nico-agent harness refresh` to discover models again",
@@ -1155,7 +1163,8 @@ async function serve(args: Args, ctx: RunContext): Promise<Output> {
   const port = portFlag(args, "nico-agent serve [--port <port>]");
   const events = new Events();
   try {
-    await ctx.world.serve({ hostname: HOSTNAME, port }, webHandler({ ...ctx, events, runCli: (argv) => run(argv, ctx) }), { "/": app });
+    const shared = { ...ctx, prs: ctx.prs ?? cachedPrs(ctx.world) };
+    await ctx.world.serve({ hostname: HOSTNAME, port }, webHandler({ ...ctx, events, runCli: (argv) => run(argv, shared) }), { "/": app });
   } catch (e) {
     if (!(e instanceof WorldError)) throw e;
     throw new CliError(e.message, ["Run `nico-agent serve --port <port>` with a free port"]);
@@ -1262,7 +1271,7 @@ async function board(ctx: RunContext, json: boolean): Promise<Output> {
   if (repos.length === 0) {
     return { data: { ...header, ready: "0 issues (no Repos configured)" }, help: [ADD_REPO_HELP] };
   }
-  const loaded = await loadBoard(ctx.world, repos, loadDispatches(ctx.configDir), cachedPrs(ctx.world), rememberedLaunches(ctx.configDir).bases);
+  const loaded = await loadBoard(ctx.world, repos, loadDispatches(ctx.configDir), ctx.prs ?? cachedPrs(ctx.world), rememberedLaunches(ctx.configDir).bases);
   const { ready, stackable, withPr, specs, inFlight, errors } = loaded;
   const help = ["Run `nico-agent repo list` to see the Repos", ADD_REPO_HELP];
   if (inFlight.length) help.unshift("Run `nico-agent show <issue>` to see a Dispatch");
@@ -1302,7 +1311,7 @@ async function board(ctx: RunContext, json: boolean): Promise<Output> {
         effort: d.implementer.effort,
         base: baseBranch(d) ?? "",
         workspace: d.workspace ?? "",
-        ...(json && definedOnly({ failure: (d.failure ?? d.reviewer?.failure)?.error, warnings: d.warnings?.length ? d.warnings : undefined })),
+        ...(json && definedOnly({ failure: (d.failure ?? d.reviewer?.failure)?.error, warnings: d.warnings?.length ? d.warnings : undefined, retry: retryArgs(d) })),
       })),
     }),
   };
@@ -1352,10 +1361,23 @@ async function board(ctx: RunContext, json: boolean): Promise<Output> {
       queue: queueOf(queues, repo).map((queued) => decided.find((s) => sameSpec(s.spec, queued))?.spec ?? queued),
     }));
   }
+  // The app's dispatch forms offer origin's branches as the Base; each Ready issue names the one it starts on.
+  if (json && Object.keys(loaded.bases).length) {
+    data.bases = repos.flatMap((r) => (loaded.bases[r.slug] ? [{ repo: r.slug, branches: loaded.bases[r.slug]!.branches }] : []));
+  }
   Object.assign(data, inFlightData);
   if (asking.length) data.asking = asking;
   if (errors.length) data.errors = errors;
   return { data, help };
+}
+
+/** The arguments that retry a failed launch: its own command again, which resumes it from its failed step (ADR-0006). */
+function retryArgs(d: Dispatch): string[] | undefined {
+  const failed = d.failure ? { command: "dispatch", launch: d.implementer } : d.reviewer?.failure ? { command: "review", launch: d.reviewer } : null;
+  if (!failed) return undefined;
+  const { harness, model, effort } = failed.launch;
+  const stackOn = failed.command === "dispatch" ? d.stackedOn?.pr.url : undefined;
+  return [failed.command, d.issue, "--harness", harness, "--model", model, "--effort", effort, ...(stackOn ? ["--stack-on", stackOn] : [])];
 }
 
 function lowerFirst(text: string) {

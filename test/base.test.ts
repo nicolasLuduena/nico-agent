@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { dispatchTarget } from "../src/app/actions";
 import { setup } from "./harness";
 
 const FLAGS = ["--harness", "claude", "--model", "opus", "--effort", "high"];
@@ -100,19 +101,16 @@ test("a Stacked dispatch ignores the last-used Base and fills {baseBranch} with 
   expect(world.calls.some((c) => c.includes("ls-remote"))).toBe(false);
 });
 
-test("a Stacked dispatch rejects --base, and its web form has no Base dropdown", async () => {
-  const { cli, web, world } = await stackable();
+test("a Stacked dispatch rejects --base, and its app form has no Base choice", async () => {
+  const { cli, world } = await stackable();
 
   const result = await cli("dispatch", "acme/api#7", ...FLAGS, "--base", "beta", "--json");
   expect(result.exitCode).toBe(1);
   expect(result.json().error).toBe("acme/api#7 is Stacked; its Base is the head branch of the PR it stacks on");
   expect(world.calls.some((c) => c.startsWith("herdr"))).toBe(false);
 
-  const { body } = await web("/classic");
-  expect(body).not.toContain('<select name="base">');
-  expect(body).toContain("base agent/blocker-6");
-  const form = await web("/dispatch-form?issue=acme/api%237&harness=claude&model=opus&effort=high");
-  expect(form.body).not.toContain('<select name="base">');
+  const target = dispatchTarget((await cli("board", "--json")).json(), "acme/api#7", "acme/api");
+  expect(target).toEqual({ issue: "acme/api#7", stack: [{ value: "acme/api#6", label: "acme/api#6 · PR #16 · base agent/blocker-6" }] });
 });
 
 test("{baseBranch} is a known placeholder custom prompts can use", async () => {
@@ -134,28 +132,23 @@ test("{baseBranch} is a known placeholder custom prompts can use", async () => {
   expect(bad.help).toEqual(["Placeholders: {sigil}, {issueUrl}, {baseBranch}, {prUrl}, {prBaseBranch}"]);
 });
 
-test("the web dispatch form lists origin's branches, preselecting the last-used Base", async () => {
+test("the app's dispatch form lists origin's branches, preselecting the last-used Base", async () => {
   const { cli, web, world } = await withRepo();
   world.addIssue("acme/api", { number: 7 });
   world.addIssue("acme/api", { number: 8 });
+  const base = async (issue: string) => dispatchTarget((await cli("board", "--json")).json(), issue, "acme/api")!.base;
 
-  const first = await web("/classic");
-  expect(first.body).toContain('<label>Base <select name="base"><option>beta</option><option selected>main</option></select></label>');
-
-  const form = new URLSearchParams({ issue: "acme/api#7", harness: "claude", model: "opus", effort: "high", base: "beta" });
-  expect((await web("/dispatch", { method: "POST", body: form })).status).toBe(303);
+  expect(await base("acme/api#7")).toEqual({ branches: ["beta", "main"], selected: "main" });
+  const posted = await web("/api/dispatch", { method: "POST", body: JSON.stringify({ args: ["acme/api#7", ...FLAGS, "--base", "beta"] }) });
+  expect(posted.status).toBe(200);
   expect(world.calls).toContain("herdr worktree create --cwd /src/api --branch agent/api-7 --base origin/beta --label api#7 --no-focus");
 
-  const next = await web("/classic");
-  expect(next.body).toContain('<option selected>beta</option><option>main</option>');
-  // Changing the model keeps the chosen Base.
-  const changed = await web("/dispatch-form?issue=acme/api%238&harness=claude&model=sonnet&effort=high&base=main");
-  expect(changed.body).toContain('<option>beta</option><option selected>main</option>');
+  expect(await base("acme/api#8")).toEqual({ branches: ["beta", "main"], selected: "beta" });
   expect((await cli("show", "acme/api#7", "--json")).json().base).toBe("origin/beta");
 });
 
 test("the Board shows the Base of every Ready, Stackable and In-flight issue", async () => {
-  const { cli, web, world } = await stackable();
+  const { cli, world } = await stackable();
   world.addIssue("acme/api", { number: 8 });
   world.addIssue("acme/api", { number: 9 });
   await cli("dispatch", "acme/api#9", ...FLAGS, "--base", "beta");
@@ -164,9 +157,6 @@ test("the Board shows the Base of every Ready, Stackable and In-flight issue", a
   expect(board.issues).toEqual([{ issue: "acme/api#8", title: "Issue 8", repo: "acme/api", url: "https://github.com/acme/api/issues/8", base: "beta" }]);
   expect(board.stackable[0].blockers).toEqual([{ issue: "acme/api#6", pr: "https://github.com/acme/api/pull/16", base: "agent/blocker-6" }]);
   expect(board.dispatches[0]).toMatchObject({ issue: "acme/api#9", base: "beta" });
-
-  const { body } = await web("/classic");
-  expect(body).toContain('<span class="chip" title="Base"><svg class="icon" viewBox="0 0 12 12" aria-hidden="true"><circle cx="3" cy="2.5" r="1.5"/><circle cx="3" cy="9.5" r="1.5"/><circle cx="9" cy="3.5" r="1.5"/><path d="M3 4v4M9 5c0 2.5-6 1.5-6 3"/></svg>beta</span>');
 });
 
 test("a failed branch listing is reported per Repo and still shows its issues", async () => {

@@ -10,7 +10,7 @@ async function githubRepo() {
   return ctx;
 }
 
-/** What the app at `/` reads from `board --json` to draw the Board as `/classic` does. */
+/** What the app at `/` reads from `board --json` to draw the Board and fill its forms. */
 describe("board --json for the app", () => {
   test("names every configured Repo, in config order, even one with nothing Ready", async () => {
     const { cli, world } = await githubRepo();
@@ -65,5 +65,33 @@ describe("board --json for the app", () => {
       issue: "acme/api#7", repo: "acme/api", url: "https://github.com/acme/api/issues/7",
       stage: "Failed at tab", failure: "herdr is not running",
     });
+  });
+
+  test("a Repo with Ready issues lists origin's branches, for the dispatch form's Base", async () => {
+    const { cli, world } = await githubRepo();
+    world.remoteBranches.set("/src/api", ["beta", "main"]);
+    world.addIssue("acme/api", { number: 1 });
+    expect((await cli("board", "--json")).json().bases).toEqual([{ repo: "acme/api", branches: ["beta", "main"] }]);
+  });
+
+  test("a failed Dispatch carries the arguments that retry it, resuming from its failed step", async () => {
+    const { cli, world } = await githubRepo();
+    world.addIssue("acme/api", { number: 7 });
+    world.addIssue("acme/api", { number: 8 });
+    world.addIssue("acme/api", { number: 9 });
+    world.failHerdr("tab create", "herdr is not running");
+    await cli("dispatch", "acme/api#7", ...FLAGS);
+    world.clearFailures();
+    await cli("dispatch", "acme/api#8", ...FLAGS);
+    await cli("dispatch", "acme/api#9", ...FLAGS);
+    world.linkPr("acme/api", 9, { number: 19 });
+    world.failCall("herdr agent start rev-api-9", "the Reviewer would not start");
+    await cli("review", "acme/api#9", "--harness", "claude", "--model", "sonnet", "--effort", "max");
+
+    const rows = (await cli("board", "--json")).json().dispatches as { issue: string; retry?: string[] }[];
+    const retry = (issue: string) => rows.find((r) => r.issue === issue)!.retry;
+    expect(retry("acme/api#7")).toEqual(["dispatch", "acme/api#7", ...FLAGS]);
+    expect(retry("acme/api#8")).toBeUndefined();
+    expect(retry("acme/api#9")).toEqual(["review", "acme/api#9", "--harness", "claude", "--model", "sonnet", "--effort", "max"]);
   });
 });

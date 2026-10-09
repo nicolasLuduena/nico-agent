@@ -1,7 +1,7 @@
 /**
  * The event display's model: the In-flight Dispatches as a detector's
  * transverse view, one track per Dispatch reaching as far out as its Stage.
- * Pure geometry, so the htmx Board and the app draw the same tracks.
+ * Pure geometry, kept apart from the SVG that draws it.
  */
 
 /** An In-flight Dispatch as the display reads it: its Stage and raw Agent states (`reviewer` empty without one). */

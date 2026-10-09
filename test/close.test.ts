@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { closePlan } from "../src/app/actions";
 import { setup } from "./harness";
 
 const FLAGS = ["--harness", "claude", "--model", "opus", "--effort", "high"];
@@ -78,28 +79,25 @@ test("failed removal keeps the Dispatch and allows retry", async () => {
   expect((await cli("close", "acme/api#7", "--confirm")).exitCode).toBe(0);
 });
 
-test("the web offers Close and a separate confirmation form for an unfinished Dispatch", async () => {
+test("the app closes an unfinished Dispatch only once confirmed", async () => {
   const { web, world, cli } = await dispatched();
-  expect((await web("/in-flight")).body).toContain('<form method="post" action="/close">');
-  const form = new URLSearchParams({ issue: "acme/api#7" });
-  const first = await web("/close", { method: "POST", body: form });
-  expect(first.status).toBe(200);
-  expect(first.body).toContain("Confirm close");
-  expect(first.body).toContain('<input type="hidden" name="confirm" value="yes">');
-  expect(first.body).not.toContain("window.confirm");
+  const board = JSON.parse((await web("/api/board")).body);
+  // Still Implementing, so the app asks first.
+  expect(closePlan(board, ["acme/api#7"])).toEqual({ now: [], confirm: ["acme/api#7"] });
+  const close = (...args: string[]) => web("/api/close", { method: "POST", body: JSON.stringify({ args }) });
+  expect((await close("acme/api#7")).status).toBe(422);
   expect(world.calls.some((c) => c.startsWith("herdr worktree remove"))).toBe(false);
-  form.set("confirm", "yes");
-  expect((await web("/close", { method: "POST", body: form })).status).toBe(303);
+  expect((await close("acme/api#7", "--confirm")).status).toBe(200);
   expect((await cli("show", "acme/api#7")).exitCode).toBe(1);
 });
 
-test("the web closes a merged PR directly and checks current PR state instead of the Board cache", async () => {
+test("the app closes a merged PR directly, checking current PR state instead of the Board's cache", async () => {
   const { web, world } = await dispatched();
-  await web("/in-flight");
+  await web("/api/board");
   world.linkPr("acme/api", 7, { number: 9, state: "merged" });
-  const result = await web("/close", { method: "POST", body: new URLSearchParams({ issue: "acme/api#7" }) });
-  expect(result.status).toBe(303);
-  expect((await web("/in-flight")).body).toContain("Nothing in flight.");
+  const result = await web("/api/close", { method: "POST", body: JSON.stringify({ args: ["acme/api#7"] }) });
+  expect(result.status).toBe(200);
+  expect(JSON.parse((await web("/api/board")).body).dispatches).toBeUndefined();
 });
 
 test("GitHub failures keep the Dispatch, but explicit confirmation permits closing offline", async () => {

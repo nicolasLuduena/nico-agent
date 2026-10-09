@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { canReview } from "../src/app/actions";
 import { setup } from "./harness";
 
 const FLAGS = ["--harness", "claude", "--model", "opus", "--effort", "high"];
@@ -275,100 +276,73 @@ describe("In flight on the CLI Board", () => {
   });
 });
 
-describe("In flight on the web", () => {
-  test("the section polls every 5s and the fragment refreshes it without a full page", async () => {
-    const { web, world } = await dispatched();
-    const { body } = await web("/classic");
-    expect(body).toContain('<section class="in-flight" hx-get="/in-flight" hx-trigger="every 5s" hx-swap="outerHTML">');
+describe("In flight in the app", () => {
+  /** The app's Board, as `/api/board` answers each refetch. */
+  const boardOf = async (web: Awaited<ReturnType<typeof dispatched>>["web"]) => JSON.parse((await web("/api/board")).body);
+  const review = (web: Awaited<ReturnType<typeof dispatched>>["web"], ...args: string[]) =>
+    web("/api/review", { method: "POST", body: JSON.stringify({ args: ["acme/api#7", ...args] }) });
 
-    world.linkPr("acme/api", 7, { number: 9 });
-    world.clock = new Date(world.clock.getTime() + 31_000);
-    const fragment = await web("/in-flight");
-    expect(fragment.status).toBe(200);
-    expect(fragment.body).toStartWith('<section class="in-flight" hx-get="/in-flight"');
-    expect(fragment.body).not.toContain("<html");
-    expect(fragment.body).toContain(
-      '<li class="flight">\n<div class="head"><input type="checkbox" class="pick" name="issue" value="acme/api#7" form="batch" autocomplete="off" id="pick-acme-api-7" hx-preserve="true" aria-label="Select acme/api#7"> <a class="title" href="https://github.com/acme/api/issues/7"><span class="num">api#7</span> Add retries</a><span class="stage pr-ready">PR ready</span><a class="pr" href="https://github.com/acme/api/pull/9">PR #9</a></div>\n<div class="meta"><span class="chip">claude · opus · high</span><span class="chip" title="Base"><svg class="icon" viewBox="0 0 12 12" aria-hidden="true"><circle cx="3" cy="2.5" r="1.5"/><circle cx="3" cy="9.5" r="1.5"/><circle cx="9" cy="3.5" r="1.5"/><path d="M3 4v4M9 5c0 2.5-6 1.5-6 3"/></svg>main</span><span class="chip" title="herdr workspace">w1</span><span class="agent working"><i></i>implementer working</span></div>',
-    );
-  });
-
-  test("GitHub results are cached for about 30s across polls", async () => {
+  test("GitHub results are cached for about 30s across refetches", async () => {
     const { web, world } = await dispatched();
-    await web("/in-flight");
-    await web("/in-flight");
+    await boardOf(web);
+    await boardOf(web);
     world.clock = new Date(world.clock.getTime() + 29_000);
-    await web("/in-flight");
+    await boardOf(web);
     expect(world.calls.filter((c) => c.startsWith("github linked prs"))).toHaveLength(1);
     expect(world.calls.filter((c) => c === "herdr agent list")).toHaveLength(3);
 
     world.clock = new Date(world.clock.getTime() + 2_000);
-    await web("/in-flight");
+    await boardOf(web);
     expect(world.calls.filter((c) => c.startsWith("github linked prs"))).toHaveLength(2);
   });
 
-  test("a failed GitHub lookup is cached too, so an outage isn't asked every poll", async () => {
+  test("a failed GitHub lookup is cached too, so an outage isn't asked every refetch", async () => {
     const { web, world } = await dispatched();
     world.failCall("github linked prs", "GitHub rate limit exceeded; try again later");
-    expect((await web("/in-flight")).body).toContain("could not look up the PR: GitHub rate limit exceeded; try again later");
+    expect((await boardOf(web)).dispatches[0].prError).toBe("GitHub rate limit exceeded; try again later");
     world.clearFailures();
-    expect((await web("/in-flight")).body).toContain("could not look up the PR");
+    expect((await boardOf(web)).dispatches[0].prError).toBe("GitHub rate limit exceeded; try again later");
     expect(world.calls.filter((c) => c.startsWith("github linked prs"))).toHaveLength(1);
   });
 
-  test("a blocked agent is highlighted", async () => {
-    const { web, world } = await dispatched();
-    world.agentStates.set("impl-api-7", "blocked");
-    expect((await web("/in-flight")).body).toContain('<span class="agent blocked"><i></i>implementer blocked</span>');
-  });
-
-  test("Launch review appears once a PR is linked, kept across polls, and launches the Reviewer", async () => {
+  test("Launch review is offered once a PR is linked, and launches the Reviewer", async () => {
     const { web, world, cli } = await dispatched();
-    expect((await web("/in-flight")).body).not.toContain("Launch review");
+    expect(canReview((await boardOf(web)).dispatches[0])).toBe(false);
 
     world.linkPr("acme/api", 7, { number: 9 });
     world.clock = new Date(world.clock.getTime() + 31_000);
-    const { body } = await web("/in-flight");
-    expect(body).toContain('<div id="review-acme-api-7" hx-preserve="true">\n<form method="post" action="/review" class="dispatch">');
-    expect(body).toContain('hx-get="/review-form"');
-    expect(body).toContain("<button>Launch review</button>");
+    expect(canReview((await boardOf(web)).dispatches[0])).toBe(true);
 
-    const rerendered = await web("/review-form?issue=acme%2Fapi%237&harness=claude&model=haiku&effort=low");
-    expect(rerendered.body).toStartWith('<form method="post" action="/review" class="dispatch">');
-    expect(rerendered.body).toContain("<option selected>haiku</option>");
-
-    const form = new URLSearchParams({ issue: "acme/api#7", harness: "claude", model: "sonnet", effort: "max" });
-    const posted = await web("/review", { method: "POST", body: form });
-    expect(posted.status).toBe(303);
+    const posted = await review(web, "--harness", "claude", "--model", "sonnet", "--effort", "max");
+    expect(posted.status).toBe(200);
     expect(world.calls).toContain(
       "herdr agent prompt rev-api-7 /code-review https://github.com/acme/api/pull/9 against main for the spec at https://github.com/acme/api/issues/7",
     );
     expect(await stage(cli)).toBe("Review launched");
-
-    const after = (await web("/in-flight")).body;
-    expect(after).not.toContain("Launch review");
-    expect(after).toContain('<span class="stage review-launched">Review launched</span>');
-    expect(after).toContain('<span class="agent working"><i></i>reviewer working</span>');
+    const [after] = (await boardOf(web)).dispatches;
+    expect(canReview(after)).toBe(false);
+    expect(after).toMatchObject({ stage: "Review launched", reviewer: "working" });
   });
 
-  test("launching a review before a PR is linked is an error page with the CLI's help", async () => {
+  test("launching a review before a PR is linked shows the CLI's error", async () => {
     const { web } = await dispatched();
-    const form = new URLSearchParams({ issue: "acme/api#7", harness: "claude", model: "sonnet", effort: "max" });
-    const { status, body } = await web("/review", { method: "POST", body: form });
-    expect(status).toBe(409);
-    expect(body).toContain('<p class="error">no PR is linked to acme/api#7 yet</p>');
+    const { status, body } = await review(web, "--harness", "claude", "--model", "sonnet", "--effort", "max");
+    expect(status).toBe(422);
+    expect(JSON.parse(body).error).toBe("no PR is linked to acme/api#7 yet");
   });
 
-  test("a failed review launch shows Retry, which posts the review again", async () => {
-    const { web, world } = await dispatched();
+  test("a failed review launch offers Retry, which posts the review again", async () => {
+    const { web, world, cli } = await dispatched();
     world.linkPr("acme/api", 7, { number: 9 });
     world.failHerdr("agent start rev-api-7", "agent_name_taken");
-    const form = new URLSearchParams({ issue: "acme/api#7", harness: "claude", model: "sonnet", effort: "max" });
-    expect((await web("/review", { method: "POST", body: form })).status).toBe(502);
+    expect((await review(web, "--harness", "claude", "--model", "sonnet", "--effort", "max")).status).toBe(422);
 
-    const { body } = await web("/in-flight");
-    expect(body).toContain('<span class="stage failed">Failed at review agent start</span>');
-    expect(body).toContain('<div class="notes"><p class="error">agent_name_taken</p></div>');
-    expect(body).toContain('<form method="post" action="/review" class="dispatch">\n<input type="hidden" name="issue" value="acme/api#7">');
-    expect(body).toContain('<input type="hidden" name="model" value="sonnet">');
+    const [row] = (await boardOf(web)).dispatches;
+    expect(row).toMatchObject({ stage: "Failed at review agent start", failure: "agent_name_taken" });
+    expect(row.retry).toEqual(["review", "acme/api#7", "--harness", "claude", "--model", "sonnet", "--effort", "max"]);
+    world.clearFailures();
+    const [command, ...args] = row.retry;
+    expect((await web(`/api/${command}`, { method: "POST", body: JSON.stringify({ args }) })).status).toBe(200);
+    expect(await stage(cli)).toBe("Review launched");
   });
 });

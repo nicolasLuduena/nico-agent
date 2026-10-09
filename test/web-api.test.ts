@@ -1,3 +1,5 @@
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 import { events, setup } from "./harness";
 
@@ -29,6 +31,14 @@ describe("/api/board", () => {
     expect(JSON.parse(body)).toMatchObject({ ready: "0 issues (no Repo could be loaded)", errors: [{ repo: "acme/api" }] });
   });
 
+  test("a corrupt config file is the CLI's error, with its help", async () => {
+    const { configDir, web } = setup();
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(join(configDir, "config.json"), "{bad");
+    const { body } = await web("/api/board");
+    expect(JSON.parse(body)).toEqual({ error: `${join(configDir, "config.json")} is not valid JSON`, help: ["Fix or delete the file and run `nico-agent repo add` again"] });
+  });
+
   test("answers only GET", async () => {
     const { web } = await withIssue();
     expect((await web("/api/board", { method: "POST" })).status).toBe(405);
@@ -39,7 +49,7 @@ describe("/api/events", () => {
   test("sends board-changed after a Board action posted to the web app", async () => {
     const { handler, web } = await withIssue();
     const stream = await events(handler);
-    expect((await web("/harnesses/refresh", { method: "POST" })).status).toBe(303);
+    expect((await web("/api/harness/refresh", { method: "POST", body: "{}" })).status).toBe(200);
     expect(await stream.next()).toEqual({ event: "board-changed", data: "{}" });
     await stream.close();
   });
@@ -60,6 +70,16 @@ describe("/api/events", () => {
     const { handler, web } = await withIssue();
     const closed = await events(handler);
     await closed.close();
-    expect((await web("/harnesses/refresh", { method: "POST" })).status).toBe(303);
+    expect((await web("/api/harness/refresh", { method: "POST", body: "{}" })).status).toBe(200);
+  });
+});
+
+describe("serve's other paths", () => {
+  test("an unknown path is a 404, asking nothing of the World", async () => {
+    const { web, world } = setup();
+    const { status, body } = await web("/classic");
+    expect(status).toBe(404);
+    expect(body).toBe("No page at /classic\n");
+    expect(world.calls).toEqual([]);
   });
 });

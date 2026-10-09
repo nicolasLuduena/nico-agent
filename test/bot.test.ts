@@ -118,16 +118,14 @@ describe("bot-aware implement prompt", () => {
     expect(json().help[0]).toBe("Assign https://github.com/acme/api/issues/7 to yourself on GitHub to Claim it by hand");
   });
 
-  test("a dispatch from the web with a failed check shows its warning on the Board", async () => {
+  test("a dispatch from the app with a failed check shows its warning on the Board", async () => {
     const { web, world } = await withRepo();
     world.failCall("github app repos", "GitHub request failed");
-    const form = new URLSearchParams({ issue: "acme/api#7", harness: "claude", model: "opus", effort: "high" });
-    expect((await web("/dispatch", { method: "POST", body: form })).status).toBe(303);
+    const args = ["acme/api#7", "--harness", "claude", "--model", "opus", "--effort", "high"];
+    expect((await web("/api/dispatch", { method: "POST", body: JSON.stringify({ args }) })).status).toBe(200);
 
-    const { body } = await web("/classic");
-    expect(body).toContain(
-      '<div class="notes"><p class="warning">could not check the GitHub App on acme/api, so the prompt has no bot suffix: GitHub request failed</p></div>',
-    );
+    const { dispatches } = JSON.parse((await web("/api/board")).body);
+    expect(dispatches[0].warnings).toEqual(["could not check the GitHub App on acme/api, so the prompt has no bot suffix: GitHub request failed"]);
   });
 });
 

@@ -20,6 +20,8 @@ export interface InFlightDispatch {
   /** Why its launch or its Reviewer's Failed. */
   failure?: string;
   warnings?: string[];
+  /** A failed launch's own CLI arguments, which resume it from its failed step. */
+  retry?: string[];
 }
 
 interface JsonIssue {
@@ -61,6 +63,8 @@ export interface BoardJson {
   prOpen?: (JsonIssue & { pr: string; state: string })[];
   specs?: JsonSpec[];
   rooms?: JsonRoom[];
+  /** origin's branches of each Repo with Ready issues, for the dispatch form's Base. */
+  bases?: { repo: string; branches: string[] }[];
   inFlight?: string;
   dispatches?: InFlightDispatch[];
   errors?: { repo: string; error: string; source?: string }[];
