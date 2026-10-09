@@ -31,7 +31,7 @@ interface JsonIssue {
   url: string;
 }
 
-interface JsonSpec {
+export interface JsonSpec {
   spec: string;
   title: string;
   url: string;
@@ -67,8 +67,14 @@ export interface BoardJson {
   bases?: { repo: string; branches: string[] }[];
   inFlight?: string;
   dispatches?: InFlightDispatch[];
+  /** Each Implementer waiting on the user, with the question its screen shows. */
+  asking?: { issue: string; spec?: string; question: string; error?: string }[];
   errors?: { repo: string; error: string; source?: string }[];
+  /** Set when the Board could not be read at all, with the CLI's help. */
   error?: string;
+  help?: string[];
+  /** A rate-limited GitHub, with when nico-agent asks it again. */
+  warning?: string;
 }
 
 /** A Stage's colour, one per Stage (DESIGN.md): every Failed Stage shares Failed's; one without its own reads as unknown. */

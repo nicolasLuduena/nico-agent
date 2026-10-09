@@ -1,6 +1,7 @@
 import type { Authored } from "../conversation";
 import type { ProposalStatus, SourceWrite } from "../proposals";
 import { type HarnessesJson, type LaunchChoice, advanceReport, launchChoice } from "./actions";
+import type { BoardJson } from "./board";
 
 /**
  * A Proposal as `nico-agent proposals --all --json` lists it: its action as
@@ -261,16 +262,21 @@ export interface Notice {
 
 /**
  * Everything wrong at once, in the one quiet place above the conversation: `serve`
- * lost (`failure`), the Lead not running or failed and its launch's warnings,
- * and voice failing (`talk`). Nothing while the Lead's status is still loading.
+ * lost (`failure`), the Board unreadable or GitHub rate limited, the Lead not
+ * running or failed and its launch's warnings, and voice failing (`talk`).
+ * Nothing while the Lead's status is still loading.
  */
-export function notices({ failure, status, talk }: {
+export function notices({ failure, status, talk, board }: {
   failure: string | null | undefined;
   status: LeadStatusJson | null;
   talk: { error: string; help: string[] } | null;
+  /** The Board the Repos pane reads; a Repo's own failure shows on its row instead. */
+  board?: BoardJson | null;
 }): Notice[] {
   const shown: Notice[] = [];
   if (failure) shown.push({ key: "serve", text: failure, help: [] });
+  if (board?.error) shown.push({ key: "board", text: `The Repos could not be read: ${board.error}`, help: board.help ?? [] });
+  if (board?.warning) shown.push({ key: "board-warning", text: board.warning, help: [] });
   if (status?.failure) {
     shown.push({ key: "lead", text: `The Lead failed at ${status.failure.step}: ${status.failure.error}`, help: ["Start it again from Lead in the header"] });
   } else if (status && status.lead !== "running" && status.lead !== "starting") {
