@@ -12,6 +12,7 @@ import {
 import { sendsOnEnter } from "./popover";
 import { Agent } from "./repos";
 import { useResource } from "./stream";
+import { TalkButton, TalkStatus, type useTalk } from "./talk-button";
 
 /** What each tab's Partner is for, under its name. */
 const LEDES: Record<PartnerTab, string> = {
@@ -23,10 +24,13 @@ const LEDES: Record<PartnerTab, string> = {
  * A Partner's tab (ADR-0014): its Thread with the composer on the left, or
  * the form that starts one, and on the right what it is for and the Partner
  * itself; a Review partner's PR and its diff, which quotes into the message
- * when clicked. Each tab stays mounted while another shows, so its draft and picks are kept.
+ * when clicked. Each tab stays mounted while another shows, so its draft and
+ * picks are kept. The page's talk button talks to this tab's Front voice
+ * while it shows (ADR-0014).
  */
-export function PartnerPanel({ tab, partner, harnesses, repos, hidden }: {
+export function PartnerPanel({ tab, partner, harnesses, repos, hidden, talking }: {
   tab: PartnerTab; partner: PartnerJson | undefined; harnesses: HarnessesJson | null; repos: string[]; hidden: boolean;
+  talking: ReturnType<typeof useTalk>;
 }) {
   const title = PARTNER_NAMES[tab];
   const standing = partnerStanding(partner);
@@ -45,7 +49,7 @@ export function PartnerPanel({ tab, partner, harnesses, repos, hidden }: {
           {partner && <Agent role={partner.repo} state={standing === "running" ? partner.state : partner.partner} />}
         </div>
         {/* A new Partner starts a new Thread, so its tab starts afresh. */}
-        {partner ? <Thread key={partner.startedAt} tab={tab} running={standing === "running"} message={message} setMessage={setMessage} composer={composer} /> : (
+        {partner ? <Thread key={partner.startedAt} tab={tab} running={standing === "running"} working={partner.state === "working"} talking={talking} message={message} setMessage={setMessage} composer={composer} /> : (
           <div className="conversation">
             <div className="empty partner-empty">
               <h2>{`Start the ${title}`}</h2>
@@ -93,10 +97,12 @@ function useThread(tab: PartnerTab) {
   return { state, send, dismiss: (key: string) => dispatch({ type: "dismiss", key }), failure: log.failure };
 }
 
-function Thread({ tab, running, message, setMessage, composer }: {
-  tab: PartnerTab; running: boolean; message: string; setMessage: (text: string) => void; composer: RefObject<HTMLTextAreaElement | null>;
+function Thread({ tab, running, working, talking, message, setMessage, composer }: {
+  tab: PartnerTab; running: boolean; working: boolean; talking: ReturnType<typeof useTalk>;
+  message: string; setMessage: (text: string) => void; composer: RefObject<HTMLTextAreaElement | null>;
 }) {
   const { state, send, dismiss, failure } = useThread(tab);
+  const warnings = [failure && { key: "failure", text: failure, help: [] as string[] }, talking.warning && { key: "talk", text: talking.warning.error, help: talking.warning.help }].filter((w) => !!w);
   const cards = threadCards(state);
   const scroller = useRef<HTMLOListElement>(null);
   const atEnd = useRef(true);
@@ -111,7 +117,11 @@ function Thread({ tab, running, message, setMessage, composer }: {
   const drafting = cards.some((c) => c.kind === "draft" && c.status === "open");
   return (
     <>
-      {failure && <div className="notices" role="status"><p>{failure}</p></div>}
+      {warnings.length > 0 && (
+        <div className="notices" role="status">
+          {warnings.map((n) => <p key={n.key}>{n.text}{n.help.map((h) => <span key={h} className="help">{h}</span>)}</p>)}
+        </div>
+      )}
       <ol className="conversation" ref={scroller} aria-live="polite" aria-label="Thread" tabIndex={0} onScroll={(e) => { atEnd.current = followsNewEntries(e.currentTarget); }}>
         {cards.length
           ? cards.map((card) => <ThreadCardView key={card.key} tab={tab} card={card} send={send} dismiss={dismiss} />)
@@ -123,11 +133,13 @@ function Thread({ tab, running, message, setMessage, composer }: {
           )}
       </ol>
       <div className="composer">
+        <TalkStatus talk={talking} working={working} who={`The ${PARTNER_NAMES[tab]}`} />
         <div className="composer-row">
           <Composer tab={tab} send={sendAndFollow} disabled={!running} text={message} setText={setMessage} field={composer} />
           <button type="button" className="quiet" disabled={!running || drafting} title={drafting ? "Its draft is waiting for you above" : "Ask the Partner for a summary to hand to the Lead"} onClick={() => void sendAndFollow(DRAFT_REQUESTS[tab])}>
             Draft a hand-off
           </button>
+          <TalkButton talk={talking} />
         </div>
       </div>
     </>
@@ -138,13 +150,21 @@ function ThreadCardView({ tab, card, send, dismiss }: { tab: PartnerTab; card: T
   if (card.kind === "draft") return <DraftCard tab={tab} card={card} />;
   const time = new Date(card.at);
   return (
-    <li className={`card-message ${card.who === "user" ? "user" : "lead"}${card.sending ? " sending" : ""}`}>
+    <li className={`card-message ${card.who === "partner" ? "lead" : card.who}${card.sending ? " sending" : ""}`}>
       <p className="byline">
-        <b>{card.who === "user" ? "You" : "Partner"}</b>
+        <b>{{ user: "You", partner: "Partner", "front-voice": "Front voice" }[card.who]}</b>
         <time dateTime={card.at} title={time.toLocaleString()}>{time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time>
         {card.sending && <span>sending…</span>}
       </p>
-      <p className="text">{card.text}</p>
+      {card.heard !== undefined && <p className="heard"><span>You said</span>{card.heard}</p>}
+      {card.raw === undefined
+        ? <p className="text">{card.text}</p>
+        : (
+          <div className="spoken">
+            <p className="text">{card.text}</p>
+            <p className="raw"><span>Heard</span>{card.raw}</p>
+          </div>
+        )}
       {card.error && (
         <div className="send-failure">
           <p className="error">{card.error}</p>

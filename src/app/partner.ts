@@ -96,7 +96,13 @@ export function reduceThread(state: ThreadState, event: ThreadEvent): ThreadStat
 
 /** One card of a Thread, as the tab draws it. */
 export type ThreadCard =
-  | { kind: "message"; key: string; who: "user" | "partner"; text: string; at: string; sending?: boolean; error?: string }
+  | {
+    kind: "message"; key: string; who: "user" | "partner" | "front-voice"; text: string; at: string; sending?: boolean; error?: string;
+    /** What was heard of a spoken message, when the Front voice cleaned it. */
+    raw?: string;
+    /** What the user said that the Front voice answered itself. */
+    heard?: string;
+  }
   | {
     kind: "draft"; key: string; id: number; text: string; at: string;
     /** Open to hand, replaced by a later draft, or handed to the Lead. */
@@ -117,8 +123,11 @@ export function threadCards({ entries, sends }: ThreadState): ThreadCard[] {
     const key = `entry-${e.id}`;
     switch (e.type) {
       case "user":
+        return [{ kind: "message", key, who: e.type, text: e.text, at: e.at, ...(e.raw !== undefined && e.raw !== e.text && { raw: e.raw }) }];
       case "partner":
         return [{ kind: "message", key, who: e.type, text: e.text, at: e.at }];
+      case "front-voice":
+        return [{ kind: "message", key, who: e.type, text: e.text, at: e.at, ...(e.heard !== undefined && { heard: e.heard }) }];
       case "draft": {
         const sent = handed.get(e.id);
         const status = sent !== undefined ? "handed" : e.id === lastDraft ? "open" : "replaced";
@@ -173,9 +182,9 @@ export function withQuote(text: string, quote: string) {
   return before ? `${before}\n\n${quote}\n` : `${quote}\n`;
 }
 
-/** `partner say`'s arguments: the text after `--`, so it is never read as a flag. */
-export function partnerSayArgs(tab: PartnerTab, text: string): string[] {
-  return [tab, "--", text];
+/** `partner say`'s arguments: the text after `--`, so it is never read as a flag, and what was heard when it was spoken. */
+export function partnerSayArgs(tab: PartnerTab, text: string, raw?: string): string[] {
+  return [tab, ...(raw !== undefined ? ["--raw", raw] : []), "--", text];
 }
 
 /** `partner hand-off`'s arguments: the draft, with the user's text only when they edited it. */

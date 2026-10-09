@@ -268,6 +268,32 @@ voice's:
 OPENCODE_API_KEY=… bun scripts/front-voice-ttft.ts [model …]
 ```
 
+### In a Partner's tab
+
+Each tab of the app has its own Front voice (ADR-0014). The page has one
+talk button's worth of voice, which follows the tab it shows: it tells
+`serve` the tab on `/api/voice` (`{ "type": "tab", "tab": "review" }`), and
+each utterance goes to the Front voice of the tab shown when it started.
+
+In the Review or Ideas tab, the Front voice hands off to that tab's Partner,
+never to the Lead: the user's cleaned message goes into the Partner's Thread
+and is typed into its pane, as `nico-agent partner say <tab> --raw <heard>`
+does, and it says "I'll ask the Review partner." (or the Idea partner). Its
+own lines go into the Thread too. It reads the Thread's last entries and, in
+the Review tab, the PR's title and description (the Review partner's brief)
+and the diff of its checkout against the PR's base. It never reads the
+Board, the Intent or the Lead's Conversation there, and the transcription
+service is primed with the Partner's Repo's glossary and the Harness names
+only. A tab with no Partner hears nothing: the page warns, and nothing
+reaches the Lead.
+
+Only the tab a page shows is spoken to it: the Lead's replies on the Lead's
+tab, a Partner's replies in its Thread on its own tab (never the user's
+messages or its hand-off drafts), and the Front voice's lines on the tab it
+talks in. Switching tabs stops what the page was hearing; replies written
+while no page shows their tab are never spoken, and still show in the tab.
+The spoken-message timing log below times only what goes to the Lead.
+
 ### The Lead speaks
 
 With Voice on (`nico-agent voice on|off`, or the **Voice** switch in the Lead

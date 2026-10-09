@@ -154,7 +154,7 @@ describe("AXI conventions", () => {
         `  nico-agent partner list,"List the Partners: each one's tab, Repo, launch, where it stands and its Agent state"`,
         `  nico-agent partner log <tab>,"Show a Partner's Thread, oldest first: the user's messages, its replies, its Hand-off drafts and what was handed to the Lead (read-only)"`,
         `  nico-agent partner diff <tab>,"Show the diff of the PR a Partner reviews, read from its checkout against the PR's base, file by file (read-only)"`,
-        `  nico-agent partner say <tab> <text>,"Write to a Partner: the message is kept in its Thread and typed into its pane"`,
+        `  "nico-agent partner say <tab> [--raw <transcript>] <text>","Write to a Partner: the message is kept in its Thread and typed into its pane"`,
         "  nico-agent partner reply <tab> <text>,Write a Partner's reply into its Thread (its MCP `say` tool)",
         "  nico-agent partner draft <tab> <text>,Draft a Partner's Hand-off for the user to approve (its MCP `hand_off` tool); a later draft replaces it",
         `  "nico-agent partner hand-off <tab> <draft> [--text <markdown>]","Approve a Partner's open Hand-off draft, as written or edited, and send it to the Lead as your message naming the Partner"`,

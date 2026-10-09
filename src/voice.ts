@@ -214,9 +214,23 @@ export function transcribe(world: World, endpoint: VoiceEndpoint, audio: Uint8Ar
 }
 
 /**
+ * Who a Front voice hands off to (ADR-0014): the Lead in the Lead's tab, the
+ * tab's Partner in a Partner's; by name ("the Lead"), and what it is, as the
+ * Front voice is told.
+ */
+export interface HandOffTarget {
+  name: string;
+  is: string;
+}
+
+/** The Lead, as the Front voice in its tab is told of it. */
+export const THE_LEAD: HandOffTarget = { name: "the Lead", is: "an agent that runs coding agents on a Board of issues" };
+
+/**
  * What the Front voice is sent for one thing the user said: `heard`, the raw
  * transcript, and `context`, what it reads (see `readContext` in front-voice.ts),
- * in the Conversation `sessionId` names; streamed as it is made, or whole for `voice check`.
+ * in the Conversation `sessionId` names; streamed as it is made, or whole for
+ * `voice check`. It hands off `to` its tab's agent, the Lead unless told otherwise.
  */
 export interface FrontVoiceTurn {
   heard: string;
@@ -224,45 +238,51 @@ export interface FrontVoiceTurn {
   /** The Conversation's stable id, sent as `x-opencode-session` for opencode go to route and cache by; other endpoints ignore it. */
   sessionId: string;
   stream: boolean;
+  to?: HandOffTarget;
 }
 
-/** The Front voice's one tool (ADR-0013): it hands the user's message to the Lead, and acts on nothing itself. */
-export const HAND_OFF = {
-  type: "function",
-  function: {
-    name: "hand_off",
-    description: "Write the user's message into the Conversation for the Lead, as the user's own words, cleaned. " +
-      "For anything that needs judgment, a decision or an action.",
-    parameters: {
-      type: "object",
-      properties: {
-        message: { type: "string", description: "What the user said, cleaned: fillers and repeated words dropped, terms spelled as written, punctuation fixed, the meaning unchanged" },
-        choice: { type: "integer", minimum: 1, description: "Answering the Lead's question with choices: the number of the choice the answer picks; left out when it picks none clearly" },
+/** The Front voice's one tool (ADR-0013): it hands the user's message `to` its tab's agent, and acts on nothing itself. */
+export function handOffTool(to: HandOffTarget = THE_LEAD) {
+  const thread = to === THE_LEAD ? "the Conversation" : "the Thread";
+  return {
+    type: "function",
+    function: {
+      name: "hand_off",
+      description: `Write the user's message into ${thread} for ${to.name}, as the user's own words, cleaned. ` +
+        "For anything that needs judgment, a decision or an action.",
+      parameters: {
+        type: "object",
+        properties: {
+          message: { type: "string", description: "What the user said, cleaned: fillers and repeated words dropped, terms spelled as written, punctuation fixed, the meaning unchanged" },
+          choice: { type: "integer", minimum: 1, description: `Answering ${to.name}'s question with choices: the number of the choice the answer picks; left out when it picks none clearly` },
+        },
+        required: ["message"],
       },
-      required: ["message"],
     },
-  },
-} as const;
+  } as const;
+}
 
-/** What the Front voice is told it is and does, before what it reads. */
-const FRONT_VOICE_RULES = [
-  "You are the Front voice of nico-agent. You hold a spoken conversation with the user in front of the Lead, an agent that runs coding agents on a Board of issues. " +
-  "The user hears what you write, read aloud.",
-  "You can do two things only: answer from what you read below, and hand the user's message to the Lead with hand_off.",
-  "- Answer yourself small talk, a request to say something again, and questions that what you read below answers.",
-  "- Hand off anything that needs judgment, a decision or an action (dispatching, answering, approving, merging, changing anything), " +
-  "an answer to the Lead's question, and any question you cannot answer from what you read. Never act, never promise an action, never say the Lead did what you cannot read.",
-  "- When you hand off, write nothing yourself: the user is told you asked the Lead.",
-  "- hand_off's message is the user's words cleaned: drop fillers (um, uh) and words said twice, spell the terms below exactly as written, fix punctuation. Never answer or change the message.",
-  "- Talk for the ear: one to three short sentences, no lists, no Markdown, issues by their title.",
-].join("\n");
+/** What the Front voice is told it is and does, before what it reads: handing off `to` its tab's agent. */
+function frontVoiceRules({ name, is }: HandOffTarget) {
+  return [
+    `You are the Front voice of nico-agent. You hold a spoken conversation with the user in front of ${name}, ${is}. ` +
+    "The user hears what you write, read aloud.",
+    `You can do two things only: answer from what you read below, and hand the user's message to ${name} with hand_off.`,
+    "- Answer yourself small talk, a request to say something again, and questions that what you read below answers.",
+    "- Hand off anything that needs judgment, a decision or an action (dispatching, answering, approving, merging, changing anything), " +
+    `an answer to ${name}'s question, and any question you cannot answer from what you read. Never act, never promise an action, never say ${name} did what you cannot read.`,
+    `- When you hand off, write nothing yourself: the user is told you asked ${name}.`,
+    "- hand_off's message is the user's words cleaned: drop fillers (um, uh) and words said twice, spell the terms below exactly as written, fix punctuation. Never answer or change the message.",
+    "- Talk for the ear: one to three short sentences, no lists, no Markdown, issues by their title.",
+  ].join("\n");
+}
 
 /** A request for the Front voice's reply to `turn`, with hand_off its only tool. */
-export function frontVoiceRequest(endpoint: VoiceEndpoint, headers: Headers, { heard, context, sessionId, stream }: FrontVoiceTurn) {
+export function frontVoiceRequest(endpoint: VoiceEndpoint, headers: Headers, { heard, context, sessionId, stream, to = THE_LEAD }: FrontVoiceTurn) {
   headers.set("content-type", "application/json");
   headers.set("x-opencode-session", sessionId);
-  const messages = [{ role: "system", content: `${FRONT_VOICE_RULES}\n\n${context}` }, { role: "user", content: heard }];
-  const body = { model: endpoint.model, temperature: 0, stream, tools: [HAND_OFF], messages };
+  const messages = [{ role: "system", content: `${frontVoiceRules(to)}\n\n${context}` }, { role: "user", content: heard }];
+  const body = { model: endpoint.model, temperature: 0, stream, tools: [handOffTool(to)], messages };
   return new Request(`${base(endpoint)}/chat/completions`, { method: "POST", headers, body: JSON.stringify(body) });
 }
 
