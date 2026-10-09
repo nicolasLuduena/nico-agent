@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-05T20:38:36+00:00",
+  "generatedAt": "2026-10-09T14:41:59+00:00",
   "title": "Design System: nico-agent",
   "extensions": {
     "colorMeta": {
@@ -93,6 +93,31 @@
           "#c2cbd9",
           "#e6effd"
         ]
+      },
+      "display-ink-soft": {
+        "role": "neutral",
+        "displayName": "Display Ink Soft",
+        "canonical": "oklch(80.8% 0.018 256)"
+      },
+      "display-ink-dim": {
+        "role": "neutral",
+        "displayName": "Display Ink Dim",
+        "canonical": "oklch(51.1% 0.027 258)"
+      },
+      "display-vertex": {
+        "role": "neutral",
+        "displayName": "Display Vertex",
+        "canonical": "oklch(97.2% 0.005 258)"
+      },
+      "display-muon": {
+        "role": "neutral",
+        "displayName": "Muon Station",
+        "canonical": "oklch(39.0% 0.030 254)"
+      },
+      "display-rule-strong": {
+        "role": "neutral",
+        "displayName": "Display Rule Strong",
+        "canonical": "oklch(28.6% 0.025 256)"
       },
       "implementing-signal": {
         "role": "secondary",
@@ -799,15 +824,47 @@
       "description": "The display field with a detector, one track per Stage, and the legend readout; fixed dark in both schemes.",
       "html": "<figure class=\"ds-event\"><svg viewBox=\"-80 -80 160 160\" aria-hidden=\"true\"><g fill=\"none\"><circle r=\"14\"/><circle r=\"26\"/><circle r=\"38\"/><circle class=\"ds-ecal\" r=\"54\" stroke-width=\"10\" pathLength=\"360\" stroke-dasharray=\"6.5 1\"/><circle class=\"ds-muon\" r=\"72\" stroke-width=\"5\" pathLength=\"360\" stroke-dasharray=\"26 4\"/></g><path class=\"ds-trk\" style=\"--c:#f5a524\" d=\"M0 0 Q10 -18 8 -36\"/><path class=\"ds-trk\" style=\"--c:#3bd47b\" d=\"M0 0 Q20 4 48 10\"/><path class=\"ds-trk\" style=\"--c:#52b5ff\" d=\"M0 0 Q-14 18 -55 50\"/><circle r=\"2\" fill=\"#f4f6f9\"/></svg><dl><div style=\"--c:#f5a524\"><dt><i></i>Implementing</dt><dd>2</dd></div><div style=\"--c:#3bd47b\"><dt><i></i>PR ready</dt><dd>1</dd></div><div style=\"--c:#52b5ff\"><dt><i></i>Review launched</dt><dd>1</dd></div><div style=\"--c:#ff5757\"><dt><i></i>Failed</dt><dd>0</dd></div></dl></figure>",
       "css": ":host{--ground:#f3f5f8;--panel:#fff;--panel-2:#eef1f5;--rule:#dce1e8;--rule-strong:#c2c9d3;--ink:#11151b;--ink-2:#566170;--link:#1d5bb8;--implementing:#c06a00;--implementing-ink:#8f4f00;--pr-ready:#10874a;--pr-ready-ink:#0b6b3a;--review:#1c6dd0;--review-ink:#1756a6;--failed:#d1262b;--failed-ink:#b01e22;--blocked:#b5129a;--blocked-ink:#fff;--fire:#f2a516;--fire-hover:#ffb52e;--fire-ink:#211400;--display:#0a0d12;font:14px/1.45 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;color:var(--ink)} .ds-event{display:grid;grid-template-columns:140px 1fr;gap:1.5rem;align-items:center;margin:0;padding:1rem;background:var(--display);border-radius:6px;color:#dfe4eb} .ds-event svg circle{stroke:#303b4a;stroke-width:.7} .ds-event .ds-ecal{stroke:color-mix(in srgb,#3bd47b 34%,#303b4a)} .ds-event .ds-muon{stroke:#3a4655} .ds-trk{fill:none;stroke:var(--c);stroke-width:1.8;stroke-linecap:round;transition:stroke-width 160ms} .ds-trk:hover{stroke-width:2.4} .ds-event dl{display:grid;grid-template-columns:1fr 1fr;gap:.15rem 1.5rem;margin:0} .ds-event dl>div{display:flex;justify-content:space-between;align-items:baseline;padding:.35rem 0;border-bottom:1px solid #1a212b} .ds-event dt{display:inline-flex;align-items:center;gap:.55rem;font-size:13px;color:#b9c1cc} .ds-event dt i{width:16px;height:2px;border-radius:1px;background:var(--c)} .ds-event dd{margin:0;font-size:18px;font-weight:600;color:#f2f4f7;font-variant-numeric:tabular-nums}"
+    },
+    {
+      "name": "Approve Button",
+      "kind": "button",
+      "refersTo": "button-approve",
+      "description": "A decision in the Lead panel: Approve a Proposal, Save the Intent or the Notes. Filled ink, never amber.",
+      "html": "<button class=\"ds-btn ds-btn-approve\">Approve</button> <button class=\"ds-btn\">Decline</button>",
+      "css": ":host{--ground:#f3f5f8;--panel:#fff;--panel-2:#eef1f5;--rule:#dce1e8;--rule-strong:#c2c9d3;--ink:#11151b;--ink-2:#566170;--link:#1d5bb8;--implementing:#c06a00;--implementing-ink:#8f4f00;--pr-ready:#10874a;--pr-ready-ink:#0b6b3a;--review:#1c6dd0;--review-ink:#1756a6;--failed:#d1262b;--failed-ink:#b01e22;--blocked:#b5129a;--blocked-ink:#fff;--fire:#f2a516;--fire-hover:#ffb52e;--fire-ink:#211400;--display:#0a0d12;font:14px/1.45 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;color:var(--ink)} .ds-btn{display:inline-flex;align-items:center;gap:.35rem;height:28px;padding:0 .6rem;font:500 13px system-ui,sans-serif;color:var(--ink);background:var(--panel-2);border:1px solid var(--rule-strong);border-radius:4px;cursor:pointer;transition:border-color 120ms,background-color 120ms,color 120ms} .ds-btn:hover{border-color:var(--ink-2)} .ds-btn:focus-visible{outline:2px solid var(--link);outline-offset:2px} .ds-btn-approve{background:var(--ink);border-color:var(--ink);color:var(--panel);font-weight:600} .ds-btn-approve:hover{background:color-mix(in srgb,var(--ink) 85%,var(--panel))}"
+    },
+    {
+      "name": "Question Card",
+      "kind": "card",
+      "refersTo": "message-lead",
+      "description": "A question from the Lead, waiting on the user: the 2px ink rule, its choices as default buttons, a free-text answer.",
+      "html": "<div class=\"ds-card\"><div class=\"ds-wait\"><p class=\"ds-by\"><b>Lead</b><span>11:34</span><span>asks</span></p><p>Queue the Checkout redesign Spec first?</p><div class=\"ds-row\"><button class=\"ds-btn\">Queue it first</button><button class=\"ds-btn\">Leave it</button></div></div></div>",
+      "css": ":host{--ground:#f3f5f8;--panel:#fff;--panel-2:#eef1f5;--rule:#dce1e8;--rule-strong:#c2c9d3;--ink:#11151b;--ink-2:#566170;--link:#1d5bb8;--implementing:#c06a00;--implementing-ink:#8f4f00;--pr-ready:#10874a;--pr-ready-ink:#0b6b3a;--review:#1c6dd0;--review-ink:#1756a6;--failed:#d1262b;--failed-ink:#b01e22;--blocked:#b5129a;--blocked-ink:#fff;--fire:#f2a516;--fire-hover:#ffb52e;--fire-ink:#211400;--display:#0a0d12;font:14px/1.45 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;color:var(--ink)} .ds-btn{display:inline-flex;align-items:center;gap:.35rem;height:28px;padding:0 .6rem;font:500 13px system-ui,sans-serif;color:var(--ink);background:var(--panel-2);border:1px solid var(--rule-strong);border-radius:4px;cursor:pointer;transition:border-color 120ms,background-color 120ms,color 120ms} .ds-btn:hover{border-color:var(--ink-2)} .ds-btn:focus-visible{outline:2px solid var(--link);outline-offset:2px} .ds-card{max-width:24rem;background:var(--panel);border:1px solid var(--rule);border-radius:6px;overflow:hidden} .ds-card>div{padding:.6rem 1rem;border-top:1px solid var(--rule)} .ds-card>div:first-child{border-top:none} .ds-wait{box-shadow:inset 2px 0 0 var(--ink)} .ds-by{display:flex;gap:.5rem;font-size:12px;color:var(--ink-2);margin:0 0 .15rem} .ds-by b{font-weight:650;color:var(--ink)} .ds-by .st{margin-left:auto;font-weight:650} .ds-card p{margin:0} .ds-row{display:flex;flex-wrap:wrap;gap:.35rem;margin-top:.5rem} code{font:.9em ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--panel-2);padding:.1em .35em;border-radius:3px}"
+    },
+    {
+      "name": "Proposal Card",
+      "kind": "card",
+      "refersTo": "message-lead",
+      "description": "An action the Lead wants outside its Standing orders: the action as code, the reason, Approve in filled ink beside Decline.",
+      "html": "<div class=\"ds-card\"><div class=\"ds-wait\"><p class=\"ds-by\"><b>Lead</b><span>11:34</span><span class=\"st\">Proposes</span></p><p><code>nico-agent advance</code></p><p>It is next in the Queue.</p><div class=\"ds-row\"><button class=\"ds-btn ds-btn-approve\">Approve</button><button class=\"ds-btn\">Decline</button></div></div><div><p class=\"ds-by\"><b>Lead</b><span>11:20</span><span class=\"st\" style=\"color:var(--ink-2)\">Declined</span></p><p><code>nico-agent close acme/api#14</code></p></div></div>",
+      "css": ":host{--ground:#f3f5f8;--panel:#fff;--panel-2:#eef1f5;--rule:#dce1e8;--rule-strong:#c2c9d3;--ink:#11151b;--ink-2:#566170;--link:#1d5bb8;--implementing:#c06a00;--implementing-ink:#8f4f00;--pr-ready:#10874a;--pr-ready-ink:#0b6b3a;--review:#1c6dd0;--review-ink:#1756a6;--failed:#d1262b;--failed-ink:#b01e22;--blocked:#b5129a;--blocked-ink:#fff;--fire:#f2a516;--fire-hover:#ffb52e;--fire-ink:#211400;--display:#0a0d12;font:14px/1.45 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;color:var(--ink)} .ds-btn{display:inline-flex;align-items:center;gap:.35rem;height:28px;padding:0 .6rem;font:500 13px system-ui,sans-serif;color:var(--ink);background:var(--panel-2);border:1px solid var(--rule-strong);border-radius:4px;cursor:pointer;transition:border-color 120ms,background-color 120ms,color 120ms} .ds-btn:hover{border-color:var(--ink-2)} .ds-btn:focus-visible{outline:2px solid var(--link);outline-offset:2px} .ds-btn-approve{background:var(--ink);border-color:var(--ink);color:var(--panel);font-weight:600} .ds-btn-approve:hover{background:color-mix(in srgb,var(--ink) 85%,var(--panel))} .ds-card{max-width:24rem;background:var(--panel);border:1px solid var(--rule);border-radius:6px;overflow:hidden} .ds-card>div{padding:.6rem 1rem;border-top:1px solid var(--rule)} .ds-card>div:first-child{border-top:none} .ds-wait{box-shadow:inset 2px 0 0 var(--ink)} .ds-by{display:flex;gap:.5rem;font-size:12px;color:var(--ink-2);margin:0 0 .15rem} .ds-by b{font-weight:650;color:var(--ink)} .ds-by .st{margin-left:auto;font-weight:650} .ds-card p{margin:0} .ds-row{display:flex;flex-wrap:wrap;gap:.35rem;margin-top:.5rem} code{font:.9em ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--panel-2);padding:.1em .35em;border-radius:3px}"
+    },
+    {
+      "name": "Drawer Tabs and Switch",
+      "kind": "navigation",
+      "refersTo": "drawer-tab",
+      "description": "The drawer's tabs on a hairline (selected in ink over a 2px underline, an unsaved edit marked by a 5px key bar) and a Standing order's squared switch, on in ink.",
+      "html": "<div class=\"ds-tabs\"><span class=\"on\">Intent<i></i></span><span>Notes</span><span>Standing orders</span></div><label class=\"ds-sw\"><input type=\"checkbox\" checked><b>review</b><span>on</span></label>",
+      "css": ":host{--ground:#f3f5f8;--panel:#fff;--panel-2:#eef1f5;--rule:#dce1e8;--rule-strong:#c2c9d3;--ink:#11151b;--ink-2:#566170;--link:#1d5bb8;--implementing:#c06a00;--implementing-ink:#8f4f00;--pr-ready:#10874a;--pr-ready-ink:#0b6b3a;--review:#1c6dd0;--review-ink:#1756a6;--failed:#d1262b;--failed-ink:#b01e22;--blocked:#b5129a;--blocked-ink:#fff;--fire:#f2a516;--fire-hover:#ffb52e;--fire-ink:#211400;--display:#0a0d12;font:14px/1.45 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;color:var(--ink)} .ds-tabs{display:flex;gap:1rem;border-bottom:1px solid var(--rule);font:500 13px system-ui,sans-serif;color:var(--ink-2)} .ds-tabs span{display:inline-flex;align-items:center;gap:.35rem;height:34px} .ds-tabs .on{color:var(--ink);font-weight:650;box-shadow:inset 0 -2px 0 var(--ink)} .ds-tabs i{width:5px;height:5px;border-radius:1px;background:currentColor} .ds-sw{display:inline-flex;align-items:center;gap:.5rem;margin-top:.75rem} .ds-sw b{font-weight:650} .ds-sw span{font-size:12px;color:var(--ink-2)} .ds-sw input{appearance:none;position:relative;width:28px;height:16px;margin:0;border:1px solid var(--ink);border-radius:4px;background:var(--ink)} .ds-sw input::before{content:'';position:absolute;top:2px;left:14px;width:10px;height:10px;border-radius:3px;background:var(--panel)}"
     }
   ],
   "narrative": {
     "northStar": "The Event Display",
-    "overview": "The Board reads In-flight work the way a particle physicist reads a collision: a detector seen end-on, with one track per Dispatch leaving the vertex and reaching as far out as its Stage. Implementing stops inside the tracker, PR ready deposits a tower in the electromagnetic calorimeter, Review launched punches through to the muon stations, and Failed ends in a burst. The display is for reading at a glance; the rows below it are where the user acts, and the two are linked by hover.\n\nEverything outside the display is a quiet operational surface: system sans, hairline rules, 3 to 6px corners, flat panels, and colour that only ever means Stage, Agent blocked, or \"start a track\". The instrument is literal geometry, not costume. There is no HUD chrome, no neon glow, no scanlines, and nothing loops.\n\nThe surface is dense, monitor-grade, and built for a tab left open all day. It must stay at least as scannable as a plain status table.",
+    "overview": "The Board reads In-flight work the way a particle physicist reads a collision: a detector seen end-on, with one track per Dispatch leaving the vertex and reaching as far out as its Stage. Implementing stops inside the tracker, PR ready deposits a tower in the electromagnetic calorimeter, Review launched punches through to the muon stations, and Failed ends in a burst. The display is for reading at a glance; the rows below it are where the user acts, and the two are linked by hover.\n\nEverything outside the display is a quiet operational surface: system sans, hairline rules, 3 to 6px corners, flat panels, and colour that only ever means Stage, Agent blocked, or \"start a track\". The instrument is literal geometry, not costume. There is no HUD chrome, no neon glow, no scanlines, and nothing loops.\n\nThe surface is dense, monitor-grade, and built for a tab left open all day. It must stay at least as scannable as a plain status table.\n\nBeside the Board, the Lead panel holds the Conversation with the Lead: its messages, its questions and Proposals as cards that wait on the user, and a drawer for the Intent, the Notes and the Standing orders. It is the same quiet surface. A card that waits carries a 2px ink rule, and a decision (Approve, Save, a switch turned on) is a filled ink control, never amber: deciding is not starting a track.",
     "keyCharacteristics": [
       "A fixed dark instrument canvas (the display field) in both colour schemes.",
       "One hue per Stage, shared by track, legend key, and row.",
-      "Magenta reserved for Agent blocked; amber fill reserved for starting a track.",
+      "Magenta reserved for Agent blocked; amber fill reserved for starting a track; filled ink for a decision.",
       "System sans for UI; monospace only for identifiers.",
       "Hairline rules, small radii, flat surfaces, a single authored motion."
     ],
@@ -846,6 +903,10 @@
         "name": "The Drawn Icon Rule",
         "body": "Every icon is drawn as inline SVG in the glyph's stroke language. Never use a Unicode glyph, an emoji, or an icon font in place of an icon.",
         "section": "components"
+      },
+      {
+        "name": "The Ink Decides Rule",
+        "body": "A filled ink control is a decision the user makes in the Lead panel: Approve a Proposal, Save the Intent or the Notes, a Standing order switched on, the talk button while it records. A card or change waiting on that decision carries a 2px ink rule on its left edge. Neither ever takes amber or a Stage hue."
       }
     ],
     "dos": [
@@ -855,7 +916,8 @@
       "**Do** use monospace only for issue keys, branches, launch triples, workspace names, and code.",
       "**Do** keep corners between 3 and 6px and dividers at 1px.",
       "**Do** derive a track's angle from its issue hash and nudge it clear of neighbours and the ring key, so tracks hold still across polls.",
-      "**Do** gate the track redraw and smooth scroll behind prefers-reduced-motion."
+      "**Do** gate the track redraw and smooth scroll behind prefers-reduced-motion.",
+      "**Do** fill a decision in ink (Approve, Save, a switch on) and mark what waits on it with the 2px ink rule."
     ],
     "donts": [
       "**Don't** use magenta for anything but Agent blocked.",
@@ -864,7 +926,8 @@
       "**Don't** add HUD chrome, neon glow, or scanlines. The detector is plain grey geometry.",
       "**Don't** render Stage as a filled pill. The filled badge belongs to Agent blocked alone.",
       "**Don't** load external fonts, images, or icon sets. Every mark is inline SVG or CSS.",
-      "**Don't** stand a Unicode glyph in for an icon. Draw it as inline SVG with a currentColor stroke and round caps."
+      "**Don't** stand a Unicode glyph in for an icon. Draw it as inline SVG with a currentColor stroke and round caps.",
+      "**Don't** nest a card inside the Lead panel. The drawer, the cards and the composer sit flat in it, divided by hairlines."
     ]
   }
 }
