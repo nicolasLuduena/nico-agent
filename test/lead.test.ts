@@ -33,6 +33,7 @@ describe("lead start", () => {
       mcpServers: { "nico-agent": { type: "http", url: "http://127.0.0.1:42069/mcp" } },
     });
     expect(readFileSync(join(home, ".claude/skills/lead/SKILL.md"), "utf8")).toStartWith("---\nname: lead\n");
+    expect(readFileSync(join(home, ".claude/skills/lead/SHAPING.md"), "utf8")).toStartWith("# Shaping new work\n");
   });
 
   test("on codex: the MCP server in a -c override, the home trusted and its root, the skill where codex finds it", async () => {
@@ -266,12 +267,18 @@ describe("the Lead's home", () => {
 });
 
 describe("the lead skill", () => {
-  /** The skill `lead start` wrote into the Lead's home. */
+  /** The skill `lead start` wrote into the Lead's home, its shaping page after it. */
   async function writtenSkill() {
     const ctx = withConfig(CLAUDE);
     expect((await ctx.cli("lead", "start")).exitCode).toBe(0);
-    return { ...ctx, skill: readFileSync(join(ctx.home, ".claude/skills/lead/SKILL.md"), "utf8") };
+    const page = (name: string) => readFileSync(join(ctx.home, ".claude/skills/lead", name), "utf8");
+    return { ...ctx, skill: `${page("SKILL.md")}\n${page("SHAPING.md")}` };
   }
+
+  test("it points to its shaping page by the name lead start writes it under", async () => {
+    const { skill } = await writtenSkill();
+    expect(skill).toContain("read `SHAPING.md` beside this skill");
+  });
 
   test("its Tools section names exactly the tools the MCP server offers", async () => {
     const { web, skill } = await writtenSkill();

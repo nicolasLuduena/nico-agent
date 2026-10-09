@@ -137,7 +137,7 @@ describe("AXI conventions", () => {
         '  "nico-agent lead ask <question> [<choice>...]","Ask the user a question for the Lead, with optional choices; it stays open until answered (its MCP `ask` tool)"',
         '  nico-agent lead log,"Show the conversation with the Lead, oldest first, with who said what and when (read-only)"',
         '  "nico-agent lead recall <query> [--since <time>] [--until <time>]","Search the whole conversation with the Lead for text, optionally within a time range (its MCP `recall` tool)"',
-        '  nico-agent lead propose --reason <why> -- <command>...,"Propose an action for the user to approve or decline, as the Lead (its MCP `propose` tool)"',
+        '  "nico-agent lead propose --reason <why> (-- <command>... | --write <repo> [--file <path> | --text <markdown>])","Propose an action, or a Spec to write to a Repo\'s Source, for the user to approve or decline, as the Lead (its MCP `propose` tool)"',
         "  nico-agent harness list,List the Harnesses with their models and Effort levels (discovers uncached ones)",
         "  nico-agent harness refresh,Discover the Harnesses' models and Effort levels again and replace the cache",
         "  nico-agent show <issue>,Print the full Dispatch record of an In-flight issue",

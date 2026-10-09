@@ -216,7 +216,7 @@ function QuestionCard({ card, send, dismiss }: { card: Card & { kind: "question"
 
 const STATUS: Record<ProposalJson["status"], string> = { open: "Proposes", approved: "Approved", declined: "Declined", failed: "Failed" };
 
-/** A Proposal: its action and reason with Approve and Decline while open, then how it was decided and what it did. */
+/** A Proposal: its action or write and reason with Approve and Decline while open, then how it was decided and what it did. */
 function ProposalCard({ card }: { card: Card & { kind: "proposal" } }) {
   const [declining, setDeclining] = useState(false);
   const [reason, setReason] = useState("");
@@ -230,13 +230,20 @@ function ProposalCard({ card }: { card: Card & { kind: "proposal" } }) {
   return (
     <li className={`card-proposal ${card.status}`}>
       <Byline who="lead" at={card.at} status={STATUS[card.status]} />
-      <p className="action"><code>{card.action}</code></p>
+      {card.write
+        ? (
+          <>
+            <p className="action">{"Write a Spec and its tickets to "}<code>{card.write.repo}</code>{"’s Source"}</p>
+            <pre className="write" tabIndex={0} aria-label="What the Lead would write">{card.write.text}</pre>
+          </>
+        )
+        : <p className="action"><code>{card.action}</code></p>}
       <p className="text">{card.reason}</p>
       {card.declineReason && <p className="decided">{`You said: ${card.declineReason}`}</p>}
       {lines.length > 0 && <div className="outcome">{lines.map((l, i) => <p key={i} className={l.error ? "error" : undefined}>{l.text}</p>)}</div>}
       {open && !declining && (
         <div className="buttons">
-          <button type="button" className="approve" disabled={busy} onClick={() => void act("/api/proposals/approve", [String(card.id)])}>{busy ? "Running…" : "Approve"}</button>
+          <button type="button" className="approve" disabled={busy} onClick={() => void act("/api/proposals/approve", [String(card.id)])}>{busy ? (card.write ? "Approving…" : "Running…") : "Approve"}</button>
           <button type="button" disabled={busy} onClick={() => setDeclining(true)}>Decline</button>
         </div>
       )}

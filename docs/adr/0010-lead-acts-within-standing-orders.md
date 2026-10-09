@@ -38,6 +38,16 @@ Those Source writes are the Lead acting as the user's delegate through its own
 tools; ADR-0007 stays true of nico-agent itself. We accept that over an agent
 that cannot run the grill → Spec → tickets flow the user wants it to drive.
 
+## Write Proposals
+
+With the `write` order off, the Lead proposes a Spec and its tickets as a
+write Proposal: the Markdown and the Repo whose Source it goes to. Approving
+one is the exception to "nico-agent runs the approved action": nico-agent
+records the decision and hands the text to the Lead's Inbox, and the Lead
+writes it with its own shell, through the same to-spec and to-tickets path
+it takes with the order on. nico-agent still writes nothing to a Source
+(ADR-0007); declining writes nothing at all.
+
 ## Considered Options
 
 - **An advisor that only proposes.** Everything waits for a click; too slow for

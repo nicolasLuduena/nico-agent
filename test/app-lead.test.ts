@@ -68,6 +68,18 @@ describe("the conversation's cards", () => {
     ]);
   });
 
+  test("a Proposal to write a Spec is a card carrying the Repo and the whole text, which approving leaves without an outcome", async () => {
+    const { cli, loaded, world } = withLead();
+    world.addClone("/src/api", "git@github.com:acme/api.git");
+    await cli("repo", "add", "acme/api", "--path", "/src/api");
+    await cli("lead", "propose", "--reason", "The billing Spec we agreed on", "--write", "acme/api", "--text", "# Spec: billing\n");
+    await cli("proposals", "approve", "1");
+    const [card] = cards(await loaded()) as ProposalJson[];
+    expect(card).toMatchObject({ kind: "proposal", id: 1, write: { repo: "acme/api", text: "# Spec: billing\n" }, reason: "The billing Spec we agreed on", status: "approved" });
+    expect(card!.action).toBeUndefined();
+    expect(proposalLines(card!)).toEqual([]);
+  });
+
   test("a decided Proposal shows what its action did, or why it failed", async () => {
     const { cli, loaded } = withLead();
     await cli("lead", "propose", "--reason", "Next", "advance");

@@ -5,16 +5,28 @@ import { withFileLock, writeJsonAtomic } from "./state";
 /** Where a Proposal stands: undecided, or how the user decided it and how that went. */
 export type ProposalStatus = "open" | "approved" | "declined" | "failed";
 
+/** Markdown the Lead would write to a Repo's Source: a Spec and its tickets. */
+export interface SourceWrite {
+  /** The Repo whose Source it goes to, as `owner/name`. */
+  repo: string;
+  text: string;
+}
+
+/**
+ * What approving a Proposal does: run `action`, the CLI command without
+ * `nico-agent` and `--json`, in nico-agent; or let the Lead `write` the text
+ * to a Source with its own shell (ADR-0010: nico-agent never writes it).
+ */
+export type Proposed = { action: string[] } | { write: SourceWrite };
+
 /**
  * An action the Lead may not take under its Standing orders, held until the
- * user decides (ADR-0010). Approving runs `action` through the CLI in
- * nico-agent; `failed` is an approval whose action turned out impossible.
+ * user decides (ADR-0010); `failed` is an approval whose action turned out
+ * impossible.
  */
-export interface Proposal {
+export type Proposal = Proposed & {
   id: number;
   at: string;
-  /** The CLI command it runs, without `nico-agent` and `--json`. */
-  action: string[];
   /** Why the Lead proposes it. */
   reason: string;
   status: ProposalStatus;
@@ -23,7 +35,7 @@ export interface Proposal {
   declineReason?: string;
   /** What the action printed with `--json`, its help left out. */
   outcome?: Record<string, unknown>;
-}
+};
 
 const FILE = "proposals.json";
 
@@ -51,11 +63,11 @@ export function openProposals(dir: string): Proposal[] {
 
 const isOpen = (p: Proposal) => p.status === "open";
 
-/** Record `action` as the next open Proposal. */
-export function addProposal(dir: string, action: string[], reason: string, at: Date): Promise<Proposal> {
+/** Record what approving would do as the next open Proposal. */
+export function addProposal(dir: string, proposed: Proposed, reason: string, at: Date): Promise<Proposal> {
   return withFileLock(dir, FILE, () => {
     const proposals = loadProposals(dir);
-    const proposal: Proposal = { id: (proposals.at(-1)?.id ?? 0) + 1, at: at.toISOString(), action, reason, status: "open" };
+    const proposal: Proposal = { id: (proposals.at(-1)?.id ?? 0) + 1, at: at.toISOString(), ...proposed, reason, status: "open" };
     save(dir, [...proposals, proposal]);
     return proposal;
   });
@@ -87,6 +99,21 @@ export function settle(dir: string, id: number, outcome: Record<string, unknown>
     save(dir, proposals.map((p) => (p.id === id ? settled : p)));
     return settled;
   });
+}
+
+/**
+ * What approving does, every way it is shown: `proposed` alone, as a
+ * decision carries it; `line`, a sentence; `summary`, a field naming the
+ * command line or the Repo; `shown`, as `proposals` lists it, the write whole
+ * to read before approving.
+ */
+export function describeProposed(proposal: Proposed) {
+  if ("action" in proposal) {
+    const action = commandLine(proposal.action);
+    return { proposed: { action: proposal.action }, line: action, summary: { action }, shown: { action } };
+  }
+  const { write } = proposal;
+  return { proposed: { write }, line: `write a Spec to ${write.repo}'s Source`, summary: { write: write.repo }, shown: { write } };
 }
 
 /** `action` as the command line the user would type. */
