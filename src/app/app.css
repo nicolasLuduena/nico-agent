@@ -8,6 +8,7 @@
   --blocked: #b4009e; --blocked-ink: #ffffff;
   --veil: rgb(245 245 247 / 0.78);
   --lift: 0 12px 40px rgb(0 0 0 / 0.12), 0 2px 6px rgb(0 0 0 / 0.06);
+  --toast-lift: 0 4px 16px rgb(0 0 0 / 0.12), 0 1px 3px rgb(0 0 0 / 0.08);
   --knob: 0 1px 3px rgb(0 0 0 / 0.25);
 }
 :root[data-theme="dark"] {
@@ -19,6 +20,7 @@
   --blocked: #ff6fd8; --blocked-ink: #1d1d1f;
   --veil: rgb(0 0 0 / 0.72);
   --lift: 0 12px 40px rgb(0 0 0 / 0.6), 0 0 0 1px var(--rule);
+  --toast-lift: 0 4px 16px rgb(0 0 0 / 0.6);
   --knob: 0 1px 3px rgb(0 0 0 / 0.5);
 }
 :root {
@@ -287,17 +289,6 @@ label.switch:has(:checked) { color: var(--ink); }
 .notices p::before { content: ""; position: absolute; left: 0; top: 0.45rem; width: 8px; height: 8px; border-radius: 50%; background: var(--implementing); }
 .notices .help { font-size: 13px; font-weight: 400; }
 
-/* The Questions list: what waits on the user, on the ground under the bar until answered or decided; it scrolls, fading at its foot. */
-.questions { flex: none; max-height: 42%; overflow-y: auto; overscroll-behavior: contain; background: var(--ground); border-bottom: 1px solid var(--rule); }
-.questions h2 { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 0.5rem; padding: 0.75rem 1.5rem 0.5rem; font-size: 15px; font-weight: 700; letter-spacing: -0.015em; background: var(--ground); }
-.questions h2 b { min-width: 1.4rem; height: 1.4rem; padding: 0 0.35rem; border-radius: var(--r-pill); background: var(--fill); color: var(--ink); font-size: 12px; display: inline-grid; place-items: center; }
-.questions ol { list-style: none; margin: 0; padding: 0.25rem 1.25rem 1.5rem; display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.75rem; }
-.questions::after { content: ""; position: sticky; bottom: 0; display: block; height: 1.5rem; margin-top: -1.5rem; background: linear-gradient(transparent, var(--ground)); pointer-events: none; }
-.questions li { cursor: pointer; animation: arrive 280ms var(--ease-out); }
-.questions .card-question, .questions .card-proposal { background: var(--surface); }
-.questions li .write { max-height: 8rem; }
-.questions .show { justify-self: start; min-height: 30px; font-size: 13px; color: var(--link); }
-
 /* The conversation: the Lead's words set large on the surface, the user's in a bubble at the right. */
 .conversation { flex: 1; min-height: 0; overflow-y: auto; list-style: none; margin: 0; padding: 1.75rem 1.5rem; display: flex; flex-direction: column; gap: 1.5rem; overscroll-behavior: contain; }
 .conversation:focus-visible { outline-offset: -2px; border-radius: 0; }
@@ -319,7 +310,7 @@ label.switch:has(:checked) { color: var(--ink); }
 .spoken { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: 0.4rem 1rem; }
 .raw { font-size: 13px; color: var(--ink-muted); white-space: pre-wrap; overflow-wrap: anywhere; }
 .spec-note { white-space: pre-line; }
-.raw span, .answer span { display: block; font-size: 12px; font-weight: 700; color: var(--ink-muted); }
+.raw span { display: block; font-size: 12px; font-weight: 700; color: var(--ink-muted); }
 .send-failure { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.5rem; font-size: 13px; }
 
 /* What waits on the user: a raised card ringed in the accent, its byline naming that it waits. */
@@ -327,12 +318,10 @@ label.switch:has(:checked) { color: var(--ink); }
   background: var(--raised); border-radius: var(--r-lg); padding: 1rem 1.1rem 1.1rem; display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.65rem;
   box-shadow: inset 0 0 0 1.5px var(--accent); transition: box-shadow 240ms var(--ease);
 }
-.card-question.answered, .card-proposal:not(.open) { box-shadow: inset 0 0 0 1px var(--rule); }
-.card-question:not(.answered) .byline span:last-child, .card-proposal.open .status { color: var(--link); font-weight: 700; }
+.card-question .byline span:last-child, .card-proposal.open .status { color: var(--link); font-weight: 700; }
 .card-question .byline, .card-proposal .byline { margin: 0; }
 .card-question > .text, .card-proposal > .text { font-size: 16px; }
-.card-question:not(.answered) > .text { font-size: 17px; font-weight: 600; letter-spacing: -0.016em; line-height: 1.55; }
-.answer { white-space: pre-wrap; }
+.card-question > .text { font-size: 17px; font-weight: 600; letter-spacing: -0.016em; line-height: 1.55; }
 .choices { display: flex; flex-wrap: wrap; gap: 0.5rem; }
 .choices button { background: var(--surface); box-shadow: inset 0 0 0 1px var(--edge); }
 .choices button:hover:not(:disabled) { background: var(--surface); box-shadow: inset 0 0 0 1.5px var(--ink); }
@@ -342,9 +331,54 @@ label.switch:has(:checked) { color: var(--ink); }
 .card-proposal .action { font-weight: 600; }
 .card-proposal .action code { font-size: 13px; font-weight: 400; background: var(--surface); padding: 0.1rem 0.3rem; border-radius: var(--r-sm); overflow-wrap: anywhere; }
 .card-proposal .write { font-family: var(--mono); font-size: 13px; line-height: 1.55; white-space: pre-wrap; max-height: 16rem; overflow: auto; margin: 0; padding: 0.8rem 0.9rem; background: var(--surface); border-radius: var(--r-md); border: 1px solid var(--rule); }
-.card-proposal .decided { color: var(--ink-muted); font-size: 13px; }
-.card-proposal.declined .status { color: var(--ink-muted); }
-.card-proposal.failed .status { color: var(--failed); }
+
+/* A question's or Proposal's line in the conversation: one quiet row, its dot in the accent while it waits on a toast. */
+.conversation > li.item-line { max-width: 44rem; width: 100%; }
+.item-line button {
+  all: unset; box-sizing: border-box; width: 100%; cursor: pointer; display: grid; grid-template-columns: auto auto auto minmax(0, 1fr) minmax(0, max-content); align-items: baseline; gap: 0.55rem;
+  padding: 0.55rem 0.9rem; border-radius: var(--r-pill); font-size: 14px; color: var(--ink-muted); box-shadow: inset 0 0 0 1px var(--rule);
+  transition: background-color 160ms var(--ease), box-shadow 160ms var(--ease);
+}
+.item-line button:hover { background: var(--raised); }
+.item-line button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.item-line .mark { width: 8px; height: 8px; border-radius: 50%; background: var(--ink-muted); align-self: center; }
+.item-line .who { white-space: nowrap; }
+.item-line .who b { color: var(--ink); font-weight: 700; }
+.item-line time { font-size: 13px; white-space: nowrap; }
+.item-line .what { color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.item-line .what code { font-size: 12px; background: var(--fill); padding: 0.1rem 0.35rem; border-radius: var(--r-sm); margin-right: 0.45rem; }
+.item-line .where { display: flex; gap: 0.45rem; min-width: 0; max-width: 24rem; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.item-line .where > * { overflow: hidden; text-overflow: ellipsis; }
+.item-line .where b { flex: none; color: var(--ink); font-weight: 600; }
+.item-line .where .error { color: var(--failed); }
+.item-line .where .raw { font-size: 13px; white-space: nowrap; }
+.item-line.open .mark { background: var(--accent); }
+.item-line.open .where b, .item-line.answering .where b { color: var(--link); font-weight: 700; }
+.item-line.declined .where b { color: var(--ink-muted); }
+.item-line.failed .mark { background: var(--failed); }
+.item-line.failed .where b { color: var(--failed); }
+/* Unfolded, a decided line shows all it carries, its parts wrapping onto their own lines. */
+.item-line.whole button { grid-template-columns: auto auto minmax(0, 1fr); border-radius: var(--r-lg); padding: 0.75rem 1rem; }
+.item-line.whole .what, .item-line.whole .where { grid-column: 1 / -1; white-space: pre-wrap; overflow-wrap: anywhere; }
+.item-line.whole .where { flex-wrap: wrap; }
+.item-line.whole .where > * { white-space: pre-wrap; }
+
+/* The toasts: what waits on the user, stacked at the bottom right of every page, oldest nearest the corner; past a modest height the stack scrolls. */
+.toasts {
+  /* Padded so the toasts' lift is not clipped; the padding lets clicks through to the page. */
+  position: fixed; right: 0; bottom: 0; z-index: 20; width: min(29rem, 100vw); max-height: min(37rem, calc(100dvh - 56px));
+  overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; padding: 1.5rem; pointer-events: none;
+  /* Reversed, so the stack opens scrolled to the corner, where the oldest waits. */
+  display: flex; flex-direction: column-reverse;
+  /* A toast scrolled past the top fades out rather than being cut. */
+  mask-image: linear-gradient(transparent, #000 1.5rem);
+}
+.toasts ol { pointer-events: auto; }
+.toasts ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column-reverse; gap: 0.75rem; }
+.toasts .toast { background: var(--popover); box-shadow: inset 0 0 0 1.5px var(--accent), var(--toast-lift); animation: toast-in 320ms var(--ease-out); }
+.toasts .toast:focus { outline: 2px solid var(--focus); outline-offset: 3px; }
+.toasts .toast .write { max-height: 8rem; }
+@keyframes toast-in { from { opacity: 0; transform: translateY(12px) scale(0.98); } }
 
 /* The composer: it stays at the Lead panel's foot; typing and Talk sit side by side as equals, the same height. */
 .composer { border-top: 1px solid var(--rule); padding: 1rem 1.25rem 1.25rem; display: grid; gap: 0.6rem; }
@@ -403,8 +437,6 @@ button:disabled, button:disabled:hover, .repo-group form.launch > button:disable
   .shell, .shell.stats { grid-template-columns: minmax(0, 1fr); height: auto; padding: 0.75rem; gap: 0.75rem; }
   .lead-panel { height: calc(100dvh - 56px - 1.5rem); }
   .side { max-height: none; padding: 1.5rem 1.25rem; }
-  .questions ol { padding-left: 1rem; padding-right: 1rem; }
-  .questions h2 { padding-left: 1rem; padding-right: 1rem; }
   .lead-bar, .composer, .conversation, .notices { padding-left: 1rem; padding-right: 1rem; }
   .tabs { margin-left: 1rem; }
   .drawer-tab { padding-left: 1rem; padding-right: 1rem; }
@@ -427,6 +459,10 @@ button:disabled, button:disabled:hover, .repo-group form.launch > button:disable
   .card-message.lead .text { font-size: 16px; }
   button.talk { min-width: 5.5rem; }
   .research-box { width: calc(100% - 2rem); }
+  .toasts { padding: 1rem; max-height: min(28rem, 55dvh); mask-image: linear-gradient(transparent, #000 1rem); }
+  .item-line button { grid-template-columns: auto auto minmax(0, 1fr); border-radius: var(--r-lg); }
+  .item-line time { display: none; }
+  .item-line .where { grid-column: 2 / -1; }
   .totals dd { font-size: 28px; }
   .side h1, .conversation .empty h2 { font-size: 28px; }
 }

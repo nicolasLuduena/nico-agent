@@ -1,10 +1,10 @@
-import { type FormEvent, type KeyboardEvent, type MouseEvent, useEffect, useLayoutEffect, useReducer, useRef, useState } from "react";
+import { type KeyboardEvent, useEffect, useLayoutEffect, useReducer, useRef, useState } from "react";
 import type { Authored } from "../conversation";
 import type { BoardJson } from "./board";
 import { OutcomeNote, answerOf, post, usePost } from "./forms";
 import {
-  type Card, type Conversation, type LeadStatusJson, type OpenItem, type ProposalJson,
-  cards, declineArgs, followsNewEntries, notices, proposalLines, reduce, sayArgs,
+  type Card, type Conversation, type ItemLine, type LeadStatusJson, type OpenItem, type ProposalJson,
+  cards, followsNewEntries, itemLine, notices, reduce, sayArgs, toastId,
 } from "./lead";
 import { LeadDrawer } from "./lead-drawer";
 import { sendsOnEnter } from "./popover";
@@ -17,7 +17,8 @@ const EMPTY: Conversation = { entries: [], proposals: [], sends: [] };
 /**
  * The conversation with the Lead and its Proposals, refetched on
  * `conversation-entry` and `proposal-changed`, with the sends not in it yet.
- * The App keeps it, so the header counts the Questions list on every page.
+ * The App keeps it, so the header counts the Questions list, and its toasts
+ * show, on every page.
  */
 export function useConversation() {
   const log = useResource<{ entries?: Authored[] }>("/api/lead/log", ["conversation-entry"]);
@@ -36,22 +37,24 @@ export function useConversation() {
     if (typeof id === "number") dispatch({ type: "sent", key, id });
     else dispatch({ type: "failed", key, error: answerOf(json).lines[0]?.text ?? "the message was not sent" });
   };
-  return { state, send, dismiss: (key: string) => dispatch({ type: "dismiss", key }), failure: log.failure ?? proposals.failure };
+  return {
+    state, send, dismiss: (key: string) => dispatch({ type: "dismiss", key }), failure: log.failure ?? proposals.failure,
+    /** Whether both the log and the Proposals have been fetched once. */
+    loaded: Boolean(log.data && proposals.data),
+  };
 }
 
 export type ConversationState = ReturnType<typeof useConversation>;
 
-/** The id of a card's place in the conversation, which the Questions list jumps to. */
-const inConversation = (key: string) => `conversation-${key}`;
-
 /**
  * The Lead panel: the Voice switch, the Research button and the drawer's
  * button, the one quiet place for warnings (the Board's among them), the
- * Questions list (`questions`, null while hidden), the conversation as cards,
- * and the composer, which stays put and keeps its draft while entries arrive.
+ * conversation as cards, with a line for each question and Proposal (an open
+ * one's line calls `summon` to bring its toast forward), and the composer,
+ * which stays put and keeps its draft while entries arrive.
  */
-export function LeadPanel({ status, conversation, questions, board }: {
-  status: LeadStatusJson | null; conversation: ConversationState; questions: OpenItem[] | null; board: BoardJson | null;
+export function LeadPanel({ status, conversation, summon, board }: {
+  status: LeadStatusJson | null; conversation: ConversationState; summon: (key: string) => void; board: BoardJson | null;
 }) {
   const { state, send, dismiss, failure } = conversation;
   const [drawer, setDrawer] = useState(false);
@@ -70,26 +73,6 @@ export function LeadPanel({ status, conversation, questions, board }: {
   const sendAndFollow: SendText = (text, question, raw) => {
     atEnd.current = true;
     return send(text, question, raw);
-  };
-  /**
-   * The card the Questions list asked to show, scrolled to once the
-   * conversation is drawn. Each ask is a new object, so asking for the same
-   * card again scrolls to it again.
-   */
-  const [jumped, setJumped] = useState<{ key: string } | null>(null);
-  useEffect(() => {
-    if (!jumped) return;
-    const card = document.getElementById(inConversation(jumped.key));
-    if (!card) return;
-    // Reading back now: new entries leave the user where the card is.
-    atEnd.current = false;
-    card.scrollIntoView({ block: "center", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
-    card.focus({ preventScroll: true });
-  }, [jumped]);
-  /** Show the card `key` in the conversation, closing the drawer if it is open. */
-  const jump = (key: string) => {
-    setDrawer(false);
-    setJumped({ key });
   };
   const talking = useTalk((text, heard, answers) => void sendAndFollow(text, answers, heard), voice);
   const warnings = notices({ failure, status, talk: talking.warning, board });
@@ -118,7 +101,6 @@ export function LeadPanel({ status, conversation, questions, board }: {
           {outcome && <OutcomeNote outcome={outcome} />}
         </div>
       )}
-      <QuestionsList items={questions} send={send} dismiss={dismiss} jump={jump} />
       <LeadDrawer open={drawer} />
       <ol
         className="conversation"
@@ -130,7 +112,7 @@ export function LeadPanel({ status, conversation, questions, board }: {
         onScroll={(e) => { atEnd.current = followsNewEntries(e.currentTarget); }}
       >
         {shown.length
-          ? shown.map((card) => <CardView key={card.key} card={card} send={send} dismiss={dismiss} id={inConversation(card.key)} />)
+          ? shown.map((card) => <CardView key={card.key} card={card} send={send} dismiss={dismiss} summon={summon} />)
           : (
             <li className="empty">
               <h2>Talk to the Lead</h2>
@@ -144,66 +126,14 @@ export function LeadPanel({ status, conversation, questions, board }: {
 }
 
 /** Send a message to the Lead, or the answer to its question `question`; `raw` is what was heard of a spoken one. */
-type SendText = (text: string, question?: number, raw?: string) => Promise<void>;
+export type SendText = (text: string, question?: number, raw?: string) => Promise<void>;
 
-/**
- * The Questions list: each open question and Proposal of the Lead's, oldest
- * first, answered or decided right here as in the conversation; hidden while
- * `items` is null or empty. Clicking an item (away from its controls) or its
- * "Show in conversation" scrolls the conversation to it. An item answered or
- * decided from the keyboard hands focus to the next one, not to the page.
- */
-function QuestionsList({ items, send, dismiss, jump }: {
-  items: OpenItem[] | null; send: SendText; dismiss: (key: string) => void; jump: (key: string) => void;
-}) {
-  const list = useRef<HTMLElement>(null);
-  // Read while rendering, before an item that leaves takes the focus with it.
-  const focused = list.current?.contains(document.activeElement) ?? false;
-  const keys = items?.map((i) => i.key).join(" ");
-  useLayoutEffect(() => {
-    const section = list.current;
-    if (!focused || !section || section.contains(document.activeElement)) return;
-    // The focused item left the list: the next one takes focus, or the conversation once none is left.
-    const next = section.querySelector<HTMLElement>("li :is(button, input):not(:disabled)") ?? document.querySelector<HTMLElement>(".conversation");
-    next?.focus();
-  }, [keys]);
-  return (
-    <section
-      id="questions"
-      className="questions"
-      aria-label="Questions"
-      ref={list}
-      hidden={!items?.length}
-    >
-      <h2>Questions<b>{items?.length}</b></h2>
-      <ol>
-        {items?.map((item) => item.kind === "question"
-          ? <QuestionCard key={item.key} card={item} send={send} dismiss={dismiss} jump={() => jump(item.key)} />
-          : <ProposalCard key={item.key} card={item} jump={() => jump(item.key)} />)}
-      </ol>
-    </section>
-  );
-}
-
-/** A click on an item of the Questions list, unless it was on one of its controls. */
-function onItem(jump: (() => void) | undefined) {
-  if (!jump) return undefined;
-  return (e: MouseEvent) => {
-    if (!(e.target as Element).closest("button, input, form, pre, a")) jump();
-  };
-}
-
-/** The Questions list's way to an item in the conversation, for the keyboard. */
-function ShowInConversation({ jump }: { jump: (() => void) | undefined }) {
-  return jump ? <button type="button" className="quiet show" onClick={jump}>Show in conversation</button> : null;
-}
-
-/** A card as the conversation draws it, `id` naming its place for the Questions list. */
-function CardView({ card, send, dismiss, id }: { card: Card; send: SendText; dismiss: (key: string) => void; id: string }) {
+/** A card as the conversation draws it: a message, or a question's or Proposal's line. */
+function CardView({ card, send, dismiss, summon }: { card: Card; send: SendText; dismiss: (key: string) => void; summon: (key: string) => void }) {
   switch (card.kind) {
     case "message":
       return (
-        <li id={id} tabIndex={-1} className={`card-message ${card.who}${card.sending ? " sending" : ""}${card.superseded ? " superseded" : ""}`}>
+        <li className={`card-message ${card.who}${card.sending ? " sending" : ""}${card.superseded ? " superseded" : ""}`}>
           <Byline who={card.who} at={card.at} note={messageNote(card)} />
           {card.raw === undefined
             ? <p className="text">{card.text}</p>
@@ -223,10 +153,53 @@ function CardView({ card, send, dismiss, id }: { card: Card; send: SendText; dis
         </li>
       );
     case "question":
-      return <QuestionCard card={card} send={send} dismiss={dismiss} id={id} />;
     case "proposal":
-      return <ProposalCard card={card} id={id} />;
+      return <ItemLineView item={card} summon={summon} />;
   }
+}
+
+/** What a line says of where its item stands. */
+const STATUS: Record<ItemLine["status"], string> = {
+  open: "Open", answering: "Answering", answered: "You answered", approved: "Approved", declined: "Declined", failed: "Failed",
+};
+
+/**
+ * A question's or Proposal's one line in the conversation: that the Lead
+ * asked or proposed, what, and where it stands, with the answer or decision
+ * and what the action did once there is one. An open line brings its toast
+ * forward; a decided one unfolds to its whole text, and folds again.
+ */
+function ItemLineView({ item, summon }: { item: OpenItem; summon: (key: string) => void }) {
+  const [whole, setWhole] = useState(false);
+  const shown = itemLine(item);
+  const open = shown.status === "open";
+  /** The answer or decline reason, then what the action did. */
+  const settled = [shown.answer && (shown.status === "declined" ? `“${shown.answer}”` : shown.answer), ...shown.outcome.map((o) => o.text)]
+    .filter(Boolean).join(" · ");
+  const time = new Date(item.at);
+  return (
+    <li className={`item-line ${shown.status}${whole ? " whole" : ""}`}>
+      <button
+        type="button"
+        {...(open ? { "aria-controls": toastId(item.key) } : { "aria-expanded": whole })}
+        title={open ? (shown.verb === "asked" ? "Answer it" : "Decide it") : undefined}
+        onClick={() => (open ? summon(item.key) : setWhole(!whole))}
+      >
+        <span className="mark" aria-hidden="true" />
+        <span className="who"><b>Lead</b>{` ${shown.verb}`}</span>
+        <time dateTime={item.at} title={time.toLocaleString()}>{time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time>
+        <span className="what">
+          {shown.action !== undefined && <code>{shown.action}</code>}
+          {shown.text}
+        </span>
+        <span className="where">
+          <b>{STATUS[shown.status]}</b>
+          {settled && <span className={shown.outcome.some((o) => o.error) ? "error" : undefined}>{settled}</span>}
+          {shown.raw !== undefined && <span className="raw">{`heard “${shown.raw}”`}</span>}
+        </span>
+      </button>
+    </li>
+  );
 }
 
 /** A message's muted note: on its way, spoken, correcting an earlier one, or corrected since. */
@@ -237,7 +210,7 @@ function messageNote(card: Card & { kind: "message" }) {
 }
 
 /** Who wrote a card and when, then a muted note (such as "sending…") or, at its end, a Proposal's status. */
-function Byline({ who, at, note, status }: { who: "user" | "lead"; at: string; note?: string | undefined; status?: string }) {
+export function Byline({ who, at, note, status }: { who: "user" | "lead"; at: string; note?: string | undefined; status?: string }) {
   const time = new Date(at);
   return (
     <p className="byline">
@@ -246,107 +219,6 @@ function Byline({ who, at, note, status }: { who: "user" | "lead"; at: string; n
       {note && <span>{note}</span>}
       {status && <span className="status">{status}</span>}
     </p>
-  );
-}
-
-/**
- * A question from the Lead: its choices as buttons and a free-text answer
- * while open, then the answer. In the conversation it has an `id`; in the
- * Questions list, a `jump` to it in the conversation.
- */
-function QuestionCard({ card, send, dismiss, id, jump }: {
-  card: Card & { kind: "question" }; send: SendText; dismiss: (key: string) => void; id?: string; jump?: () => void;
-}) {
-  const [text, setText] = useState("");
-  const answer = (value: string) => {
-    if (card.failure) dismiss(card.failure.key);
-    void send(value, card.id);
-  };
-  return (
-    <li id={id} tabIndex={id ? -1 : undefined} className={`card-question${card.answer ? " answered" : ""}`} onClick={onItem(jump)}>
-      <Byline who="lead" at={card.at} note="asks" />
-      <p className="text">{card.text}</p>
-      {card.answer
-        ? (
-          <>
-            <p className="answer"><span>{card.answer.sending ? "Answering" : "You answered"}</span>{card.answer.text}</p>
-            {card.answer.raw !== undefined && <p className="raw"><span>Heard</span>{card.answer.raw}</p>}
-          </>
-        )
-        : (
-          <>
-            {card.choices.length > 0 && (
-              <div className="choices">
-                {card.choices.map((c) => <button key={c} type="button" onClick={() => answer(c)}>{c}</button>)}
-              </div>
-            )}
-            <form
-              className="free-answer"
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (!text.trim()) return;
-                answer(text);
-                setText("");
-              }}
-            >
-              <input type="text" aria-label={`Answer question ${card.id}`} placeholder={card.choices.length ? "Or answer in your words" : "Your answer"} value={text} onChange={(e) => setText(e.target.value)} />
-              <button type="submit" disabled={!text.trim()}>Answer</button>
-            </form>
-            {card.failure && <p className="error">{`“${card.failure.text}” was not sent: ${card.failure.error}`}</p>}
-          </>
-        )}
-      <ShowInConversation jump={jump} />
-    </li>
-  );
-}
-
-const STATUS: Record<ProposalJson["status"], string> = { open: "Proposes", approved: "Approved", declined: "Declined", failed: "Failed" };
-
-/**
- * A Proposal: its action or write and reason with Approve and Decline while
- * open, then how it was decided and what it did. In the conversation it has
- * an `id`; in the Questions list, a `jump` to it in the conversation.
- */
-function ProposalCard({ card, id, jump }: { card: Card & { kind: "proposal" }; id?: string; jump?: () => void }) {
-  const [declining, setDeclining] = useState(false);
-  const [reason, setReason] = useState("");
-  const { busy, outcome, act } = usePost();
-  const open = card.status === "open";
-  const decline = async (e: FormEvent) => {
-    e.preventDefault();
-    if (await act("/api/proposals/decline", declineArgs(card.id, reason))) setDeclining(false);
-  };
-  const lines = proposalLines(card);
-  return (
-    <li id={id} tabIndex={id ? -1 : undefined} className={`card-proposal ${card.status}`} onClick={onItem(jump)}>
-      <Byline who="lead" at={card.at} status={STATUS[card.status]} />
-      {card.write
-        ? (
-          <>
-            <p className="action">{"Write to "}<code>{card.write.repo}</code>{"’s Source"}</p>
-            <pre className="write" tabIndex={0} aria-label="What the Lead would write">{card.write.text}</pre>
-          </>
-        )
-        : <p className="action"><code>{card.action}</code></p>}
-      <p className="text">{card.reason}</p>
-      {card.declineReason && <p className="decided">{`You said: ${card.declineReason}`}</p>}
-      {lines.length > 0 && <div className="outcome">{lines.map((l, i) => <p key={i} className={l.error ? "error" : undefined}>{l.text}</p>)}</div>}
-      {open && !declining && (
-        <div className="buttons">
-          <button type="button" className="approve" disabled={busy} onClick={() => void act("/api/proposals/approve", [String(card.id)])}>{busy ? (card.write ? "Approving…" : "Running…") : "Approve"}</button>
-          <button type="button" disabled={busy} onClick={() => setDeclining(true)}>Decline</button>
-        </div>
-      )}
-      {open && declining && (
-        <form className="decline" onSubmit={(e) => void decline(e)}>
-          <input type="text" aria-label="Why you decline (optional)" placeholder="Why, for the Lead (optional)" value={reason} onChange={(e) => setReason(e.target.value)} autoFocus />
-          <button type="submit" disabled={busy}>Decline</button>
-          <button type="button" disabled={busy} onClick={() => setDeclining(false)}>Cancel</button>
-        </form>
-      )}
-      {open && outcome && <OutcomeNote outcome={outcome} />}
-      <ShowInConversation jump={jump} />
-    </li>
   );
 }
 

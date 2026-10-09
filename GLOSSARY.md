@@ -232,8 +232,12 @@ _Avoid_: Chat, history, transcript
 
 **Questions list**:
 The app's list of what waits on the user: every question of the Lead's not
-answered yet and every Proposal not decided, oldest first, beside the
-Conversation and answered or decided from it. The header counts it.
+answered yet and every Proposal not decided, shown as toasts at the bottom
+right of every page, oldest nearest the corner, and answered or decided on
+its toast. A toast leaves once its item is answered or decided. The
+Conversation keeps a line for each question and Proposal, saying whether it
+is open or answered; an open one's line brings its toast forward. The
+header counts the list and collapses or expands it.
 _Avoid_: Inbox (the Lead's), todo, notifications
 
 **Correction**:
