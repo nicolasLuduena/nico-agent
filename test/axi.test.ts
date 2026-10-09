@@ -122,7 +122,7 @@ describe("AXI conventions", () => {
         "  nico-agent harness list,List the Harnesses with their models and Effort levels (discovers uncached ones)",
         "  nico-agent harness refresh,Discover the Harnesses' models and Effort levels again and replace the cache",
         "  nico-agent show <issue>,Print the full Dispatch record of an In-flight issue",
-        '  "nico-agent serve [--port <port>]",Start the web app on 127.0.0.1 (port 42069 by default)',
+        '  "nico-agent serve [--port <port>]",Start the web app and its MCP server (/mcp) on 127.0.0.1 (port 42069 by default)',
         "help[1]:",
         "  Run `nico-agent <command> --help` for its flags and examples",
         "",

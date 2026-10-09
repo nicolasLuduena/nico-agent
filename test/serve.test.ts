@@ -11,14 +11,24 @@ describe("serve", () => {
     const { stdout, exitCode } = await cli("serve");
     expect(exitCode).toBe(0);
     expect(stdout).toBe(
-      ['url: "http://127.0.0.1:42069/"', "help[1]:", "  Open the url in a browser to see the Board; stop the server with Ctrl-C", ""].join(
-        "\n",
-      ),
+      [
+        'url: "http://127.0.0.1:42069/"',
+        'mcp: "http://127.0.0.1:42069/mcp"',
+        "help[2]:",
+        "  Open the url in a browser to see the Board; stop the server with Ctrl-C",
+        "  Register the MCP server with Claude Code: `claude mcp add --transport http nico-agent http://127.0.0.1:42069/mcp`",
+        "",
+      ].join("\n"),
     );
     expect(world.calls).toContain("serve 127.0.0.1:42069");
 
     const response = await world.server!.handler(new Request("http://127.0.0.1:42069/"));
     expect(await response.text()).toContain('<a class="title" href="https://github.com/acme/api/issues/7"><span class="num">#7</span> Add retries</a>');
+
+    const mcp = await world.server!.handler(
+      new Request("http://127.0.0.1:42069/mcp", { method: "POST", body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "board" } }) }),
+    );
+    expect(((await mcp.json()) as { result: { structuredContent: { issues: unknown } } }).result.structuredContent.issues).toMatchObject([{ issue: "acme/api#7" }]);
   });
 
   test("--port overrides the port", async () => {

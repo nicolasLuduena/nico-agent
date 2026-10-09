@@ -214,7 +214,7 @@ const commands: Command[] = [
   {
     name: "serve",
     usage: "nico-agent serve [--port <port>]",
-    summary: "Start the web app on 127.0.0.1 (port 42069 by default)",
+    summary: "Start the web app and its MCP server (/mcp) on 127.0.0.1 (port 42069 by default)",
     flags: { "--port": { value: true, description: "port to listen on (default 42069)" } },
     positionals: [],
     examples: ["nico-agent serve", "nico-agent serve --port 8080"],
@@ -648,14 +648,18 @@ async function serve(args: Args, ctx: RunContext): Promise<Output> {
     throw new CliError(`the port must be a number from 1 to 65535 (got \`${flag}\`)`, [`Usage: \`${usage}\``], 2);
   }
   try {
-    await ctx.world.serve({ hostname: HOSTNAME, port }, webHandler(ctx));
+    await ctx.world.serve({ hostname: HOSTNAME, port }, webHandler({ ...ctx, runCli: (argv) => run(argv, ctx) }));
   } catch (e) {
     if (!(e instanceof WorldError)) throw e;
     throw new CliError(e.message, ["Run `nico-agent serve --port <port>` with a free port"]);
   }
+  const mcp = `http://${HOSTNAME}:${port}/mcp`;
   return {
-    data: { url: `http://${HOSTNAME}:${port}/` },
-    help: ["Open the url in a browser to see the Board; stop the server with Ctrl-C"],
+    data: { url: `http://${HOSTNAME}:${port}/`, mcp },
+    help: [
+      "Open the url in a browser to see the Board; stop the server with Ctrl-C",
+      `Register the MCP server with Claude Code: \`claude mcp add --transport http nico-agent ${mcp}\``,
+    ],
   };
 }
 
