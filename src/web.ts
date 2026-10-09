@@ -16,6 +16,7 @@ import { type Queues, dequeue, enqueue, move, pruneBoardQueues, queueOf } from "
 import { type CliRunner, isToolCall, mcpHandler } from "./mcp";
 import { sameSlug } from "./slug";
 import { Events } from "./events";
+import { type Mark, type Point, type Reach, type Track, type TrackRow, R, TRACKER_LAYERS, VIEW_BOX, eventDisplay } from "./app/event";
 import { type PullRequest, type World, WorldError } from "./world";
 
 export interface WebContext {
@@ -346,25 +347,11 @@ function renderBoard(repos: Repo[], board: Board, choices: Choices, queues: Queu
   return [...warnings, renderEvent(board.inFlight), actionBar({ dispatch: 0, review: 0, close: 0 }), renderInFlight(board.inFlight, choices), ...sections].join("\n");
 }
 
-/** Where a row's track ends, by Stage: inside the tracker, in the calorimeter, out through the muon stations. */
-type Reach = "implementing" | "pr-ready" | "review-launched" | "failed" | "unknown";
-
-function reachOf(row: InFlightRow): Reach {
-  if (row.dispatch.failure || row.dispatch.reviewer?.failure) return "failed";
-  if (row.stage === "Implementing" || row.stage === "PR ready" || row.stage === "Review launched") {
-    return row.stage.toLowerCase().replace(/[^a-z]+/g, "-") as Reach;
-  }
-  return "unknown";
+/** The In-flight rows as the event display reads them. */
+function trackRows(rows: InFlightRow[]): TrackRow[] {
+  return rows.map(({ dispatch: d, stage, implementerState, reviewerState }) =>
+    ({ issue: d.issue, title: d.title, stage, implementer: implementerState, reviewer: reviewerState ?? "" }));
 }
-
-/** A stable 32-bit hash, so a Dispatch's track keeps its angle and bend across polls. */
-function hash(text: string) {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 0x01000193);
-  return h >>> 0;
-}
-
-const R = { tracker: 62, ecal: [70, 86], hcal: [92, 112], muon: [126, 146], failedEarly: 40, failedReview: 112 } as const;
 
 /**
  * The In-flight Dispatches as an event display's transverse view: one track
@@ -372,25 +359,16 @@ const R = { tracker: 62, ecal: [70, 86], hcal: [92, 112], muon: [126, 146], fail
  * the display is for reading the Board at a glance.
  */
 function renderEvent(rows: InFlightRow[], oob = false) {
-  const counts: Record<Reach, number> = { implementing: 0, "pr-ready": 0, "review-launched": 0, failed: 0, unknown: 0 };
-  let blocked = 0;
-  const angles = spread(rows.map((r) => r.dispatch.issue));
-  const tracks = rows.map((row) => {
-    const reach = reachOf(row);
-    counts[reach]++;
-    const waiting = row.implementerState === "blocked" || row.reviewerState === "blocked";
-    if (waiting) blocked++;
-    return renderTrack(row, reach, waiting, angles.get(row.dispatch.issue)!);
-  });
+  const { tracks, counts, blocked } = eventDisplay(trackRows(rows));
   const legend = (reach: Reach, label: string) =>
     `<div class="${reach}${counts[reach] ? "" : " none"}"><dt><i></i>${label}</dt><dd>${counts[reach]}</dd></div>`;
   const time = new Date();
   const clock = time.toTimeString().slice(0, 8);
   return [
     `<figure class="event" id="event"${oob ? ' hx-swap-oob="true"' : ""}>`,
-    `<svg viewBox="-200 -162 400 324" role="img" aria-label="${escape(`${plural(rows.length, "Dispatch")} in flight`)}">`,
+    `<svg viewBox="${VIEW_BOX}" role="img" aria-label="${escape(`${plural(rows.length, "Dispatch")} in flight`)}">`,
     DETECTOR,
-    ...tracks,
+    ...tracks.map(renderTrack),
     '<circle class="vertex" r="2.5"/>',
     "</svg>",
     "<figcaption>",
@@ -409,37 +387,10 @@ function renderEvent(rows: InFlightRow[], oob = false) {
   ].join("\n");
 }
 
-/**
- * Each issue's track angle: its hash's home angle, nudged apart from close
- * neighbours. A Dispatch coming or going moves only the tracks beside it.
- */
-function spread(issues: string[]) {
-  const TAU = 2 * Math.PI;
-  // The ring key runs straight down; it holds its place and tracks keep clear of it.
-  const KEY = "";
-  const points = [{ issue: KEY, a: Math.PI / 2 }, ...issues.map((issue) => ({ issue, a: ((hash(issue) % 3600) / 3600) * TAU }))];
-  const min = Math.min(TAU / points.length, 0.5) * 0.85;
-  for (let pass = 0; pass < 24 && points.length > 1; pass++) {
-    points.sort((x, y) => x.a - y.a || x.issue.localeCompare(y.issue));
-    let moved = false;
-    points.forEach((p, i) => {
-      const next = points[(i + 1) % points.length]!;
-      const gap = (next.a - p.a + TAU) % TAU;
-      if (gap >= min) return;
-      const push = (min - gap) / (p.issue === KEY || next.issue === KEY ? 1 : 2);
-      if (p.issue !== KEY) p.a = (p.a - push + TAU) % TAU;
-      if (next.issue !== KEY) next.a = (next.a + push) % TAU;
-      moved = true;
-    });
-    if (!moved) break;
-  }
-  return new Map(points.filter((p) => p.issue !== KEY).map((p) => [p.issue, p.a]));
-}
-
 /** The detector's fixed geometry: tracker layers, the two calorimeters, two muon stations. */
 const DETECTOR = [
   '<g class="geometry" fill="none">',
-  ...[14, 26, 38, 50, 62].map((r) => `<circle r="${r}"/>`),
+  ...TRACKER_LAYERS.map((r) => `<circle r="${r}"/>`),
   `<circle class="ecal" r="${(R.ecal[0] + R.ecal[1]) / 2}" stroke-width="${R.ecal[1] - R.ecal[0]}" pathLength="360" stroke-dasharray="6.5 1"/>`,
   `<circle class="hcal" r="${(R.hcal[0] + R.hcal[1]) / 2}" stroke-width="${R.hcal[1] - R.hcal[0]}" pathLength="360" stroke-dasharray="14 1.5"/>`,
   ...R.muon.map((r) => `<circle class="muon" r="${r}" stroke-width="6" pathLength="360" stroke-dasharray="26 4"/>`),
@@ -453,56 +404,20 @@ const DETECTOR = [
   "</g>",
 ].join("\n");
 
-function renderTrack(row: InFlightRow, reach: Reach, waiting: boolean, angle: number) {
-  const { issue } = row.dispatch;
-  const h = hash(issue);
-  // A track's bend is its charge: either way, never straight.
-  const bend = (((h >>> 12) % 100) / 100 - 0.5) * 0.7 + (((h >>> 12) % 100) < 50 ? -0.12 : 0.12);
-  const end = reach === "implementing" ? R.tracker - 4
-    : reach === "pr-ready" ? R.ecal[0]
-    : reach === "review-launched" ? R.muon[1] + 6
-    : reach === "failed" ? (row.dispatch.reviewer?.failure ? R.failedReview : R.failedEarly)
-    : R.tracker - 4;
-  const at = (r: number, a = angle) => [r * Math.cos(a), r * Math.sin(a)] as const;
-  const [ex, ey] = at(end);
-  // Curvature eases off beyond the tracker, where the field is weak.
-  const [cx, cy] = at(Math.min(end, R.tracker) * 0.55, angle - bend * (Math.min(end, R.tracker) / end));
+function renderTrack({ issue, reach, waiting, working, tooltip, control: c, end: e, marks, label }: Track) {
   const n = (v: number) => v.toFixed(1);
-  const marks: string[] = [];
-  if (reach === "pr-ready") {
-    // An energy deposit: a tower through the electromagnetic calorimeter.
-    const [ax, ay] = at(R.ecal[0]);
-    const [bx, by] = at(R.ecal[1] - 1);
-    marks.push(`<line class="deposit" x1="${n(ax)}" y1="${n(ay)}" x2="${n(bx)}" y2="${n(by)}"/>`);
-  }
-  if (reach === "review-launched") {
-    for (const r of R.muon) {
-      const [ax, ay] = at(r - 3);
-      const [bx, by] = at(r + 3);
-      marks.push(`<line class="hit" x1="${n(ax)}" y1="${n(ay)}" x2="${n(bx)}" y2="${n(by)}"/>`);
-    }
-  }
-  if (reach === "failed") {
-    marks.push(`<g class="burst" transform="translate(${n(ex)} ${n(ey)})">${[0, 60, 120].map((d) => `<line x1="-5" x2="5" transform="rotate(${d + (h % 60)})"/>`).join("")}</g>`);
-  } else {
-    marks.push(`<circle class="tip" cx="${n(ex)}" cy="${n(ey)}" r="${waiting ? 2.6 : 1.8}"/>`);
-  }
-  if (waiting) marks.push(`<circle class="attention" cx="${n(ex)}" cy="${n(ey)}" r="6"/>`);
-  const [lx, ly] = at(end + (reach === "pr-ready" ? R.ecal[1] - R.ecal[0] + 6 : waiting ? 13 : 8));
-  const label = issue.slice(issue.indexOf("/") + 1);
-  // Labels stay inside the display: one that would run off the edge turns back along its track.
-  const width = label.length * 6;
-  let anchor = Math.cos(angle) > 0.25 ? "start" : Math.cos(angle) < -0.25 ? "end" : "middle";
-  let x = lx;
-  if (anchor === "start" && lx + width > 196) [anchor, x] = ["end", Math.min(lx, 196)];
-  if (anchor === "end" && lx - width < -196) [anchor, x] = ["start", Math.max(lx, -196)];
-  const working = row.implementerState === "working" || row.reviewerState === "working";
+  const line = (cls: string, a: Point, b: Point) => `<line class="${cls}" x1="${n(a.x)}" y1="${n(a.y)}" x2="${n(b.x)}" y2="${n(b.y)}"/>`;
+  const mark = (m: Mark) => {
+    if (m.kind === "deposit" || m.kind === "hit") return line(m.kind, m.from, m.to);
+    if (m.kind === "burst") return `<g class="burst" transform="translate(${n(m.at.x)} ${n(m.at.y)})">${m.angles.map((d) => `<line x1="-5" x2="5" transform="rotate(${d})"/>`).join("")}</g>`;
+    return `<circle class="${m.kind}" cx="${n(m.at.x)}" cy="${n(m.at.y)}" r="${m.r}"/>`;
+  };
   return [
     `<g class="track ${reach}${waiting ? " waiting" : ""}${working ? " working" : ""}" data-issue="${escape(issue)}">`,
-    `<title>${escape(`${issue} ${row.dispatch.title}: ${row.stage}`)}</title>`,
-    `<path d="M0 0 Q${n(cx)} ${n(cy)} ${n(ex)} ${n(ey)}" pathLength="1"/>`,
-    ...marks,
-    `<text x="${n(x)}" y="${n(ly)}" text-anchor="${anchor}" dominant-baseline="middle">${escape(label)}</text>`,
+    `<title>${escape(tooltip)}</title>`,
+    `<path d="M0 0 Q${n(c.x)} ${n(c.y)} ${n(e.x)} ${n(e.y)}" pathLength="1"/>`,
+    ...marks.map(mark),
+    `<text x="${n(label.at.x)}" y="${n(label.at.y)}" text-anchor="${label.anchor}" dominant-baseline="middle">${escape(label.text)}</text>`,
     "</g>",
   ].join("");
 }
