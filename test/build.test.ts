@@ -56,7 +56,7 @@ describe("the compiled binary", () => {
     expect(js.status).toBe(200);
     const source = await js.text();
     expect(source).toContain("/api/events");
-    expect(source).toContain("lead-panel");
+    expect(source).toContain("Conversation with the Lead");
     // The Board view is off: the page never polls it.
     expect(source).not.toContain("/api/board");
     const css = await fetch(new URL(style!, base));

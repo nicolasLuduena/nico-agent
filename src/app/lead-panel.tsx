@@ -1,13 +1,11 @@
 import { type FormEvent, type KeyboardEvent, useEffect, useLayoutEffect, useReducer, useRef, useState } from "react";
 import type { Authored } from "../conversation";
-import type { HarnessesJson, Outcome } from "./actions";
-import { OutcomeNote, answerOf, post } from "./forms";
+import { OutcomeNote, answerOf, post, usePost } from "./forms";
 import {
-  type Card, type Conversation, type LeadPicks, type LeadStatusJson, type ProposalJson,
-  cards, declineArgs, leadChoice, leadControl, leadStartArgs, proposalLines, reduce, sayArgs,
+  type Card, type Conversation, type LeadStatusJson, type ProposalJson,
+  cards, declineArgs, followsNewEntries, notices, proposalLines, reduce, sayArgs,
 } from "./lead";
 import { LeadDrawer } from "./lead-drawer";
-import { Agent } from "./repos";
 import { useResource } from "./stream";
 import { TalkButton, TalkStatus, useTalk } from "./talk-button";
 
@@ -37,121 +35,68 @@ function useConversation() {
   return { state, send, dismiss: (key: string) => dispatch({ type: "dismiss", key }), failure: log.failure ?? proposals.failure };
 }
 
-/** An action of the panel's: busy while it runs, and the CLI's message and help when it failed, until the next try. */
-function usePost() {
-  const [busy, setBusy] = useState(false);
-  const [outcome, setOutcome] = useState<Outcome | null>(null);
-  /** Post `args` to `path`; true when it did what it was asked. */
-  const act = async (path: string, args: string[]) => {
-    setBusy(true);
-    setOutcome(null);
-    const answer = answerOf(await post(path, args));
-    setBusy(false);
-    if (answer.failed) setOutcome(answer);
-    return !answer.failed;
-  };
-  return { busy, outcome, act };
-}
-
-/** The Lead panel: the Lead's state and controls, the conversation as cards, and the composer. */
-export function LeadPanel({ harnesses }: { harnesses: HarnessesJson | null }) {
+/**
+ * The Lead panel: the Voice switch and the drawer's button, the one quiet
+ * place for warnings, the conversation as cards, and the composer, which
+ * stays put and keeps its draft while entries arrive.
+ */
+export function LeadPanel({ status }: { status: LeadStatusJson | null }) {
   const { state, send, dismiss, failure } = useConversation();
   const [drawer, setDrawer] = useState(false);
   const voice = useResource<{ voice?: string }>("/api/voice/state", ["voice-changed"]).data?.voice === "on";
-  const { data: status = null } = useResource<LeadStatusJson>("/api/lead/status", ["lead-state"]);
+  const { busy, outcome, act } = usePost();
   const shown = cards(state);
   const scroller = useRef<HTMLOListElement>(null);
-  // A new card brings the conversation to its end, unless the user scrolled up to read.
+  // Whatever grows the conversation (a new card, an answer, the notices, the talk status) keeps it at its end,
+  // unless the user scrolled up to read.
   const atEnd = useRef(true);
   useLayoutEffect(() => {
     const list = scroller.current;
     if (list && atEnd.current) list.scrollTop = list.scrollHeight;
-  }, [shown.length, drawer]);
+  });
+  /** A new message, written or spoken, brings the conversation to its end; answering a question where it is does not. */
+  const sendAndFollow: SendText = (text, question, raw) => {
+    atEnd.current = true;
+    return send(text, question, raw);
+  };
+  const talking = useTalk((text, heard, answers) => void sendAndFollow(text, answers, heard), voice);
+  const warnings = notices({ failure, status, talk: talking.warning });
   return (
-    <aside className="lead-panel" aria-label="Lead">
-      <LeadHead harnesses={harnesses} status={status} drawer={drawer} onDrawer={setDrawer} voice={voice} />
-      {failure && <p className="error" role="status">{failure}</p>}
+    <section className="lead-panel" aria-label="Conversation with the Lead">
+      <div className="lead-bar">
+        <h1>Lead</h1>
+        <label className="switch" title={voice ? "The Lead's replies are spoken, and it talks for the ear" : "Speak the Lead's replies, and have it talk for the ear"}>
+          <input type="checkbox" role="switch" checked={voice} disabled={busy} onChange={(e) => void act(e.target.checked ? "/api/voice/on" : "/api/voice/off", [])} />
+          Voice
+        </label>
+        <button type="button" className="quiet" aria-expanded={drawer} aria-controls="lead-drawer" onClick={() => setDrawer(!drawer)}>
+          {drawer ? "Conversation" : "Intent & orders"}
+        </button>
+      </div>
+      {(warnings.length > 0 || outcome) && (
+        <div className="notices" role="status">
+          {warnings.map((n) => (
+            <p key={n.key}>{n.text}{n.help.map((h) => <span key={h} className="help">{h}</span>)}</p>
+          ))}
+          {outcome && <OutcomeNote outcome={outcome} />}
+        </div>
+      )}
       <LeadDrawer open={drawer} />
       <ol
         className="conversation"
         hidden={drawer}
         ref={scroller}
         aria-live="polite"
-        onScroll={(e) => {
-          const list = e.currentTarget;
-          atEnd.current = list.scrollHeight - list.scrollTop - list.clientHeight < 40;
-        }}
+        aria-label="Conversation"
+        tabIndex={0}
+        onScroll={(e) => { atEnd.current = followsNewEntries(e.currentTarget); }}
       >
         {shown.length
           ? shown.map((card) => <CardView key={card.key} card={card} send={send} dismiss={dismiss} />)
-          : <li className="empty">No conversation yet. Write to the Lead below; it reads your message when it next looks at its Inbox.</li>}
+          : <li className="empty">No conversation yet. Write or talk to the Lead below; it reads your message when it next looks at its Inbox.</li>}
       </ol>
-      <Composer send={send} voice={voice} working={status?.lead === "running" && status.state === "working"} />
-    </aside>
-  );
-}
-
-/**
- * The Lead's Agent state, launch and failure, live, with Start, Restart and
- * Stop on the picked launch, the Voice switch, and the button opening the
- * drawer in place of the conversation.
- */
-function LeadHead({ harnesses, status, drawer, onDrawer, voice }: { harnesses: HarnessesJson | null; status: LeadStatusJson | null; drawer: boolean; onDrawer: (open: boolean) => void; voice: boolean }) {
-  const [chosen, setChosen] = useState<LeadPicks>({});
-  const { busy, outcome, act: post } = usePost();
-  const choice = harnesses && leadChoice(harnesses, status, chosen);
-  const { start, stop } = leadControl(status, choice);
-  // Once the Lead runs on the picks, they follow it again.
-  const act = async (path: string, args: string[]) => {
-    if (await post(path, args)) setChosen({});
-  };
-  const running = status?.lead === "running";
-  const launch = status?.harness && `${status.harness} · ${status.model} · ${status.effort}`;
-  return (
-    <header className="lead-head">
-      <div className="lead-line">
-        <h2>Lead</h2>
-        <label className="voice-switch" title={voice ? "The Lead's replies are spoken, and it talks for the ear" : "Speak the Lead's replies, and have it talk for the ear"}>
-          <input type="checkbox" role="switch" checked={voice} disabled={busy} onChange={(e) => void post(e.target.checked ? "/api/voice/on" : "/api/voice/off", [])} />
-          Voice
-        </label>
-        <button type="button" className="drawer-toggle" aria-expanded={drawer} aria-controls="lead-drawer" onClick={() => onDrawer(!drawer)}>
-          {drawer ? "Conversation" : "Intent & orders"}
-        </button>
-      </div>
-      <div className="lead-status">
-        {running ? <Agent role="lead" state={status.state ?? "unknown"} /> : <span className={`lead-state${status?.failure ? " error" : ""}`}>{status?.lead ?? "…"}</span>}
-        {launch && <span className="chip" title={launch}>{launch}</span>}
-      </div>
-      {status?.failure && <p className="error">{status.failure.error}</p>}
-      {status?.warnings?.map((w) => <p key={w} className="warning">{w}</p>)}
-      <form
-        className="lead-controls"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (choice && start) void act("/api/lead/start", leadStartArgs(choice, window.location.port));
-        }}
-      >
-        {choice
-          ? (
-            <>
-              <select name="harness" aria-label="Harness" value={choice.harness} onChange={(e) => setChosen({ harness: e.target.value })}>
-                {choice.harnesses.map((h) => <option key={h}>{h}</option>)}
-              </select>
-              <select name="model" aria-label="Model" value={choice.model} onChange={(e) => setChosen({ ...chosen, harness: choice.harness, model: e.target.value, effort: undefined })}>
-                {choice.models.map((m) => <option key={m}>{m}</option>)}
-              </select>
-              <select name="effort" aria-label="Effort" value={choice.effort} onChange={(e) => setChosen({ ...chosen, harness: choice.harness, model: choice.model, effort: e.target.value })}>
-                {choice.efforts.map((f) => <option key={f}>{f}</option>)}
-              </select>
-              {start && <button type="submit" disabled={busy}>{start}</button>}
-            </>
-          )
-          : <span className="loading">{harnesses ? "No Harness offers a model" : "Loading Harnesses…"}</span>}
-        {stop && <button type="button" className="close" disabled={busy} onClick={() => void act("/api/lead/stop", [])}>Stop</button>}
-      </form>
-      {outcome && <OutcomeNote outcome={outcome} />}
-    </header>
+      <Composer send={sendAndFollow} talk={talking} working={status?.lead === "running" && status.state === "working"} />
+    </section>
   );
 }
 
@@ -298,15 +243,14 @@ function ProposalCard({ card }: { card: Card & { kind: "proposal" } }) {
 }
 
 /**
- * Where the user writes or talks to the Lead: Enter sends, Shift+Enter starts
- * a new line; the talk button sends the Scribe's text, keeping what it heard,
- * as the answer to the Lead's question when said right after it. With `voice`
- * on, the Lead is heard here too; while the Lead is `working`, a conversation
- * by voice shows it thinking.
+ * Where the user writes or talks to the Lead, side by side: Enter sends,
+ * Shift+Enter starts a new line; the talk button sends the Scribe's text,
+ * keeping what it heard, as the answer to the Lead's question when said right
+ * after it. While the Lead is `working`, a conversation by voice shows it
+ * thinking. The draft is the composer's own, so entries arriving never touch it.
  */
-function Composer({ send, voice, working }: { send: SendText; voice: boolean; working: boolean }) {
+function Composer({ send, talk, working }: { send: SendText; talk: ReturnType<typeof useTalk>; working: boolean }) {
   const [text, setText] = useState("");
-  const talking = useTalk((text, heard, answers) => void send(text, answers, heard), voice);
   const submit = () => {
     if (!text.trim()) return;
     void send(text);
@@ -319,13 +263,15 @@ function Composer({ send, voice, working }: { send: SendText; voice: boolean; wo
     }
   };
   return (
-    <>
-      <TalkStatus talk={talking} working={working} />
-      <form className="composer" onSubmit={(e) => { e.preventDefault(); submit(); }}>
-        <textarea aria-label="Message to the Lead" placeholder="Write to the Lead" rows={2} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={onKey} />
-        <TalkButton talk={talking} />
-        <button type="submit" disabled={!text.trim()}>Send</button>
-      </form>
-    </>
+    <div className="composer">
+      <TalkStatus talk={talk} working={working} />
+      <div className="composer-row">
+        <form className="write" onSubmit={(e) => { e.preventDefault(); submit(); }}>
+          <textarea aria-label="Message to the Lead" placeholder="Write to the Lead" rows={2} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={onKey} />
+          <button type="submit" className="primary" disabled={!text.trim()}>Send</button>
+        </form>
+        <TalkButton talk={talk} />
+      </div>
+    </div>
   );
 }

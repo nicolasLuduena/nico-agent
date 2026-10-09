@@ -502,8 +502,8 @@ function detailOf(kind: Indicator, state: Talk, interim: string) {
 /**
  * Where the conversation by voice stands, while there is one: listening
  * (with what is heard), thinking (transcribing, or the Lead `working`) or
- * the Lead speaking, with Stop; a session's End; why voice failed; or a
- * note. Nothing while idle and fine.
+ * the Lead speaking, with Stop; a session's End; or a note. Nothing while
+ * idle. Why voice failed shows with the page's other warnings, not here.
  */
 export function TalkStatus({ talk: { state, interim, warning, note, speaking, press, hush }, working }: { talk: ReturnType<typeof useTalk>; working: boolean }) {
   const kind = indicator(state, { speaking, working });
@@ -516,11 +516,9 @@ export function TalkStatus({ talk: { state, interim, warning, note, speaking, pr
       {ends(state) && kind !== "speaking" && <button type="button" onClick={press}>End</button>}
     </p>
   );
-  if (!warning && !line && !note) return null;
+  if (!line && !(note && !warning)) return null;
   return (
     <div className="talk-status" role="status" aria-live="polite">
-      {warning && <p className="warning">{warning.error}</p>}
-      {warning?.help.map((h) => <p key={h} className="help">{h}</p>)}
       {!warning && note && <p className="help">{note}</p>}
       {line}
     </div>

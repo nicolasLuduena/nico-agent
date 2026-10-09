@@ -238,3 +238,40 @@ export function leadControl(status: LeadStatusJson | null, choice: LaunchChoice 
   const same = choice && choice.harness === status!.harness && choice.model === status!.model && choice.effort === status!.effort;
   return { start: same ? null : "Restart", stop: true };
 }
+
+/** A warning in the page's one quiet place: what is wrong, and what to do. */
+export interface Notice {
+  key: string;
+  text: string;
+  help: string[];
+}
+
+/**
+ * Everything wrong at once, in the one quiet place above the conversation: `serve`
+ * lost (`failure`), the Lead not running or failed and its launch's warnings,
+ * and voice failing (`talk`). Nothing while the Lead's status is still loading.
+ */
+export function notices({ failure, status, talk }: {
+  failure: string | null | undefined;
+  status: LeadStatusJson | null;
+  talk: { error: string; help: string[] } | null;
+}): Notice[] {
+  const shown: Notice[] = [];
+  if (failure) shown.push({ key: "serve", text: failure, help: [] });
+  if (status?.failure) {
+    shown.push({ key: "lead", text: `The Lead failed at ${status.failure.step}: ${status.failure.error}`, help: ["Start it again from Lead in the header"] });
+  } else if (status && status.lead !== "running" && status.lead !== "starting") {
+    shown.push({ key: "lead", text: "The Lead is not running", help: ["Start it from Lead in the header"] });
+  }
+  status?.warnings?.forEach((w, i) => shown.push({ key: `lead-warning-${i}`, text: w, help: [] }));
+  if (talk) shown.push({ key: "voice", text: talk.error, help: talk.help });
+  return shown;
+}
+
+/** How close to its end, in pixels, the chat counts as at its end. */
+const END_SLACK = 40;
+
+/** Whether the conversation, scrolled as it is, follows new entries: only while the user is at its end, never while reading back. */
+export function followsNewEntries({ scrollHeight, scrollTop, clientHeight }: { scrollHeight: number; scrollTop: number; clientHeight: number }) {
+  return scrollHeight - scrollTop - clientHeight < END_SLACK;
+}

@@ -47,6 +47,22 @@ export async function post(path: string, args: string[] = []): Promise<Record<st
   }
 }
 
+/** An action outside the Board's rows (the Lead's, the Voice switch): busy while it runs, and the CLI's message and help when it failed, until the next try. */
+export function usePost() {
+  const [busy, setBusy] = useState(false);
+  const [outcome, setOutcome] = useState<Outcome | null>(null);
+  /** Post `args` to `path`; true when it did what it was asked. */
+  const act = async (path: string, args: string[]) => {
+    setBusy(true);
+    setOutcome(null);
+    const answer = answerOf(await post(path, args));
+    setBusy(false);
+    if (answer.failed) setOutcome(answer);
+    return !answer.failed;
+  };
+  return { busy, outcome, act };
+}
+
 /**
  * An action whose failure is reported under `key` (an issue, or a Queue
  * control): the CLI's message and help, kept until the next try.
@@ -144,13 +160,12 @@ export function LaunchForm({ action, target }: { action: LaunchAction; target: D
 
 /**
  * Retry posts the failed launch's own arguments, which resume it from its
- * failed step (ADR-0006). A Dispatch's Retry starts a track, so it is amber;
- * a review's is outlined in Muon Blue.
+ * failed step (ADR-0006). A Dispatch's Retry is the primary action.
  */
 export function RetryButton({ issue, retry }: { issue: string; retry: string[] }) {
   const { busy, run } = useAction(issue);
   const [command, ...args] = retry;
-  return <button className={`retry ${command === "dispatch" ? "fire" : "review"}`} disabled={busy} onClick={() => void run(`/api/${command}`, args)}>Retry</button>;
+  return <button className={`retry ${command === "dispatch" ? "primary" : "review"}`} disabled={busy} onClick={() => void run(`/api/${command}`, args)}>Retry</button>;
 }
 
 /** Close an In-flight issue: straight away once it has a PR, else only after confirming, since it is still Implementing. */
@@ -265,7 +280,7 @@ function BatchLaunch({ action, plan, onDone }: { action: LaunchAction; plan: Bat
                   </fieldset>
                 ))}
                 <div className="buttons">
-                  <button className="fire" disabled={busy}>{BUTTONS[action]} {targets.length}</button>
+                  <button className="primary" disabled={busy}>{BUTTONS[action]} {targets.length}</button>
                   <button type="button" disabled={busy} onClick={onDone}>Cancel</button>
                 </div>
               </form>
@@ -350,7 +365,7 @@ export function TopActions({ onReport }: { onReport: (report: React.ReactNode) =
   return (
     <div className="top-actions">
       <button className="refresh" disabled={busy !== null} onClick={() => void refresh()}>{busy === "refresh" ? "Refreshing…" : "Refresh harnesses"}</button>
-      <button className="advance fire" disabled={busy !== null} onClick={() => void advance()}>{busy === "advance" ? "Advancing…" : "Advance now"}</button>
+      <button className="advance primary" disabled={busy !== null} onClick={() => void advance()}>{busy === "advance" ? "Advancing…" : "Advance now"}</button>
     </div>
   );
 }

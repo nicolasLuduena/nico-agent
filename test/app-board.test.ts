@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type BoardJson, repoSections, roomReadout } from "../src/app/board";
+import { type BoardJson, repoSections, roomReadout, stageClass } from "../src/app/board";
 import { setup } from "./harness";
 
 const FLAGS = ["--harness", "claude", "--model", "opus", "--effort", "high"];
@@ -147,5 +147,12 @@ describe("the room readout", () => {
   test("a Repo with no Specs has no readout", async () => {
     const { board } = await githubRepo();
     expect(repoSections(await board())[0]!.room).toBeUndefined();
+  });
+});
+
+describe("one colour per Stage", () => {
+  test("each Stage has its own colour, every Failed Stage the one of Failed, any other Stage none of them", () => {
+    expect(["Implementing", "PR ready", "Review launched", "Failed at agent start", "Failed at review", "Merged"].map(stageClass))
+      .toEqual(["implementing", "pr-ready", "review-launched", "failed", "failed", "unknown"]);
   });
 });
