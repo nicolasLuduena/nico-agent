@@ -7,6 +7,9 @@ export type EventName =
   | "board-changed" | "conversation-entry" | "proposal-changed" | "lead-state"
   | "intent-changed" | "notes-changed" | "orders-changed" | "voice-changed";
 
+/** What the SSE stream asks one page to do rather than refetch: `listen` starts its talk button (`nico-agent voice talk`). */
+export type PageCommand = "listen";
+
 /**
  * The app's one SSE stream, `/api/events`, fanned out to every open page.
  * An event carries no payload to keep in sync: only which resource to refetch.
@@ -42,6 +45,22 @@ export class Events {
         this.streams.delete(stream);
       }
     }
+  }
+
+  /**
+   * Send `command` to the page opened last, so one microphone listens however
+   * many pages are open; false when no page is open to hear it.
+   */
+  command(command: PageCommand): boolean {
+    for (const stream of [...this.streams].reverse()) {
+      try {
+        stream.enqueue(this.encoder.encode(`event: ${command}\ndata: {}\n\n`));
+        return true;
+      } catch {
+        this.streams.delete(stream);
+      }
+    }
+    return false;
   }
 
   /** A stream open until the page goes away (`signal`) or stops reading. */

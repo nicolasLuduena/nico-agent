@@ -1,7 +1,8 @@
 import { type KeyboardEvent, useEffect, useRef, useState } from "react";
 import type { Speech } from "../speech";
 import type { Transcript, VoiceCommand } from "../transcription";
-import { type Listening, type Talk, type TalkEvent, LISTENING, bargesIn, level, listen, pcmSamples, resampler, talk } from "./talk";
+import { usePageCommand } from "./stream";
+import { type Indicator, type Listening, type Talk, type TalkEvent, LISTENING, bargesIn, indicator, level, listen, pcmSamples, resampler, talk, watches } from "./talk";
 
 /** A voice failure as the panel shows it: what went wrong and what to do. */
 interface Warning {
@@ -215,13 +216,16 @@ class Player {
 const EARLY_BATCHES = 12;
 
 /**
- * The talk button: hold it to talk, release to send; tap it to talk
- * hands-free until a pause, or tap again to send. Interim transcripts show
- * while the user speaks; the final one, the Scribe's text and what was
- * heard, is handed to `onFinal`, with the question it answers when it was
- * said right after the Lead asked. With `voice` on, the Lead's replies are
- * spoken as they come; a press, or the user talking over it (the microphone
- * watches while it speaks, once the page may use it), stops it at once.
+ * The talk button: hold it to talk, release to send; tap it (or press the key
+ * anywhere, `nico-agent voice talk`) to start a hands-free session, where a
+ * pause or another tap sends, and the microphone keeps watching for the next
+ * utterance, through the Lead's reply, until a tap while nobody talks ends it.
+ * Interim transcripts show while the user speaks; the final one, the
+ * Scribe's text and what was heard, is handed to `onFinal`, with the question
+ * it answers when it was said right after the Lead asked. With `voice` on,
+ * the Lead's replies are spoken as they come; a press, or the user talking
+ * over it (the microphone watches while it speaks, once the page may use
+ * it), stops it at once.
  */
 export function useTalk(onFinal: (text: string, raw: string, answers?: number) => void, voice: boolean) {
   const [state, setState] = useState<Talk>({ mode: "idle" });
@@ -248,12 +252,12 @@ export function useTalk(onFinal: (text: string, raw: string, answers?: number) =
   };
 
   const dispatch = (event: TalkEvent) => {
-    const before = current.current.mode;
+    const before = current.current;
     const { state: next, send } = talk(current.current, event);
     current.current = next;
     setState(next);
-    if (next.mode === "idle" || next.mode === "transcribing") stopMicrophone();
-    if (next.mode === "watching" && before !== "watching") void watch();
+    if (next.mode === "idle" || (next.mode === "transcribing" && !watches(next))) stopMicrophone();
+    if (watches(next) && !watches(before)) void watch();
     if (send === "start") start(event.type === "barge");
     else if (send) socket.current?.command({ type: send });
   };
@@ -321,7 +325,7 @@ export function useTalk(onFinal: (text: string, raw: string, answers?: number) =
   const onBatch = (pcm: Int16Array, loudness: number, ms: number) => {
     const next = listen(listening.current, loudness, ms);
     listening.current = next.state;
-    if (current.current.mode === "watching") {
+    if (watches(current.current)) {
       early.current = [...early.current.slice(1 - EARLY_BATCHES), pcm];
       if (!bargesIn(next.state)) return;
       dispatch({ type: "barge" });
@@ -331,7 +335,11 @@ export function useTalk(onFinal: (text: string, raw: string, answers?: number) =
     if (next.ended) dispatch({ type: next.ended });
   };
 
-  /** While the Lead speaks, listen for the user talking over it; only once the page may use the microphone, never prompting. */
+  /**
+   * While the Lead speaks, or all through a session, listen for the user
+   * talking; a session keeps the microphone it recorded on, and the Lead's
+   * voice is watched only once the page may use the microphone, never prompting.
+   */
   const watch = async () => {
     try {
       if ((await navigator.permissions.query({ name: "microphone" as PermissionName })).state !== "granted") return;
@@ -339,7 +347,7 @@ export function useTalk(onFinal: (text: string, raw: string, answers?: number) =
       // A browser that cannot tell (Safari) leaves barge-in to a tap.
       return;
     }
-    if (current.current.mode !== "watching" || microphone.current) return;
+    if (!watches(current.current) || microphone.current) return;
     const mic = new Microphone();
     microphone.current = mic;
     listening.current = LISTENING;
@@ -418,10 +426,21 @@ export function useTalk(onFinal: (text: string, raw: string, answers?: number) =
     hush();
   };
   const release = () => dispatch({ type: "release", at: performance.now() });
+  // The key anywhere: a tap from wherever the user is, heard by the page opened last.
+  usePageCommand("listen", () => {
+    player.wake();
+    dispatch({ type: "key" });
+    hush();
+  });
   return { state, interim, warning, note, speaking, press, release, hush };
 }
 
-const LABEL: Record<Talk["mode"], string> = { idle: "Talk", holding: "Release to send", "hands-free": "Tap to send", transcribing: "Talk", watching: "Talk" };
+/** The button's label: in a session, a tap while nobody talks ends it. */
+function label(state: Talk) {
+  if (state.mode === "holding") return "Release to send";
+  if (state.mode === "hands-free") return "Tap to send";
+  return watches(state) && state.session ? "End" : "Talk";
+}
 
 /** The button itself: pointer and keyboard both hold it, Space or Enter as the key. */
 export function TalkButton({ talk: { state, press, release } }: { talk: ReturnType<typeof useTalk> }) {
@@ -437,7 +456,7 @@ export function TalkButton({ talk: { state, press, release } }: { talk: ReturnTy
       type="button"
       className={`talk ${state.mode}`}
       aria-pressed={recording}
-      title="Hold to talk, or tap to talk hands-free"
+      title={watches(state) && state.session ? "End the hands-free session" : "Hold to talk, or tap to talk hands-free"}
       onPointerDown={(e) => {
         if (e.button !== 0) return;
         e.currentTarget.setPointerCapture(e.pointerId);
@@ -452,35 +471,43 @@ export function TalkButton({ talk: { state, press, release } }: { talk: ReturnTy
       onContextMenu={(e) => e.preventDefault()}
     >
       <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="5.5" y="1.5" width="5" height="8.5" rx="2.5" /><path d="M3 7.5a5 5 0 0 0 10 0M8 12.5v2.5" /></svg>
-      <span>{LABEL[state.mode]}</span>
+      <span>{label(state)}</span>
     </button>
   );
 }
 
-/** What the user is saying as it is heard, the Lead speaking, or why voice failed; nothing while idle and fine. */
-export function TalkStatus({ talk: { state, interim, warning, note, speaking, hush } }: { talk: ReturnType<typeof useTalk> }) {
-  const stop = speaking && (
-    <p className="speaking">
-      <span>The Lead is speaking; talk over it or tap to stop.</span>
-      <button type="button" onClick={hush}>Stop</button>
+const SAYS: Record<Indicator, string> = { listening: "Listening", thinking: "Thinking", speaking: "Speaking" };
+
+/**
+ * Where the conversation by voice stands, while there is one: listening
+ * (with what is heard), thinking (transcribing, or the Lead `working`) or
+ * the Lead speaking, with Stop; a session's End; why voice failed; or a
+ * note. Nothing while idle and fine.
+ */
+export function TalkStatus({ talk: { state, interim, warning, note, speaking, press, hush }, working }: { talk: ReturnType<typeof useTalk>; working: boolean }) {
+  const kind = indicator(state, { speaking, working });
+  const session = "session" in state && state.session === true;
+  const detail = kind === "listening"
+    ? interim || (state.mode === "watching" ? "Talk when you are ready." : "")
+    : kind === "thinking"
+      ? state.mode === "transcribing" ? "Transcribing…" : "The Lead is working on it."
+      : "Talk over it or tap to stop.";
+  const line = kind && (
+    <p className={`indicator ${kind}`}>
+      <i aria-hidden="true" />
+      <b>{SAYS[kind]}</b>
+      <span className={kind === "listening" && interim ? "interim" : undefined}>{detail}</span>
+      {kind === "speaking" && <button type="button" onClick={hush}>Stop</button>}
+      {session && watches(state) && kind !== "speaking" && <button type="button" onClick={press}>End</button>}
     </p>
   );
-  if (warning) {
-    return (
-      <div className="talk-status" role="status">
-        <p className="warning">{warning.error}</p>
-        {warning.help.map((h) => <p key={h} className="help">{h}</p>)}
-        {stop}
-      </div>
-    );
-  }
-  if (state.mode === "idle" || state.mode === "watching") {
-    if (stop) return <div className="talk-status" role="status">{stop}</div>;
-    return note ? <div className="talk-status" role="status"><p className="help">{note}</p></div> : null;
-  }
+  if (!warning && !line && !note) return null;
   return (
     <div className="talk-status" role="status" aria-live="polite">
-      <p className={interim ? "interim" : "help"}>{interim || (state.mode === "transcribing" ? "Transcribing…" : "Listening…")}</p>
+      {warning && <p className="warning">{warning.error}</p>}
+      {warning?.help.map((h) => <p key={h} className="help">{h}</p>)}
+      {line}
+      {!line && !warning && note && <p className="help">{note}</p>}
     </div>
   );
 }

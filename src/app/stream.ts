@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import type { EventName } from "../events";
+import type { EventName, PageCommand } from "../events";
 
-/** What the page hears from `serve`: an `/api/events` event, its stream (re)opening, or losing it. */
-type Heard = EventName | "open" | "error";
+/** What the page hears from `serve`: an `/api/events` event or command, its stream (re)opening, or losing it. */
+type Heard = EventName | PageCommand | "open" | "error";
 
 /** The page's one `/api/events` stream, open while anything listens, shared by every resource. */
 let source: EventSource | null = null;
@@ -60,4 +60,11 @@ export function useResource<T>(path: string, events: EventName[]) {
     return stop;
   }, [path, names]);
   return { ...loaded, failure };
+}
+
+/** Call `run` each time `serve` sends this page `command`, such as `listen` from `nico-agent voice talk`. */
+export function usePageCommand(command: PageCommand, run: () => void) {
+  const latest = useRef(run);
+  latest.current = run;
+  useEffect(() => listen([command], () => latest.current()), [command]);
 }

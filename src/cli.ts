@@ -26,7 +26,7 @@ import { type PrLookup, cachedPrs, currentStage, freshPrs, loadInFlight, stageOf
 import { type Dispatch, findDispatch, loadDispatches } from "./state";
 import { probeVoice } from "./voice";
 import { setVoiceOn, voiceOn } from "./voice-on";
-import { lookAtLead, webHandler, webSockets } from "./web";
+import { TALK_PATH, lookAtLead, webHandler, webSockets } from "./web";
 import { Events } from "./events";
 import app from "./app/index.html";
 import { type World, WorldError } from "./world";
@@ -459,6 +459,16 @@ const commands: Command[] = [
     examples: ["nico-agent voice check", "nico-agent voice check --json"],
     help: [VOICE_DOCS_HELP],
     run: (_args, ctx) => voiceCheckCommand(ctx),
+  },
+  {
+    name: "voice talk",
+    usage: "nico-agent voice talk [--port <port>]",
+    summary: "Start the open app's talk button hands-free, as a tap would: bind it to a key to talk from anywhere; again, it sends what was said, or ends the session",
+    flags: { "--port": { value: true, description: "port `nico-agent serve` listens on (default 42069)" } },
+    positionals: [],
+    examples: ["nico-agent voice talk", "nico-agent voice talk --port 8080"],
+    help: [`See ${VOICE_DOC} for the Hyprland binding`],
+    run: voiceTalk,
   },
   {
     name: "voice",
@@ -1201,6 +1211,22 @@ async function voiceCheckCommand(ctx: RunContext): Promise<Output> {
 
 async function voiceCommand(ctx: RunContext): Promise<Output> {
   return { data: { voice: voiceOn(ctx.configDir) ? "on" : "off" }, help: [VOICE_ON_HELP] };
+}
+
+/** Ask `serve` to start its open page's talk button; refused when serve is not running or no page is open. */
+async function voiceTalk(args: Args, ctx: RunContext): Promise<Output> {
+  const port = portFlag(args, "nico-agent voice talk [--port <port>]");
+  let response: Response;
+  try {
+    response = await ctx.world.http(new Request(`http://${HOSTNAME}:${port}${TALK_PATH}`, { method: "POST" }));
+  } catch {
+    throw new CliError(`could not reach nico-agent serve on port ${port}`, [`Start it with \`nico-agent serve${port === DEFAULT_PORT ? "" : ` --port ${port}`}\` and open the app`]);
+  }
+  const answer = await response.json().catch(() => null) as { listen?: string; error?: string; help?: string[] } | null;
+  if (!response.ok || !answer?.listen) {
+    throw new CliError(answer?.error ?? `nico-agent serve answered ${response.status}`, answer?.help ?? []);
+  }
+  return { data: { listen: answer.listen }, help: answer.help ?? [] };
 }
 
 async function voiceSet(ctx: RunContext, on: boolean): Promise<Output> {
