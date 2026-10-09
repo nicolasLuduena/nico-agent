@@ -33,7 +33,7 @@ import { setVoiceOn, voiceOn } from "./voice-on";
 import { TALK_PATH, lookAtLead, webHandler, webSockets } from "./web";
 import { Events } from "./events";
 import app from "./app/index.html";
-import { type World, WorldError, worldErrorMessage } from "./world";
+import { RATE_LIMITED, type World, WorldError, worldErrorMessage } from "./world";
 
 export interface RunContext {
   world: World;
@@ -41,8 +41,8 @@ export interface RunContext {
   /** Path of the running executable, home collapsed to `~`. */
   bin: string;
   /**
-   * The Board's PR lookup, shared by every run of a long-lived caller: `serve`
-   * runs `board --json` for the app on each tick, and asks GitHub only every ~30s.
+   * The Board's PR lookup, shared by every run of a long-lived caller such as
+   * `serve`, which looks PRs up through its cached GitHub reads.
    */
   prs?: PrLookup;
   /** Reads standard input to its end; absent when it is a terminal or there is none. */
@@ -1446,16 +1446,31 @@ function mcpUrl(port: number) {
   return `http://${HOSTNAME}:${port}/mcp`;
 }
 
+/** Commands that change what the Board shows, so `serve` reads GitHub afresh after them, failed or not. */
+const BOARD_CHANGES = ["dispatch", "review", "close", "queue", "unqueue", "move", "advance", "proposals approve"];
+
+function changesBoard(argv: string[]) {
+  return BOARD_CHANGES.some((command) => command.split(" ").every((word, i) => argv[i] === word));
+}
+
 async function serve(args: Args, ctx: RunContext): Promise<Output> {
   const port = portFlag(args, "nico-agent serve [--port <port>]");
   const events = new Events();
   const look = lookAtLead(ctx, events);
   // Its runs come from the app and the Lead's tools, never from serve's own standard input.
-  // They read GitHub through a cache, so the app's polling costs GitHub a read a minute.
-  const { stdin: _, ...served } = { ...ctx, world: cachingGitHubReads(ctx.world) };
-  const shared = { ...served, prs: ctx.prs ?? cachedPrs(served.world) };
+  // They read GitHub through a cache, so a Board costs GitHub a read a minute.
+  const github = cachingGitHubReads(ctx.world);
+  const { stdin: _, ...served } = { ...ctx, world: github.world };
+  const shared = { ...served, prs: ctx.prs ?? freshPrs(served.world) };
   try {
-    const runCli = (argv: string[]) => run(argv, shared);
+    const runCli = async (argv: string[]) => {
+      try {
+        return await run(argv, shared);
+      } finally {
+        // What nico-agent just did shows on the next Board, not a minute later.
+        if (changesBoard(argv)) github.forget();
+      }
+    };
     await ctx.world.serve({ hostname: HOSTNAME, port }, webHandler({ ...ctx, events, look, runCli }), { "/": app }, webSockets({ ...ctx, runCli, events }));
   } catch (e) {
     if (!(e instanceof WorldError)) throw e;
@@ -1472,22 +1487,26 @@ async function serve(args: Args, ctx: RunContext): Promise<Output> {
   // What changes on a PR reaches the Lead as events in its Inbox.
   ctx.world.every(PR_WATCH_INTERVAL_MS, async () => {
     try {
-      const { events: written, warnings } = await withCaller("pr watch", () => watchPrs(ctx.world, ctx.configDir, shared.prs));
+      const { events: written, warnings } = await withCaller("pr watch", () => watchPrs(served.world, ctx.configDir, shared.prs));
       for (const warning of warnings) console.error(`PR events: ${warning}`);
-      if (written.length) for (const warning of await nudgeLead(ctx.world, ctx.configDir)) console.error(warning);
+      if (!written.length) return;
+      // Something happened on a PR, so the Board may have moved with it.
+      github.forget();
+      for (const warning of await nudgeLead(ctx.world, ctx.configDir)) console.error(warning);
     } catch (e) {
       console.error(`PR events failed: ${e instanceof Error ? e.message : String(e)}`);
     }
   });
-  // The Board is tended while it is up; the timer stays as the floor, and the advance lock keeps the two apart.
+  // The Scheduler: serve tends the Board while it is up, reading GitHub through the same cache.
   ctx.world.every(ADVANCE_INTERVAL_MS, async () => {
     try {
-      const { data } = advanceOutput(await withCaller("scheduler", () => advance(ctx.world, ctx.configDir)));
+      const { data } = advanceOutput(await withCaller("scheduler", () => advance(served.world, ctx.configDir)));
       console.error(`advance: ${render({ data }, false).trimEnd()}`);
     } catch (e) {
       // A failed tick is only logged: the next one tries again.
       console.error(`advance failed: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
+      github.forget();
       events.emit("board-changed");
     }
   });
@@ -1576,7 +1595,11 @@ async function board(ctx: RunContext, json: boolean): Promise<Output> {
     return { data: { ...header, ready: "0 issues (no Repos configured)" }, help: [ADD_REPO_HELP] };
   }
   const loaded = await loadBoard(ctx.world, repos, loadDispatches(ctx.configDir), ctx.prs ?? cachedPrs(ctx.world), rememberedLaunches(ctx.configDir).bases);
-  const { ready, stackable, withPr, specs, inFlight, errors } = loaded;
+  const { ready, stackable, withPr, specs, inFlight } = loaded;
+  // A rate-limited GitHub is one warning with its reset time, not an error on every Repo and Dispatch.
+  const limited = (message?: string) => message?.startsWith(RATE_LIMITED) ?? false;
+  const warning = [...loaded.errors.map((e) => e.error), ...inFlight.map((r) => r.prError)].find(limited);
+  const errors = loaded.errors.filter((e) => !limited(e.error));
   const help = ["Run `nico-agent repo list` to see the Repos", ADD_REPO_HELP];
   if (inFlight.length) help.unshift("Run `nico-agent show <issue>` to see a Dispatch");
   const blocked = inFlight.flatMap(({ dispatch: d, implementerState, reviewerState }) => [
@@ -1607,7 +1630,7 @@ async function board(ctx: RunContext, json: boolean): Promise<Output> {
         ...(json && { repo: d.repo, url: d.url }),
         stage,
         pr: pr?.url ?? "",
-        ...(prError && { prError }),
+        ...(prError && !limited(prError) && { prError }),
         implementer: implementerState,
         reviewer: reviewerState ?? "",
         harness: d.implementer.harness,
@@ -1620,9 +1643,10 @@ async function board(ctx: RunContext, json: boolean): Promise<Output> {
     }),
   };
   // A failed branch listing still loaded the Repo's issues.
-  const failedRepos = repos.filter((r) => errors.filter((e) => e.repo === r.slug && e.source !== "git").length === (r.linear ? 2 : 1)).length;
+  const failedRepos = repos.filter((r) => loaded.errors.filter((e) => e.repo === r.slug && e.source !== "git").length === (r.linear ? 2 : 1)).length;
   if (failedRepos === repos.length) {
-    return { data: { ...header, ready: "0 issues (no Repo could be loaded)", ...inFlightData, ...(asking.length && { asking }), errors }, help, exitCode: 1 };
+    const data = { ...header, ready: "0 issues (no Repo could be loaded)", ...inFlightData, ...(asking.length && { asking }), ...(warning && { warning }), ...(errors.length && { errors }) };
+    return { data, help, exitCode: 1 };
   }
   const count = ready.length
     ? plural(ready.length, "issue")
@@ -1671,6 +1695,7 @@ async function board(ctx: RunContext, json: boolean): Promise<Output> {
   }
   Object.assign(data, inFlightData);
   if (asking.length) data.asking = asking;
+  if (warning) data.warning = warning;
   if (errors.length) data.errors = errors;
   return { data, help };
 }

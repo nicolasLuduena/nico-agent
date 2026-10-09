@@ -93,14 +93,13 @@ The state of an issue that has a Dispatch which has not been Closed.
 _Avoid_: Active, running, in progress
 
 **Scheduler**:
-`nico-agent advance` run every 10 minutes by a systemd user timer, and by
-`nico-agent serve` while the Board is up; the timer is the floor that keeps
+`nico-agent advance` run every 10 minutes by `nico-agent serve`, which keeps
 Specs moving without the user or the Lead. It dispatches each
 running Spec's next issue, one Implementer per Spec at a time, and starts the
 head of each Repo's Queue while the Repo has room. It makes no judgment, and
 the launch comes from the Scheduler defaults in config. It notifies the user of
 what needs them, and Nudges the Lead.
-_Avoid_: Orchestrator, pilot, autopilot, agent (the Lead is the agent; the Scheduler is a timer)
+_Avoid_: Orchestrator, pilot, autopilot, agent (the Lead is the agent; the Scheduler is a loop in `serve`)
 
 **Held**:
 A Spec `advance` does not dispatch into until the user acts: one of its

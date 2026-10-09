@@ -18,7 +18,8 @@ export function setup() {
     const result = await run(argv, context);
     return { ...result, json: () => JSON.parse(result.stdout) };
   };
-  // As `serve` does: its runs share one PR lookup, so the app's refetches ask GitHub only every ~30s.
+  // The web app's runs share one PR lookup, so its refetches ask GitHub only every ~30s.
+  // `serve` itself caches all its GitHub reads instead (test/serve.test.ts).
   const served = { ...context, prs: cachedPrs(world) };
   const events = new Events();
   /** What `serve` does on its tick: look at the conversation, the Proposals and the Lead again. */

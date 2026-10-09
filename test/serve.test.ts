@@ -2,6 +2,7 @@ import { mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { ADVANCE_INTERVAL_MS as TEN_MINUTES } from "../src/advance";
+import { RateLimited } from "../src/world";
 import { events, setup } from "./harness";
 
 describe("serve", () => {
@@ -129,6 +130,71 @@ describe("serve ticks", () => {
     await world.tick(50_000);
     expect((await board()).status).toBe(200);
     expect(asked()).toBe(2);
+  });
+
+  test("serve's advance reads GitHub through the Board's cache", async () => {
+    const { cli, world, configDir } = setup();
+    world.addClone("/src/api", "git@github.com:acme/api.git");
+    await cli("repo", "add", "acme/api", "--path", "/src/api");
+    const config = JSON.parse(readFileSync(join(configDir, "config.json"), "utf8"));
+    writeFileSync(join(configDir, "config.json"), JSON.stringify({ ...config, scheduler: LAUNCH }));
+    world.addIssue("acme/api", { number: 7, title: "Add retries" });
+    expect((await cli("serve")).exitCode).toBe(0);
+    await world.tick(TEN_MINUTES - 30_000);
+    world.calls.length = 0;
+
+    expect((await world.server!.handler(new Request("http://127.0.0.1:42069/api/board"))).status).toBe(200);
+    await world.tick(30_000);
+    expect(log.at(-1)).toStartWith("advance:");
+    expect(world.calls.filter((c) => c === "github issues acme/api")).toHaveLength(1);
+  });
+
+  test("a rate-limited GitHub shows as one warning with its reset time, and serve asks it again only after the reset", async () => {
+    const { cli, world } = setup();
+    for (const name of ["api", "web"]) {
+      world.addClone(`/src/${name}`, `git@github.com:acme/${name}.git`);
+      await cli("repo", "add", `acme/${name}`, "--path", `/src/${name}`);
+      world.addIssue(`acme/${name}`, { number: 7, title: "Add retries" });
+    }
+    const reset = new Date(world.now().getTime() + 5 * 60_000);
+    world.failGitHub("acme/api", new RateLimited(reset));
+    expect((await cli("serve")).exitCode).toBe(0);
+    const board = async () => (await world.server!.handler(new Request("http://127.0.0.1:42069/api/board"))).json();
+    const asked = () => world.calls.filter((c) => c.startsWith("github issues")).length;
+
+    const limited = await board();
+    expect(limited.warning).toBe(`GitHub rate limit exceeded; nico-agent asks it again at ${reset.toISOString()}`);
+    expect(limited.errors).toBeUndefined();
+    const before = asked();
+
+    world.failures.clear();
+    await world.tick(2 * 60_000);
+    expect((await board()).warning).toBe(limited.warning);
+    expect(asked()).toBe(before);
+
+    await world.tick(3 * 60_000);
+    const resumed = await board();
+    expect(resumed.warning).toBeUndefined();
+    expect(resumed.issues).toMatchObject([{ issue: "acme/api#7" }, { issue: "acme/web#7" }]);
+  });
+
+  test("a dispatch through serve shows on the next Board at once, without waiting out the cache", async () => {
+    const { cli, world } = setup();
+    world.addClone("/src/api", "git@github.com:acme/api.git");
+    await cli("repo", "add", "acme/api", "--path", "/src/api");
+    world.addIssue("acme/api", { number: 7, title: "Add retries" });
+    expect((await cli("serve")).exitCode).toBe(0);
+    const send = (path: string, init?: RequestInit) => world.server!.handler(new Request(`http://127.0.0.1:42069${path}`, init));
+    const board = async () => (await send("/api/board")).json();
+    expect((await board()).issues).toMatchObject([{ issue: "acme/api#7" }]);
+    world.calls.length = 0;
+
+    const args = ["acme/api#7", "--harness", "claude", "--model", "opus", "--effort", "high"];
+    expect((await send("/api/dispatch", { method: "POST", body: JSON.stringify({ args }) })).status).toBe(200);
+    world.linkPr("acme/api", 7, { number: 17 });
+    const after = await board();
+    expect(after.dispatches).toMatchObject([{ issue: "acme/api#7", stage: "PR ready", pr: "https://github.com/acme/api/pull/17" }]);
+    expect(world.calls.filter((c) => c === "github issues acme/api")).toHaveLength(1);
   });
 
   test("each tick tells the app the Board may have changed", async () => {

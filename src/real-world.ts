@@ -2,7 +2,7 @@ import { type GitHubCall, currentCaller, recordCall, splitHeaders } from "./gith
 import { LinearSource } from "./linear";
 import { realpathSync } from "node:fs";
 import type { Address, CheckResult, GitHubIssue, IssueDescription, GitHubSubIssue, PullRequest, PullRequestActivity, PullRequestComment, Pages, RequestHandler, SocketPeer, SocketSession, Sockets, World } from "./world";
-import { READY_LABEL, WorldError } from "./world";
+import { RateLimited, READY_LABEL, WorldError } from "./world";
 
 interface Exec {
   exitCode: number;
@@ -27,15 +27,42 @@ async function exec(cmd: string[], env?: Record<string, string>): Promise<Exec> 
 
 const GH_ENV = { GH_PROMPT_DISABLED: "1", NO_COLOR: "1" };
 
-function ghFailure(stderr: string): WorldError {
+/**
+ * Who a GitHub call runs as. nico-agent reads a Repo as the bot where its
+ * App is installed, through `ghbot` and the installation token, whose rate
+ * limit is its own, so the user's `gh` keeps working. It reads other Repos,
+ * claims issues and names the viewer as the user, through their own `gh`.
+ */
+type GitHubAs = "gh" | "ghbot";
+
+async function ghFailure(stderr: string, as: GitHubAs): Promise<WorldError> {
   if (/auth login|authentication|HTTP 401/i.test(stderr)) {
-    return new WorldError("not authenticated with GitHub; run `gh auth login`");
+    return new WorldError(as === "gh" ? "not authenticated with GitHub; run `gh auth login`" : "GitHub refused the bot's token; check ~/.config/gh-bot/config.env");
   }
   if (/Could not resolve to a Repository|HTTP 404/i.test(stderr)) {
     return new WorldError("repository not found on GitHub, or not visible to your account");
   }
-  if (/rate limit/i.test(stderr)) return new WorldError("GitHub rate limit exceeded; try again later");
-  return new WorldError("GitHub request failed; check your network and `gh auth status`");
+  if (/rate limit/i.test(stderr)) return new RateLimited(await rateLimitReset(as));
+  return new WorldError(`GitHub request failed; check your network and \`${as} auth status\``);
+}
+
+/**
+ * When GitHub takes calls from `as` again: the latest reset of its spent
+ * limits. A secondary rate limit leaves them unspent, and GitHub asks for a
+ * minute's wait then.
+ */
+async function rateLimitReset(as: GitHubAs): Promise<Date> {
+  const inAMinute = new Date(Date.now() + 60_000);
+  // `rate_limit` itself costs nothing against the limit.
+  const result = await exec([as, "api", "rate_limit"], GH_ENV);
+  if (result.exitCode !== 0) return inAMinute;
+  try {
+    const limits = Object.values(JSON.parse(result.stdout).resources) as { remaining: number; reset: number }[];
+    const spent = limits.filter((l) => l.remaining === 0).map((l) => l.reset * 1000);
+    return spent.length ? new Date(Math.max(...spent)) : inAMinute;
+  } catch {
+    return inAMinute;
+  }
 }
 
 /** Run a git command in `path`, failing with its first stderr line. */
@@ -161,7 +188,7 @@ interface LinkedPrNode {
   repository: { nameWithOwner: string };
 }
 
-/** How long a Repo's PR listing and an issue's closing PRs are reused: within one Board, and a little longer for a polling web Board. */
+/** How long an issue's closing PRs, as its issue query brought them, are reused: within one Board. */
 const PR_SNAPSHOT_MS = 20_000;
 
 const PR_ACTIVITY_QUERY = `
@@ -246,6 +273,9 @@ const REVIEW_VERDICTS: Record<string, PullRequestComment["review"]> = {
 /** Check run conclusions that count as passed; every other completed one failed. */
 const PASSED = ["SUCCESS", "NEUTRAL", "SKIPPED"];
 
+/** How long the list of Repos the bot reads is reused; installing the App on another shows within it. */
+const BOT_REPOS_MS = 10 * 60_000;
+
 export class RealWorld implements World {
   /** Where every GitHub call is logged; nowhere without one. */
   private readonly githubCalls?: string;
@@ -255,10 +285,33 @@ export class RealWorld implements World {
   }
 
   private readonly linear = new LinearSource();
+  /** The Repos (lowercase `owner/name`) the bot reads: its App's installation, none without a bot token. */
+  private botRepos: { at: number; repos: Promise<Set<string>> } | null = null;
+
+  /** Who reads `slug`: the bot where its App is installed, else the user. */
+  private async readerOf(slug: string): Promise<GitHubAs> {
+    if (!this.botRepos || Date.now() - this.botRepos.at >= BOT_REPOS_MS) {
+      // A failed listing (the bot rate-limited, say) keeps the Repos it knew, so their reads don't move onto the user's budget.
+      const known = this.botRepos?.repos ?? Promise.resolve(new Set<string>());
+      const repos = this.githubAppRepos().then((r) => new Set(r.map((s) => s.toLowerCase())), () => known);
+      this.botRepos = { at: Date.now(), repos };
+    }
+    return (await this.botRepos.repos).has(slug.toLowerCase()) ? "ghbot" : "gh";
+  }
+
+  /** A GitHub read in `slug`, as its reader. */
+  private async readExec(slug: string, args: string[]): Promise<Exec & { as: GitHubAs }> {
+    const as = await this.readerOf(slug);
+    return { ...(await this.ghCall(args, { bin: as })), as };
+  }
+
+  private async read(slug: string, args: string[]): Promise<string> {
+    const result = await this.readExec(slug, args);
+    if (result.exitCode === 0) return result.stdout;
+    throw await ghFailure(result.stderr, result.as);
+  }
   /** Closing PRs of each issue (`owner/name#n`), as the issue queries brought them. */
   private readonly linkedPrs = new Map<string, { at: number; prs: PullRequest[] }>();
-  /** Every PR of a Repo, listed once for all branch lookups. */
-  private readonly repoPrs = new Map<string, { at: number; prs: Promise<PullRequest[]> }>();
 
   /**
    * Run `gh` (or `ghbot`) and log the call. `gh api` is asked for its response
@@ -291,7 +344,7 @@ export class RealWorld implements World {
   private async gh(args: string[]): Promise<string> {
     const result = await this.ghCall(args);
     if (result.exitCode === 0) return result.stdout;
-    throw ghFailure(result.stderr);
+    throw await ghFailure(result.stderr, "gh");
   }
 
   private rememberLinked(slug: string, node: IssueNode) {
@@ -335,7 +388,7 @@ export class RealWorld implements World {
       const args = ["api", "graphql", "-f", `query=${ISSUES_QUERY}`, "-f", `owner=${owner}`, "-f", `name=${name}`];
       args.push("-f", `label=${READY_LABEL}`);
       if (cursor) args.push("-f", `cursor=${cursor}`);
-      const response = JSON.parse(await this.gh(args));
+      const response = JSON.parse(await this.read(slug, args));
       const page = response.data?.repository?.issues;
       if (!page) throw new WorldError("repository not found on GitHub, or not visible to your account");
       for (const node of page.nodes as IssueNode[]) this.rememberLinked(slug, node);
@@ -349,10 +402,10 @@ export class RealWorld implements World {
     const [owner, name] = slug.split("/") as [string, string];
     const args = ["api", "graphql", "-f", `query=${ISSUE_QUERY}`, "-f", `owner=${owner}`, "-f", `name=${name}`];
     args.push("-F", `number=${number}`);
-    const result = await this.ghCall(args);
+    const result = await this.readExec(slug, args);
     // A missing issue is a GraphQL error on an otherwise found repository.
     if (result.exitCode !== 0 && !/Could not resolve to an issue/i.test(result.stderr + result.stdout)) {
-      throw ghFailure(result.stderr);
+      throw await ghFailure(result.stderr, result.as);
     }
     const repository = JSON.parse(result.stdout || "{}").data?.repository;
     if (repository === undefined || repository === null) {
@@ -363,10 +416,10 @@ export class RealWorld implements World {
   }
 
   async githubIssueDescription(slug: string, number: number): Promise<IssueDescription | null> {
-    const result = await this.ghCall(["api", `repos/${slug}/issues/${number}`]);
+    const result = await this.readExec(slug, ["api", `repos/${slug}/issues/${number}`]);
     if (result.exitCode !== 0) {
       if (/HTTP 404/i.test(result.stderr)) return null;
-      throw ghFailure(result.stderr);
+      throw await ghFailure(result.stderr, result.as);
     }
     const issue: { title: string; body: string | null; labels: { name: string }[] } = JSON.parse(result.stdout);
     return { title: issue.title, labels: issue.labels.map((l) => l.name), body: issue.body ?? "" };
@@ -379,7 +432,7 @@ export class RealWorld implements World {
     do {
       const args = ["api", "graphql", "-f", `query=${SUB_ISSUES_QUERY}`, "-f", `owner=${owner}`, "-f", `name=${name}`, "-F", `number=${number}`];
       if (cursor) args.push("-f", `cursor=${cursor}`);
-      const page = JSON.parse(await this.gh(args)).data?.repository?.issue?.subIssues;
+      const page = JSON.parse(await this.read(slug, args)).data?.repository?.issue?.subIssues;
       if (!page) throw new WorldError(`${slug}#${number} was not found on GitHub`);
       const nodes = page.nodes as (IssueNode & { repository: { nameWithOwner: string } })[];
       for (const node of nodes) this.rememberLinked(node.repository.nameWithOwner, node);
@@ -406,32 +459,25 @@ export class RealWorld implements World {
     const [owner, name] = slug.split("/") as [string, string];
     const args = ["api", "graphql", "-f", `query=${LINKED_PRS_QUERY}`, "-f", `owner=${owner}`, "-f", `name=${name}`];
     args.push("-F", `number=${number}`);
-    const issue = JSON.parse(await this.gh(args)).data?.repository?.issue;
+    const issue = JSON.parse(await this.read(slug, args)).data?.repository?.issue;
     if (!issue) throw new WorldError(`${slug}#${number} was not found on GitHub`);
     return (issue.closedByPullRequestsReferences.nodes as LinkedPrNode[]).map(toPullRequest);
   }
 
   async githubPullRequest(slug: string, number: number): Promise<PullRequest | null> {
-    const args = ["pr", "view", String(number), "--repo", slug, "--json", "number,url,state,baseRefName,headRefName,isCrossRepository"];
-    const result = await this.ghCall(args);
+    const args = ["pr", "view", String(number), "--repo", slug, "--json", LISTED_PR_FIELDS];
+    const result = await this.readExec(slug, args);
     if (result.exitCode !== 0) {
       if (/Could not resolve to a PullRequest|no pull requests found/i.test(result.stderr)) return null;
-      throw ghFailure(result.stderr);
+      throw await ghFailure(result.stderr, result.as);
     }
-    const pr = JSON.parse(result.stdout) as { number: number; url: string; state: string; baseRefName: string; headRefName: string; isCrossRepository: boolean };
-    return {
-      repo: slug,
-      number: pr.number,
-      url: pr.url,
-      state: pr.state.toLowerCase() as PullRequest["state"],
-      baseBranch: pr.baseRefName,
-      ...(!pr.isCrossRepository && { headBranch: pr.headRefName }),
-    };
+    return toListedPr(slug, JSON.parse(result.stdout));
   }
 
   async githubPullRequestActivity(slug: string, number: number, since?: Date): Promise<PullRequestActivity> {
     const [owner, name] = slug.split("/") as [string, string];
     const args = ["api", "graphql", "-f", `query=${PR_ACTIVITY_QUERY}`, "-f", `owner=${owner}`, "-f", `name=${name}`, "-F", `number=${number}`];
+    // As the user: the App can't read check results.
     const pr = JSON.parse(await this.gh(args)).data?.repository?.pullRequest as PrActivityNode | null | undefined;
     if (!pr) throw new WorldError(`${slug}#${number} was not found on GitHub`);
     const login = (author: { login: string } | null) => author?.login ?? "ghost";
@@ -468,28 +514,11 @@ export class RealWorld implements World {
     await this.gh(["issue", "edit", String(number), "--repo", slug, "--add-assignee", "@me"]);
   }
 
+  // Only the branch's own PRs: a Repo's whole PR history grows with it, and the Board needs none of the rest.
   async githubBranchPullRequests(slug: string, branch: string): Promise<PullRequest[]> {
-    const prs = await this.allPullRequests(slug);
-    return prs.filter((pr) => pr.headBranch === branch || (pr.headBranch === undefined && pr.forkHead === branch))
-      .map(({ forkHead: _, ...pr }) => pr);
-  }
-
-  /** Every PR of a Repo, oldest first, listed once and reused for PR_SNAPSHOT_MS; `forkHead` is a fork PR's head branch name. */
-  private allPullRequests(slug: string): Promise<(PullRequest & { forkHead?: string })[]> {
-    const key = slug.toLowerCase();
-    const hit = this.repoPrs.get(key);
-    if (hit && Date.now() - hit.at < PR_SNAPSHOT_MS) return hit.prs;
-    const prs = this.gh(["pr", "list", "--repo", slug, "--state", "all", "--limit", "10000", "--json", "number,url,state,baseRefName,headRefName,isCrossRepository"])
-      .then((result) => {
-        const listed = JSON.parse(result) as { number: number; url: string; state: string; baseRefName: string; headRefName: string; isCrossRepository: boolean }[];
-        // gh lists newest first; linkedPr expects the latest at the end.
-        return listed.reverse().map((pr) => ({ repo: slug, number: pr.number, url: pr.url,
-          state: pr.state.toLowerCase() as PullRequest["state"], baseBranch: pr.baseRefName,
-          ...(pr.isCrossRepository ? { forkHead: pr.headRefName } : { headBranch: pr.headRefName }) }));
-      });
-    this.repoPrs.set(key, { at: Date.now(), prs });
-    prs.catch(() => this.repoPrs.delete(key));
-    return prs;
+    const listed: ListedPr[] = JSON.parse(await this.read(slug, ["pr", "list", "--repo", slug, "--head", branch, "--state", "all", "--limit", "100", "--json", LISTED_PR_FIELDS]));
+    // gh lists newest first; linkedPr expects the latest at the end.
+    return listed.reverse().filter((pr) => pr.headRefName === branch).map((pr) => toListedPr(slug, pr));
   }
 
   async gitFetch(path: string, branch?: string) {
@@ -710,6 +739,30 @@ export class RealWorld implements World {
 
 /** How long a voice service may take to answer; a local one loads its model on the first request. */
 const HTTP_TIMEOUT_MS = 120_000;
+
+/** The fields `gh pr view` and `gh pr list` give a PR by. */
+const LISTED_PR_FIELDS = "number,url,state,baseRefName,headRefName,isCrossRepository";
+
+interface ListedPr {
+  number: number;
+  url: string;
+  state: string;
+  baseRefName: string;
+  headRefName: string;
+  isCrossRepository: boolean;
+}
+
+function toListedPr(repo: string, pr: ListedPr): PullRequest {
+  return {
+    repo,
+    number: pr.number,
+    url: pr.url,
+    state: pr.state.toLowerCase() as PullRequest["state"],
+    baseBranch: pr.baseRefName,
+    // A fork head is not fetchable as origin/<head branch> in this clone.
+    ...(!pr.isCrossRepository && { headBranch: pr.headRefName }),
+  };
+}
 
 function toPullRequest(pr: LinkedPrNode): PullRequest {
   return {
