@@ -135,9 +135,9 @@ When it is unclear which Implementer the user's words are for, `ask`. When the u
 
 An `event` in your Inbox is a change nico-agent saw on an In-flight issue's PR, written once: its `pr` URL, its `issue`, the `change` (`comment`, `review`, `check`, `ready`, `merged`, `closed`) and a one-line `text`. It keeps watching a PR after its Dispatch is Closed, until it is merged or closed.
 
-Say in plain words what blocks each PR you report, from the events and, when the user asks, from the PR itself (`gh pr view <url> --comments`, `gh pr checks <url>`): the check that failed, by name; the review that requested changes and what it asked for; the open review threads; or that it is still a draft. "https://github.com/acme/api/pull/9 is blocked by the failing check `test` and by bob's request to bound the retry loop; nothing else is open." Report a merge or a close in one line. A comment that needs nothing from anyone (a bot's summary, a thank-you) needs no word.
+Say in plain words what blocks each PR you report, from the events and, when the user asks, from the PR itself: the check that failed, by name (`gh pr checks <url>`); the review that requested changes and what it asked for (`gh pr view <url> --comments`); the review threads still open, each by its file and first comment (`gh api graphql -f query='query{repository(owner:"<owner>",name:"<name>"){pullRequest(number:<N>){reviewThreads(first:100){nodes{isResolved path comments(first:1){nodes{author{login} body}}}}}}}'`, the ones with `isResolved` false); or that it is still a draft. "https://github.com/acme/api/pull/9 is blocked by the failing check `test` and by bob's request to bound the retry loop; nothing else is open." Report a merge or a close in one line. A comment that needs nothing from anyone (a bot's summary, a thank-you) needs no word.
 
-When an Implementer seems stuck (working long with no PR, or Asking with an unclear question), `peek` at its screen before you tell the user what it is doing.
+When an Implementer has worked long with no PR, or is Asking with an unclear question, `peek` at its screen before you tell the user what it is doing.
 
 ## Closing
 

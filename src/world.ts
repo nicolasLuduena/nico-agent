@@ -199,9 +199,11 @@ export interface PullRequestActivity {
   draft: boolean;
   /** Conversation comments, reviews and inline review comments, oldest first. */
   comments: PullRequestComment[];
-  /** The latest run of each check on the head commit. */
-  checks: { name: string; result: "pending" | "passed" | "failed" }[];
+  /** The latest run of each check on the head commit; names may repeat (two workflows, or a check and a status). */
+  checks: { name: string; result: CheckResult }[];
 }
+
+export type CheckResult = "pending" | "passed" | "failed";
 
 export interface PullRequestComment {
   /** GitHub's id, unique across the kinds of comment. */

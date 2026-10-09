@@ -88,6 +88,28 @@ describe("PR events", () => {
     ]);
   });
 
+  test("checks of the same name count as one: failed if any failed, else pending while any runs", async () => {
+    const { cli, world } = await serving();
+    const activity = world.activity.get("acme/api#9")!;
+    activity.checks.push({ name: "test", result: "passed" }, { name: "test", result: "failed" });
+    await world.tick(MINUTE);
+    await world.tick(MINUTE);
+    expect((await logged(cli)).map((e) => e.text)).toEqual([`${PR}: check test failed`]);
+
+    activity.checks[1]!.result = "pending";
+    await world.tick(MINUTE);
+    activity.checks[1]!.result = "passed";
+    await world.tick(MINUTE);
+    expect((await logged(cli)).map((e) => e.text)).toEqual([`${PR}: check test failed`, `${PR}: check test passed`]);
+  });
+
+  test("a PR already ready for review when first seen writes no ready event", async () => {
+    const { cli, world } = await serving();
+    world.activity.get("acme/api#9")!.draft = false;
+    await world.tick(MINUTE);
+    expect(await logged(cli)).toEqual([]);
+  });
+
   test("the Lead reads events in its Inbox, each once", async () => {
     const { cli, world } = await serving();
     world.activity.get("acme/api#9")!.checks.push({ name: "test", result: "failed" });

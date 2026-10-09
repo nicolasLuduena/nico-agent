@@ -1,6 +1,6 @@
 import { LinearSource } from "./linear";
 import { realpathSync } from "node:fs";
-import type { Address, GitHubIssue, IssueDescription, GitHubSubIssue, PullRequest, PullRequestActivity, PullRequestComment, Pages, RequestHandler, SocketPeer, SocketSession, Sockets, World } from "./world";
+import type { Address, CheckResult, GitHubIssue, IssueDescription, GitHubSubIssue, PullRequest, PullRequestActivity, PullRequestComment, Pages, RequestHandler, SocketPeer, SocketSession, Sockets, World } from "./world";
 import { READY_LABEL, WorldError } from "./world";
 
 interface Exec {
@@ -380,13 +380,14 @@ export class RealWorld implements World {
       }),
     ];
     const contexts = pr.commits.nodes[0]?.commit.statusCheckRollup?.contexts.nodes ?? [];
+    const result = (passed: boolean, pending: boolean): CheckResult => (pending ? "pending" : passed ? "passed" : "failed");
     return {
       state: pr.state.toLowerCase() as PullRequest["state"],
       draft: pr.isDraft,
       comments: comments.filter((c) => !since || new Date(c.at) >= since).sort((a, b) => Date.parse(a.at) - Date.parse(b.at)),
       checks: contexts.map((c) => c.__typename === "CheckRun"
-        ? { name: c.name, result: c.status !== "COMPLETED" ? "pending" : PASSED.includes(c.conclusion ?? "") ? "passed" : "failed" }
-        : { name: c.context, result: c.state === "SUCCESS" ? "passed" : ["PENDING", "EXPECTED"].includes(c.state) ? "pending" : "failed" }),
+        ? { name: c.name, result: result(PASSED.includes(c.conclusion ?? ""), c.status !== "COMPLETED") }
+        : { name: c.context, result: result(c.state === "SUCCESS", ["PENDING", "EXPECTED"].includes(c.state)) }),
     };
   }
 
