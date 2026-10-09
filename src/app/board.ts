@@ -39,8 +39,8 @@ interface JsonSpec {
   issues: string[];
   running: boolean;
   held?: { issue: string; reason: string };
-  next?: { issue: string; reason: string };
-  waiting?: { issue: string; reason: string };
+  next?: { issue: string; reason: string }[];
+  waiting?: { issue: string; reason: string }[];
   reason?: string;
 }
 
@@ -168,7 +168,7 @@ function repoSection(board: BoardJson, repo: string): RepoSection {
   const candidate = (spec: string) => room?.candidates.some((c) => sameSpec(c.spec, spec)) ?? false;
   const queueOf = (spec: string): QueueStatus => ({ place: queue.findIndex((s) => sameSpec(s, spec)), of: queue.length });
   const stateOf = (s: JsonSpec): SpecState =>
-    s.held ? "held" : s.running ? "running" : candidate(s.spec) ? "candidate" : s.waiting ? "waiting" : "not-startable";
+    s.held ? "held" : s.running ? "running" : candidate(s.spec) ? "candidate" : s.waiting?.length ? "waiting" : "not-startable";
   const row = (i: JsonIssue) => ({ key: i.issue, label: repoKey(i.issue, repo), title: i.title, url: i.url });
   const readyRow = (i: JsonIssue & { base?: string }, queue?: QueueStatus): ReadyRow =>
     ({ kind: "ready", ...row(i), ...(i.base && { base: i.base }), ...(queue && { queue }) });
@@ -194,7 +194,7 @@ function repoSection(board: BoardJson, repo: string): RepoSection {
     .map((s, i) => ({ s, i, state: stateOf(s) }))
     .sort((a, b) => order.indexOf(a.state) - order.indexOf(b.state) || a.i - b.i)
     .map(({ s, state }): SpecGroup => {
-      const note = s.held?.reason ?? s.waiting?.reason ?? s.next?.reason ?? s.reason ?? (state === "not-startable" ? "None of its issues is Ready" : undefined);
+      const note = s.held?.reason ?? reasons(s.waiting) ?? reasons(s.next) ?? s.reason ?? (state === "not-startable" ? "None of its issues is Ready" : undefined);
       const own = flightOf(s.spec);
       return {
         spec: s.spec, state, label: repoKey(s.spec, repo), title: s.title, url: s.url,
@@ -217,6 +217,11 @@ function repoSection(board: BoardJson, repo: string): RepoSection {
     stackable: loose(stackable).map(stackRow),
     prOpen: loose(withPr).map(prRow),
   };
+}
+
+/** Each issue's reason, one per line; undefined for none. */
+function reasons(items: { reason: string }[] = []) {
+  return items.length ? items.map((i) => i.reason).join("\n") : undefined;
 }
 
 /** A Repo's Specs as the Scheduler sees them: a slot per Spec that may run, filled while one does, and the Queue in start order. */

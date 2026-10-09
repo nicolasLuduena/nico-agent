@@ -109,7 +109,7 @@ describe("board", () => {
       ready: "1 issue",
       issues: [{ issue: "acme/web#4", title: "Fix header", repo: "acme/web", url: "https://github.com/acme/web/issues/4", base: "main" }],
       specs: [{ spec: "acme/web#4", title: "Fix header", url: "https://github.com/acme/web/issues/4", repo: "acme/web", issues: ["acme/web#4"], running: false,
-        next: { issue: "acme/web#4", base: "main", reason: "acme/web#4 is the first unblocked issue of acme/web#4; the Spec has no open PR, so it starts from main" } }],
+        next: [{ issue: "acme/web#4", base: "main", reason: "acme/web#4 has no open Blocker PR, so it starts from main" }] }],
       rooms: [{ repo: "acme/web", running: [], room: 2,
         candidates: [{ spec: "acme/web#4", title: "Fix header", url: "https://github.com/acme/web/issues/4", issue: "acme/web#4" }], queue: [] }],
       bases: [{ repo: "acme/web", branches: ["main"] }],

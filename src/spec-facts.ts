@@ -1,4 +1,4 @@
-import { DEFAULT_MAX_RUNNING_SPECS, type Repo } from "./config";
+import { DEFAULT_MAX_IMPLEMENTERS_PER_SPEC, DEFAULT_MAX_RUNNING_SPECS, type Repo } from "./config";
 import { sameSlug } from "./slug";
 import type { SourceAdapter, SourceIssue } from "./source";
 import { type InFlightRow, linkedPr } from "./stage";
@@ -42,6 +42,7 @@ export async function loadSpecs(world: World, sources: SourceIssues<any>[], inFl
   }
   const facts = await Promise.allSettled([...byRepo].map(async ([repo, specs]): Promise<RepoFacts> => ({
     repo: repo.slug, defaultBranch: repo.base ?? await world.gitDefaultBranch(repo.path), maxRunningSpecs: repo.maxRunningSpecs ?? DEFAULT_MAX_RUNNING_SPECS,
+    maxImplementersPerSpec: repo.maxImplementersPerSpec ?? DEFAULT_MAX_IMPLEMENTERS_PER_SPEC,
     specs: specs.sort((a, b) => a.spec.localeCompare(b.spec, undefined, { numeric: true })),
   })));
   const repos: RepoFacts[] = [];

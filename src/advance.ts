@@ -14,7 +14,7 @@ import { type InFlightRow, freshPrs } from "./stage";
 import { type Dispatch, STEPS, loadDispatches } from "./state";
 import { type World, WorldError } from "./world";
 
-/** What `advance` did with one running Spec. */
+/** What `advance` did with one issue of a running Spec, or why it did nothing with the Spec. */
 export interface AdvanceRow {
   spec: string;
   repo: string;
@@ -25,7 +25,7 @@ export interface AdvanceRow {
 }
 
 export interface AdvanceReport {
-  /** One row per Spec acted on or stopped, in Board order; empty when there is nothing to do. */
+  /** One row per issue started or resumed, or per Spec stopped, in Board order; empty when there is nothing to do. */
   specs: AdvanceRow[];
   /** Repos whose Specs could not be loaded, so were not advanced. */
   errors: { repo: string; error: string }[];
@@ -36,18 +36,17 @@ export interface AdvanceReport {
   help: string[];
 }
 
-/** What `advance` does with a running Spec; `wait` is nothing to do while its Implementer works, so it is not reported. */
+/** One thing `advance` does with a running Spec; a Spec that only waits on its Implementers has none, so is not reported. */
 export type SpecPlan =
   | { action: "start"; issue: string; stackOn?: string; base: string; reason: string }
   | { action: "resume"; dispatch: Dispatch }
-  | { action: "skip"; issue: string; reason: string; help?: string }
-  | { action: "wait" };
+  | { action: "skip"; issue: string; reason: string; help?: string };
 
 /**
  * Keep running Specs moving and fill each Repo's room from its Queue
- * (ADR-0009): dispatch each one's next issue on the PR the Spec rules chose,
- * with the Scheduler defaults from config, one Spec at a time. Idempotent
- * like `dispatch` (ADR-0006).
+ * (ADR-0009): dispatch each one's next issues, each on the PR or Base the
+ * Spec rules chose (ADR-0012), with the Scheduler defaults from config, one
+ * Spec at a time. Idempotent like `dispatch` (ADR-0006).
  */
 export async function advance(world: World, configDir: string): Promise<AdvanceReport> {
   const holder = takeAdvanceLock(world, configDir);
@@ -110,27 +109,34 @@ async function advanceOnce(world: World, configDir: string): Promise<AdvanceRepo
   report.errors = failedRepos.map(({ repo, error }) => ({ repo, error }));
   const queued = fromQueues(await pruneBoardQueues(configDir, board), board.specs);
   // A Spec waiting on another Spec's merges frees its slot, but is still reported.
-  const running = board.specs.flatMap((r) => r.specs).filter((s) => s.running || s.waiting)
-    .map((spec) => ({ spec, plan: planSpec(spec, dispatches) }));
-  if (running.some(({ plan }) => plan.action === "start") || queued.length) await checkDefaults(world, configDir, launch);
+  const running = board.specs.flatMap((r) => r.specs).filter((s) => s.running || s.waiting.length)
+    .map((spec) => ({ spec, plans: planSpec(spec, dispatches) }));
+  if (running.some(({ plans }) => plans.some((p) => p.action === "start")) || queued.length) await checkDefaults(world, configDir, launch);
   const plans: { spec: SpecDecision; plan: SpecPlan }[] = [];
-  const carry = async (spec: SpecDecision, plan: SpecPlan) => {
-    plans.push({ spec, plan });
-    const row = await carryOut(world, configDir, launch, spec, plan, report.help);
-    if (row) report.specs.push(row);
-    return row;
+  /** Carry out a Spec's plans in order, stopping at a failed one, as a Failed Dispatch Holds its Spec. */
+  const carry = async (spec: SpecDecision, specPlans: SpecPlan[]) => {
+    const rows: AdvanceRow[] = [];
+    for (const plan of specPlans) {
+      plans.push({ spec, plan });
+      const row = await carryOut(world, configDir, launch, spec, plan, report.help);
+      if (!row) continue;
+      report.specs.push(row);
+      rows.push(row);
+      if (row.result === "failed") break;
+    }
+    return rows;
   };
-  for (const { spec, plan } of running) await carry(spec, plan);
+  for (const { spec, plans } of running) await carry(spec, plans);
   for (const { room, specs } of queued) {
     let left = room;
     for (const spec of specs) {
       if (left === 0) break;
-      const row = await carry(spec, fromQueue(planSpec(spec, dispatches), spec));
+      const rows = await carry(spec, planSpec(spec, dispatches).map((plan) => fromQueue(plan, spec)));
       // A refused start stays queued and leaves its slot to the next queued Spec.
-      if (row?.result === "skipped") continue;
+      if (rows.length && rows.every((row) => row.result === "skipped")) continue;
       left--;
       // Started, or Held by its failed start: either way no longer a candidate.
-      if (row?.result === "started" || row?.result === "failed") await dequeue(configDir, spec.repo, spec.spec);
+      if (rows.some((row) => row.result === "started" || row.result === "failed")) await dequeue(configDir, spec.repo, spec.spec);
     }
   }
   for (const row of board.inFlight.filter(prunable)) {
@@ -224,20 +230,19 @@ function prunable(row: InFlightRow) {
 }
 
 /**
- * A running Spec resumes its unfinished Dispatch, as `dispatch` would
- * (ADR-0006); else starts its next issue; else is skipped with the reason.
+ * A running Spec resumes its unfinished Dispatches, as `dispatch` would
+ * (ADR-0006), and starts its next issues; with neither, it waits on its
+ * Implementers, or is skipped with each waiting issue's reason, or its own.
  */
-export function planSpec(spec: SpecDecision, dispatches: Dispatch[]): SpecPlan {
-  if (spec.held) return { action: "skip", issue: spec.held.issue, reason: `Held: ${spec.held.reason}`, help: holdHelp(spec.held.issue, dispatches) };
-  const unfinished = dispatches.find((d) => spec.issues.includes(d.issue) && !isFinished(d));
-  if (unfinished) return { action: "resume", dispatch: unfinished };
-  if (spec.next) {
-    const { issue, stackOn, base, reason } = spec.next;
-    return { action: "start", issue, base, reason, ...(stackOn && { stackOn: stackOn.url }) };
-  }
-  if (spec.waiting) return { action: "skip", issue: spec.waiting.issue, reason: spec.waiting.reason };
-  if (spec.implementing) return { action: "wait" };
-  return { action: "skip", issue: "", reason: spec.reason ?? "" };
+export function planSpec(spec: SpecDecision, dispatches: Dispatch[]): SpecPlan[] {
+  if (spec.held) return [{ action: "skip", issue: spec.held.issue, reason: `Held: ${spec.held.reason}`, help: holdHelp(spec.held.issue, dispatches) }];
+  const plans: SpecPlan[] = [
+    ...dispatches.filter((d) => spec.issues.includes(d.issue) && !isFinished(d)).map((dispatch) => ({ action: "resume" as const, dispatch })),
+    ...spec.next.map(({ issue, stackOn, base, reason }) => ({ action: "start" as const, issue, base, reason, ...(stackOn && { stackOn: stackOn.url }) })),
+  ];
+  if (plans.length || spec.implementing.length) return plans;
+  if (spec.waiting.length) return spec.waiting.map(({ issue, reason }) => ({ action: "skip", issue, reason }));
+  return [{ action: "skip", issue: "", reason: spec.reason ?? "" }];
 }
 
 /** How the user clears the hold `issue` puts on its Spec: resume its Failed Dispatch with its own launch, or Close the one whose Stack is built on a PR closed without merging. */
@@ -257,7 +262,6 @@ function isFinished(d: Dispatch) {
 
 async function carryOut(world: World, configDir: string, launch: LaunchDefaults, spec: SpecDecision, plan: SpecPlan, help: string[]): Promise<AdvanceRow | undefined> {
   const row = { spec: spec.spec, repo: spec.repo };
-  if (plan.action === "wait") return undefined;
   if (plan.action === "skip") {
     if (plan.help) addHelp(help, plan.help);
     return { ...row, result: "skipped", issue: plan.issue, reason: plan.reason };

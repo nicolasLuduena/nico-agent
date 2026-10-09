@@ -10,12 +10,17 @@ export interface Repo {
   linear?: LinearSelector;
   /** How many Specs may run in the Repo at once; DEFAULT_MAX_RUNNING_SPECS when unset. */
   maxRunningSpecs?: number;
+  /** How many of a Spec's issues may be In flight at once; DEFAULT_MAX_IMPLEMENTERS_PER_SPEC when unset. */
+  maxImplementersPerSpec?: number;
   /** The Base a Dispatch starts from unless stacked or given `--base`; origin's default branch when unset. */
   base?: string;
 }
 
 /** The running Specs a Repo allows unless config sets its own cap. */
 export const DEFAULT_MAX_RUNNING_SPECS = 2;
+
+/** The Implementers a Spec may run at once unless its Repo's config sets its own cap. */
+export const DEFAULT_MAX_IMPLEMENTERS_PER_SPEC = 5;
 
 export interface LinearSelector {
   team: string;
@@ -303,8 +308,10 @@ function checkPrompts(file: string, prompts: unknown): Partial<Prompts> {
 
 function checkRepos(file: string, repos: Repo[]): Repo[] {
   repos.forEach((repo, i) => {
-    const cap = repo.maxRunningSpecs;
-    if (cap !== undefined && !(Number.isInteger(cap) && cap > 0)) throw new ConfigError(`${file}: repos[${i}].maxRunningSpecs is not a positive integer`);
+    for (const key of ["maxRunningSpecs", "maxImplementersPerSpec"] as const) {
+      const cap = repo[key];
+      if (cap !== undefined && !(Number.isInteger(cap) && cap > 0)) throw new ConfigError(`${file}: repos[${i}].${key} is not a positive integer`);
+    }
     if (repo.base !== undefined && (typeof repo.base !== "string" || repo.base === "")) throw new ConfigError(`${file}: repos[${i}].base is not a branch name`);
   });
   return repos;

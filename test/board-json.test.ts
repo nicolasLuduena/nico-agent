@@ -50,7 +50,7 @@ describe("board --json for the app", () => {
     expect(spec).toMatchObject({
       url: "https://github.com/acme/api/issues/10",
       running: false,
-      next: { issue: "acme/api#11", reason: "acme/api#11 is the first unblocked issue of acme/api#10; the Spec has no open PR, so it starts from main" },
+      next: [{ issue: "acme/api#11", reason: "acme/api#11 has no open Blocker PR, so it starts from main" }],
     });
   });
 

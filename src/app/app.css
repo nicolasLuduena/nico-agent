@@ -169,6 +169,7 @@ label.switch:has(:checked) { color: var(--ink); }
 .card-message.superseded .text { color: var(--ink-muted); text-decoration: line-through; text-decoration-color: var(--rule); }
 .spoken { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: 0.4rem 1rem; }
 .raw { font-size: 13px; color: var(--ink-muted); white-space: pre-wrap; overflow-wrap: anywhere; }
+.spec-note { white-space: pre-line; }
 .raw span, .answer span { display: block; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
 .send-failure { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.4rem; font-size: 13px; }
 

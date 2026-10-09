@@ -1726,8 +1726,8 @@ async function board(ctx: RunContext, json: boolean): Promise<Output> {
       spec, title, ...(json && { url }), repo, issues, running,
       ...(held && { held }),
       // In TOON a candidate's first issue is listed under `rooms`; the app shows why it is first.
-      ...((running || json) && next && { next: { issue: next.issue, ...(next.stackOn && { stackOn: next.stackOn.url }), base: next.base, reason: next.reason } }),
-      ...(waiting && { waiting }),
+      ...((running || json) && next.length && { next: next.map((n) => ({ issue: n.issue, ...(n.stackOn && { stackOn: n.stackOn.url }), base: n.base, reason: n.reason })) }),
+      ...(waiting.length && { waiting }),
       ...(reason && { reason }),
     }));
   }
@@ -1737,7 +1737,7 @@ async function board(ctx: RunContext, json: boolean): Promise<Output> {
     data.rooms = specs.map(({ repo, specs: decided, room, candidates }) => ({
       repo, running: decided.filter((s) => s.running).map((s) => s.spec), room,
       candidates: decided.filter((s) => candidates.includes(s.spec))
-        .map(({ spec, title, url, next }) => ({ spec, title, url, issue: next!.issue })),
+        .map(({ spec, title, url, next }) => ({ spec, title, url, issue: next[0]!.issue })),
       queue: queueOf(queues, repo).map((queued) => decided.find((s) => sameSpec(s.spec, queued))?.spec ?? queued),
     }));
   }

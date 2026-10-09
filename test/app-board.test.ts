@@ -49,7 +49,7 @@ describe("the app's Board model: Repos and Specs to sections and groups", () => 
     expect(outline(section!)).toEqual([["candidate", "#10", ["ready #11"]]]);
     expect(section!.specs[0]).toMatchObject({
       title: "Billing", url: "https://github.com/acme/api/issues/10",
-      note: { text: "acme/api#11 is the first unblocked issue of acme/api#10; the Spec has no open PR, so it starts from main", error: false },
+      note: { text: "acme/api#11 has no open Blocker PR, so it starts from main", error: false },
       queue: { place: -1, of: 0 },
     });
     expect(section!.specsOfOne.map((r) => [r.label, r.queue])).toEqual([["#20", { place: -1, of: 0 }]]);
