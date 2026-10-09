@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { DRAFT_REQUESTS, type PartnerJson, type ThreadState, handOffArgs, pageOf, partnerSayArgs, partnerStanding, partnerStartArgs, reduceThread, threadCards } from "../src/app/partner";
+import { DRAFT_REQUESTS, type PartnerJson, type ThreadState, handOffArgs, pageOf, partnerSayArgs, partnerStanding, partnerStartArgs, quoteFile, quoteLines, reduceThread, threadCards, withQuote } from "../src/app/partner";
+import type { DiffFile } from "../src/diff";
 import { setup } from "./harness";
 
 const FLAGS = ["--harness", "claude", "--model", "opus", "--effort", "high"];
@@ -9,7 +10,8 @@ async function withPartner() {
   const ctx = setup();
   ctx.world.addClone("/src/api", "git@github.com:acme/api.git");
   await ctx.cli("repo", "add", "acme/api", "--path", "/src/api");
-  await ctx.cli("partner", "start", "review", "--repo", "acme/api", ...FLAGS);
+  ctx.world.addPr({ repo: "acme/api", number: 12, headBranch: "agent/api-7" });
+  await ctx.cli("partner", "start", "review", "--pr", "acme/api#12", ...FLAGS);
   const loaded = async (state: ThreadState = EMPTY): Promise<ThreadState> => {
     const log = JSON.parse((await ctx.web("/api/partner/log?tab=review")).body);
     return reduceThread(state, { type: "log", entries: log.entries });
@@ -74,10 +76,11 @@ describe("a Thread's cards", () => {
 });
 
 describe("the tab's actions", () => {
-  test("start posts the tab, the Repo, the launch and the page's port", () => {
+  test("start posts the tab, the Repo or the PR, the launch and the page's port", () => {
     const choice = { harnesses: ["claude"], harness: "claude", models: ["opus"], model: "opus", efforts: ["high"], effort: "high" };
-    expect(partnerStartArgs("idea", "acme/api", choice, "8080")).toEqual(["idea", "--repo", "acme/api", ...FLAGS, "--port", "8080"]);
-    expect(partnerStartArgs("idea", "acme/api", choice, "")).toEqual(["idea", "--repo", "acme/api", ...FLAGS]);
+    expect(partnerStartArgs("idea", { repo: "acme/api" }, choice, "8080")).toEqual(["idea", "--repo", "acme/api", ...FLAGS, "--port", "8080"]);
+    expect(partnerStartArgs("idea", { repo: "acme/api" }, choice, "")).toEqual(["idea", "--repo", "acme/api", ...FLAGS]);
+    expect(partnerStartArgs("review", { pr: "https://github.com/acme/api/pull/12" }, choice, "")).toEqual(["review", "--pr", "https://github.com/acme/api/pull/12", ...FLAGS]);
   });
 
   test("a message goes after --, so it is never read as a flag", () => {
@@ -120,5 +123,49 @@ describe("where a tab's Partner stands", () => {
     const { web } = await withPartner();
     const { partners } = JSON.parse((await web("/api/partners")).body) as { partners: PartnerJson[] };
     expect(partners.map((p) => [p.tab, p.repo, partnerStanding(p)])).toEqual([["review", "acme/api", "running"]]);
+  });
+});
+
+describe("quoting the diff into the message", () => {
+  const retry: DiffFile = {
+    path: "src/retry.ts", status: "modified", additions: 2, deletions: 1,
+    hunks: [{
+      header: "@@ -10,4 +10,5 @@",
+      lines: [
+        { kind: "context", text: "function retry(call) {", old: 10, new: 10 },
+        { kind: "del", text: "  return call();", old: 11 },
+        { kind: "add", text: "  const wait = backoff();", new: 11 },
+        { kind: "add", text: "  return call(wait);", new: 12 },
+        { kind: "context", text: "}", old: 12, new: 13 },
+      ],
+    }],
+  };
+  const lines = retry.hunks[0]!.lines;
+
+  test("a file quotes its path", () => {
+    expect(quoteFile(retry)).toBe("`src/retry.ts`");
+  });
+
+  test("a line, or a range of lines, quotes its path and its new line numbers, with the lines as a diff", () => {
+    expect(quoteLines(retry, lines.slice(2, 3))).toBe("`src/retry.ts:11`\n```diff\n+  const wait = backoff();\n```");
+    expect(quoteLines(retry, lines.slice(1, 5))).toBe([
+      "`src/retry.ts:11-13`",
+      "```diff",
+      "-  return call();",
+      "+  const wait = backoff();",
+      "+  return call(wait);",
+      " }",
+      "```",
+    ].join("\n"));
+  });
+
+  test("removed lines only are quoted by their old numbers", () => {
+    expect(quoteLines(retry, lines.slice(1, 2))).toBe("`src/retry.ts:11` (removed)\n```diff\n-  return call();\n```");
+  });
+
+  test("a quote goes after what the user already wrote, on its own lines", () => {
+    expect(withQuote("", "`a.ts`")).toBe("`a.ts`\n");
+    expect(withQuote("Why this?", "`a.ts`")).toBe("Why this?\n\n`a.ts`\n");
+    expect(withQuote("Look:\n\n", "`a.ts`")).toBe("Look:\n\n`a.ts`\n");
   });
 });

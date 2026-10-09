@@ -13,6 +13,8 @@ const CACHED_READS = new Set<keyof World>([
   "githubAppRepos",
   "githubLinkedPullRequests",
   "githubPullRequest",
+  "githubPullRequestDescription",
+  "githubOpenPullRequests",
   "githubBranchPullRequests",
 ]);
 

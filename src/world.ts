@@ -49,6 +49,10 @@ export interface World {
   githubLinkedPullRequests(slug: string, number: number): Promise<PullRequest[]>;
   /** One PR of a GitHub repo, or null if there is no such PR. */
   githubPullRequest(slug: string, number: number): Promise<PullRequest | null>;
+  /** One PR of a GitHub repo with its title and description, as a Review partner is given it, or null if there is no such PR. */
+  githubPullRequestDescription(slug: string, number: number): Promise<PullRequestDescription | null>;
+  /** A GitHub repo's open PRs, newest first, for the user to pick one to review. */
+  githubOpenPullRequests(slug: string): Promise<OpenPullRequest[]>;
   /** All PRs whose head is `branch` (a Dispatch's, or a Stack's next one down), including closed unmerged PRs. */
   githubBranchPullRequests(slug: string, branch: string): Promise<PullRequest[]>;
   /**
@@ -67,6 +71,8 @@ export interface World {
   gitRemoteBranches(path: string): Promise<string[]>;
   /** The default branch of the clone's `origin`, without the remote prefix. */
   gitDefaultBranch(path: string): Promise<string>;
+  /** The unified diff of the checkout at `path` since it forked from `base` (`git diff <base>...HEAD`). */
+  gitDiff(path: string, base: string): Promise<string>;
   /** Create a git worktree and open it as a herdr workspace, without focusing it. */
   herdrWorktreeCreate(options: { cwd: string; branch: string; base: string; label: string }): Promise<{
     workspace: string;
@@ -194,6 +200,20 @@ export interface PullRequest {
   baseBranch: string;
   /** Head branch when available from GitHub; required for stacking. */
   headBranch?: string;
+}
+
+/** A PR as a person picks one to review: by its title and author. */
+export interface OpenPullRequest extends PullRequest {
+  title: string;
+  author: string;
+  draft: boolean;
+}
+
+/** A PR with what it says about itself. */
+export interface PullRequestDescription extends PullRequest {
+  title: string;
+  /** The description as written, in Markdown; empty without one. */
+  body: string;
 }
 
 export interface PullRequestActivity {

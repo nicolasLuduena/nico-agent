@@ -372,6 +372,47 @@ label.switch:has(:checked) { color: var(--ink); }
 .partner-facts dt { color: var(--ink-muted); font-weight: 600; }
 .partner-facts dd { margin: 0; overflow-wrap: anywhere; }
 .partner-facts .mono { font-family: var(--mono); font-size: 13px; }
+/* A Review partner's tab: its PR and diff take the wider column beside the Thread. */
+.shell.partner.reviewing { grid-template-columns: minmax(22rem, 0.85fr) minmax(0, 1.15fr); }
+.diff-side { gap: 0.6rem; }
+.pr-head { display: grid; gap: 0.35rem; }
+.pr-head .pr-ref { font-family: var(--mono); font-size: 13px; }
+.pr-head .pr-ref a { color: var(--link); text-decoration: none; }
+.pr-head .pr-ref a:hover { text-decoration: underline; }
+.diff-side .pr-head h1 { font-size: 24px; letter-spacing: -0.03em; overflow-wrap: anywhere; }
+.pr-head .branches { display: flex; flex-wrap: wrap; gap: 0.4rem; font-family: var(--mono); font-size: 12px; color: var(--ink-muted); }
+.pr-head .branches span:not([aria-label]) { background: var(--fill); border-radius: var(--r-sm); padding: 0.05rem 0.4rem; overflow-wrap: anywhere; }
+.diff-side .partner-facts { margin: 0; }
+.diff-side > .buttons { margin-bottom: 0.25rem; }
+.diff { display: grid; gap: 0.5rem; border-top: 1px solid var(--rule); padding-top: 0.9rem; }
+.diff-size { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.3rem 0.6rem; font-size: 14px; }
+.diff-size span:not(.hint) { font-family: var(--mono); font-size: 13px; color: var(--ink-muted); }
+.diff-size .hint { flex-basis: 100%; font-size: 13px; color: var(--ink-muted); }
+.diff-file { background: var(--raised); border-radius: var(--r-md); overflow: hidden; }
+.diff-file summary { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 0.6rem; padding: 0.5rem 0.75rem; cursor: pointer; list-style: none; }
+.diff-file summary::-webkit-details-marker { display: none; }
+.diff-file .chevron { color: var(--ink-muted); transition: rotate 160ms var(--ease); }
+.diff-file[open] .chevron { rotate: 90deg; }
+.diff-file .path { all: unset; cursor: pointer; font-family: var(--mono); font-size: 13px; font-weight: 600; overflow-wrap: anywhere; border-radius: var(--r-sm); }
+.diff-file .path:hover { color: var(--link); text-decoration: underline; }
+.diff-file .path:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.diff-file .status { font-size: 12px; color: var(--ink-muted); }
+.diff-file .counts { display: flex; gap: 0.4rem; font-family: var(--mono); font-size: 12px; font-variant-numeric: tabular-nums; }
+.diff-file .counts ins { text-decoration: none; color: var(--pr-ready); }
+.diff-file .counts del { text-decoration: none; color: var(--failed); }
+.diff-file > .loading { padding: 0 0.75rem 0.6rem; font-size: 13px; }
+.hunk { border-top: 1px solid var(--rule); background: var(--surface); }
+.hunk-head { font-family: var(--mono); font-size: 12px; color: var(--ink-muted); padding: 0.3rem 0.75rem; background: var(--fill); overflow-wrap: anywhere; }
+.diff-line {
+  all: unset; box-sizing: border-box; width: 100%; display: grid; grid-template-columns: 3ch 3ch minmax(0, 1fr); gap: 0 0.6rem;
+  padding: 0 0.75rem; font-family: var(--mono); font-size: 12.5px; line-height: 1.6; cursor: pointer; user-select: none;
+}
+.diff-line .num { text-align: right; color: var(--ink-muted); font-variant-numeric: tabular-nums; }
+.diff-line .code { white-space: pre-wrap; overflow-wrap: anywhere; }
+.diff-line.add { background: color-mix(in srgb, var(--pr-ready) var(--tint), transparent); }
+.diff-line.del { background: color-mix(in srgb, var(--failed) var(--tint), transparent); }
+.diff-line:hover, .diff-line.picked { background: var(--accent-soft); }
+.diff-line:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 /* A Hand-off draft: ringed in the accent while it waits on the user, quiet once replaced or handed. */
 .card-draft form.draft { display: grid; gap: 0.6rem; }
 .card-draft textarea { width: 100%; min-height: 8rem; font-size: 15px; line-height: 1.5; resize: vertical; }
@@ -493,7 +534,7 @@ button:disabled, button:disabled:hover, .repo-group form.launch > button:disable
 /* A narrow window: one column, the Lead panel first and as tall as the window. */
 @media (max-width: 900px) {
   .top { gap: 0.75rem; padding: 0 1rem; }
-  .shell, .shell.stats { grid-template-columns: minmax(0, 1fr); height: auto; padding: 0.75rem; gap: 0.75rem; }
+  .shell, .shell.stats, .shell.partner.reviewing { grid-template-columns: minmax(0, 1fr); height: auto; padding: 0.75rem; gap: 0.75rem; }
   .lead-panel { height: calc(100dvh - 56px - 1.5rem); }
   .side { max-height: none; padding: 1.5rem 1.25rem; }
   .lead-bar, .composer, .conversation, .notices { padding-left: 1rem; padding-right: 1rem; }
