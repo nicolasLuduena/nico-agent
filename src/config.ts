@@ -197,13 +197,15 @@ export function harnessConfigs(config: Config): Record<string, HarnessConfig> {
 
 /**
  * The prompt templates a Dispatch sends. `implement` prompts the Implementer;
- * `botSuffix` is appended to it as is, with no separator, when the GitHub App
- * is installed on the Repo, so it carries its own leading punctuation.
+ * `research` prompts it instead for a Research issue. `botSuffix` is appended
+ * to either as is, with no separator, when the GitHub App is installed on the
+ * Repo, so it carries its own leading punctuation.
  * `{baseBranch}` is the Dispatch's Base. `review` prompts the Reviewer; only it has a PR to fill `{prUrl}` and
  * `{prBaseBranch}` with. `lead` starts the Lead on its skill.
  */
 export interface Prompts {
   implement: string;
+  research: string;
   botSuffix: string;
   review: string;
   lead: string;
@@ -211,6 +213,9 @@ export interface Prompts {
 
 export const PROMPTS: Prompts = {
   implement: "{sigil}implement {issueUrl} as draft PR against {baseBranch}",
+  research:
+    "{sigil}research {issueUrl} yourself, not in a background agent, against primary sources; " +
+    "write the findings, with their sources, to one Markdown file in docs/research/ and open it as a draft PR against {baseBranch}",
   botSuffix:
     ", opened with `ghbot pr create` (not `gh`); end every commit message with the trailer " +
     "`Co-authored-by: nicolasluduena-coding-agent[bot] <324920906+nicolasluduena-coding-agent[bot]@users.noreply.github.com>`",

@@ -5,7 +5,7 @@ import type { RepoDecision } from "./spec";
 import { type SourceIssues, loadSpecs } from "./spec-facts";
 import { type InFlightRow, type PrLookup, loadInFlight } from "./stage";
 import type { Dispatch } from "./state";
-import { type GitHubIssue, type LinearIssue, type PullRequest, type World, worldErrorMessage } from "./world";
+import { type GitHubIssue, type LinearIssue, type PullRequest, type World, isResearch, worldErrorMessage } from "./world";
 
 export interface StackOption {
   blocker: string;
@@ -32,6 +32,8 @@ export type BoardIssue = {
   url: string;
   /** For a Ready issue, the Base its dispatch would start from; unset when origin's branches could not be listed. */
   base?: string;
+  /** Set on a Research issue. */
+  research?: boolean;
 } & ({ number: number; identifier?: never } | { identifier: string; number?: never });
 
 export interface Board {
@@ -101,8 +103,8 @@ export async function loadBoard(world: World, repos: Repo[], dispatches: Dispatc
   const prOf = (i: BoardIssue) => started.find((p) => p.repo === i.repo && p.issue === (i.identifier ?? `${i.repo}#${i.number}`))?.pr;
   const withPr = [...ready.ready, ...ready.stackable].flatMap((i): Board["withPr"] => {
     const pr = prOf(i);
-    const { repo, title, url } = i;
-    return pr ? [{ repo, title, url, ...(i.identifier ? { identifier: i.identifier } : { number: i.number! }), pr }] : [];
+    const { repo, title, url, research } = i;
+    return pr ? [{ repo, title, url, ...(research && { research }), ...(i.identifier ? { identifier: i.identifier } : { number: i.number! }), pr }] : [];
   });
   return {
     ...ready, ready: ready.ready.filter((i) => !prOf(i)), stackable: ready.stackable.filter((i) => !prOf(i)), withPr,
@@ -138,7 +140,7 @@ async function loadReady(world: World, repos: Repo[], inFlight: Dispatch[], last
       }
       for (const { issue, blockers } of result.value) {
         const { number, title, url } = issue;
-        const row = { repo: repo.slug, number, title, url };
+        const row = { repo: repo.slug, number, title, url, ...researchMark(issue) };
         if (isReady(issue, githubViewer)) board.ready.push(row);
         else if (blockers.length) board.stackable.push({ ...row, blockers });
       }
@@ -175,8 +177,9 @@ async function loadReady(world: World, repos: Repo[], inFlight: Dispatch[], last
         board.errors.push({ repo: repo.slug, source: "Linear", error: worldErrorMessage(result.reason) });
         return;
       }
-      for (const { issue: { identifier, title, url }, ready, blockers } of result.value) {
-        const row = { repo: repo.slug, identifier, title, url };
+      for (const { issue, ready, blockers } of result.value) {
+        const { identifier, title, url } = issue;
+        const row = { repo: repo.slug, identifier, title, url, ...researchMark(issue) };
         if (ready) board.ready.push(row);
         else if (blockers.length) board.stackable.push({ ...row, blockers });
       }
@@ -196,6 +199,10 @@ async function loadReady(world: World, repos: Repo[], inFlight: Dispatch[], last
     if (choice) issue.base = choice.selected;
   }
   return board;
+}
+
+function researchMark(issue: { labels: string[] }) {
+  return isResearch(issue) ? { research: true } : {};
 }
 
 /** An issue of a Spec with an unresolved Blocker outside it would stack across Specs, so it waits for that Blocker instead. */

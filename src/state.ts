@@ -28,6 +28,8 @@ export interface Dispatch {
   worktree?: string;
   workspace?: string;
   implementer: Launch;
+  /** Set on a Research issue's Dispatch, whose Implementer is sent the `research` prompt. */
+  research?: boolean;
   /** The Reviewer, once a review was launched. */
   reviewer?: Reviewer;
   /** Steps done so far, in order. */

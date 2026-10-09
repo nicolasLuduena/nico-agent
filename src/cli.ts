@@ -186,6 +186,7 @@ const commands: Command[] = [
       "nico-agent dispatch BLE-27 --harness claude --model opus --effort high --repo acme/api",
       "nico-agent dispatch acme/api#9 --harness claude --model opus --effort high --stack-on acme/api#8",
     ],
+    help: ["An issue labelled `research` is a Research issue: its Implementer is sent the `research` prompt, to write findings to docs/research/ (see docs/research-issues.md)"],
     run: dispatchCommand,
   },
   {
@@ -1627,7 +1628,7 @@ async function board(ctx: RunContext, json: boolean): Promise<Output> {
       dispatches: inFlight.map(({ dispatch: d, stage, pr, prError, implementerState, reviewerState }) => ({
         issue: d.issue,
         title: d.title,
-        ...(json && { repo: d.repo, url: d.url }),
+        ...(json && { repo: d.repo, url: d.url, ...(d.research && { research: true }) }),
         stage,
         pr: pr?.url ?? "",
         ...(prError && !limited(prError) && { prError }),
@@ -1652,8 +1653,8 @@ async function board(ctx: RunContext, json: boolean): Promise<Output> {
     ? plural(ready.length, "issue")
     : `0 issues across ${plural(repos.length - failedRepos, "Repo")}`;
   const data: Record<string, unknown> = { ...header, ready: count };
-  // In TOON a GitHub key names its Repo already; the app is told each issue's Repo and URL, for its section and hover card.
-  const where = (i: BoardIssue) => (json ? { repo: i.repo, url: i.url } : i.identifier ? { repo: i.repo } : {});
+  // In TOON a GitHub key names its Repo already; the app is told each issue's Repo and URL, for its section and hover card, and whether it is a Research issue.
+  const where = (i: BoardIssue) => (json ? { repo: i.repo, url: i.url, ...(i.research && { research: true }) } : i.identifier ? { repo: i.repo } : {});
   if (ready.length) {
     data.issues = ready.map((i) => ({ issue: i.identifier ?? `${i.repo}#${i.number}`, title: i.title, ...where(i), ...(i.base && { base: i.base }) }));
   }
