@@ -281,6 +281,10 @@ aside.lead-panel > p.error { margin: 0; padding: 0.5rem 1rem; border-bottom: 1px
 .lead-line { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; min-width: 0; }
 .lead-line h2 { margin: 0; font-size: 14px; font-weight: 650; letter-spacing: -0.005em; }
 .lead-state { font-size: 12px; color: var(--ink-muted); }
+/* The Voice switch, the Standing orders' switch with its name beside it: muted while off, in ink at 650 while on. */
+label.voice-switch { display: inline-flex; align-items: center; gap: 0.35rem; margin-left: auto; font-size: 12px; color: var(--ink-muted); cursor: pointer; }
+label.voice-switch:has(:checked) { color: var(--ink); font-weight: 650; }
+label.voice-switch + button.drawer-toggle { margin-left: 0; }
 .lead-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; }
 .lead-controls select { flex: 1 1 5rem; width: auto; max-width: none; }
 .lead-controls .loading { margin-left: 0; }
@@ -335,6 +339,9 @@ button.talk:is(.holding, .hands-free) svg { fill: currentColor; }
 .talk-status p { margin: 0; overflow-wrap: anywhere; }
 .talk-status .help { color: var(--ink-muted); font-size: 12px; }
 .talk-status .interim { font-style: italic; }
+.talk-status .speaking { display: flex; align-items: center; gap: 0.5rem; }
+.talk-status .speaking span { flex: 1; color: var(--ink-muted); font-size: 12px; }
+.talk-status .speaking button { height: 24px; }
 
 /* The drawer: the Intent, the Notes and the Standing orders in tabs, in the conversation's place while open. */
 .lead-line button.drawer-toggle { margin-left: auto; }
@@ -369,11 +376,11 @@ ul.orders .order { font-weight: 650; }
 ul.orders .state { font-size: 12px; color: var(--ink-muted); }
 ul.orders p { margin-top: 0.1rem; padding-left: calc(28px + 0.5rem); font-size: 12px; color: var(--ink-muted); }
 /* A switch, squared like every control: an ink fill when on; amber is kept for starting a track. */
-ul.orders input[role="switch"] { appearance: none; position: relative; width: 28px; height: 16px; border: 1px solid var(--rule-strong); border-radius: 4px; background: var(--panel-raised); transition: background-color 120ms, border-color 120ms; }
-ul.orders input[role="switch"]::before { content: ""; position: absolute; top: 2px; left: 2px; width: 10px; height: 10px; border-radius: 3px; background: var(--ink-muted); transition: transform 120ms, background-color 120ms; }
-ul.orders input[role="switch"]:checked { background: var(--ink); border-color: var(--ink); }
-ul.orders input[role="switch"]:checked::before { transform: translateX(12px); background: var(--panel); }
-ul.orders input[role="switch"]:disabled { opacity: 0.6; cursor: default; }
+:is(ul.orders, .voice-switch) input[role="switch"] { appearance: none; position: relative; width: 28px; height: 16px; border: 1px solid var(--rule-strong); border-radius: 4px; background: var(--panel-raised); transition: background-color 120ms, border-color 120ms; }
+:is(ul.orders, .voice-switch) input[role="switch"]::before { content: ""; position: absolute; top: 2px; left: 2px; width: 10px; height: 10px; border-radius: 3px; background: var(--ink-muted); transition: transform 120ms, background-color 120ms; }
+:is(ul.orders, .voice-switch) input[role="switch"]:checked { background: var(--ink); border-color: var(--ink); }
+:is(ul.orders, .voice-switch) input[role="switch"]:checked::before { transform: translateX(12px); background: var(--panel); }
+:is(ul.orders, .voice-switch) input[role="switch"]:disabled { opacity: 0.6; cursor: default; }
 
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 

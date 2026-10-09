@@ -29,7 +29,7 @@ export function setup() {
     const response = await handler(new Request(`http://127.0.0.1:42069${path}`, init));
     return { status: response.status, type: response.headers.get("content-type"), body: await response.text() };
   };
-  const sockets = webSockets({ world, configDir, runCli: (argv) => run(argv, served) });
+  const sockets = webSockets({ world, configDir, runCli: (argv) => run(argv, served), events });
   /** A WebSocket to the web app, as a page on `origin` opens it: its refusal, or the session. */
   const socket = (path: string, headers: Record<string, string> = {}) => openSocket(sockets[path], new Request(`http://127.0.0.1:42069${path}`, { headers: { upgrade: "websocket", ...headers } }));
   return { world, configDir, cli, web, handler, look, socket };
@@ -37,14 +37,15 @@ export function setup() {
 
 /**
  * A WebSocket opened on `handler` as `serve` would: `refused` when it answered
- * with a response; else what the server sent so far, parsed, and the next one.
+ * with a response; else what the server sent so far, text parsed as JSON and
+ * binary as bytes, and the next one.
  */
 async function openSocket(handler: SocketHandler | undefined, request: Request) {
   const answer = handler ? handler(request) : new Response("No socket\n", { status: 404 });
   if (answer instanceof Response) return { refused: { status: answer.status, body: await answer.text() } } as const;
   const received: any[] = [];
   let closed = false;
-  const session = answer({ send: (message) => received.push(JSON.parse(message)), close: () => { closed = true; } });
+  const session = answer({ send: (message) => received.push(typeof message === "string" ? JSON.parse(message) : message), close: () => { closed = true; } });
   let read = 0;
   return {
     received,

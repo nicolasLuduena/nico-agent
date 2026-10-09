@@ -2,10 +2,14 @@ import { existsSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { LEAD_AGENT, leadStatus } from "./lead";
 import { withFileLock, writeJsonAtomic } from "./state";
+import { voiceOn } from "./voice-on";
 import { type World, WorldError } from "./world";
 
 /** The Nudge's fixed text, as the Lead's skill expects it. */
 export const NUDGE = "Read your Inbox";
+
+/** The Nudge with Voice on, which tells the Lead to talk for the ear. */
+export const VOICE_NUDGE = `${NUDGE} (voice on)`;
 
 /** How often `serve` looks for an idle Lead to send a pending Nudge to. */
 export const NUDGE_INTERVAL_MS = 10_000;
@@ -40,7 +44,7 @@ export async function nudgeLead(world: World, configDir: string): Promise<string
   // Cleared first, so a message arriving while the prompt is sent records a Nudge of its own.
   await setPending(configDir, false);
   try {
-    const { started } = await world.herdrAgentPrompt(LEAD_AGENT, NUDGE);
+    const { started } = await world.herdrAgentPrompt(LEAD_AGENT, voiceOn(configDir) ? VOICE_NUDGE : NUDGE);
     return started ? [] : [`the Lead was Nudged, but has not started working; run \`herdr agent read ${LEAD_AGENT}\` to see its screen`];
   } catch (e) {
     return failed(configDir, e);

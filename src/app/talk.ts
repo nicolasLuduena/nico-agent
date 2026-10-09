@@ -6,9 +6,10 @@ export const TAP_MS = 300;
 
 /**
  * The talk button: idle; held, recording until released; hands-free,
- * recording until a pause or a tap; or waiting for the final transcript.
+ * recording until a pause or a tap; waiting for the final transcript; or,
+ * while the Lead speaks, watching the microphone for the user to talk over it.
  */
-export type Talk = { mode: "idle" } | { mode: "holding"; since: number } | { mode: "hands-free" } | { mode: "transcribing" };
+export type Talk = { mode: "idle" } | { mode: "holding"; since: number } | { mode: "hands-free" } | { mode: "transcribing" } | { mode: "watching" };
 
 /** What happens to the talk button: the user presses or releases it, listening ends, or the transcript comes. */
 export type TalkEvent =
@@ -23,7 +24,13 @@ export type TalkEvent =
   /** The final transcript came. */
   | { type: "final" }
   /** No microphone, the socket gone, or the service down. */
-  | { type: "failed" };
+  | { type: "failed" }
+  /** The Lead began speaking. */
+  | { type: "lead-speaks" }
+  /** The Lead finished speaking, or was hushed. */
+  | { type: "lead-done" }
+  /** The user began talking over the Lead (see `bargesIn`). */
+  | { type: "barge" };
 
 /** What to tell `/api/voice` (see VoiceCommand): an utterance starts, ends (transcribe it), or is dropped. */
 export type TalkSend = "start" | "end" | "cancel";
@@ -36,7 +43,7 @@ export function talk(state: Talk, event: TalkEvent): { state: Talk; send?: TalkS
       // A tap while hands-free sends what it heard; its release does nothing.
       if (state.mode === "hands-free") return { state: { mode: "transcribing" }, send: "end" };
       if (state.mode === "holding") return { state };
-      // While the last utterance is transcribed, the next one may start.
+      // While the last utterance is transcribed, or the Lead speaks, the next one may start.
       return { state: { mode: "holding", since: event.at }, send: "start" };
     case "release":
       if (state.mode !== "holding") return { state };
@@ -53,6 +60,13 @@ export function talk(state: Talk, event: TalkEvent): { state: Talk; send?: TalkS
       return state.mode === "transcribing" ? { state: { mode: "idle" } } : { state };
     case "failed":
       return recording ? { state: { mode: "idle" }, send: "cancel" } : { state: { mode: "idle" } };
+    // The user talking or waiting on a transcript keeps the microphone to themselves.
+    case "lead-speaks":
+      return state.mode === "idle" ? { state: { mode: "watching" } } : { state };
+    case "lead-done":
+      return state.mode === "watching" ? { state: { mode: "idle" } } : { state };
+    case "barge":
+      return state.mode === "watching" ? { state: { mode: "hands-free" }, send: "start" } : { state };
   }
 }
 
@@ -71,16 +85,17 @@ export const LIMIT_MS = 60_000;
 /** How fast the floor rises to a steadily louder room. */
 const FLOOR_RISE_MS = 2000;
 
-/** What hands-free listening has heard so far: the room's floor, and how much speech and quiet. */
+/** What hands-free listening has heard so far: the room's floor, how much speech and quiet, and how long the speech going on now has lasted. */
 export interface Listening {
   floor: number;
   speech: number;
   quiet: number;
+  voiced: number;
   elapsed: number;
 }
 
 /** Listening before any audio: the floor at the least level that could be speech. */
-export const LISTENING: Listening = { floor: MIN_LEVEL, speech: 0, quiet: 0, elapsed: 0 };
+export const LISTENING: Listening = { floor: MIN_LEVEL, speech: 0, quiet: 0, voiced: 0, elapsed: 0 };
 
 /**
  * Listening after `ms` more of audio at `level` (see `level`): speech is
@@ -95,11 +110,27 @@ export function listen(state: Listening, level: number, ms: number): { state: Li
     floor,
     speech: state.speech + (speaking ? ms : 0),
     quiet: speaking ? 0 : state.quiet + ms,
+    voiced: speaking ? state.voiced + ms : 0,
     elapsed: state.elapsed + ms,
   };
   const heard = next.speech >= MIN_SPEECH_MS;
   const ended = next.elapsed >= LIMIT_MS ? "limit" : heard && next.quiet >= PAUSE_MS ? "pause" : !heard && next.elapsed >= NOTHING_MS ? "nothing" : undefined;
   return { state: next, speaking, ...(ended && { ended }) };
+}
+
+/**
+ * Whether the user has begun talking over the Lead: unbroken voice for as
+ * long as an utterance needs to count, a fraction of a word. Unbroken, so
+ * the Lead's own voice leaking past echo cancellation in blips never adds up.
+ */
+export function bargesIn(state: Listening): boolean {
+  return state.voiced >= MIN_SPEECH_MS;
+}
+
+/** 16-bit little-endian PCM, as `/api/voice` streams the Lead's speech, as samples from -1 to 1. */
+export function pcmSamples(pcm: ArrayBuffer): Float32Array<ArrayBuffer> {
+  const view = new DataView(pcm);
+  return Float32Array.from({ length: Math.floor(pcm.byteLength / 2) }, (_, i) => view.getInt16(i * 2, true) / 32768);
 }
 
 /** The loudness of a batch of samples, as their root mean square. */

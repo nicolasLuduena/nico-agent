@@ -223,10 +223,6 @@ describe("/api/voice", () => {
       { id: 1, who: "user", type: "user", text: "dispatch acme api 7", raw: "dispatch acme api 7" },
     ]);
     expect((await ctx.cli("lead", "inbox", "--json")).json().entries).toMatchObject([{ type: "user", raw: "dispatch acme api 7" }]);
-    // Only a message can be spoken, for now; an answer is typed or picked.
-    const ask = await ctx.cli("lead", "ask", "Which first?");
-    expect(ask.exitCode).toBe(0);
-    expect((await post(["--answer", "2", "--raw", "billing", "--", "billing"])).status).toBe(400);
   });
 
   describe("the Scribe", () => {
@@ -356,6 +352,82 @@ describe("/api/voice", () => {
         text: "dispatch acme api seven",
         raw: "dispatch acme api seven",
         warning: { error: "no Scribe is configured", help: ["Sent as heard. Add voice.scribe to config.json (see docs/voice.md)"] },
+      });
+    });
+
+    describe("a spoken answer to the Lead's question", () => {
+      /** A Scribe that cleans to `cleaned`, and picks `choice` when asked which choice an answer picks; keeping the choice requests. */
+      function chooser(world: ReturnType<typeof setup>["world"], cleaned: string, choice: string) {
+        const asked: any[] = [];
+        world.endpoint(CHAT, async (request) => {
+          const body = await request.json() as { messages: { content: string }[] };
+          const picking = body.messages[0]!.content.includes("numbered choices");
+          if (picking) asked.push(body);
+          return Response.json({ choices: [{ message: { role: "assistant", content: picking ? choice : cleaned } }] });
+        });
+        return asked;
+      }
+
+      async function say(ctx: Awaited<ReturnType<typeof withVoice>>, raw: string) {
+        hears(ctx.world, raw);
+        const talk = await open(ctx);
+        talk.json({ type: "start", utterance: 1 });
+        talk.send(pcm(0.5));
+        talk.json({ type: "end" });
+        return await talk.next();
+      }
+
+      /** Post `final` as the app does: an answer to the question it names, else a message. */
+      const post = (ctx: Awaited<ReturnType<typeof withVoice>>, final: { text: string; raw: string; answers?: number }) =>
+        ctx.web("/api/say", { method: "POST", body: JSON.stringify({ args: sayArgs(final.text, final.answers, final.raw) }) });
+
+      test("\"the second one\" to a question with three choices records the second choice", async () => {
+        const ctx = await withVoice();
+        await ctx.cli("lead", "ask", "Which Spec first?", "Billing", "Search", "Dark mode");
+        const asked = chooser(ctx.world, "The second one.", "2");
+
+        const final = await say(ctx, "the second one");
+
+        expect(final).toEqual({ type: "final", utterance: 1, text: "Search", raw: "the second one", answers: 1 });
+        const prompt = asked[0].messages.map((m: { content: string }) => m.content).join("\n");
+        for (const line of ["Which Spec first?", "1. Billing", "2. Search", "3. Dark mode", "The second one."]) expect(prompt).toContain(line);
+        expect((await post(ctx, final)).status).toBe(200);
+        expect((await ctx.cli("lead", "inbox", "--json")).json().entries).toEqual([
+          { id: 2, at: expect.any(String), type: "answer", question: 1, text: "Search", raw: "the second one", asked: "Which Spec first?" },
+        ]);
+      });
+
+      test("an answer that picks no choice clearly is recorded as said", async () => {
+        const ctx = await withVoice();
+        await ctx.cli("lead", "ask", "Which Spec first?", "Billing", "Search", "Dark mode");
+        chooser(ctx.world, "Neither, finish the login fix first.", "0");
+
+        const final = await say(ctx, "neither uh finish the login fix first");
+
+        expect(final).toEqual({ type: "final", utterance: 1, text: "Neither, finish the login fix first.", raw: "neither uh finish the login fix first", answers: 1 });
+        expect((await post(ctx, final)).status).toBe(200);
+        expect((await ctx.cli("lead", "log", "--json")).json().entries.at(-1)).toMatchObject({ type: "answer", question: 1, text: "Neither, finish the login fix first." });
+      });
+
+      test("a question without choices takes what was said as its answer, with no choice to pick", async () => {
+        const ctx = await withVoice();
+        await ctx.cli("lead", "ask", "Why the rush?");
+        const asked = chooser(ctx.world, "The demo is on Friday.", "1");
+
+        expect(await say(ctx, "the demo is on friday")).toMatchObject({ text: "The demo is on Friday.", answers: 1 });
+        expect(asked).toHaveLength(0);
+      });
+
+      test("once something was said after the question, speech is a message again", async () => {
+        const ctx = await withVoice();
+        await ctx.cli("lead", "ask", "Which Spec first?", "Billing", "Search");
+        await ctx.cli("say", "Let me think.");
+        const asked = chooser(ctx.world, "The second one.", "2");
+
+        const final = await say(ctx, "the second one");
+
+        expect(final).toEqual({ type: "final", utterance: 1, text: "The second one.", raw: "the second one" });
+        expect(asked).toHaveLength(0);
       });
     });
 

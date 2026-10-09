@@ -231,7 +231,8 @@ _Avoid_: Cleaner, post-processor, rewriter (it never rewrites the meaning)
 The user talking to the Lead by voice instead of reading the screen, a flag in
 the config directory the Nudge carries. With voice on, the Lead's replies are
 spoken and it talks for the ear: short sentences, issues by title, choices as a
-numbered list.
+numbered list. Talking over it, or a tap, stops it at once (barge-in). Set with
+`nico-agent voice on|off` or the app's Voice switch.
 _Avoid_: Voice mode, dictation, speech enabled
 
 ### Harnesses
