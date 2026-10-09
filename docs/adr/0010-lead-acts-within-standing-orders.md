@@ -15,7 +15,9 @@ no process), from a home directory nico-agent writes with the Lead's skill, and
 it talks to nico-agent through an MCP server that `nico-agent serve` exposes
 over streamable HTTP. The user talks to the Lead through nico-agent's own web
 app and CLI; the Lead answers through a `say` tool. A chat service is no longer
-in the loop.
+in the loop. (_Amended by ADR-0013: by voice, the user talks to a Front voice
+that answers small talk itself and hands the rest to the Lead; it reads and
+hands off, and never acts._)
 
 ## Why this is safe enough where Hermes was not
 
