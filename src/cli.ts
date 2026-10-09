@@ -5,7 +5,7 @@ import { answer, loadAsking } from "./answer";
 import { type BoardIssue, loadBoard } from "./board";
 import { ConfigError, VOICE_DOC, VOICE_SERVICES, findRepo, loadConfig, saveConfig, standingOrders } from "./config";
 import { ORDERS, ORDERS_HELP, type Order, isOrder } from "./orders";
-import { AnswerRefused, answerQuestion, append, authored, loadConversation, openAsks, openQuestions, readInbox, recall, sayToLead } from "./conversation";
+import { AnswerRefused, type Ask, answerQuestion, append, authored, loadConversation, openAsks, openQuestions, readInbox, recall, sayToLead } from "./conversation";
 import { StepFailed, baseBranch, closeDispatch, dispatch, eachIssue, resolveIssue, review } from "./dispatch";
 import { DispatchError } from "./dispatch-error";
 import { PANE_ARGS } from "./opencode";
@@ -839,7 +839,7 @@ async function leadAskCommand(args: Args, ctx: RunContext): Promise<Output> {
 }
 
 /** A new question from the Lead, in its own words, for the user away from the Board. */
-function askNotice(ask: { id: number; text: string; choices?: string[] }) {
+function askNotice(ask: Ask) {
   const choices = ask.choices?.length ? ` (${ask.choices.join(" / ")})` : "";
   return {
     key: `ask ${ask.id}`,

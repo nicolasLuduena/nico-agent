@@ -142,7 +142,7 @@ export function append(dir: string, body: Body, at: Date): Promise<Entry> {
   return withFileLock(dir, FILE, () => write(dir, loadConversation(dir), body, at));
 }
 
-type Ask = Extract<Entry, { type: "ask" }>;
+export type Ask = Extract<Entry, { type: "ask" }>;
 type Answer = Extract<Entry, { type: "answer" }>;
 type User = Extract<Entry, { type: "user" }>;
 

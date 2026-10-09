@@ -60,11 +60,13 @@ describe("the conversation with the Lead", () => {
     const { cli, web, world } = setup();
     await tool(web, "ask", { question: "Close acme/api#7?", choices: ["yes", "no"] });
     expect(world.notifications).toEqual([{ title: "The Lead asks", body: "Close acme/api#7? (yes / no)\nRun `nico-agent say --answer 1 <answer>` to answer" }]);
-    await cli("say", "--answer", "1", "yes");
     await tool(web, "ask", { question: "Which Spec next?" });
+    await cli("say", "--answer", "1", "yes");
+    await tool(web, "ask", { question: "Stack acme/api#9 on acme/api#8?" });
     expect(world.notifications.map((n) => n.body)).toEqual([
       "Close acme/api#7? (yes / no)\nRun `nico-agent say --answer 1 <answer>` to answer",
-      "Which Spec next?\nRun `nico-agent say --answer 3 <answer>` to answer",
+      "Which Spec next?\nRun `nico-agent say --answer 2 <answer>` to answer",
+      "Stack acme/api#9 on acme/api#8?\nRun `nico-agent say --answer 4 <answer>` to answer",
     ]);
   });
 
