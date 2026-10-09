@@ -296,8 +296,18 @@ The small fast model that cleans what the user said before the Lead reads it:
 disfluencies out, glossary and Board terms spelled right, punctuation in,
 meaning untouched. Both the raw transcript and the Scribe's text are kept on
 the user's entry. It is an OpenAI-compatible chat endpoint in config, like
-transcription and speech; nico-agent runs none of them.
+transcription and speech; nico-agent runs none of them. The Front voice
+replaces it (ADR-0013).
 _Avoid_: Cleaner, post-processor, rewriter (it never rewrites the meaning)
+
+**Front voice**:
+The fast model that holds the spoken conversation in front of the Lead. It
+answers conversation itself and hands anything needing judgment or action to
+the Lead as the user's message, cleaned, saying it will ask the Lead. It has
+exactly two capabilities, read (the Conversation, the orient packet, the
+Board, a PR under review) and hand-off, and never acts (ADR-0013). Its lines
+are in the Conversation under their own author.
+_Avoid_: Assistant, receptionist, voice agent, Scribe (which it replaces)
 
 **Voice on**:
 The user talking to the Lead by voice instead of reading the screen, a flag in
