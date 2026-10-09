@@ -47,6 +47,8 @@ interface JsonSpec {
 /** A Repo's room as `board --json` lists it under `rooms`. */
 export interface JsonRoom {
   repo: string;
+  /** `advance` starts nothing in the Repo; unset when it does. */
+  manual?: boolean;
   running: string[];
   room: number;
   candidates: { spec: string }[];
@@ -135,6 +137,8 @@ export interface SpecGroup {
 
 /** The Repo's Specs as the Scheduler sees them. */
 export interface RoomReadout {
+  /** `advance` starts nothing in the Repo: its slots fill only by an explicit dispatch. */
+  manual: boolean;
   /** A slot per Spec that may run, true while one does. */
   slots: boolean[];
   figures: [string, number][];
@@ -231,8 +235,9 @@ function reasons(items: { reason: string }[] = []) {
 }
 
 /** A Repo's Specs as the Scheduler sees them: a slot per Spec that may run, filled while one does, and the Queue in start order. */
-export function roomReadout({ repo, running, room, candidates, queue }: JsonRoom): RoomReadout {
+export function roomReadout({ repo, manual, running, room, candidates, queue }: JsonRoom): RoomReadout {
   return {
+    manual: manual === true,
     slots: [...running.map(() => true), ...Array<boolean>(room).fill(false)],
     figures: [["Running", running.length], ["Room", room], ["Candidates", candidates.length], ["Queue", queue.length]],
     queue: queue.map((spec) => repoKey(spec, repo)),

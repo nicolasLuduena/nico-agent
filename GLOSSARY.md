@@ -17,6 +17,15 @@ A GitHub repository nico-agent can dispatch into, known by its slug and the
 path of a local clone. A Repo may claim Linear issues through a Linear selector.
 _Avoid_: Project (that is a Linear concept)
 
+**Manual Repo**:
+A Repo set `manual` (`nico-agent repo set <owner/name> --manual on`), where
+the Scheduler starts no work: it neither starts the head of the Repo's Queue
+nor dispatches or resumes an issue of a running Spec, and says so in its
+report. Work there starts only from an explicit `dispatch` naming the issue.
+The Scheduler still Closes finished Dispatches there, and a Spec runs there
+only while it has an In-flight Dispatch.
+_Avoid_: Paused Repo, frozen Repo
+
 **Linear selector**:
 The rule a Repo uses to claim Linear issues: a team, narrowed by a project
 and/or a label. One issue may match several Repos.
@@ -102,7 +111,7 @@ issue of each running Spec, up to the Spec's cap of Implementers less those In
 flight, each on its Blockers' one open PR or from the Base; an issue whose
 Blockers' open PRs sit on more than one branch waits. It starts the head of
 each Repo's Queue while the Repo has room, which counts Specs, not
-Implementers. It makes no judgment, and
+Implementers. It starts nothing in a manual Repo. It makes no judgment, and
 the launch comes from the Scheduler defaults in config. It notifies the user of
 what needs them, and Nudges the Lead.
 _Avoid_: Orchestrator, pilot, autopilot, agent (the Lead is the agent; the Scheduler is a loop in `serve`)

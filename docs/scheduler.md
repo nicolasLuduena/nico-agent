@@ -5,6 +5,21 @@ minutes, counted from when it started. Each run moves running Specs along and
 fills each Repo's room from the head of its Queue. It tells you what needs you
 through desktop notifications, and Nudges the Lead at its end.
 
+The Scheduler skips a manual Repo: there it starts no Queue head and
+dispatches or resumes no issue of a running Spec, and its report says so for
+each one it left. It still Closes the Repo's finished Dispatches. Work starts
+there only when you, or an approved Proposal, run `nico-agent dispatch` on
+the issue. A Spec there runs only while one of its Dispatches is In flight,
+so an old PR doesn't keep it running. Turn it on and off per Repo:
+
+```bash
+nico-agent repo set acme/api --manual on    # the Scheduler starts nothing here
+nico-agent repo set acme/api --manual off
+nico-agent repo list                        # manual Repos show manual: true
+```
+
+The Board's Repos pane marks a manual Repo `Manual`.
+
 Install nico-agent first (`scripts/install.sh`), and set the Scheduler
 defaults (`scheduler: {harness, model, effort}` in
 `~/.config/nico-agent/config.json`). `advance` refuses to dispatch without

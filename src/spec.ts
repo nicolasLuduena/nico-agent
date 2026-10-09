@@ -44,6 +44,8 @@ export interface RepoFacts {
   maxRunningSpecs: number;
   /** How many of a Spec's issues may be In flight at once. */
   maxImplementersPerSpec: number;
+  /** `advance` starts nothing in it, so only a Spec with an In-flight Dispatch runs there. */
+  manual?: boolean;
   specs: SpecFacts[];
 }
 
@@ -100,6 +102,8 @@ export interface RepoDecision {
   specs: SpecDecision[];
   /** How many more Specs may start: the Repo's cap less its running Specs. */
   room: number;
+  /** `advance` starts nothing in it: only an explicit `dispatch` does. */
+  manual: boolean;
   /** The Specs that could start, as not started, not Held, and with a first issue Ready: the Scheduler's choice when there is room. */
   candidates: string[];
 }
@@ -108,7 +112,7 @@ export function decideSpecs(repos: RepoFacts[]): RepoDecision[] {
   return repos.map((repo) => {
     const specs = repo.specs.filter(hasWorkLeft).map((spec) => decideSpec(repo, spec));
     return {
-      repo: repo.repo, specs,
+      repo: repo.repo, specs, manual: repo.manual === true,
       room: Math.max(0, repo.maxRunningSpecs - specs.filter((s) => s.running).length),
       candidates: specs.filter((s) => !s.running && !s.held && s.next.length).map((s) => s.spec),
     };
@@ -139,7 +143,8 @@ function decideSpec(repo: RepoFacts, spec: SpecFacts): SpecDecision {
   if (held) decision.held = held;
   const remaining = spec.issues.filter((i) => !done(i));
   // Started by a Dispatch: one is In flight, or one left a PR. An issue closed by hand is no evidence.
-  const started = spec.issues.some((i) => i.inFlight || i.pr);
+  // In a manual Repo only an In-flight Dispatch counts, as an old PR is no say-so to carry the Spec on.
+  const started = spec.issues.some((i) => i.inFlight || (!repo.manual && i.pr));
   if (remaining.length === 0) return decision;
   const { next, waiting } = nextIssues(repo, spec, remaining);
   const cap = repo.maxImplementersPerSpec;

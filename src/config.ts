@@ -14,6 +14,8 @@ export interface Repo {
   maxImplementersPerSpec?: number;
   /** The Base a Dispatch starts from unless stacked or given `--base`; origin's default branch when unset. */
   base?: string;
+  /** `advance` starts no work in a manual Repo: only an explicit `dispatch` does. */
+  manual?: boolean;
 }
 
 /** The running Specs a Repo allows unless config sets its own cap. */
@@ -334,6 +336,7 @@ function checkRepos(file: string, repos: Repo[]): Repo[] {
       if (cap !== undefined && !(Number.isInteger(cap) && cap > 0)) throw new ConfigError(`${file}: repos[${i}].${key} is not a positive integer`);
     }
     if (repo.base !== undefined && (typeof repo.base !== "string" || repo.base === "")) throw new ConfigError(`${file}: repos[${i}].base is not a branch name`);
+    if (repo.manual !== undefined && typeof repo.manual !== "boolean") throw new ConfigError(`${file}: repos[${i}].manual is not true or false`);
   });
   return repos;
 }

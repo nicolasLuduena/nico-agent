@@ -137,6 +137,7 @@ describe("the room readout", () => {
     const json = await board();
     const readout = roomReadout(json.rooms!.find((r) => r.repo === "acme/api")!);
     expect(readout).toEqual({
+      manual: false,
       slots: [true, false],
       figures: [["Running", 1], ["Room", 1], ["Candidates", 2], ["Queue", 2]],
       queue: ["#20", "#30"],

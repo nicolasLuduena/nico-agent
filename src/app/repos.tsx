@@ -142,6 +142,7 @@ function Summary({ row: r }: { row: RepoRow }) {
   return (
     <span className="summary">
       {r.errors.length > 0 && <span className="error" title={r.errors.join("\n")}>Could not load</span>}
+      {r.manual && <span className="manual" title="The Scheduler starts nothing here: only an explicit dispatch does">Manual</span>}
       {inFlight > 0 && <span>{`${inFlight} In flight`}</span>}
       {asking > 0 && <span className="asking">{`${asking} Asking`}</span>}
       {held > 0 && <span className="held-count">{held === 1 ? "Held" : `${held} Held`}</span>}
