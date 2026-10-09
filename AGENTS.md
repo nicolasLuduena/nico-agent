@@ -5,6 +5,9 @@ A localhost web app and CLI for dispatching coding agents onto
 nico-agent opens a herdr worktree workspace, starts the implementer (and
 later a reviewer) in named tabs, and sends the harness-specific skill call.
 
+CI (`.github/workflows/ci.yml`) runs `bun run typecheck` and `bun test` on
+every pull request and push to `main`; run both before opening a PR.
+
 # GitHub identity
 
 Work done by coding agents must be visibly attributed to the bot account
