@@ -20,7 +20,9 @@ The Front voice has exactly two capabilities:
 It gets no shell, no MCP server and no tool that acts. ADR-0010 therefore holds
 by construction, not by a prompt: only the Lead acts on the Board, within its
 Standing orders, and a request to dispatch, answer, merge or request changes
-reaches the Lead as the user's own words.
+reaches the Lead as the user's own words. (_Amended by ADR-0014: each tab
+has its own Front voice, and in a Partner's tab it hands off to that Partner,
+into its Thread, not to the Lead._)
 
 It replaces the Scribe. It reads the raw transcript, cleans the user's message
 when it hands it off (the raw transcript stays on the entry, as today), and
