@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 import type { HarnessesJson } from "../src/app/actions";
 import {
-  type Conversation, type LeadStatusJson, type OpenItem, type ProposalJson, cards, freshItems, itemLine, declineArgs, leadChoice, openItems, leadControl, leadStartArgs, followsNewEntries, notices, proposalLines, reduce, researchMessage, sayArgs,
+  type Conversation, type LeadStatusJson, type OpenItem, type ProposalJson, cards, contextMeter, freshItems, itemLine, declineArgs, leadChoice, openItems, leadControl, leadStartArgs, followsNewEntries, notices, proposalLines, reduce, researchMessage, sayArgs,
 } from "../src/app/lead";
 import { setup } from "./harness";
 
@@ -401,6 +401,35 @@ describe("the one quiet place for warnings", () => {
     expect(notices({ failure: null, status: RUNNING, talk: null, board: { error: "config.json is not valid JSON", help: ["Fix or delete the file and run `nico-agent repo add` again"] } })).toEqual([
       { key: "board", text: "The Repos could not be read: config.json is not valid JSON", help: ["Fix or delete the file and run `nico-agent repo add` again"] },
     ]);
+  });
+});
+
+describe("the Lead's context", () => {
+  const RUNNING: LeadStatusJson = { lead: "running", harness: "claude", model: "opus", effort: "high", state: "idle" };
+  const context = (percent: number, warning: boolean) => ({ tokens: percent * 2_000, window: 200_000, percent, warning, session: "s" });
+
+  test("the panel shows how full it is, quietly below the threshold", () => {
+    expect(contextMeter({ ...RUNNING, context: context(62, false) })).toEqual({
+      text: "Context 62%", percent: 62, warning: false, title: "The Lead's context is 62% full: 124,000 of 200,000 tokens",
+    });
+    expect(notices({ failure: null, status: { ...RUNNING, context: context(62, false) }, talk: null })).toEqual([]);
+  });
+
+  test("above the threshold it warns, and says restarting the Lead is safe", () => {
+    expect(contextMeter({ ...RUNNING, context: context(84, true) })).toMatchObject({ text: "Context 84%", warning: true });
+    expect(notices({ failure: null, status: { ...RUNNING, context: context(84, true) }, talk: null })).toEqual([
+      {
+        key: "context",
+        text: "The Lead's context is 84% full, so its work may slip",
+        help: ["Restarting it is safe: the conversation, Notes, Intent and Board are kept. Stop and Start it from Lead in the header"],
+      },
+    ]);
+  });
+
+  test("nothing without a transcript, or once the Lead is no longer running", () => {
+    expect(contextMeter(RUNNING)).toBeNull();
+    expect(contextMeter(null)).toBeNull();
+    expect(contextMeter({ ...RUNNING, lead: "gone from herdr", context: context(84, true) })).toBeNull();
   });
 });
 

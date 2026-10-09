@@ -38,8 +38,8 @@ export interface Config {
   harnesses?: Record<string, Partial<HarnessConfig>>;
   /** The launch `advance` dispatches with, so no one chooses it at start time (ADR-0009). */
   scheduler?: Partial<LaunchDefaults>;
-  /** The launch `lead start` uses for each of `--harness`, `--model` and `--effort` it isn't given. */
-  lead?: Partial<LaunchDefaults>;
+  /** The launch `lead start` uses for each of `--harness`, `--model` and `--effort` it isn't given, and how its context is shown. */
+  lead?: Partial<LaunchDefaults> & LeadContextConfig;
   /** The launch `garden` starts the Gardener with, each choice unset taken from GARDENER_DEFAULTS. */
   gardener?: Partial<LaunchDefaults>;
   /** The Standing orders the user set; unset ones take their default from ORDERS (ADR-0010). */
@@ -88,6 +88,18 @@ export interface LaunchDefaults {
 }
 
 export const SCHEDULER_DEFAULTS = ["harness", "model", "effort"] as const;
+
+/**
+ * How the Lead's context is shown (docs/lead.md): `contextWindow` is its
+ * model's window in tokens, over the model's default; `contextWarning` the
+ * percent of it above which the app warns.
+ */
+export interface LeadContextConfig {
+  contextWindow?: number;
+  contextWarning?: number;
+}
+
+const LEAD_CONTEXT_SETTINGS = ["contextWindow", "contextWarning"] as const;
 
 /** The Lead's defaults have the same keys as the Scheduler's. */
 export const LEAD_DEFAULTS = SCHEDULER_DEFAULTS;
@@ -301,7 +313,7 @@ export function loadConfig(dir: string): Config {
   if (parsed.prompts !== undefined) config.prompts = checkPrompts(file, parsed.prompts);
   if (parsed.harnesses !== undefined) config.harnesses = checkHarnesses(file, parsed.harnesses);
   if (parsed.scheduler !== undefined) config.scheduler = checkLaunchDefaults(file, "scheduler", "Scheduler", parsed.scheduler);
-  if (parsed.lead !== undefined) config.lead = checkLaunchDefaults(file, "lead", "Lead", parsed.lead);
+  if (parsed.lead !== undefined) config.lead = checkLead(file, parsed.lead);
   if (parsed.gardener !== undefined) config.gardener = checkLaunchDefaults(file, "gardener", "Gardener", parsed.gardener);
   if (parsed.orders !== undefined) config.orders = checkOrders(file, parsed.orders);
   if (parsed.voice !== undefined) config.voice = checkVoice(file, parsed.voice);
@@ -351,6 +363,22 @@ function checkLaunchDefaults(file: string, section: "scheduler" | "lead" | "gard
     if (typeof value !== "string") throw new ConfigError(`${file}: ${section}.${key} is not a string`);
   }
   return defaults as Partial<LaunchDefaults>;
+}
+
+/** The `lead` section: its launch defaults, each a string, and its context settings, each a positive number. */
+function checkLead(file: string, lead: unknown): Partial<LaunchDefaults> & LeadContextConfig {
+  if (!isObject(lead)) throw new ConfigError(`${file}: lead is not an object`);
+  const settings: LeadContextConfig = {};
+  const defaults: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(lead)) {
+    if (!(LEAD_CONTEXT_SETTINGS as readonly string[]).includes(key)) {
+      defaults[key] = value;
+      continue;
+    }
+    if (!(typeof value === "number" && value > 0)) throw new ConfigError(`${file}: lead.${key} is not a positive number`);
+    settings[key as keyof LeadContextConfig] = value;
+  }
+  return { ...checkLaunchDefaults(file, "lead", "Lead", defaults), ...settings };
 }
 
 function checkOrders(file: string, orders: unknown): Partial<Orders> {
