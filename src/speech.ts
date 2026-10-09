@@ -27,14 +27,20 @@ const STILL_SHOWN = "replies still show in the panel";
  * service, one after another, and its audio streamed to every page listening
  * as it is made. Only entries written after a page began listening are
  * spoken. The Front voice's lines are read in the same queue, so no two
- * voices ever overlap. `hush` (the user talking over it, or a tap) stops the
- * speech at once and drops what waits to be spoken.
+ * voices ever overlap. While anything holds the speaker (the user talking,
+ * then the Front voice answering), the Lead's entries wait, and are spoken at
+ * the next pause, after the Front voice's last line. `hush` (the user talking
+ * over it, or a tap) stops the speech at once and drops what waits to be
+ * spoken; the Lead's entries waiting for a pause were never cut off, and stay.
  */
 export function speaker({ world, configDir }: { world: World; configDir: string }) {
   const peers = new Set<SocketPeer>();
   /** The last entry looked at; the ones after it are new. */
   let seen = 0;
   let waiting: Spoken[] = [];
+  /** How many holds are on: the Lead's entries wait in `held` until none is. */
+  let holds = 0;
+  let held: Spoken[] = [];
   /** The speech streaming now: stop it to hush. */
   let streaming: { stop(): void } | null = null;
   let speaking = false;
@@ -111,7 +117,10 @@ export function speaker({ world, configDir }: { world: World; configDir: string 
     /** A page stopped listening; with none left, the Lead falls silent. */
     leave(peer: SocketPeer) {
       peers.delete(peer);
-      if (peers.size === 0) this.hush();
+      if (peers.size === 0) {
+        held = [];
+        this.hush();
+      }
     },
     /** The conversation changed: speak what the Lead wrote since, with Voice on and a page listening. */
     changed() {
@@ -120,8 +129,27 @@ export function speaker({ world, configDir }: { world: World; configDir: string 
       if (!fresh.length) return;
       seen = fresh.at(-1)!.id;
       if (!voiceOn(configDir)) return;
-      waiting.push(...fresh.filter((e) => e.type === "lead" || e.type === "ask").map((e) => ({ text: spoken(e), entry: e.id })));
+      const lead = fresh.filter((e) => e.type === "lead" || e.type === "ask").map((e) => ({ text: spoken(e), entry: e.id }));
+      if (holds) return void held.push(...lead);
+      waiting.push(...lead);
       say();
+    },
+    /**
+     * Hold the Lead's entries back, the user talking or the Front voice
+     * answering, until the returned release is called (more than once is
+     * harmless); with no hold left, they are spoken after what waits.
+     */
+    hold() {
+      holds++;
+      let released = false;
+      return () => {
+        if (released) return;
+        released = true;
+        if (--holds) return;
+        waiting.push(...held);
+        held = [];
+        say();
+      };
     },
     /** Read a line of the Front voice's, after what waits, with Voice on and a page listening. */
     line(text: string) {

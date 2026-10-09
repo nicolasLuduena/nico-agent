@@ -50,6 +50,8 @@ interface TranscriptionContext {
   timing?: Stopwatch;
   /** Answers each final transcript, or hands it to the Lead. */
   front: FrontVoice;
+  /** Holds the Lead's speech back until the returned release (see `speaker`). */
+  hold?: () => () => void;
 }
 
 /**
@@ -60,7 +62,10 @@ interface TranscriptionContext {
  * vocabulary built when the utterance started; an interim one, not to wait
  * on the Board, with the last vocabulary built. A failed request drops the
  * utterance and says why at once. Each final transcript then goes to the
- * Front voice, one after another in the order they were said.
+ * Front voice, one after another in the order they were said. From its
+ * start until the Front voice has answered it or handed it off, an
+ * utterance holds the Lead's speech back, so the Lead never talks over
+ * either.
  */
 export function transcriptionSession(ctx: TranscriptionContext) {
   /** The last vocabulary built, for any page, and which build it came from, so an older one never replaces it. */
@@ -90,6 +95,7 @@ export function transcriptionSession(ctx: TranscriptionContext) {
       if (kind === "interim" && current !== utterance) return null;
       if ("error" in answer) {
         if (current === utterance) current = null;
+        utterance.release();
         timing?.dropped();
         return failure(utterance.number, answer.error, answer.help);
       }
@@ -102,12 +108,16 @@ export function transcriptionSession(ctx: TranscriptionContext) {
       if (!heard) return timing?.dropped();
       const handed = await ctx.front.hear(heard, await utterance.prompt, {
         warn: (warning) => send({ type: "warning", utterance: utterance.number, ...warning }),
-        handing: (message, cleaned) => timing?.handed(cleaned, message),
+        handing: (message, cleaned) => {
+          timing?.handed(cleaned, message);
+          utterance.release();
+        },
       });
       if (!handed) timing?.dropped();
     };
 
     const start = (number: number) => {
+      current?.release();
       current = null;
       let voice;
       try {
@@ -118,7 +128,7 @@ export function transcriptionSession(ctx: TranscriptionContext) {
       }
       const endpoint = voice?.transcribe;
       if (!endpoint) return fail(number, "no transcription service is configured", `Add voice.transcribe to config.json (see ${VOICE_DOC})`);
-      current = { number, endpoint, audio: [], bytes: 0, heardUpTo: 0, asking: false, prompt: build() };
+      current = { number, endpoint, audio: [], bytes: 0, heardUpTo: 0, asking: false, prompt: build(), release: ctx.hold?.() ?? (() => {}) };
     };
 
     const hear = (chunk: Uint8Array) => {
@@ -141,7 +151,8 @@ export function transcriptionSession(ctx: TranscriptionContext) {
         if (command?.type === "start") return start(command.utterance);
         const utterance = current;
         current = null;
-        if (command?.type !== "end" || !utterance) return;
+        if (command?.type !== "end") return utterance?.release();
+        if (!utterance) return;
         const timing = ctx.timing?.start(utterance.number, new Date(command.spokeAt ?? ctx.world.now().getTime()));
         // Transcribed at once, but told, and heard by the Front voice, after the finals before it.
         const final = ask(utterance, "final", timing);
@@ -152,9 +163,10 @@ export function transcriptionSession(ctx: TranscriptionContext) {
         }).catch((e: unknown) => {
           timing?.dropped();
           report(utterance)(e);
-        });
+        }).finally(utterance.release);
       },
       close() {
+        current?.release();
         current = null;
       },
     };
@@ -173,6 +185,8 @@ interface Utterance {
   /** Whether an interim request is out. */
   asking: boolean;
   prompt: Promise<string>;
+  /** Lets the Lead speak again, once nothing else holds it back. */
+  release(): void;
 }
 
 function parse(data: string): VoiceCommand | null {

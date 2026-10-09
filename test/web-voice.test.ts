@@ -464,35 +464,90 @@ describe("/api/voice", () => {
       expect(entries.filter((e) => e.supersedes).map((e) => [e.id, e.supersedes])).toEqual([[id(5), id(4)], [id(20), id(19)]]);
     });
 
-    describe("talked over", () => {
-      /**
-       * A reply the test streams itself: `write` sends parts, `raw` events as
-       * they are, `end` closes it.
-       * Its request stopped, the stream fails, as fetch's does, and `stopped` says so.
-       */
-      function controlled(world: ReturnType<typeof setup>["world"]) {
-        let stream!: ReadableStreamDefaultController<Uint8Array>;
-        const reply = { stopped: false };
-        world.endpoint(CHAT, (request) => {
-          request.signal.addEventListener("abort", () => {
-            reply.stopped = true;
-            stream.error(new DOMException("The operation was aborted.", "AbortError"));
-          });
-          return new Response(new ReadableStream<Uint8Array>({ start: (c) => { stream = c; } }), { headers: { "content-type": "text/event-stream" } });
+    /**
+     * A reply the test streams itself: `write` sends parts, `raw` events as
+     * they are, `end` closes it.
+     * Its request stopped, the stream fails, as fetch's does, and `stopped` says so.
+     */
+    function controlled(world: ReturnType<typeof setup>["world"]) {
+      let stream!: ReadableStreamDefaultController<Uint8Array>;
+      const reply = { stopped: false };
+      world.endpoint(CHAT, (request) => {
+        request.signal.addEventListener("abort", () => {
+          reply.stopped = true;
+          stream.error(new DOMException("The operation was aborted.", "AbortError"));
         });
-        const send = (text: string) => {
-          if (!reply.stopped) stream.enqueue(new TextEncoder().encode(text));
-        };
-        return Object.assign(reply, {
-          write: (parts: Reply) => send(events(parts, false)),
-          raw: send,
-          end: () => {
-            send(events({}, true));
-            if (!reply.stopped) stream.close();
-          },
-        });
-      }
+        return new Response(new ReadableStream<Uint8Array>({ start: (c) => { stream = c; } }), { headers: { "content-type": "text/event-stream" } });
+      });
+      const send = (text: string) => {
+        if (!reply.stopped) stream.enqueue(new TextEncoder().encode(text));
+      };
+      return Object.assign(reply, {
+        write: (parts: Reply) => send(events(parts, false)),
+        raw: send,
+        end: () => {
+          send(events({}, true));
+          if (!reply.stopped) stream.close();
+        },
+      });
+    }
 
+    describe("the Lead's reply waits for a pause", () => {
+      test("arriving while the user talks, it is spoken after the user stops and the Front voice answers", async () => {
+        const ctx = await withVoice(VOICED);
+        const spoken = await speaking(ctx);
+        talker(ctx.world, () => ({ say: ["Hi there."] }));
+        hears(ctx.world, "hey");
+        const talk = await open(ctx);
+
+        talk.json({ type: "start", utterance: 1 });
+        talk.send(pcm(0.5));
+        await ctx.cli("lead", "say", "The retries PR is ready.");
+        await ctx.look();
+        await Bun.sleep(20);
+        expect(spoken).toEqual([]);
+
+        talk.json({ type: "end" });
+        await until(() => spoken.length === 2);
+        expect(spoken).toEqual(["Hi there.", "The retries PR is ready."]);
+      });
+
+      test("arriving while the Front voice talks, it is spoken after its sentence ends, never between its sentences", async () => {
+        const ctx = await withVoice(VOICED);
+        const spoken = await speaking(ctx);
+        const reply = controlled(ctx.world);
+
+        await say(ctx, "tell me about the board");
+        await until(() => ctx.world.calls.some((c) => c === `http POST ${CHAT}`));
+        reply.write({ say: ["Two issues are Ready. "] });
+        await until(() => spoken.length === 1);
+        await ctx.cli("lead", "say", "The retries PR is ready.");
+        await ctx.look();
+        await Bun.sleep(20);
+        reply.write({ say: ["The first is the herdr client."] });
+        reply.end();
+
+        await until(() => spoken.length === 3);
+        expect(spoken).toEqual(["Two issues are Ready.", "The first is the herdr client.", "The retries PR is ready."]);
+      });
+
+      test("a cancelled utterance lets it be spoken at once", async () => {
+        const ctx = await withVoice(VOICED);
+        const spoken = await speaking(ctx);
+        const talk = await open(ctx);
+
+        talk.json({ type: "start", utterance: 1 });
+        await ctx.cli("lead", "say", "The retries PR is ready.");
+        await ctx.look();
+        await Bun.sleep(20);
+        talk.json({ type: "cancel" });
+
+        await until(() => spoken.length === 1);
+        expect(spoken).toEqual(["The retries PR is ready."]);
+      });
+    });
+
+    describe("talked over", () => {
       test("its reply and speech stop, and what it said stays recorded", async () => {
         const ctx = await withVoice(VOICED);
         const spoken = await speaking(ctx);
