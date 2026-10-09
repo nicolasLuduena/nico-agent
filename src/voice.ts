@@ -1,9 +1,10 @@
+// A 2.5s WAV, 16kHz mono, of "Dispatch the next issue on the Board."
 import sample from "./voice-sample.wav" with { type: "file" };
-import { VOICE_SERVICES, type VoiceConfig, type VoiceEndpoint, type VoiceService } from "./config";
+import { VOICE_DOC, VOICE_SERVICES, type VoiceConfig, type VoiceEndpoint, type VoiceService } from "./config";
 import { type World, WorldError } from "./world";
 
 /** What `voice check` found of one voice service. */
-export type ServiceCheck =
+type ServiceCheck =
   | { service: VoiceService; status: "not configured" }
   | { service: VoiceService; status: "ok"; url: string; model: string; ms: number; returned: string }
   | { service: VoiceService; status: "failed"; url: string; model: string; error: string; help: string };
@@ -17,9 +18,6 @@ interface Probe {
 
 /** A service answered, but not with what was asked for. */
 class ProbeFailed extends Error {}
-
-/** What the sample WAV says, for a person comparing the transcript. */
-export const SAMPLE_TEXT = "Dispatch the next issue on the Board.";
 
 const PROBES: Record<VoiceService, Probe> = {
   transcribe: {
@@ -88,14 +86,29 @@ const VOCABULARY = ["Board", "Lead", "Dispatch", "Spec", "herdr"];
 /** The voice `speak` reads in when voice.speak.voice is unset: OpenAI's, which Kokoro-FastAPI maps too. */
 const DEFAULT_VOICE = "alloy";
 
+/** What `voice check` found: a row per service, and what to do about each failed one. */
+export interface VoiceProbe {
+  services: Record<string, unknown>[];
+  help: string[];
+}
+
 /**
  * Send each configured voice service a short sample, timing its answer. One
  * at a time, so local services sharing the machine don't slow each other's.
  */
-export async function checkVoice(world: World, voice: VoiceConfig): Promise<ServiceCheck[]> {
-  const checks: ServiceCheck[] = [];
-  for (const service of VOICE_SERVICES) checks.push(await checkService(world, service, voice[service]));
-  return checks;
+export async function probeVoice(world: World, voice: VoiceConfig): Promise<VoiceProbe> {
+  const probe: VoiceProbe = { services: [], help: [] };
+  for (const service of VOICE_SERVICES) {
+    const check = await checkService(world, service, voice[service]);
+    if (check.status === "failed") {
+      const { help, ...row } = check;
+      probe.services.push(row);
+      probe.help.push(help);
+    } else {
+      probe.services.push(check);
+    }
+  }
+  return probe;
 }
 
 async function checkService(world: World, service: VoiceService, endpoint: VoiceEndpoint | undefined): Promise<ServiceCheck> {
@@ -121,7 +134,7 @@ async function checkService(world: World, service: VoiceService, endpoint: Voice
     response = await world.http(request);
   } catch (e) {
     if (!(e instanceof WorldError)) throw e;
-    return failed(e.message, `Start the ${service} service (see docs/voice.md) or fix voice.${service}.url`);
+    return failed(e.message, `Start the ${service} service (see ${VOICE_DOC}) or fix voice.${service}.url`);
   }
   const checkSettings = `Check voice.${service}.url and voice.${service}.model`;
   if (!response.ok) return failed(`answered ${response.status}: ${await errorMessage(response)}`, checkSettings);

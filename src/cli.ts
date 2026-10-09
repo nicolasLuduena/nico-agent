@@ -2,7 +2,7 @@ import { resolve } from "node:path";
 import { advance } from "./advance";
 import { answer, loadAsking } from "./answer";
 import { loadBoard } from "./board";
-import { ConfigError, ORDERS, VOICE_SERVICES, type Order, ORDERS_HELP, findRepo, isOrder, loadConfig, saveConfig, standingOrders } from "./config";
+import { ConfigError, ORDERS, VOICE_DOC, VOICE_SERVICES, type Order, ORDERS_HELP, findRepo, isOrder, loadConfig, saveConfig, standingOrders } from "./config";
 import { AnswerRefused, answerQuestion, append, authored, loadConversation, openQuestions, readInbox, recall } from "./conversation";
 import { StepFailed, baseBranch, closeDispatch, dispatch, eachIssue, resolveIssue, review } from "./dispatch";
 import { DispatchError } from "./dispatch-error";
@@ -21,7 +21,7 @@ import { VERSION } from "./version";
 import { sameSlug, slugOfRemote } from "./slug";
 import { cachedPrs, currentStage, freshPrs, loadInFlight, stageOf } from "./stage";
 import { findDispatch, loadDispatches } from "./state";
-import { checkVoice } from "./voice";
+import { probeVoice } from "./voice";
 import { webHandler } from "./web";
 import { type World, WorldError } from "./world";
 
@@ -60,7 +60,7 @@ const LOG_HELP = "Run `nico-agent lead log` to see the conversation with the Lea
 const LEAD_START_USAGE = "nico-agent lead start [--harness <harness>] [--model <model>] [--effort <effort>] [--port <port>]";
 const LEAD_STATUS_HELP = "Run `nico-agent lead status` to see the Lead";
 const LEAD_SCREEN_HELP = "Run `herdr agent read lead` to see its screen";
-const VOICE_DOCS_HELP = "See docs/voice.md to set up transcribe, speak and scribe under voice in config.json";
+const VOICE_DOCS_HELP = `See ${VOICE_DOC} to set up transcribe, speak and scribe under voice in config.json`;
 const LAUNCH_FLAGS = {
   "--harness": { value: true, description: "Harness to launch, e.g. claude (see `nico-agent harness list`)" },
   "--model": { value: true, description: "model for the Harness, e.g. opus" },
@@ -1089,9 +1089,7 @@ async function ordersList(ctx: RunContext, json: boolean): Promise<Output> {
 async function voiceCheckCommand(ctx: RunContext): Promise<Output> {
   const { voice } = loadConfig(ctx.configDir);
   if (!voice || !VOICE_SERVICES.some((service) => voice[service])) throw new CliError("no voice services in config", [VOICE_DOCS_HELP]);
-  const checks = await checkVoice(ctx.world, voice);
-  const help = checks.flatMap((check) => (check.status === "failed" ? [check.help] : []));
-  const services = checks.map((check) => (check.status === "failed" ? { ...check, help: undefined } : check)).map(definedOnly);
+  const { services, help } = await probeVoice(ctx.world, voice);
   return { data: { services }, help, exitCode: help.length ? 1 : 0 };
 }
 

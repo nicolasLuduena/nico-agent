@@ -60,7 +60,9 @@ const VOICE_SETTINGS: Record<VoiceService, string[]> = {
   speak: ["url", "model", "keyEnv", "voice"],
   scribe: ["url", "model", "keyEnv"],
 };
-const VOICE_HELP = "See docs/voice.md for the voice block";
+/** Where the voice services are set up and configured. */
+export const VOICE_DOC = "docs/voice.md";
+const VOICE_HELP = `See ${VOICE_DOC} for the voice block`;
 
 /** What the Lead may do without asking; each on or off. */
 export const ORDERS = {
