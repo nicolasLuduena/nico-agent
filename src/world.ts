@@ -51,6 +51,12 @@ export interface World {
   githubPullRequest(slug: string, number: number): Promise<PullRequest | null>;
   /** All PRs whose head is `branch` (a Dispatch's, or a Stack's next one down), including closed unmerged PRs. */
   githubBranchPullRequests(slug: string, branch: string): Promise<PullRequest[]>;
+  /**
+   * What is happening on a PR: its state, whether it is a draft, its review
+   * comments written at or after `since` (all of them without it), and the
+   * checks on its head commit.
+   */
+  githubPullRequestActivity(slug: string, number: number, since?: Date): Promise<PullRequestActivity>;
   /** Assign an issue to the user's own GitHub session (the Claim, ADR-0007). */
   githubAssignSelf(slug: string, number: number): Promise<void>;
   /** Fetch origin, or explicitly fetch a head branch into its origin tracking ref. */
@@ -186,6 +192,27 @@ export interface PullRequest {
   baseBranch: string;
   /** Head branch when available from GitHub; required for stacking. */
   headBranch?: string;
+}
+
+export interface PullRequestActivity {
+  state: PullRequest["state"];
+  draft: boolean;
+  /** Conversation comments, reviews and inline review comments, oldest first. */
+  comments: PullRequestComment[];
+  /** The latest run of each check on the head commit. */
+  checks: { name: string; result: "pending" | "passed" | "failed" }[];
+}
+
+export interface PullRequestComment {
+  /** GitHub's id, unique across the kinds of comment. */
+  id: string;
+  author: string;
+  at: string;
+  body: string;
+  /** The file an inline review comment is on. */
+  path?: string;
+  /** Set on a review itself: its verdict. */
+  review?: "approved" | "changes requested" | "commented";
 }
 
 export const READY_LABEL = "ready-for-agent";

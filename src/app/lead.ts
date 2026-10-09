@@ -130,11 +130,12 @@ export function cards({ entries, proposals, sends }: Conversation): Card[] {
     }
   };
   for (const e of entries) {
-    if (e.type === "answer" || e.type === "decision") continue;
+    // Events are the Lead's to read in its Inbox; the user sees what it makes of them.
+    if (e.type === "answer" || e.type === "decision" || e.type === "event") continue;
     proposalsUntil(e.at);
     const key = `entry-${e.id}`;
     if (e.type !== "ask") {
-      timeline.push({ kind: "message", key, who: e.who, text: e.text, at: e.at, ...(e.type === "user" && e.raw !== undefined && { spoken: true }) });
+      timeline.push({ kind: "message", key, who: e.type === "user" ? "user" : "lead", text: e.text, at: e.at, ...(e.type === "user" && e.raw !== undefined && { spoken: true }) });
       continue;
     }
     const given = answers.get(e.id);

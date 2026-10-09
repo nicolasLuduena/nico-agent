@@ -1,0 +1,43 @@
+import { resolveIssue } from "./dispatch";
+import { DispatchError } from "./dispatch-error";
+import { LEAD_AGENT } from "./lead";
+import { findDispatch } from "./state";
+import type { World } from "./world";
+
+/** What an agent's pane shows right now, and whose it is. */
+export interface Peeked {
+  /** The In-flight issue the agent works on; unset for the Lead. */
+  issue?: string;
+  agent: string;
+  /** The visible text of its pane, trailing blank lines dropped. */
+  screen: string;
+}
+
+/**
+ * The screen of an In-flight issue's Implementer, or its Reviewer with
+ * `reviewer`, through herdr's read; with no issue, the Lead's own. An issue
+ * not In flight, or a Reviewer that was never launched, is refused.
+ */
+export async function peek(world: World, configDir: string, issue: string | undefined, reviewer: boolean): Promise<Peeked> {
+  if (issue === undefined) return { agent: LEAD_AGENT, screen: trimmed(await world.herdrAgentRead(LEAD_AGENT)) };
+  const { key } = resolveIssue(configDir, issue);
+  const record = findDispatch(configDir, key);
+  if (!record) {
+    throw new DispatchError(`${key} is not In flight`, [
+      "Run `nico-agent` to see the Board and what is In flight",
+      "Run `nico-agent peek` with no issue for the Lead's own screen",
+    ]);
+  }
+  if (reviewer && !record.reviewer) {
+    throw new DispatchError(`${key} has no Reviewer`, [
+      `Run \`nico-agent review ${key} --harness <harness> --model <model> --effort <effort>\` to start one`,
+      `Run \`nico-agent peek ${key}\` for its Implementer`,
+    ]);
+  }
+  const { agent } = reviewer ? record.reviewer! : record.implementer;
+  return { issue: key, agent, screen: trimmed(await world.herdrAgentRead(agent)) };
+}
+
+function trimmed(screen: string) {
+  return screen.replace(/\s+$/, "");
+}

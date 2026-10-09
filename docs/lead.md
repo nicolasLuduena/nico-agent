@@ -63,8 +63,8 @@ If `serve` listens on another port, pass it to `lead start --port <port>`.
 
 ## Nudges
 
-When something arrives for the Lead (your `say`, your `say --answer`, the end
-of an `advance` run), nico-agent Nudges it: it prompts the Lead with "Read your
+When something arrives for the Lead (your `say`, your `say --answer`, a PR
+event, the end of an `advance` run), nico-agent Nudges it: it prompts the Lead with "Read your
 Inbox" if herdr reports it idle (or `done` with its turn). While the Lead is working, one pending Nudge
 is kept in `nudge.json` in the config directory, and `serve` sends it within
 about 10 seconds of seeing the Lead idle, so three messages sent while it
@@ -213,6 +213,31 @@ order says, as long as it is a whole message of yours in the conversation (one
 you wrote with `nico-agent say`, or an answer to one of its questions), exactly
 as you wrote it. Anything else passed as `relay` is refused, with a `propose`
 call to send it once you approve.
+
+## Peek and PR events
+
+The Lead's `peek` tool, like `nico-agent peek`, shows what an agent's pane
+has on screen right now, through `herdr agent read`:
+
+```bash
+nico-agent peek acme/api#7              # the issue's Implementer
+nico-agent peek acme/api#7 --reviewer   # its Reviewer, once one was launched
+nico-agent peek                         # the Lead's own screen
+```
+
+An issue that is not In flight, or `--reviewer` before a review, is refused
+with help.
+
+While `serve` runs, it asks GitHub every minute what changed on each In-flight
+issue's open PR: new review comments and reviews, check results, ready for
+review, merged and closed. Each change is written once into the conversation
+as an `event` entry (the PR's URL, the issue, the kind of change and a
+one-line summary), and the Lead is Nudged to read it in its Inbox. A PR stays
+watched after its Dispatch is Closed, until it is merged or closed; what was
+last seen of each is kept in `pr-watch.json` in the config directory.
+`nico-agent lead log` shows the events with the rest of the conversation;
+the web Board's Lead panel leaves them out and shows what the Lead says about
+them.
 
 ## The Intent and the Notes
 
