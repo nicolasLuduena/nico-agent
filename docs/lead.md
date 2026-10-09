@@ -171,6 +171,35 @@ you wrote with `nico-agent say`, or an answer to one of its questions), exactly
 as you wrote it. Anything else passed as `relay` is refused, with a `propose`
 call to send it once you approve.
 
+## Proposals
+
+When an order is off, the Lead calls `propose` with the command a refusal
+handed it and a reason. The Proposal waits in `~/.config/nico-agent/proposals.json`
+until you decide, and you get one desktop notification for it.
+
+```bash
+nico-agent proposals                       # open ones: id, what each would run, why
+nico-agent proposals approve 3             # run it now and print what it did
+nico-agent proposals decline 3 Finish billing first
+nico-agent proposals --all                 # decided ones too, with status and outcome
+```
+
+Approving runs the command through the CLI in nico-agent, exactly as if you
+typed it; the Lead runs nothing. If the command fails, or finds nothing left
+to do (the issue is already In flight, the Implementer is no longer Asking),
+the approval is refused with the reason and the Proposal is closed as
+`failed`. A command on several issues counts as run if any of them ran. A Proposal is decided once: approving or declining it again, or an
+id that names none, is refused.
+
+Each decision becomes a `decision` entry in the conversation, with the
+command, its outcome and your reason, and the Lead is Nudged to read it in
+its Inbox. Open
+Proposals are also in the orient packet every `inbox` returns.
+
+A Proposal can only run an action tool's command: `dispatch`, `review`,
+`close`, `answer`, `queue`, `unqueue` or `advance`. `propose` refuses any other
+command, and any command line the CLI would reject, before recording it.
+
 ## The Queue from the CLI
 
 The CLI edits the Queue the way the web Board's Queue controls do:

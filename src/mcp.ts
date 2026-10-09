@@ -33,6 +33,8 @@ const ORDER_OF = {
   advance: "start",
 } as const satisfies Record<string, Order>;
 type ActionTool = keyof typeof ORDER_OF;
+/** The commands a Proposal may run: the action tools' own. */
+export const PROPOSABLE = Object.keys(ORDER_OF);
 
 /** The Lead's action tools: each the CLI command of the same name, behind the Standing order it falls under. */
 function actionTools() {
@@ -135,6 +137,20 @@ const TOOLS = [
     },
   },
   ...actionTools(),
+  {
+    name: "propose",
+    title: "Propose",
+    description: "Propose an action your Standing orders do not allow, for the user to approve or decline. `action` is the CLI command an action tool's refusal hands you (without `nico-agent`); approving runs it in nico-agent. The decision arrives in your Inbox.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        action: { type: "array", items: { type: "string" }, minItems: 1, description: "The command, e.g. [\"queue\", \"--repo\", \"acme/api\", \"--\", \"acme/api#10\"]" },
+        reason: { type: "string", description: "Why, in a sentence the user can decide on" },
+      },
+      required: ["action", "reason"],
+      additionalProperties: false,
+    },
+  },
 ];
 
 const JSON_HEADERS = { "content-type": "application/json" };
@@ -232,7 +248,7 @@ function initialize(params: unknown) {
     serverInfo: { name: "nico-agent", title: "nico-agent", version: VERSION },
     instructions: [
       "Read the Board with `board` and your Inbox with `inbox`; reply with `say`, ask the user with `ask`, and search the conversation with `recall`.",
-      "Act with `dispatch`, `review`, `close`, `answer`, `queue`, `unqueue` and `advance`, each under the Standing order its description names; one refused because its order is off gives you a `propose` call to make instead.",
+      "Act with `dispatch`, `review`, `close`, `answer`, `queue`, `unqueue` and `advance`, each under the Standing order its description names; one refused because its order is off gives you a `propose` call to make instead, and the user's decision on it arrives in your Inbox.",
     ].join(" "),
   };
 }
@@ -294,7 +310,7 @@ function refusal(error: string, help: string[]) {
 }
 
 /** `action` with `--json`, ahead of any `--` so it stays a flag. */
-function withJson(action: string[]) {
+export function withJson(action: string[]) {
   const end = action.indexOf("--");
   return end === -1 ? [...action, "--json"] : [...action.slice(0, end), "--json", ...action.slice(end)];
 }
@@ -363,6 +379,14 @@ function toolRun(params: unknown): ToolRun {
     case "advance":
       onlyArguments(name, args);
       return { action: ["advance"], tool: name };
+    case "propose": {
+      onlyArguments(name, args, ["action", "reason"]);
+      const { action } = args;
+      if (!Array.isArray(action) || !action.length || !action.every((t) => typeof t === "string")) {
+        throw new RpcError(-32602, "propose needs action, the command as a list of strings");
+      }
+      return { argv: ["lead", "propose", "--json", "--reason", text(name, args, "reason"), "--", ...action] };
+    }
     default:
       throw new RpcError(-32602, `Unknown tool: ${name} (the tools are ${TOOLS.map((t) => t.name).join(", ")})`);
   }
