@@ -266,3 +266,98 @@ describe("the Queue on the web Board", () => {
     expect(body).toContain('<span class="queued">Queued 1 of 1</span>');
   });
 });
+
+describe("the Queue from the CLI", () => {
+  test("queue puts a candidate Spec last in its Repo's Queue, as the web does, and again is a no-op", async () => {
+    const { cli, world, queue, web } = await linearRepo();
+    world.addLinearSpec({ identifier: "BLE-20" }, { identifier: "BLE-21" });
+    world.addLinearSpec({ identifier: "BLE-30" }, { identifier: "BLE-31" });
+    await queue("BLE-30");
+
+    const queued = await cli("queue", "BLE-20", "--repo", "bleentr/pdf-diff", "--json");
+    expect(queued.exitCode).toBe(0);
+    expect(queued.json()).toEqual({
+      queued: "BLE-20", place: "2 of 2", queue: ["BLE-30", "BLE-20"],
+      help: ["Run `nico-agent move BLE-20 up --repo bleentr/pdf-diff` to start it sooner", "Run `nico-agent` to see the Board"],
+    });
+    expect((await web("/")).body).toContain('<ol class="queue-order" aria-label="Queue of bleentr/pdf-diff"><li>BLE-30</li><li>BLE-20</li></ol>');
+
+    const again = await cli("queue", "ble-20", "--repo", "bleentr/pdf-diff", "--json");
+    expect(again.exitCode).toBe(0);
+    expect(again.json()).toMatchObject({ queued: "BLE-20 already queued (no-op)", place: "2 of 2", queue: ["BLE-30", "BLE-20"] });
+    expect(await advanced(cli)).toEqual(["started BLE-31", "started BLE-21"]);
+  });
+
+  test("queue refuses a Spec that is no candidate, an unknown Repo, and a missing --repo, with help", async () => {
+    const { cli, world } = await linearRepo();
+    world.addLinearSpec({ identifier: "BLE-10" }, { identifier: "BLE-11", labels: [] });
+    world.addLinearSpec({ identifier: "BLE-20" }, { identifier: "BLE-21" });
+
+    const refused = await cli("queue", "BLE-10", "--repo", "bleentr/pdf-diff", "--json");
+    expect(refused.exitCode).toBe(1);
+    expect(refused.json()).toEqual({
+      error: "BLE-10 is not a candidate Spec of bleentr/pdf-diff",
+      help: ["Only a candidate Spec, not started, not Held and with a Ready first issue, can be queued", "Run `nico-agent --json` to see each Repo's candidates under `rooms`"],
+    });
+    const unknown = await cli("queue", "BLE-20", "--repo", "acme/nope", "--json");
+    expect(unknown.exitCode).toBe(1);
+    expect(unknown.json()).toEqual({ error: "acme/nope is not a configured Repo", help: ["Run `nico-agent repo list` to see the Repos"] });
+    const usage = await cli("queue", "BLE-20");
+    expect(usage.exitCode).toBe(2);
+    expect(usage.stdout).toContain("missing required flag --repo");
+    expect((await cli("--json")).json().rooms[0].queue).toEqual([]);
+  });
+
+  test("unqueue takes a Spec out of the Queue, and one not queued is a no-op", async () => {
+    const { cli, world, queue } = await linearRepo();
+    world.addLinearSpec({ identifier: "BLE-20" }, { identifier: "BLE-21" });
+    world.addLinearSpec({ identifier: "BLE-30" }, { identifier: "BLE-31" });
+    await queue("BLE-20");
+    await queue("BLE-30");
+
+    const unqueued = await cli("unqueue", "ble-20", "--repo", "bleentr/pdf-diff", "--json");
+    expect(unqueued.exitCode).toBe(0);
+    expect(unqueued.json()).toEqual({ unqueued: "BLE-20", queue: ["BLE-30"], help: ["Run `nico-agent` to see the Board"] });
+    const again = await cli("unqueue", "BLE-20", "--repo", "bleentr/pdf-diff", "--json");
+    expect(again.exitCode).toBe(0);
+    expect(again.json()).toMatchObject({ unqueued: "BLE-20 not queued (no-op)", queue: ["BLE-30"] });
+    expect(await advanced(cli)).toEqual(["started BLE-31"]);
+  });
+
+  test("move swaps a queued Spec with its neighbour, as the web does; at either end it is a no-op", async () => {
+    const { cli, world, queue, web } = await linearRepo({ maxRunningSpecs: 1 });
+    world.addLinearSpec({ identifier: "BLE-20" }, { identifier: "BLE-21" });
+    world.addLinearSpec({ identifier: "BLE-30" }, { identifier: "BLE-31" });
+    world.addLinearSpec({ identifier: "BLE-40" }, { identifier: "BLE-41" });
+    for (const spec of ["BLE-20", "BLE-30", "BLE-40"]) await queue(spec);
+
+    const moved = await cli("move", "BLE-40", "up", "--repo", "bleentr/pdf-diff", "--json");
+    expect(moved.exitCode).toBe(0);
+    expect(moved.json()).toEqual({ moved: "BLE-40 up", place: "2 of 3", queue: ["BLE-20", "BLE-40", "BLE-30"], help: ["Run `nico-agent` to see the Board"] });
+    expect((await cli("move", "BLE-20", "up", "--repo", "bleentr/pdf-diff", "--json")).json())
+      .toMatchObject({ moved: "BLE-20 already at the head (no-op)", place: "1 of 3", queue: ["BLE-20", "BLE-40", "BLE-30"] });
+    expect((await cli("move", "BLE-30", "down", "--repo", "bleentr/pdf-diff", "--json")).json())
+      .toMatchObject({ moved: "BLE-30 already at the tail (no-op)", place: "3 of 3" });
+    expect((await cli("move", "BLE-20", "down", "--repo", "bleentr/pdf-diff")).exitCode).toBe(0);
+    expect((await web("/")).body).toContain('<ol class="queue-order" aria-label="Queue of bleentr/pdf-diff"><li>BLE-40</li><li>BLE-20</li><li>BLE-30</li></ol>');
+    expect(await advanced(cli)).toEqual(["started BLE-41"]);
+  });
+
+  test("move refuses a Spec not queued and a direction other than up or down", async () => {
+    const { cli, world, queue } = await linearRepo();
+    world.addLinearSpec({ identifier: "BLE-20" }, { identifier: "BLE-21" });
+    world.addLinearSpec({ identifier: "BLE-30" }, { identifier: "BLE-31" });
+    await queue("BLE-20");
+
+    const unqueued = await cli("move", "BLE-30", "up", "--repo", "bleentr/pdf-diff", "--json");
+    expect(unqueued.exitCode).toBe(1);
+    expect(unqueued.json()).toEqual({
+      error: "BLE-30 is not queued in bleentr/pdf-diff",
+      help: ["Run `nico-agent queue BLE-30 --repo bleentr/pdf-diff` to queue it"],
+    });
+    const sideways = await cli("move", "BLE-20", "sideways", "--repo", "bleentr/pdf-diff");
+    expect(sideways.exitCode).toBe(2);
+    expect(sideways.stdout).toContain("`sideways` is not a direction");
+    expect((await cli("--json")).json().rooms[0].queue).toEqual(["BLE-20"]);
+  });
+});
