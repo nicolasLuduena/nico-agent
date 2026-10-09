@@ -1,7 +1,7 @@
 import { useState } from "react";
-import type { HarnessesJson, LaunchAction } from "./actions";
+import type { LaunchAction } from "./actions";
 import { type BoardJson, agentClass, stageClass } from "./board";
-import { Actions, CloseButton, IssueOutcome, LaunchForm, useBoardActions } from "./forms";
+import { BUTTONS, CloseButton, IssueOutcome, LaunchForm } from "./forms";
 import { type DispatchLine, type IssueLine, type RepoRow, repoRows } from "./repo-rows";
 
 /** Where the expanded Repos are remembered, in this browser only. */
@@ -35,28 +35,25 @@ function useExpanded() {
  * each summarising its work while collapsed and, expanded, listing its
  * In-flight Dispatches, its Held Specs, what starts next and its Ready and
  * Stackable issues, with the Board's actions: dispatch, launch a review and
- * Close. An action's failure shows under its issue; what it did shows once
+ * Close, their state kept in the App's `Actions`. An action's failure shows under its issue; what it did shows once
  * `serve` says the Board changed. A Board that could not be read says why in
  * the notices.
  */
-export function ReposPane({ board, harnesses, reloadHarnesses }: { board: BoardJson | null; harnesses: HarnessesJson | null; reloadHarnesses: () => void }) {
+export function ReposPane({ board }: { board: BoardJson | null }) {
   const { expanded, toggle } = useExpanded();
-  const actions = useBoardActions(board ?? {}, harnesses, reloadHarnesses);
   const rows = board && !board.error ? repoRows(board) : null;
   return (
-    <Actions.Provider value={actions}>
-      <section className="side repos" aria-labelledby="side-title">
-        <h1 id="side-title">Repos</h1>
-        {!board && <p className="loading">Reading the Repos…</p>}
-        {board?.error && <p className="error">The Repos could not be read.</p>}
-        {rows?.length === 0 && <p className="lede">No Repos yet. Run <code>nico-agent repo add</code> to add one.</p>}
-        {rows && rows.length > 0 && (
-          <ul className="repo-rows">
-            {rows.map((r) => <RepoItem key={r.repo} row={r} open={expanded.has(r.repo)} toggle={() => toggle(r.repo)} />)}
-          </ul>
-        )}
-      </section>
-    </Actions.Provider>
+    <section className="side repos" aria-labelledby="side-title">
+      <h1 id="side-title">Repos</h1>
+      {!board && <p className="loading">Reading the Repos…</p>}
+      {board?.error && <p className="error">The Repos could not be read.</p>}
+      {rows?.length === 0 && <p className="lede">No Repos yet. Run <code>nico-agent repo add</code> to add one.</p>}
+      {rows && rows.length > 0 && (
+        <ul className="repo-rows">
+          {rows.map((r) => <RepoItem key={r.repo} row={r} open={expanded.has(r.repo)} toggle={() => toggle(r.repo)} />)}
+        </ul>
+      )}
+    </section>
   );
 }
 
@@ -168,13 +165,11 @@ function Dispatchable({ line: i }: { line: IssueLine }) {
   );
 }
 
-const TOGGLES: Record<LaunchAction, string> = { dispatch: "Dispatch…", review: "Launch review…" };
-
 /** Opens and closes an issue's launch form. */
 function Toggle({ action, issue, open, setOpen }: { action: LaunchAction; issue: string; open: boolean; setOpen: (open: boolean) => void }) {
   return (
-    <button type="button" className="quiet" aria-expanded={open} aria-label={`${open ? "Cancel" : TOGGLES[action].slice(0, -1)} ${issue}`} onClick={() => setOpen(!open)}>
-      {open ? "Cancel" : TOGGLES[action]}
+    <button type="button" className="quiet" aria-expanded={open} aria-label={`${open ? "Cancel" : BUTTONS[action]} ${issue}`} onClick={() => setOpen(!open)}>
+      {open ? "Cancel" : `${BUTTONS[action]}…`}
     </button>
   );
 }

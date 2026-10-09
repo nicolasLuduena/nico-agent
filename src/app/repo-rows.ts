@@ -99,12 +99,12 @@ export function repoRows(board: BoardJson): RepoRow[] {
       const spec = specs.find((s) => sameSpec(s.spec, key));
       return { spec: key, ...named(key, spec?.title, spec?.url) };
     });
-    const dispatchable = (kind: IssueLine["kind"], items: { issue: string; title: string; url: string }[]) => items.flatMap((i): IssueLine[] => {
+    const toDispatch = (kind: IssueLine["kind"], items: (Omit<Named, "label"> & { issue: string })[]) => items.flatMap((i): IssueLine[] => {
       const target = !flights.some((d) => sameSlug(d.issue, i.issue)) && dispatchTarget(board, i.issue, repo);
       return target ? [{ kind, ...named(i.issue, i.title, i.url), target }] : [];
     });
-    const ready = [...dispatchable("ready", mine(board.issues)), ...dispatchable("stackable", mine(board.stackable))];
-    const nothing = !dispatches.length && !held.length && !next.length && !queue.length && !ready.length;
+    const dispatchable = [...toDispatch("ready", mine(board.issues)), ...toDispatch("stackable", mine(board.stackable))];
+    const nothing = !dispatches.length && !held.length && !next.length && !queue.length && !dispatchable.length;
     // A rate-limited read is one Board warning, not each Repo's error; a Repo it left with nothing was not read, not Idle.
     const errors = !failed.length && nothing && board.warning ? [`Could not load: ${board.warning}`] : failed;
     return {
@@ -115,7 +115,7 @@ export function repoRows(board: BoardJson): RepoRow[] {
       held,
       next,
       queue,
-      issues: ready,
+      issues: dispatchable,
       empty: !errors.length && nothing,
     };
   });

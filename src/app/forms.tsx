@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import {
   type BatchPlan, type Chosen, type DispatchTarget, type HarnessesJson, type LaunchAction, type LaunchChoice, type Outcome,
-  advanceReport, baseOf, batchPlan, closePlan, launchArgs, launchChoice, outcomeOf, stackOnOf,
+  advanceReport, baseOf, batchPlan, closeArgs, closePlan, launchArgs, launchChoice, outcomeOf, stackOnOf,
 } from "./actions";
 import type { BoardJson, QueueStatus } from "./board";
 
@@ -30,7 +30,7 @@ export function useActions() {
   return useContext(Actions)!;
 }
 
-/** The Board's forms' shared state for `board`, as `Actions` provides it; it outlives each refetched Board. */
+/** The Board's forms' shared state for `board`, as `Actions` provides it, kept by the App so it outlives each refetched Board and a visit to another page. */
 export function useBoardActions(board: BoardJson, harnesses: HarnessesJson | null, reloadHarnesses: () => void): BoardActions {
   const [chosen, setChosen] = useState<Record<string, Chosen>>({});
   const [picked, setPicked] = useState<Set<string>>(new Set());
@@ -47,7 +47,7 @@ export function useBoardActions(board: BoardJson, harnesses: HarnessesJson | nul
   };
 }
 
-const BUTTONS: Record<LaunchAction, string> = { dispatch: "Dispatch", review: "Launch review" };
+export const BUTTONS: Record<LaunchAction, string> = { dispatch: "Dispatch", review: "Launch review" };
 
 const UNREACHABLE: Outcome = { failed: true, lines: [{ text: "Could not reach nico-agent serve; try again.", error: true }], help: [] };
 
@@ -193,12 +193,12 @@ export function CloseButton({ issue, confirm }: { issue: string; confirm: boolea
     return (
       <span className="confirm" role="group" aria-label={`Close ${issue}`}>
         <span>No PR yet. Close removes the worktree and workspace and forgets the Dispatch; the branch is kept.</span>
-        <button className="close" disabled={busy} onClick={() => void run("/api/close", [issue, "--confirm"]).then(() => setConfirming(false))}>Confirm close</button>
+        <button className="close" disabled={busy} onClick={() => void run("/api/close", closeArgs(issue, true)).then(() => setConfirming(false))}>Confirm close</button>
         <button onClick={() => setConfirming(false)}>Cancel</button>
       </span>
     );
   }
-  return <button className="close" disabled={busy} onClick={() => (confirm ? setConfirming(true) : void run("/api/close", [issue]))}>Close</button>;
+  return <button className="close" disabled={busy} onClick={() => (confirm ? setConfirming(true) : void run("/api/close", closeArgs(issue, false)))}>Close</button>;
 }
 
 /**

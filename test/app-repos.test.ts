@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type HarnessesJson, launchArgs, launchChoice } from "../src/app/actions";
+import { type HarnessesJson, closeArgs, launchArgs, launchChoice } from "../src/app/actions";
 import type { BoardJson } from "../src/app/board";
 import { repoRows } from "../src/app/repo-rows";
 import { RateLimited } from "../src/world";
@@ -104,7 +104,7 @@ describe("the Repos pane's rows", () => {
 });
 
 describe("the Repos pane's actions", () => {
-  const harnesses = async (web: (path: string) => Promise<{ body: string }>): Promise<HarnessesJson> => JSON.parse((await web("/api/harnesses")).body);
+  const harnesses = async (web: (path: string, init?: RequestInit) => Promise<{ body: string }>): Promise<HarnessesJson> => JSON.parse((await web("/api/harnesses")).body);
 
   test("an expanded Repo lists its Ready and Stackable issues, each dispatched as its own form posts it", async () => {
     const { cli, world, web, board } = await githubRepo();
@@ -147,5 +147,19 @@ describe("the Repos pane's actions", () => {
     expect(api!.dispatches.map((d) => [d.label, d.review, d.confirmClose])).toEqual([["#3", true, false], ["#4", false, true], ["#9", false, false]]);
     const choice = launchChoice(await harnesses(web), { harness: "claude", model: "sonnet", effort: "max" })!;
     expect(launchArgs("review", { issue: api!.dispatches[0]!.issue }, choice, {})).toEqual(["acme/api#3", "--harness", "claude", "--model", "sonnet", "--effort", "max"]);
+  });
+
+  test("Close posts the issue, and an Implementing Dispatch closes only once confirmed", async () => {
+    const { cli, world, web, board } = await githubRepo();
+    world.addIssue("acme/api", { number: 4 });
+    await cli("dispatch", "acme/api#4", ...FLAGS);
+    const close = async (args: string[]) => JSON.parse((await web("/api/close", { method: "POST", body: JSON.stringify({ args }) })).body);
+
+    const [api] = repoRows(await board());
+    const { issue, confirmClose } = api!.dispatches[0]!;
+    expect(confirmClose).toBe(true);
+    expect(await close(closeArgs(issue, false))).toMatchObject({ error: expect.stringContaining("confirm") });
+    expect(await close(closeArgs(issue, true))).toMatchObject({ closed: "acme/api#4" });
+    expect(repoRows(await board())[0]!.dispatches).toEqual([]);
   });
 });
