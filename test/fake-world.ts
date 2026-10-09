@@ -405,6 +405,17 @@ export class FakeWorld implements World {
     return { started: false };
   }
 
+  /** The account's budgets, as `gh api rate_limit` reports them. */
+  rateLimit = {
+    core: { limit: 5000, remaining: 5000, used: 0, reset: "2026-09-30T12:45:00.000Z" },
+    graphql: { limit: 5000, remaining: 4000, used: 1000, reset: "2026-09-30T12:30:00.000Z" },
+  };
+
+  async githubRateLimit() {
+    this.call("github rate limit");
+    return this.rateLimit;
+  }
+
   async githubAppRepos() {
     this.call("github app repos");
     return this.appRepos;

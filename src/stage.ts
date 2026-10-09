@@ -1,3 +1,4 @@
+import { withCaller } from "./github-calls";
 import { linearIdentifier } from "./linear";
 import { sameSlug } from "./slug";
 import { type Dispatch, REVIEW_STEPS } from "./state";
@@ -47,7 +48,7 @@ export type PrLookup = (dispatch: Dispatch) => Promise<PullRequest | null>;
 
 /** Asks GitHub (and Linear, for a Linear issue) every time. */
 export function freshPrs(world: World): PrLookup {
-  return async (d) => linkedPr(await linkedPrs(world, d), d.repo);
+  return (d) => withCaller("pr lookup", async () => linkedPr(await linkedPrs(world, d), d.repo));
 }
 
 /**

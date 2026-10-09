@@ -25,6 +25,7 @@ import { isCandidate, sameSpec } from "./spec";
 import { VERSION } from "./version";
 import { sameSlug, slugOfRemote } from "./slug";
 import { cachingGitHubReads } from "./cached-world";
+import { GITHUB_CALLS_FILE, githubUsage, readGitHubCalls, withCaller } from "./github-calls";
 import { type PrLookup, cachedPrs, currentStage, freshPrs, loadInFlight, stageOf } from "./stage";
 import { type Dispatch, findDispatch, loadDispatches } from "./state";
 import { probeVoice } from "./voice";
@@ -32,7 +33,7 @@ import { setVoiceOn, voiceOn } from "./voice-on";
 import { TALK_PATH, lookAtLead, webHandler, webSockets } from "./web";
 import { Events } from "./events";
 import app from "./app/index.html";
-import { type World, WorldError } from "./world";
+import { type World, WorldError, worldErrorMessage } from "./world";
 
 export interface RunContext {
   world: World;
@@ -65,6 +66,7 @@ const ORDERS_SET_USAGE = "nico-agent orders set <order> on|off";
 const SAY_USAGE = "nico-agent say [--answer <id>] [--raw <transcript>] <text>";
 const LEAD_SAY_USAGE = "nico-agent lead say <text>";
 const LEAD_ASK_USAGE = "nico-agent lead ask <question> [<choice>...]";
+const GITHUB_USAGE_USAGE = "nico-agent github usage [--since <time>]";
 const RECALL_USAGE = "nico-agent lead recall <query> [--since <time>] [--until <time>]";
 const QUEUE_USAGE = "nico-agent queue <spec> --repo <owner/name>";
 const UNQUEUE_USAGE = "nico-agent unqueue <spec> --repo <owner/name>";
@@ -405,6 +407,16 @@ const commands: Command[] = [
     run: leadProposeCommand,
   },
   {
+    name: "github usage",
+    usage: GITHUB_USAGE_USAGE,
+    summary: "Count nico-agent's own GitHub calls of the last hour and 24 hours by caller and by query, with the busiest minute, the failures and the account's remaining quota",
+    flags: { "--since": { value: true, description: "count the calls from this date or time on instead, e.g. 2026-10-09T15:00:00Z" } },
+    positionals: [],
+    examples: ["nico-agent github usage", "nico-agent github usage --since 2026-10-09T15:00:00Z --json"],
+    help: ["The account's spend beyond nico-agent's calls is everyone else on it: Implementers, Reviewers, the Lead"],
+    run: githubUsageCommand,
+  },
+  {
     name: "harness list",
     usage: "nico-agent harness list",
     summary: "List the Harnesses with their models and Effort levels (discovers uncached ones)",
@@ -529,7 +541,7 @@ export async function run(argv: string[], ctx: RunContext): Promise<RunResult> {
     const args = parseArgs(command, rest);
     const topLevel = argv[0]?.startsWith("-") ?? true;
     const output = !args.flags["--help"]
-      ? await command.run(args, ctx)
+      ? await commandCaller(command, () => command.run(args, ctx))
       : topLevel
         ? topLevelHelp(ctx)
         : commandHelp(command);
@@ -545,6 +557,16 @@ export async function run(argv: string[], ctx: RunContext): Promise<RunResult> {
     const output = { data: { error: e.message, ...e.details }, help: e.help };
     return { stdout: render(output, json), exitCode: e.exitCode };
   }
+}
+
+/**
+ * Run a command with its GitHub calls logged under its name: the Board, and
+ * `advance` as the Scheduler. `serve` sets none, so its ticks and requests name their own.
+ */
+function commandCaller<T>(command: Command, body: () => Promise<T>): Promise<T> {
+  if (command.name === "serve") return body();
+  const caller = command.name === "board" ? "board" : command.name === "advance" ? "scheduler" : `cli ${command.name}`;
+  return withCaller(caller, body);
 }
 
 function findCommand(argv: string[]): { command: Command; rest: string[] } {
@@ -887,22 +909,31 @@ function askNotice(ask: Ask) {
 async function leadRecallCommand(args: Args, ctx: RunContext): Promise<Output> {
   const query = args.positionals.join(" ");
   if (!query.trim()) throw new CliError("<query> is required", [`Usage: \`${RECALL_USAGE}\``], 2);
-  const since = timeFlag(args, "--since");
-  const until = timeFlag(args, "--until");
+  const since = timeFlag(args, "--since", RECALL_USAGE);
+  const until = timeFlag(args, "--until", RECALL_USAGE);
   const entries = recall(loadConversation(ctx.configDir), query, { since, until });
   const help = entries.length ? [LOG_HELP] : ["Try another word, or a wider time range", LOG_HELP];
   return { data: { recall: `${plural(entries.length, "entry matches", "entries match")} ${JSON.stringify(query)}`, entries }, help };
 }
 
 /** The time `flag` names; a bare date `--until` runs to the end of that day (UTC). */
-function timeFlag(args: Args, flag: "--since" | "--until"): Date | undefined {
+function timeFlag(args: Args, flag: "--since" | "--until", usage: string): Date | undefined {
   const value = args.flags[flag];
   if (typeof value !== "string") return undefined;
   const time = new Date(flag === "--until" && /^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T23:59:59.999Z` : value);
   if (Number.isNaN(time.getTime())) {
-    throw new CliError(`${flag} must be a date or time such as 2026-09-01 or 2026-09-01T12:00:00Z (got \`${value}\`)`, [`Usage: \`${RECALL_USAGE}\``], 2);
+    throw new CliError(`${flag} must be a date or time such as 2026-09-01 or 2026-09-01T12:00:00Z (got \`${value}\`)`, [`Usage: \`${usage}\``], 2);
   }
   return time;
+}
+
+async function githubUsageCommand(args: Args, ctx: RunContext): Promise<Output> {
+  const since = timeFlag(args, "--since", GITHUB_USAGE_USAGE);
+  // Read before asking for the quota, so the last call is the last one before this command.
+  const calls = readGitHubCalls(resolve(ctx.configDir, GITHUB_CALLS_FILE));
+  const quota = await ctx.world.githubRateLimit().catch((e) => worldErrorMessage(e));
+  const help = since ? [] : ["Run `nico-agent github usage --since <time>` to count from another time"];
+  return { data: githubUsage(calls, ctx.world.now(), quota, since), help };
 }
 
 async function leadLogCommand(_args: Args, ctx: RunContext): Promise<Output> {
@@ -1441,7 +1472,7 @@ async function serve(args: Args, ctx: RunContext): Promise<Output> {
   // What changes on a PR reaches the Lead as events in its Inbox.
   ctx.world.every(PR_WATCH_INTERVAL_MS, async () => {
     try {
-      const { events: written, warnings } = await watchPrs(ctx.world, ctx.configDir, shared.prs);
+      const { events: written, warnings } = await withCaller("pr watch", () => watchPrs(ctx.world, ctx.configDir, shared.prs));
       for (const warning of warnings) console.error(`PR events: ${warning}`);
       if (written.length) for (const warning of await nudgeLead(ctx.world, ctx.configDir)) console.error(warning);
     } catch (e) {
@@ -1451,7 +1482,7 @@ async function serve(args: Args, ctx: RunContext): Promise<Output> {
   // The Board is tended while it is up; the timer stays as the floor, and the advance lock keeps the two apart.
   ctx.world.every(ADVANCE_INTERVAL_MS, async () => {
     try {
-      const { data } = advanceOutput(await advance(ctx.world, ctx.configDir));
+      const { data } = advanceOutput(await withCaller("scheduler", () => advance(ctx.world, ctx.configDir)));
       console.error(`advance: ${render({ data }, false).trimEnd()}`);
     } catch (e) {
       // A failed tick is only logged: the next one tries again.

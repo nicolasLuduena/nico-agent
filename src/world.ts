@@ -1,3 +1,5 @@
+import type { RateLimit } from "./github-calls";
+
 /**
  * The outside-world port: every interaction with git, GitHub, herdr, the
  * network, the clock and Linear goes through here. Tests swap in an
@@ -57,6 +59,8 @@ export interface World {
    * checks on its head commit.
    */
   githubPullRequestActivity(slug: string, number: number, since?: Date): Promise<PullRequestActivity>;
+  /** The account's core and GraphQL budgets, from `gh api rate_limit`, which spends neither. */
+  githubRateLimit(): Promise<RateLimit>;
   /** Assign an issue to the user's own GitHub session (the Claim, ADR-0007). */
   githubAssignSelf(slug: string, number: number): Promise<void>;
   /** Fetch origin, or explicitly fetch a head branch into its origin tracking ref. */
