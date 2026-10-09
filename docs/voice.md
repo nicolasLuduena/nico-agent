@@ -4,7 +4,7 @@ Talking to the Lead takes three services, each an OpenAI-compatible HTTP
 endpoint in `~/.config/nico-agent/config.json`:
 
 - **transcribe** turns the user's audio into text (`POST /audio/transcriptions`).
-- **speak** reads the Lead's replies aloud (`POST /audio/speech`).
+- **speak** reads the Lead's replies aloud with Voice on (`POST /audio/speech`).
 - **scribe** cleans the raw transcript before the Lead reads it
   (`POST /chat/completions`); see **Scribe** in `GLOSSARY.md`.
 
@@ -92,6 +92,46 @@ composer: the conversation never waits on it.
 Say (or type) "No, I said …" to correct your last message: the new entry
 supersedes it (`supersedes` in `lead log --json`), the old card is struck,
 and the Lead's Inbox hands it the correction with the text it replaces.
+
+Said right after the Lead's question, before anything else is said, what you
+say is the answer to it. For a question with choices, the Scribe is asked
+which choice it picks ("the second one", "the Linear one"), and the answer
+recorded is that choice, with what was heard kept beside it; when it picks
+none clearly, or there is no Scribe, the answer is what you said.
+
+### The Lead speaks
+
+With Voice on (`nico-agent voice on|off`, or the **Voice** switch in the Lead
+panel's head), every reply and question the Lead writes is read by
+`voice.speak` and streamed to the app over the same `/api/voice` socket as it
+is made, as 24kHz 16-bit mono PCM (`response_format: "pcm"`, OpenAI's format,
+which Kokoro-FastAPI shares). A question is read with its choices as a
+numbered list. With Voice on, the page keeps the socket open, and every open
+page hears the Lead.
+
+The Nudge carries it too: the Lead is prompted "Read your Inbox (voice on)",
+then the local time, and its skill then talks for the ear: an acknowledgment
+before a slow answer, short sentences, issues by title, choices left to the
+numbered list.
+
+The Lead stops at once, and what it had still to say is dropped, when:
+
+- you press **Talk**, or **Stop** beside "The Lead is speaking";
+- you start talking over it: while it speaks, the page watches the
+  microphone (only once you have allowed it for the page, so it never asks),
+  and a fifth of a second of unbroken voice stops the Lead and starts a
+  hands-free utterance from those first words.
+
+The browser's echo cancellation keeps the Lead's own voice out of the
+microphone; on loud speakers it may still leak and stop the Lead. Headphones
+avoid it. Safari cannot tell the page whether the microphone is allowed, so
+on the iPhone a tap stops the Lead.
+
+A browser plays audio only after a gesture on the page: with Voice on from
+the start, the first click or key on the page lets the Lead be heard.
+
+When `voice.speak` is not configured, unreachable or answers an error, the
+reply shows in the panel as ever, with a warning above the composer.
 
 ### The fixture set
 

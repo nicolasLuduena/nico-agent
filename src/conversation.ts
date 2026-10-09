@@ -17,8 +17,8 @@ export type Entry = { id: number; at: string } & (
   | { type: "lead"; text: string }
   /** A question from the Lead, open until an `answer` names it. */
   | { type: "ask"; text: string; choices?: string[] }
-  /** The user's answer to the `ask` entry `question`. */
-  | { type: "answer"; question: number; text: string }
+  /** The user's answer to the `ask` entry `question`; `raw` is what was heard when it was spoken. */
+  | { type: "answer"; question: number; text: string; raw?: string }
   /**
    * The user's decision on the Proposal `proposal`, with its action or write,
    * the Lead's `reason` for it, and what running the action printed; `text`
@@ -150,6 +150,11 @@ type User = Extract<Entry, { type: "user" }>;
 /** How the user takes back their last message, typed or spoken: "No, I said …". */
 const CORRECTION = /^\s*(?:no\b[\s,.;:!—–-]*)+i said\b/i;
 
+/** Whether the user's message, in its text or in what was heard, starts "No, I said": a Correction. */
+export function isCorrection(message: { text: string; raw?: string | undefined }) {
+  return [message.text, message.raw].some((t) => t !== undefined && CORRECTION.test(t));
+}
+
 /**
  * Append the user's message, as typed or, with `raw`, as spoken. One that
  * starts "No, I said", in its text or in what was heard, supersedes the
@@ -159,16 +164,17 @@ export function sayToLead(dir: string, message: { text: string; raw?: string }, 
   return withFileLock(dir, FILE, () => {
     const entries = loadConversation(dir);
     const last = entries.findLast((e) => e.type === "user");
-    const corrects = last && [message.text, message.raw].some((t) => t !== undefined && CORRECTION.test(t));
+    const corrects = last && isCorrection(message);
     return write(dir, entries, { type: "user", ...message, ...(corrects && { supersedes: last.id }) }, at) as User;
   });
 }
 
 /**
- * Append the user's answer to the open question with id `question`, as typed.
- * A question already answered, or an id that is not a question, is refused.
+ * Append the user's answer to the open question with id `question`, as typed
+ * or, with `raw`, as spoken. A question already answered, or an id that is
+ * not a question, is refused.
  */
-export function answerQuestion(dir: string, question: string, text: string, at: Date): Promise<Answer> {
+export function answerQuestion(dir: string, question: string, text: string, at: Date, raw?: string): Promise<Answer> {
   return withFileLock(dir, FILE, () => {
     const entries = loadConversation(dir);
     const open = openQuestions(entries);
@@ -177,7 +183,7 @@ export function answerQuestion(dir: string, question: string, text: string, at: 
       const asked = entries.some((e) => e.type === "ask" && String(e.id) === question);
       throw new AnswerRefused(asked ? `question ${question} was already answered` : `no question has id ${question}`, open);
     }
-    return write(dir, entries, { type: "answer", question: id, text }, at) as Answer;
+    return write(dir, entries, { type: "answer", question: id, text, ...(raw !== undefined && { raw }) }, at) as Answer;
   });
 }
 

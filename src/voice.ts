@@ -106,6 +106,31 @@ export type Answered = { ms: number; returned: string } | { error: string; help:
 
 /** Send `probe`'s request to `endpoint`, with its key, and read the answer. */
 async function ask(world: World, service: VoiceService, endpoint: VoiceEndpoint, probe: Probe): Promise<Answered> {
+  const started = world.now().getTime();
+  const reached = await reach(world, service, endpoint, probe.request);
+  if (!("response" in reached)) return reached;
+  const { response } = reached;
+  let returned: string;
+  try {
+    returned = await probe.read(response);
+  } catch (e) {
+    if (!(e instanceof ProbeFailed)) throw e;
+    return { error: e.message, help: checkSettings(service) };
+  }
+  // Up to the whole answer read: a streamed one's headers come long before its audio.
+  return { ms: world.now().getTime() - started, returned };
+}
+
+/**
+ * Send the request `build` makes to `endpoint`, with its key, and resolve with
+ * the service's answer when it is a success; else why not, and what to do.
+ */
+async function reach(
+  world: World,
+  service: VoiceService,
+  endpoint: VoiceEndpoint,
+  build: Probe["request"],
+): Promise<{ response: Response } | { error: string; help: string }> {
   const failed = (error: string, help: string) => ({ error, help });
   const headers = new Headers();
   if (endpoint.keyEnv) {
@@ -118,8 +143,7 @@ async function ask(world: World, service: VoiceService, endpoint: VoiceEndpoint,
     }
     headers.set("authorization", `Bearer ${key}`);
   }
-  const request = await probe.request(endpoint, headers);
-  const started = world.now().getTime();
+  const request = await build(endpoint, headers);
   let response: Response;
   try {
     response = await world.http(request);
@@ -127,17 +151,31 @@ async function ask(world: World, service: VoiceService, endpoint: VoiceEndpoint,
     if (!(e instanceof WorldError)) throw e;
     return failed(e.message, `Start the ${service} service (see ${VOICE_DOC}) or fix voice.${service}.url`);
   }
-  const checkSettings = `Check voice.${service}.url and voice.${service}.model`;
-  if (!response.ok) return failed(`answered ${response.status}: ${await errorMessage(response)}`, checkSettings);
-  let returned: string;
-  try {
-    returned = await probe.read(response);
-  } catch (e) {
-    if (!(e instanceof ProbeFailed)) throw e;
-    return failed(e.message, checkSettings);
-  }
-  // Up to the whole answer read: a streamed one's headers come long before its audio.
-  return { ms: world.now().getTime() - started, returned };
+  if (!response.ok) return failed(`answered ${response.status}: ${await errorMessage(response)}`, checkSettings(service));
+  return { response };
+}
+
+/** The rate of the audio `speak` streams: 16-bit mono PCM at 24kHz, OpenAI's `pcm` format, which Kokoro-FastAPI shares. */
+export const SPEECH_RATE = 24_000;
+
+/**
+ * `text` read aloud by the speech service, as a stream of 16-bit
+ * little-endian mono PCM at SPEECH_RATE, read as it is made.
+ */
+export async function speak(world: World, endpoint: VoiceEndpoint, text: string): Promise<{ audio: ReadableStream<Uint8Array> } | { error: string; help: string }> {
+  const reached = await reach(world, "speak", endpoint, async (endpoint, headers) => {
+    headers.set("content-type", "application/json");
+    const body = { model: endpoint.model, input: text, voice: endpoint.voice ?? DEFAULT_VOICE, response_format: "pcm" };
+    return new Request(`${base(endpoint)}/audio/speech`, { method: "POST", headers, body: JSON.stringify(body) });
+  });
+  if (!("response" in reached)) return reached;
+  const audio = reached.response.body;
+  return audio ? { audio } : { error: "answered without audio", help: checkSettings("speak") };
+}
+
+/** What to do when a service answers, but not with what was asked for. */
+function checkSettings(service: VoiceService) {
+  return `Check voice.${service}.url and voice.${service}.model`;
 }
 
 /**
@@ -163,6 +201,35 @@ export function scribe(world: World, endpoint: VoiceEndpoint, raw: string, conte
     request: async (endpoint, headers) => scribeRequest(endpoint, headers, raw, context),
     read: PROBES.scribe.read,
   });
+}
+
+/** The Lead's question with choices, as the Scribe is shown it to tell which one an answer picks. */
+export interface Question {
+  text: string;
+  choices: string[];
+}
+
+/**
+ * Which of `question`'s choices `answer`, the user's spoken answer as the
+ * Scribe cleaned it, picks: its index, or null when it picks none clearly or
+ * the Scribe could not tell.
+ */
+export async function choose(world: World, endpoint: VoiceEndpoint, question: Question, answer: string): Promise<number | null> {
+  const picked = await ask(world, "scribe", endpoint, {
+    request: async (endpoint, headers) => {
+      headers.set("content-type", "application/json");
+      const system = "The Lead asked the user a question with numbered choices, and the user answered aloud. " +
+        "Reply with the number of the choice the answer picks, by its number, its place (\"the second one\") or its words; " +
+        "or 0 when it picks none of them clearly. Reply with the number only.";
+      const user = [`Question: ${question.text}`, ...question.choices.map((c, i) => `${i + 1}. ${c}`), `Answer: ${answer}`].join("\n");
+      const messages = [{ role: "system", content: system }, { role: "user", content: user }];
+      return new Request(`${base(endpoint)}/chat/completions`, { method: "POST", headers, body: JSON.stringify({ model: endpoint.model, temperature: 0, messages }) });
+    },
+    read: PROBES.scribe.read,
+  });
+  if ("error" in picked) return null;
+  const number = Number(/^\D*(\d+)/.exec(picked.returned)?.[1]);
+  return number >= 1 && number <= question.choices.length ? number - 1 : null;
 }
 
 /**

@@ -137,9 +137,9 @@ export interface Address {
 
 export type RequestHandler = (request: Request) => Promise<Response>;
 
-/** What a WebSocket's server side sends to the page on the other end. */
+/** What a WebSocket's server side sends to the page on the other end: text, or binary such as audio. */
 export interface SocketPeer {
-  send(message: string): void;
+  send(message: string | Uint8Array): void;
   close(): void;
 }
 

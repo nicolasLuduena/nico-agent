@@ -57,6 +57,7 @@ function usePost() {
 export function LeadPanel({ harnesses }: { harnesses: HarnessesJson | null }) {
   const { state, send, dismiss, failure } = useConversation();
   const [drawer, setDrawer] = useState(false);
+  const voice = useResource<{ voice?: string }>("/api/voice/state", ["voice-changed"]).data?.voice === "on";
   const shown = cards(state);
   const scroller = useRef<HTMLOListElement>(null);
   // A new card brings the conversation to its end, unless the user scrolled up to read.
@@ -67,7 +68,7 @@ export function LeadPanel({ harnesses }: { harnesses: HarnessesJson | null }) {
   }, [shown.length, drawer]);
   return (
     <aside className="lead-panel" aria-label="Lead">
-      <LeadHead harnesses={harnesses} drawer={drawer} onDrawer={setDrawer} />
+      <LeadHead harnesses={harnesses} drawer={drawer} onDrawer={setDrawer} voice={voice} />
       {failure && <p className="error" role="status">{failure}</p>}
       <LeadDrawer open={drawer} />
       <ol
@@ -84,17 +85,17 @@ export function LeadPanel({ harnesses }: { harnesses: HarnessesJson | null }) {
           ? shown.map((card) => <CardView key={card.key} card={card} send={send} dismiss={dismiss} />)
           : <li className="empty">No conversation yet. Write to the Lead below; it reads your message when it next looks at its Inbox.</li>}
       </ol>
-      <Composer send={send} />
+      <Composer send={send} voice={voice} />
     </aside>
   );
 }
 
 /**
  * The Lead's Agent state, launch and failure, live, with Start, Restart and
- * Stop on the picked launch, and the button opening the drawer in place of
- * the conversation.
+ * Stop on the picked launch, the Voice switch, and the button opening the
+ * drawer in place of the conversation.
  */
-function LeadHead({ harnesses, drawer, onDrawer }: { harnesses: HarnessesJson | null; drawer: boolean; onDrawer: (open: boolean) => void }) {
+function LeadHead({ harnesses, drawer, onDrawer, voice }: { harnesses: HarnessesJson | null; drawer: boolean; onDrawer: (open: boolean) => void; voice: boolean }) {
   const { data: status = null } = useResource<LeadStatusJson>("/api/lead/status", ["lead-state"]);
   const [chosen, setChosen] = useState<LeadPicks>({});
   const { busy, outcome, act: post } = usePost();
@@ -111,6 +112,10 @@ function LeadHead({ harnesses, drawer, onDrawer }: { harnesses: HarnessesJson | 
         <h2>Lead</h2>
         {running ? <Agent role="lead" state={status.state ?? "unknown"} /> : <span className={`lead-state${status?.failure ? " error" : ""}`}>{status?.lead ?? "…"}</span>}
         {status?.harness && <span className="chip">{`${status.harness} · ${status.model} · ${status.effort}`}</span>}
+        <label className="voice-switch" title={voice ? "The Lead's replies are spoken, and it talks for the ear" : "Speak the Lead's replies, and have it talk for the ear"}>
+          <input type="checkbox" role="switch" checked={voice} disabled={busy} onChange={(e) => void post(e.target.checked ? "/api/voice/on" : "/api/voice/off", [])} />
+          Voice
+        </label>
         <button type="button" className="drawer-toggle" aria-expanded={drawer} aria-controls="lead-drawer" onClick={() => onDrawer(!drawer)}>
           {drawer ? "Conversation" : "Intent & orders"}
         </button>
@@ -212,7 +217,12 @@ function QuestionCard({ card, send, dismiss }: { card: Card & { kind: "question"
       <Byline who="lead" at={card.at} note="asks" />
       <p className="text">{card.text}</p>
       {card.answer
-        ? <p className="answer"><span>{card.answer.sending ? "Answering" : "You answered"}</span>{card.answer.text}</p>
+        ? (
+          <>
+            <p className="answer"><span>{card.answer.sending ? "Answering" : "You answered"}</span>{card.answer.text}</p>
+            {card.answer.raw !== undefined && <p className="raw"><span>Heard</span>{card.answer.raw}</p>}
+          </>
+        )
         : (
           <>
             {card.choices.length > 0 && (
@@ -286,11 +296,13 @@ function ProposalCard({ card }: { card: Card & { kind: "proposal" } }) {
 
 /**
  * Where the user writes or talks to the Lead: Enter sends, Shift+Enter starts
- * a new line; the talk button sends the Scribe's text, keeping what it heard.
+ * a new line; the talk button sends the Scribe's text, keeping what it heard,
+ * as the answer to the Lead's question when said right after it. With `voice`
+ * on, the Lead is heard here too.
  */
-function Composer({ send }: { send: SendText }) {
+function Composer({ send, voice }: { send: SendText; voice: boolean }) {
   const [text, setText] = useState("");
-  const talking = useTalk((text, heard) => void send(text, undefined, heard));
+  const talking = useTalk((text, heard, answers) => void send(text, answers, heard), voice);
   const submit = () => {
     if (!text.trim()) return;
     void send(text);

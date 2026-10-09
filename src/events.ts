@@ -1,11 +1,11 @@
 /**
  * What the app's SSE stream says changed; the app refetches the matching
  * resource: the Board, the conversation, the Proposals, the Lead's status,
- * or the drawer's Intent, Notes or Standing orders.
+ * the drawer's Intent, Notes or Standing orders, or whether Voice is on.
  */
 export type EventName =
   | "board-changed" | "conversation-entry" | "proposal-changed" | "lead-state"
-  | "intent-changed" | "notes-changed" | "orders-changed";
+  | "intent-changed" | "notes-changed" | "orders-changed" | "voice-changed";
 
 /**
  * The app's one SSE stream, `/api/events`, fanned out to every open page.
@@ -14,9 +14,24 @@ export type EventName =
 export class Events {
   private readonly streams = new Set<ReadableStreamDefaultController<Uint8Array>>();
   private readonly encoder = new TextEncoder();
+  private readonly listeners: { name: EventName; listener: () => void }[] = [];
+
+  /** Call `listener` on every `name` emitted, as `serve`'s speech does on a new entry. */
+  on(name: EventName, listener: () => void) {
+    this.listeners.push({ name, listener });
+  }
 
   /** Send `name` to every open stream. */
   emit(name: EventName) {
+    for (const l of this.listeners) {
+      if (l.name !== name) continue;
+      // A listener that fails is logged, never left to stop the streams hearing of it.
+      try {
+        l.listener();
+      } catch (e) {
+        console.error(`${name} listener failed: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
     // `data` must be present and not empty, or a browser drops the event.
     const chunk = this.encoder.encode(`event: ${name}\ndata: {}\n\n`);
     for (const stream of this.streams) {

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type Listening, type Talk, type TalkEvent, LISTENING, level, listen, resampler, talk } from "../src/app/talk";
+import { type Listening, type Talk, type TalkEvent, LISTENING, bargesIn, level, listen, pcmSamples, resampler, talk } from "../src/app/talk";
 
 /** The talk button's states after each of `events`, with what each told the socket to do. */
 function run(events: TalkEvent[], from: Talk = { mode: "idle" }) {
@@ -72,6 +72,48 @@ describe("the talk button", () => {
   });
 });
 
+describe("barge-in, while the Lead speaks", () => {
+  test("the microphone watches for the user's voice, and speech onset starts a hands-free utterance", () => {
+    expect(run([{ type: "lead-speaks" }, { type: "barge" }, { type: "pause" }])).toEqual([
+      ["watching", null],
+      ["hands-free", "start"],
+      ["transcribing", "end"],
+    ]);
+  });
+
+  test("once the Lead is done, or hushed by a tap, it stops watching", () => {
+    expect(run([{ type: "lead-speaks" }, { type: "lead-done" }])).toEqual([["watching", null], ["idle", null]]);
+  });
+
+  test("a press while it watches records as from idle", () => {
+    expect(run([{ type: "lead-speaks" }, { type: "press", at: 0 }, { type: "release", at: 100 }])).toEqual([
+      ["watching", null],
+      ["holding", "start"],
+      ["hands-free", null],
+    ]);
+  });
+
+  test("while the user is recording or waiting on a transcript, the Lead speaking changes nothing", () => {
+    for (const mode of ["holding", "hands-free", "transcribing"] as const) {
+      const from = (mode === "holding" ? { mode, since: 0 } : { mode }) as Talk;
+      expect(run([{ type: "lead-speaks" }, { type: "lead-done" }, { type: "barge" }], from)).toEqual([[mode, null], [mode, null], [mode, null]]);
+    }
+  });
+
+  test("a microphone that fails while watching only stops watching", () => {
+    expect(run([{ type: "failed" }], { mode: "watching" })).toEqual([["idle", null]]);
+  });
+
+  test("speech onset is a fifth of a second of unbroken voice over the room; blips never add up", () => {
+    const onset = (frames: [number, number][]) => {
+      let state: Listening = LISTENING;
+      return frames.map(([l, ms]) => bargesIn((state = listen(state, l, ms).state)));
+    };
+    expect(onset([[QUIET, 100], [SPEECH, 100], [SPEECH, 100]])).toEqual([false, false, true]);
+    expect(onset([[QUIET, 100], [SPEECH, 100], [QUIET, 100], [SPEECH, 100]])).toEqual([false, false, false, false]);
+  });
+});
+
 /** `listen` over `frames` of [level, ms], until it ends: how it ended and after how long. */
 function hear(frames: [number, number][]) {
   let state: Listening = LISTENING;
@@ -139,5 +181,12 @@ describe("the audio sent", () => {
   test("a batch's level is its root mean square", () => {
     expect(level(Float32Array.from([0.5, -0.5, 0.5, -0.5]))).toBe(0.5);
     expect(level(new Float32Array(0))).toBe(0);
+  });
+});
+
+describe("the Lead's voice as played", () => {
+  test("its 16-bit little-endian PCM becomes samples from -1 to 1", () => {
+    const pcm = new Uint8Array([0x00, 0x00, 0xff, 0x7f, 0x00, 0x80, 0x00, 0x40]).buffer;
+    expect([...pcmSamples(pcm)]).toEqual([0, 32767 / 32768, -1, 0.5]);
   });
 });
