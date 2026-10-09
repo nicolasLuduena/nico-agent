@@ -17,7 +17,7 @@ import { PROPOSALS_SCOPE, notifyOnce } from "./notify";
 import { type Output, plural, render } from "./output";
 import { type Proposal, ProposalRefused, addProposal, commandLine, decide, loadProposals, openProposals, settle } from "./proposals";
 import { dequeue, enqueue, loadQueues, move, pruneBoardQueues, queueOf } from "./queue";
-import { RECORDS, type RecordName, StaleRecord, readRecord, replaceRecord } from "./records";
+import { RECORDS, type RecordName, StaleRecord, noneYet, readRecord, replaceRecord } from "./records";
 import { isCandidate, sameSpec } from "./spec";
 import { VERSION } from "./version";
 import { sameSlug, slugOfRemote } from "./slug";
@@ -265,8 +265,8 @@ const commands: Command[] = [
     help: [ORDERS_HELP],
     run: ordersSet,
   },
-  ...recordCommands("intent", "what you are working toward and why", "- Ship billing before the Stripe contract renews"),
-  ...recordCommands("notes", "your standing preferences, recurring decisions and names for things", "- audit-notes always runs on codex"),
+  ...recordCommands("intent", "- Ship billing before the Stripe contract renews"),
+  ...recordCommands("notes", "- audit-notes always runs on codex"),
   {
     name: "proposals",
     usage: "nico-agent proposals [--all]",
@@ -1125,15 +1125,15 @@ async function ordersSet(args: Args, ctx: RunContext): Promise<Output> {
 }
 
 /** `nico-agent <record>` shows the Intent or the Notes; `<record> set` replaces it whole. */
-function recordCommands(record: RecordName, holds: string, example: string): Command[] {
-  const { name } = RECORDS[record];
-  const setUsage = `nico-agent ${record} set [--file <path>] [--version <version>]`;
+function recordCommands(record: RecordName, example: string): Command[] {
+  const { name, holds } = RECORDS[record];
+  const setUsage = `nico-agent ${record} set [--file <path> | --text <markdown>] [--version <version>]`;
   const showHelp = `Run \`nico-agent ${record} --json\` for its version, which \`${record} set --version\` carries`;
   return [
     {
       name: record,
       usage: `nico-agent ${record}`,
-      summary: `Show the ${name}: ${holds}, which you and the Lead both edit`,
+      summary: `Show the ${name}: ${holds}, which the user and the Lead both edit`,
       flags: {},
       positionals: [],
       examples: [`nico-agent ${record}`, `nico-agent ${record} --json`],
@@ -1141,14 +1141,14 @@ function recordCommands(record: RecordName, holds: string, example: string): Com
         const { text, version, path } = readRecord(ctx.configDir, record);
         const help = [`Run \`nico-agent ${record} set --file <path>\` to replace it, or edit ${path}`];
         if (args.flags["--json"] === true) return { data: { [record]: text, version, path }, help };
-        if (!text.trim()) return { data: { [record]: `none yet: ${path} is missing or empty` }, help };
+        if (!text.trim()) return { data: { [record]: noneYet(path) }, help };
         return { data: { [record]: text, version }, help };
       },
     },
     {
       name: `${record} set`,
       usage: setUsage,
-      summary: `Replace the ${name} whole with a Markdown file or standard input (the Lead's \`${record}\` tool)`,
+      summary: `Replace the ${name} whole with a Markdown file, --text or standard input (the Lead's \`${record}\` tool)`,
       flags: {
         "--file": { value: true, description: "Markdown file to replace it with (default: standard input)" },
         "--text": { value: true, description: "Markdown to replace it with, instead of a file" },

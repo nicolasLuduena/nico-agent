@@ -1,5 +1,6 @@
 import { ORDERS, type Order } from "./config";
 import { render } from "./output";
+import { RECORDS, type RecordName } from "./records";
 import { VERSION } from "./version";
 
 /** Runs a CLI command line in-process, as `nico-agent` would. */
@@ -84,11 +85,12 @@ function actionTools() {
 }
 
 /** A tool reading the Intent or the Notes, or replacing it whole with the version it read, as `nico-agent <name> set` does. */
-function recordTool(name: "intent" | "notes", title: string, holds: string) {
+function recordTool(name: RecordName) {
+  const { name: title, holds } = RECORDS[name];
   return {
     name,
     title,
-    description: `Read or replace ${holds}. With no arguments, returns its Markdown and version (\`nico-agent ${name} --json\`). With \`text\` and the \`version\` you read, replaces it whole (\`nico-agent ${name} set\`); the user edits it too, so a replace whose version is stale is refused with the current text to merge into.`,
+    description: `Read or replace the ${title}: ${holds}. With no arguments, returns its Markdown and version (\`nico-agent ${name} --json\`). With \`text\` and the \`version\` you read, replaces it whole (\`nico-agent ${name} set\`), never with blank text; the user edits it too, so a replace whose version is stale is refused with the current text to merge into.`,
     inputSchema: {
       type: "object",
       properties: {
@@ -153,8 +155,7 @@ const TOOLS = [
       additionalProperties: false,
     },
   },
-  recordTool("intent", "Intent", "the Intent: what the user is working toward and why"),
-  recordTool("notes", "Notes", "the Notes: the user's standing preferences, recurring decisions with their reasons, and their names for things"),
+  ...(Object.keys(RECORDS) as RecordName[]).map(recordTool),
   ...actionTools(),
   {
     name: "propose",

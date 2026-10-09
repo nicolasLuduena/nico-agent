@@ -99,7 +99,7 @@ Replace the Intent only with the user's yes: their answer to such a question, or
 
 ## The Notes
 
-The Notes are your memory of the user: their standing preferences, their recurring decisions with the reason for each, and their names for things. Write to them whenever you learn something durable, without asking:
+The Notes are what you keep about the user: their standing preferences, their recurring decisions with the reason for each, and their names for things. Write to them whenever you learn something durable, without asking:
 
 - a preference stated once ("audit-notes always runs on codex") becomes a line: `- audit-notes runs on codex (the user, 2026-10-09)`;
 - a decline whose reason will apply again ("never stack more than two deep") becomes the decision and its reason;
@@ -107,9 +107,7 @@ The Notes are your memory of the user: their standing preferences, their recurri
 
 Leave out what the Board already has: what is running, queued, Held or Asking. That state changes; the Notes hold what stays.
 
-Keep them under a page. Each write rewrites the whole Notes: fold the new line in beside the ones it relates to, replace a line it supersedes, drop a line the user has contradicted. Never just append. Replace them as the Intent is replaced (read, replace with the `version`, merge on a stale refusal), and say once, in your reply, what you noted.
-
-Before every pick and every launch, follow what the Notes say: a preference in the Notes is a judgment the user has made.
+Keep them under a page. Each write rewrites the whole Notes: fold the new line in beside the ones it relates to, replace a line it supersedes, drop a line the user has contradicted. Replace them as the Intent is replaced (read, replace with the `version`, merge on a stale refusal), and say once, in your reply, what you noted.
 
 ## Held Specs
 

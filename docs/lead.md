@@ -210,7 +210,7 @@ Two Markdown files in the config directory that you and the Lead both edit:
 ```sh
 nico-agent intent                      # show it (a hint when there is none)
 nico-agent intent --json               # {"intent": "...", "version": "...", "path": "..."}
-nico-agent intent set --file intent.md # replace it whole; or pipe it in on stdin
+nico-agent intent set --file intent.md # replace it whole; or --text <markdown>, or pipe it in on stdin
 nico-agent notes                       # the same for the Notes
 nico-agent notes set --file notes.md
 ```

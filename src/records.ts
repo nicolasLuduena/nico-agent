@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
-import { readFileSync, renameSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { withFileLock } from "./state";
+import { withFileLock, writeTextAtomic } from "./state";
 
 /**
  * The two Markdown records in the config directory that the user and the Lead
@@ -9,8 +9,8 @@ import { withFileLock } from "./state";
  * standing preferences). Each is read and replaced whole.
  */
 export const RECORDS = {
-  intent: { file: "intent.md", name: "Intent" },
-  notes: { file: "notes.md", name: "Notes" },
+  intent: { file: "intent.md", name: "Intent", holds: "what the user is working toward and why" },
+  notes: { file: "notes.md", name: "Notes", holds: "the user's standing preferences, recurring decisions with their reasons, and their names for things" },
 } as const;
 export type RecordName = keyof typeof RECORDS;
 
@@ -28,8 +28,7 @@ export class StaleRecord extends Error {
   }
 }
 
-/** The record's path in `dir`. */
-export function recordPath(dir: string, record: RecordName) {
+function recordPath(dir: string, record: RecordName) {
   return join(dir, RECORDS[record].file);
 }
 
@@ -48,7 +47,12 @@ export function readRecord(dir: string, record: RecordName): RecordRead {
 /** The record's Markdown, or a line saying it is missing or empty, as the orient packet carries it. */
 export function recordOrNone(dir: string, record: RecordName): string {
   const { text, path } = readRecord(dir, record);
-  return text.trim() ? text : `none yet: ${path} is missing or empty`;
+  return text.trim() ? text : noneYet(path);
+}
+
+/** What stands for a record whose file is missing or empty. */
+export function noneYet(path: string) {
+  return `none yet: ${path} is missing or empty`;
 }
 
 /**
@@ -60,9 +64,7 @@ export function replaceRecord(dir: string, record: RecordName, text: string, ver
   return withFileLock(dir, RECORDS[record].file, () => {
     const current = readRecord(dir, record);
     if (version !== undefined && version !== current.version) throw new StaleRecord(current);
-    const tmp = `${current.path}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
-    writeFileSync(tmp, text);
-    renameSync(tmp, current.path);
+    writeTextAtomic(current.path, text);
     return { text, version: versionOf(text), path: current.path };
   });
 }
