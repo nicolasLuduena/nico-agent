@@ -261,7 +261,7 @@ describe("the Queue on the web Board", () => {
     const plain = await web("/queue", { method: "POST", body: new URLSearchParams({ repo: "bleentr/pdf-diff", spec: "BLE-20" }) });
     expect(plain.status).toBe(303);
 
-    const restarted = webHandler({ world, configDir });
+    const restarted = webHandler({ world, configDir, runCli: () => Promise.reject(new Error("no MCP calls here")) });
     const body = await (await restarted(new Request("http://127.0.0.1:42069/"))).text();
     expect(body).toContain('<span class="queued">Queued 1 of 1</span>');
   });

@@ -13,12 +13,15 @@ import { type AdvanceRow, advance } from "./advance";
 import { plural } from "./output";
 import { type PreviewLookup, cachedPreviews } from "./preview";
 import { type Queues, dequeue, enqueue, move, pruneBoardQueues, queueOf } from "./queue";
+import { type CliRunner, mcpHandler } from "./mcp";
 import { sameSlug } from "./slug";
 import { type PullRequest, type World, WorldError } from "./world";
 
 export interface WebContext {
   world: World;
   configDir: string;
+  /** Runs a CLI command line in-process, for the MCP tools. */
+  runCli: CliRunner;
 }
 
 const HTML_HEADERS = { "content-type": "text/html; charset=utf-8" };
@@ -28,9 +31,11 @@ export function webHandler(context: WebContext) {
   // One cache for the server's life, so polling the In-flight section asks GitHub only every ~30s.
   // Likewise hovering an issue again shows its card without asking its Source.
   const ctx: ServerContext = { ...context, prs: cachedPrs(context.world), previews: cachedPreviews(context.world) };
+  const mcp = mcpHandler(context.runCli);
   return async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
     const { pathname } = url;
+    if (pathname === "/mcp") return await mcp(request);
     try {
       if (pathname === "/dispatch" && request.method === "POST") return await postLaunch(ctx, request, dispatch);
       if (pathname === "/review" && request.method === "POST") return await postLaunch(ctx, request, review);

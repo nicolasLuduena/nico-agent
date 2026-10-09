@@ -188,6 +188,14 @@ config directory beside the Intent. The Lead writes it when it learns something
 durable and keeps it under a page; the user reads and edits it too.
 _Avoid_: Memory, profile, settings
 
+**Conversation**:
+What the user and the Lead said to each other, as typed entries with ids and
+times appended to a file in the config directory: the user's messages, the
+Lead's replies, its questions and their answers. A question stays open until
+the user answers it by its id. The user reads it with `nico-agent lead log`;
+the Lead reads what is new in it through its Inbox.
+_Avoid_: Chat, history, transcript
+
 **Inbox**:
 What the Lead has not seen yet: user messages, decided Proposals, answers to
 its questions, Implementers Asking, Specs Held, Dispatches Failed, PRs changed.
