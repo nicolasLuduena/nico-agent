@@ -1,6 +1,7 @@
 import { mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
+import { ADVANCE_INTERVAL_MS as TEN_MINUTES } from "../src/advance";
 import { setup } from "./harness";
 
 describe("serve", () => {
@@ -66,7 +67,10 @@ describe("serve", () => {
 
 const LAUNCH = { harness: "claude", model: "opus", effort: "high" };
 const NUDGE = "herdr agent prompt lead Read your Inbox";
-const TEN_MINUTES = 10 * 60_000;
+
+function nudges(calls: string[]) {
+  return calls.filter((c) => c === NUDGE);
+}
 
 describe("serve ticks", () => {
   let log: string[];
@@ -92,16 +96,16 @@ describe("serve ticks", () => {
   test("every 10 minutes serve runs advance, which Nudges the Lead once, and logs its report", async () => {
     const { world } = await serving();
     await world.tick(TEN_MINUTES - 10_000);
-    expect(world.calls.filter((c) => c === NUDGE)).toEqual([]);
+    expect(nudges(world.calls)).toEqual([]);
     expect(log).toEqual([]);
 
     await world.tick(10_000);
-    expect(world.calls.filter((c) => c === NUDGE)).toEqual([NUDGE]);
+    expect(nudges(world.calls)).toEqual([NUDGE]);
     expect(log).toEqual(["advance: specs: []"]);
 
     world.agentStates.set("lead", "idle");
     await world.tick(TEN_MINUTES);
-    expect(world.calls.filter((c) => c === NUDGE)).toEqual([NUDGE, NUDGE]);
+    expect(nudges(world.calls)).toEqual([NUDGE, NUDGE]);
     expect(log).toEqual(["advance: specs: []", "advance: specs: []"]);
   });
 
@@ -109,12 +113,12 @@ describe("serve ticks", () => {
     const { configDir, world } = await serving();
     writeFileSync(join(configDir, "advance.lock"), "777");
     await world.tick(TEN_MINUTES);
-    expect(world.calls.filter((c) => c === NUDGE)).toEqual([]);
+    expect(nudges(world.calls)).toEqual([]);
     expect(log).toEqual(["advance: specs: []\nwarnings[1]: another advance is running (pid 777); left it to finish"]);
 
     unlinkSync(join(configDir, "advance.lock"));
     await world.tick(TEN_MINUTES);
-    expect(world.calls.filter((c) => c === NUDGE)).toEqual([NUDGE]);
+    expect(nudges(world.calls)).toEqual([NUDGE]);
     expect(log[1]).toBe("advance: specs: []");
   });
 
@@ -131,7 +135,7 @@ describe("serve ticks", () => {
     world.agentStates.set("lead", "idle");
     world.calls.length = 0;
     await world.tick(TEN_MINUTES);
-    expect(world.calls.filter((c) => c === NUDGE)).toEqual([NUDGE]);
+    expect(nudges(world.calls)).toEqual([NUDGE]);
     expect(log[1]).toBe("advance: specs: []");
   });
 });
