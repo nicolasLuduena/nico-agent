@@ -262,13 +262,50 @@ const PARTNER_TOOLS = [
   },
 ];
 
+const LIST = (description: string) => ({ type: "array", items: { type: "string" }, description });
+
+/** The Idea partner's `hand_off`: the Hand-off in the four parts the Lead turns into a Spec. */
+const IDEA_HAND_OFF = {
+  name: "hand_off",
+  title: "Hand off",
+  description: "Draft the Hand-off of a concrete idea, for the Lead to turn into a Spec without the Thread. The user approves or edits it before it reaches the Lead; a later draft replaces it.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      problem: { type: "string", description: "What is wrong or missing, for whom, and why it matters now" },
+      approach: { type: "string", description: "The approach chosen, naming the files, modules and behaviour it touches" },
+      ruledOut: LIST("Each approach weighed and dropped, with why; empty when none was"),
+      openQuestions: LIST("What is still undecided; empty when nothing is"),
+    },
+    required: ["problem", "approach", "ruledOut", "openQuestions"],
+    additionalProperties: false,
+  },
+};
+
+const IDEA_TOOLS = PARTNER_TOOLS.map((t) => (t.name === "hand_off" ? IDEA_HAND_OFF : t));
+
+/** The Idea partner's Hand-off as one Markdown summary, a heading per part. */
+function ideaHandOff(name: string, args: Record<string, unknown>): string {
+  const list = (key: string) => {
+    const items = strings(name, args, key);
+    return items.length ? items.map((i) => `- ${i}`).join("\n") : "None.";
+  };
+  return [
+    ["Problem", text(name, args, "problem")],
+    ["Approach", text(name, args, "approach")],
+    ["Ruled out", list("ruledOut")],
+    ["Open questions", list("openQuestions")],
+  ].map(([heading, body]) => `## ${heading}\n\n${body}`).join("\n\n");
+}
+
 /**
  * A Partner's server (ADR-0014), scoped to the Thread of its `tab`: only
  * `say`, `hand_off` and `thread`, so a Partner can neither read the Board nor act on it.
  */
 export function partnerServer(tab: PartnerTab): McpServer {
+  const tools = tab === "idea" ? IDEA_TOOLS : PARTNER_TOOLS;
   return {
-    tools: PARTNER_TOOLS,
+    tools,
     instructions: "Reply to the user with `say`, draft a Hand-off for the user to approve with `hand_off`, and read your Thread with `thread`.",
     call: async (runCli, params) => {
       if (!isObject(params) || typeof params.name !== "string") throw new RpcError(-32602, "tools/call needs a tool name");
@@ -278,14 +315,17 @@ export function partnerServer(tab: PartnerTab): McpServer {
         case "say":
           onlyArguments(name, args, ["text"]);
           return await cliResult(runCli, ["partner", "reply", tab, "--json", "--", text(name, args, "text")]);
-        case "hand_off":
-          onlyArguments(name, args, ["text"]);
-          return await cliResult(runCli, ["partner", "draft", tab, "--json", "--", text(name, args, "text")]);
+        case "hand_off": {
+          if (tab === "idea") onlyArguments(name, args, ["problem", "approach", "ruledOut", "openQuestions"]);
+          else onlyArguments(name, args, ["text"]);
+          const summary = tab === "idea" ? ideaHandOff(name, args) : text(name, args, "text");
+          return await cliResult(runCli, ["partner", "draft", tab, "--json", "--", summary]);
+        }
         case "thread":
           onlyArguments(name, args);
           return await cliResult(runCli, ["partner", "log", tab, "--json"]);
         default:
-          throw new RpcError(-32602, `Unknown tool: ${name} (the tools are ${PARTNER_TOOLS.map((t) => t.name).join(", ")})`);
+          throw new RpcError(-32602, `Unknown tool: ${name} (the tools are ${tools.map((t) => t.name).join(", ")})`);
       }
     },
   };
@@ -559,6 +599,13 @@ function onlyArguments(name: string, args: Record<string, unknown>, known: strin
 function text(name: string, args: Record<string, unknown>, key: string): string {
   const value = args[key];
   if (typeof value !== "string" || !value.trim()) throw new RpcError(-32602, `${name} needs ${key}, a non-empty string`);
+  return value;
+}
+
+/** The required argument `key`, a list of non-blank strings, possibly empty. */
+function strings(name: string, args: Record<string, unknown>, key: string): string[] {
+  const value = args[key];
+  if (!Array.isArray(value) || !value.every((v) => typeof v === "string" && v.trim())) throw new RpcError(-32602, `${name} needs ${key}, a list of non-empty strings`);
   return value;
 }
 

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type PartnerJson, type ThreadState, handOffArgs, pageOf, partnerSayArgs, partnerStanding, partnerStartArgs, reduceThread, threadCards } from "../src/app/partner";
+import { DRAFT_REQUESTS, type PartnerJson, type ThreadState, handOffArgs, pageOf, partnerSayArgs, partnerStanding, partnerStartArgs, reduceThread, threadCards } from "../src/app/partner";
 import { setup } from "./harness";
 
 const FLAGS = ["--harness", "claude", "--model", "opus", "--effort", "high"];
@@ -95,6 +95,13 @@ describe("the tab's actions", () => {
     const response = await web("/api/partner/hand-off", { method: "POST", body: JSON.stringify({ args: handOffArgs("review", { id: 1, text: "Ship it" }, "Ship it") }) });
     expect(response.status).toBe(200);
     expect(JSON.parse((await web("/api/lead/log")).body).entries.at(-1).text).toBe("Hand-off from the Review partner (acme/api):\n\nShip it");
+  });
+});
+
+describe("asking for a draft", () => {
+  test("the Ideas tab asks for the four parts its Hand-off is shaped in", () => {
+    expect(DRAFT_REQUESTS.idea).toBe("Draft the hand-off for the Lead: the problem, the approach we chose, what we ruled out, and the open questions.");
+    expect(DRAFT_REQUESTS.review).toBe("Draft the hand-off for the Lead: what we settled, what the Lead should do with it, and what is still open.");
   });
 });
 

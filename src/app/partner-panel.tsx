@@ -5,7 +5,7 @@ import { type Chosen, type HarnessesJson, launchChoice } from "./actions";
 import { OutcomeNote, answerOf, post, usePost } from "./forms";
 import { followsNewEntries } from "./lead";
 import {
-  DRAFT_REQUEST, type PartnerJson, type ThreadCard, type ThreadState,
+  DRAFT_REQUESTS, type PartnerJson, type ThreadCard, type ThreadState,
   handOffArgs, partnerSayArgs, partnerStanding, partnerStartArgs, reduceThread, threadCards,
 } from "./partner";
 import { sendsOnEnter } from "./popover";
@@ -101,7 +101,7 @@ function Thread({ tab, running }: { tab: PartnerTab; running: boolean }) {
       <div className="composer">
         <div className="composer-row">
           <Composer tab={tab} send={sendAndFollow} disabled={!running} />
-          <button type="button" className="quiet" disabled={!running || drafting} title={drafting ? "Its draft is waiting for you above" : "Ask the Partner for a summary to hand to the Lead"} onClick={() => void sendAndFollow(DRAFT_REQUEST)}>
+          <button type="button" className="quiet" disabled={!running || drafting} title={drafting ? "Its draft is waiting for you above" : "Ask the Partner for a summary to hand to the Lead"} onClick={() => void sendAndFollow(DRAFT_REQUESTS[tab])}>
             Draft a hand-off
           </button>
         </div>
