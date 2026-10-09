@@ -3,7 +3,7 @@ import { advance } from "./advance";
 import { answer, loadAsking } from "./answer";
 import { loadBoard } from "./board";
 import { ConfigError, findRepo, loadConfig, saveConfig } from "./config";
-import { AnswerRefused, answerQuestion, append, loadConversation, openQuestions, readInbox } from "./conversation";
+import { AnswerRefused, answerQuestion, append, author, loadConversation, openQuestions, readInbox } from "./conversation";
 import { StepFailed, baseBranch, closeDispatch, dispatch, eachIssue, resolveIssue, review } from "./dispatch";
 import { DispatchError } from "./dispatch-error";
 import { PANE_ARGS } from "./opencode";
@@ -39,6 +39,8 @@ const REVIEW_USAGE = "nico-agent review <issue>... --harness <harness> --model <
 const CLOSE_USAGE = "nico-agent close <issue>... [--confirm]";
 const ANSWER_USAGE = "nico-agent answer <issue> <text>";
 const SAY_USAGE = "nico-agent say [--answer <id>] <text>";
+const LEAD_SAY_USAGE = "nico-agent lead say <text>";
+const LEAD_ASK_USAGE = "nico-agent lead ask <question> [<choice>...]";
 const LOG_HELP = "Run `nico-agent lead log` to see the conversation with the Lead";
 const LAUNCH_FLAGS = {
   "--harness": { value: true, description: "Harness to launch, e.g. claude (see `nico-agent harness list`)" },
@@ -205,6 +207,7 @@ const commands: Command[] = [
     name: "lead inbox",
     usage: "nico-agent lead inbox",
     summary: "Read the Lead's Inbox: the entries it has not seen, each returned once (its MCP `inbox` tool)",
+    help: ["This moves the Lead's cursor, so the Lead will not see what it returns; run `nico-agent lead log` to read the conversation instead"],
     flags: {},
     positionals: [],
     examples: ["nico-agent lead inbox --json"],
@@ -212,7 +215,7 @@ const commands: Command[] = [
   },
   {
     name: "lead say",
-    usage: "nico-agent lead say <text>",
+    usage: LEAD_SAY_USAGE,
     summary: "Write the Lead's reply into the conversation (its MCP `say` tool)",
     flags: {},
     positionals: ["text..."],
@@ -222,7 +225,7 @@ const commands: Command[] = [
   },
   {
     name: "lead ask",
-    usage: "nico-agent lead ask <question> [<choice>...]",
+    usage: LEAD_ASK_USAGE,
     summary: "Ask the user a question for the Lead, with optional choices; it stays open until answered (its MCP `ask` tool)",
     flags: {},
     positionals: ["question", "choice..."],
@@ -516,15 +519,15 @@ async function answerCommand(args: Args, ctx: RunContext): Promise<Output> {
 
 async function sayCommand(args: Args, ctx: RunContext): Promise<Output> {
   const text = args.positionals.join(" ");
-  if (!text) throw new CliError("<text> is required", [`Usage: \`${SAY_USAGE}\``], 2);
+  if (!text.trim()) throw new CliError("<text> is required", [`Usage: \`${SAY_USAGE}\``], 2);
   const flag = args.flags["--answer"];
   if (typeof flag !== "string") {
     const entry = await append(ctx.configDir, { type: "user", text }, ctx.world.now());
     return { data: { said: entry.id }, help: [LOG_HELP] };
   }
   try {
-    const entry = await answerQuestion(ctx.configDir, flag, text, ctx.world.now());
-    return { data: { answered: entry.question, id: entry.id }, help: [LOG_HELP] };
+    const { answer, existing } = await answerQuestion(ctx.configDir, flag, text, ctx.world.now());
+    return { data: { answered: existing ? `${answer.question} already, as given (no-op)` : answer.question, id: answer.id }, help: [LOG_HELP] };
   } catch (e) {
     if (!(e instanceof AnswerRefused)) throw e;
     const open = e.open.length ? `the open ones are ${e.open.join(", ")}` : "none is open";
@@ -534,26 +537,30 @@ async function sayCommand(args: Args, ctx: RunContext): Promise<Output> {
 
 async function leadInboxCommand(_args: Args, ctx: RunContext): Promise<Output> {
   const entries = await readInbox(ctx.configDir);
-  return { data: { inbox: plural(entries.length, "new entry", "new entries"), entries } };
+  const help = [`Run \`${LEAD_SAY_USAGE}\` to reply`, `Run \`${LEAD_ASK_USAGE}\` to ask the user`];
+  return { data: { inbox: plural(entries.length, "new entry", "new entries"), entries }, help };
 }
 
 async function leadSayCommand(args: Args, ctx: RunContext): Promise<Output> {
   const text = args.positionals.join(" ");
-  if (!text) throw new CliError("<text> is required", ["Usage: `nico-agent lead say <text>`"], 2);
+  if (!text.trim()) throw new CliError("<text> is required", [`Usage: \`${LEAD_SAY_USAGE}\``], 2);
   const entry = await append(ctx.configDir, { type: "lead", text }, ctx.world.now());
   return { data: { said: entry.id }, help: [LOG_HELP] };
 }
 
 async function leadAskCommand(args: Args, ctx: RunContext): Promise<Output> {
   const [text, ...choices] = args.positionals;
-  if (!text) throw new CliError("<question> is required", ["Usage: `nico-agent lead ask <question> [<choice>...]`"], 2);
+  if (!text?.trim()) throw new CliError("<question> is required", [`Usage: \`${LEAD_ASK_USAGE}\``], 2);
   const entry = await append(ctx.configDir, { type: "ask", text, ...(choices.length && { choices }) }, ctx.world.now());
   return { data: { asked: entry.id }, help: [`The answer arrives in the Inbox naming question ${entry.id}`, LOG_HELP] };
 }
 
 async function leadLogCommand(_args: Args, ctx: RunContext): Promise<Output> {
   const conversation = loadConversation(ctx.configDir);
-  const entries = conversation.map(({ id, type, ...rest }) => ({ id, who: type === "lead" || type === "ask" ? "lead" : "user", type, ...rest }));
+  const entries = conversation.map((entry) => {
+    const { id, ...rest } = entry;
+    return { id, who: author(entry), ...rest };
+  });
   const open = openQuestions(conversation);
   const help = [`Run \`${SAY_USAGE}\` to write to the Lead`];
   if (open.length) help.unshift(`Run \`nico-agent say --answer <id> <text>\` to answer the Lead's open questions (${open.join(", ")})`);

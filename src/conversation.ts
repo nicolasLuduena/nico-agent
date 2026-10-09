@@ -19,14 +19,23 @@ export type Entry = { id: number; at: string } & (
 type Body = Entry extends infer E ? (E extends Entry ? Omit<E, "id" | "at"> : never) : never;
 
 /** An Inbox entry; an answer carries the text of the question it answers. */
-export type InboxEntry = Entry | (Extract<Entry, { type: "answer" }> & { asked: string });
+export type InboxEntry = Entry | (Answer & { asked: string });
 
 const FILE = "conversation.jsonl";
 /** The id of the last entry the Lead read with `inbox`. */
 const CURSOR_FILE = "lead-cursor.json";
 
-/** Entry types the Lead writes itself, so never in its Inbox. */
-const FROM_LEAD: Entry["type"][] = ["lead", "ask"];
+/** Who wrote `entry`: the Lead's own entries never come back in its Inbox. */
+export function author(entry: Entry): "user" | "lead" {
+  switch (entry.type) {
+    case "user":
+    case "answer":
+      return "user";
+    case "lead":
+    case "ask":
+      return "lead";
+  }
+}
 
 /** Why an answer was refused: no `ask` entry has the id, or it was answered already. */
 export class AnswerRefused extends Error {
@@ -61,17 +70,25 @@ export function append(dir: string, body: Body, at: Date): Promise<Entry> {
   return withFileLock(dir, FILE, () => write(dir, loadConversation(dir), body, at));
 }
 
-/** Append the user's answer to the open question with id `question`, as typed; refused when no open question has it. */
-export function answerQuestion(dir: string, question: string, text: string, at: Date): Promise<Extract<Entry, { type: "answer" }>> {
+type Answer = Extract<Entry, { type: "answer" }>;
+
+/**
+ * Append the user's answer to the open question with id `question`, as typed.
+ * The same answer again returns the one written (`existing`); any other answer
+ * to a question no longer open, or to an id that is not a question, is refused.
+ */
+export function answerQuestion(dir: string, question: string, text: string, at: Date): Promise<{ answer: Answer; existing: boolean }> {
   return withFileLock(dir, FILE, () => {
     const entries = loadConversation(dir);
     const open = openQuestions(entries);
     const id = open.find((q) => String(q) === question);
     if (id === undefined) {
+      const same = entries.find((e): e is Answer => e.type === "answer" && String(e.question) === question && e.text === text);
+      if (same) return { answer: same, existing: true };
       const asked = entries.some((e) => e.type === "ask" && String(e.id) === question);
       throw new AnswerRefused(asked ? `question ${question} was already answered` : `no question has id ${question}`, open);
     }
-    return write(dir, entries, { type: "answer", question: id, text }, at) as Extract<Entry, { type: "answer" }>;
+    return { answer: write(dir, entries, { type: "answer", question: id, text }, at) as Answer, existing: false };
   });
 }
 
@@ -85,7 +102,7 @@ export function readInbox(dir: string): Promise<InboxEntry[]> {
     const cursor = loadCursor(dir);
     const unread = entries.filter((e) => e.id > cursor);
     if (unread.length) writeJsonAtomic(join(dir, CURSOR_FILE), { cursor: unread.at(-1)!.id });
-    return unread.filter((e) => !FROM_LEAD.includes(e.type)).map((e) => {
+    return unread.filter((e) => author(e) === "user").map((e) => {
       if (e.type !== "answer") return e;
       const question = entries.find((q) => q.id === e.question);
       return { ...e, asked: question?.type === "ask" ? question.text : "" };

@@ -82,6 +82,8 @@ describe("the conversation with the Lead", () => {
     await tool(web, "ask", { question: "Start billing?" });
     await cli("say", "--answer", "1", "yes");
 
+    // The same answer again is a no-op.
+    expect((await cli("say", "--answer", "1", "yes", "--json")).json()).toMatchObject({ answered: "1 already, as given (no-op)", id: 3 });
     for (const [id, error] of [["1", "question 1 was already answered"], ["9", "no question has id 9"], ["x", "no question has id x"]] as const) {
       const refused = await cli("say", "--answer", id, "no", "--json");
       expect(refused.exitCode).toBe(1);
@@ -90,7 +92,7 @@ describe("the conversation with the Lead", () => {
     expect((await cli("lead", "log", "--json")).json().entries).toHaveLength(3);
   });
 
-  test("the Lead may not answer itself: a user message is not a question", async () => {
+  test("only the Lead's questions can be answered: a user message is not one", async () => {
     const { cli } = setup();
     await cli("say", "hi");
     expect((await cli("say", "--answer", "1", "yes", "--json")).json()).toEqual({
@@ -120,6 +122,8 @@ describe("the conversation with the Lead", () => {
   test("blank text and bad tool arguments are refused before anything is written", async () => {
     const { cli, web } = setup();
     expect(await cli("say")).toMatchObject({ exitCode: 2, stdout: expect.stringContaining("<text> is required") });
+    expect(await cli("say", " ")).toMatchObject({ exitCode: 2, stdout: expect.stringContaining("<text> is required") });
+    expect(await cli("lead", "say", "")).toMatchObject({ exitCode: 2, stdout: expect.stringContaining("<text> is required") });
     expect(await cli("lead", "ask")).toMatchObject({ exitCode: 2, stdout: expect.stringContaining("<question> is required") });
     for (const [name, args] of [
       ["say", {}], ["say", { text: " " }], ["say", { text: "hi", to: "x" }],

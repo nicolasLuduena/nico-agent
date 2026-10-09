@@ -157,10 +157,10 @@ function toolArgv(params: unknown): string[] {
   if (!isObject(args)) throw new RpcError(-32602, `${name}'s arguments must be an object`);
   switch (name) {
     case "board":
-      noArguments(name, args);
+      onlyArguments(name, args);
       return ["board", "--json"];
     case "inbox":
-      noArguments(name, args);
+      onlyArguments(name, args);
       return ["lead", "inbox", "--json"];
     case "say":
       onlyArguments(name, args, ["text"]);
@@ -179,14 +179,9 @@ function toolArgv(params: unknown): string[] {
   }
 }
 
-function noArguments(name: string, args: Record<string, unknown>) {
-  const extra = Object.keys(args)[0];
-  if (extra) throw new RpcError(-32602, `${name} takes no arguments (got ${extra})`);
-}
-
-function onlyArguments(name: string, args: Record<string, unknown>, known: string[]) {
+function onlyArguments(name: string, args: Record<string, unknown>, known: string[] = []) {
   const extra = Object.keys(args).find((key) => !known.includes(key));
-  if (extra) throw new RpcError(-32602, `${name} takes ${known.join(" and ")} (got ${extra})`);
+  if (extra) throw new RpcError(-32602, `${name} takes ${known.length ? known.join(" and ") : "no arguments"} (got ${extra})`);
 }
 
 /** The required string argument `key`, which must not be blank. */
