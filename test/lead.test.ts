@@ -289,11 +289,12 @@ describe("the lead skill", () => {
 
   test("every nico-agent command it names is a real command", async () => {
     const { cli, skill } = await writtenSkill();
-    const commands = new Set([...skill.matchAll(/`nico-agent ([^`]*)`/g)]
-      .map((m) => m[1]!.split(" ").filter((w, i, all) => all.slice(0, i + 1).every((x) => /^[a-z]+$/.test(x))).join(" ")));
+    // The command's name: its words up to the first placeholder, flag or argument.
+    const name = (line: string) => line.match(/^[a-z]+(?: [a-z]+)*(?= |$)/)![0];
+    const commands = new Set([...skill.matchAll(/`nico-agent ([^`]*)`/g)].map((m) => name(m[1]!)));
     expect(commands.size).toBeGreaterThan(0);
     for (const command of commands) {
-      const { exitCode } = await cli(...command.split(" ").filter(Boolean), "--help");
+      const { exitCode } = await cli(...command.split(" "), "--help");
       expect({ command, exitCode }).toEqual({ command, exitCode: 0 });
     }
   });
