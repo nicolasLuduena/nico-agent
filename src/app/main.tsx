@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { type BoardJson, type InFlightDispatch, agentClass, prOf, repoSections } from "./board";
-import { EventDisplay } from "./event-display";
+import { EventDisplay, reducedMotion } from "./event-display";
 import { installPreviews } from "./preview";
 import { BaseChip, IssueLink, PrLink, Repo, StageKey } from "./repos";
 
@@ -45,7 +45,7 @@ function App() {
   const rows = board?.dispatches ?? [];
   const pick = (issue: string) => {
     const row = document.getElementById(flightId(issue));
-    row?.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "center" });
+    row?.scrollIntoView({ behavior: reducedMotion() ? "auto" : "smooth", block: "center" });
     row?.querySelector<HTMLElement>("a.title")?.focus({ preventScroll: true });
   };
   return (
@@ -63,10 +63,7 @@ function App() {
           : board.configured?.length
             ? (
               <>
-                <EventDisplay
-                  rows={rows.map(({ issue, title, stage, implementer, reviewer }) => ({ issue, title, stage, implementer, reviewer }))}
-                  sampled={sampled} lit={lit} onLight={setLit} onPick={pick}
-                />
+                <EventDisplay rows={rows} sampled={sampled} lit={lit} onLight={setLit} onPick={pick} />
                 <section className="in-flight">
                   <header><h2>In flight</h2><span className="count">{rows.length}</span></header>
                   {rows.length

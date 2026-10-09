@@ -61,7 +61,7 @@ function Detector() {
   );
 }
 
-const reducedMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+export const reducedMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 function TrackPath({ track: t, lit, onLight, onPick }: { track: Track; lit: boolean; onLight: (issue: string | null) => void; onPick: (issue: string) => void }) {
   const path = useRef<SVGPathElement>(null);
