@@ -138,9 +138,42 @@ describe("the Lead speaks", () => {
 
     ctx.talk.json({ type: "hush" });
 
+    expect(await ctx.talk.next()).toEqual({ type: "speech-end", entry: 1 });
     expect(await ctx.talk.next(50)).toBeNull();
     expect(cancelled).toBe(true);
     expect(sent).toEqual(["A long answer."]);
+  });
+
+  test("a hush while the next entry's speech is being made stops it too", async () => {
+    const ctx = await speaking();
+    const sent: string[] = [];
+    let answer = () => {};
+    ctx.world.endpoint(SPEECH, async (request) => {
+      sent.push((await request.json()).input);
+      // The service takes a while to start answering.
+      await new Promise<void>((resolve) => { answer = resolve; });
+      return new Response(new Uint8Array([1, 0]), { headers: { "content-type": "audio/pcm" } });
+    });
+
+    await leadSays(ctx, "Two Specs are running.");
+    for (; sent.length === 0;) await Bun.sleep(1);
+    ctx.talk.json({ type: "hush" });
+    answer();
+
+    expect(await ctx.talk.next(50)).toBeNull();
+  });
+
+  test("a hush ends the speech for every page listening, so none waits on it", async () => {
+    const ctx = await speaking();
+    const other = await ctx.socket("/api/voice");
+    if ("refused" in other) throw new Error("refused");
+    ctx.world.endpoint(SPEECH, () => new Response(new ReadableStream({ start: (c) => c.enqueue(new Uint8Array([1, 0])) }), { headers: { "content-type": "audio/pcm" } }));
+
+    await leadSays(ctx, "A long answer.");
+    expect([await other.next(), await other.next()]).toEqual([{ type: "speech", entry: 1, rate: 24_000 }, new Uint8Array([1, 0])]);
+    ctx.talk.json({ type: "hush" });
+
+    expect(await other.next()).toEqual({ type: "speech-end", entry: 1 });
   });
 
   test("a chunk split inside a sample is sent whole samples only, the odd byte joining the next", async () => {

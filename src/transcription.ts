@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { authored, loadConversation } from "./conversation";
+import { authored, isCorrection, loadConversation } from "./conversation";
 import { ConfigError, VOICE_DOC, type VoiceEndpoint, loadConfig } from "./config";
 import { harnesses } from "./harness";
 import type { CliRunner } from "./mcp";
@@ -152,13 +152,13 @@ async function clean(ctx: TranscriptionContext, utterance: Utterance, raw: strin
 
 /**
  * `said` as the answer to the Lead's question when that question is the
- * conversation's last entry: what is said right after it answers it. A
- * question with choices takes the one the Scribe finds `said` picks; else
- * what was said, as cleaned.
+ * conversation's last entry: what is said right after it answers it, unless
+ * it is a Correction of the user's last message. A question with choices
+ * takes the one the Scribe finds `said` picks; else what was said, as cleaned.
  */
 async function answering(ctx: TranscriptionContext, utterance: Utterance, said: Cleaned): Promise<Cleaned & { answers?: number }> {
   const question = loadConversation(ctx.configDir).at(-1);
-  if (!said.text || question?.type !== "ask") return said;
+  if (!said.text || question?.type !== "ask" || isCorrection(said)) return said;
   const choices = question.choices ?? [];
   const picked = choices.length && utterance.scribe ? await choose(ctx.world, utterance.scribe, { text: question.text, choices }, said.text) : null;
   return { ...said, ...(picked !== null && { text: choices[picked]! }), answers: question.id };

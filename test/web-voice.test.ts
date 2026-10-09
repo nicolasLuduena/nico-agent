@@ -418,6 +418,15 @@ describe("/api/voice", () => {
         expect(asked).toHaveLength(0);
       });
 
+      test("\"No, I said …\" right after the question corrects the last message, never answers it", async () => {
+        const ctx = await withVoice();
+        await ctx.cli("say", "Dispatch acme/api#7.");
+        await ctx.cli("lead", "ask", "Which Harness?", "claude", "codex");
+        chooser(ctx.world, "No, I said acme/api#8.", "0");
+
+        expect(await say(ctx, "no i said acme api eight")).toEqual({ type: "final", utterance: 1, text: "No, I said acme/api#8.", raw: "no i said acme api eight" });
+      });
+
       test("once something was said after the question, speech is a message again", async () => {
         const ctx = await withVoice();
         await ctx.cli("lead", "ask", "Which Spec first?", "Billing", "Search");

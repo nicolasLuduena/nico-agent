@@ -110,13 +110,12 @@ async function ask(world: World, service: VoiceService, endpoint: VoiceEndpoint,
   const reached = await reach(world, service, endpoint, probe.request);
   if (!("response" in reached)) return reached;
   const { response } = reached;
-  const checkSettings = `Check voice.${service}.url and voice.${service}.model`;
   let returned: string;
   try {
     returned = await probe.read(response);
   } catch (e) {
     if (!(e instanceof ProbeFailed)) throw e;
-    return { error: e.message, help: checkSettings };
+    return { error: e.message, help: checkSettings(service) };
   }
   // Up to the whole answer read: a streamed one's headers come long before its audio.
   return { ms: world.now().getTime() - started, returned };
@@ -152,7 +151,7 @@ async function reach(
     if (!(e instanceof WorldError)) throw e;
     return failed(e.message, `Start the ${service} service (see ${VOICE_DOC}) or fix voice.${service}.url`);
   }
-  if (!response.ok) return failed(`answered ${response.status}: ${await errorMessage(response)}`, `Check voice.${service}.url and voice.${service}.model`);
+  if (!response.ok) return failed(`answered ${response.status}: ${await errorMessage(response)}`, checkSettings(service));
   return { response };
 }
 
@@ -171,7 +170,12 @@ export async function speak(world: World, endpoint: VoiceEndpoint, text: string)
   });
   if (!("response" in reached)) return reached;
   const audio = reached.response.body;
-  return audio ? { audio } : { error: "answered without audio", help: "Check voice.speak.url and voice.speak.model" };
+  return audio ? { audio } : { error: "answered without audio", help: checkSettings("speak") };
+}
+
+/** What to do when a service answers, but not with what was asked for. */
+function checkSettings(service: VoiceService) {
+  return `Check voice.${service}.url and voice.${service}.model`;
 }
 
 /**

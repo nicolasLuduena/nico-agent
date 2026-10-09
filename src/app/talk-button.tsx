@@ -140,10 +140,14 @@ class Player {
 
   constructor(private readonly done: () => void) {}
 
-  /** Created and resumed in a user gesture, as browsers let audio start only then. */
+  /** Created and resumed in a user gesture, as browsers let audio start only then; a browser without audio stays silent. */
   wake() {
-    this.context ??= new AudioContext();
-    void this.context.resume();
+    try {
+      this.context ??= new AudioContext();
+    } catch {
+      return;
+    }
+    this.context.resume().catch(() => {});
   }
 
   /** Whether the Lead is speaking: a speech not ended, or chunks still playing. */
@@ -151,12 +155,14 @@ class Player {
     return !this.ended || this.sources.size > 0;
   }
 
+  /** A speech begins, its chunks at `rate`. */
   begin(rate: number) {
     this.wake();
     this.rate = rate;
     this.ended = false;
   }
 
+  /** Play a chunk of the speech right after the last one, or as soon as it can when none is playing. */
   play(pcm: ArrayBuffer) {
     const context = this.context;
     const samples = pcmSamples(pcm);
@@ -193,11 +199,13 @@ class Player {
     this.end();
   }
 
+  /** Stop, and let the audio device go. */
   close() {
     this.stop();
-    void this.context?.close();
+    this.context?.close().catch(() => {});
   }
 
+  /** Tell `done` once the speech ended and its chunks have played. */
   private settle() {
     if (!this.speaking) this.done();
   }
@@ -250,16 +258,17 @@ export function useTalk(onFinal: (text: string, raw: string, answers?: number) =
     else if (send) socket.current?.command({ type: send });
   };
 
-  const player = useRef<Player | null>(null);
-  player.current ??= new Player(() => {
+  const playerRef = useRef<Player | null>(null);
+  playerRef.current ??= new Player(() => {
     setSpeaking(false);
     dispatch({ type: "lead-done" });
   });
+  const player = playerRef.current;
 
   /** Stop the Lead speaking, here and at `serve`, which drops what waits to be spoken. */
   const hush = () => {
-    if (!player.current!.speaking) return;
-    player.current!.stop();
+    if (!player.speaking) return;
+    player.stop();
     socket.current?.command({ type: "hush" });
   };
 
@@ -267,15 +276,15 @@ export function useTalk(onFinal: (text: string, raw: string, answers?: number) =
     (message) => {
       if (message.type === "speech") {
         if (!voiceRef.current) return;
-        player.current!.begin(message.rate);
+        player.begin(message.rate);
         setSpeaking(true);
         dispatch({ type: "lead-speaks" });
         return;
       }
-      if (message.type === "speech-end") return player.current!.end();
+      if (message.type === "speech-end") return player.end();
       if (message.type === "speech-error") {
         // The Lead's reply still shows; only its voice is missing.
-        player.current!.end();
+        player.end();
         setWarning(message);
         return;
       }
@@ -299,9 +308,9 @@ export function useTalk(onFinal: (text: string, raw: string, answers?: number) =
       if (!text) setNote("Heard nothing; try again.");
       dispatch({ type: "final" });
     },
-    (pcm) => player.current!.play(pcm),
+    (pcm) => player.play(pcm),
     () => {
-      player.current!.stop();
+      player.stop();
       if (current.current.mode === "idle") return;
       setWarning(LOST);
       dispatch({ type: "failed" });
@@ -309,7 +318,7 @@ export function useTalk(onFinal: (text: string, raw: string, answers?: number) =
   );
 
   /** Each batch the microphone hears: while watching, kept and checked for the user talking over the Lead; else sent. */
-  const heard = (pcm: Int16Array, loudness: number, ms: number) => {
+  const onBatch = (pcm: Int16Array, loudness: number, ms: number) => {
     const next = listen(listening.current, loudness, ms);
     listening.current = next.state;
     if (current.current.mode === "watching") {
@@ -335,7 +344,7 @@ export function useTalk(onFinal: (text: string, raw: string, answers?: number) =
     microphone.current = mic;
     listening.current = LISTENING;
     early.current = [];
-    mic.start(heard).catch(() => {
+    mic.start(onBatch).catch(() => {
       if (microphone.current === mic) dispatch({ type: "failed" });
     });
   };
@@ -368,7 +377,7 @@ export function useTalk(onFinal: (text: string, raw: string, answers?: number) =
     }
     microphone.current = mic;
     socket.current!.command({ type: "start", utterance: ++utterance.current });
-    mic.start(heard).catch((e: unknown) => {
+    mic.start(onBatch).catch((e: unknown) => {
       if (microphone.current !== mic) return;
       const denied = e instanceof DOMException && e.name === "NotAllowedError";
       setWarning({
@@ -379,14 +388,16 @@ export function useTalk(onFinal: (text: string, raw: string, answers?: number) =
     });
   };
 
-  // With Voice on the socket stays open to hear the Lead, and any gesture lets its audio play; off, it falls silent.
+  // With Voice on the socket stays open to hear the Lead, and any gesture lets its audio play;
+  // off, the Lead falls silent and the socket closes, unless the user is talking.
   useEffect(() => {
     if (!voice) {
       hush();
+      if (current.current.mode === "idle") socket.current!.close();
       return;
     }
     socket.current!.open();
-    const wake = () => player.current!.wake();
+    const wake = () => player.wake();
     document.addEventListener("pointerdown", wake);
     document.addEventListener("keydown", wake);
     return () => {
@@ -397,12 +408,12 @@ export function useTalk(onFinal: (text: string, raw: string, answers?: number) =
 
   useEffect(() => () => {
     microphone.current?.stop();
-    player.current?.close();
+    player.close();
     socket.current?.close();
   }, []);
 
   const press = () => {
-    player.current!.wake();
+    player.wake();
     dispatch({ type: "press", at: performance.now() });
     hush();
   };

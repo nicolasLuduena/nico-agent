@@ -23,7 +23,15 @@ export class Events {
 
   /** Send `name` to every open stream. */
   emit(name: EventName) {
-    for (const l of this.listeners) if (l.name === name) l.listener();
+    for (const l of this.listeners) {
+      if (l.name !== name) continue;
+      // A listener that fails is logged, never left to stop the streams hearing of it.
+      try {
+        l.listener();
+      } catch (e) {
+        console.error(`${name} listener failed: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
     // `data` must be present and not empty, or a browser drops the event.
     const chunk = this.encoder.encode(`event: ${name}\ndata: {}\n\n`);
     for (const stream of this.streams) {

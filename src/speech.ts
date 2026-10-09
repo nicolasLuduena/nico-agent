@@ -33,6 +33,8 @@ export function speaker({ world, configDir }: { world: World; configDir: string 
   /** The speech streaming now: stop it to hush. */
   let streaming: { stop(): void } | null = null;
   let speaking = false;
+  /** How many times the Lead was hushed: a speech asked for before the last hush is never played. */
+  let hushes = 0;
 
   const lastId = () => loadConversation(configDir).at(-1)?.id ?? 0;
   const tell = (message: Speech) => {
@@ -42,7 +44,7 @@ export function speaker({ world, configDir }: { world: World; configDir: string 
     for (const peer of peers) peer.send(chunk);
   };
 
-  const say = async (entry: Entry) => {
+  const read = async (entry: Entry) => {
     const failed = (error: string, help: string) => tell({ type: "speech-error", entry: entry.id, error, help: [`${help}; ${STILL_SHOWN}`] });
     let endpoint;
     try {
@@ -52,9 +54,11 @@ export function speaker({ world, configDir }: { world: World; configDir: string 
       return failed(e.message, "Fix config.json");
     }
     if (!endpoint) return failed("no speech service is configured", `Add voice.speak to config.json (see ${VOICE_DOC})`);
+    const asked = hushes;
     const made = await speak(world, endpoint, spoken(entry));
     if ("error" in made) return failed(made.error, made.help);
     const reader = made.audio.getReader();
+    if (hushes !== asked) return void reader.cancel().catch(() => {});
     let stopped = false;
     streaming = { stop: () => { stopped = true; void reader.cancel().catch(() => {}); } };
     tell({ type: "speech", entry: entry.id, rate: SPEECH_RATE });
@@ -76,14 +80,15 @@ export function speaker({ world, configDir }: { world: World; configDir: string 
     } finally {
       streaming = null;
     }
-    if (!stopped) tell({ type: "speech-end", entry: entry.id });
+    // Hushed too: every other page listening stops waiting on it.
+    tell({ type: "speech-end", entry: entry.id });
   };
 
   const speakWaiting = async () => {
     if (speaking) return;
     speaking = true;
     try {
-      for (let entry = waiting.shift(); entry; entry = waiting.shift()) await say(entry);
+      for (let entry = waiting.shift(); entry; entry = waiting.shift()) await read(entry);
     } finally {
       speaking = false;
     }
@@ -95,12 +100,13 @@ export function speaker({ world, configDir }: { world: World; configDir: string 
       if (peers.size === 0) seen = lastId();
       peers.add(peer);
     },
+    /** A page stopped listening; with none left, the Lead falls silent. */
     leave(peer: SocketPeer) {
       peers.delete(peer);
       if (peers.size === 0) this.hush();
     },
-    /** The conversation changed: speak what the Lead wrote since the last look, with Voice on and a page listening. */
-    look() {
+    /** The conversation changed: speak what the Lead wrote since, with Voice on and a page listening. */
+    changed() {
       if (peers.size === 0) return;
       const fresh = loadConversation(configDir).filter((e) => e.id > seen);
       if (!fresh.length) return;
@@ -111,6 +117,7 @@ export function speaker({ world, configDir }: { world: World; configDir: string 
     },
     /** Stop speaking now, and drop what waits to be spoken. */
     hush() {
+      hushes++;
       waiting = [];
       streaming?.stop();
     },

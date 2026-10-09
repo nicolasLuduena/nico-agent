@@ -138,6 +138,11 @@ type User = Extract<Entry, { type: "user" }>;
 /** How the user takes back their last message, typed or spoken: "No, I said …". */
 const CORRECTION = /^\s*(?:no\b[\s,.;:!—–-]*)+i said\b/i;
 
+/** Whether the user's message, in its text or in what was heard, starts "No, I said": a Correction. */
+export function isCorrection(message: { text: string; raw?: string | undefined }) {
+  return [message.text, message.raw].some((t) => t !== undefined && CORRECTION.test(t));
+}
+
 /**
  * Append the user's message, as typed or, with `raw`, as spoken. One that
  * starts "No, I said", in its text or in what was heard, supersedes the
@@ -147,7 +152,7 @@ export function sayToLead(dir: string, message: { text: string; raw?: string }, 
   return withFileLock(dir, FILE, () => {
     const entries = loadConversation(dir);
     const last = entries.findLast((e) => e.type === "user");
-    const corrects = last && [message.text, message.raw].some((t) => t !== undefined && CORRECTION.test(t));
+    const corrects = last && isCorrection(message);
     return write(dir, entries, { type: "user", ...message, ...(corrects && { supersedes: last.id }) }, at) as User;
   });
 }

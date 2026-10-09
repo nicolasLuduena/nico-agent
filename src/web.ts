@@ -123,7 +123,7 @@ export function webHandler(context: WebContext) {
 export function webSockets(context: Pick<WebContext, "world" | "configDir" | "runCli" | "events">): Sockets {
   const transcription = transcriptionSession(context);
   const speech = speaker(context);
-  context.events?.on("conversation-entry", () => speech.look());
+  context.events?.on("conversation-entry", () => speech.changed());
   return {
     "/api/voice": (request) => {
       if (fromAnotherSite(request)) return apiError(403, "only the app itself can listen");
