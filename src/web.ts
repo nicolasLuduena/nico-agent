@@ -13,7 +13,7 @@ import { type AdvanceRow, advance } from "./advance";
 import { plural } from "./output";
 import { type PreviewLookup, cachedPreviews } from "./preview";
 import { type Queues, dequeue, enqueue, move, pruneBoardQueues, queueOf } from "./queue";
-import { type CliRunner, isToolCall, mcpHandler } from "./mcp";
+import { type CliRunner, isToolCall, mcpHandler, withJson } from "./mcp";
 import { sameSlug } from "./slug";
 import { Events } from "./events";
 import { type Mark, type Point, type Reach, type Track, type TrackRow, R, TRACKER_LAYERS, VIEW_BOX, eventDisplay } from "./app/event";
@@ -45,6 +45,7 @@ export function webHandler(context: WebContext) {
     const url = new URL(request.url);
     const { pathname } = url;
     if (pathname === "/mcp") return await mcp(request);
+    if (pathname.startsWith("/api/") && request.method === "POST") return await postApi(ctx, request, pathname);
     try {
       if (pathname === "/dispatch" && request.method === "POST") return await postLaunch(ctx, request, dispatch);
       if (pathname === "/review" && request.method === "POST") return await postLaunch(ctx, request, review);
@@ -58,6 +59,7 @@ export function webHandler(context: WebContext) {
       if (pathname === "/move" && request.method === "POST") return await postMove(ctx, request);
       if (request.method !== "GET") return new Response("Method Not Allowed\n", { status: 405 });
       if (pathname === "/api/board") return await getApiBoard(ctx);
+      if (pathname === "/api/harnesses") return await cliJson(ctx, ["harness", "list"]);
       if (pathname === "/htmx.min.js") {
         return new Response(htmx, { headers: { "content-type": "text/javascript; charset=utf-8" } });
       }
@@ -108,6 +110,50 @@ async function changesBoard(request: Request, pathname: string) {
 async function getApiBoard(ctx: WebContext) {
   const { stdout } = await ctx.runCli(["board", "--json"]);
   return new Response(stdout, { headers: { "content-type": "application/json; charset=utf-8" } });
+}
+
+/** The Board's actions, by their `/api` path: each the CLI command of the same words. */
+const API_ACTIONS: Record<string, string[]> = {
+  "/api/dispatch": ["dispatch"],
+  "/api/review": ["review"],
+  "/api/close": ["close"],
+  "/api/queue": ["queue"],
+  "/api/unqueue": ["unqueue"],
+  "/api/move": ["move"],
+  "/api/advance": ["advance"],
+  "/api/harness/refresh": ["harness", "refresh"],
+};
+
+/** What the app reads, with GET. */
+const API_READS = ["/api/board", "/api/harnesses", "/api/events"];
+
+const JSON_HEADERS = { "content-type": "application/json; charset=utf-8" };
+
+/**
+ * A Board action: the body `{"args": [...]}` holds the CLI's arguments, and the
+ * answer is the CLI's JSON, `help` included (ADR-0006). The status follows the
+ * exit code: 400 for a usage error, 422 for a refused or failed action.
+ */
+async function postApi(ctx: WebContext, request: Request, pathname: string) {
+  const command = API_ACTIONS[pathname];
+  if (!command) {
+    const read = API_READS.includes(pathname);
+    return new Response(JSON.stringify({ error: read ? `${pathname} is read with GET` : `no action at ${pathname}`, help: [API_HELP] }), { status: read ? 405 : 404, headers: JSON_HEADERS });
+  }
+  const body: unknown = await request.json().catch(() => null);
+  const args = body !== null && typeof body === "object" && "args" in body ? body.args : undefined;
+  if (!(args === undefined || (Array.isArray(args) && args.every((a) => typeof a === "string")))) {
+    return new Response(JSON.stringify({ error: 'the body must be {"args": [...]}, the CLI\'s arguments', help: [API_HELP] }), { status: 400, headers: JSON_HEADERS });
+  }
+  return cliJson(ctx, [...command, ...(args ?? [])]);
+}
+
+const API_HELP = `Post {"args": [...]} to one of ${Object.keys(API_ACTIONS).join(", ")}`;
+
+/** `argv` run as `nico-agent <argv> --json`, its output the answer. */
+async function cliJson(ctx: WebContext, argv: string[]) {
+  const { stdout, exitCode } = await ctx.runCli(withJson(argv));
+  return new Response(stdout, { status: exitCode === 0 ? 200 : exitCode === 2 ? 400 : 422, headers: JSON_HEADERS });
 }
 
 /**

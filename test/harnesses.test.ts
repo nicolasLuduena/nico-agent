@@ -140,6 +140,8 @@ describe("harness list", () => {
           source: "discovered 2026-09-30T12:00:00.000Z",
         },
       ],
+      // Nothing launched yet, so no last launch to start the app's forms on.
+      remembered: { efforts: {} },
       help: [
         "Run `nico-agent harness refresh` to discover models again",
         "Run `nico-agent dispatch <issue>... --harness <harness> --model <model> --effort <effort>` to dispatch an issue",
