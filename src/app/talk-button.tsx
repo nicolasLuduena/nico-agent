@@ -2,7 +2,7 @@ import { type KeyboardEvent, useEffect, useRef, useState } from "react";
 import type { Speech } from "../speech";
 import type { Transcript, VoiceCommand } from "../transcription";
 import { usePageCommand } from "./stream";
-import { type Indicator, type Listening, type Talk, type TalkEvent, LISTENING, bargesIn, indicator, level, listen, pcmSamples, resampler, talk, watches } from "./talk";
+import { type Indicator, type Listening, type Talk, type TalkEvent, LISTENING, bargesIn, ends, indicator, level, listen, pcmSamples, resampler, talk, watches } from "./talk";
 
 /** A voice failure as the panel shows it: what went wrong and what to do. */
 interface Warning {
@@ -37,6 +37,12 @@ class Tap extends AudioWorkletProcessor {
 registerProcessor("talk-tap", Tap);
 `;
 
+/** How long a microphone waits for the browser to let its audio run. */
+const RESUME_MS = 1000;
+
+/** The browser keeps the page's audio stopped until a click or key on it. */
+class NeedsGesture extends Error {}
+
 /** The microphone, recording one utterance: each batch resampled to 16kHz PCM and measured. */
 class Microphone {
   private context: AudioContext;
@@ -50,6 +56,9 @@ class Microphone {
   }
 
   async start(onBatch: (pcm: Int16Array, level: number, ms: number) => void) {
+    // Started without a gesture (the key anywhere), audio runs only if the page had one since it loaded.
+    await Promise.race([this.context.resume(), new Promise((resolve) => setTimeout(resolve, RESUME_MS))]);
+    if (this.context.state !== "running") throw new NeedsGesture();
     const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
     if (this.stopped) return stream.getTracks().forEach((t) => t.stop());
     this.stream = stream;
@@ -388,10 +397,12 @@ export function useTalk(onFinal: (text: string, raw: string, answers?: number) =
     mic.start(onBatch).catch((e: unknown) => {
       if (microphone.current !== mic) return;
       const denied = e instanceof DOMException && e.name === "NotAllowedError";
-      setWarning({
-        error: denied ? "The microphone is blocked for this page" : `Could not record: ${e instanceof Error ? e.message : String(e)}`,
-        help: [denied ? "Allow the microphone in the browser's site settings; typing still works" : "Typing still works"],
-      });
+      setWarning(e instanceof NeedsGesture
+        ? { error: "The browser lets this page record only after a click on it", help: ["Click once anywhere on the page, then talk or press the key again"] }
+        : {
+          error: denied ? "The microphone is blocked for this page" : `Could not record: ${e instanceof Error ? e.message : String(e)}`,
+          help: [denied ? "Allow the microphone in the browser's site settings; typing still works" : "Typing still works"],
+        });
       dispatch({ type: "failed" });
     });
   };
@@ -420,30 +431,33 @@ export function useTalk(onFinal: (text: string, raw: string, answers?: number) =
     socket.current?.close();
   }, []);
 
+  /** In a session, a tap or the key while the Lead speaks only stops it; the session goes on. */
+  const stopsLead = () => player.speaking && ends(current.current);
   const press = () => {
     player.wake();
-    dispatch({ type: "press", at: performance.now() });
+    if (!stopsLead()) dispatch({ type: "press", at: performance.now() });
     hush();
   };
   const release = () => dispatch({ type: "release", at: performance.now() });
-  // The key anywhere: a tap from wherever the user is, heard by the page opened last.
+  // The key anywhere: a tap from wherever the user is, heard by the page that connected last.
   usePageCommand("listen", () => {
     player.wake();
-    dispatch({ type: "key" });
+    if (!stopsLead()) dispatch({ type: "key" });
     hush();
   });
   return { state, interim, warning, note, speaking, press, release, hush };
 }
 
-/** The button's label: in a session, a tap while nobody talks ends it. */
-function label(state: Talk) {
+/** The button's label: in a session, a tap stops the Lead speaking, or else ends it while nobody talks. */
+function label(state: Talk, speaking: boolean) {
   if (state.mode === "holding") return "Release to send";
   if (state.mode === "hands-free") return "Tap to send";
-  return watches(state) && state.session ? "End" : "Talk";
+  if (!ends(state)) return "Talk";
+  return speaking ? "Stop" : "End";
 }
 
 /** The button itself: pointer and keyboard both hold it, Space or Enter as the key. */
-export function TalkButton({ talk: { state, press, release } }: { talk: ReturnType<typeof useTalk> }) {
+export function TalkButton({ talk: { state, speaking, press, release } }: { talk: ReturnType<typeof useTalk> }) {
   const key = (e: KeyboardEvent<HTMLButtonElement>, down: boolean) => {
     if (e.key !== " " && e.key !== "Enter") return;
     e.preventDefault();
@@ -456,7 +470,7 @@ export function TalkButton({ talk: { state, press, release } }: { talk: ReturnTy
       type="button"
       className={`talk ${state.mode}`}
       aria-pressed={recording}
-      title={watches(state) && state.session ? "End the hands-free session" : "Hold to talk, or tap to talk hands-free"}
+      title={ends(state) ? (speaking ? "Stop the Lead speaking" : "End the hands-free session") : "Hold to talk, or tap to talk hands-free"}
       onPointerDown={(e) => {
         if (e.button !== 0) return;
         e.currentTarget.setPointerCapture(e.pointerId);
@@ -471,12 +485,19 @@ export function TalkButton({ talk: { state, press, release } }: { talk: ReturnTy
       onContextMenu={(e) => e.preventDefault()}
     >
       <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="5.5" y="1.5" width="5" height="8.5" rx="2.5" /><path d="M3 7.5a5 5 0 0 0 10 0M8 12.5v2.5" /></svg>
-      <span>{label(state)}</span>
+      <span>{label(state, speaking)}</span>
     </button>
   );
 }
 
 const SAYS: Record<Indicator, string> = { listening: "Listening", thinking: "Thinking", speaking: "Speaking" };
+
+/** The indicator's note: what is heard, or what the user waits on. */
+function detailOf(kind: Indicator, state: Talk, interim: string) {
+  if (kind === "listening") return interim || (state.mode === "watching" ? "Talk when you are ready." : "");
+  if (kind === "thinking") return state.mode === "transcribing" ? "Transcribing…" : "The Lead is working on it.";
+  return "Talk over it or tap to stop.";
+}
 
 /**
  * Where the conversation by voice stands, while there is one: listening
@@ -486,19 +507,13 @@ const SAYS: Record<Indicator, string> = { listening: "Listening", thinking: "Thi
  */
 export function TalkStatus({ talk: { state, interim, warning, note, speaking, press, hush }, working }: { talk: ReturnType<typeof useTalk>; working: boolean }) {
   const kind = indicator(state, { speaking, working });
-  const session = "session" in state && state.session === true;
-  const detail = kind === "listening"
-    ? interim || (state.mode === "watching" ? "Talk when you are ready." : "")
-    : kind === "thinking"
-      ? state.mode === "transcribing" ? "Transcribing…" : "The Lead is working on it."
-      : "Talk over it or tap to stop.";
   const line = kind && (
     <p className={`indicator ${kind}`}>
       <i aria-hidden="true" />
       <b>{SAYS[kind]}</b>
-      <span className={kind === "listening" && interim ? "interim" : undefined}>{detail}</span>
+      <span className={kind === "listening" && interim ? "interim" : undefined}>{detailOf(kind, state, interim)}</span>
       {kind === "speaking" && <button type="button" onClick={hush}>Stop</button>}
-      {session && watches(state) && kind !== "speaking" && <button type="button" onClick={press}>End</button>}
+      {ends(state) && kind !== "speaking" && <button type="button" onClick={press}>End</button>}
     </p>
   );
   if (!warning && !line && !note) return null;
@@ -506,8 +521,8 @@ export function TalkStatus({ talk: { state, interim, warning, note, speaking, pr
     <div className="talk-status" role="status" aria-live="polite">
       {warning && <p className="warning">{warning.error}</p>}
       {warning?.help.map((h) => <p key={h} className="help">{h}</p>)}
+      {!warning && note && <p className="help">{note}</p>}
       {line}
-      {!line && !warning && note && <p className="help">{note}</p>}
     </div>
   );
 }

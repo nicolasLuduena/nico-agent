@@ -47,7 +47,7 @@ export type TalkSend = "start" | "end" | "cancel";
 /** The talk button after `event`, and what to tell `/api/voice`, if anything. */
 export function talk(state: Talk, event: TalkEvent): { state: Talk; send?: TalkSend } {
   const recording = state.mode === "holding" || state.mode === "hands-free";
-  const session = "session" in state && state.session === true;
+  const session = inSession(state);
   switch (event.type) {
     case "press":
       // A tap while hands-free sends what it heard; its release does nothing.
@@ -63,6 +63,7 @@ export function talk(state: Talk, event: TalkEvent): { state: Talk; send?: TalkS
       return { state: { mode: "transcribing" }, send: "end" };
     case "key":
       if (state.mode === "holding") return { state: { mode: "transcribing" }, send: "end" };
+      // As a press: hands-free it sends, and in a session while nobody talks it ends it; neither reads `at`.
       if (recording || session) return talk(state, { type: "press", at: 0 });
       return { state: { mode: "hands-free", session: true }, send: "start" };
     case "pause":
@@ -91,6 +92,16 @@ export function talk(state: Talk, event: TalkEvent): { state: Talk; send?: TalkS
 /** Whether the microphone watches for the user to talk, rather than sending what it hears: while the Lead speaks, and all through a session. */
 export function watches(state: Talk): state is Extract<Talk, { mode: "watching" | "transcribing" }> {
   return state.mode === "watching" || (state.mode === "transcribing" && state.session === true);
+}
+
+/** Whether the talk button is in a hands-free session. */
+export function inSession(state: Talk): boolean {
+  return "session" in state && state.session === true;
+}
+
+/** Whether a tap ends the session: in one, while nobody talks. */
+export function ends(state: Talk): boolean {
+  return watches(state) && inSession(state);
 }
 
 /** What the conversation by voice is doing, as the panel shows it; null outside one. */

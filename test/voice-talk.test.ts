@@ -4,7 +4,7 @@ import { events, setup } from "./harness";
 const TALK = "http://127.0.0.1:42069/api/voice/talk";
 
 describe("a key anywhere: voice talk", () => {
-  test("with the app open, the page opened last hears `listen`, and nothing else changes", async () => {
+  test("with the app open, the page that connected last hears `listen`, and nothing else changes", async () => {
     const { web, handler } = setup();
     const first = await events(handler);
     const last = await events(handler);

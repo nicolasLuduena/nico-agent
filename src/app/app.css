@@ -339,15 +339,14 @@ button.talk:is(.holding, .hands-free) svg { fill: currentColor; }
 .talk-status p { margin: 0; overflow-wrap: anywhere; }
 .talk-status .help { color: var(--ink-muted); font-size: 12px; }
 .talk-status .interim { font-style: italic; }
-/* Where a conversation by voice stands: a dot (filled while someone is heard, outlined and pulsing while the Lead thinks), the state, and a note. */
+/* Where a conversation by voice stands: a dot (filled while someone is heard, outlined while the Lead thinks), the state, and a note. */
 .talk-status .indicator { display: flex; align-items: center; gap: 0.5rem; min-height: 24px; }
 .talk-status .indicator i { flex: none; width: 7px; height: 7px; border-radius: 50%; border: 1.5px solid var(--ink); background: var(--ink); }
-.talk-status .indicator.thinking i { background: transparent; animation: thinking 1.2s ease-in-out infinite alternate; }
+.talk-status .indicator.thinking i { background: transparent; }
 .talk-status .indicator b { font-size: 12px; font-weight: 650; }
 .talk-status .indicator span { flex: 1; color: var(--ink-muted); font-size: 12px; overflow-wrap: anywhere; }
 .talk-status .indicator span.interim { color: var(--ink); font-size: 13px; font-style: italic; }
 .talk-status .indicator button { height: 24px; }
-@keyframes thinking { from { opacity: 1; } to { opacity: 0.3; } }
 
 /* The drawer: the Intent, the Notes and the Standing orders in tabs, in the conversation's place while open. */
 .lead-line button.drawer-toggle { margin-left: auto; }

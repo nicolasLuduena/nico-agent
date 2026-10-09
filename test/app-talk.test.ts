@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type Listening, type Talk, type TalkEvent, LISTENING, bargesIn, indicator, level, listen, pcmSamples, resampler, talk } from "../src/app/talk";
+import { type Listening, type Talk, type TalkEvent, LISTENING, bargesIn, ends, indicator, level, listen, pcmSamples, resampler, talk } from "../src/app/talk";
 
 /** A talk button state as these tests name it: its mode, and "(session)" in a hands-free session. */
 const named = (state: Talk) => ("session" in state && state.session ? `${state.mode} (session)` : state.mode);
@@ -99,6 +99,13 @@ describe("a hands-free session", () => {
   test("a tap while nobody talks ends it; once ended, the last transcript still comes, and the Lead's voice is only watched", () => {
     expect(run([{ type: "press", at: 0 }, { type: "release", at: 100 }], SESSION)).toEqual([["idle", null], ["idle", null]]);
     expect(run([{ type: "press", at: 0 }, { type: "final" }], { mode: "transcribing", session: true })).toEqual([["transcribing", null], ["idle", null]]);
+  });
+
+  test("a tap ends it only while nobody talks", () => {
+    expect(ends(SESSION)).toBe(true);
+    expect(ends({ mode: "transcribing", session: true })).toBe(true);
+    expect(ends({ mode: "hands-free", session: true })).toBe(false);
+    expect(ends({ mode: "watching" })).toBe(false);
   });
 
   test("a failure ends it", () => {

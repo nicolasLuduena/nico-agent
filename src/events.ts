@@ -48,8 +48,9 @@ export class Events {
   }
 
   /**
-   * Send `command` to the page opened last, so one microphone listens however
-   * many pages are open; false when no page is open to hear it.
+   * Send `command` to the page whose stream connected last (a page that
+   * reconnects, as after serve restarts, counts as new), so one microphone
+   * listens however many pages are open; false when no page is open to hear it.
    */
   command(command: PageCommand): boolean {
     for (const stream of [...this.streams].reverse()) {

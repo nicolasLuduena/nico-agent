@@ -99,8 +99,15 @@ end it. A walkthrough, with Voice on:
    too.
 
 End the session with **End**, a tap on the talk button or the key, while
-nobody talks; a tap or the key while you talk sends what you said, and the
-session goes on. Losing `serve` or the microphone ends it too. Holding the
+nobody talks; a tap or the key while you talk sends what you said, and while
+the Lead speaks it stops the Lead (the talk button reads **Stop**); either
+way the session goes on. A failure ends it too: the microphone, `serve` or
+the transcription service, shown as a warning.
+
+The microphone watches for any fifth of a second of unbroken sound over the
+room all through a session, so a cough or a door may start an utterance;
+what transcription hears in it is sent, and "Heard nothing; try again." shows
+when it hears nothing. Headphones and a quiet room keep a session clean. Holding the
 button to talk is never a session: it sends one utterance and stops, as
 does talking over the Lead outside a session.
 
@@ -111,7 +118,7 @@ show.
 
 `nico-agent voice talk` asks `serve` (`--port`, 42069 by default) to press
 the talk button of the app for you: `serve` sends a `listen` event on the
-app's SSE stream to the page opened last, and that page acts on it as a tap,
+app's SSE stream to the page that connected to it last, and that page acts on it as a tap,
 so the first press starts a hands-free session, a press while you talk sends
 it, and a press while nobody talks ends the session. Bound to a key, it
 starts talking to the Lead from any window.
@@ -120,9 +127,14 @@ With no page open it is refused (exit 1) with what to open; with `serve`
 down, with how to start it.
 
 The page needs the microphone allowed and, since it was loaded, one click or
-key on it: browsers start audio only after a gesture on the page. Opening
-the app on the phone after the desktop makes the phone the page opened
-last; reload the desktop tab to bring the key back to it.
+key on it: browsers start audio only after a gesture on the page. Without
+one, the page shows a warning asking for a click and stops listening.
+
+Opening the app on the phone after the desktop makes the phone the page
+that connected last, and so does a page reconnecting (after `serve`
+restarts, or the phone waking); reload the desktop tab to bring the key back
+to it. A page closed a moment ago may still count as open, so the key can
+go unheard once.
 
 On Hyprland, in `~/.config/hypr/hyprland.conf` (on Omarchy,
 `~/.config/hypr/bindings.conf`):

@@ -149,15 +149,12 @@ export function webSockets(context: Pick<WebContext, "world" | "configDir" | "ru
 /** Where `nico-agent voice talk` asks `serve` to start the open page's talk button. */
 export const TALK_PATH = "/api/voice/talk";
 
-/** Start the talk button of the page opened last, as if tapped; refused when no page is open. */
+/** Press the talk button of the page that connected last, as a tap; refused when no page is open. */
 function talk(events: Events, request: Request) {
   if (fromAnotherSite(request)) return apiError(403, "only the app itself or the CLI can start the microphone");
   if (!events.command("listen")) {
     const { origin } = new URL(request.url);
-    return new Response(JSON.stringify({
-      error: "no app is open to listen",
-      help: [`Open ${origin}/ in a browser, allow the microphone and click once on the page; then run \`nico-agent voice talk\` again`],
-    }), { status: 422, headers: JSON_HEADERS });
+    return apiError(422, "no app is open to listen", [`Open ${origin}/ in a browser, allow the microphone and click once on the page; then run \`nico-agent voice talk\` again`]);
   }
   return new Response(JSON.stringify({
     listen: "sent",
@@ -249,8 +246,8 @@ function parseJson(text: string): unknown {
   }
 }
 
-function apiError(status: number, error: string) {
-  return new Response(JSON.stringify({ error, help: [API_HELP] }), { status, headers: JSON_HEADERS });
+function apiError(status: number, error: string, help = [API_HELP]) {
+  return new Response(JSON.stringify({ error, help }), { status, headers: JSON_HEADERS });
 }
 
 /**

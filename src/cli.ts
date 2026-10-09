@@ -74,6 +74,7 @@ const LEAD_START_USAGE = "nico-agent lead start [--harness <harness>] [--model <
 const LEAD_STATUS_HELP = "Run `nico-agent lead status` to see the Lead";
 const LEAD_SCREEN_HELP = "Run `herdr agent read lead` to see its screen";
 const VOICE_DOCS_HELP = `See ${VOICE_DOC} to set up transcribe, speak and scribe under voice in config.json`;
+const VOICE_TALK_USAGE = "nico-agent voice talk [--port <port>]";
 const VOICE_ON_HELP = "Run `nico-agent voice on` or `nico-agent voice off` to switch it; the app has a Voice switch too";
 const LAUNCH_FLAGS = {
   "--harness": { value: true, description: "Harness to launch, e.g. claude (see `nico-agent harness list`)" },
@@ -462,7 +463,7 @@ const commands: Command[] = [
   },
   {
     name: "voice talk",
-    usage: "nico-agent voice talk [--port <port>]",
+    usage: VOICE_TALK_USAGE,
     summary: "Start the open app's talk button hands-free, as a tap would: bind it to a key to talk from anywhere; again, it sends what was said, or ends the session",
     flags: { "--port": { value: true, description: "port `nico-agent serve` listens on (default 42069)" } },
     positionals: [],
@@ -1215,7 +1216,7 @@ async function voiceCommand(ctx: RunContext): Promise<Output> {
 
 /** Ask `serve` to start its open page's talk button; refused when serve is not running or no page is open. */
 async function voiceTalk(args: Args, ctx: RunContext): Promise<Output> {
-  const port = portFlag(args, "nico-agent voice talk [--port <port>]");
+  const port = portFlag(args, VOICE_TALK_USAGE);
   let response: Response;
   try {
     response = await ctx.world.http(new Request(`http://${HOSTNAME}:${port}${TALK_PATH}`, { method: "POST" }));

@@ -235,6 +235,14 @@ numbered list. Talking over it, or a tap, stops it at once (barge-in). Set with
 `nico-agent voice on|off` or the app's Voice switch.
 _Avoid_: Voice mode, dictation, speech enabled
 
+**Hands-free session**:
+A conversation with the Lead by voice that touches nothing between turns: a
+tap on Talk, or `nico-agent voice talk` (the key anywhere), starts it, and the
+microphone keeps listening after each utterance, through the Lead's reply,
+for the next, until a tap or the key while nobody talks ends it. Holding Talk
+sends one utterance and is never a session.
+_Avoid_: Conversation mode, always listening, open mic
+
 ### Harnesses
 
 **Harness**:
