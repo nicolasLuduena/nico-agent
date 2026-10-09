@@ -1,8 +1,9 @@
 import { type KeyboardEvent, useEffect, useRef, useState } from "react";
 import type { Speech } from "../speech";
 import type { Transcript, VoiceCommand } from "../transcription";
+import { Ears, HEARING_FILES, Models } from "./hearing";
 import { usePageCommand } from "./stream";
-import { type Indicator, type Listening, type Talk, type TalkEvent, LISTENING, bargesIn, ends, indicator, level, listen, pcmSamples, resampler, talk, watches } from "./talk";
+import { type Indicator, type Talk, type TalkEvent, bargesIn, ends, indicator, pcmSamples, resampler, talk, watches } from "./talk";
 
 /** A voice failure as the panel shows it: what went wrong and what to do. */
 interface Warning {
@@ -43,11 +44,30 @@ const RESUME_MS = 1000;
 /** The browser keeps the page's audio stopped until a click or key on it. */
 class NeedsGesture extends Error {}
 
-/** The microphone, recording one utterance: each batch resampled to 16kHz PCM and measured. */
+/** Silero VAD and Smart Turn could not be loaded from `serve`. */
+class NoModels extends Error {}
+
+let models: Promise<Models> | null = null;
+
+/** Silero VAD and Smart Turn, loaded from `serve` when the microphone is first used, once for the page; again after a failure. */
+function hearingModels() {
+  models ??= import("onnxruntime-web/wasm").then((ort) => {
+    ort.env.wasm.wasmPaths = { wasm: HEARING_FILES.wasm };
+    return Models.load(ort, HEARING_FILES);
+  });
+  models.catch(() => {
+    models = null;
+  });
+  return models;
+}
+
+/** The microphone, recording one utterance: each batch resampled to 16kHz PCM, and heard by its Ears. */
 class Microphone {
   private context: AudioContext;
   private stream: MediaStream | null = null;
   private stopped = false;
+  private readonly models = hearingModels();
+  readonly ears = new Ears(this.models);
 
   /** Created in the press itself: Safari lets audio start only in a user gesture. */
   constructor() {
@@ -55,10 +75,13 @@ class Microphone {
     void this.context.resume();
   }
 
-  async start(onBatch: (pcm: Int16Array, level: number, ms: number) => void) {
+  async start(onBatch: (pcm: Int16Array) => void) {
     // Started without a gesture (the key anywhere), audio runs only if the page had one since it loaded.
     await Promise.race([this.context.resume(), new Promise((resolve) => setTimeout(resolve, RESUME_MS))]);
     if (this.context.state !== "running") throw new NeedsGesture();
+    await this.models.catch((e: unknown) => {
+      throw new NoModels(e instanceof Error ? e.message : String(e));
+    });
     const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
     if (this.stopped) return stream.getTracks().forEach((t) => t.stop());
     this.stream = stream;
@@ -72,7 +95,7 @@ class Microphone {
     const toPcm = resampler(this.context.sampleRate);
     const tap = new AudioWorkletNode(this.context, "talk-tap");
     tap.port.onmessage = ({ data }: MessageEvent<Float32Array>) => {
-      if (!this.stopped) onBatch(toPcm(data), level(data), (data.length / this.context.sampleRate) * 1000);
+      if (!this.stopped) onBatch(toPcm(data));
     };
     // Connected through to the output, which it leaves silent, so the browser runs it.
     this.context.createMediaStreamSource(stream).connect(tap).connect(this.context.destination);
@@ -253,7 +276,8 @@ export function useTalk(onFinal: (text: string, raw: string, answers?: number) =
   const [speaking, setSpeaking] = useState(false);
   const current = useRef(state);
   const microphone = useRef<Microphone | null>(null);
-  const listening = useRef<Listening>(LISTENING);
+  /** When the user stopped talking, by the pause that ended the utterance. */
+  const pauseBegan = useRef(0);
   const onFinalRef = useRef(onFinal);
   onFinalRef.current = onFinal;
   const voiceRef = useRef(voice);
@@ -278,7 +302,7 @@ export function useTalk(onFinal: (text: string, raw: string, answers?: number) =
     if (watches(next) && !watches(before)) void watch();
     if (send === "start") start(event.type === "barge");
     // A pause ends the utterance once the quiet has lasted; the user stopped talking when it began.
-    else if (send === "end") socket.current?.command({ type: "end", spokeAt: Date.now() - (event.type === "pause" ? listening.current.quiet : 0) });
+    else if (send === "end") socket.current?.command({ type: "end", spokeAt: event.type === "pause" ? pauseBegan.current : Date.now() });
     else if (send) socket.current?.command({ type: send });
   };
 
@@ -341,18 +365,28 @@ export function useTalk(onFinal: (text: string, raw: string, answers?: number) =
     },
   );
 
-  /** Each batch the microphone hears: while watching, kept and checked for the user talking over the Lead; else sent. */
-  const onBatch = (pcm: Int16Array, loudness: number, ms: number) => {
-    const next = listen(listening.current, loudness, ms);
-    listening.current = next.state;
-    if (watches(current.current)) {
-      early.current = [...early.current.slice(1 - EARLY_BATCHES), pcm];
-      if (!bargesIn(next.state)) return;
-      dispatch({ type: "barge" });
-      return hush();
-    }
-    socket.current!.send(pcm.buffer as ArrayBuffer);
-    if (next.ended) dispatch({ type: next.ended });
+  /**
+   * Each batch `mic` hears: while watching, kept, and heard for the user
+   * talking over the Lead; else sent, and heard for the end of the utterance.
+   */
+  const onBatch = (mic: Microphone, pcm: Int16Array) => {
+    if (watches(current.current)) early.current = [...early.current.slice(1 - EARLY_BATCHES), pcm];
+    else socket.current!.send(pcm.buffer as ArrayBuffer);
+    mic.ears.hear(pcm).then(({ listening, at, ended }) => {
+      if (microphone.current !== mic) return;
+      if (watches(current.current)) {
+        if (!bargesIn(listening)) return;
+        dispatch({ type: "barge" });
+        return hush();
+      }
+      if (!ended) return;
+      pauseBegan.current = at - listening.quiet;
+      dispatch({ type: ended });
+    }, (e: unknown) => {
+      if (microphone.current !== mic) return;
+      setWarning({ error: `Could not tell speech from silence: ${e instanceof Error ? e.message : String(e)}`, help: ["Typing still works"] });
+      dispatch({ type: "failed" });
+    });
   };
 
   /**
@@ -370,9 +404,8 @@ export function useTalk(onFinal: (text: string, raw: string, answers?: number) =
     if (!watches(current.current) || microphone.current) return;
     const mic = new Microphone();
     microphone.current = mic;
-    listening.current = LISTENING;
     early.current = [];
-    mic.start(onBatch).catch(() => {
+    mic.start((pcm) => onBatch(mic, pcm)).catch(() => {
       if (microphone.current === mic) dispatch({ type: "failed" });
     });
   };
@@ -386,16 +419,10 @@ export function useTalk(onFinal: (text: string, raw: string, answers?: number) =
     if (watched) {
       socket.current!.command({ type: "start", utterance: ++utterance.current });
       const words = early.current.splice(0);
-      if (barged) {
-        for (const pcm of words) socket.current!.send(pcm.buffer as ArrayBuffer);
-        // The utterance is as long as the words that broke in.
-        listening.current = { ...listening.current, elapsed: listening.current.voiced };
-      } else {
-        listening.current = LISTENING;
-      }
+      if (barged) for (const pcm of words) socket.current!.send(pcm.buffer as ArrayBuffer);
+      watched.ears.begin(barged);
       return;
     }
-    listening.current = LISTENING;
     let mic: Microphone;
     try {
       mic = new Microphone();
@@ -405,11 +432,14 @@ export function useTalk(onFinal: (text: string, raw: string, answers?: number) =
     }
     microphone.current = mic;
     socket.current!.command({ type: "start", utterance: ++utterance.current });
-    mic.start(onBatch).catch((e: unknown) => {
+    mic.ears.begin(false);
+    mic.start((pcm) => onBatch(mic, pcm)).catch((e: unknown) => {
       if (microphone.current !== mic) return;
       const denied = e instanceof DOMException && e.name === "NotAllowedError";
       setWarning(e instanceof NeedsGesture
         ? { error: "The browser lets this page record only after a click on it", help: ["Click once anywhere on the page, then talk or press the key again"] }
+        : e instanceof NoModels
+        ? { error: `Could not load the models that hear speech: ${e.message}`, help: ["Check that nico-agent serve runs, then try again; typing still works"] }
         : {
           error: denied ? "The microphone is blocked for this page" : `Could not record: ${e instanceof Error ? e.message : String(e)}`,
           help: [denied ? "Allow the microphone in the browser's site settings; typing still works" : "Typing still works"],

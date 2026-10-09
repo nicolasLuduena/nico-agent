@@ -2,6 +2,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { HEARING_FILES } from "../src/app/hearing";
 import { THEME_KEY } from "../src/app/theme";
 
 /** A port nothing listens on, from the OS. */
@@ -65,6 +66,20 @@ describe("the compiled binary", () => {
     const css = await fetch(new URL(style!, base));
     expect(css.status).toBe(200);
     expect(await css.text()).toContain('[data-theme="dark"]');
+  });
+
+  test("serves the models the page hears speech with, and onnxruntime-web's WebAssembly, embedded", async () => {
+    const sources = {
+      [HEARING_FILES.vad]: join(import.meta.dir, "../src/app/models/silero-vad.onnx"),
+      [HEARING_FILES.turn]: join(import.meta.dir, "../src/app/models/smart-turn-v3.2-cpu.onnx"),
+      [HEARING_FILES.wasm]: join(import.meta.dir, "../node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.wasm"),
+    };
+    for (const [path, source] of Object.entries(sources)) {
+      const file = await fetch(`${base}${path}`);
+      expect(file.status).toBe(200);
+      expect((await file.arrayBuffer()).byteLength).toBe(Bun.file(source).size);
+    }
+    expect((await fetch(`${base}${HEARING_FILES.wasm}`)).headers.get("content-type")).toBe("application/wasm");
   });
 
   test("no longer serves the htmx Board", async () => {
