@@ -199,6 +199,12 @@ the user answers it by its id. The user reads it with `nico-agent lead log`;
 the Lead reads what is new in it through its Inbox.
 _Avoid_: Chat, history, transcript
 
+**Correction**:
+A user message that starts "No, I said …", typed or spoken: it supersedes the
+user's last message, which stays in the Conversation, struck. The Lead reads it
+in its Inbox naming the message it replaces, and acts on the correction only.
+_Avoid_: Edit, undo, retraction
+
 **Inbox**:
 What the Lead has not seen yet: user messages, decided Proposals, answers to
 its questions, Implementers Asking, Specs Held, Dispatches Failed, PRs changed.

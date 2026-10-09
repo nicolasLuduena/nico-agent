@@ -48,6 +48,8 @@ Before you `ask` or `propose`, check `orient`'s open questions and Proposals: on
 
 A `decision` in your Inbox is the user's verdict on one of your Proposals. Approved, it carries the command's outcome: report it in your reply when it failed; an approved `write` is yours to write now (Shaping new work). Declined, it carries the user's reason: let the reason shape your next pick, and propose the same action again only once something it named has changed.
 
+A `user` entry with `supersedes` is the user correcting their message with that id ("No, I said …"); `superseded` is the text it replaces, and the replaced message, when it comes in the same Inbox, carries `supersededBy`. Act on the correction, never on the superseded message: if you already acted on the old one, say what you did and set it right, asking first when undoing it is not yours to do. A spoken message also carries `raw`, what transcription heard before the Scribe cleaned it; read `text`, and turn to `raw` only when `text` reads wrong (the Scribe can misspell a term).
+
 ## Naming
 
 Name things exactly as the Board's JSON does, so the user can paste your words into a command: an issue by its `issue` field (`owner/repo#N`, or a Linear identifier such as `BLE-27`), a Spec by its `spec` field, a PR by its URL. In-flight work is the `dispatches` list, each with its `stage` and its `implementer` Agent state. Use the glossary's words: Dispatch, Spec, Ready, Stackable, In flight, Implementer, Reviewer, Asking, Held, Stage, Agent state, Queue, Intent, Standing order, Proposal.

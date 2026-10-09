@@ -1,10 +1,11 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { authored, loadConversation } from "./conversation";
 import { ConfigError, VOICE_DOC, type VoiceEndpoint, loadConfig } from "./config";
 import { harnesses } from "./harness";
 import type { CliRunner } from "./mcp";
 import { SAMPLE_RATE } from "./app/talk";
-import { transcribe, wav } from "./voice";
+import { scribe, transcribe, wav } from "./voice";
 import type { SocketPeer, SocketSession, World } from "./world";
 
 /** How much more audio, in bytes, an interim transcript waits for after the last: a second's. */
@@ -17,10 +18,17 @@ const INTERIM_EVERY = SAMPLE_RATE * 2;
  */
 export type VoiceCommand = { type: "start"; utterance: number } | { type: "end" } | { type: "cancel" };
 
-/** What `/api/voice` tells the app, each about the utterance it numbered. */
+/** How many of the conversation's last entries the Scribe reads, for context. */
+const RECENT = 4;
+
+/**
+ * What `/api/voice` tells the app, each about the utterance it numbered. A
+ * final transcript is the Scribe's text, with `raw` what was heard; when the
+ * Scribe could not clean it, `text` is the raw and `warning` says why.
+ */
 export type Transcript = { utterance: number } & (
   | { type: "interim"; text: string }
-  | { type: "final"; text: string }
+  | { type: "final"; text: string; raw: string; warning?: { error: string; help: string[] } }
   | { type: "error"; error: string; help: string[] }
 );
 
@@ -57,31 +65,37 @@ export function transcriptionSession(ctx: TranscriptionContext) {
     const send = (message: Transcript) => peer.send(JSON.stringify(message));
     /** The utterance streaming now, if any; a newer one makes an older one's interims stale. */
     let current: Utterance | null = null;
-    const fail = (utterance: number, error: string, help: string) => send({ type: "error", utterance, error, help: [`${help}; ${TYPING}`] });
+    const failure = (utterance: number, error: string, help: string): Transcript => ({ type: "error", utterance, error, help: [`${help}; ${TYPING}`] });
+    const fail = (utterance: number, error: string, help: string) => send(failure(utterance, error, help));
+    /** The finals told so far: each waits on the one before, so the app posts them in the order they were said. */
+    let told = Promise.resolve();
 
-    const ask = async (utterance: Utterance, kind: "interim" | "final") => {
+    /** What to tell the app of `utterance` now, if anything. */
+    const ask = async (utterance: Utterance, kind: "interim" | "final"): Promise<Transcript | null> => {
       const prompt = kind === "final" ? await utterance.prompt : known.hint;
       const answer = await transcribe(ctx.world, utterance.endpoint, wav(concat(utterance.audio), SAMPLE_RATE), prompt);
       // An interim that comes back after the end, or after another utterance began, is dropped.
-      if (kind === "interim" && current !== utterance) return;
+      if (kind === "interim" && current !== utterance) return null;
       if ("error" in answer) {
         if (current === utterance) current = null;
-        return fail(utterance.number, answer.error, answer.help);
+        return failure(utterance.number, answer.error, answer.help);
       }
-      send({ type: kind, utterance: utterance.number, text: answer.returned });
+      if (kind === "interim") return { type: kind, utterance: utterance.number, text: answer.returned };
+      return { type: kind, utterance: utterance.number, ...await clean(ctx, utterance, answer.returned, prompt) };
     };
 
     const start = (number: number) => {
       current = null;
-      let endpoint;
+      let voice;
       try {
-        endpoint = loadConfig(ctx.configDir).voice?.transcribe;
+        voice = loadConfig(ctx.configDir).voice;
       } catch (e) {
         if (!(e instanceof ConfigError)) throw e;
         return fail(number, e.message, "Fix config.json");
       }
+      const endpoint = voice?.transcribe;
       if (!endpoint) return fail(number, "no transcription service is configured", `Add voice.transcribe to config.json (see ${VOICE_DOC})`);
-      current = { number, endpoint, audio: [], bytes: 0, heardUpTo: 0, asking: false, prompt: build() };
+      current = { number, endpoint, scribe: voice?.scribe, audio: [], bytes: 0, heardUpTo: 0, asking: false, prompt: build() };
     };
 
     const hear = (chunk: Uint8Array) => {
@@ -92,7 +106,7 @@ export function transcriptionSession(ctx: TranscriptionContext) {
       if (utterance.asking || utterance.bytes - utterance.heardUpTo < INTERIM_EVERY) return;
       utterance.asking = true;
       utterance.heardUpTo = utterance.bytes;
-      void ask(utterance, "interim").catch(report(utterance)).finally(() => { utterance.asking = false; });
+      void ask(utterance, "interim").then((message) => { if (message) send(message); }).catch(report(utterance)).finally(() => { utterance.asking = false; });
     };
 
     const report = (utterance: Utterance) => (e: unknown) => fail(utterance.number, e instanceof Error ? e.message : String(e), "Try again");
@@ -104,7 +118,10 @@ export function transcriptionSession(ctx: TranscriptionContext) {
         if (command?.type === "start") return start(command.utterance);
         const utterance = current;
         current = null;
-        if (command?.type === "end" && utterance) void ask(utterance, "final").catch(report(utterance));
+        if (command?.type !== "end" || !utterance) return;
+        // Transcribed and cleaned at once, but told after the finals before it.
+        const final = ask(utterance, "final");
+        told = told.then(() => final).then((message) => { if (message) send(message); }).catch(report(utterance));
       },
       close() {
         current = null;
@@ -113,11 +130,35 @@ export function transcriptionSession(ctx: TranscriptionContext) {
   };
 }
 
+/**
+ * What the user said, `raw` as heard, cleaned by the Scribe with the
+ * vocabulary and the conversation's last entries.
+ */
+async function clean(ctx: TranscriptionContext, utterance: Utterance, raw: string, vocabulary: string) {
+  if (!raw) return { text: raw, raw };
+  const asHeard = (error: string, help: string) => ({ text: raw, raw, warning: { error, help: [`Sent as heard. ${help}`] } });
+  if (!utterance.scribe) return asHeard("no Scribe is configured", `Add voice.scribe to config.json (see ${VOICE_DOC})`);
+  const recent = loadConversation(ctx.configDir).slice(-RECENT).map(authored)
+    .flatMap((e) => (e.text ? [`${e.who === "user" ? "User" : "Lead"}: ${e.text}`] : []));
+  const answer = await scribe(ctx.world, utterance.scribe, raw, { vocabulary, recent });
+  if ("error" in answer) return asHeard(answer.error, answer.help);
+  // A small model may answer the message rather than clean it; a cleanup is never much longer than what was said.
+  if (words(answer.returned) > words(raw) * 1.5 + 4) return asHeard("the Scribe answered far more than was said", "Check voice.scribe.model, or try a larger one");
+  return { text: answer.returned, raw };
+}
+
+/** How many words `text` has. */
+function words(text: string) {
+  return text.split(/\s+/).filter(Boolean).length;
+}
+
 /** An utterance as it streams in. */
 interface Utterance {
   /** The number the app gave it, which every answer about it carries. */
   number: number;
   endpoint: VoiceEndpoint;
+  /** The Scribe that cleans its final transcript, if one is configured. */
+  scribe: VoiceEndpoint | undefined;
   audio: Uint8Array[];
   bytes: number;
   /** How many bytes the last interim transcript was of. */
