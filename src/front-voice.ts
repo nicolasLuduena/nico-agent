@@ -6,6 +6,7 @@ import { ConfigError, VOICE_DOC, frontVoiceEndpoint, loadConfig } from "./config
 import { type Ask, type Authored, type Entry, append, isCorrection, loadConversation, orient } from "./conversation";
 import type { CliRunner } from "./mcp";
 import { PARTNER_NAMES, type PartnerTab, type Tab, loadPartners, partnerWork } from "./partner";
+import { PARTNER_IS } from "./partner-tabs";
 import { describeProposed } from "./proposals";
 import { withFileLock, writeJsonAtomic } from "./state";
 import { appendThread, loadThread, type ThreadEntry } from "./thread";
@@ -26,7 +27,7 @@ const BOARD_CHARS = 16_000;
 /** The id the Front voice's endpoint keeps its requests together by (`x-opencode-session`), beside the Conversation it belongs to. */
 const SESSION_FILE = "front-voice-session.json";
 
-/** How much of a PR's diff a Review partner's Front voice reads, as of the Board in the Lead's tab. */
+/** How much of a PR's diff the Review tab's Front voice reads: as much as the Lead's tab reads of the Board. */
 const DIFF_CHARS = 16_000;
 
 /** A warning about the Front voice for the app to show: what went wrong and what to do. */
@@ -83,7 +84,7 @@ export function frontVoice(ctx: FrontVoiceContext) {
    * Answer `raw`, what the user said in `tab`, primed with `vocabulary`, the
    * words to spell as written; resolves with whether it was handed off.
    */
-  async function hear(raw: string, vocabulary: string, { warn, handing }: Hearing, tab: Tab = "lead"): Promise<boolean> {
+  async function hear(raw: string, vocabulary: string, { warn, handing }: Hearing, tab: Tab): Promise<boolean> {
     const voice = tab === "lead" ? leadVoice(raw) : partnerVoice(tab);
     if (!voice) {
       const name = PARTNER_NAMES[tab as PartnerTab];
@@ -165,6 +166,12 @@ export function frontVoice(ctx: FrontVoiceContext) {
     }
   }
 
+  /** Hand a message off by running `argv`, the CLI command that writes it as the user's. */
+  async function handOffThrough(argv: string[]) {
+    const { stdout, exitCode } = await ctx.runCli(argv);
+    if (exitCode !== 0) console.error(`the Front voice's hand-off failed: ${stdout.trim()}`);
+  }
+
   /** The Front voice of the Lead's tab, hearing `raw`: it hands off to the Lead, into the Conversation, where its lines go too. */
   function leadVoice(raw: string): TabVoice {
     const question = asked(loadConversation(ctx.configDir), raw);
@@ -172,10 +179,7 @@ export function frontVoice(ctx: FrontVoiceContext) {
       to: THE_LEAD,
       question,
       read: (vocabulary) => readLeadContext(vocabulary, question),
-      async handOff(message) {
-        const { stdout, exitCode } = await ctx.runCli(["say", ...sayArgs(message.text, question?.id, message.raw)]);
-        if (exitCode !== 0) console.error(`the Front voice's hand-off failed: ${stdout.trim()}`);
-      },
+      handOff: (message) => handOffThrough(["say", ...sayArgs(message.text, question?.id, message.raw)]),
       async record(said, heard) {
         await append(ctx.configDir, { type: "front-voice", text: said, ...(heard !== undefined && { heard }) }, ctx.world.now());
       },
@@ -202,10 +206,7 @@ export function frontVoice(ctx: FrontVoiceContext) {
         ]),
         `The conversation so far, oldest first:\n${loadThread(ctx.configDir, partner.thread).slice(-LAST_ENTRIES).map((e) => threadLine(e, PARTNER_NAMES[tab])).join("\n") || "(nothing yet)"}`,
       ].filter(Boolean).join("\n\n"),
-      async handOff(message) {
-        const { stdout, exitCode } = await ctx.runCli(["partner", "say", ...partnerSayArgs(tab, message.text, message.raw)]);
-        if (exitCode !== 0) console.error(`the Front voice's hand-off failed: ${stdout.trim()}`);
-      },
+      handOff: (message) => handOffThrough(["partner", "say", ...partnerSayArgs(tab, message.text, message.raw)]),
       async record(said, heard) {
         await appendThread(ctx.configDir, partner.thread, { type: "front-voice", text: said, ...(heard !== undefined && { heard }) }, ctx.world.now());
       },
@@ -270,12 +271,6 @@ function sessionId(dir: string): Promise<string> {
     return id;
   });
 }
-
-/** What each tab's Partner is, as its Front voice is told. */
-const PARTNER_IS: Record<PartnerTab, string> = {
-  review: "an agent reviewing one PR with the user, in a checkout of its branch",
-  idea: "an agent thinking a problem through with the user, reading one Repo's code",
-};
 
 /** How many of a Thread's last entries a Partner's Front voice reads. */
 const LAST_ENTRIES = 20;

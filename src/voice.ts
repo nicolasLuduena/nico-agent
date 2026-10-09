@@ -228,9 +228,9 @@ export const THE_LEAD: HandOffTarget = { name: "the Lead", is: "an agent that ru
 
 /**
  * What the Front voice is sent for one thing the user said: `heard`, the raw
- * transcript, and `context`, what it reads (see `readContext` in front-voice.ts),
+ * transcript, and `context`, what it reads (see `TabVoice` in front-voice.ts),
  * in the Conversation `sessionId` names; streamed as it is made, or whole for
- * `voice check`. It hands off `to` its tab's agent, the Lead unless told otherwise.
+ * `voice check`. It hands off `to` the Lead unless told otherwise.
  */
 export interface FrontVoiceTurn {
   heard: string;

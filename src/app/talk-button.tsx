@@ -112,7 +112,7 @@ class Microphone {
 /**
  * `/api/voice` on the server the page came from, opened when first needed,
  * its sends queued until it opens; each time it opens, it first tells
- * `serve` the `greeting` (the tab the page shows).
+ * `serve` the tab the page shows, as `shownTab` says it.
  */
 class VoiceSocket {
   private socket: WebSocket | null = null;
@@ -122,12 +122,12 @@ class VoiceSocket {
     private readonly heard: (message: Transcript | Speech) => void,
     private readonly audio: (pcm: ArrayBuffer) => void,
     private readonly lost: () => void,
-    private readonly greeting: () => VoiceCommand,
+    private readonly shownTab: () => VoiceCommand,
   ) {}
 
-  /** Tell `serve` the greeting again, when open; one opening tells it anyway. */
-  greet() {
-    if (this.socket?.readyState === WebSocket.OPEN) this.socket.send(JSON.stringify(this.greeting()));
+  /** Tell `serve` the tab the page shows, when open; one opening tells it anyway. */
+  tellTab() {
+    if (this.socket?.readyState === WebSocket.OPEN) this.socket.send(JSON.stringify(this.shownTab()));
   }
 
   /** Tell `/api/voice` what the utterance does, or to hush the Lead. */
@@ -152,7 +152,7 @@ class VoiceSocket {
     const socket = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/voice`);
     socket.binaryType = "arraybuffer";
     socket.onopen = () => {
-      socket.send(JSON.stringify(this.greeting()));
+      socket.send(JSON.stringify(this.shownTab()));
       for (const message of this.queue.splice(0)) socket.send(message);
     };
     socket.onmessage = ({ data }) => {
@@ -380,7 +380,7 @@ export function useTalk(voice: boolean, tab: Tab) {
 
   // Another tab: serve hears of it, and what this one was saying stops here at once.
   useEffect(() => {
-    socket.current!.greet();
+    socket.current!.tellTab();
     if (player.speaking) player.stop();
   }, [tab]);
 

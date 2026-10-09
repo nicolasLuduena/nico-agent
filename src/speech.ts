@@ -65,17 +65,17 @@ export function speaker({ world, configDir }: { world: World; configDir: string 
 
   const lastId = () => loadConversation(configDir).at(-1)?.id ?? 0;
   const threads = () => Object.values(loadPartners(configDir)).map((p) => ({ tab: p.tab, file: p.thread, entries: loadThread(configDir, p.thread) }));
-  const on = (tab: Tab) => [...peers].flatMap(([peer, shows]) => (shows === tab ? [peer] : []));
+  const listeners = (tab: Tab) => [...peers].flatMap(([peer, shows]) => (shows === tab ? [peer] : []));
   const tell = (message: Speech, tab: Tab) => {
-    for (const peer of on(tab)) peer.send(JSON.stringify(message));
+    for (const peer of listeners(tab)) peer.send(JSON.stringify(message));
   };
   const audio = (chunk: Uint8Array, tab: Tab) => {
-    for (const peer of on(tab)) peer.send(chunk);
+    for (const peer of listeners(tab)) peer.send(chunk);
   };
 
   const read = async ({ text, tab, entry }: Spoken) => {
     // Nobody shows its tab any more: nothing is made for no one.
-    if (!on(tab).length) return;
+    if (!listeners(tab).length) return;
     const which = entry === undefined ? {} : { entry };
     const failed = (error: string, help: string) => tell({ type: "speech-error", ...which, error, help: [`${help}; ${STILL_SHOWN}`] }, tab);
     let endpoint;
@@ -145,7 +145,7 @@ export function speaker({ world, configDir }: { world: World; configDir: string 
       peers.set(peer, tab);
       if (reading?.tab !== left) return;
       peer.send(JSON.stringify({ type: "speech-end", ...(reading.entry !== undefined && { entry: reading.entry }) } satisfies Speech));
-      if (!on(left).length) streaming?.stop();
+      if (!listeners(left).length) streaming?.stop();
     },
     /** A page stopped listening; with none left, the Lead falls silent. */
     leave(peer: SocketPeer) {
@@ -170,7 +170,7 @@ export function speaker({ world, configDir }: { world: World; configDir: string 
         seenThreads.set(file, entries.at(-1)?.id ?? since);
         fresh.push(...entries.filter((e) => e.id > since && e.type === "partner").map((e) => ({ text: unmarked(e.text), tab, reply: true })));
       }
-      const heard = fresh.filter((s) => on(s.tab).length);
+      const heard = fresh.filter((s) => listeners(s.tab).length);
       if (!heard.length || !voiceOn(configDir)) return;
       if (holds) return void held.push(...heard);
       waiting.push(...heard);
@@ -195,8 +195,8 @@ export function speaker({ world, configDir }: { world: World; configDir: string 
       };
     },
     /** Read a line of the Front voice's in `tab`, after what waits, with Voice on and a page on that tab. */
-    line(text: string, tab: Tab = "lead") {
-      if (!on(tab).length || !voiceOn(configDir)) return;
+    line(text: string, tab: Tab) {
+      if (!listeners(tab).length || !voiceOn(configDir)) return;
       waiting.push({ text: unmarked(text), tab, reply: false });
       say();
     },
