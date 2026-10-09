@@ -211,6 +211,21 @@ nico-agent prompting the Lead to read its Inbox: sent when the Lead is idle and
 something arrived, and on every Scheduler run.
 _Avoid_: Wake, ping, trigger
 
+**Scribe**:
+The small fast model that cleans what the user said before the Lead reads it:
+disfluencies out, glossary and Board terms spelled right, punctuation in,
+meaning untouched. Both the raw transcript and the Scribe's text are kept on
+the user's entry. It is an OpenAI-compatible chat endpoint in config, like
+transcription and speech; nico-agent runs none of them.
+_Avoid_: Cleaner, post-processor, rewriter (it never rewrites the meaning)
+
+**Voice on**:
+The user talking to the Lead by voice instead of reading the screen, a flag in
+the config directory the Nudge carries. With voice on, the Lead's replies are
+spoken and it talks for the ear: short sentences, issues by title, choices as a
+numbered list.
+_Avoid_: Voice mode, dictation, speech enabled
+
 ### Harnesses
 
 **Harness**:

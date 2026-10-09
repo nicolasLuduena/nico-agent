@@ -34,7 +34,35 @@ export interface Config {
   lead?: Partial<LaunchDefaults>;
   /** The Standing orders the user set; unset ones take their default from ORDERS (ADR-0010). */
   orders?: Partial<Orders>;
+  /** The voice services the user set; voice is off for one left out. */
+  voice?: VoiceConfig;
 }
+
+/** Transcription, speech and the Scribe: each an OpenAI-compatible endpoint nico-agent doesn't run (ADR-0001). */
+export const VOICE_SERVICES = ["transcribe", "speak", "scribe"] as const;
+export type VoiceService = (typeof VOICE_SERVICES)[number];
+export type VoiceConfig = Partial<Record<VoiceService, VoiceEndpoint>>;
+
+/**
+ * An OpenAI-compatible service: `url` is its base, up to and including `/v1`;
+ * `keyEnv` names the environment variable holding its API key, for one that
+ * needs a key; `voice` is the voice `speak` reads in.
+ */
+export interface VoiceEndpoint {
+  url: string;
+  model: string;
+  keyEnv?: string;
+  voice?: string;
+}
+
+const VOICE_SETTINGS: Record<VoiceService, string[]> = {
+  transcribe: ["url", "model", "keyEnv"],
+  speak: ["url", "model", "keyEnv", "voice"],
+  scribe: ["url", "model", "keyEnv"],
+};
+/** Where the voice services are set up and configured. */
+export const VOICE_DOC = "docs/voice.md";
+const VOICE_HELP = `See ${VOICE_DOC} for the voice block`;
 
 /** What the Lead may do without asking; each on or off. */
 export const ORDERS = {
@@ -260,6 +288,7 @@ export function loadConfig(dir: string): Config {
   if (parsed.scheduler !== undefined) config.scheduler = checkLaunchDefaults(file, "scheduler", "Scheduler", parsed.scheduler);
   if (parsed.lead !== undefined) config.lead = checkLaunchDefaults(file, "lead", "Lead", parsed.lead);
   if (parsed.orders !== undefined) config.orders = checkOrders(file, parsed.orders);
+  if (parsed.voice !== undefined) config.voice = checkVoice(file, parsed.voice);
   return config;
 }
 
@@ -312,6 +341,35 @@ function checkOrders(file: string, orders: unknown): Partial<Orders> {
     if (typeof value !== "boolean") throw new ConfigError(`${file}: orders.${key} is not true or false`);
   }
   return orders as Partial<Orders>;
+}
+
+function checkVoice(file: string, voice: unknown): VoiceConfig {
+  if (!isObject(voice)) throw new ConfigError(`${file}: voice is not an object`, VOICE_HELP);
+  for (const [service, endpoint] of Object.entries(voice)) {
+    const at = `${file}: voice.${service}`;
+    if (!(VOICE_SERVICES as readonly string[]).includes(service)) {
+      throw new ConfigError(`${at} is not a voice service`, `Voice services: ${VOICE_SERVICES.join(", ")}`);
+    }
+    if (!isObject(endpoint)) throw new ConfigError(`${at} is not an object`, VOICE_HELP);
+    const settings = VOICE_SETTINGS[service as VoiceService];
+    for (const [key, value] of Object.entries(endpoint)) {
+      if (!settings.includes(key)) throw new ConfigError(`${at}.${key} is not a ${service} setting`, `${service} settings: ${settings.join(", ")}`);
+      if (typeof value !== "string" || value === "") throw new ConfigError(`${at}.${key} is not a non-empty string`, VOICE_HELP);
+    }
+    for (const key of ["url", "model"]) {
+      if (!Object.hasOwn(endpoint, key)) throw new ConfigError(`${at} is missing ${key}`, VOICE_HELP);
+    }
+    if (!isHttpUrl(endpoint.url as string)) throw new ConfigError(`${at}.url is not an http(s) URL`, "e.g. http://127.0.0.1:8880/v1");
+  }
+  return voice as VoiceConfig;
+}
+
+function isHttpUrl(text: string) {
+  try {
+    return ["http:", "https:"].includes(new URL(text).protocol);
+  } catch {
+    return false;
+  }
 }
 
 function checkHarnesses(file: string, harnesses: unknown): Record<string, Partial<HarnessConfig>> {

@@ -113,6 +113,14 @@ export interface World {
   serve(address: Address, handler: RequestHandler, pages: Pages): Promise<void>;
   /** Run `task` every `ms` milliseconds for the life of the process, the next run only once the last is done. */
   every(ms: number, task: () => Promise<void>): void;
+  /** The value of an environment variable of this process, or undefined when unset or empty. */
+  env(name: string): string | undefined;
+  /**
+   * Send an HTTP request to a service nico-agent doesn't run (a voice
+   * endpoint) and resolve with its response, whatever its status; fails
+   * when the service can't be reached.
+   */
+  http(request: Request): Promise<Response>;
 }
 
 export interface Address {

@@ -455,6 +455,28 @@ export class FakeWorld implements World {
       for (repeated.elapsed += ms; repeated.elapsed >= repeated.ms; repeated.elapsed -= repeated.ms) await repeated.task();
     }
   }
+
+  /** This process's environment variables. */
+  environment = new Map<string, string>();
+
+  env(name: string) {
+    return this.environment.get(name) || undefined;
+  }
+
+  /** What answers HTTP requests, by URL; a URL without one is unreachable. */
+  private endpoints = new Map<string, (request: Request) => Response | Promise<Response>>();
+
+  /** Have `answer` reply to every request to `url`, as a service listening there would. */
+  endpoint(url: string, answer: (request: Request) => Response | Promise<Response>) {
+    this.endpoints.set(url, answer);
+  }
+
+  async http(request: Request) {
+    this.call(`http ${request.method} ${request.url}`);
+    const answer = this.endpoints.get(request.url);
+    if (!answer) throw new WorldError(`could not reach ${request.url}: connection refused`);
+    return answer(request);
+  }
 }
 
 /** `codex debug models` from codex-cli 0.159.0, trimmed to the fields nico-agent reads and their neighbours. */
