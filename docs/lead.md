@@ -166,9 +166,10 @@ command a Proposal would run:
 
 `answer` has a second mode that needs no order: relaying your own words. Pass
 `relay` instead of `text`, and the Lead may send it whatever the `answer`
-order says, as long as it is a whole message of yours in the conversation, or
-words you put in double quotes in one, exactly as you wrote them. Anything
-else passed as `relay` is refused.
+order says, as long as it is a whole message of yours in the conversation (one
+you wrote with `nico-agent say`, or an answer to one of its questions), exactly
+as you wrote it. Anything else passed as `relay` is refused, with a `propose`
+call to send it once you approve.
 
 ## The Queue from the CLI
 

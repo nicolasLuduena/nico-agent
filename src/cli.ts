@@ -660,10 +660,10 @@ async function moveCommand(args: Args, ctx: RunContext): Promise<Output> {
     throw new CliError(direction ? `\`${direction}\` is not a direction; move a queued Spec \`up\` or \`down\`` : "<up|down> is required", [`Usage: \`${MOVE_USAGE}\``], 2);
   }
   const name = queuedName(ctx, repo.slug, spec);
-  const { queue, changed } = await move(ctx.configDir, repo.slug, name, direction);
-  if (!queue.some((s) => sameSpec(s, name))) {
+  if (!queueOf(loadQueues(ctx.configDir), repo.slug).some((s) => sameSpec(s, name))) {
     throw new CliError(`${name} is not queued in ${repo.slug}`, [`Run \`nico-agent queue ${name} --repo ${repo.slug}\` to queue it`]);
   }
+  const { queue, changed } = await move(ctx.configDir, repo.slug, name, direction);
   const end = direction === "up" ? "head" : "tail";
   return queueOutput(name, queue, { moved: changed ? `${name} ${direction}` : `${name} already at the ${end} (no-op)` });
 }

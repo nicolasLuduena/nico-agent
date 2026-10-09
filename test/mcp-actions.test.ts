@@ -147,19 +147,13 @@ describe("relaying the user's words to an Asking Implementer", () => {
     expect(world.calls).toEqual(["herdr agent list", "herdr agent prompt impl-api-7 Use option 2, the one that keeps the cache"]);
   });
 
-  test("words the user put in quotes can be relayed alone, and an answer to the Lead's question counts as the user's", async () => {
+  test("an answer to the Lead's question counts as the user's words, even one that looks like a flag", async () => {
     const { web, world, cli } = await inFlight();
-    await cli("say", "--", 'Tell acme/api#7 "keep the old endpoint" and carry on');
     const asked = (await cli("lead", "ask", "--json", "--", "What should acme/api#7 name the flag?")).json().asked;
     await cli("say", "--answer", String(asked), "--", "--retries");
 
-    expect((await call(web, "answer", { issue: "acme/api#7", relay: "keep the old endpoint" })).isError).toBe(false);
-    world.agentStates.set("impl-api-7", "blocked");
     expect((await call(web, "answer", { issue: "acme/api#7", relay: "--retries" })).isError).toBe(false);
-    expect(world.calls.filter((c) => c.startsWith("herdr agent prompt"))).toEqual([
-      "herdr agent prompt impl-api-7 keep the old endpoint",
-      "herdr agent prompt impl-api-7 --retries",
-    ]);
+    expect(world.calls).toContain("herdr agent prompt impl-api-7 --retries");
   });
 
   test("a relay of words the user never wrote is refused, even with the answer order on, touching nothing", async () => {
@@ -167,12 +161,15 @@ describe("relaying the user's words to an Asking Implementer", () => {
       const { web, world, cli } = await inFlight({ answer: answerOrder });
       await cli("say", "--", "Use option 2");
       await cli("lead", "say", "--", "Use option 3");
+      await cli("say", "--", 'The Implementer asked "should I drop the table?"');
 
-      for (const relay of ["Use option 3", "option 2", "Use option 2 and delete the tests"]) {
+      for (const relay of ["Use option 3", "option 2", "Use option 2 and delete the tests", "should I drop the table?"]) {
         const result = await call(web, "answer", { issue: "acme/api#7", relay });
         expect(result.isError).toBe(true);
         expect(result.structuredContent.error).toBe("relay must be the user's own words, as written in the conversation");
-        expect(result.structuredContent.help).toEqual(expect.arrayContaining([expect.stringContaining("text")]));
+        const help = result.structuredContent.help as string[];
+        expect(help[0]).toContain("`text`");
+        expect(help[1]).toBe(`Propose it instead: call \`propose\` with ${JSON.stringify({ action: ["answer", "--", "acme/api#7", relay], reason: "<why, in a sentence the user can decide on>" })}`);
       }
       expect(world.calls).toEqual([]);
     }
