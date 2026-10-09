@@ -26,14 +26,14 @@ describe("AXI conventions", () => {
     const { cli } = setup();
     const { stdout, exitCode } = await cli("dispatch-all");
     expect(exitCode).toBe(2);
-    expect(stdout).toStartWith("error: unknown command `dispatch-all`\nhelp[31]:\n  Run `nico-agent [board]` to show Ready issues");
+    expect(stdout).toStartWith("error: unknown command `dispatch-all`\nhelp[32]:\n  Run `nico-agent [board]` to show Ready issues");
   });
 
   test("the retired Scheduler entry points are unknown: `mcp`, `--skill` and `advance --start` (ADR-0009)", async () => {
     const { cli, world } = setup();
     const mcp = await cli("mcp");
     expect(mcp.exitCode).toBe(2);
-    expect(mcp.stdout).toStartWith("error: unknown command `mcp`\nhelp[31]:\n  Run `nico-agent [board]` to show Ready issues");
+    expect(mcp.stdout).toStartWith("error: unknown command `mcp`\nhelp[32]:\n  Run `nico-agent [board]` to show Ready issues");
     expect(await cli("--skill")).toMatchObject({
       stdout: ["error: unknown flag --skill for `board`", "help[1]:", "  Valid flags for `board`: --json, --help", ""].join("\n"),
       exitCode: 2,
@@ -109,7 +109,7 @@ describe("AXI conventions", () => {
       [
         "bin: ~/.local/bin/nico-agent",
         "description: Dispatch coding agents onto ready-for-agent issues",
-        "commands[31]{usage,description}:",
+        "commands[32]{usage,description}:",
         '  "nico-agent [board]",Show Ready issues across all Repos (the default view)',
         "  nico-agent repo add <owner/name> --path <clone>,Add a Repo after checking the path is a clone of it",
         "  nico-agent repo rm <owner/name>,Remove a Repo (its clone is left untouched)",
@@ -140,6 +140,7 @@ describe("AXI conventions", () => {
         `  "nico-agent lead start [--harness <harness>] [--model <model>] [--effort <effort>] [--port <port>]","Start the Lead as the herdr agent \`lead\` in its own workspace, connected to serve's MCP server (no-op while it runs)"`,
         `  nico-agent lead status,"Show whether the Lead runs, in which workspace, on which Harness, model and Effort, and its Agent state"`,
         `  nico-agent lead stop,"Close the Lead's workspace and forget it, keeping its home and the conversation"`,
+        `  nico-agent voice check,"Send each configured voice service a short sample and report whether it answered, what it returned and how long it took"`,
         '  "nico-agent serve [--port <port>]",Start the web app and its MCP server (/mcp) on 127.0.0.1 (port 42069 by default)',
         "help[1]:",
         "  Run `nico-agent <command> --help` for its flags and examples",

@@ -515,7 +515,23 @@ export class RealWorld implements World {
     };
     setTimeout(run, ms);
   }
+
+  env(name: string) {
+    return process.env[name] || undefined;
+  }
+
+  async http(request: Request) {
+    try {
+      return await fetch(request, { signal: AbortSignal.timeout(HTTP_TIMEOUT_MS) });
+    } catch (e) {
+      const reason = (e as Error).name === "TimeoutError" ? `no answer in ${HTTP_TIMEOUT_MS / 1000}s` : (e as Error).message;
+      throw new WorldError(`could not reach ${request.url}: ${reason}`);
+    }
+  }
 }
+
+/** How long a voice service may take to answer; a local one loads its model on the first request. */
+const HTTP_TIMEOUT_MS = 120_000;
 
 function toPullRequest(pr: LinkedPrNode): PullRequest {
   return {
