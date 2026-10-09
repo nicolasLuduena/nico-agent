@@ -57,6 +57,8 @@ export interface World {
    * checks on its head commit.
    */
   githubPullRequestActivity(slug: string, number: number, since?: Date): Promise<PullRequestActivity>;
+  /** The account's core and GraphQL budgets, from `gh api rate_limit`, which spends neither. */
+  githubRateLimit(): Promise<RateLimit>;
   /** Assign an issue to the user's own GitHub session (the Claim, ADR-0007). */
   githubAssignSelf(slug: string, number: number): Promise<void>;
   /** Fetch origin, or explicitly fetch a head branch into its origin tracking ref. */
@@ -215,6 +217,21 @@ export interface PullRequestComment {
   path?: string;
   /** Set on a review itself: its verdict. */
   review?: "approved" | "changes requested" | "commented";
+}
+
+/** An account budget, as `gh api rate_limit` or a response's `X-Ratelimit-*` headers report it. */
+export interface Budget {
+  limit: number;
+  remaining: number;
+  used: number;
+  /** When the hour's budget starts over. */
+  reset: string;
+}
+
+/** The account's budgets, as `gh api rate_limit` reports them. */
+export interface RateLimit {
+  core: Budget;
+  graphql: Budget;
 }
 
 export const READY_LABEL = "ready-for-agent";

@@ -178,7 +178,7 @@ A Dispatch is finished when its `dispatches` row has `stage` `PR ready` and its 
 
 ## Your shell
 
-You have a shell. Use it to look: `nico-agent lead log`, `nico-agent show <issue>`, `nico-agent orders`, `nico-agent proposals`, `herdr agent read <agent>`, `gh` and `git` read commands. Every change to the Board, herdr or an Implementer goes through your tools, which check your Standing orders. A change to a Source or a repo is the `write` order's: make it only when the user asks for it in the conversation, when `nico-agent orders` shows `write` on, or when the user approves your `write` Proposal.
+You have a shell. Use it to look: `nico-agent lead log`, `nico-agent show <issue>`, `nico-agent orders`, `nico-agent proposals`, `nico-agent github usage` (nico-agent's own GitHub calls by caller and query, and the account's quota, when GitHub is rate limited), `herdr agent read <agent>`, `gh` and `git` read commands. Every change to the Board, herdr or an Implementer goes through your tools, which check your Standing orders. A change to a Source or a repo is the `write` order's: make it only when the user asks for it in the conversation, when `nico-agent orders` shows `write` on, or when the user approves your `write` Proposal.
 
 ## Shaping new work
 
