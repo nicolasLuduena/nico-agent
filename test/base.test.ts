@@ -129,7 +129,7 @@ test("{baseBranch} is a known placeholder custom prompts can use", async () => {
     prompts: { implement: "{nope}" },
   }));
   const bad = (await cli("repo", "list", "--json")).json();
-  expect(bad.help).toEqual(["Placeholders: {sigil}, {issueUrl}, {baseBranch}, {prUrl}, {prBaseBranch}"]);
+  expect(bad.help).toEqual(["Placeholders: {sigil}, {issueUrl}, {baseBranch}, {prUrl}, {prBaseBranch}, {repo}, {prs}"]);
 });
 
 test("the app's dispatch form lists origin's branches, preselecting the last-used Base", async () => {

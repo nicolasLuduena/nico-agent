@@ -11,6 +11,7 @@ import { DispatchError } from "./dispatch-error";
 import { PANE_ARGS } from "./opencode";
 import { type Catalog, harnessCatalogs, harnesses, refreshHarnesses, rememberedLaunches } from "./harness";
 import { LEAD_AGENT, NICO_AGENT_SLUG, leadStatus, startLead, stopLead } from "./lead";
+import { describePrs, garden, gardenRepo, gardenerRows } from "./gardener";
 import { NUDGE_INTERVAL_MS, nudgeLead, sendPendingNudge } from "./nudge";
 import { linearIdentifier } from "./linear";
 import { peek } from "./peek";
@@ -78,6 +79,7 @@ const APPROVE_USAGE = "nico-agent proposals approve <id>";
 const DECLINE_USAGE = "nico-agent proposals decline <id> [reason]";
 const PROPOSALS_HELP = "Run `nico-agent proposals` to see the open Proposals";
 const LOG_HELP = "Run `nico-agent lead log` to see the conversation with the Lead";
+const GARDEN_USAGE = "nico-agent garden <repo> [--pr <url>...]";
 const LEAD_START_USAGE = "nico-agent lead start [--harness <harness>] [--model <model>] [--effort <effort>] [--port <port>]";
 const LEAD_STATUS_HELP = "Run `nico-agent lead status` to see the Lead";
 const LEAD_SCREEN_HELP = "Run `herdr agent read lead` to see its screen";
@@ -104,15 +106,16 @@ class CliError extends Error {
 
 interface Args {
   positionals: string[];
-  flags: Record<string, string | true>;
+  /** A flag that `repeats` holds each value given, in order. */
+  flags: Record<string, string | true | string[]>;
 }
 
 interface Command {
   name: string;
   usage: string;
   summary: string;
-  /** Command-specific flags; `value` marks a flag that takes a value. */
-  flags: Record<string, { value: boolean; description: string }>;
+  /** Command-specific flags; `value` marks a flag that takes a value, `repeats` one that may be given again. */
+  flags: Record<string, { value: boolean; description: string; repeats?: boolean }>;
   /** A last one ending in `...` takes any number of arguments. */
   positionals: string[];
   examples: string[];
@@ -463,6 +466,20 @@ const commands: Command[] = [
     run: show,
   },
   {
+    name: "garden",
+    usage: GARDEN_USAGE,
+    summary: "Start the Repo's Gardener: an agent that rebases, retargets and resolves conflicts in its open PRs, never merging (no-op while one runs)",
+    flags: { "--pr": { value: true, repeats: true, description: "an open PR of the Repo to tend, by URL; repeat for several (default: every one that needs it)" } },
+    positionals: ["repo"],
+    examples: ["nico-agent garden acme/api", "nico-agent garden acme/api --pr https://github.com/acme/api/pull/12 --pr https://github.com/acme/api/pull/13"],
+    help: [
+      "It runs on the gardener launch in config (default opencode2 opencode-go/deepseek-v4.1-flash max), with the garden prompt",
+      "A PR whose PR below it merged is rebased onto its new base and retargeted; any other is treated as conflicting",
+      "Its workspace is removed once it is done, on the next `nico-agent advance`",
+    ],
+    run: gardenCommand,
+  },
+  {
     name: "lead start",
     usage: LEAD_START_USAGE,
     summary: "Start the Lead as the herdr agent `lead` in its own workspace, connected to serve's MCP server (no-op while it runs)",
@@ -642,7 +659,8 @@ function parseArgs(command: Command, tokens: string[]): Args {
     if (value === undefined || value === "") {
       throw new CliError(`${name} needs a value`, [`Usage: \`${command.usage}\``], 2);
     }
-    args.flags[name] = value;
+    const given = args.flags[name];
+    args.flags[name] = "repeats" in spec && spec.repeats ? [...(Array.isArray(given) ? given : []), value] : value;
   }
   if (args.flags["--help"]) return args;
   const variadic = command.positionals.at(-1)?.endsWith("...");
@@ -777,9 +795,9 @@ async function advanceCommand(_args: Args, ctx: RunContext): Promise<Output> {
   return advanceOutput(await advance(ctx.world, ctx.configDir));
 }
 
-function advanceOutput({ specs, errors, closed, warnings, help }: AdvanceReport): Output {
+function advanceOutput({ specs, errors, closed, gardeners, warnings, help }: AdvanceReport): Output {
   return {
-    data: { specs, ...(errors.length && { errors }), ...(closed.length && { closed }), ...(warnings.length && { warnings }) },
+    data: { specs, ...(errors.length && { errors }), ...(closed.length && { closed }), ...(gardeners.length && { gardeners }), ...(warnings.length && { warnings }) },
     help: [...help, BOARD_HELP],
     exitCode: errors.length || specs.some((s) => s.result === "failed") ? 1 : 0,
   };
@@ -1497,7 +1515,7 @@ function mcpUrl(port: number) {
 }
 
 /** Commands that change what the Board shows, so `serve` reads GitHub afresh after them, failed or not. */
-const BOARD_CHANGES = ["dispatch", "review", "close", "queue", "unqueue", "move", "advance", "proposals approve"];
+const BOARD_CHANGES = ["dispatch", "review", "close", "garden", "queue", "unqueue", "move", "advance", "proposals approve"];
 
 function changesBoard(argv: string[]) {
   return BOARD_CHANGES.some((command) => command.split(" ").every((word, i) => argv[i] === word));
@@ -1567,6 +1585,28 @@ async function serve(args: Args, ctx: RunContext): Promise<Output> {
       "Open the url in a browser to see the Board; stop the server with Ctrl-C",
       `Register the MCP server with Claude Code: \`claude mcp add --transport http nico-agent ${mcp}\``,
     ],
+  };
+}
+
+async function gardenCommand(args: Args, ctx: RunContext): Promise<Output> {
+  const slug = args.positionals[0];
+  if (!slug) throw new CliError("<repo> is required", [`Usage: \`${GARDEN_USAGE}\``], 2);
+  const repo = gardenRepo(ctx.configDir, slug);
+  const refs = args.flags["--pr"];
+  const { gardener, outcome, resumedFrom } = await garden(ctx.world, ctx.configDir, { repo: repo.slug, prs: Array.isArray(refs) ? refs : [] });
+  const { agent, harness, model, effort } = gardener.agent;
+  const result = { new: "started", existing: "already running (no-op)", resumed: `resumed from ${resumedFrom}` }[outcome];
+  return {
+    data: definedOnly({
+      gardener: result,
+      repo: gardener.repo,
+      workspace: gardener.workspace,
+      agent,
+      harness, model, effort,
+      prs: describePrs(gardener.repo, gardener.prs),
+      warnings: gardener.warnings,
+    }),
+    help: [`Run \`herdr agent read ${agent}\` to see its screen`, BOARD_HELP],
   };
 }
 
@@ -1673,7 +1713,21 @@ async function board(ctx: RunContext, json: boolean): Promise<Output> {
   help.unshift(...blocked);
   // The question `nico-agent answer` replies to, for a user away from herdr; the TOON Board points at `herdr agent read` instead.
   const asking = json ? await loadAsking(ctx.world, inFlight, specs) : [];
+  // Each Repo's Gardener, with the PRs it was sent to; none listed means every one that needs it.
+  const gardeners = (await gardenerRows(ctx.world, ctx.configDir)).map(({ gardener: g, state }) => ({
+    repo: g.repo,
+    agent: g.agent.agent,
+    state,
+    prs: g.prs.map((pr) => pr.url),
+    workspace: g.workspace ?? "",
+    harness: g.agent.harness,
+    model: g.agent.model,
+    effort: g.agent.effort,
+    ...(json && definedOnly({ failure: g.failure?.error, warnings: g.warnings?.length ? g.warnings : undefined })),
+  }));
+  help.unshift(...gardeners.filter((g) => g.state === "blocked").map((g) => `Run \`herdr agent read ${g.agent}\` to see what the Gardener of ${g.repo} is asking`));
   const inFlightData = {
+    ...(gardeners.length > 0 && { gardeners }),
     inFlight: plural(inFlight.length, "Dispatch", "Dispatches"),
     ...(inFlight.length > 0 && {
       dispatches: inFlight.map(({ dispatch: d, stage, pr, prError, implementerState, reviewerState }) => ({

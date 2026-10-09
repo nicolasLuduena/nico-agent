@@ -137,10 +137,23 @@ _Avoid_: Stuck, blocked (a Blocker is an issue)
 The agent launched in the same workspace, once a PR is linked, to review it.
 _Avoid_: Checker
 
+**Gardener**:
+The agent nico-agent starts in a Repo to rebase, retarget and resolve
+conflicts in its open PRs, never merging, closing or approving one. It is not a
+Dispatch (it has no issue): `nico-agent garden <repo>` starts it in its own
+herdr workspace on a worktree of the Repo, on the `gardener` launch in config
+(opencode2, `opencode-go/deepseek-v4.1-flash`, max Effort unless set), with
+the `garden` prompt naming each PR and what happened to it (the PR below it
+merged, or it conflicts) and the Bot suffix. One per Repo at a time: a second
+`garden` returns the running one. `advance` removes its workspace once its
+Agent state is idle or done.
+_Avoid_: Rebaser, merger, maintainer
+
 **Bot suffix**:
 Text appended to the Implementer's prompt when the bot's GitHub App is
 installed on the Repo, telling the agent to open its PR with `ghbot` and to
-add the bot as commit co-author. Checked afresh each time the prompt is sent.
+add the bot as commit co-author; the Gardener's own tells it to post its
+comments with `ghbot`. Checked afresh each time the prompt is sent.
 _Avoid_: Bot mode, attribution prompt
 
 **Stage**:
