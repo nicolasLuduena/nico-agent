@@ -86,7 +86,7 @@ describe("the Lead proposes, the user decides", () => {
 
     const inbox = (await call(web, "inbox")).structuredContent.entries;
     expect(inbox).toEqual([{ id: expect.any(Number), at: world.now().toISOString(), type: "decision", proposal: id, decision: "declined", action: DISPATCH, text: "Finish billing first" }]);
-    expect((await cli("proposals", "--all", "--json")).json().proposals).toMatchObject([{ id, status: "declined", declined: "Finish billing first" }]);
+    expect((await cli("proposals", "--all", "--json")).json().proposals).toMatchObject([{ id, status: "declined", declineReason: "Finish billing first" }]);
   });
 
   test("an approval and its outcome reach the Lead's inbox", async () => {
@@ -111,6 +111,25 @@ describe("the Lead proposes, the user decides", () => {
     expect(world.calls.filter((c) => c.startsWith("herdr worktree create"))).toEqual([]);
     expect((await cli("proposals", "--all", "--json")).json().proposals).toMatchObject([{ id, status: "failed" }]);
     expect((await call(web, "inbox")).structuredContent.entries).toMatchObject([{ type: "decision", proposal: id, decision: "failed" }]);
+  });
+
+  test("an approved action on several issues is approved if any ran, and failed with each issue's reason if none did", async () => {
+    const { web, cli, world } = await board();
+    world.addIssue("acme/api", { number: 8 });
+    const both = ["dispatch", ...FLAGS, "--", "acme/api#7", "acme/api#8"];
+    const partly = await propose(web, both);
+    const neither = await propose(web, both);
+    await cli(...DISPATCH);
+
+    const approved = await cli("proposals", "approve", String(partly), "--json");
+    expect(approved.exitCode).toBe(0);
+    expect(approved.json()).toMatchObject({ approved: partly, outcome: { dispatched: "2 of 2 issues" } });
+
+    const failed = await cli("proposals", "approve", String(neither), "--json");
+    expect(failed.exitCode).toBe(1);
+    expect(failed.json().error).toBe(`Proposal ${neither} is no longer possible, so it was closed as failed: `
+      + "nothing left to do: acme/api#7: already In flight (no-op); acme/api#8: already In flight (no-op)");
+    expect((await cli("proposals", "--all", "--json")).json().proposals.map((p: { status: string }) => p.status)).toEqual(["approved", "failed"]);
   });
 
   test("approving an answer to an Implementer no longer Asking is refused with the reason and closes it as failed", async () => {
@@ -199,13 +218,13 @@ describe("the Lead proposes, the user decides", () => {
   });
 
   test("the orient packet carries the open Proposals, so a restarted Lead knows what waits on the user", async () => {
-    const { web, cli } = await board();
+    const { web, cli, world } = await board();
     const decided = await propose(web, ["advance"], "Keep the Specs moving");
     const open = await propose(web, DISPATCH);
     await cli("proposals", "decline", String(decided));
 
     const { orient } = (await call(web, "inbox")).structuredContent as { orient: { proposals: unknown } };
-    expect(orient.proposals).toEqual([{ id: open, at: "2026-09-30T12:00:00.000Z", action: DISPATCH, reason: "acme/api#7 is the smallest Ready issue", status: "open" }]);
+    expect(orient.proposals).toEqual([{ id: open, at: world.now().toISOString(), action: DISPATCH, reason: "acme/api#7 is the smallest Ready issue", status: "open" }]);
   });
 
   test("the CLI proposes as the Lead's tool does", async () => {

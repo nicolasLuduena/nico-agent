@@ -2,6 +2,9 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { withFileLock, writeJsonAtomic } from "./state";
 
+/** Where a Proposal stands: undecided, or how the user decided it and how that went. */
+export type ProposalStatus = "open" | "approved" | "declined" | "failed";
+
 /**
  * An action the Lead may not take under its Standing orders, held until the
  * user decides (ADR-0010). Approving runs `action` through the CLI in
@@ -14,10 +17,10 @@ export interface Proposal {
   action: string[];
   /** Why the Lead proposes it. */
   reason: string;
-  status: "open" | "approved" | "declined" | "failed";
+  status: ProposalStatus;
   decidedAt?: string;
   /** Why the user declined it, when they said. */
-  declined?: string;
+  declineReason?: string;
   /** What the action printed with `--json`, its help left out. */
   outcome?: Record<string, unknown>;
 }
@@ -41,6 +44,13 @@ export function loadProposals(dir: string): Proposal[] {
   return (JSON.parse(readFileSync(file, "utf8")) as { proposals: Proposal[] }).proposals;
 }
 
+/** The Proposals the user has not decided yet, oldest first. */
+export function openProposals(dir: string): Proposal[] {
+  return loadProposals(dir).filter(isOpen);
+}
+
+const isOpen = (p: Proposal) => p.status === "open";
+
 /** Record `action` as the next open Proposal. */
 export function addProposal(dir: string, action: string[], reason: string, at: Date): Promise<Proposal> {
   return withFileLock(dir, FILE, () => {
@@ -56,14 +66,14 @@ export function addProposal(dir: string, action: string[], reason: string, at: D
  * before its action runs, so a second approval is refused while it does. A
  * Proposal already decided, or an id that names none, is refused.
  */
-export function decide(dir: string, id: string, status: "approved" | "declined", at: Date, declined?: string): Promise<Proposal> {
+export function decide(dir: string, id: string, status: "approved" | "declined", at: Date, declineReason?: string): Promise<Proposal> {
   return withFileLock(dir, FILE, () => {
     const proposals = loadProposals(dir);
     const proposal = proposals.find((p) => String(p.id) === id);
-    const open = proposals.filter((p) => p.status === "open").map((p) => p.id);
+    const open = proposals.filter(isOpen).map((p) => p.id);
     if (!proposal) throw new ProposalRefused(`no Proposal has id ${id}`, open);
     if (proposal.status !== "open") throw new ProposalRefused(`Proposal ${id} was already ${proposal.status}`, open);
-    const decided: Proposal = { ...proposal, status, decidedAt: at.toISOString(), ...(declined && { declined }) };
+    const decided: Proposal = { ...proposal, status, decidedAt: at.toISOString(), ...(declineReason && { declineReason }) };
     save(dir, proposals.map((p) => (p === proposal ? decided : p)));
     return decided;
   });

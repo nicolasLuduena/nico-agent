@@ -14,7 +14,7 @@ import { linearIdentifier } from "./linear";
 import { PROPOSABLE, withJson } from "./mcp";
 import { PROPOSALS_SCOPE, notifyOnce } from "./notify";
 import { type Output, plural, render } from "./output";
-import { type Proposal, ProposalRefused, addProposal, commandLine, decide, loadProposals, settle } from "./proposals";
+import { type Proposal, ProposalRefused, addProposal, commandLine, decide, loadProposals, openProposals, settle } from "./proposals";
 import { dequeue, enqueue, loadQueues, move, pruneBoardQueues, queueOf } from "./queue";
 import { isCandidate, sameSpec } from "./spec";
 import { VERSION } from "./version";
@@ -818,7 +818,7 @@ async function leadProposeCommand(args: Args, ctx: RunContext): Promise<Output> 
     throw new CliError(`the action is not a valid \`${command.name}\` command: ${e.message}`, [`Usage: \`${command.usage}\``], 2);
   }
   const proposal = await addProposal(ctx.configDir, action, reason, ctx.world.now());
-  const open = loadProposals(ctx.configDir).filter((p) => p.status === "open");
+  const open = openProposals(ctx.configDir);
   const warnings = await notifyOnce(ctx.world, ctx.configDir, open.map(proposalNotice), (scope) => scope === PROPOSALS_SCOPE);
   return {
     data: { proposed: proposal.id, action: commandLine(action), ...(warnings.length && { warnings }) },
@@ -838,7 +838,7 @@ function proposalNotice({ id, action, reason }: Proposal) {
 
 async function proposalsList(args: Args, ctx: RunContext): Promise<Output> {
   const proposals = loadProposals(ctx.configDir);
-  const open = proposals.filter((p) => p.status === "open");
+  const open = openProposals(ctx.configDir);
   const help = open.length
     ? [`Run \`nico-agent proposals approve ${open[0]!.id}\` to run one, or \`nico-agent proposals decline ${open[0]!.id} [reason]\` to turn it down`]
     : [];
@@ -851,9 +851,9 @@ async function proposalsList(args: Args, ctx: RunContext): Promise<Output> {
 }
 
 /** Decide Proposal `id`, turning a refusal into the CLI's own. */
-async function decideProposal(ctx: RunContext, id: string, status: "approved" | "declined", declined?: string) {
+async function decideProposal(ctx: RunContext, id: string, status: "approved" | "declined", declineReason?: string) {
   try {
-    return await decide(ctx.configDir, id, status, ctx.world.now(), declined);
+    return await decide(ctx.configDir, id, status, ctx.world.now(), declineReason);
   } catch (e) {
     if (!(e instanceof ProposalRefused)) throw e;
     const open = e.open.length ? `the open ones are ${e.open.join(", ")}` : "none is open";
@@ -868,33 +868,53 @@ function idArg(args: Args, usage: string) {
 }
 
 /**
- * Run an approved Proposal's action as the CLI command it is. An action that
- * fails, or finds nothing left to do (`(no-op)`), is no longer possible: the
- * Proposal is closed as failed, with the reason.
+ * Run an approved Proposal's action as the CLI command it is. An action
+ * refused outright, or that ran nothing (every issue failed or was a
+ * `(no-op)`), is no longer possible: the Proposal is closed as failed, with
+ * the reason. One that ran in part is approved, exiting as the command did.
  */
 async function proposalsApprove(args: Args, ctx: RunContext): Promise<Output> {
   const { id, action } = await decideProposal(ctx, idArg(args, APPROVE_USAGE), "approved");
-  const { stdout, exitCode } = await run(withJson(action), ctx);
-  const { help = [], ...outcome } = JSON.parse(stdout) as { help?: string[] } & Record<string, unknown>;
-  const noOps = exitCode === 0 ? noOpsIn(outcome) : [];
-  const why = exitCode !== 0 ? String(outcome.error) : noOps.length ? `nothing left to do: ${noOps.join("; ")}` : "";
-  await settle(ctx.configDir, id, outcome, why !== "");
-  const decision = why ? "failed" : "approved";
-  await append(ctx.configDir, { type: "decision", proposal: id, decision, action, text: why, outcome }, ctx.world.now());
+  const close = async (outcome: Record<string, unknown>, why: string) => {
+    await settle(ctx.configDir, id, outcome, why !== "");
+    await append(ctx.configDir, { type: "decision", proposal: id, decision: why ? "failed" : "approved", action, text: why, outcome }, ctx.world.now());
+  };
+  let result: RunResult;
+  try {
+    result = await run(withJson(action), ctx);
+  } catch (e) {
+    // A bug, not a refusal; the Proposal is still closed, so the Lead hears of it.
+    await close({ error: String(e) }, String(e));
+    throw e;
+  }
+  const { help = [], ...outcome } = JSON.parse(result.stdout) as { help?: string[] } & Record<string, unknown>;
+  const why = notRun(outcome);
+  await close(outcome, why);
   if (why) {
     throw new CliError(`Proposal ${id} is no longer possible, so it was closed as failed: ${why}`, [...help, PROPOSALS_HELP], 1, {
       proposal: id, action: commandLine(action), outcome,
     });
   }
-  return { data: { approved: id, action: commandLine(action), outcome }, help: [...help, PROPOSALS_HELP] };
+  return { data: { approved: id, action: commandLine(action), outcome }, help: [...help, PROPOSALS_HELP], exitCode: result.exitCode === 0 ? 0 : 1 };
 }
 
-/** The `(no-op)` results anywhere in a command's output. */
-function noOpsIn(value: unknown): string[] {
-  if (typeof value === "string") return value.endsWith("(no-op)") ? [value] : [];
-  if (Array.isArray(value)) return value.flatMap(noOpsIn);
-  if (typeof value === "object" && value !== null) return Object.values(value).flatMap(noOpsIn);
-  return [];
+/** Why an action's output shows it ran nothing, or "" when it did something. */
+function notRun(outcome: Record<string, unknown>): string {
+  if (typeof outcome.error === "string") return outcome.error;
+  // Several issues: a row each, done unless it failed, was skipped or was a no-op.
+  if (Array.isArray(outcome.results)) {
+    const rows = outcome.results as { issue: string; result: string; error: string }[];
+    if (rows.some((r) => !r.error && !isNoOp(r.result))) return "";
+    const noOps = rows.every((r) => !r.error);
+    return `${noOps ? "nothing left to do: " : ""}${rows.map((r) => `${r.issue}: ${r.error || r.result}`).join("; ")}`;
+  }
+  const noOps = Object.values(outcome).filter((v): v is string => typeof v === "string" && isNoOp(v));
+  return noOps.length ? `nothing left to do: ${noOps.join("; ")}` : "";
+}
+
+/** The CLI's word for a mutation that found it already done (ADR-0006). */
+function isNoOp(result: string) {
+  return result.endsWith("(no-op)");
 }
 
 async function proposalsDecline(args: Args, ctx: RunContext): Promise<Output> {

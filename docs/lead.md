@@ -188,7 +188,7 @@ Approving runs the command through the CLI in nico-agent, exactly as if you
 typed it; the Lead runs nothing. If the command fails, or finds nothing left
 to do (the issue is already In flight, the Implementer is no longer Asking),
 the approval is refused with the reason and the Proposal is closed as
-`failed`. A Proposal is decided once: approving or declining it again, or an
+`failed`. A command on several issues counts as run if any of them ran. A Proposal is decided once: approving or declining it again, or an
 id that names none, is refused.
 
 Each decision becomes a `decision` entry in the conversation, with the

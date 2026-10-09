@@ -1,6 +1,6 @@
 import { appendFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { type Proposal, loadProposals } from "./proposals";
+import { type Proposal, type ProposalStatus, openProposals } from "./proposals";
 import { withFileLock, writeJsonAtomic } from "./state";
 
 /**
@@ -19,7 +19,7 @@ export type Entry = { id: number; at: string } & (
    * The user's decision on the Proposal `proposal`, with its action and what
    * running it printed; `text` is why it was declined or failed, if known.
    */
-  | { type: "decision"; proposal: number; decision: "approved" | "declined" | "failed"; action: string[]; text: string; outcome?: Record<string, unknown> }
+  | { type: "decision"; proposal: number; decision: Exclude<ProposalStatus, "open">; action: string[]; text: string; outcome?: Record<string, unknown> }
 );
 
 type Body = Entry extends infer E ? (E extends Entry ? Omit<E, "id" | "at"> : never) : never;
@@ -162,7 +162,7 @@ export function readInbox(dir: string): Promise<{ entries: InboxEntry[]; orient:
       intent: markdown(dir, INTENT_FILE),
       notes: markdown(dir, NOTES_FILE),
       open: openAsks(entries),
-      proposals: loadProposals(dir).filter((p) => p.status === "open"),
+      proposals: openProposals(dir),
       last: entries.slice(-LAST).map(authored),
     };
     return { entries: inbox, orient };
