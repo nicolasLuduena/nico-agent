@@ -110,8 +110,9 @@ numbered list. With Voice on, the page keeps the socket open, and every open
 page hears the Lead.
 
 The Nudge carries it too: the Lead is prompted "Read your Inbox (voice on)",
-and its skill then talks for the ear: an acknowledgment before a slow answer,
-short sentences, issues by title, choices left to the numbered list.
+then the local time, and its skill then talks for the ear: an acknowledgment
+before a slow answer, short sentences, issues by title, choices left to the
+numbered list.
 
 The Lead stops at once, and what it had still to say is dropped, when:
 

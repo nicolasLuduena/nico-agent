@@ -33,12 +33,12 @@ describe("Voice on", () => {
   test("the Nudge carries it, so the Lead knows to talk for the ear", async () => {
     const { cli, world } = await lead();
     await cli("say", "What is running?");
-    expect(prompts(world.calls)).toEqual(["herdr agent prompt lead Read your Inbox"]);
+    expect(prompts(world.calls)).toEqual([expect.stringMatching(/^herdr agent prompt lead Read your Inbox \(local time: /)]);
 
     await cli("voice", "on");
     world.agentStates.set("lead", "idle");
     await cli("say", "And now?");
-    expect(prompts(world.calls).at(-1)).toBe("herdr agent prompt lead Read your Inbox (voice on)");
+    expect(prompts(world.calls).at(-1)).toStartWith("herdr agent prompt lead Read your Inbox (voice on) (local time: ");
   });
 
   test("the app turns it on and off, and reads it", async () => {

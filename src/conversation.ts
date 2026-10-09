@@ -6,8 +6,7 @@ import { withFileLock, writeJsonAtomic } from "./state";
 
 /**
  * One entry of the conversation between the user and the Lead (ADR-0010),
- * kept append-only. Later kinds (event) join as new types
- * without changing the shape: an id, a type, a time.
+ * kept append-only. Each kind has the same shape: an id, a type, a time.
  */
 export type Entry = { id: number; at: string } & (
   /**
@@ -21,12 +20,17 @@ export type Entry = { id: number; at: string } & (
   /** The user's answer to the `ask` entry `question`; `raw` is what was heard when it was spoken. */
   | { type: "answer"; question: number; text: string; raw?: string }
   /**
-   * The user's decision on the Proposal `proposal`, with its action or write
-   * and what running the action printed; `text` is why it was declined or
-   * failed, if known.
+   * The user's decision on the Proposal `proposal`, with its action or write,
+   * the Lead's `reason` for it, and what running the action printed; `text`
+   * is why it was declined or failed, if known.
    */
-  | ({ type: "decision"; proposal: number; decision: Exclude<ProposalStatus, "open">; text: string; outcome?: Record<string, unknown> } & Proposed)
+  | ({ type: "decision"; proposal: number; decision: Exclude<ProposalStatus, "open">; reason: string; text: string; outcome?: Record<string, unknown> } & Proposed)
+  /** A change nico-agent saw on the PR `pr` (the URL) of the issue `issue`, summed up in one line. */
+  | { type: "event"; pr: string; issue: string; change: PrChange; text: string }
 );
+
+/** What changed on a PR: a comment, a review, a check's result, or its state. */
+export type PrChange = "comment" | "review" | "check" | "ready" | "merged" | "closed";
 
 type Body = Entry extends infer E ? (E extends Entry ? Omit<E, "id" | "at"> : never) : never;
 
@@ -55,8 +59,11 @@ export interface Orient {
   last: Authored[];
 }
 
+/** Who wrote an entry: the user, the Lead, or nico-agent itself (an event). */
+export type Author = "user" | "lead" | "nico-agent";
+
 /** An entry with who wrote it, as the user and the Lead read the conversation. */
-export type Authored = Entry & { who: "user" | "lead" };
+export type Authored = Entry & { who: Author };
 
 const FILE = "conversation.jsonl";
 /** How many of the last entries the orient packet carries. */
@@ -65,7 +72,7 @@ const LAST = 10;
 const CURSOR_FILE = "lead-cursor.json";
 
 /** Who wrote `entry`: the Lead's own entries never come back in its Inbox. */
-function author(entry: Entry): "user" | "lead" {
+function author(entry: Entry): Author {
   switch (entry.type) {
     case "user":
     case "answer":
@@ -74,6 +81,8 @@ function author(entry: Entry): "user" | "lead" {
     case "lead":
     case "ask":
       return "lead";
+    case "event":
+      return "nico-agent";
   }
 }
 
@@ -104,19 +113,21 @@ export function openQuestions(entries: Entry[]): number[] {
   return openAsks(entries).map((e) => e.id);
 }
 
-function openAsks(entries: Entry[]): Entry[] {
+/** The Lead's questions not answered yet, oldest first. */
+export function openAsks(entries: Entry[]): Ask[] {
   const answered = new Set(entries.flatMap((e) => (e.type === "answer" ? [e.question] : [])));
-  return entries.filter((e) => e.type === "ask" && !answered.has(e.id));
+  return entries.filter((e): e is Ask => e.type === "ask" && !answered.has(e.id));
 }
 
 /**
- * The entries whose text, or a question's choices, contain `query` ignoring
- * case, written from `since` until `until` when given, oldest first.
+ * The entries whose text, a question's choices, or a decision's reason
+ * contain `query` ignoring case, written from `since` until `until` when
+ * given, oldest first.
  */
 export function recall(entries: Entry[], query: string, range: { since?: Date | undefined; until?: Date | undefined } = {}): Authored[] {
   const needle = query.toLowerCase();
   return entries
-    .filter((e) => [e.text, ...(e.type === "ask" ? (e.choices ?? []) : [])].some((t) => t.toLowerCase().includes(needle)))
+    .filter((e) => [e.text, ...(e.type === "ask" ? (e.choices ?? []) : []), ...(e.type === "decision" ? [e.reason] : [])].some((t) => t.toLowerCase().includes(needle)))
     .filter((e) => (!range.since || new Date(e.at) >= range.since) && (!range.until || new Date(e.at) <= range.until))
     .map(authored);
 }
@@ -132,6 +143,7 @@ export function append(dir: string, body: Body, at: Date): Promise<Entry> {
   return withFileLock(dir, FILE, () => write(dir, loadConversation(dir), body, at));
 }
 
+export type Ask = Extract<Entry, { type: "ask" }>;
 type Answer = Extract<Entry, { type: "answer" }>;
 type User = Extract<Entry, { type: "user" }>;
 
@@ -190,7 +202,7 @@ export function readInbox(dir: string): Promise<{ entries: InboxEntry[]; orient:
       return entry?.type === type ? entry.text : "";
     };
     const correction = new Map(entries.flatMap((e) => (e.type === "user" && e.supersedes !== undefined ? [[e.supersedes, e.id] as const] : [])));
-    const inbox = unread.filter((e) => author(e) === "user").map((e): InboxEntry => {
+    const inbox = unread.filter((e) => author(e) !== "lead").map((e): InboxEntry => {
       if (e.type === "answer") return { ...e, asked: textOf(e.question, "ask") };
       if (e.type !== "user") return e;
       const supersededBy = correction.get(e.id);

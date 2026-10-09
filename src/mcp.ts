@@ -131,6 +131,19 @@ const TOOLS = [
     },
   },
   {
+    name: "peek",
+    title: "Peek",
+    description: "Read what an agent's pane shows right now: an In-flight issue's Implementer, its Reviewer with `reviewer`, or with no issue your own. Same JSON as `nico-agent peek --json`.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        issue: { type: "string", description: "The In-flight issue, e.g. acme/api#7 or BLE-27; omit for your own screen" },
+        reviewer: { type: "boolean", description: "The issue's Reviewer instead of its Implementer" },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
     name: "say",
     title: "Say",
     description: "Reply to the user: your words go into the conversation the user reads with `nico-agent lead log`.",
@@ -160,7 +173,7 @@ const TOOLS = [
   {
     name: "propose",
     title: "Propose",
-    description: "Propose an action your Standing orders do not allow, for the user to approve or decline: either `action`, the CLI command an action tool's refusal hands you (without `nico-agent`), which approving runs in nico-agent; or `write`, the Markdown of a Spec and its tickets for a Repo's Source while the `write` order is off, which approving lets you write. The decision arrives in your Inbox.",
+    description: "Propose an action your Standing orders do not allow, or a weekly retro's change, for the user to approve or decline: either `action`, the CLI command an action tool's refusal hands you (without `nico-agent`), which approving runs in nico-agent; or `write`, Markdown for a Repo's Source (a Spec and its tickets while the `write` order is off, or a weekly retro's ticket), which approving lets you write. The decision arrives in your Inbox.",
     inputSchema: {
       type: "object",
       properties: {
@@ -170,7 +183,7 @@ const TOOLS = [
           description: "Instead of action: what you would write to a Repo's Source",
           properties: {
             repo: { type: "string", description: "The Repo, as `owner/name` from the Board" },
-            text: { type: "string", description: "The Spec and its tickets, in Markdown, as you would write them" },
+            text: { type: "string", description: "The Markdown, as you would write it" },
           },
           required: ["repo", "text"],
           additionalProperties: false,
@@ -287,7 +300,7 @@ function initialize(params: unknown) {
     capabilities: { tools: {} },
     serverInfo: { name: "nico-agent", title: "nico-agent", version: VERSION },
     instructions: [
-      "Read the Board with `board` and your Inbox with `inbox`; reply with `say`, ask the user with `ask`, and search the conversation with `recall`.",
+      "Read the Board with `board`, your Inbox with `inbox`, and an agent's screen with `peek`; reply with `say`, ask the user with `ask`, and search the conversation with `recall`.",
       "Read and replace the Intent and the Notes with `intent` and `notes`, carrying the version you read.",
       "Act with `dispatch`, `review`, `close`, `answer`, `queue`, `unqueue` and `advance`, each under the Standing order its description names; one refused because its order is off gives you a `propose` call to make instead, and the user's decision on it arrives in your Inbox.",
     ].join(" "),
@@ -377,6 +390,16 @@ function toolRun(params: unknown): ToolRun {
         return [`--${key}`, value];
       });
       return { argv: ["lead", "recall", "--json", ...range, "--", query] };
+    }
+    case "peek": {
+      onlyArguments(name, args, ["issue", "reviewer"]);
+      const { reviewer = false } = args;
+      if (typeof reviewer !== "boolean") throw new RpcError(-32602, "peek's reviewer must be true or false");
+      if (args.issue === undefined) {
+        if (reviewer) throw new RpcError(-32602, "peek's reviewer needs an issue");
+        return { argv: ["peek", "--json"] };
+      }
+      return { argv: ["peek", "--json", ...(reviewer ? ["--reviewer"] : []), "--", text(name, args, "issue")] };
     }
     case "say":
       onlyArguments(name, args, ["text"]);
