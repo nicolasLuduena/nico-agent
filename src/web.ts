@@ -3,7 +3,9 @@ import { join } from "node:path";
 import { type PreviewLookup, cachedPreviews } from "./preview";
 import { type CliRunner, isToolCall, mcpHandler, withJson } from "./mcp";
 import { type EventName, Events } from "./events";
+import { loadConfig, standingOrders } from "./config";
 import { leadStatus } from "./lead";
+import { RECORDS } from "./records";
 import { transcriptionSession } from "./transcription";
 import type { Sockets, World } from "./world";
 
@@ -20,9 +22,10 @@ export interface WebContext {
 
 /**
  * A look at what the Lead panel shows besides the Board: each call sends
- * `conversation-entry`, `proposal-changed` or `lead-state` for what changed
+ * `conversation-entry`, `proposal-changed`, `lead-state`, or the drawer's
+ * `intent-changed`, `notes-changed` or `orders-changed` for what changed
  * since the last, whoever changed it (the app, the Lead through MCP, the CLI,
- * or herdr for the Lead's Agent state).
+ * an editor, or herdr for the Lead's Agent state).
  */
 export function lookAtLead({ world, configDir }: { world: World; configDir: string }, events: Events) {
   /** When a file last changed, as its size and time; the conversation only grows. */
@@ -43,6 +46,9 @@ export function lookAtLead({ world, configDir }: { world: World; configDir: stri
       const { lead, state, record: { agent: { harness, model, effort } } } = status;
       return JSON.stringify([lead, state, harness, model, effort]);
     }],
+    ["intent-changed", file(RECORDS.intent.file)],
+    ["notes-changed", file(RECORDS.notes.file)],
+    ["orders-changed", () => JSON.stringify(standingOrders(loadConfig(configDir)))],
   ];
   // A look that fails (herdr gone, say) is a sample of its own, never a failed request or tick.
   const sample = () => Promise.all(watched.map(async ([, look]) => {
@@ -145,6 +151,9 @@ const API_ACTIONS: Record<string, string[]> = {
   "/api/proposals/decline": ["proposals", "decline"],
   "/api/lead/start": ["lead", "start"],
   "/api/lead/stop": ["lead", "stop"],
+  "/api/intent/set": ["intent", "set"],
+  "/api/notes/set": ["notes", "set"],
+  "/api/orders/set": ["orders", "set"],
 };
 
 /** What the app reads, with GET, by its `/api` path: each the CLI command of the same words. */
@@ -155,6 +164,9 @@ const API_READS: Record<string, string[]> = {
   "/api/lead/status": ["lead", "status"],
   // Decided Proposals too, so a card keeps its outcome.
   "/api/proposals": ["proposals", "--all"],
+  "/api/intent": ["intent"],
+  "/api/notes": ["notes"],
+  "/api/orders": ["orders"],
 };
 
 const API_HELP = `Post {"args": [...]} to one of ${Object.keys(API_ACTIONS).join(", ")}`;

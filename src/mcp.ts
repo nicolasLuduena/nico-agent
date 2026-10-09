@@ -1,4 +1,4 @@
-import { ORDERS, type Order } from "./config";
+import { ORDERS, type Order } from "./orders";
 import { render } from "./output";
 import { RECORDS, type RecordName } from "./records";
 import { VERSION } from "./version";

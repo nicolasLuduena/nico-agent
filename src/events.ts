@@ -1,8 +1,11 @@
 /**
  * What the app's SSE stream says changed; the app refetches the matching
- * resource: the Board, the conversation, the Proposals, or the Lead's status.
+ * resource: the Board, the conversation, the Proposals, the Lead's status,
+ * or the drawer's Intent, Notes or Standing orders.
  */
-export type EventName = "board-changed" | "conversation-entry" | "proposal-changed" | "lead-state";
+export type EventName =
+  | "board-changed" | "conversation-entry" | "proposal-changed" | "lead-state"
+  | "intent-changed" | "notes-changed" | "orders-changed";
 
 /**
  * The app's one SSE stream, `/api/events`, fanned out to every open page.

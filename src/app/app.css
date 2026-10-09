@@ -336,11 +336,51 @@ button.talk:is(.holding, .hands-free) svg { fill: currentColor; }
 .talk-status .help { color: var(--ink-muted); font-size: 12px; }
 .talk-status .interim { font-style: italic; }
 
+/* The drawer: the Intent, the Notes and the Standing orders in tabs, in the conversation's place while open. */
+.lead-line button.drawer-toggle { margin-left: auto; }
+.lead-drawer { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+:is(.lead-drawer, .drawer-tab)[hidden] { display: none; }
+.lead-drawer .tabs { display: flex; gap: 1rem; padding: 0 1rem; border-bottom: 1px solid var(--rule); }
+.tabs button[role="tab"] { height: 34px; padding: 0; border: none; border-radius: 0; background: none; color: var(--ink-muted); box-shadow: inset 0 -2px 0 transparent; }
+.tabs button[role="tab"]:hover:not(:disabled) { color: var(--ink); }
+.tabs button[role="tab"][aria-selected="true"] { color: var(--ink); font-weight: 650; box-shadow: inset 0 -2px 0 var(--ink); }
+/* A tab with an unsaved edit carries a small ink mark, drawn in CSS as a key bar is. */
+.tabs button.edited::after { content: ""; width: 5px; height: 5px; border-radius: 1px; background: currentColor; }
+.drawer-tab { flex: 1; display: flex; flex-direction: column; gap: 0.5rem; min-height: 0; overflow-y: auto; padding: 0.75rem 1rem; overscroll-behavior: contain; }
+.drawer-tab p { margin: 0; }
+.drawer-tab .lede { font-size: 12px; color: var(--ink-muted); }
+.drawer-tab.record textarea { flex: 1; min-height: 12rem; resize: none; font: inherit; font-size: 13px; line-height: 1.5; color: var(--ink); background: var(--panel); border: 1px solid var(--rule-strong); border-radius: 4px; padding: 0.5rem 0.6rem; }
+.drawer-tab.record textarea:disabled { color: var(--ink-muted); background: var(--panel-raised); }
+.record-foot { display: flex; align-items: center; gap: 0.35rem; }
+.record-foot .status { margin-right: auto; font-size: 12px; color: var(--ink-muted); }
+/* Saving is deciding, not starting a track: filled ink, as Approve. */
+.record-foot button.save { background: var(--ink); border-color: var(--ink); color: var(--panel); font-weight: 600; }
+.record-foot button.save:hover:not(:disabled) { background: color-mix(in srgb, var(--ink) 85%, var(--panel)); }
+/* A change made while the user edited waits on them, as an open question does: a 2px ink rule. */
+.conflict { display: grid; gap: 0.4rem; padding: 0.6rem 0.75rem; background: var(--panel-raised); border-radius: 4px; box-shadow: inset 2px 0 0 var(--ink); font-size: 13px; }
+.conflict b { font-weight: 650; }
+.conflict pre { margin: 0; max-height: 10rem; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; font-size: 13px; padding: 0.4rem 0.5rem; background: var(--panel); border: 1px solid var(--rule); border-radius: 3px; }
+.conflict .buttons { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+ul.orders { margin: 0; padding: 0; list-style: none; }
+ul.orders li { padding: 0.55rem 0; border-top: 1px solid var(--rule); }
+ul.orders li:first-child { border-top: none; }
+ul.orders label { gap: 0.5rem; font-size: 14px; color: var(--ink); cursor: pointer; }
+ul.orders .order { font-weight: 650; }
+ul.orders .state { font-size: 12px; color: var(--ink-muted); }
+ul.orders p { margin-top: 0.1rem; padding-left: calc(28px + 0.5rem); font-size: 12px; color: var(--ink-muted); }
+/* A switch, squared like every control: an ink fill when on; amber is kept for starting a track. */
+ul.orders input[role="switch"] { appearance: none; position: relative; width: 28px; height: 16px; border: 1px solid var(--rule-strong); border-radius: 4px; background: var(--panel-raised); transition: background-color 120ms, border-color 120ms; }
+ul.orders input[role="switch"]::before { content: ""; position: absolute; top: 2px; left: 2px; width: 10px; height: 10px; border-radius: 3px; background: var(--ink-muted); transition: transform 120ms, background-color 120ms; }
+ul.orders input[role="switch"]:checked { background: var(--ink); border-color: var(--ink); }
+ul.orders input[role="switch"]:checked::before { transform: translateX(12px); background: var(--panel); }
+ul.orders input[role="switch"]:disabled { opacity: 0.6; cursor: default; }
+
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 
 @media (max-width: 1100px) {
   .layout { grid-template-columns: minmax(0, 1fr); }
   aside.lead-panel { position: static; height: auto; max-height: 75vh; }
+  .drawer-tab.record textarea { min-height: 14rem; }
 }
 
 @media (max-width: 760px) {
@@ -350,6 +390,7 @@ button.talk:is(.holding, .hands-free) svg { fill: currentColor; }
   /* 16px keeps Safari from zooming in on focus. */
   aside.lead-panel form.composer textarea { flex-basis: 100%; font-size: 16px; }
   form.composer button { height: 44px; }
+  .drawer-tab.record textarea { font-size: 16px; }
   button.talk { flex: 1; }
   figure.event { grid-template-columns: 1fr; gap: 1rem; padding: 1rem; }
   figure.event svg { max-width: 300px; margin: 0 auto; }
