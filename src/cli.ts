@@ -397,7 +397,7 @@ const commands: Command[] = [
       "nico-agent lead propose --reason \"Smallest unblocked Spec\" -- queue --repo acme/api -- acme/api#10",
       "nico-agent lead propose --reason \"The billing Spec we agreed on\" --write acme/api --file spec.md",
     ],
-    help: [`A Proposal runs one of: ${PROPOSABLE.join(", ")}; or, with --write, lets the Lead write a Spec and its tickets, or a retro's ticket`],
+    help: [`A Proposal runs one of: ${PROPOSABLE.join(", ")}; or, with --write, lets the Lead write Markdown to a Repo's Source`],
     run: leadProposeCommand,
   },
   {
@@ -988,12 +988,12 @@ function idArg(args: Args, usage: string) {
 async function proposalsApprove(args: Args, ctx: RunContext): Promise<Output> {
   const proposal = await decideProposal(ctx, idArg(args, APPROVE_USAGE), "approved");
   const { id } = proposal;
-  if (!("action" in proposal)) return approveWrite(ctx, id, proposal.write);
-  const { action } = proposal;
+  if (!("action" in proposal)) return approveWrite(ctx, proposal);
+  const { action, reason } = proposal;
   /** Settle the Proposal and tell the Lead, answering the Nudge's warnings. */
   const close = async (outcome: Record<string, unknown>, why: string) => {
     await settle(ctx.configDir, id, outcome, why !== "");
-    await append(ctx.configDir, { type: "decision", proposal: id, decision: why ? "failed" : "approved", action, text: why, outcome }, ctx.world.now());
+    await append(ctx.configDir, { type: "decision", proposal: id, decision: why ? "failed" : "approved", action, reason, text: why, outcome }, ctx.world.now());
     return nudgeLead(ctx.world, ctx.configDir);
   };
   let result: RunResult;
@@ -1020,8 +1020,8 @@ async function proposalsApprove(args: Args, ctx: RunContext): Promise<Output> {
  * An approved write runs nothing in nico-agent: the Lead writes it with its
  * own shell (ADR-0010), so the decision, carrying the text, goes to its Inbox.
  */
-async function approveWrite(ctx: RunContext, id: number, write: SourceWrite): Promise<Output> {
-  await append(ctx.configDir, { type: "decision", proposal: id, decision: "approved", write, text: "" }, ctx.world.now());
+async function approveWrite(ctx: RunContext, { id, write, reason }: Proposal & { write: SourceWrite }): Promise<Output> {
+  await append(ctx.configDir, { type: "decision", proposal: id, decision: "approved", write, reason, text: "" }, ctx.world.now());
   const warnings = await nudgeLead(ctx.world, ctx.configDir);
   return {
     data: { approved: id, write: write.repo, ...(warnings.length && { warnings }) },
@@ -1052,7 +1052,7 @@ async function proposalsDecline(args: Args, ctx: RunContext): Promise<Output> {
   const reason = args.positionals.slice(1).join(" ").trim();
   const proposal = await decideProposal(ctx, idArg(args, DECLINE_USAGE), "declined", reason || undefined);
   const { id } = proposal;
-  await append(ctx.configDir, { type: "decision", proposal: id, decision: "declined", ...describeProposed(proposal).proposed, text: reason }, ctx.world.now());
+  await append(ctx.configDir, { type: "decision", proposal: id, decision: "declined", ...describeProposed(proposal).proposed, reason: proposal.reason, text: reason }, ctx.world.now());
   const warnings = await nudgeLead(ctx.world, ctx.configDir);
   return { data: { declined: id, ...describeProposed(proposal).summary, ...(warnings.length && { warnings }) }, help: [`The Lead reads the decision in its Inbox`, PROPOSALS_HELP] };
 }

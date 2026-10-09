@@ -21,6 +21,9 @@ export type LeadStep = (typeof LEAD_STEPS)[number];
 /** The skills the Lead shapes work with, linked into its home from the nico-agent checkout. */
 const SHAPING_SKILLS = ["grilling", "to-spec", "to-tickets", "triage", "retro"];
 
+/** The lead skill's pages, by the name each is written under. */
+const LEAD_PAGES = { "SKILL.md": leadSkill, "SHAPING.md": leadShaping, "RETRO.md": leadRetro };
+
 /** The Repo whose clone the shaping skills come from. */
 export const NICO_AGENT_SLUG = "nicolasLuduena/nico-agent";
 
@@ -268,9 +271,7 @@ function writeHome(configDir: string, harness: Harness, mcpUrl: string): string[
     if (other !== skillsDir) rmSync(join(home, other), { recursive: true, force: true });
   }
   mkdirSync(join(skills, "lead"), { recursive: true });
-  writeFileSync(join(skills, "lead", "SKILL.md"), leadSkill);
-  writeFileSync(join(skills, "lead", "SHAPING.md"), leadShaping);
-  writeFileSync(join(skills, "lead", "RETRO.md"), leadRetro);
+  for (const [name, page] of Object.entries(LEAD_PAGES)) writeFileSync(join(skills, "lead", name), page);
   writeJson(home, MCP_CONFIG, { mcpServers: { [MCP_SERVER]: { type: "http", url: mcpUrl } } });
   const repo = findRepo(loadConfig(configDir), NICO_AGENT_SLUG);
   if (!repo) {

@@ -5,7 +5,7 @@ import { withFileLock, writeJsonAtomic } from "./state";
 /** Where a Proposal stands: undecided, or how the user decided it and how that went. */
 export type ProposalStatus = "open" | "approved" | "declined" | "failed";
 
-/** Markdown the Lead would write to a Repo's Source: a Spec and its tickets, or a weekly retro's ticket. */
+/** Markdown the Lead would write to a Repo's Source. */
 export interface SourceWrite {
   /** The Repo whose Source it goes to, as `owner/name`. */
   repo: string;

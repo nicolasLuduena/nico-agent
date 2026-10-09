@@ -2,7 +2,7 @@
 
 Once a week you look back over the PRs merged across the Repos and propose changes to the agents' environment, so the next week's Implementers and Reviewers work in a better one. Every change is a Proposal the user approves or declines in one click; you write nothing to a Repo without an approved one, whatever the `write` order says.
 
-The `retro` skill beside this one carries the method. Read its `SKILL.md` (it does not load by name) for its categories and its Reference, and follow this page wherever the two differ: it looks back at merged PRs, not a session, and it ends in Proposals, not a list for the user.
+The `retro` skill beside this one carries the method. Read its `SKILL.md` (it does not load by name) for its categories and its Reference, and follow this page wherever the two differ: it looks back at merged PRs, not a session, and it ends in Proposals, not a list for the user. When `retro` is not beside this skill, `say` `Weekly retro, week of <Monday>. Skipped: the retro skill is missing; add the nico-agent checkout as a Repo.` and stop.
 
 ## 1. Gather the week's merged PRs
 
@@ -20,22 +20,23 @@ Keep the ones whose `mergedAt` falls in the window. For each, read what shows wh
 
 Done when every Repo is listed and every PR merged in the window is read. A week with no merged PRs ends here: `say` `Weekly retro, week of <Monday>. No PRs merged.`
 
-## 2. Find the suggestions
+## 2. Find the changes
 
 Run the `retro` skill's step 3 over what you read, every category in its order, each in the clone of the Repo whose PRs showed the problem.
 
-Keep only suggestions about the environment, never the code: a navigation pointer, an automated check, a coding standard, a steering file, tooling, access to information. A bug a PR shipped, a refactor it calls for, or a missing test for one feature is code; leave it out, or name it in your summary for the user to file.
+Keep only changes to the environment, never to the code: a navigation pointer, an automated check, a coding standard, a steering file, tooling, access to information. A bug a PR shipped, a refactor it calls for, or a missing test for one feature is code; leave it out, or name it in your summary for the user to file.
 
-Keep a suggestion only when a PR in the window shows the problem, and name those PRs by URL.
+Keep a change only when a PR in the window shows the problem, and name those PRs by URL.
 
-Then leave out what the user has already settled. Read `nico-agent proposals --all --json` and drop a suggestion that matches a retro Proposal of the same Repo:
+Then leave out what the user has already settled. Drop a change that matches, for the same Repo:
 
-- still `open`: it waits on the user already;
-- `declined`: the user said no. Propose it again only when its `declineReason` names something that has since changed, and say what changed in the reason. A `declineReason` that will hold for every week ("we never gate on coverage") goes into the Notes (The Notes, in your skill), and the Notes also rule suggestions out.
+- an open Proposal in `orient`: it waits on the user already;
+- a declined one: `recall` `Weekly retro` finds every `decision` on a retro Proposal, its `reason` yours, its `text` the user's. Propose it again only when the user's text names something that has since changed, and say what changed in the reason;
+- a line of the Notes: a decline that holds for every week ("we never gate on coverage") lives there.
 
 ## 3. Propose each one
 
-Every suggestion you kept is its own Proposal, so the user decides each in one click: call `propose` with `write`, `repo` the Repo as the Board names it, whatever the `write` order says. Its `text` is the ticket you would file on the Repo's Source, in the Repo's own words (its `GLOSSARY.md`, its issue tracker doc):
+Every change you kept is its own Proposal, so the user decides each in one click: call `propose` with `write`, `repo` the Repo as the Board names it. Its `text` is the ticket you would file on the Repo's Source, in the Repo's own words (its `GLOSSARY.md`, its issue tracker doc):
 
 ```markdown
 # <the change, as a ticket title>
@@ -53,7 +54,7 @@ Every suggestion you kept is its own Proposal, so the user decides each in one c
 - [ ] <how to tell it is in place>
 ```
 
-Its `reason` starts `Weekly retro, week of <Monday>:` and says in one sentence what the change prevents and which PRs showed it. Done when each kept suggestion has its Proposal id.
+Its `reason` starts `Weekly retro, week of <Monday>:` and says in one sentence what the change prevents and which PRs showed it. Done when each kept change has its Proposal id.
 
 ## 4. Sum it up
 
@@ -61,7 +62,7 @@ Its `reason` starts `Weekly retro, week of <Monday>:` and says in one sentence w
 
 "Weekly retro, week of 2026-10-05. I read 6 PRs merged in acme/api and acme/web. Proposed: 7, a lint rule against floating promises (https://github.com/acme/api/pull/9, https://github.com/acme/api/pull/12); 8, a pointer from AGENTS.md to docs/billing.md (https://github.com/acme/web/pull/4). Left out: the coverage gate you declined in Proposal 3. Decide them with `nico-agent proposals`."
 
-Name each Proposal by id with the PRs that motivated it, and each suggestion you left out with the reason.
+Name each Proposal by id with the PRs that motivated it, and each change you left out with the reason.
 
 ## When the user decides
 

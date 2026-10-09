@@ -20,11 +20,11 @@ export type Entry = { id: number; at: string } & (
   /** The user's answer to the `ask` entry `question`. */
   | { type: "answer"; question: number; text: string }
   /**
-   * The user's decision on the Proposal `proposal`, with its action or write
-   * and what running the action printed; `text` is why it was declined or
-   * failed, if known.
+   * The user's decision on the Proposal `proposal`, with its action or write,
+   * the Lead's `reason` for it, and what running the action printed; `text`
+   * is why it was declined or failed, if known.
    */
-  | ({ type: "decision"; proposal: number; decision: Exclude<ProposalStatus, "open">; text: string; outcome?: Record<string, unknown> } & Proposed)
+  | ({ type: "decision"; proposal: number; decision: Exclude<ProposalStatus, "open">; reason: string; text: string; outcome?: Record<string, unknown> } & Proposed)
   /** A change nico-agent saw on the PR `pr` (the URL) of the issue `issue`, summed up in one line. */
   | { type: "event"; pr: string; issue: string; change: PrChange; text: string }
 );
@@ -120,13 +120,14 @@ export function openAsks(entries: Entry[]): Ask[] {
 }
 
 /**
- * The entries whose text, or a question's choices, contain `query` ignoring
- * case, written from `since` until `until` when given, oldest first.
+ * The entries whose text, a question's choices, or a decision's reason
+ * contain `query` ignoring case, written from `since` until `until` when
+ * given, oldest first.
  */
 export function recall(entries: Entry[], query: string, range: { since?: Date | undefined; until?: Date | undefined } = {}): Authored[] {
   const needle = query.toLowerCase();
   return entries
-    .filter((e) => [e.text, ...(e.type === "ask" ? (e.choices ?? []) : [])].some((t) => t.toLowerCase().includes(needle)))
+    .filter((e) => [e.text, ...(e.type === "ask" ? (e.choices ?? []) : []), ...(e.type === "decision" ? [e.reason] : [])].some((t) => t.toLowerCase().includes(needle)))
     .filter((e) => (!range.since || new Date(e.at) >= range.since) && (!range.until || new Date(e.at) <= range.until))
     .map(authored);
 }
