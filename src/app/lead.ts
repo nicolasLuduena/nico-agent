@@ -1,12 +1,16 @@
 import type { Authored } from "../conversation";
-import type { ProposalStatus } from "../proposals";
+import type { ProposalStatus, SourceWrite } from "../proposals";
 import { type HarnessesJson, type LaunchChoice, advanceReport, launchChoice } from "./actions";
 
-/** A Proposal as `nico-agent proposals --all --json` lists it: its action as the command line. */
+/**
+ * A Proposal as `nico-agent proposals --all --json` lists it: its action as
+ * the command line, or the write the Lead would make to a Repo's Source.
+ */
 export interface ProposalJson {
   id: number;
   at: string;
-  action: string;
+  action?: string;
+  write?: SourceWrite;
   reason: string;
   status: ProposalStatus;
   decidedAt?: string;
@@ -99,7 +103,15 @@ export interface ShownAnswer {
 
 /** One card of the conversation, as the panel draws it. */
 export type Card =
-  | { kind: "message"; key: string; who: "user" | "lead"; text: string; at: string; spoken?: boolean; sending?: boolean; error?: string }
+  | {
+    kind: "message"; key: string; who: "user" | "lead"; text: string; at: string; spoken?: boolean; sending?: boolean; error?: string;
+    /** What was heard of a spoken message, when the Scribe's text differs from it. */
+    raw?: string;
+    /** The id of the user's message this one corrects. */
+    corrects?: number;
+    /** Whether a later "No, I said …" corrects this message. */
+    superseded?: boolean;
+  }
   | {
     kind: "question"; key: string; id: number; text: string; choices: string[]; at: string;
     answer?: ShownAnswer;
@@ -115,6 +127,7 @@ export type Card =
  * their own. Sends not in the conversation yet come last.
  */
 export function cards({ entries, proposals, sends }: Conversation): Card[] {
+  const superseded = new Set(entries.flatMap((e) => (e.type === "user" && e.supersedes !== undefined ? [e.supersedes] : [])));
   const answers = new Map(entries.flatMap((e) => (e.type === "answer" ? [[e.question, e.text] as const] : [])));
   const answering = (question: number) => sends.find((s) => s.question === question);
   const timeline: Card[] = [];
@@ -130,7 +143,12 @@ export function cards({ entries, proposals, sends }: Conversation): Card[] {
     proposalsUntil(e.at);
     const key = `entry-${e.id}`;
     if (e.type !== "ask") {
-      timeline.push({ kind: "message", key, who: e.who, text: e.text, at: e.at, ...(e.type === "user" && e.raw !== undefined && { spoken: true }) });
+      const marks = e.type === "user" && {
+        ...spoken(e.text, e.raw),
+        ...(e.supersedes !== undefined && { corrects: e.supersedes }),
+        ...(superseded.has(e.id) && { superseded: true }),
+      };
+      timeline.push({ kind: "message", key, who: e.who, text: e.text, at: e.at, ...marks });
       continue;
     }
     const given = answers.get(e.id);
@@ -144,9 +162,15 @@ export function cards({ entries, proposals, sends }: Conversation): Card[] {
   proposalsUntil(null);
   for (const s of sends) {
     if (s.question !== undefined) continue;
-    timeline.push({ kind: "message", key: s.key, who: "user", text: s.text, at: s.at, ...(s.raw !== undefined && { spoken: true }), ...(s.error ? { error: s.error } : { sending: true }) });
+    timeline.push({ kind: "message", key: s.key, who: "user", text: s.text, at: s.at, ...spoken(s.text, s.raw), ...(s.error ? { error: s.error } : { sending: true }) });
   }
   return timeline;
+}
+
+/** A message's marks when it was spoken: that it was, and what was heard when the Scribe changed it. */
+function spoken(text: string, raw: string | undefined) {
+  if (raw === undefined) return {};
+  return { spoken: true as const, ...(raw !== text && { raw }) };
 }
 
 /** What a decided Proposal's action did, a line each, or why it failed. */

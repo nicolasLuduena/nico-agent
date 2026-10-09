@@ -121,9 +121,10 @@ class VoiceSocket {
 /**
  * The talk button: hold it to talk, release to send; tap it to talk
  * hands-free until a pause, or tap again to send. Interim transcripts show
- * while the user speaks; the final one is handed to `onFinal`.
+ * while the user speaks; the final one, the Scribe's text and what was
+ * heard, is handed to `onFinal`.
  */
-export function useTalk(onFinal: (text: string) => void) {
+export function useTalk(onFinal: (text: string, raw: string) => void) {
   const [state, setState] = useState<Talk>({ mode: "idle" });
   const [interim, setInterim] = useState("");
   const [warning, setWarning] = useState<Warning | null>(null);
@@ -165,7 +166,9 @@ export function useTalk(onFinal: (text: string) => void) {
       }
       // The last utterance's final is still sent while the next one records.
       const text = message.text.trim();
-      if (text) onFinalRef.current(text);
+      if (text) onFinalRef.current(text, message.raw.trim());
+      // The Scribe could not clean it: sent as heard, saying why.
+      if (message.warning) setWarning(message.warning);
       if (!latest) return;
       setInterim("");
       if (!text) setNote("Heard nothing; try again.");

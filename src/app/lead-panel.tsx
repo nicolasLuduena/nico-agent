@@ -154,9 +154,16 @@ function CardView({ card, send, dismiss }: { card: Card; send: SendText; dismiss
   switch (card.kind) {
     case "message":
       return (
-        <li className={`card-message ${card.who}${card.sending ? " sending" : ""}`}>
-          <Byline who={card.who} at={card.at} note={card.sending ? "sending…" : card.spoken ? "spoke" : undefined} />
-          <p className="text">{card.text}</p>
+        <li className={`card-message ${card.who}${card.sending ? " sending" : ""}${card.superseded ? " superseded" : ""}`}>
+          <Byline who={card.who} at={card.at} note={messageNote(card)} />
+          {card.raw === undefined
+            ? <p className="text">{card.text}</p>
+            : (
+              <div className="spoken">
+                <p className="text">{card.text}</p>
+                <p className="raw"><span>Heard</span>{card.raw}</p>
+              </div>
+            )}
           {card.error && (
             <div className="send-failure">
               <p className="error">{card.error}</p>
@@ -171,6 +178,13 @@ function CardView({ card, send, dismiss }: { card: Card; send: SendText; dismiss
     case "proposal":
       return <ProposalCard card={card} />;
   }
+}
+
+/** A message's muted note: on its way, spoken, correcting an earlier one, or corrected since. */
+function messageNote(card: Card & { kind: "message" }) {
+  if (card.sending) return "sending…";
+  const notes = [card.spoken && "spoke", card.corrects !== undefined && "corrects", card.superseded && "corrected below"];
+  return notes.filter(Boolean).join(" · ") || undefined;
 }
 
 /** Who wrote a card and when, then a muted note (such as "sending…") or, at its end, a Proposal's status. */
@@ -227,7 +241,7 @@ function QuestionCard({ card, send, dismiss }: { card: Card & { kind: "question"
 
 const STATUS: Record<ProposalJson["status"], string> = { open: "Proposes", approved: "Approved", declined: "Declined", failed: "Failed" };
 
-/** A Proposal: its action and reason with Approve and Decline while open, then how it was decided and what it did. */
+/** A Proposal: its action or write and reason with Approve and Decline while open, then how it was decided and what it did. */
 function ProposalCard({ card }: { card: Card & { kind: "proposal" } }) {
   const [declining, setDeclining] = useState(false);
   const [reason, setReason] = useState("");
@@ -241,13 +255,20 @@ function ProposalCard({ card }: { card: Card & { kind: "proposal" } }) {
   return (
     <li className={`card-proposal ${card.status}`}>
       <Byline who="lead" at={card.at} status={STATUS[card.status]} />
-      <p className="action"><code>{card.action}</code></p>
+      {card.write
+        ? (
+          <>
+            <p className="action">{"Write a Spec and its tickets to "}<code>{card.write.repo}</code>{"’s Source"}</p>
+            <pre className="write" tabIndex={0} aria-label="What the Lead would write">{card.write.text}</pre>
+          </>
+        )
+        : <p className="action"><code>{card.action}</code></p>}
       <p className="text">{card.reason}</p>
       {card.declineReason && <p className="decided">{`You said: ${card.declineReason}`}</p>}
       {lines.length > 0 && <div className="outcome">{lines.map((l, i) => <p key={i} className={l.error ? "error" : undefined}>{l.text}</p>)}</div>}
       {open && !declining && (
         <div className="buttons">
-          <button type="button" className="approve" disabled={busy} onClick={() => void act("/api/proposals/approve", [String(card.id)])}>{busy ? "Running…" : "Approve"}</button>
+          <button type="button" className="approve" disabled={busy} onClick={() => void act("/api/proposals/approve", [String(card.id)])}>{busy ? (card.write ? "Approving…" : "Running…") : "Approve"}</button>
           <button type="button" disabled={busy} onClick={() => setDeclining(true)}>Decline</button>
         </div>
       )}
@@ -265,11 +286,11 @@ function ProposalCard({ card }: { card: Card & { kind: "proposal" } }) {
 
 /**
  * Where the user writes or talks to the Lead: Enter sends, Shift+Enter starts
- * a new line; the talk button sends what it heard, the raw transcript as it is.
+ * a new line; the talk button sends the Scribe's text, keeping what it heard.
  */
 function Composer({ send }: { send: SendText }) {
   const [text, setText] = useState("");
-  const talking = useTalk((heard) => void send(heard, undefined, heard));
+  const talking = useTalk((text, heard) => void send(text, undefined, heard));
   const submit = () => {
     if (!text.trim()) return;
     void send(text);

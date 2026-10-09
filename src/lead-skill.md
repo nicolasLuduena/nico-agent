@@ -27,7 +27,7 @@ The `nico-agent` MCP server gives you these tools. Each has a shell twin that do
 - `queue` (`nico-agent queue <spec> --repo <repo>`): put a candidate Spec last in its Repo's Queue. Order: `start`.
 - `unqueue` (`nico-agent unqueue <spec> --repo <repo>`): take a Spec out of its Repo's Queue. Order: `start`.
 - `advance` (`nico-agent advance`): run the Scheduler now: dispatch each running Spec's next issue and start the head of each Repo's Queue while it has room. Order: `start`.
-- `propose` (`nico-agent lead propose --reason <why> -- <command>...`): record an action for the user to approve or decline. Pass the `action` an action tool's refusal hands you, and a reason the user can decide on.
+- `propose` (`nico-agent lead propose --reason <why> -- <command>...`, or `--write <repo> --text <markdown>` for a write): record an action for the user to approve or decline. Pass the `action` an action tool's refusal hands you, and a reason the user can decide on; or, instead of `action`, `write`: a Spec and its tickets you would write to a Repo's Source (Shaping new work).
 
 When a tool is missing from your tool list, or its call cannot reach the server, use its shell twin for the rest of the turn and `say` once that the MCP server is unreachable (`nico-agent serve` may be down). When the twin fails too, write the problem as your reply in this session, where the user sees it in herdr, and end the turn. A tool that answers with an error and `help` is working: follow the help.
 
@@ -46,7 +46,9 @@ On a Nudge with an empty Inbox, `say` only what changed since your last words: a
 
 Before you `ask` or `propose`, check `orient`'s open questions and Proposals: one open question or Proposal per decision.
 
-A `decision` in your Inbox is the user's verdict on one of your Proposals. Approved, it carries the command's outcome: report it in your reply when it failed. Declined, it carries the user's reason: let the reason shape your next pick, and propose the same action again only once something it named has changed.
+A `decision` in your Inbox is the user's verdict on one of your Proposals. Approved, it carries the command's outcome: report it in your reply when it failed; an approved `write` is yours to write now (Shaping new work). Declined, it carries the user's reason: let the reason shape your next pick, and propose the same action again only once something it named has changed.
+
+A `user` entry with `supersedes` is the user correcting their message with that id ("No, I said …"); `superseded` is the text it replaces, and the replaced message, when it comes in the same Inbox, carries `supersededBy`. Act on the correction, never on the superseded message: if you already acted on the old one, say what you did and set it right, asking first when undoing it is not yours to do. A spoken message also carries `raw`, what transcription heard before the Scribe cleaned it; read `text`, and turn to `raw` only when `text` reads wrong (the Scribe can misspell a term).
 
 ## Naming
 
@@ -136,8 +138,10 @@ A Dispatch is finished when its `dispatches` row has `stage` `PR ready` and its 
 
 ## Your shell
 
-You have a shell. Use it to look: `nico-agent lead log`, `nico-agent show <issue>`, `nico-agent orders`, `nico-agent proposals`, `herdr agent read <agent>`, `gh` and `git` read commands. Every change to the Board, herdr or an Implementer goes through your tools, which check your Standing orders. A change to a Source or a repo is the `write` order's: make it only when the user asks for it in the conversation, or when `nico-agent orders` shows `write` on.
+You have a shell. Use it to look: `nico-agent lead log`, `nico-agent show <issue>`, `nico-agent orders`, `nico-agent proposals`, `herdr agent read <agent>`, `gh` and `git` read commands. Every change to the Board, herdr or an Implementer goes through your tools, which check your Standing orders. A change to a Source or a repo is the `write` order's: make it only when the user asks for it in the conversation, when `nico-agent orders` shows `write` on, or when the user approves your `write` Proposal.
 
-## Shaping work
+## Shaping new work
 
-When the user wants to think a piece of work through, use the shaping skills beside this one when they are installed: `grilling` to question a plan, `to-spec` and `to-tickets` to write it up, `triage` for incoming issues, `retro` to look back.
+When the user brings an idea for new work, read `SHAPING.md` beside this skill before your first question, and follow it to a Spec and its tickets on the Source, queued or proposed.
+
+The other shaping skills beside this one serve the user on request: `triage` for incoming issues, `retro` to look back.

@@ -79,7 +79,8 @@ launching it there:
 
 - the `lead` skill, embedded in the nico-agent binary, where the Harness looks
   for a project's skills: `.claude/skills/` for claude, `.agents/skills/` for
-  codex, `.opencode/skills/` for opencode2 (a Harness's `skillsDir` setting);
+  codex, `.opencode/skills/` for opencode2 (a Harness's `skillsDir` setting),
+  with `SHAPING.md` beside it, the Lead's procedure for new work (below);
 - `mcp.json`, naming `serve`'s MCP server for claude's `--mcp-config`;
 - links to the shaping skills of the nico-agent checkout.
 
@@ -151,6 +152,25 @@ restarting `nico-agent serve`.
 
 `write` is the one order nico-agent cannot check: the Lead writes to a Source
 with its own shell, so that order is a rule of the Lead's skill.
+
+## New work from the conversation
+
+Tell the Lead an idea and it shapes it with you (`SHAPING.md` in its skill):
+
+1. It grills you with the `grilling` skill, one question card per question,
+   each with its recommended answer, until you confirm you share an
+   understanding.
+2. In the Repo's clone (`nico-agent repo list`), it runs `to-spec` and
+   `to-tickets` as you would, following the Repo's `AGENTS.md`, issue tracker
+   doc, glossary and ADRs: the Spec and its tickets land on the Source,
+   labelled `ready-for-agent`, the tickets as sub-issues with native blocking
+   links.
+3. It queues the Spec under `start`, or proposes queuing it.
+
+With `write` off it stops before step 2 writes anything and proposes the whole
+draft instead: a write Proposal, whose card shows the Spec and its tickets.
+Approving it hands the draft back to the Lead, which writes exactly that
+through step 2; declining writes nothing, and your reason goes to the Lead.
 
 ## What the Lead does with them
 
@@ -261,6 +281,12 @@ Proposals are also in the orient packet every `inbox` returns.
 A Proposal can only run an action tool's command: `dispatch`, `review`,
 `close`, `answer`, `queue`, `unqueue` or `advance`. `propose` refuses any other
 command, and any command line the CLI would reject, before recording it.
+
+A write Proposal runs no command. It holds Markdown for a configured Repo's
+Source (`lead propose --write <repo>` with `--file`, `--text` or standard
+input; the tool's `write`), which `proposals` shows whole. Approving it runs
+nothing in nico-agent: the decision, carrying the text, goes to the Lead's
+Inbox, and the Lead writes it.
 
 ## The Queue from the CLI
 

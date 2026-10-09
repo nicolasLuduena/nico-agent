@@ -68,6 +68,18 @@ describe("the conversation's cards", () => {
     ]);
   });
 
+  test("a Proposal to write a Spec is a card carrying the Repo and the whole text, which approving leaves without an outcome", async () => {
+    const { cli, loaded, world } = withLead();
+    world.addClone("/src/api", "git@github.com:acme/api.git");
+    await cli("repo", "add", "acme/api", "--path", "/src/api");
+    await cli("lead", "propose", "--reason", "The billing Spec we agreed on", "--write", "acme/api", "--text", "# Spec: billing\n");
+    await cli("proposals", "approve", "1");
+    const [card] = cards(await loaded()) as ProposalJson[];
+    expect(card).toMatchObject({ kind: "proposal", id: 1, write: { repo: "acme/api", text: "# Spec: billing\n" }, reason: "The billing Spec we agreed on", status: "approved" });
+    expect(card!.action).toBeUndefined();
+    expect(proposalLines(card!)).toEqual([]);
+  });
+
   test("a decided Proposal shows what its action did, or why it failed", async () => {
     const { cli, loaded } = withLead();
     await cli("lead", "propose", "--reason", "Next", "advance");
@@ -150,12 +162,35 @@ describe("what the panel posts", () => {
 
   test("a spoken message shows as spoken, while sending and once in the conversation", async () => {
     const { cli, loaded } = withLead();
-    const sending = reduce(EMPTY, { type: "send", key: "s1", text: "Hello", raw: "hello", at: NOW });
+    const sending = reduce(EMPTY, { type: "send", key: "s1", text: "Hello", raw: "Hello", at: NOW });
     expect(cards(sending)).toMatchObject([{ kind: "message", key: "s1", text: "Hello", sending: true, spoken: true }]);
-    await cli("say", "--raw", "hello", "--", "Hello");
+    await cli("say", "--raw", "Hello", "--", "Hello");
     expect(cards(await loaded(reduce(sending, { type: "sent", key: "s1", id: 1 })))).toEqual([{ kind: "message", key: "entry-1", who: "user", text: "Hello", at: expect.any(String), spoken: true }]);
     await cli("say", "Typed");
     expect(cards(await loaded())[1]).not.toHaveProperty("spoken");
+  });
+
+  test("a message the Scribe cleaned shows what was heard beside it, while sending and once in the conversation", async () => {
+    const { cli, loaded } = withLead();
+    const sending = reduce(EMPTY, { type: "send", key: "s1", text: "Dispatch acme/api#7.", raw: "um dispatch acme api seven", at: NOW });
+    expect(cards(sending)).toMatchObject([{ text: "Dispatch acme/api#7.", raw: "um dispatch acme api seven", sending: true }]);
+    await cli("say", "--raw", "um dispatch acme api seven", "--", "Dispatch acme/api#7.");
+    expect(cards(await loaded(reduce(sending, { type: "sent", key: "s1", id: 1 })))).toEqual([
+      { kind: "message", key: "entry-1", who: "user", text: "Dispatch acme/api#7.", raw: "um dispatch acme api seven", at: expect.any(String), spoken: true },
+    ]);
+  });
+
+  test("a correction marks the message it supersedes, and names it", async () => {
+    const { cli, loaded } = withLead();
+    await cli("say", "Dispatch acme/api#7");
+    await cli("lead", "say", "Dispatching it.");
+    await cli("say", "No, I said acme/api#8");
+    expect(cards(await loaded())).toMatchObject([
+      { key: "entry-1", text: "Dispatch acme/api#7", superseded: true },
+      { key: "entry-2", who: "lead" },
+      { key: "entry-3", text: "No, I said acme/api#8", corrects: 1 },
+    ]);
+    expect(cards(await loaded())[1]).not.toHaveProperty("superseded");
   });
 
   test("a start names the Harness, model and Effort picked and the port the page was served from", () => {

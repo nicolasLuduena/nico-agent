@@ -173,7 +173,9 @@ _Avoid_: Permissions, policy, guardrails
 **Proposal**:
 An action the Lead wants to take that its Standing orders do not allow, held
 in nico-agent until the user approves or declines it on the Board or CLI.
-Approving runs it in nico-agent, not in the Lead.
+Approving runs it in nico-agent, not in the Lead; except a write Proposal (a
+Spec and its tickets drafted while the `write` order is off), whose approval
+lets the Lead write it to the Source itself.
 _Avoid_: Suggestion, request
 
 **Intent**:
@@ -196,6 +198,12 @@ Lead's replies, its questions and their answers. A question stays open until
 the user answers it by its id. The user reads it with `nico-agent lead log`;
 the Lead reads what is new in it through its Inbox.
 _Avoid_: Chat, history, transcript
+
+**Correction**:
+A user message that starts "No, I said …", typed or spoken: it supersedes the
+user's last message, which stays in the Conversation, struck. The Lead reads it
+in its Inbox naming the message it replaces, and acts on the correction only.
+_Avoid_: Edit, undo, retraction
 
 **Inbox**:
 What the Lead has not seen yet: user messages, decided Proposals, answers to
