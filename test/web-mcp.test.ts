@@ -41,12 +41,12 @@ describe("MCP over HTTP at /mcp", () => {
     expect(await version("2099-01-01")).toBe("2025-11-25");
   });
 
-  test("tools/list offers board, the conversation tools inbox, recall, say and ask, then the action tools and propose", async () => {
+  test("tools/list offers board, the conversation tools inbox, recall, say and ask, intent and notes, then the action tools and propose", async () => {
     const { web } = setup();
     const reply = (await post(web, { jsonrpc: "2.0", id: "list", method: "tools/list" })).json();
     expect(reply.id).toBe("list");
     const tools = reply.result.tools;
-    expect(tools.map((t: { name: string }) => t.name)).toEqual(["board", "inbox", "recall", "say", "ask", "dispatch", "review", "close", "answer", "queue", "unqueue", "advance", "propose"]);
+    expect(tools.map((t: { name: string }) => t.name)).toEqual(["board", "inbox", "recall", "say", "ask", "intent", "notes", "dispatch", "review", "close", "answer", "queue", "unqueue", "advance", "propose"]);
     expect(tools[0]).toEqual({
       name: "board", title: "Board", description: expect.stringContaining("nico-agent board --json"), inputSchema: { type: "object", additionalProperties: false },
     });
@@ -98,7 +98,7 @@ describe("MCP over HTTP at /mcp", () => {
       expect(await call(params)).toEqual({ jsonrpc: "2.0", id: 7, error: { code: -32602, message: expect.any(String) } });
     }
     expect((await call({ name: "start" })).error.message)
-      .toBe("Unknown tool: start (the tools are board, inbox, recall, say, ask, dispatch, review, close, answer, queue, unqueue, advance, propose)");
+      .toBe("Unknown tool: start (the tools are board, inbox, recall, say, ask, intent, notes, dispatch, review, close, answer, queue, unqueue, advance, propose)");
     expect(world.calls).toEqual([]);
   });
 

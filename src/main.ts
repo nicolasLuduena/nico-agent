@@ -18,7 +18,9 @@ const exe = basename(process.execPath).startsWith("bun") ? (process.argv[1] ?? p
 const home = homedir();
 const bin = exe === home || exe.startsWith(`${home}/`) ? `~${exe.slice(home.length)}` : exe;
 
-const result = await run(argv, { world: new RealWorld(), configDir: defaultConfigDir(process.env), bin });
+// Standard input is read only when piped, so `intent set` at a terminal is refused rather than waiting.
+const stdin = process.stdin.isTTY ? undefined : () => Bun.stdin.text();
+const result = await run(argv, { world: new RealWorld(), configDir: defaultConfigDir(process.env), bin, ...(stdin && { stdin }) });
 process.stdout.write(result.stdout);
 // Not process.exit: a running server (`serve`) must keep the process alive.
 process.exitCode = result.exitCode;

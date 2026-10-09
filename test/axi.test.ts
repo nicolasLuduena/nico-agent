@@ -26,14 +26,14 @@ describe("AXI conventions", () => {
     const { cli } = setup();
     const { stdout, exitCode } = await cli("dispatch-all");
     expect(exitCode).toBe(2);
-    expect(stdout).toStartWith("error: unknown command `dispatch-all`\nhelp[32]:\n  Run `nico-agent [board]` to show Ready issues");
+    expect(stdout).toStartWith("error: unknown command `dispatch-all`\nhelp[36]:\n  Run `nico-agent [board]` to show Ready issues");
   });
 
   test("the retired Scheduler entry points are unknown: `mcp`, `--skill` and `advance --start` (ADR-0009)", async () => {
     const { cli, world } = setup();
     const mcp = await cli("mcp");
     expect(mcp.exitCode).toBe(2);
-    expect(mcp.stdout).toStartWith("error: unknown command `mcp`\nhelp[32]:\n  Run `nico-agent [board]` to show Ready issues");
+    expect(mcp.stdout).toStartWith("error: unknown command `mcp`\nhelp[36]:\n  Run `nico-agent [board]` to show Ready issues");
     expect(await cli("--skill")).toMatchObject({
       stdout: ["error: unknown flag --skill for `board`", "help[1]:", "  Valid flags for `board`: --json, --help", ""].join("\n"),
       exitCode: 2,
@@ -109,7 +109,7 @@ describe("AXI conventions", () => {
       [
         "bin: ~/.local/bin/nico-agent",
         "description: Dispatch coding agents onto ready-for-agent issues",
-        "commands[32]{usage,description}:",
+        "commands[36]{usage,description}:",
         '  "nico-agent [board]",Show Ready issues across all Repos (the default view)',
         "  nico-agent repo add <owner/name> --path <clone>,Add a Repo after checking the path is a clone of it",
         "  nico-agent repo rm <owner/name>,Remove a Repo (its clone is left untouched)",
@@ -124,6 +124,10 @@ describe("AXI conventions", () => {
         `  nico-agent answer <issue> <text>,"Submit text, as typed, to an In-flight issue's Implementer while it waits on the user"`,
         "  nico-agent orders,\"Show each Standing order, what it lets the Lead do unasked, and whether it is on\"",
         "  nico-agent orders set <order> on|off,Turn one Standing order on or off",
+        "  nico-agent intent,\"Show the Intent: what the user is working toward and why, which the user and the Lead both edit\"",
+        "  \"nico-agent intent set [--file <path> | --text <markdown>] [--version <version>]\",\"Replace the Intent whole with a Markdown file, --text or standard input (the Lead's `intent` tool)\"",
+        "  nico-agent notes,\"Show the Notes: the user's standing preferences, recurring decisions with their reasons, and their names for things, which the user and the Lead both edit\"",
+        "  \"nico-agent notes set [--file <path> | --text <markdown>] [--version <version>]\",\"Replace the Notes whole with a Markdown file, --text or standard input (the Lead's `notes` tool)\"",
         '  "nico-agent proposals [--all]","List the Lead\'s open Proposals: what each would run and why"',
         "  nico-agent proposals approve <id>,Run an open Proposal's action in nico-agent and report the outcome; one no longer possible is closed as failed",
         '  "nico-agent proposals decline <id> [reason]","Turn down an open Proposal, telling the Lead why"',

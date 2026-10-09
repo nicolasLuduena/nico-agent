@@ -1,5 +1,6 @@
 import { ORDERS, type Order } from "./config";
 import { render } from "./output";
+import { RECORDS, type RecordName } from "./records";
 import { VERSION } from "./version";
 
 /** Runs a CLI command line in-process, as `nico-agent` would. */
@@ -83,6 +84,24 @@ function actionTools() {
   ];
 }
 
+/** A tool reading the Intent or the Notes, or replacing it whole with the version it read, as `nico-agent <name> set` does. */
+function recordTool(name: RecordName) {
+  const { name: title, holds } = RECORDS[name];
+  return {
+    name,
+    title,
+    description: `Read or replace the ${title}: ${holds}. With no arguments, returns its Markdown and version (\`nico-agent ${name} --json\`). With \`text\` and the \`version\` you read, replaces it whole (\`nico-agent ${name} set\`), never with blank text; the user edits it too, so a replace whose version is stale is refused with the current text to merge into.`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        text: { type: "string", description: "The whole new Markdown" },
+        version: { type: "string", description: "The version you read it at; required with text" },
+      },
+      additionalProperties: false,
+    },
+  };
+}
+
 const TOOLS = [
   {
     name: "board",
@@ -136,6 +155,7 @@ const TOOLS = [
       additionalProperties: false,
     },
   },
+  ...(Object.keys(RECORDS) as RecordName[]).map(recordTool),
   ...actionTools(),
   {
     name: "propose",
@@ -258,6 +278,7 @@ function initialize(params: unknown) {
     serverInfo: { name: "nico-agent", title: "nico-agent", version: VERSION },
     instructions: [
       "Read the Board with `board` and your Inbox with `inbox`; reply with `say`, ask the user with `ask`, and search the conversation with `recall`.",
+      "Read and replace the Intent and the Notes with `intent` and `notes`, carrying the version you read.",
       "Act with `dispatch`, `review`, `close`, `answer`, `queue`, `unqueue` and `advance`, each under the Standing order its description names; one refused because its order is off gives you a `propose` call to make instead, and the user's decision on it arrives in your Inbox.",
     ].join(" "),
   };
@@ -358,6 +379,13 @@ function toolRun(params: unknown): ToolRun {
         throw new RpcError(-32602, "ask's choices must be a list of non-empty strings");
       }
       return { argv: ["lead", "ask", "--json", "--", question, ...choices] };
+    }
+    case "intent":
+    case "notes": {
+      onlyArguments(name, args, ["text", "version"]);
+      if (args.text === undefined && args.version === undefined) return { argv: [name, "--json"] };
+      if (args.version === undefined) throw new RpcError(-32602, `${name} replaces it only with the version you read: call ${name} with no arguments for it`);
+      return { argv: [name, "set", "--json", "--version", text(name, args, "version"), "--text", text(name, args, "text")] };
     }
     case "dispatch": {
       onlyArguments(name, args, ["issues", "harness", "model", "effort", "stackOn", "base", "repo"]);

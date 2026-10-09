@@ -158,8 +158,13 @@ function write(dir: string, state: StateFile) {
 
 /** Replace `file` with `value` as JSON atomically, so readers never need the lock and an interrupted write leaves the last state whole. */
 export function writeJsonAtomic(file: string, value: unknown) {
+  writeTextAtomic(file, `${JSON.stringify(value, null, 2)}\n`);
+}
+
+/** Replace `file` with `text` atomically, so a reader never sees half of it. */
+export function writeTextAtomic(file: string, text: string) {
   const tmp = `${file}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
-  writeFileSync(tmp, `${JSON.stringify(value, null, 2)}\n`);
+  writeFileSync(tmp, text);
   renameSync(tmp, file);
 }
 
