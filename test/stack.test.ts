@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { dispatchTarget, launchArgs, launchChoice } from "../src/app/actions";
 import { setup } from "./harness";
 
 const FLAGS = ["--harness", "claude", "--model", "opus", "--effort", "high"];
@@ -50,18 +51,15 @@ test("ambiguous stacking lists the choices and --stack-on selects a Blocker", as
   expect((await cli("show", "acme/api#7", "--json")).json().base).toBe("origin/agent/blocker-5");
 });
 
-test("the web offers Blocker choices and preserves the selection when the Harness changes", async () => {
+test("the app offers Blocker choices, and dispatches on the one chosen", async () => {
   const { web, world, cli } = await stackable();
   world.issues.get("acme/api")![0]!.blockers.push({ slug: "acme/api", number: 5, state: "open" });
   world.linkPr("acme/api", 5, { number: 15, headBranch: "agent/blocker-5", baseBranch: "agent/blocker-6" });
-  const { body } = await web("/classic");
-  expect(body).toContain("<h3>Stackable</h3>");
-  expect(body).toContain('<select name="stackOn">');
-  expect(body).toContain('value="acme/api#5"');
-  const changed = await web("/dispatch-form?issue=acme/api%237&harness=claude&model=sonnet&effort=high&stackOn=acme/api%235");
-  expect(changed.body).toContain('<option value="acme/api#5" selected>');
-  const form = new URLSearchParams({ issue: "acme/api#7", harness: "claude", model: "sonnet", effort: "high", stackOn: "acme/api#5" });
-  expect((await web("/dispatch", { method: "POST", body: form })).status).toBe(303);
+  const target = dispatchTarget((await cli("board", "--json")).json(), "acme/api#7", "acme/api")!;
+  expect(target.stack!.map((o) => o.value)).toEqual(["acme/api#6", "acme/api#5"]);
+  const choice = launchChoice(JSON.parse((await web("/api/harnesses")).body), { harness: "claude", model: "sonnet", effort: "high" })!;
+  const args = launchArgs("dispatch", target, choice, { stackOn: "acme/api#5" });
+  expect((await web("/api/dispatch", { method: "POST", body: JSON.stringify({ args }) })).status).toBe(200);
   expect((await cli("show", "acme/api#7", "--json")).json().base).toBe("origin/agent/blocker-5");
   expect((await cli("board", "--json")).json().stackable).toBeUndefined();
 });
@@ -82,13 +80,12 @@ test("a failed Stacked dispatch retries with its saved PR even after the Blocker
   const { cli, web, world } = await stackable();
   world.failHerdr("tab create", "workspace_not_found");
   expect((await cli("dispatch", "acme/api#7", ...FLAGS, "--stack-on", "6")).exitCode).toBe(1);
-  const { body } = await web("/classic");
-  expect(body).toContain('<input type="hidden" name="stackOn" value="https://github.com/acme/api/pull/16">');
+  const { retry } = (await cli("board", "--json")).json().dispatches[0];
+  expect(retry).toEqual(["dispatch", "acme/api#7", ...FLAGS, "--stack-on", "https://github.com/acme/api/pull/16"]);
   world.issues.get("acme/api")![0]!.blockers[0]!.state = "closed";
   world.linkedPrs.clear();
   world.clearFailures();
-  const form = new URLSearchParams({ issue: "acme/api#7", harness: "claude", model: "opus", effort: "high", stackOn: "https://github.com/acme/api/pull/16" });
-  expect((await web("/dispatch", { method: "POST", body: form })).status).toBe(303);
+  expect((await web("/api/dispatch", { method: "POST", body: JSON.stringify({ args: retry.slice(1) }) })).status).toBe(200);
   const shown = (await cli("show", "acme/api#7", "--json")).json();
   expect(shown.base).toBe("origin/agent/blocker-6");
   expect(shown.stackedOn.pr.url).toBe("https://github.com/acme/api/pull/16");

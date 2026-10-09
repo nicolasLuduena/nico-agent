@@ -86,6 +86,31 @@ describe("the app's Board model: Repos and Specs to sections and groups", () => 
     expect(section!.specs[0]!.stage).toBe("Implementing");
   });
 
+  test("a Spec with one sub-issue still lists that issue under it, with its Stage", async () => {
+    const { cli, world, board } = await githubRepo();
+    world.addGitHubSpec("acme/api", { number: 40, title: "Exports" }, { number: 41, title: "CSV export" });
+    await cli("dispatch", "acme/api#41", ...FLAGS);
+
+    const [section] = repoSections(await board());
+    expect(outline(section!)).toEqual([["running", "#40", ["in-flight #41"]]]);
+    expect(section!.specs[0]!.rows[0]).toMatchObject({ title: "CSV export", stage: "Implementing" });
+  });
+
+  test("a Linear Spec claimed by two Repos shows its In-flight issue only in the Repo it was dispatched in", async () => {
+    const { cli, world, board } = await githubRepo();
+    world.addClone("/src/pdf", "git@github.com:bleentr/pdf-diff.git");
+    world.addClone("/src/web", "git@github.com:bleentr/web.git");
+    await cli("repo", "rm", "acme/api");
+    await cli("repo", "add", "bleentr/pdf-diff", "--path", "/src/pdf", "--linear-team", "BLE");
+    await cli("repo", "add", "bleentr/web", "--path", "/src/web", "--linear-team", "BLE");
+    world.addLinearSpec({ identifier: "BLE-10", title: "PDF diffing" }, { identifier: "BLE-11" }, { identifier: "BLE-12" });
+    await cli("dispatch", "BLE-11", ...FLAGS, "--repo", "bleentr/pdf-diff");
+
+    const [pdf, web] = repoSections(await board());
+    expect(outline(pdf!)).toEqual([["running", "BLE-10", ["in-flight BLE-11", "ready BLE-12"]]]);
+    expect(outline(web!)[0]![2]).toEqual(["ready BLE-12"]);
+  });
+
   test("a queued candidate knows its place in the Queue", async () => {
     const { cli, world, board } = await githubRepo();
     world.addGitHubSpec("acme/api", { number: 10, title: "Billing" }, { number: 11 });

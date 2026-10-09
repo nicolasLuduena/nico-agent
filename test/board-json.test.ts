@@ -10,7 +10,7 @@ async function githubRepo() {
   return ctx;
 }
 
-/** What the app at `/` reads from `board --json` to draw the Board as `/classic` does. */
+/** What the app at `/` reads from `board --json` to draw the Board and fill its forms. */
 describe("board --json for the app", () => {
   test("names every configured Repo, in config order, even one with nothing Ready", async () => {
     const { cli, world } = await githubRepo();

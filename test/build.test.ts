@@ -30,7 +30,7 @@ describe("the compiled binary", () => {
     });
     for (let tries = 0; ; tries++) {
       try {
-        await fetch(`${base}/classic`);
+        await fetch(`${base}/api/board`);
         break;
       } catch (e) {
         if (tries > 100) throw e;
@@ -62,11 +62,9 @@ describe("the compiled binary", () => {
     expect(await css.text()).toContain("prefers-color-scheme");
   });
 
-  test("serves the htmx Board at /classic, htmx included", async () => {
-    const page = await fetch(`${base}/classic`);
-    expect(page.status).toBe(200);
-    expect(await page.text()).toContain('<script src="/htmx.min.js"></script>');
-    expect((await fetch(`${base}/htmx.min.js`)).status).toBe(200);
+  test("no longer serves the htmx Board", async () => {
+    expect((await fetch(`${base}/classic`)).status).toBe(404);
+    expect((await fetch(`${base}/htmx.min.js`)).status).toBe(404);
   });
 
   test("answers /api/board and opens /api/events", async () => {

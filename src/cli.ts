@@ -19,7 +19,7 @@ import { dequeue, enqueue, loadQueues, move, pruneBoardQueues, queueOf } from ".
 import { isCandidate, sameSpec } from "./spec";
 import { VERSION } from "./version";
 import { sameSlug, slugOfRemote } from "./slug";
-import { cachedPrs, currentStage, freshPrs, loadInFlight, stageOf } from "./stage";
+import { type PrLookup, cachedPrs, currentStage, freshPrs, loadInFlight, stageOf } from "./stage";
 import { type Dispatch, findDispatch, loadDispatches } from "./state";
 import { webHandler } from "./web";
 import { Events } from "./events";
@@ -31,6 +31,11 @@ export interface RunContext {
   configDir: string;
   /** Path of the running executable, home collapsed to `~`. */
   bin: string;
+  /**
+   * The Board's PR lookup, shared by every run of a long-lived caller: `serve`
+   * runs `board --json` for the app on each tick, and asks GitHub only every ~30s.
+   */
+  prs?: PrLookup;
 }
 
 export interface RunResult {
@@ -682,7 +687,7 @@ function queuedName(ctx: RunContext, repo: string, spec: string) {
 
 async function queueCommand(args: Args, ctx: RunContext): Promise<Output> {
   const { spec, repo } = queueArgs(args, ctx, QUEUE_USAGE);
-  const board = await loadBoard(ctx.world, [repo], loadDispatches(ctx.configDir), cachedPrs(ctx.world));
+  const board = await loadBoard(ctx.world, [repo], loadDispatches(ctx.configDir), ctx.prs ?? cachedPrs(ctx.world));
   const decision = board.specs.find((d) => sameSlug(d.repo, repo.slug));
   if (!decision || !isCandidate(decision, spec)) {
     throw new CliError(`${spec} is not a candidate Spec of ${repo.slug}`, [
@@ -1158,7 +1163,8 @@ async function serve(args: Args, ctx: RunContext): Promise<Output> {
   const port = portFlag(args, "nico-agent serve [--port <port>]");
   const events = new Events();
   try {
-    await ctx.world.serve({ hostname: HOSTNAME, port }, webHandler({ ...ctx, events, runCli: (argv) => run(argv, ctx) }), { "/": app });
+    const shared = { ...ctx, prs: ctx.prs ?? cachedPrs(ctx.world) };
+    await ctx.world.serve({ hostname: HOSTNAME, port }, webHandler({ ...ctx, events, runCli: (argv) => run(argv, shared) }), { "/": app });
   } catch (e) {
     if (!(e instanceof WorldError)) throw e;
     throw new CliError(e.message, ["Run `nico-agent serve --port <port>` with a free port"]);
@@ -1265,7 +1271,7 @@ async function board(ctx: RunContext, json: boolean): Promise<Output> {
   if (repos.length === 0) {
     return { data: { ...header, ready: "0 issues (no Repos configured)" }, help: [ADD_REPO_HELP] };
   }
-  const loaded = await loadBoard(ctx.world, repos, loadDispatches(ctx.configDir), cachedPrs(ctx.world), rememberedLaunches(ctx.configDir).bases);
+  const loaded = await loadBoard(ctx.world, repos, loadDispatches(ctx.configDir), ctx.prs ?? cachedPrs(ctx.world), rememberedLaunches(ctx.configDir).bases);
   const { ready, stackable, withPr, specs, inFlight, errors } = loaded;
   const help = ["Run `nico-agent repo list` to see the Repos", ADD_REPO_HELP];
   if (inFlight.length) help.unshift("Run `nico-agent show <issue>` to see a Dispatch");

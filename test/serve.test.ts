@@ -27,8 +27,8 @@ describe("serve", () => {
     // `/` is the app's page, bundled by Bun; the build smoke test serves it.
     expect(Object.keys(world.server!.pages)).toEqual(["/"]);
 
-    const response = await world.server!.handler(new Request("http://127.0.0.1:42069/classic"));
-    expect(await response.text()).toContain('<a class="title" href="https://github.com/acme/api/issues/7"><span class="num">#7</span> Add retries</a>');
+    const response = await world.server!.handler(new Request("http://127.0.0.1:42069/api/board"));
+    expect((await response.json()).issues).toMatchObject([{ issue: "acme/api#7", title: "Add retries" }]);
 
     const mcp = await world.server!.handler(
       new Request("http://127.0.0.1:42069/mcp", { method: "POST", body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "board" } }) }),
