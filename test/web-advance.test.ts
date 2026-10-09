@@ -20,7 +20,7 @@ async function linearRepo() {
 describe("Advance now on the web Board", () => {
   test("the Board's top bar has an Advance now button", async () => {
     const { web } = await linearRepo();
-    const { body } = await web("/");
+    const { body } = await web("/classic");
     expect(body).toContain('<form method="post" action="/advance" class="advance"><button>Advance now</button></form>');
   });
 
@@ -33,7 +33,7 @@ describe("Advance now on the web Board", () => {
     expect(status).toBe(200);
     expect(body).toContain("<title>Advance · nico-agent</title>");
     expect(body).toContain('<li class="started"><b>Started</b> BLE-21 of BLE-20: BLE-20 is the head of the Queue;');
-    expect(body).toContain('<p><a href="/">Back to the Board</a></p>');
+    expect(body).toContain('<p><a href="/classic">Back to the Board</a></p>');
     expect(world.calls.some((c) => c.startsWith("herdr worktree create"))).toBe(true);
     expect((await cli("show", "BLE-21", "--json")).exitCode).toBe(0);
   });

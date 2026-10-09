@@ -383,7 +383,7 @@ describe("web Harness choices", () => {
   test("the dispatch form offers every Harness, and the default model's Efforts", async () => {
     const { web, world } = await withRepo();
     world.codexCatalog = CODEX_CATALOG;
-    const { body } = await web("/");
+    const { body } = await web("/classic");
     expect(body).toContain('<select name="harness" hx-get="/dispatch-form" hx-include="closest form" hx-target="closest form" hx-swap="outerHTML"><option selected>claude</option><option>codex</option><option>opencode2</option></select>');
     expect(body).toContain(
       '<select name="effort"><option selected>low</option><option>medium</option><option>high</option><option>xhigh</option><option>max</option></select>',
@@ -419,7 +419,7 @@ describe("web Harness choices", () => {
     await cli("dispatch", "acme/api#8", "--harness", "codex", "--model", "gpt-6-sol", "--effort", "xhigh");
     world.addIssue("acme/api", { number: 9 });
 
-    const { body } = await web("/");
+    const { body } = await web("/classic");
     expect(body).toContain("<option selected>codex</option>");
     expect(body).toContain("<option selected>gpt-6-sol</option>");
     expect(body).toContain("<option selected>xhigh</option>");
@@ -444,7 +444,7 @@ describe("web Harness choices", () => {
   test("a Harness whose discovery failed is left out of the form, with its error shown", async () => {
     const { web, world } = await withRepo();
     world.failCall("codex debug models", "`codex` is not installed or not on PATH");
-    const { body } = await web("/");
+    const { body } = await web("/classic");
     expect(body).toContain('<option selected>claude</option><option>opencode2</option></select>');
     expect(body).not.toContain("<option>codex</option>");
     expect(body).toContain('<p class="warning">could not discover codex models: `codex` is not installed or not on PATH</p>');
@@ -452,7 +452,7 @@ describe("web Harness choices", () => {
 
   test("Refresh harnesses discovers again and goes back to the Board", async () => {
     const { web, world } = await withRepo();
-    await web("/");
+    await web("/classic");
     world.codexCatalog = catalog(["gpt-7", ["low"]]);
     world.calls.length = 0;
 

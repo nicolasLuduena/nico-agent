@@ -10,7 +10,7 @@ async function githubRepo() {
 
 /** The Repo section of `slug` on the web Board. */
 async function repoSection(web: Awaited<ReturnType<typeof githubRepo>>["web"], slug = "acme/api") {
-  const { body } = await web("/");
+  const { body } = await web("/classic");
   const start = body.indexOf(`<section class="repo">\n<header><h2>${slug}</h2>`);
   expect(start).toBeGreaterThan(-1);
   return body.slice(start, body.indexOf("</section>", start));

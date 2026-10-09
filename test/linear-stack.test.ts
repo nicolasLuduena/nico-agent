@@ -105,7 +105,7 @@ describe("Stackable Linear issues", () => {
 
   test("the web lists a Stackable Linear row under its Repo, with Blocker choices, and dispatches it there", async () => {
     const { web, cli } = await stackable();
-    const { body } = await web("/");
+    const { body } = await web("/classic");
     expect(body).toContain("<h3>Stackable</h3>");
     expect(body).toContain('<input type="hidden" name="repo" value="bleentr/pdf-diff">');
     expect(body).toContain('value="BLE-26"');

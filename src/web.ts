@@ -13,8 +13,9 @@ import { type AdvanceRow, advance } from "./advance";
 import { plural } from "./output";
 import { type PreviewLookup, cachedPreviews } from "./preview";
 import { type Queues, dequeue, enqueue, move, pruneBoardQueues, queueOf } from "./queue";
-import { type CliRunner, mcpHandler } from "./mcp";
+import { type CliRunner, isToolCall, mcpHandler } from "./mcp";
 import { sameSlug } from "./slug";
+import { Events } from "./events";
 import { type PullRequest, type World, WorldError } from "./world";
 
 export interface WebContext {
@@ -22,9 +23,15 @@ export interface WebContext {
   configDir: string;
   /** Runs a CLI command line in-process, for the MCP tools. */
   runCli: CliRunner;
+  /** The app's SSE stream; `serve` shares it to send its ticks. */
+  events?: Events;
 }
 
 const HTML_HEADERS = { "content-type": "text/html; charset=utf-8" };
+
+/** Where the htmx Board lives while the React app takes `/`. */
+const CLASSIC = "/classic";
+const BACK = `<p><a href="${CLASSIC}">Back to the Board</a></p>`;
 
 /** The web app: server-rendered pages over the same core operations as the CLI. */
 export function webHandler(context: WebContext) {
@@ -32,7 +39,8 @@ export function webHandler(context: WebContext) {
   // Likewise hovering an issue again shows its card without asking its Source.
   const ctx: ServerContext = { ...context, prs: cachedPrs(context.world), previews: cachedPreviews(context.world) };
   const mcp = mcpHandler(context.runCli);
-  return async (request: Request): Promise<Response> => {
+  const events = context.events ?? new Events();
+  const handle = async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
     const { pathname } = url;
     if (pathname === "/mcp") return await mcp(request);
@@ -48,6 +56,7 @@ export function webHandler(context: WebContext) {
       if (pathname === "/unqueue" && request.method === "POST") return await postUnqueue(ctx, request);
       if (pathname === "/move" && request.method === "POST") return await postMove(ctx, request);
       if (request.method !== "GET") return new Response("Method Not Allowed\n", { status: 405 });
+      if (pathname === "/api/board") return await getApiBoard(ctx);
       if (pathname === "/htmx.min.js") {
         return new Response(htmx, { headers: { "content-type": "text/javascript; charset=utf-8" } });
       }
@@ -58,17 +67,46 @@ export function webHandler(context: WebContext) {
       if (pathname === "/batch-form") return await getBatchForm(ctx, url.searchParams);
       if (pathname === "/batch-row") return await getBatchRow(ctx, url.searchParams);
       if (pathname === "/preview") return await getPreview(ctx, url.searchParams);
-      if (pathname !== "/") return new Response(page("Not found", `<p class="error">No page at ${escape(pathname)}</p>`), { status: 404, headers: HTML_HEADERS });
+      if (pathname !== CLASSIC) return new Response(page("Not found", `<p class="error">No page at ${escape(pathname)}</p>`), { status: 404, headers: HTML_HEADERS });
       return await getBoard(ctx);
     } catch (e) {
       const failure = failureOf(e);
       if (!failure) throw e;
       const help = failure.help.map((h) => `<p>${escape(h)}</p>`);
-      const back = pathname === "/" ? [] : ['<p><a href="/">Back to the Board</a></p>'];
+      const back = pathname === CLASSIC ? [] : [BACK];
       const body = [`<p class="error">${escape(failure.message)}</p>`, ...help, ...back].join("\n");
       return new Response(page(failure.title, body), { status: failure.status, headers: HTML_HEADERS });
     }
   };
+  return async (request: Request): Promise<Response> => {
+    const { pathname } = new URL(request.url);
+    if (pathname === "/api/events" && request.method === "GET") return events.stream(request.signal);
+    const changes = await changesBoard(request, pathname);
+    try {
+      return await handle(request);
+    } finally {
+      // Even a failed action may have changed something, such as a Dispatch's recorded failure.
+      if (changes) events.emit("board-changed");
+    }
+  };
+}
+
+/**
+ * Whether a request may change the Board: any post, but on `/mcp` only a
+ * tool call (an action tool, or a read the Board cannot tell apart cheaply).
+ */
+async function changesBoard(request: Request, pathname: string) {
+  if (request.method !== "POST") return false;
+  return pathname !== "/mcp" || await isToolCall(request);
+}
+
+/**
+ * The Board as `nico-agent board --json` prints it (ADR-0006), for the app.
+ * A Board no Repo could load is still the Board: its `errors` say why.
+ */
+async function getApiBoard(ctx: WebContext) {
+  const { stdout } = await ctx.runCli(["board", "--json"]);
+  return new Response(stdout, { headers: { "content-type": "application/json; charset=utf-8" } });
 }
 
 /**
@@ -86,7 +124,7 @@ async function postClose(ctx: WebContext, request: Request) {
   const unconfirmed = outcomes.flatMap((o) => (o.outcome === "done" && o.value === "unconfirmed" ? [o.issue] : []));
   const reported = outcomes.filter((o) => !(o.outcome === "done" && o.value === "unconfirmed"));
   if (!unconfirmed.length && reported.every((o) => o.outcome === "done" && o.value === "closed")) {
-    return new Response(null, { status: 303, headers: { location: "/" } });
+    return new Response(null, { status: 303, headers: { location: CLASSIC } });
   }
   const body = [
     ...(reported.length ? [renderOutcomes(reported, (closed) => (closed === "closed" ? "closed" : "skipped, not In flight"))] : []),
@@ -94,7 +132,7 @@ async function postClose(ctx: WebContext, request: Request) {
       `<p>${unconfirmed.map(escape).join(", ")} ${unconfirmed.length === 1 ? "has" : "have"} no PR yet. Close removes the worktree and workspace and forgets the Dispatch. The branch is kept.</p>`,
       closeForm(unconfirmed, true),
     ] : []),
-    '<p><a href="/">Back to the Board</a></p>',
+    BACK,
   ].join("\n");
   return new Response(page(unconfirmed.length ? "Confirm close" : "Close", body), { headers: HTML_HEADERS });
 }
@@ -180,7 +218,7 @@ function badQueueRequest(message: string) {
 
 /** htmx gets the Repo's section back to swap in, its launch forms preserved; a plain form post goes back to the Board. */
 async function queueAnswer(ctx: ServerContext, request: Request, repo: Repo) {
-  if (request.headers.get("hx-request") !== "true") return new Response(null, { status: 303, headers: { location: "/" } });
+  if (request.headers.get("hx-request") !== "true") return new Response(null, { status: 303, headers: { location: CLASSIC } });
   const { board, queues, choices } = await loadRendered(ctx, [repo]);
   return new Response(renderRepo(repo, board, choices, queueOf(queues, repo.slug)), { headers: HTML_HEADERS });
 }
@@ -247,7 +285,7 @@ async function postLaunch(ctx: WebContext, request: Request, launch: typeof disp
     ...(launch === dispatch && field("base") && { base: field("base") }),
     ...(launch === dispatch && field("repo") && { repo: field("repo") }),
   });
-  return new Response(null, { status: 303, headers: { location: "/" } });
+  return new Response(null, { status: 303, headers: { location: CLASSIC } });
 }
 
 /** Refresh harnesses: discover again, then back to the Board. */
@@ -256,7 +294,7 @@ async function postRefresh(ctx: WebContext) {
   if (failed.length) {
     throw new WebFailure("Refresh failed", failed.map((c) => c.error!).join("; "), ["Run `nico-agent harness refresh` for details"], 502);
   }
-  return new Response(null, { status: 303, headers: { location: "/" } });
+  return new Response(null, { status: 303, headers: { location: CLASSIC } });
 }
 
 /** Run `advance` now, as the timer would, and show what it did. */
@@ -273,7 +311,7 @@ async function postAdvance(ctx: WebContext) {
     specs.length ? ['<ul class="advanced">', ...specs.map(row), "</ul>"].join("\n") : "",
     closed.length ? `<p>Closed, their PR ready: ${closed.map(escape).join(", ")}</p>` : "",
     ...help.map((h) => `<p>${escape(h)}</p>`),
-    '<p><a href="/">Back to the Board</a></p>',
+    BACK,
   ].filter(Boolean).join("\n");
   return new Response(page("Advance", body), { headers: HTML_HEADERS });
 }
@@ -914,7 +952,7 @@ async function getBatchForm(ctx: ServerContext, params: URLSearchParams) {
   const form = rows.length && !noHarness
     ? [`<form method="post" action="/batch/${action}" class="batch">`, ...rows, `<button>${BUTTONS[action]} ${rows.length}</button>`, "</form>"]
     : [noHarness ? NO_HARNESS : '<p class="empty">None of the ticked issues fit.</p>'];
-  const body = [...form, ...(skipped.length ? ['<ul class="skipped">', ...skipped, "</ul>"] : []), '<p><a href="/">Back to the Board</a></p>'];
+  const body = [...form, ...(skipped.length ? ['<ul class="skipped">', ...skipped, "</ul>"] : []), BACK];
   return new Response(page(`${BUTTONS[action]} ${plural(rows.length, "issue")}`, body.join("\n")), { headers: HTML_HEADERS });
 }
 
@@ -958,7 +996,7 @@ async function postBatch(ctx: WebContext, request: Request, action: Action) {
     new: action === "dispatch" ? "dispatched" : "reviewing",
     existing: action === "dispatch" ? "already In flight (no-op)" : "already launched (no-op)",
     resumed: `resumed from ${r.resumedFrom}`,
-  })[r.outcome]), '<p><a href="/">Back to the Board</a></p>'].join("\n");
+  })[r.outcome]), BACK].join("\n");
   return new Response(page(`${BUTTONS[action]} results`, body), { headers: HTML_HEADERS });
 }
 
@@ -987,7 +1025,7 @@ function page(title: string, main: string, tools = "") {
 </head>
 <body>
 <header class="top">
-<a class="brand" href="/">${GLYPH}nico-agent</a>
+<a class="brand" href="${CLASSIC}">${GLYPH}nico-agent</a>
 <h1>${escape(title)}</h1>
 ${tools}
 </header>

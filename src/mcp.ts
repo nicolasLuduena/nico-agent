@@ -169,6 +169,16 @@ class RpcError extends Error {
   }
 }
 
+/** Whether a request to the MCP server calls a tool; its body is left unread for the handler. */
+export async function isToolCall(request: Request) {
+  try {
+    const message: unknown = await request.clone().json();
+    return (message as { method?: unknown } | null)?.method === "tools/call";
+  } catch {
+    return false;
+  }
+}
+
 /**
  * nico-agent's MCP server over streamable HTTP (ADR-0010), answering one
  * JSON-RPC message per POST with a JSON body, never an SSE stream.

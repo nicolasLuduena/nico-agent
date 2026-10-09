@@ -14,7 +14,7 @@ describe("web Board", () => {
     world.addIssue("acme/api", { number: 3, title: "Taken", assignees: ["alice"] });
     world.addIssue("acme/web", { number: 4, title: "Fix <header> & nav" });
 
-    const { status, type, body } = await web("/");
+    const { status, type, body } = await web("/classic");
     expect(status).toBe(200);
     expect(type).toBe("text/html; charset=utf-8");
     expect(body).toContain('<section class="repo">\n<header><h2>acme/api</h2><span class="count">1</span><div class="room" role="group" aria-label="Specs of acme/api"><span class="slots" aria-hidden="true"><i></i><i></i></span><span>Running <b>0</b></span><span>Room <b>2</b></span><span>Candidates <b>1</b></span><span>Queue <b>0</b></span></div></header>\n<ul class="issues">\n<li><input type="checkbox" class="pick" name="issue" value="acme/api#7" form="batch" autocomplete="off" id="ready-acme-api-7" hx-preserve="true" aria-label="Select acme/api#7"> <a class="title" href="https://github.com/acme/api/issues/7"><span class="num">#7</span> Add retries</a>');
@@ -26,7 +26,7 @@ describe("web Board", () => {
 
   test("says explicitly when no Repo is configured", async () => {
     const { web } = setup();
-    const { status, body } = await web("/");
+    const { status, body } = await web("/classic");
     expect(status).toBe(200);
     expect(body).toContain(
       '<p class="empty">No Repos configured. Run <code>nico-agent repo add &lt;owner/name&gt; --path &lt;clone&gt;</code> to add one.</p>',
@@ -42,7 +42,7 @@ describe("web Board", () => {
     world.addIssue("acme/api", { number: 1, labels: [] });
     world.failGitHub("acme/web", "not authenticated with GitHub; run `gh auth login`");
 
-    const { status, body } = await web("/");
+    const { status, body } = await web("/classic");
     expect(status).toBe(200);
     expect(body).toContain(
       [
@@ -60,7 +60,7 @@ describe("web Board", () => {
 
   test("the page loads htmx from the app itself", async () => {
     const { web } = setup();
-    expect((await web("/")).body).toContain('<script src="/htmx.min.js"></script>');
+    expect((await web("/classic")).body).toContain('<script src="/htmx.min.js"></script>');
     const asset = await web("/htmx.min.js");
     expect(asset.status).toBe(200);
     expect(asset.type).toBe("text/javascript; charset=utf-8");
@@ -71,7 +71,7 @@ describe("web Board", () => {
     const { configDir, web } = setup();
     mkdirSync(configDir, { recursive: true });
     writeFileSync(join(configDir, "config.json"), "{bad");
-    const { status, body } = await web("/");
+    const { status, body } = await web("/classic");
     expect(status).toBe(500);
     expect(body).toContain(
       `<p class="error">${join(configDir, "config.json")} is not valid JSON</p>\n<p>Fix or delete the file and run \`nico-agent repo add\` again</p>`,

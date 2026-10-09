@@ -25,7 +25,7 @@ const query = (issues: string[], extra: Record<string, string> = {}) => {
 describe("Board selection", () => {
   test("Ready and In-flight issues have a checkbox for the action bar, which starts with nothing to act on", async () => {
     const { web } = await mixed();
-    const { body } = await web("/");
+    const { body } = await web("/classic");
     for (const issue of ["acme/api#1", "acme/api#3"]) {
       expect(body).toContain(`<input type="checkbox" class="pick" name="issue" value="${issue}" form="batch" autocomplete="off"`);
     }

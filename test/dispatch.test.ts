@@ -359,7 +359,7 @@ describe("In flight on the Board", () => {
     world.addIssue("acme/api", { number: 7, title: "Add retries" });
     await cli("dispatch", "acme/api#7", ...FLAGS);
 
-    const { body } = await web("/");
+    const { body } = await web("/classic");
     expect(body).toContain('<p class="empty">No Ready issues.</p>');
     expect(body).toContain(
       [
@@ -387,7 +387,7 @@ describe("web dispatch", () => {
     const { web, world } = await withRepo();
     world.addIssue("acme/api", { number: 7, title: "Add retries" });
 
-    const { body } = await web("/");
+    const { body } = await web("/classic");
     expect(body).toContain('<form method="post" action="/dispatch" class="dispatch">');
     expect(body).toContain('<input type="hidden" name="issue" value="acme/api#7">');
     expect(body).toContain('<option selected>claude</option><option>codex</option><option>opencode2</option></select>');
@@ -400,12 +400,13 @@ describe("web dispatch", () => {
   });
 
   test("posting the form dispatches the issue and redirects to the Board", async () => {
-    const { cli, web, world } = await withRepo();
+    const { cli, handler, world } = await withRepo();
     world.addIssue("acme/api", { number: 7 });
 
     const form = new URLSearchParams({ issue: "acme/api#7", harness: "claude", model: "sonnet", effort: "max" });
-    const response = await web("/dispatch", { method: "POST", body: form });
+    const response = await handler(new Request("http://127.0.0.1:42069/dispatch", { method: "POST", body: form }));
     expect(response.status).toBe(303);
+    expect(response.headers.get("location")).toBe("/classic");
     expect(world.calls).toContain("herdr agent start impl-api-7 --kind claude --pane w1:p2 -- --model sonnet --effort max");
     expect((await cli("show", "acme/api#7", "--json")).json().implementer.model).toBe("sonnet");
   });
@@ -518,7 +519,7 @@ describe("web Retry", () => {
     expect(failed.body).toContain('<p class="error">workspace_not_found: no workspace w1</p>');
     expect(failed.body).toContain("<p>Run `nico-agent show acme/api#7` to see the Dispatch</p>");
 
-    const { body } = await web("/");
+    const { body } = await web("/classic");
     expect(body).toContain(
       [
         '<li class="flight">\n<div class="head"><input type="checkbox" class="pick" name="issue" value="acme/api#7" form="batch" autocomplete="off" id="pick-acme-api-7" hx-preserve="true" aria-label="Select acme/api#7"> <a class="title" href="https://github.com/acme/api/issues/7"><span class="num">api#7</span> Add retries</a><span class="stage failed">Failed at tab</span></div>',
@@ -547,7 +548,7 @@ describe("web Retry", () => {
     expect(retried.status).toBe(303);
     expect(world.calls[0]).toStartWith("herdr tab create --workspace w1 ");
     expect((await cli("show", "acme/api#7", "--json")).json().stage).toBe("Implementing");
-    expect((await web("/")).body).toContain('<span class="stage implementing">Implementing</span>');
+    expect((await web("/classic")).body).toContain('<span class="stage implementing">Implementing</span>');
   });
 });
 
