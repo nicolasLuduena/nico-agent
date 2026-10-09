@@ -102,8 +102,10 @@ launching it there:
 - the `lead` skill, embedded in the nico-agent binary, where the Harness looks
   for a project's skills: `.claude/skills/` for claude, `.agents/skills/` for
   codex, `.opencode/skills/` for opencode2 (a Harness's `skillsDir` setting),
-  with `SHAPING.md` beside it, the Lead's procedure for new work (below), and
-  `RETRO.md`, its procedure for the weekly retro (Nudges, below);
+  with `SHAPING.md` beside it, the Lead's procedure for new work (below),
+  `RETRO.md`, its procedure for the weekly retro (Nudges, below), and
+  `RESEARCH.md`, its procedure for research you ask for
+  (`docs/research-issues.md`);
 - `mcp.json`, naming `serve`'s MCP server for claude's `--mcp-config`;
 - links to the shaping skills of the nico-agent checkout.
 

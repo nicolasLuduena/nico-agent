@@ -23,6 +23,22 @@ change a Dispatch already In flight.
 `issues`, `stackable` and `prOpen`) and on their Dispatches (under
 `dispatches`).
 
+## Asking the Lead
+
+Ask the Lead to research a question in the conversation, and it writes the
+Research issue for you (`RESEARCH.md` in its skill). It finds the Repo the
+findings belong in, asking you when that is unclear, and writes the issue on
+the Repo's Source following the Repo's issue tracker doc: the question, what
+a good answer covers, and the `research` and `ready-for-agent` labels. You
+asked for it, so this write needs no Proposal, whatever the `write` order
+says.
+
+It then starts the research under the `start` order: queued as a Spec of its
+own, or, when you name work that needs the findings, made a sub-issue of that
+work's Spec and the Blocker of its tickets, so they wait for the findings to
+merge. With `start` off, it proposes the `queue`. It tells you the issue it
+wrote, and later, when the PR is ready, the question the findings answer.
+
 ## Changing the prompt
 
 Set `prompts.research` in `~/.config/nico-agent/config.json`. Like

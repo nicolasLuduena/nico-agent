@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import leadResearch from "./lead-research.md" with { type: "text" };
 import leadRetro from "./lead-retro.md" with { type: "text" };
 import leadShaping from "./lead-shaping.md" with { type: "text" };
 import leadSkill from "./lead-skill.md" with { type: "text" };
@@ -22,7 +23,7 @@ export type LeadStep = (typeof LEAD_STEPS)[number];
 const SHAPING_SKILLS = ["grilling", "to-spec", "to-tickets", "triage", "retro"];
 
 /** The lead skill's pages, by the name each is written under. */
-const LEAD_PAGES = { "SKILL.md": leadSkill, "SHAPING.md": leadShaping, "RETRO.md": leadRetro };
+const LEAD_PAGES = { "SKILL.md": leadSkill, "SHAPING.md": leadShaping, "RETRO.md": leadRetro, "RESEARCH.md": leadResearch };
 
 /** The Repo whose clone the shaping skills come from. */
 export const NICO_AGENT_SLUG = "nicolasLuduena/nico-agent";
