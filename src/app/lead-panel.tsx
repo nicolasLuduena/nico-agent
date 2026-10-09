@@ -6,6 +6,7 @@ import {
   cards, declineArgs, followsNewEntries, notices, proposalLines, reduce, sayArgs,
 } from "./lead";
 import { LeadDrawer } from "./lead-drawer";
+import { sendsOnEnter } from "./popover";
 import { ResearchBox } from "./research-box";
 import { useResource } from "./stream";
 import { TalkButton, TalkStatus, useTalk } from "./talk-button";
@@ -37,9 +38,9 @@ function useConversation() {
 }
 
 /**
- * The Lead panel: the Voice switch, the Research button and the drawer's button, the one quiet
- * place for warnings, the conversation as cards, and the composer, which
- * stays put and keeps its draft while entries arrive.
+ * The Lead panel: the Voice switch, the Research button and the drawer's
+ * button, the one quiet place for warnings, the conversation as cards, and
+ * the composer, which stays put and keeps its draft while entries arrive.
  */
 export function LeadPanel({ status }: { status: LeadStatusJson | null }) {
   const { state, send, dismiss, failure } = useConversation();
@@ -70,7 +71,11 @@ export function LeadPanel({ status }: { status: LeadStatusJson | null }) {
           <input type="checkbox" role="switch" checked={voice} disabled={busy} onChange={(e) => void act(e.target.checked ? "/api/voice/on" : "/api/voice/off", [])} />
           Voice
         </label>
-        <ResearchBox send={(text) => void sendAndFollow(text)} />
+        <ResearchBox send={(text) => {
+          // The request shows in the conversation, so it takes the drawer's place.
+          setDrawer(false);
+          void sendAndFollow(text);
+        }} />
         <button type="button" className="quiet" aria-expanded={drawer} aria-controls="lead-drawer" onClick={() => setDrawer(!drawer)}>
           {drawer ? "Conversation" : "Intent & orders"}
         </button>
@@ -259,7 +264,7 @@ function Composer({ send, talk, working }: { send: SendText; talk: ReturnType<ty
     setText("");
   };
   const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+    if (sendsOnEnter(e)) {
       e.preventDefault();
       submit();
     }

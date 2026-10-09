@@ -6,7 +6,7 @@ Research issues are yours to write when the user asks: the user decided that thi
 
 ## 1. Find the Repo
 
-The findings land in the Repo the research is for. Find it from the user's words, the Specs and issues they name, the Intent and the Notes, and the Repos in `nico-agent repo list --json`. When more than one Repo fits, or none clearly does, `ask` which, with the likely Repos as choices, and write nothing until the user answers.
+The findings land in the Repo the research is for. Find it from the user's words, the Specs and issues they name, the Intent and the Notes, and the Repos in `nico-agent repo list --json`. A `Repo:` line in a research request names it: take it when it matches a Repo in the list. Otherwise, when more than one Repo fits, or none clearly does, `ask` which, with the likely Repos as choices, and write nothing until the user answers.
 
 ## 2. Write the Research issue
 
