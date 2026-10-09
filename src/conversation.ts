@@ -1,6 +1,6 @@
 import { appendFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { type Proposal, type ProposalStatus, openProposals } from "./proposals";
+import { type Proposal, type ProposalStatus, type Proposed, openProposals } from "./proposals";
 import { recordOrNone } from "./records";
 import { withFileLock, writeJsonAtomic } from "./state";
 
@@ -18,10 +18,11 @@ export type Entry = { id: number; at: string } & (
   /** The user's answer to the `ask` entry `question`. */
   | { type: "answer"; question: number; text: string }
   /**
-   * The user's decision on the Proposal `proposal`, with its action and what
-   * running it printed; `text` is why it was declined or failed, if known.
+   * The user's decision on the Proposal `proposal`, with its action or write
+   * and what running the action printed; `text` is why it was declined or
+   * failed, if known.
    */
-  | { type: "decision"; proposal: number; decision: Exclude<ProposalStatus, "open">; action: string[]; text: string; outcome?: Record<string, unknown> }
+  | ({ type: "decision"; proposal: number; decision: Exclude<ProposalStatus, "open">; text: string; outcome?: Record<string, unknown> } & Proposed)
 );
 
 type Body = Entry extends infer E ? (E extends Entry ? Omit<E, "id" | "at"> : never) : never;

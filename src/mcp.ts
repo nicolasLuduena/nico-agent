@@ -160,14 +160,24 @@ const TOOLS = [
   {
     name: "propose",
     title: "Propose",
-    description: "Propose an action your Standing orders do not allow, for the user to approve or decline. `action` is the CLI command an action tool's refusal hands you (without `nico-agent`); approving runs it in nico-agent. The decision arrives in your Inbox.",
+    description: "Propose an action your Standing orders do not allow, for the user to approve or decline: either `action`, the CLI command an action tool's refusal hands you (without `nico-agent`), which approving runs in nico-agent; or `write`, the Markdown of a Spec and its tickets for a Repo's Source while the `write` order is off, which approving lets you write. The decision arrives in your Inbox.",
     inputSchema: {
       type: "object",
       properties: {
         action: { type: "array", items: { type: "string" }, minItems: 1, description: "The command, e.g. [\"queue\", \"--repo\", \"acme/api\", \"--\", \"acme/api#10\"]" },
+        write: {
+          type: "object",
+          description: "Instead of action: what you would write to a Repo's Source",
+          properties: {
+            repo: { type: "string", description: "The Repo, as `owner/name` from the Board" },
+            text: { type: "string", description: "The Spec and its tickets, in Markdown, as you would write them" },
+          },
+          required: ["repo", "text"],
+          additionalProperties: false,
+        },
         reason: { type: "string", description: "Why, in a sentence the user can decide on" },
       },
-      required: ["action", "reason"],
+      required: ["reason"],
       additionalProperties: false,
     },
   },
@@ -418,8 +428,15 @@ function toolRun(params: unknown): ToolRun {
       onlyArguments(name, args);
       return { action: ["advance"], tool: name };
     case "propose": {
-      onlyArguments(name, args, ["action", "reason"]);
-      const { action } = args;
+      onlyArguments(name, args, ["action", "write", "reason"]);
+      const { action, write } = args;
+      if ((action === undefined) === (write === undefined)) throw new RpcError(-32602, "propose takes action or write, exactly one");
+      if (write !== undefined) {
+        if (!isObject(write)) throw new RpcError(-32602, "propose's write must be an object with repo and text");
+        onlyArguments("propose's write", write, ["repo", "text"]);
+        const markdown = text("propose's write", write, "text");
+        return { argv: ["lead", "propose", "--json", "--reason", text(name, args, "reason"), "--write", text("propose's write", write, "repo"), "--text", markdown] };
+      }
       if (!Array.isArray(action) || !action.length || !action.every((t) => typeof t === "string")) {
         throw new RpcError(-32602, "propose needs action, the command as a list of strings");
       }

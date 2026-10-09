@@ -1,12 +1,16 @@
 import type { Authored } from "../conversation";
-import type { ProposalStatus } from "../proposals";
+import type { ProposalStatus, Write } from "../proposals";
 import { type HarnessesJson, type LaunchChoice, advanceReport, launchChoice } from "./actions";
 
-/** A Proposal as `nico-agent proposals --all --json` lists it: its action as the command line. */
+/**
+ * A Proposal as `nico-agent proposals --all --json` lists it: its action as
+ * the command line, or the write the Lead would make to a Repo's Source.
+ */
 export interface ProposalJson {
   id: number;
   at: string;
-  action: string;
+  action?: string;
+  write?: Write;
   reason: string;
   status: ProposalStatus;
   decidedAt?: string;

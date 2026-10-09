@@ -15,7 +15,7 @@ import { linearIdentifier } from "./linear";
 import { PROPOSABLE, withJson } from "./mcp";
 import { PROPOSALS_SCOPE, notifyOnce } from "./notify";
 import { type Output, plural, render } from "./output";
-import { type Proposal, ProposalRefused, addProposal, commandLine, decide, loadProposals, openProposals, settle } from "./proposals";
+import { type Proposal, type Proposed, ProposalRefused, type Write, addProposal, commandLine, decide, loadProposals, openProposals, proposedLine, proposedOf, settle } from "./proposals";
 import { dequeue, enqueue, loadQueues, move, pruneBoardQueues, queueOf } from "./queue";
 import { RECORDS, type RecordName, StaleRecord, noneYet, readRecord, replaceRecord } from "./records";
 import { isCandidate, sameSpec } from "./spec";
@@ -63,7 +63,7 @@ const RECALL_USAGE = "nico-agent lead recall <query> [--since <time>] [--until <
 const QUEUE_USAGE = "nico-agent queue <spec> --repo <owner/name>";
 const UNQUEUE_USAGE = "nico-agent unqueue <spec> --repo <owner/name>";
 const MOVE_USAGE = "nico-agent move <spec> up|down --repo <owner/name>";
-const PROPOSE_USAGE = "nico-agent lead propose --reason <why> -- <command>...";
+const PROPOSE_USAGE = "nico-agent lead propose --reason <why> (-- <command>... | --write <repo> [--file <path> | --text <markdown>])";
 const APPROVE_USAGE = "nico-agent proposals approve <id>";
 const DECLINE_USAGE = "nico-agent proposals decline <id> [reason]";
 const PROPOSALS_HELP = "Run `nico-agent proposals` to see the open Proposals";
@@ -368,11 +368,19 @@ const commands: Command[] = [
   {
     name: "lead propose",
     usage: PROPOSE_USAGE,
-    summary: "Propose an action for the user to approve or decline, as the Lead (its MCP `propose` tool)",
-    flags: { "--reason": { value: true, description: "why, in a sentence the user can decide on (required)" } },
+    summary: "Propose an action, or a Spec to write to a Repo's Source, for the user to approve or decline, as the Lead (its MCP `propose` tool)",
+    flags: {
+      "--reason": { value: true, description: "why, in a sentence the user can decide on (required)" },
+      "--write": { value: true, description: "propose writing Markdown to this Repo's Source instead of a command; approving lets the Lead write it" },
+      "--file": { value: true, description: "with --write: the Markdown file to write (default: standard input)" },
+      "--text": { value: true, description: "with --write: the Markdown to write, instead of a file" },
+    },
     positionals: ["command..."],
-    examples: ["nico-agent lead propose --reason \"Smallest unblocked Spec\" -- queue --repo acme/api -- acme/api#10"],
-    help: [`A Proposal runs one of: ${PROPOSABLE.join(", ")}`],
+    examples: [
+      "nico-agent lead propose --reason \"Smallest unblocked Spec\" -- queue --repo acme/api -- acme/api#10",
+      "nico-agent lead propose --reason \"The billing Spec we agreed on\" --write acme/api --file spec.md",
+    ],
+    help: [`A Proposal runs one of: ${PROPOSABLE.join(", ")}; or, with --write, lets the Lead write a Spec and its tickets`],
     run: leadProposeCommand,
   },
   {
@@ -835,6 +843,34 @@ async function leadLogCommand(_args: Args, ctx: RunContext): Promise<Output> {
 async function leadProposeCommand(args: Args, ctx: RunContext): Promise<Output> {
   const reason = required(args, "--reason", PROPOSE_USAGE);
   if (!reason.trim()) throw new CliError("--reason needs a value", [`Usage: \`${PROPOSE_USAGE}\``], 2);
+  const proposed = typeof args.flags["--write"] === "string" ? await proposedWrite(args, ctx) : proposedAction(args);
+  const proposal = await addProposal(ctx.configDir, proposed, reason, ctx.world.now());
+  const open = openProposals(ctx.configDir);
+  const warnings = await notifyOnce(ctx.world, ctx.configDir, open.map(proposalNotice), (scope) => scope === PROPOSALS_SCOPE);
+  return {
+    data: { proposed: proposal.id, ...proposedSummary(proposed), ...(warnings.length && { warnings }) },
+    help: [`The user approves or declines it with \`nico-agent proposals\`; the decision arrives in your Inbox naming Proposal ${proposal.id}`],
+  };
+}
+
+/** `--write`'s Proposal: the Markdown for a configured Repo's Source, never blank. */
+async function proposedWrite(args: Args, ctx: RunContext): Promise<Proposed> {
+  const slug = args.flags["--write"] as string;
+  if (args.positionals.length) throw new CliError("a Proposal runs a command or writes a Spec, not both", [`Usage: \`${PROPOSE_USAGE}\``], 2);
+  const repo = findRepo(loadConfig(ctx.configDir), slug);
+  if (!repo) throw new CliError(`${slug} is not a configured Repo`, ["Run `nico-agent repo list` to see the Repos"]);
+  const { "--file": file, "--text": inline } = args.flags;
+  if (typeof file === "string" && typeof inline === "string") throw new CliError("--file and --text give the Markdown two ways; pass one", [`Usage: \`${PROPOSE_USAGE}\``], 2);
+  const text = typeof inline === "string" ? inline : typeof file === "string" ? readMarkdown(file) : await readStdin(ctx, PROPOSE_USAGE);
+  if (!text.trim()) throw new CliError("the Markdown to write is empty", ["Pass the Spec and its tickets as --text, --file or standard input"], 2);
+  return { write: { repo: repo.slug, text } };
+}
+
+/** A command line as a Proposal runs it, checked now so the user is never asked to approve one that cannot run. */
+function proposedAction(args: Args): Proposed {
+  if (args.flags["--file"] !== undefined || args.flags["--text"] !== undefined) {
+    throw new CliError("--file and --text go with --write", [`Usage: \`${PROPOSE_USAGE}\``], 2);
+  }
   const action = args.positionals;
   const command = commands.find((c) => c.name === action[0] && PROPOSABLE.includes(c.name));
   if (!command) {
@@ -850,23 +886,33 @@ async function leadProposeCommand(args: Args, ctx: RunContext): Promise<Output> 
     if (!(e instanceof CliError)) throw e;
     throw new CliError(`the action is not a valid \`${command.name}\` command: ${e.message}`, [`Usage: \`${command.usage}\``], 2);
   }
-  const proposal = await addProposal(ctx.configDir, action, reason, ctx.world.now());
-  const open = openProposals(ctx.configDir);
-  const warnings = await notifyOnce(ctx.world, ctx.configDir, open.map(proposalNotice), (scope) => scope === PROPOSALS_SCOPE);
-  return {
-    data: { proposed: proposal.id, action: commandLine(action), ...(warnings.length && { warnings }) },
-    help: [`The user approves or declines it with \`nico-agent proposals\`; the decision arrives in your Inbox naming Proposal ${proposal.id}`],
-  };
+  return { action };
 }
 
 /** A new Proposal, for the user away from the Board. */
-function proposalNotice({ id, action, reason }: Proposal) {
+function proposalNotice(proposal: Proposal) {
+  const { id, reason } = proposal;
+  const decline = `\`nico-agent proposals decline ${id} [reason]\``;
   return {
     key: `proposal ${id}`,
     scope: PROPOSALS_SCOPE,
-    title: `The Lead proposes: ${commandLine(action)}`,
-    body: `${reason}\nRun \`nico-agent proposals approve ${id}\` to run it, or \`nico-agent proposals decline ${id} [reason]\``,
+    ...("action" in proposal
+      ? { title: `The Lead proposes: ${commandLine(proposal.action)}`, body: `${reason}\nRun \`nico-agent proposals approve ${id}\` to run it, or ${decline}` }
+      : {
+          title: `The Lead proposes to ${proposedLine(proposal)}`,
+          body: `${reason}\nRun \`nico-agent proposals\` to read it, then \`nico-agent proposals approve ${id}\` to have the Lead write it, or ${decline}`,
+        }),
   };
+}
+
+/** What a Proposal does, in a field: the command line it runs, or the Repo whose Source the Lead would write to. */
+function proposedSummary(proposal: Proposed) {
+  return "action" in proposal ? { action: commandLine(proposal.action) } : { write: proposal.write.repo };
+}
+
+/** What a Proposal does as `proposals` lists it: the command line it runs, or the write whole, to read before approving. */
+function shownProposed(proposal: Proposed) {
+  return "action" in proposal ? { action: commandLine(proposal.action) } : { write: proposal.write };
 }
 
 async function proposalsList(args: Args, ctx: RunContext): Promise<Output> {
@@ -876,10 +922,13 @@ async function proposalsList(args: Args, ctx: RunContext): Promise<Output> {
     ? [`Run \`nico-agent proposals approve ${open[0]!.id}\` to run one, or \`nico-agent proposals decline ${open[0]!.id} [reason]\` to turn it down`]
     : [];
   if (args.flags["--all"] === true) {
-    const rows = proposals.map(({ action, ...p }) => ({ ...p, action: commandLine(action) }));
+    const rows = proposals.map((p) => {
+      const { action: _, write: __, ...rest } = p as Proposal & { action?: string[]; write?: Write };
+      return { ...rest, ...shownProposed(p) };
+    });
     return { data: { proposals: rows }, help: [...help, LOG_HELP] };
   }
-  const rows = open.map(({ id, at, action, reason }) => ({ id, at, action: commandLine(action), reason }));
+  const rows = open.map((p) => ({ id: p.id, at: p.at, ...shownProposed(p), reason: p.reason }));
   return { data: { proposals: `${open.length} open`, open: rows }, help: [...help, "Run `nico-agent proposals --all` to see decided ones too"] };
 }
 
@@ -907,7 +956,10 @@ function idArg(args: Args, usage: string) {
  * the reason. One that ran in part is approved, exiting as the command did.
  */
 async function proposalsApprove(args: Args, ctx: RunContext): Promise<Output> {
-  const { id, action } = await decideProposal(ctx, idArg(args, APPROVE_USAGE), "approved");
+  const proposal = await decideProposal(ctx, idArg(args, APPROVE_USAGE), "approved");
+  const { id } = proposal;
+  if (!("action" in proposal)) return approveWrite(ctx, id, proposal.write);
+  const { action } = proposal;
   /** Settle the Proposal and tell the Lead, answering the Nudge's warnings. */
   const close = async (outcome: Record<string, unknown>, why: string) => {
     await settle(ctx.configDir, id, outcome, why !== "");
@@ -934,6 +986,19 @@ async function proposalsApprove(args: Args, ctx: RunContext): Promise<Output> {
   return { data: { approved: id, action: commandLine(action), outcome, ...nudged }, help: [...help, PROPOSALS_HELP], exitCode: result.exitCode === 0 ? 0 : 1 };
 }
 
+/**
+ * An approved write runs nothing in nico-agent: the Lead writes it with its
+ * own shell (ADR-0010), so the decision, carrying the text, goes to its Inbox.
+ */
+async function approveWrite(ctx: RunContext, id: number, write: Write): Promise<Output> {
+  await append(ctx.configDir, { type: "decision", proposal: id, decision: "approved", write, text: "" }, ctx.world.now());
+  const warnings = await nudgeLead(ctx.world, ctx.configDir);
+  return {
+    data: { approved: id, write: write.repo, ...(warnings.length && { warnings }) },
+    help: [`The Lead writes it to ${write.repo}'s Source when it reads its Inbox`, LOG_HELP],
+  };
+}
+
 /** Why an action's output shows it ran nothing, or "" when it did something. */
 function notRun(outcome: Record<string, unknown>): string {
   if (typeof outcome.error === "string") return outcome.error;
@@ -955,10 +1020,11 @@ function isNoOp(result: string) {
 
 async function proposalsDecline(args: Args, ctx: RunContext): Promise<Output> {
   const reason = args.positionals.slice(1).join(" ").trim();
-  const { id, action } = await decideProposal(ctx, idArg(args, DECLINE_USAGE), "declined", reason || undefined);
-  await append(ctx.configDir, { type: "decision", proposal: id, decision: "declined", action, text: reason }, ctx.world.now());
+  const proposal = await decideProposal(ctx, idArg(args, DECLINE_USAGE), "declined", reason || undefined);
+  const { id } = proposal;
+  await append(ctx.configDir, { type: "decision", proposal: id, decision: "declined", ...proposedOf(proposal), text: reason }, ctx.world.now());
   const warnings = await nudgeLead(ctx.world, ctx.configDir);
-  return { data: { declined: id, action: commandLine(action), ...(warnings.length && { warnings }) }, help: [`The Lead reads the decision in its Inbox`, PROPOSALS_HELP] };
+  return { data: { declined: id, ...proposedSummary(proposal), ...(warnings.length && { warnings }) }, help: [`The Lead reads the decision in its Inbox`, PROPOSALS_HELP] };
 }
 
 async function reviewCommand(args: Args, ctx: RunContext): Promise<Output> {

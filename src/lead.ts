@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import leadShaping from "./lead-shaping.md" with { type: "text" };
 import leadSkill from "./lead-skill.md" with { type: "text" };
 import { LEAD_DEFAULTS, type LaunchDefaults, fillTemplate, findRepo, harnessConfigs, loadConfig, prompts, writeJson } from "./config";
 import { type Progress, agentSteps, chooseLaunch, prompt, runPhase } from "./dispatch";
@@ -252,9 +253,10 @@ async function runLead(world: World, configDir: string, harness: Harness, record
 const MCP_CONFIG = "mcp.json";
 
 /**
- * Write the Lead's home: its skill where the Harness finds a project's
- * skills, the MCP config naming `serve`'s server, and links to the shaping
- * skills of the nico-agent checkout when it is a configured Repo. The skills
+ * Write the Lead's home: its skill and the skill's shaping page where the
+ * Harness finds a project's skills, the MCP config naming `serve`'s server,
+ * and links to the shaping skills of the nico-agent checkout when it is a
+ * configured Repo. The skills
  * an earlier start wrote for another Harness are removed, so no stale copy
  * is left. Returns a warning for each shaping skill left out.
  */
@@ -267,6 +269,7 @@ function writeHome(configDir: string, harness: Harness, mcpUrl: string): string[
   }
   mkdirSync(join(skills, "lead"), { recursive: true });
   writeFileSync(join(skills, "lead", "SKILL.md"), leadSkill);
+  writeFileSync(join(skills, "lead", "SHAPING.md"), leadShaping);
   writeJson(home, MCP_CONFIG, { mcpServers: { [MCP_SERVER]: { type: "http", url: mcpUrl } } });
   const repo = findRepo(loadConfig(configDir), NICO_AGENT_SLUG);
   if (!repo) {
