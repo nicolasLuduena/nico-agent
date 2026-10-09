@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 import type { HarnessesJson } from "../src/app/actions";
 import {
-  type Conversation, type LeadStatusJson, type ProposalJson, cards, declineArgs, leadChoice, leadControl, leadStartArgs, followsNewEntries, notices, proposalLines, reduce, sayArgs,
+  type Conversation, type LeadStatusJson, type ProposalJson, cards, declineArgs, leadChoice, openItems, leadControl, leadStartArgs, followsNewEntries, notices, proposalLines, reduce, sayArgs,
 } from "../src/app/lead";
 import { setup } from "./harness";
 
@@ -104,6 +104,45 @@ describe("the conversation's cards", () => {
     expect(proposalLines(approved!)).toEqual([{ text: "Nothing to do: no running Spec needs a step and no queued Spec could start.", error: false }]);
     expect(failed).toMatchObject({ status: "failed" });
     expect(proposalLines(failed!)).toEqual([{ text: "acme/api is not a configured Repo", error: true }]);
+  });
+});
+
+describe("the Questions list", () => {
+  test("every open question and Proposal, oldest first; answered and decided ones leave it", async () => {
+    const { cli, loaded } = withLead();
+    await cli("lead", "ask", "Which first?", "billing", "search");
+    await cli("lead", "say", "Meanwhile, a thought");
+    await cli("lead", "propose", "--reason", "It is next in the Queue", "advance");
+    await cli("lead", "ask", "Anything else?");
+    await cli("lead", "propose", "--reason", "Then this", "advance");
+    expect(openItems(await loaded())).toMatchObject([
+      { kind: "question", id: 1, text: "Which first?", choices: ["billing", "search"] },
+      { kind: "proposal", id: 1, reason: "It is next in the Queue" },
+      { kind: "question", id: 3, text: "Anything else?" },
+      { kind: "proposal", id: 2, reason: "Then this" },
+    ]);
+
+    await cli("say", "--answer", "1", "billing");
+    await cli("proposals", "decline", "2", "Not yet");
+    await cli("proposals", "approve", "1");
+    expect(openItems(await loaded())).toMatchObject([{ kind: "question", id: 3 }]);
+    // They stay in the chat, answered and decided.
+    expect(cards(await loaded()).filter((c) => c.kind !== "message")).toHaveLength(4);
+  });
+
+  test("an answer sent from the list takes its question off at once, and is the answer the chat sends; one not sent puts it back", async () => {
+    const { cli, loaded, post } = withSay();
+    await cli("lead", "ask", "Which first?", "billing", "search");
+    await cli("lead", "ask", "Anything else?");
+    const answering = reduce(await loaded(), { type: "send", key: "s1", text: "billing", question: 1, at: NOW });
+    expect(openItems(answering)).toMatchObject([{ kind: "question", id: 2 }]);
+
+    const refused = reduce(answering, { type: "failed", key: "s1", error: "Could not reach nico-agent serve; try again." });
+    expect(openItems(refused)).toMatchObject([{ kind: "question", id: 1, failure: { text: "billing" } }, { kind: "question", id: 2 }]);
+
+    await post(sayArgs("billing", 1));
+    expect(cards(await loaded())[0]).toMatchObject({ kind: "question", id: 1, answer: { text: "billing" } });
+    expect(openItems(await loaded())).toMatchObject([{ kind: "question", id: 2 }]);
   });
 });
 

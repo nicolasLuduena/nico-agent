@@ -170,7 +170,20 @@ export function cards({ entries, proposals, sends }: Conversation): Card[] {
   return timeline;
 }
 
-/** A message's marks when it was spoken: that it was, and what was heard when the Scribe changed it. */
+/** An item of the Questions list: a question of the Lead's or one of its Proposals, as its card in the chat. */
+export type OpenItem = Extract<Card, { kind: "question" | "proposal" }>;
+
+/**
+ * The Questions list: every question of the Lead's not answered yet and
+ * every Proposal not decided, oldest first. An answer on its way takes its
+ * question off the list at once; one not sent puts it back.
+ */
+export function openItems(conversation: Conversation): OpenItem[] {
+  return cards(conversation).filter((c): c is OpenItem =>
+    (c.kind === "question" && !c.answer) || (c.kind === "proposal" && c.status === "open"));
+}
+
+/** A message's marks when it was spoken:that it was, and what was heard when the Scribe changed it. */
 function spoken(text: string, raw: string | undefined) {
   if (raw === undefined) return {};
   return { spoken: true as const, ...(raw !== text && { raw }) };
