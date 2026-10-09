@@ -6,6 +6,7 @@ import {
   type Card, type Conversation, type LeadPicks, type LeadStatusJson, type ProposalJson,
   cards, declineArgs, leadChoice, leadControl, leadStartArgs, proposalLines, reduce, sayArgs,
 } from "./lead";
+import { LeadDrawer } from "./lead-drawer";
 import { Agent } from "./repos";
 import { useResource } from "./stream";
 import { TalkButton, TalkStatus, useTalk } from "./talk-button";
@@ -55,6 +56,7 @@ function usePost() {
 /** The Lead panel: the Lead's state and controls, the conversation as cards, and the composer. */
 export function LeadPanel({ harnesses }: { harnesses: HarnessesJson | null }) {
   const { state, send, dismiss, failure } = useConversation();
+  const [drawer, setDrawer] = useState(false);
   const shown = cards(state);
   const scroller = useRef<HTMLOListElement>(null);
   // A new card brings the conversation to its end, unless the user scrolled up to read.
@@ -62,13 +64,15 @@ export function LeadPanel({ harnesses }: { harnesses: HarnessesJson | null }) {
   useLayoutEffect(() => {
     const list = scroller.current;
     if (list && atEnd.current) list.scrollTop = list.scrollHeight;
-  }, [shown.length]);
+  }, [shown.length, drawer]);
   return (
     <aside className="lead-panel" aria-label="Lead">
-      <LeadHead harnesses={harnesses} />
+      <LeadHead harnesses={harnesses} drawer={drawer} onDrawer={setDrawer} />
       {failure && <p className="error" role="status">{failure}</p>}
+      <LeadDrawer open={drawer} />
       <ol
         className="conversation"
+        hidden={drawer}
         ref={scroller}
         aria-live="polite"
         onScroll={(e) => {
@@ -85,8 +89,12 @@ export function LeadPanel({ harnesses }: { harnesses: HarnessesJson | null }) {
   );
 }
 
-/** The Lead's Agent state, launch and failure, live, with Start, Restart and Stop on the picked launch. */
-function LeadHead({ harnesses }: { harnesses: HarnessesJson | null }) {
+/**
+ * The Lead's Agent state, launch and failure, live, with Start, Restart and
+ * Stop on the picked launch, and the button opening the drawer in place of
+ * the conversation.
+ */
+function LeadHead({ harnesses, drawer, onDrawer }: { harnesses: HarnessesJson | null; drawer: boolean; onDrawer: (open: boolean) => void }) {
   const { data: status = null } = useResource<LeadStatusJson>("/api/lead/status", ["lead-state"]);
   const [chosen, setChosen] = useState<LeadPicks>({});
   const { busy, outcome, act: post } = usePost();
@@ -103,6 +111,9 @@ function LeadHead({ harnesses }: { harnesses: HarnessesJson | null }) {
         <h2>Lead</h2>
         {running ? <Agent role="lead" state={status.state ?? "unknown"} /> : <span className={`lead-state${status?.failure ? " error" : ""}`}>{status?.lead ?? "…"}</span>}
         {status?.harness && <span className="chip">{`${status.harness} · ${status.model} · ${status.effort}`}</span>}
+        <button type="button" className="drawer-toggle" aria-expanded={drawer} aria-controls="lead-drawer" onClick={() => onDrawer(!drawer)}>
+          {drawer ? "Conversation" : "Intent & orders"}
+        </button>
       </div>
       {status?.failure && <p className="error">{status.failure.error}</p>}
       {status?.warnings?.map((w) => <p key={w} className="warning">{w}</p>)}
@@ -143,9 +154,16 @@ function CardView({ card, send, dismiss }: { card: Card; send: SendText; dismiss
   switch (card.kind) {
     case "message":
       return (
-        <li className={`card-message ${card.who}${card.sending ? " sending" : ""}`}>
-          <Byline who={card.who} at={card.at} note={card.sending ? "sending…" : card.spoken ? "spoke" : undefined} />
-          <p className="text">{card.text}</p>
+        <li className={`card-message ${card.who}${card.sending ? " sending" : ""}${card.superseded ? " superseded" : ""}`}>
+          <Byline who={card.who} at={card.at} note={messageNote(card)} />
+          {card.raw === undefined
+            ? <p className="text">{card.text}</p>
+            : (
+              <div className="spoken">
+                <p className="text">{card.text}</p>
+                <p className="raw"><span>Heard</span>{card.raw}</p>
+              </div>
+            )}
           {card.error && (
             <div className="send-failure">
               <p className="error">{card.error}</p>
@@ -160,6 +178,13 @@ function CardView({ card, send, dismiss }: { card: Card; send: SendText; dismiss
     case "proposal":
       return <ProposalCard card={card} />;
   }
+}
+
+/** A message's muted note: on its way, spoken, correcting an earlier one, or corrected since. */
+function messageNote(card: Card & { kind: "message" }) {
+  if (card.sending) return "sending…";
+  const notes = [card.spoken && "spoke", card.corrects !== undefined && "corrects", card.superseded && "corrected below"];
+  return notes.filter(Boolean).join(" · ") || undefined;
 }
 
 /** Who wrote a card and when, then a muted note (such as "sending…") or, at its end, a Proposal's status. */
@@ -261,11 +286,11 @@ function ProposalCard({ card }: { card: Card & { kind: "proposal" } }) {
 
 /**
  * Where the user writes or talks to the Lead: Enter sends, Shift+Enter starts
- * a new line; the talk button sends what it heard, the raw transcript as it is.
+ * a new line; the talk button sends the Scribe's text, keeping what it heard.
  */
 function Composer({ send }: { send: SendText }) {
   const [text, setText] = useState("");
-  const talking = useTalk((heard) => void send(heard, undefined, heard));
+  const talking = useTalk((text, heard) => void send(text, undefined, heard));
   const submit = () => {
     if (!text.trim()) return;
     void send(text);

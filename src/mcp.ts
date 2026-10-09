@@ -1,4 +1,4 @@
-import { ORDERS, type Order } from "./config";
+import { ORDERS, type Order } from "./orders";
 import { render } from "./output";
 import { RECORDS, type RecordName } from "./records";
 import { VERSION } from "./version";
@@ -112,7 +112,7 @@ const TOOLS = [
   {
     name: "inbox",
     title: "Inbox",
-    description: "Read your Inbox: the user's messages and answers to your questions you have not seen yet, each returned once. Every call also returns `orient`: the Intent, the Notes, your open questions and the last exchanges; read it before acting when you can't recall your last words.",
+    description: "Read your Inbox: the user's messages and answers to your questions you have not seen yet, each returned once; a message with `supersedes` corrects the one with that id. Every call also returns `orient`: the Intent, the Notes, your open questions and the last exchanges; read it before acting when you can't recall your last words.",
     inputSchema: { type: "object", additionalProperties: false },
   },
   {

@@ -9,8 +9,11 @@ import { withFileLock, writeJsonAtomic } from "./state";
  * kept append-only. Each kind has the same shape: an id, a type, a time.
  */
 export type Entry = { id: number; at: string } & (
-  /** A message from the user; `raw` is what the transcription service heard when it was spoken. */
-  | { type: "user"; text: string; raw?: string }
+  /**
+   * A message from the user; `raw` is what the transcription service heard
+   * when it was spoken, and `supersedes` the user's message it corrects.
+   */
+  | { type: "user"; text: string; raw?: string; supersedes?: number }
   | { type: "lead"; text: string }
   /** A question from the Lead, open until an `answer` names it. */
   | { type: "ask"; text: string; choices?: string[] }
@@ -31,8 +34,12 @@ export type PrChange = "comment" | "review" | "check" | "ready" | "merged" | "cl
 
 type Body = Entry extends infer E ? (E extends Entry ? Omit<E, "id" | "at"> : never) : never;
 
-/** An Inbox entry; an answer carries the text of the question it answers. */
-export type InboxEntry = Entry | (Answer & { asked: string });
+/**
+ * An Inbox entry; an answer carries the text of the question it answers, a
+ * correction the text it supersedes, and a message corrected since the id of
+ * the correction.
+ */
+export type InboxEntry = Entry | (Answer & { asked: string }) | (User & { superseded?: string; supersededBy?: number });
 
 /**
  * What the Lead needs to know where it stands after a restart or a compacted
@@ -135,6 +142,24 @@ export function append(dir: string, body: Body, at: Date): Promise<Entry> {
 }
 
 type Answer = Extract<Entry, { type: "answer" }>;
+type User = Extract<Entry, { type: "user" }>;
+
+/** How the user takes back their last message, typed or spoken: "No, I said …". */
+const CORRECTION = /^\s*(?:no\b[\s,.;:!—–-]*)+i said\b/i;
+
+/**
+ * Append the user's message, as typed or, with `raw`, as spoken. One that
+ * starts "No, I said", in its text or in what was heard, supersedes the
+ * user's last message.
+ */
+export function sayToLead(dir: string, message: { text: string; raw?: string }, at: Date): Promise<User> {
+  return withFileLock(dir, FILE, () => {
+    const entries = loadConversation(dir);
+    const last = entries.findLast((e) => e.type === "user");
+    const corrects = last && [message.text, message.raw].some((t) => t !== undefined && CORRECTION.test(t));
+    return write(dir, entries, { type: "user", ...message, ...(corrects && { supersedes: last.id }) }, at) as User;
+  });
+}
 
 /**
  * Append the user's answer to the open question with id `question`, as typed.
@@ -163,10 +188,20 @@ export function readInbox(dir: string): Promise<{ entries: InboxEntry[]; orient:
     const cursor = loadCursor(dir);
     const unread = entries.filter((e) => e.id > cursor);
     if (unread.length) writeJsonAtomic(join(dir, CURSOR_FILE), { cursor: unread.at(-1)!.id });
-    const inbox = unread.filter((e) => author(e) !== "lead").map((e) => {
-      if (e.type !== "answer") return e;
-      const question = entries.find((q) => q.id === e.question);
-      return { ...e, asked: question?.type === "ask" ? question.text : "" };
+    const textOf = (id: number, type: Entry["type"]) => {
+      const entry = entries.find((e) => e.id === id);
+      return entry?.type === type ? entry.text : "";
+    };
+    const correction = new Map(entries.flatMap((e) => (e.type === "user" && e.supersedes !== undefined ? [[e.supersedes, e.id] as const] : [])));
+    const inbox = unread.filter((e) => author(e) !== "lead").map((e): InboxEntry => {
+      if (e.type === "answer") return { ...e, asked: textOf(e.question, "ask") };
+      if (e.type !== "user") return e;
+      const supersededBy = correction.get(e.id);
+      return {
+        ...e,
+        ...(e.supersedes !== undefined && { superseded: textOf(e.supersedes, "user") }),
+        ...(supersededBy !== undefined && { supersededBy }),
+      };
     });
     const orient = {
       intent: recordOrNone(dir, "intent"),
