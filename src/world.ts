@@ -199,6 +199,10 @@ export interface PullRequest {
 export interface PullRequestActivity {
   state: PullRequest["state"];
   draft: boolean;
+  /** The branch it would merge into. */
+  base: string;
+  /** Whether it merges cleanly; unknown while GitHub works it out. */
+  mergeable: "mergeable" | "conflicting" | "unknown";
   /** Conversation comments, reviews and inline review comments, oldest first. */
   comments: PullRequestComment[];
   /** The latest run of each check on the head commit; names may repeat (two workflows, or a check and a status). */

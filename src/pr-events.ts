@@ -21,6 +21,8 @@ interface Watched {
   issue: string;
   /** Whether it was a draft; unset until it is first asked about. */
   draft?: boolean;
+  /** Whether it was last known to conflict with its base. */
+  conflicting?: boolean;
   /** The last result of each check, by name. */
   checks: Record<string, CheckResult>;
   /** When the latest comment seen was published; comments are asked for from then on. */
@@ -37,8 +39,8 @@ interface Watched {
 /**
  * Watch each In-flight issue's open PR, and every PR watched before, until it
  * is merged or closed (a Dispatch Closed with its PR ready leaves the PR
- * watched). Each new review comment, check result, ready for review, merge
- * and close is written once as an `event` entry, reaching the Lead's Inbox.
+ * watched). Each new review comment, check result, merge conflict, ready for
+ * review, merge and close is written once as an `event` entry, reaching the Lead's Inbox.
  * A PR GitHub cannot be asked about is a warning, and asked again next time.
  */
 export async function watchPrs(world: World, configDir: string, prs: PrLookup): Promise<{ events: Entry[]; warnings: string[] }> {
@@ -100,6 +102,12 @@ function changes(pr: Watched, activity: PullRequestActivity): { change: PrChange
   for (const [name, result] of checkResults(activity)) {
     if (result !== "pending" && pr.checks[name] !== result) found.push({ change: "check", text: `check ${name} ${result}` });
     pr.checks[name] = result;
+  }
+  // Unknown leaves what was known: GitHub reports it while working mergeability out again.
+  if (activity.state === "open" && activity.mergeable !== "unknown") {
+    const conflicting = activity.mergeable === "conflicting";
+    if (conflicting && !pr.conflicting) found.push({ change: "conflict", text: `conflicts with ${activity.base}` });
+    pr.conflicting = conflicting;
   }
   if (activity.state === "merged") found.push({ change: "merged", text: "merged" });
   if (activity.state === "closed") found.push({ change: "closed", text: "closed without merging" });

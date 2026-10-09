@@ -102,7 +102,7 @@ export class FakeWorld implements World {
 
   async githubPullRequestActivity(slug: string, number: number, since?: Date): Promise<PullRequestActivity> {
     this.call(`github pr activity ${slug}#${number}${since ? ` since ${since.toISOString()}` : ""}`);
-    const activity = this.activity.get(`${slug}#${number}`) ?? { state: "open", draft: true, comments: [], checks: [] };
+    const activity = this.activity.get(`${slug}#${number}`) ?? { state: "open", draft: true, base: "main", mergeable: "mergeable", comments: [], checks: [] };
     return {
       ...activity,
       comments: activity.comments.filter((c) => !since || new Date(c.at) >= since),

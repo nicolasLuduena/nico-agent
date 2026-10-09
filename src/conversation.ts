@@ -29,8 +29,8 @@ export type Entry = { id: number; at: string } & (
   | { type: "event"; pr: string; issue: string; change: PrChange; text: string }
 );
 
-/** What changed on a PR: a comment, a review, a check's result, or its state. */
-export type PrChange = "comment" | "review" | "check" | "ready" | "merged" | "closed";
+/** What changed on a PR: a comment, a review, a check's result, a merge conflict, or its state. */
+export type PrChange = "comment" | "review" | "check" | "conflict" | "ready" | "merged" | "closed";
 
 type Body = Entry extends infer E ? (E extends Entry ? Omit<E, "id" | "at"> : never) : never;
 

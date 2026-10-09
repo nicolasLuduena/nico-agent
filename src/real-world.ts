@@ -195,7 +195,7 @@ const PR_ACTIVITY_QUERY = `
 query($owner: String!, $name: String!, $number: Int!) {
   repository(owner: $owner, name: $name) {
     pullRequest(number: $number) {
-      state isDraft
+      state isDraft baseRefName mergeable
       comments(last: 100) { nodes { id author { login } createdAt body } }
       reviews(last: 100) {
         nodes {
@@ -217,6 +217,8 @@ query($owner: String!, $name: String!, $number: Int!) {
 interface PrActivityNode {
   state: string;
   isDraft: boolean;
+  baseRefName: string;
+  mergeable: "MERGEABLE" | "CONFLICTING" | "UNKNOWN";
   comments: { nodes: { id: string; author: { login: string } | null; createdAt: string; body: string }[] };
   reviews: {
     nodes: {
@@ -496,6 +498,8 @@ export class RealWorld implements World {
     return {
       state: pr.state.toLowerCase() as PullRequest["state"],
       draft: pr.isDraft,
+      base: pr.baseRefName,
+      mergeable: pr.mergeable.toLowerCase() as PullRequestActivity["mergeable"],
       comments: comments.filter((c) => !since || new Date(c.at) >= since).sort((a, b) => Date.parse(a.at) - Date.parse(b.at)),
       checks: contexts.map((c) => c.__typename === "CheckRun"
         ? { name: c.name, result: result(PASSED.includes(c.conclusion ?? ""), c.status !== "COMPLETED") }
