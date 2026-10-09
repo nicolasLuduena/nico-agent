@@ -181,6 +181,13 @@ the config directory, which both the user and the Lead edit. The Lead reads it
 every turn and checks Specs, Dispatches and PRs against it.
 _Avoid_: Goals, roadmap, memory, context
 
+**Notes**:
+The Lead's record of the user's standing preferences, recurring decisions with
+their reasons, and the names the user has for things, as Markdown in the
+config directory beside the Intent. The Lead writes it when it learns something
+durable and keeps it under a page; the user reads and edits it too.
+_Avoid_: Memory, profile, settings
+
 **Conversation**:
 What the user and the Lead said to each other, as typed entries with ids and
 times appended to a file in the config directory: the user's messages, the
@@ -192,7 +199,10 @@ _Avoid_: Chat, history, transcript
 **Inbox**:
 What the Lead has not seen yet: user messages, decided Proposals, answers to
 its questions, Implementers Asking, Specs Held, Dispatches Failed, PRs changed.
-Read with a cursor, so nothing is lost while the Lead works.
+Read with a cursor, so nothing is lost while the Lead works, and handed over
+with an orient packet (Intent, Notes, open questions and Proposals, the last
+exchanges), so a Lead that just started knows where it stands. The Lead's
+memory lives here and in those files, never in a Harness's own memory.
 _Avoid_: Events, feed, notifications (those go to the user)
 
 **Nudge**:
