@@ -14,9 +14,10 @@ function withRecord(record: "intent" | "notes") {
   /** The state after Save: posted, and its answer taken. */
   const save = async (state: Editor) => {
     const args = saveArgs(state)!;
-    const sent = reduce(state, { type: "saving" });
+    const text = state.draft!.text;
+    const sent = reduce(state, { type: "saving", text });
     const response = await ctx.web(`/api/${record}/set`, { method: "POST", body: JSON.stringify({ args }) });
-    return reduce(sent, answered(record, JSON.parse(response.body), args.at(-1)!));
+    return reduce(sent, answered(record, JSON.parse(response.body), text));
   };
   return { ...ctx, fetched, save };
 }
@@ -93,10 +94,36 @@ for (const record of ["intent", "notes"] as const) {
       expect((await cli(record, "--json")).json()[record]).toBe("- Then search\n");
     });
 
+    test("the save's own refetch landing before its answer is no conflict, and keeps what was typed meanwhile", async () => {
+      const { cli, web, fetched } = withRecord(record);
+      await cli(record, "set", "--text", "- Ship billing first\n");
+      let state = edit(await fetched(NOT_LOADED), "- Ship search first\n");
+      const args = saveArgs(state)!;
+      state = edit(reduce(state, { type: "saving", text: "- Ship search first\n" }), "- Ship search first\n- Then billing\n");
+      const response = await web(`/api/${record}/set`, { method: "POST", body: JSON.stringify({ args }) });
+
+      state = await fetched(state);
+      expect(editorView(state)).toMatchObject({ text: "- Ship search first\n- Then billing\n", dirty: true, conflict: null });
+      state = reduce(state, answered(record, JSON.parse(response.body), "- Ship search first\n"));
+      expect(editorView(state)).toMatchObject({ text: "- Ship search first\n- Then billing\n", dirty: true, conflict: null, canSave: true });
+    });
+
+    test("a fetch sampled before a save, landing after its answer, does not bring back the old text", async () => {
+      const { cli, web, fetched, save } = withRecord(record);
+      await cli(record, "set", "--text", "- Ship billing first\n");
+      let state = edit(await fetched(NOT_LOADED), "- Ship search first\n");
+      const before = storedOf(record, JSON.parse((await web(`/api/${record}`)).body));
+      state = reduce(await save(state), { type: "fetched", stored: before });
+      expect(editorView(state)).toMatchObject({ text: "- Ship search first\n", dirty: false, conflict: null });
+      // A later change by the Lead still shows.
+      await cli(record, "set", "--text", "- Then billing\n");
+      expect(editorView(await fetched(state))).toMatchObject({ text: "- Then billing\n" });
+    });
+
     test("a save that fails otherwise keeps the draft and says why", async () => {
       const { cli, fetched } = withRecord(record);
       await cli(record, "set", "--text", "- Ship billing first\n");
-      const state = reduce(reduce(edit(await fetched(NOT_LOADED), "- Ship search first\n"), { type: "saving" }), answered(record, null, "- Ship search first\n"));
+      const state = reduce(reduce(edit(await fetched(NOT_LOADED), "- Ship search first\n"), { type: "saving", text: "- Ship search first\n" }), answered(record, null, "- Ship search first\n"));
       expect(editorView(state)).toMatchObject({ text: "- Ship search first\n", dirty: true, canSave: true, error: "Could not reach nico-agent serve; try again." });
     });
   });

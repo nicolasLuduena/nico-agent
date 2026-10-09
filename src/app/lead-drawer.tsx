@@ -29,9 +29,10 @@ function useRecord(record: RecordName) {
   useEffect(() => dispatch({ type: "fetched", stored: storedOf(record, data) }), [record, data]);
   const save = async () => {
     const args = saveArgs(state);
-    if (!args) return;
-    dispatch({ type: "saving" });
-    dispatch(answered(record, await post(`/api/${record}/set`, args), args.at(-1)!));
+    if (!args || !state.draft) return;
+    const { text } = state.draft;
+    dispatch({ type: "saving", text });
+    dispatch(answered(record, await post(`/api/${record}/set`, args), text));
   };
   return { state, dispatch, save, failure };
 }
@@ -110,22 +111,36 @@ function RecordTab({ record, state, dispatch, save, failure, hidden }: ReturnTyp
   );
 }
 
-/** The Standing orders as switches; one flipped shows its new state until the refetch confirms it. */
+/**
+ * The Standing orders as switches. One flipped shows its new state until the
+ * refetch agrees, and is disabled only while its post runs, so a lost event
+ * never leaves it stuck or flipped back.
+ */
 function OrdersTab({ hidden }: { hidden: boolean }) {
   const { data = null, failure } = useResource<Record<string, unknown>>("/api/orders", ["orders-changed"]);
-  const [pending, setPending] = useState<Partial<Record<Order, boolean>>>({});
+  const [wanted, setWanted] = useState<Partial<Record<Order, boolean>>>({});
+  const [posting, setPosting] = useState<Set<Order>>(new Set());
   const [outcome, setOutcome] = useState<Outcome | null>(null);
-  useEffect(() => setPending({}), [data]);
+  const rows = orderRows(data);
+  useEffect(() => {
+    const now = new Map(rows.map((r) => [r.order, r.on]));
+    setWanted((w) => Object.fromEntries(Object.entries(w).filter(([order, on]) => now.get(order as Order) !== on)));
+  }, [data]);
   const toggle = async (order: Order, on: boolean) => {
     setOutcome(null);
-    setPending((p) => ({ ...p, [order]: on }));
+    setWanted((w) => ({ ...w, [order]: on }));
+    setPosting((p) => new Set(p).add(order));
     const answer = answerOf(await post("/api/orders/set", orderArgs(order, on)));
+    setPosting((p) => {
+      const next = new Set(p);
+      next.delete(order);
+      return next;
+    });
     if (answer.failed) {
       setOutcome(answer);
-      setPending(({ [order]: _, ...rest }) => rest);
+      setWanted(({ [order]: _, ...rest }) => rest);
     }
   };
-  const rows = orderRows(data);
   return (
     <div className="drawer-tab orders" role="tabpanel" id="drawer-orders" aria-labelledby="drawer-tab-orders" hidden={hidden}>
       <p className="lede">What the Lead may do without asking. With one off, it proposes the action for you to approve instead.</p>
@@ -134,11 +149,11 @@ function OrdersTab({ hidden }: { hidden: boolean }) {
         ? (
           <ul className="orders">
             {rows.map(({ order, on, lets }) => {
-              const shown = pending[order] ?? on;
+              const shown = wanted[order] ?? on;
               return (
                 <li key={order}>
                   <label>
-                    <input type="checkbox" role="switch" checked={shown} disabled={pending[order] !== undefined} onChange={(e) => void toggle(order, e.target.checked)} />
+                    <input type="checkbox" role="switch" checked={shown} disabled={posting.has(order)} onChange={(e) => void toggle(order, e.target.checked)} />
                     <span className="order">{order}</span>
                     <span className="state">{shown ? "on" : "off"}</span>
                   </label>

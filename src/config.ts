@@ -65,8 +65,6 @@ const VOICE_SETTINGS: Record<VoiceService, string[]> = {
 export const VOICE_DOC = "docs/voice.md";
 const VOICE_HELP = `See ${VOICE_DOC} for the voice block`;
 
-export { ORDERS, ORDERS_HELP, type Order, type Orders, isOrder } from "./orders";
-
 /** Every Standing order, the config's over the defaults; read from a fresh `loadConfig`, never cached. */
 export function standingOrders(config: Config): Orders {
   const defaults = Object.fromEntries(Object.entries(ORDERS).map(([name, order]) => [name, order.default])) as Orders;

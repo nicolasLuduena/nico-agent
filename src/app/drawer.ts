@@ -17,17 +17,23 @@ export interface Editor {
   stored: Stored | null;
   /** Null while the user is not editing. */
   draft: { text: string; from: Stored } | null;
-  saving: boolean;
+  /** The text being saved, until `serve` answers. */
+  saving: string | null;
+  /**
+   * The version the last save replaced: a fetch of it was sampled before
+   * the save and is dropped, until a change by someone else is fetched.
+   */
+  replaced: string | null;
   /** Why the last save failed, until the next. */
   error: string | null;
 }
 
-export const NOT_LOADED: Editor = { stored: null, draft: null, saving: false, error: null };
+export const NOT_LOADED: Editor = { stored: null, draft: null, saving: null, replaced: null, error: null };
 
 export type EditorEvent =
   | { type: "fetched"; stored: Stored | null }
   | { type: "edit"; text: string }
-  | { type: "saving" }
+  | { type: "saving"; text: string }
   | { type: "saved"; stored: Stored }
   /** The save carried a version no longer the record's: `stored` is the record now. */
   | { type: "stale"; stored: Stored }
@@ -52,9 +58,15 @@ function settle(state: Editor): Editor {
 /** The tab's state after `event`. */
 export function reduce(state: Editor, event: EditorEvent): Editor {
   switch (event.type) {
-    case "fetched":
-      // A failed fetch keeps what was shown.
-      return event.stored ? settle({ ...state, stored: event.stored }) : state;
+    case "fetched": {
+      const { stored } = event;
+      // A failed fetch keeps what was shown, and one from before the last save is stale.
+      if (!stored || stored.version === state.replaced) return state;
+      // The save's own write, refetched before `serve` answered it, is no change by someone else.
+      const ours = state.saving !== null ? stored.text === state.saving : stored.version === state.stored?.version;
+      const draft = ours && state.saving !== null && state.draft ? { ...state.draft, from: stored } : state.draft;
+      return settle({ ...state, stored, draft, replaced: ours ? state.replaced : null });
+    }
     case "edit": {
       const from = state.draft?.from ?? state.stored;
       if (!from) return state;
@@ -63,16 +75,16 @@ export function reduce(state: Editor, event: EditorEvent): Editor {
       return { ...state, draft: { text: event.text, from } };
     }
     case "saving":
-      return { ...state, saving: true, error: null };
+      return { ...state, saving: event.text, replaced: state.draft?.from.version ?? null, error: null };
     case "saved": {
       // What the user typed while it saved stays a draft on what was saved.
       const draft = state.draft && { text: state.draft.text, from: event.stored };
-      return settle({ ...state, stored: event.stored, draft, saving: false, error: null });
+      return settle({ ...state, stored: event.stored, draft, saving: null, error: null });
     }
     case "stale":
-      return settle({ ...state, stored: event.stored, saving: false });
+      return settle({ ...state, stored: event.stored, saving: null, replaced: null });
     case "failed":
-      return { ...state, saving: false, error: event.error };
+      return { ...state, saving: null, replaced: null, error: event.error };
     case "take":
       return { ...state, draft: null, error: null };
     case "keep":
@@ -85,9 +97,10 @@ export function reduce(state: Editor, event: EditorEvent): Editor {
  * record as changed by someone else since the draft started (the Lead, the
  * CLI, an editor), and whether Save may post. Blank text is never saved.
  */
-export function editorView({ stored, draft, saving, error }: Editor) {
+export function editorView({ stored, draft, saving: sending, error }: Editor) {
   const text = draft?.text ?? stored?.text ?? "";
   const conflict = draft && stored && draft.from.version !== stored.version ? stored : null;
+  const saving = sending !== null;
   return { text, dirty: draft !== null, conflict, saving, error, canSave: draft !== null && !conflict && !saving && text.trim() !== "" };
 }
 
