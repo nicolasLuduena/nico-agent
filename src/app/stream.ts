@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { EventName } from "../events";
 
 /** What the page hears from `serve`: an `/api/events` event, its stream (re)opening, or losing it. */
@@ -51,10 +51,13 @@ export function useResource<T>(path: string, events: EventName[]) {
         if (request === latest) setFailure(UNREACHABLE);
       }
     };
-    return listen(["open", "error", ...(names.split(" ") as EventName[])], (name) => {
+    const stop = listen(["open", "error", ...(names.split(" ") as EventName[])], (name) => {
       if (name === "error") setFailure(LOST);
       else void load.current();
     });
+    // A resource that comes after the stream opened hears no `open`.
+    if (source?.readyState === EventSource.OPEN) void load.current();
+    return stop;
   }, [path, names]);
-  return { ...loaded, failure, reload: useCallback(() => void load.current(), []) };
+  return { ...loaded, failure };
 }

@@ -100,6 +100,17 @@ describe("optimistic sends", () => {
     expect(cards(after)[0]).not.toHaveProperty("sending");
   });
 
+  test("a message the log has before `say` answers is one card once it does", async () => {
+    const { loaded, post } = withSay();
+    const sending = reduce(await loaded(), { type: "send", key: "s1", text: "Hello", at: NOW });
+    const { said } = await post(["--", "Hello"]);
+    // `conversation-entry` came first: the refetched log holds the message while the send waits on its answer.
+    const refetched = await loaded(sending);
+    const sent = reduce(refetched, { type: "sent", key: "s1", id: said });
+    expect(sent.sends).toEqual([]);
+    expect(cards(sent)).toMatchObject([{ kind: "message", key: "entry-1", text: "Hello" }]);
+  });
+
   test("a message that failed stays with its error, after the log, until dismissed", async () => {
     const { loaded } = withLead();
     const failed = reduce(reduce(EMPTY, { type: "send", key: "s1", text: "Hello", at: NOW }), { type: "failed", key: "s1", error: "Could not reach nico-agent serve; try again." });
@@ -165,5 +176,7 @@ describe("the Lead's controls", () => {
     expect(leadControl(RUNNING, other)).toEqual({ start: "Restart", stop: true });
     // One that failed, or is gone from herdr, starts again where it stopped, and can be forgotten.
     expect(leadControl({ ...RUNNING, lead: "Failed at agent start" }, same)).toEqual({ start: "Start", stop: true });
+    // One still starting is neither started again nor restarted until it is running.
+    expect(leadControl({ lead: "starting", harness: "claude", model: "opus", effort: "high" }, other)).toEqual({ start: null, stop: true });
   });
 });

@@ -28,7 +28,7 @@ export interface LeadStatusJson {
 }
 
 /** A message to the Lead, or an answer to its question `question`, shown before `serve` has it. */
-export interface Send {
+export interface PendingSend {
   key: string;
   text: string;
   question?: number;
@@ -43,7 +43,7 @@ export interface Send {
 export interface Conversation {
   entries: Authored[];
   proposals: ProposalJson[];
-  sends: Send[];
+  sends: PendingSend[];
 }
 
 export type ConversationEvent =
@@ -60,7 +60,7 @@ export type ConversationEvent =
  * nor blinks out between `say`'s answer and the refetch.
  */
 export function reduce(state: Conversation, event: ConversationEvent): Conversation {
-  const sends = (f: (s: Send) => Send | null) => state.sends.flatMap((s) => f(s) ?? []);
+  const sends = (f: (s: PendingSend) => PendingSend | null) => state.sends.flatMap((s) => f(s) ?? []);
   switch (event.type) {
     case "log": {
       // A failed fetch keeps what was shown.
@@ -74,8 +74,14 @@ export function reduce(state: Conversation, event: ConversationEvent): Conversat
       const { type: _, ...send } = event;
       return { ...state, sends: [...sends((s) => (s.key === event.key ? null : s)), send] };
     }
-    case "sent":
-      return { ...state, sends: sends((s) => (s.key === event.key ? { key: s.key, text: s.text, at: s.at, id: event.id, ...(s.question !== undefined && { question: s.question }) } : s)) };
+    case "sent": {
+      // The log may hold the entry already, when its refetch beat `say`'s answer.
+      const logged = state.entries.some((e) => e.id === event.id);
+      return {
+        ...state,
+        sends: sends((s) => (s.key !== event.key ? s : logged ? null : { key: s.key, text: s.text, at: s.at, id: event.id, ...(s.question !== undefined && { question: s.question }) })),
+      };
+    }
     case "failed":
       return { ...state, sends: sends((s) => (s.key === event.key ? { ...s, error: event.error } : s)) };
     case "dismiss":
@@ -166,11 +172,14 @@ export function declineArgs(id: number, reason: string): string[] {
   return reason.trim() ? [String(id), "--", reason] : [String(id)];
 }
 
+/** What the user picked in the Lead's pickers so far; anything unset or no longer valid falls back. */
+export type LeadPicks = Partial<Pick<LaunchChoice, "harness" | "model" | "effort">>;
+
 /**
  * The Harness, model and Effort the Lead's pickers offer and show: those
  * chosen while valid, else the running Lead's, else the last launch's.
  */
-export function leadChoice(harnesses: HarnessesJson, status: LeadStatusJson | null, chosen: { harness?: string; model?: string; effort?: string }): LaunchChoice | null {
+export function leadChoice(harnesses: HarnessesJson, status: LeadStatusJson | null, chosen: LeadPicks): LaunchChoice | null {
   const { harness, model, effort } = status ?? {};
   // The running Lead's model is its Harness's; another Harness picked starts on that Harness's own.
   const current = chosen.harness === undefined || chosen.harness === harness ? { harness, model, effort } : {};
@@ -189,10 +198,13 @@ export function leadStartArgs({ harness, model, effort }: LaunchChoice, port: st
 /**
  * What the Lead's controls offer: Start a Lead that does not run (resuming
  * one that failed or is gone from herdr), Restart a running one on another
- * launch, and Stop any Lead nico-agent has a record of.
+ * launch, and Stop any Lead nico-agent has a record of. One still starting
+ * can only be stopped.
  */
 export function leadControl(status: LeadStatusJson | null, choice: LaunchChoice | null): { start: "Start" | "Restart" | null; stop: boolean } {
   const known = Boolean(status && status.lead !== "not running");
+  // A Lead still starting is left to finish: another start would race it.
+  if (status?.lead === "starting") return { start: null, stop: true };
   if (!known || status!.lead !== "running") return { start: "Start", stop: known };
   const same = choice && choice.harness === status!.harness && choice.model === status!.model && choice.effort === status!.effort;
   return { start: same ? null : "Restart", stop: true };

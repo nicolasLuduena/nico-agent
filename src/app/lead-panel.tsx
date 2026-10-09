@@ -3,7 +3,7 @@ import type { Authored } from "../conversation";
 import type { HarnessesJson, Outcome } from "./actions";
 import { OutcomeNote, answerOf, post } from "./forms";
 import {
-  type Card, type Conversation, type LeadStatusJson, type ProposalJson,
+  type Card, type Conversation, type LeadPicks, type LeadStatusJson, type ProposalJson,
   cards, declineArgs, leadChoice, leadControl, leadStartArgs, proposalLines, reduce, sayArgs,
 } from "./lead";
 import { Agent } from "./repos";
@@ -33,6 +33,22 @@ function useConversation() {
     else dispatch({ type: "failed", key, error: answerOf(json).lines[0]?.text ?? "the message was not sent" });
   };
   return { state, send, dismiss: (key: string) => dispatch({ type: "dismiss", key }), failure: log.failure ?? proposals.failure };
+}
+
+/** An action of the panel's: busy while it runs, and the CLI's message and help when it failed, until the next try. */
+function usePost() {
+  const [busy, setBusy] = useState(false);
+  const [outcome, setOutcome] = useState<Outcome | null>(null);
+  /** Post `args` to `path`; true when it did what it was asked. */
+  const act = async (path: string, args: string[]) => {
+    setBusy(true);
+    setOutcome(null);
+    const answer = answerOf(await post(path, args));
+    setBusy(false);
+    if (answer.failed) setOutcome(answer);
+    return !answer.failed;
+  };
+  return { busy, outcome, act };
 }
 
 /** The Lead panel: the Lead's state and controls, the conversation as cards, and the composer. */
@@ -71,18 +87,13 @@ export function LeadPanel({ harnesses }: { harnesses: HarnessesJson | null }) {
 /** The Lead's Agent state, launch and failure, live, with Start, Restart and Stop on the picked launch. */
 function LeadHead({ harnesses }: { harnesses: HarnessesJson | null }) {
   const { data: status = null } = useResource<LeadStatusJson>("/api/lead/status", ["lead-state"]);
-  const [chosen, setChosen] = useState<{ harness?: string; model?: string; effort?: string }>({});
-  const [busy, setBusy] = useState(false);
-  const [outcome, setOutcome] = useState<Outcome | null>(null);
+  const [chosen, setChosen] = useState<LeadPicks>({});
+  const { busy, outcome, act: post } = usePost();
   const choice = harnesses && leadChoice(harnesses, status, chosen);
   const { start, stop } = leadControl(status, choice);
+  // Once the Lead runs on the picks, they follow it again.
   const act = async (path: string, args: string[]) => {
-    setBusy(true);
-    setOutcome(null);
-    const answer = answerOf(await post(path, args));
-    setBusy(false);
-    if (answer.failed) setOutcome(answer);
-    else setChosen({});
+    if (await post(path, args)) setChosen({});
   };
   const running = status?.lead === "running";
   return (
@@ -124,9 +135,10 @@ function LeadHead({ harnesses }: { harnesses: HarnessesJson | null }) {
   );
 }
 
-type Send = (text: string, question?: number) => Promise<void>;
+/** Send a message to the Lead, or the answer to its question `question`. */
+type SendText = (text: string, question?: number) => Promise<void>;
 
-function CardView({ card, send, dismiss }: { card: Card; send: Send; dismiss: (key: string) => void }) {
+function CardView({ card, send, dismiss }: { card: Card; send: SendText; dismiss: (key: string) => void }) {
   switch (card.kind) {
     case "message":
       return (
@@ -149,19 +161,21 @@ function CardView({ card, send, dismiss }: { card: Card; send: Send; dismiss: (k
   }
 }
 
-function Byline({ who, at, note }: { who: "user" | "lead"; at: string; note?: string | undefined }) {
+/** Who wrote a card and when, then a muted note (such as "sending…") or, at its end, a Proposal's status. */
+function Byline({ who, at, note, status }: { who: "user" | "lead"; at: string; note?: string | undefined; status?: string }) {
   const time = new Date(at);
   return (
     <p className="byline">
       <b>{who === "user" ? "You" : "Lead"}</b>
       <time dateTime={at} title={time.toLocaleString()}>{time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time>
       {note && <span>{note}</span>}
+      {status && <span className="status">{status}</span>}
     </p>
   );
 }
 
 /** A question from the Lead: its choices as buttons and a free-text answer while open, then the answer. */
-function QuestionCard({ card, send, dismiss }: { card: Card & { kind: "question" }; send: Send; dismiss: (key: string) => void }) {
+function QuestionCard({ card, send, dismiss }: { card: Card & { kind: "question" }; send: SendText; dismiss: (key: string) => void }) {
   const [text, setText] = useState("");
   const answer = (value: string) => {
     if (card.failure) dismiss(card.failure.key);
@@ -203,27 +217,18 @@ const STATUS: Record<ProposalJson["status"], string> = { open: "Proposes", appro
 
 /** A Proposal: its action and reason with Approve and Decline while open, then how it was decided and what it did. */
 function ProposalCard({ card }: { card: Card & { kind: "proposal" } }) {
-  const [busy, setBusy] = useState(false);
   const [declining, setDeclining] = useState(false);
   const [reason, setReason] = useState("");
-  const [outcome, setOutcome] = useState<Outcome | null>(null);
+  const { busy, outcome, act } = usePost();
   const open = card.status === "open";
-  const act = async (path: string, args: string[]) => {
-    setBusy(true);
-    setOutcome(null);
-    const answer = answerOf(await post(path, args));
-    setBusy(false);
-    if (answer.failed) setOutcome(answer);
-    else setDeclining(false);
-  };
-  const decline = (e: FormEvent) => {
+  const decline = async (e: FormEvent) => {
     e.preventDefault();
-    void act("/api/proposals/decline", declineArgs(card.id, reason));
+    if (await act("/api/proposals/decline", declineArgs(card.id, reason))) setDeclining(false);
   };
   const lines = proposalLines(card);
   return (
     <li className={`card-proposal ${card.status}`}>
-      <p className="byline"><b>Lead</b><time dateTime={card.at}>{new Date(card.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time><span className="status">{STATUS[card.status]}</span></p>
+      <Byline who="lead" at={card.at} status={STATUS[card.status]} />
       <p className="action"><code>{card.action}</code></p>
       <p className="text">{card.reason}</p>
       {card.declineReason && <p className="decided">{`You said: ${card.declineReason}`}</p>}
@@ -235,7 +240,7 @@ function ProposalCard({ card }: { card: Card & { kind: "proposal" } }) {
         </div>
       )}
       {open && declining && (
-        <form className="decline" onSubmit={decline}>
+        <form className="decline" onSubmit={(e) => void decline(e)}>
           <input type="text" aria-label="Why you decline (optional)" placeholder="Why, for the Lead (optional)" value={reason} onChange={(e) => setReason(e.target.value)} autoFocus />
           <button type="submit" disabled={busy}>Decline</button>
           <button type="button" disabled={busy} onClick={() => setDeclining(false)}>Cancel</button>
@@ -247,7 +252,7 @@ function ProposalCard({ card }: { card: Card & { kind: "proposal" } }) {
 }
 
 /** Where the user writes to the Lead: Enter sends, Shift+Enter starts a new line. */
-function Composer({ send }: { send: Send }) {
+function Composer({ send }: { send: SendText }) {
   const [text, setText] = useState("");
   const submit = () => {
     if (!text.trim()) return;

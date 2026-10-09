@@ -68,30 +68,30 @@ function App() {
         {actions && board?.configured?.length ? <Actions.Provider value={actions}><TopActions onReport={setReport} /></Actions.Provider> : null}
       </header>
       <div className="layout">
-      <LeadPanel harnesses={harnesses} />
-      <main aria-busy={board === undefined}>
-        {failure && <p className="error" role="status">{failure}</p>}
-        {board?.error && <p className="error">{board.error}</p>}
-        {report && <div className="top-report">{report}<button className="dismiss" onClick={() => setReport(null)}>Dismiss</button></div>}
-        {board === undefined || sampled === undefined || actions === null
-          ? <p className="empty">Loading the Board…</p>
-          : board.configured?.length
-            ? (
-              <Actions.Provider value={actions}>
-                {harnesses && harnessWarnings(harnesses).map((w) => <p key={w} className="warning">{w}</p>)}
-                <EventDisplay rows={rows} sampled={sampled} lit={lit} onLight={setLit} onPick={pick} />
-                <ActionBar />
-                <section className="in-flight">
-                  <header><h2>In flight</h2><span className="count">{rows.length}</span></header>
-                  {rows.length
-                    ? <ul className="flights">{rows.map((d) => <Flight key={d.issue} dispatch={d} lit={lit === d.issue} onLight={setLit} />)}</ul>
-                    : <p className="empty">Nothing in flight.</p>}
-                </section>
-                {repoSections(board).map((s) => <Repo key={s.repo} section={s} lit={lit} onLight={setLit} />)}
-              </Actions.Provider>
-            )
-            : <p className="empty">No Repos configured. Run <code>nico-agent repo add &lt;owner/name&gt; --path &lt;clone&gt;</code> to add one.</p>}
-      </main>
+        <LeadPanel harnesses={harnesses} />
+        <main aria-busy={board === undefined}>
+          {failure && <p className="error" role="status">{failure}</p>}
+          {board?.error && <p className="error">{board.error}</p>}
+          {report && <div className="top-report">{report}<button className="dismiss" onClick={() => setReport(null)}>Dismiss</button></div>}
+          {board === undefined || sampled === undefined || actions === null
+            ? <p className="empty">Loading the Board…</p>
+            : board.configured?.length
+              ? (
+                <Actions.Provider value={actions}>
+                  {harnesses && harnessWarnings(harnesses).map((w) => <p key={w} className="warning">{w}</p>)}
+                  <EventDisplay rows={rows} sampled={sampled} lit={lit} onLight={setLit} onPick={pick} />
+                  <ActionBar />
+                  <section className="in-flight">
+                    <header><h2>In flight</h2><span className="count">{rows.length}</span></header>
+                    {rows.length
+                      ? <ul className="flights">{rows.map((d) => <Flight key={d.issue} dispatch={d} lit={lit === d.issue} onLight={setLit} />)}</ul>
+                      : <p className="empty">Nothing in flight.</p>}
+                  </section>
+                  {repoSections(board).map((s) => <Repo key={s.repo} section={s} lit={lit} onLight={setLit} />)}
+                </Actions.Provider>
+              )
+              : <p className="empty">No Repos configured. Run <code>nico-agent repo add &lt;owner/name&gt; --path &lt;clone&gt;</code> to add one.</p>}
+        </main>
       </div>
     </>
   );

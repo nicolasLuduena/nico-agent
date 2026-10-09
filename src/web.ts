@@ -54,9 +54,11 @@ export function lookAtLead({ world, configDir }: { world: World; configDir: stri
   // Taken now, so the first change is told even if it comes before the first look.
   let seen = sample();
   return async () => {
-    const [before, now] = [await seen, sample()];
+    // Each look samples after the one before it, so two at once (a tick and a post) never tell one change twice.
+    const last = seen;
+    const now = last.then(sample);
     seen = now;
-    const after = await now;
+    const [before, after] = [await last, await now];
     watched.forEach(([name], i) => {
       if (after[i] !== before[i]) events.emit(name);
     });
@@ -97,7 +99,8 @@ export function webHandler(context: WebContext) {
       // Even a failed action may have changed something, such as a Dispatch's recorded failure.
       if (changes) {
         events.emit("board-changed");
-        await look();
+        // Not awaited: the answer need not wait on herdr for the Lead's state.
+        void look();
       }
     }
   };
