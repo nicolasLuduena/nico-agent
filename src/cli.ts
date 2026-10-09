@@ -2,7 +2,7 @@ import { resolve } from "node:path";
 import { advance } from "./advance";
 import { answer, loadAsking } from "./answer";
 import { loadBoard } from "./board";
-import { ConfigError, findRepo, loadConfig, saveConfig } from "./config";
+import { ConfigError, ORDERS, ORDERS_HELP, findRepo, isOrder, loadConfig, saveConfig, standingOrders } from "./config";
 import { StepFailed, baseBranch, closeDispatch, dispatch, eachIssue, resolveIssue, review } from "./dispatch";
 import { DispatchError } from "./dispatch-error";
 import { PANE_ARGS } from "./opencode";
@@ -37,6 +37,7 @@ const DISPATCH_USAGE = "nico-agent dispatch <issue>... --harness <harness> --mod
 const REVIEW_USAGE = "nico-agent review <issue>... --harness <harness> --model <model> --effort <effort>";
 const CLOSE_USAGE = "nico-agent close <issue>... [--confirm]";
 const ANSWER_USAGE = "nico-agent answer <issue> <text>";
+const ORDERS_SET_USAGE = "nico-agent orders set <order> on|off";
 const LAUNCH_FLAGS = {
   "--harness": { value: true, description: "Harness to launch, e.g. claude (see `nico-agent harness list`)" },
   "--model": { value: true, description: "model for the Harness, e.g. opus" },
@@ -183,6 +184,25 @@ const commands: Command[] = [
     ],
     help: ["Run `nico-agent --json` to see which Implementers are waiting on you, under `asking`"],
     run: answerCommand,
+  },
+  {
+    name: "orders",
+    usage: "nico-agent orders",
+    summary: "Show each Standing order, what it lets the Lead do unasked, and whether it is on",
+    flags: {},
+    positionals: [],
+    examples: ["nico-agent orders", "nico-agent orders --json"],
+    run: (args, ctx) => ordersList(ctx, args.flags["--json"] === true),
+  },
+  {
+    name: "orders set",
+    usage: ORDERS_SET_USAGE,
+    summary: "Turn one Standing order on or off",
+    flags: {},
+    positionals: ["order", "on|off"],
+    examples: ["nico-agent orders set start on", "nico-agent orders set close off"],
+    help: [ORDERS_HELP],
+    run: ordersSet,
   },
   {
     name: "harness list",
@@ -595,6 +615,33 @@ async function repoList(ctx: RunContext): Promise<Output> {
     data: { count: repos.length, repos },
     help: [ADD_REPO_HELP, "Run `nico-agent repo rm <owner/name>` to remove one"],
   };
+}
+
+async function ordersList(ctx: RunContext, json: boolean): Promise<Output> {
+  const orders = standingOrders(loadConfig(ctx.configDir));
+  const help = [`Run \`${ORDERS_SET_USAGE}\` to change one`];
+  if (json) return { data: { orders }, help };
+  const rows = Object.entries(ORDERS).map(([order, { lets }]) => ({ order, state: onOff(orders[order as keyof typeof orders]), lets }));
+  return { data: { orders: rows }, help };
+}
+
+async function ordersSet(args: Args, ctx: RunContext): Promise<Output> {
+  const [order, state] = args.positionals;
+  const usage = `Usage: \`${ORDERS_SET_USAGE}\``;
+  if (!order) throw new CliError("<order> is required", [usage], 2);
+  if (!isOrder(order)) throw new CliError(`\`${order}\` is not a Standing order`, [ORDERS_HELP, usage], 2);
+  if (!state) throw new CliError("<on|off> is required", [usage], 2);
+  if (state !== "on" && state !== "off") throw new CliError(`\`${state}\` is not on or off`, [usage], 2);
+  const help = ["Run `nico-agent orders` to see every Standing order"];
+  const config = loadConfig(ctx.configDir);
+  const on = state === "on";
+  if (standingOrders(config)[order] === on) return { data: { order: `${order} already ${state} (no-op)` }, help };
+  saveConfig(ctx.configDir, { ...config, orders: { ...config.orders, [order]: on } });
+  return { data: { order: `${order} ${state}` }, help };
+}
+
+function onOff(on: boolean) {
+  return on ? "on" : "off";
 }
 
 const HARNESS_LIST_HELP = "Run `nico-agent harness list` to see the models and Effort levels";
