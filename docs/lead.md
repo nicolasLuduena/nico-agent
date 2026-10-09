@@ -54,6 +54,17 @@ there. `lead status` shows the failure in the meantime.
 
 If `serve` listens on another port, pass it to `lead start --port <port>`.
 
+## Nudges
+
+When something arrives for the Lead (your `say`, your `say --answer`, the end
+of an `advance` run), nico-agent Nudges it: it prompts the Lead with "Read your
+Inbox" if herdr reports it idle (or `done` with its turn). While the Lead is working, one pending Nudge
+is kept in `nudge.json` in the config directory, and `serve` sends it within
+about 10 seconds of seeing the Lead idle, so three messages sent while it
+works bring one Nudge. A Lead that isn't running gets none; your messages
+wait in its Inbox and it reads them when it starts. A Nudge that can't be
+sent is a warning in the command's output, and `serve` tries it again.
+
 ## The Lead's home
 
 `lead start` writes the Lead's home, `~/.config/nico-agent/lead/`, before

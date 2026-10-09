@@ -6,6 +6,7 @@ import { type DispatchRequest, StepFailed, checkLaunch, closeDispatch, dispatch 
 import { DispatchError, LaunchError } from "./dispatch-error";
 import { linearIdentifier } from "./linear";
 import { type Notice, notifyOnce } from "./notify";
+import { nudgeLead } from "./nudge";
 import { type Queues, dequeue, pruneBoardQueues, queueOf } from "./queue";
 import { type RepoDecision, type SpecDecision, sameSpec } from "./spec";
 import { type InFlightRow, freshPrs } from "./stage";
@@ -53,7 +54,14 @@ export async function advance(world: World, configDir: string): Promise<AdvanceR
     return { specs: [], errors: [], closed: [], warnings: [`another advance is running (pid ${holder}); left it to finish`], help: [] };
   }
   try {
-    return await advanceOnce(world, configDir);
+    // The Lead is Nudged at the end of every run, even one that failed.
+    const report = await advanceOnce(world, configDir).catch(async (e) => {
+      // The run's own error is the one to report, not the Nudge's.
+      await nudgeLead(world, configDir).catch(() => {});
+      throw e;
+    });
+    report.warnings.push(...(await nudgeLead(world, configDir)));
+    return report;
   } finally {
     unlinkSync(join(configDir, ADVANCE_LOCK));
   }
