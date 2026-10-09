@@ -15,6 +15,52 @@ const TOOLS = [
     description: "Read the Board: Ready issues, Specs, In-flight Dispatches and each Repo's room. Same JSON as `nico-agent board --json`.",
     inputSchema: { type: "object", additionalProperties: false },
   },
+  {
+    name: "inbox",
+    title: "Inbox",
+    description: "Read your Inbox: the user's messages and answers to your questions you have not seen yet, each returned once. Every call also returns `orient`: the Intent, the Notes, your open questions and the last exchanges; read it before acting when you can't recall your last words.",
+    inputSchema: { type: "object", additionalProperties: false },
+  },
+  {
+    name: "recall",
+    title: "Recall",
+    description: "Search the whole conversation with the user for text (ignoring case), optionally from `since` until `until`. Returns the matching entries with their ids and times.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Text to find" },
+        since: { type: "string", description: "Only entries from this date or time on, e.g. 2026-09-01" },
+        until: { type: "string", description: "Only entries up to this date (through its end) or time, e.g. 2026-09-30" },
+      },
+      required: ["query"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "say",
+    title: "Say",
+    description: "Reply to the user: your words go into the conversation the user reads with `nico-agent lead log`.",
+    inputSchema: {
+      type: "object",
+      properties: { text: { type: "string", description: "What to tell the user" } },
+      required: ["text"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "ask",
+    title: "Ask",
+    description: "Ask the user a question, with optional choices. It returns the question's id; the answer arrives in your Inbox naming that id.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        question: { type: "string", description: "The question" },
+        choices: { type: "array", items: { type: "string" }, description: "Answers the user can pick from" },
+      },
+      required: ["question"],
+      additionalProperties: false,
+    },
+  },
 ];
 
 const JSON_HEADERS = { "content-type": "application/json" };
@@ -110,7 +156,7 @@ function initialize(params: unknown) {
     protocolVersion: typeof asked === "string" && OLDER_VERSIONS.includes(asked) ? asked : PROTOCOL_VERSION,
     capabilities: { tools: {} },
     serverInfo: { name: "nico-agent", title: "nico-agent", version: VERSION },
-    instructions: "Read the Board with `board`.",
+    instructions: "Read the Board with `board` and your Inbox with `inbox`; reply with `say`, ask the user with `ask`, and search the conversation with `recall`.",
   };
 }
 
@@ -124,10 +170,51 @@ function toolArgv(params: unknown): string[] {
   if (!isObject(params) || typeof params.name !== "string") throw new RpcError(-32602, "tools/call needs a tool name");
   const { name, arguments: args = {} } = params;
   if (!isObject(args)) throw new RpcError(-32602, `${name}'s arguments must be an object`);
-  if (name !== "board") throw new RpcError(-32602, `Unknown tool: ${name} (the tools are ${TOOLS.map((t) => t.name).join(", ")})`);
-  const extra = Object.keys(args)[0];
-  if (extra) throw new RpcError(-32602, `board takes no arguments (got ${extra})`);
-  return ["board", "--json"];
+  switch (name) {
+    case "board":
+      onlyArguments(name, args);
+      return ["board", "--json"];
+    case "inbox":
+      onlyArguments(name, args);
+      return ["lead", "inbox", "--json"];
+    case "recall": {
+      onlyArguments(name, args, ["query", "since", "until"]);
+      const query = text(name, args, "query");
+      const range = (["since", "until"] as const).flatMap((key) => {
+        const value = args[key];
+        if (value === undefined) return [];
+        if (typeof value !== "string") throw new RpcError(-32602, `recall's ${key} must be a string`);
+        return [`--${key}`, value];
+      });
+      return ["lead", "recall", "--json", ...range, "--", query];
+    }
+    case "say":
+      onlyArguments(name, args, ["text"]);
+      return ["lead", "say", "--json", "--", text(name, args, "text")];
+    case "ask": {
+      onlyArguments(name, args, ["question", "choices"]);
+      const question = text(name, args, "question");
+      const { choices = [] } = args;
+      if (!Array.isArray(choices) || !choices.every((c) => typeof c === "string" && c)) {
+        throw new RpcError(-32602, "ask's choices must be a list of non-empty strings");
+      }
+      return ["lead", "ask", "--json", "--", question, ...choices];
+    }
+    default:
+      throw new RpcError(-32602, `Unknown tool: ${name} (the tools are ${TOOLS.map((t) => t.name).join(", ")})`);
+  }
+}
+
+function onlyArguments(name: string, args: Record<string, unknown>, known: string[] = []) {
+  const extra = Object.keys(args).find((key) => !known.includes(key));
+  if (extra) throw new RpcError(-32602, `${name} takes ${known.length ? known.join(" and ") : "no arguments"} (got ${extra})`);
+}
+
+/** The required string argument `key`, which must not be blank. */
+function text(name: string, args: Record<string, unknown>, key: string): string {
+  const value = args[key];
+  if (typeof value !== "string" || !value.trim()) throw new RpcError(-32602, `${name} needs ${key}, a non-empty string`);
+  return value;
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {

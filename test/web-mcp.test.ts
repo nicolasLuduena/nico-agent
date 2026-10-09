@@ -41,13 +41,19 @@ describe("MCP over HTTP at /mcp", () => {
     expect(await version("2099-01-01")).toBe("2025-11-25");
   });
 
-  test("tools/list offers exactly one tool, board, taking no arguments", async () => {
+  test("tools/list offers board and the conversation tools: inbox, recall, say and ask", async () => {
     const { web } = setup();
     const reply = (await post(web, { jsonrpc: "2.0", id: "list", method: "tools/list" })).json();
     expect(reply.id).toBe("list");
-    expect(reply.result.tools).toEqual([
-      { name: "board", title: "Board", description: expect.stringContaining("nico-agent board --json"), inputSchema: { type: "object", additionalProperties: false } },
-    ]);
+    const tools = reply.result.tools;
+    expect(tools.map((t: { name: string }) => t.name)).toEqual(["board", "inbox", "recall", "say", "ask"]);
+    expect(tools[0]).toEqual({
+      name: "board", title: "Board", description: expect.stringContaining("nico-agent board --json"), inputSchema: { type: "object", additionalProperties: false },
+    });
+    expect(tools[1].inputSchema).toEqual({ type: "object", additionalProperties: false });
+    expect(tools[2].inputSchema).toMatchObject({ required: ["query"], properties: { since: { type: "string" }, until: { type: "string" } }, additionalProperties: false });
+    expect(tools[3].inputSchema).toMatchObject({ required: ["text"], additionalProperties: false });
+    expect(tools[4].inputSchema).toMatchObject({ required: ["question"], properties: { choices: { type: "array" } }, additionalProperties: false });
   });
 
   test("the board tool returns what `nico-agent board --json` prints, as structured content and text", async () => {
@@ -91,7 +97,7 @@ describe("MCP over HTTP at /mcp", () => {
     for (const params of [{ name: "advance" }, { name: "board", arguments: { start: "BLE-10" } }, { name: "board", arguments: "x" }, {}]) {
       expect(await call(params)).toEqual({ jsonrpc: "2.0", id: 7, error: { code: -32602, message: expect.any(String) } });
     }
-    expect((await call({ name: "advance" })).error.message).toBe("Unknown tool: advance (the tools are board)");
+    expect((await call({ name: "advance" })).error.message).toBe("Unknown tool: advance (the tools are board, inbox, recall, say, ask)");
     expect(world.calls).toEqual([]);
   });
 
