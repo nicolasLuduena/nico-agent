@@ -17,11 +17,16 @@ const SPEECH = "http://127.0.0.1:8880/v1/audio/speech";
 /** A second of 16kHz mono 16-bit PCM, as the app streams it. */
 const SECOND = 32_000;
 
-/** `seconds` of PCM, a tone so it is not all zeros. */
-function pcm(seconds: number) {
+/** `seconds` of PCM, a tone so it is not all zeros, as loud as `peak` (of 32767). */
+function pcm(seconds: number, peak = 8000) {
   const samples = new Int16Array(Math.round((seconds * SECOND) / 2));
-  for (let i = 0; i < samples.length; i++) samples[i] = Math.round(8000 * Math.sin(i / 10));
+  for (let i = 0; i < samples.length; i++) samples[i] = Math.round(peak * Math.sin(i / 10));
   return new Uint8Array(samples.buffer);
+}
+
+/** `seconds` of PCM with nobody talking. */
+function silence(seconds: number) {
+  return new Uint8Array(Math.round((seconds * SECOND) / 2) * 2);
 }
 
 /** A Repo with a glossary and a Ready issue, and transcription and the Front voice in config. */
@@ -141,6 +146,76 @@ describe("/api/voice", () => {
     talk.send(pcm(0.25));
     talk.json({ type: "end" });
     expect(await talk.next()).toEqual({ type: "final", utterance: 1, text: "heard 2.25s" });
+  });
+
+  describe("a quiet after speech", () => {
+    /** `seconds` of `audio` streamed as the app streams it, a tenth of a second at a time. */
+    const stream = (talk: Awaited<ReturnType<typeof open>>, audio: (seconds: number) => Uint8Array, seconds: number) => {
+      for (let sent = 0; sent < seconds - 1e-9; sent += 0.1) talk.send(audio(Math.min(0.1, seconds - sent)));
+    };
+
+    test("is transcribed at once, primed as the final is and heard out to the end of the pause, and that transcript is the final: nothing is transcribed after the end", async () => {
+      const ctx = await withVoice();
+      const sent = transcriber(ctx.world);
+      const talk = await open(ctx);
+
+      talk.json({ type: "start", utterance: 1 });
+      stream(talk, pcm, 0.5);
+      stream(talk, silence, 0.3);
+      // 0.5s of speech and 0.3s of quiet, with silence to make the 0.8s pause that ends an utterance.
+      expect(await talk.next()).toEqual({ type: "interim", utterance: 1, text: "heard 1.3s" });
+      stream(talk, silence, 0.5);
+      talk.json({ type: "end" });
+
+      expect(await talk.next()).toEqual({ type: "final", utterance: 1, text: "heard 1.3s" });
+      expect(sent).toHaveLength(1);
+      expect(String(sent[0]!.get("prompt"))).toContain("acme/api#7 Add retries to the herdr client");
+    });
+
+    test("followed by more speech, the whole utterance is transcribed at the end", async () => {
+      const ctx = await withVoice();
+      const sent = transcriber(ctx.world);
+      const talk = await open(ctx);
+
+      talk.json({ type: "start", utterance: 1 });
+      stream(talk, pcm, 0.5);
+      stream(talk, silence, 0.3);
+      expect(await talk.next()).toEqual({ type: "interim", utterance: 1, text: "heard 1.3s" });
+      stream(talk, pcm, 0.2);
+      talk.json({ type: "end" });
+
+      expect(await talk.next()).toEqual({ type: "final", utterance: 1, text: "heard 1s" });
+      expect(sent).toHaveLength(2);
+    });
+
+    test("is never soft words the app's listening takes for the room: the final hears them", async () => {
+      const ctx = await withVoice();
+      const sent = transcriber(ctx.world);
+      const talk = await open(ctx);
+
+      talk.json({ type: "start", utterance: 1 });
+      stream(talk, pcm, 0.5);
+      stream(talk, (seconds) => pcm(seconds, 1000), 0.4);
+      expect(await talk.next(50)).toBeNull();
+      talk.json({ type: "end" });
+
+      expect(await talk.next()).toEqual({ type: "final", utterance: 1, text: "heard 0.9s" });
+      expect(sent).toHaveLength(1);
+    });
+
+    test("with no speech before it, transcribes nothing until the end", async () => {
+      const ctx = await withVoice();
+      const sent = transcriber(ctx.world);
+      const talk = await open(ctx);
+
+      talk.json({ type: "start", utterance: 1 });
+      stream(talk, silence, 0.5);
+      expect(await talk.next(50)).toBeNull();
+      talk.json({ type: "end" });
+
+      expect(await talk.next()).toEqual({ type: "final", utterance: 1, text: "heard 0.5s" });
+      expect(sent).toHaveLength(1);
+    });
   });
 
   test("each utterance starts afresh on the same socket, and a cancelled one is never transcribed", async () => {
