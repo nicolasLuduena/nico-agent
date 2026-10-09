@@ -1,6 +1,7 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { ORDERS, ORDERS_HELP, type Orders, isOrder } from "./orders";
 import { sameSlug } from "./slug";
 
 export interface Repo {
@@ -64,23 +65,7 @@ const VOICE_SETTINGS: Record<VoiceService, string[]> = {
 export const VOICE_DOC = "docs/voice.md";
 const VOICE_HELP = `See ${VOICE_DOC} for the voice block`;
 
-/** What the Lead may do without asking; each on or off. */
-export const ORDERS = {
-  start: { default: false, lets: "the Lead queue and start Specs (the Repo's room still caps it)" },
-  answer: { default: false, lets: "the Lead answer an Asking Implementer in its own words" },
-  review: { default: true, lets: "the Lead launch Reviewers" },
-  close: { default: true, lets: "the Lead Close Dispatches whose PR is ready" },
-  write: { default: false, lets: "the Lead write Specs and tickets to a Source" },
-} as const;
-
-export type Order = keyof typeof ORDERS;
-export type Orders = Record<Order, boolean>;
-
-export const ORDERS_HELP = `Standing orders: ${Object.keys(ORDERS).join(", ")}`;
-
-export function isOrder(name: string): name is Order {
-  return Object.hasOwn(ORDERS, name);
-}
+export { ORDERS, ORDERS_HELP, type Order, type Orders, isOrder } from "./orders";
 
 /** Every Standing order, the config's over the defaults; read from a fresh `loadConfig`, never cached. */
 export function standingOrders(config: Config): Orders {

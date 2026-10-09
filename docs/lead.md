@@ -142,6 +142,9 @@ the ones you set; the rest keep their default:
 }
 ```
 
+The app's Lead panel shows them as switches in its drawer (**Intent &
+orders**, then **Standing orders**); each switch runs `orders set`.
+
 Orders are read from config every time they are used, never cached. A change,
 from `orders set` or by hand, applies to the next read without
 restarting `nico-agent serve`.
@@ -223,6 +226,12 @@ A replace may carry the version it read (`--version`, from `--json`); the
 Lead's always does. If the file changed since that version, by hand or by the
 other editor, the replace is refused with the current text and version, to
 merge into and replace again.
+
+The app's Lead panel edits both in its drawer (**Intent & orders**), saving
+with the version it read, as `set --version` does. While you are not editing,
+a tab follows the file, so the Lead's latest edit shows. If the file changes
+while you edit, the tab shows its text beside your edit, and saves nothing
+until you keep your edit (saving it over the change) or use the new text.
 
 ## Proposals
 
