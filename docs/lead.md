@@ -142,6 +142,27 @@ restarting `nico-agent serve`.
 `write` is the one order nico-agent cannot check: the Lead writes to a Source
 with its own shell, so that order is a rule of the Lead's skill.
 
+## What the Lead does with them
+
+The `lead` skill sets the Lead's judgment within its orders:
+
+- **Choosing what continues.** A Repo's room goes to a candidate Spec the
+  Intent names, else the head of its Queue, else the smallest candidate that
+  unblocks the most open issues, the oldest between equals. The Lead says
+  which rule chose it.
+- **Acting or proposing.** It acts when the order is on, its facts come from a
+  fresh Board, and you have made that kind of pick before (through the Intent,
+  the Queue, the Notes or the conversation). It proposes when a tool is
+  refused, when the pick is a judgment you have not made, or when the room
+  would go to a Spec the Intent does not name.
+- **Answering.** Under `answer`, it answers an Asking Implementer only what
+  the issue, its Spec or the Intent settles, naming where; anything else it
+  asks you and relays your words.
+- **Closing.** Under `close`, it Closes a Dispatch whose PR is ready once its
+  Implementer is neither working nor Asking.
+- **Held Specs.** It never dispatches into one; it tells you why it is Held
+  and what clears it, and leaves clearing it to you.
+
 ## The Lead's tools
 
 The Lead acts through MCP tools on `nico-agent serve`'s `/mcp`. Each runs the

@@ -287,6 +287,20 @@ describe("the lead skill", () => {
     expect(named).toEqual(offered);
   });
 
+  test("outside its Tools section, it names no shell command for something a tool does", async () => {
+    const { skill } = await writtenSkill();
+    const sections = skill.split(/^## /m);
+    const tools = sections.find((s) => s.startsWith("Tools\n"))!;
+    // Each tool's shell twin, as the Tools section names it: `- \`say\` (\`nico-agent lead say <text>\`)`.
+    const twins = [...tools.matchAll(/^- `[a-z]+` \(`nico-agent ([a-z]+(?: [a-z]+)*)/gm)].map((m) => m[1]!);
+    expect(twins).toContain("answer");
+    const rest = sections.filter((s) => s !== tools).join("\n");
+    const named = [...rest.matchAll(/`nico-agent ([a-z]+(?: [a-z]+)*)/g)].map((m) => m[1]!);
+    expect(named.filter((command) => twins.some((twin) => command === twin || command.startsWith(`${twin} `)))).toEqual([]);
+    // herdr's writes are what dispatch, review, close and answer do.
+    expect(rest.match(/`herdr (?:agent (?:send|send-keys|prompt|start)|workspace (?:create|close))\b[^`]*`/g)).toBeNull();
+  });
+
   test("every nico-agent command it names is a real command", async () => {
     const { cli, skill } = await writtenSkill();
     // The command's name: its words up to the first placeholder, flag or argument.
