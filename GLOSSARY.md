@@ -93,8 +93,9 @@ The state of an issue that has a Dispatch which has not been Closed.
 _Avoid_: Active, running, in progress
 
 **Scheduler**:
-`nico-agent advance` run every 10 minutes by a systemd user timer, the floor
-that keeps Specs moving without the user or the Lead: it dispatches each
+`nico-agent advance` run every 10 minutes by a systemd user timer, and by
+`nico-agent serve` while the Board is up; the timer is the floor that keeps
+Specs moving without the user or the Lead. It dispatches each
 running Spec's next issue, one Implementer per Spec at a time, and starts the
 head of each Repo's Queue while the Repo has room. It makes no judgment, and
 the launch comes from the Scheduler defaults in config. It notifies the user of

@@ -86,6 +86,23 @@ to pick another port. Like the timer's service, it puts mise's shims first on
 `PATH`, since launching from the Board dispatches too. Re-run the script after
 `scripts/install.sh` to restart the Board on the new binary.
 
+## `serve` ticks too
+
+While the Board server (`nico-agent serve`) is up, it runs `advance` itself
+every 10 minutes, counted from when it started, so the Board is tended without
+waiting on the timer. Each tick is a whole `advance` run, so it Nudges the
+Lead at its end like any other. The tick's report goes to `serve`'s log
+(stderr, so `journalctl --user -u nico-agent-board` when the Board runs as a
+service), one entry per tick starting `advance:`. A tick that throws is logged
+as `advance failed: ...`, and the next tick tries again.
+
+The timer stays as it is. `serve` is optional and can be down; the timer is the
+floor that keeps Specs moving whether or not the Board is running. When both
+are up they can fire at the same moment, but the advance lock lets only one
+`advance` run at a time, so they never start the same Spec. The one that finds
+the lock taken skips that run with the warning `another advance is running
+(pid ...); left it to finish`, and tries again on its next tick.
+
 ## Remove the old Hermes Scheduler
 
 Before this timer, Hermes was the Scheduler (ADR-0008, superseded by
