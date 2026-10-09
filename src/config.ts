@@ -30,6 +30,8 @@ export interface Config {
   harnesses?: Record<string, Partial<HarnessConfig>>;
   /** The launch `advance` dispatches with, so no one chooses it at start time (ADR-0009). */
   scheduler?: Partial<SchedulerDefaults>;
+  /** The launch `lead start` uses for each of `--harness`, `--model` and `--effort` it isn't given. */
+  lead?: Partial<SchedulerDefaults>;
   /** The Standing orders the user set; unset ones take their default from ORDERS (ADR-0010). */
   orders?: Partial<Orders>;
 }
@@ -67,11 +69,16 @@ export interface SchedulerDefaults {
 
 export const SCHEDULER_DEFAULTS = ["harness", "model", "effort"] as const;
 
+/** The Lead's defaults have the same keys as the Scheduler's. */
+export const LEAD_DEFAULTS = SCHEDULER_DEFAULTS;
+
 /**
  * How a Harness is launched (ADR-0005). `modelArgs` and `effortArgs` hold the
  * `{model}` and `{effort}` placeholders; `trustArgs` trust the Repo's clone
- * at `{repoPath}` for this launch only; `extraArgs` follow them on every
- * launch. `models` overrides discovered models, and `efforts` sets the Effort
+ * at `{repoPath}` for this launch only; `mcpArgs` connect the Lead to
+ * `serve`'s MCP server at `{mcpUrl}`, or through the config file at
+ * `{mcpConfig}`, and are left out of a Dispatch; `extraArgs` follow them on
+ * every launch. `models` overrides discovered models, and `efforts` sets the Effort
  * levels of every model, overriding discovered ones.
  */
 export interface HarnessConfig {
@@ -87,6 +94,9 @@ export interface HarnessConfig {
   effortArgs: string[];
   extraArgs: string[];
   trustArgs?: string[];
+  mcpArgs?: string[];
+  /** Where the Harness finds a project's skills, relative to its cwd; the Lead's skill goes there in its home. */
+  skillsDir?: string;
   models?: string[];
   efforts?: string[];
   /** Where the models and their Effort levels are discovered from. */
@@ -117,6 +127,8 @@ export const HARNESSES: Record<string, HarnessConfig> = {
     modelArgs: ["--model", "{model}"],
     effortArgs: ["--effort", "{effort}"],
     extraArgs: [],
+    mcpArgs: ["--mcp-config", "{mcpConfig}"],
+    skillsDir: ".claude/skills",
     models: ["fable", "opus", "sonnet", "haiku"],
     efforts: ["low", "medium", "high", "xhigh", "max"],
     trustPrompt: { text: "Yes, I trust this folder", keys: ["down", "enter"] },
@@ -131,10 +143,13 @@ export const HARNESSES: Record<string, HarnessConfig> = {
     // codex asks to trust the clone (not the worktree) even when herdr reports it ready; this
     // form of -c answers it for this session without writing ~/.codex/config.toml.
     trustArgs: ["-c", 'projects={"{repoPath}"={trust_level="trusted"}}'],
+    mcpArgs: ["-c", 'mcp_servers.nico-agent.url="{mcpUrl}"'],
+    skillsDir: ".agents/skills",
     discovery: "codex",
   },
   // Its TUI takes no model or Effort flag: the model goes in OPENCODE_CONFIG_CONTENT and the
-  // Effort in the saved variant file, so modelArgs and effortArgs are empty (ADR-0005).
+  // Effort in the saved variant file, so modelArgs and effortArgs are empty (ADR-0005); the MCP
+  // server goes in OPENCODE_CONFIG_CONTENT too, so mcpArgs is empty as well.
   opencode2: {
     launchMode: "pane-command",
     command: "opencode2",
@@ -142,6 +157,8 @@ export const HARNESSES: Record<string, HarnessConfig> = {
     modelArgs: [],
     effortArgs: [],
     extraArgs: [],
+    mcpArgs: [],
+    skillsDir: ".opencode/skills",
     discovery: "opencode2",
     variantFile: DEFAULT_VARIANT_FILE,
   },
@@ -151,7 +168,7 @@ const REQUIRED_HARNESS_SETTINGS = ["launchMode", "sigil", "modelArgs", "effortAr
 /** What each Launch mode launches. */
 const LAUNCH_TARGET: Record<LaunchMode, "kind" | "command"> = { "herdr-kind": "kind", "pane-command": "command" };
 const HARNESS_SETTINGS = [
-  "launchMode", "kind", "command", "sigil", "modelArgs", "effortArgs", "extraArgs", "trustArgs",
+  "launchMode", "kind", "command", "sigil", "modelArgs", "effortArgs", "extraArgs", "trustArgs", "mcpArgs", "skillsDir",
   "models", "efforts", "discovery", "trustPrompt", "variantFile",
 ];
 const NEW_HARNESS_HELP = `A new Harness needs ${REQUIRED_HARNESS_SETTINGS.join(", ")}, and kind (herdr-kind) or command (pane-command)`;
@@ -170,12 +187,13 @@ export function harnessConfigs(config: Config): Record<string, HarnessConfig> {
  * `botSuffix` is appended to it as is, with no separator, when the GitHub App
  * is installed on the Repo, so it carries its own leading punctuation.
  * `{baseBranch}` is the Dispatch's Base. `review` prompts the Reviewer; only it has a PR to fill `{prUrl}` and
- * `{prBaseBranch}` with.
+ * `{prBaseBranch}` with. `lead` starts the Lead on its skill.
  */
 export interface Prompts {
   implement: string;
   botSuffix: string;
   review: string;
+  lead: string;
 }
 
 export const PROMPTS: Prompts = {
@@ -184,6 +202,7 @@ export const PROMPTS: Prompts = {
     ", opened with `ghbot pr create` (not `gh`); end every commit message with the trailer " +
     "`Co-authored-by: nicolasluduena-coding-agent[bot] <324920906+nicolasluduena-coding-agent[bot]@users.noreply.github.com>`",
   review: "{sigil}code-review {prUrl} against {prBaseBranch} for the spec at {issueUrl}",
+  lead: "{sigil}lead",
 };
 
 export const PLACEHOLDERS = ["sigil", "issueUrl", "baseBranch", "prUrl", "prBaseBranch"] as const;
@@ -236,7 +255,8 @@ export function loadConfig(dir: string): Config {
   const config: Config = { repos: checkRepos(file, parsed.repos ?? []) };
   if (parsed.prompts !== undefined) config.prompts = checkPrompts(file, parsed.prompts);
   if (parsed.harnesses !== undefined) config.harnesses = checkHarnesses(file, parsed.harnesses);
-  if (parsed.scheduler !== undefined) config.scheduler = checkScheduler(file, parsed.scheduler);
+  if (parsed.scheduler !== undefined) config.scheduler = checkLaunchDefaults(file, "scheduler", "Scheduler", parsed.scheduler);
+  if (parsed.lead !== undefined) config.lead = checkLaunchDefaults(file, "lead", "Lead", parsed.lead);
   if (parsed.orders !== undefined) config.orders = checkOrders(file, parsed.orders);
   return config;
 }
@@ -271,15 +291,16 @@ function checkRepos(file: string, repos: Repo[]): Repo[] {
   return repos;
 }
 
-function checkScheduler(file: string, scheduler: unknown): Partial<SchedulerDefaults> {
-  if (!isObject(scheduler)) throw new ConfigError(`${file}: scheduler is not an object`);
-  for (const [key, value] of Object.entries(scheduler)) {
+/** The `scheduler` or `lead` launch defaults, each a string. */
+function checkLaunchDefaults(file: string, section: "scheduler" | "lead", owner: string, defaults: unknown): Partial<SchedulerDefaults> {
+  if (!isObject(defaults)) throw new ConfigError(`${file}: ${section} is not an object`);
+  for (const [key, value] of Object.entries(defaults)) {
     if (!(SCHEDULER_DEFAULTS as readonly string[]).includes(key)) {
-      throw new ConfigError(`${file}: scheduler.${key} is not a Scheduler default`, `Scheduler defaults: ${SCHEDULER_DEFAULTS.join(", ")}`);
+      throw new ConfigError(`${file}: ${section}.${key} is not a ${owner} default`, `${owner} defaults: ${SCHEDULER_DEFAULTS.join(", ")}`);
     }
-    if (typeof value !== "string") throw new ConfigError(`${file}: scheduler.${key} is not a string`);
+    if (typeof value !== "string") throw new ConfigError(`${file}: ${section}.${key} is not a string`);
   }
-  return scheduler as Partial<SchedulerDefaults>;
+  return defaults as Partial<SchedulerDefaults>;
 }
 
 function checkOrders(file: string, orders: unknown): Partial<Orders> {
@@ -306,8 +327,8 @@ function checkHarnesses(file: string, harnesses: unknown): Record<string, Partia
       if (key === "discovery" && !DISCOVERIES.includes(value as Discovery)) {
         throw new ConfigError(`${at}.discovery \`${value}\` is not supported`, `Discovery: ${DISCOVERIES.join(", ")}`);
       }
-      if (["kind", "command", "sigil", "variantFile"].includes(key) && typeof value !== "string") throw new ConfigError(`${at}.${key} is not a string`);
-      if (["modelArgs", "effortArgs", "extraArgs", "trustArgs", "models", "efforts"].includes(key) && !isStrings(value)) {
+      if (["kind", "command", "sigil", "variantFile", "skillsDir"].includes(key) && typeof value !== "string") throw new ConfigError(`${at}.${key} is not a string`);
+      if (["modelArgs", "effortArgs", "extraArgs", "trustArgs", "mcpArgs", "models", "efforts"].includes(key) && !isStrings(value)) {
         throw new ConfigError(`${at}.${key} is not a list of strings`);
       }
       if (key === "trustPrompt" && !(isObject(value) && typeof value.text === "string" && isStrings(value.keys))) {

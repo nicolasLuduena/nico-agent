@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { type Harness, type Launch, type ModelChoice, launchArgs } from "./harness";
+import { type Harness, type Launch, MCP_SERVER, type ModelChoice, launchArgs } from "./harness";
 import { DEFAULT_VARIANT_FILE } from "./config";
 import { WorldError } from "./world";
 
@@ -39,12 +39,14 @@ export function parseOpencodeModels(text: string): ModelChoice[] {
 /**
  * The shell command line that runs opencode2 in a pane: the model, with the
  * Effort as its variant, in `OPENCODE_CONFIG_CONTENT` for both the default
- * and the build agent (which otherwise keeps its own), then `--standalone`
- * and the Harness's args. `env` keeps it valid in any shell.
+ * and the build agent (which otherwise keeps its own), and the Lead's MCP
+ * server with it, then `--standalone` and the Harness's args. `env` keeps
+ * it valid in any shell.
  */
 export function paneCommand(harness: Harness, launch: Launch) {
   const model = launch.effort === DEFAULT_EFFORT ? launch.model : `${launch.model}#${launch.effort}`;
-  const config = JSON.stringify({ model, agents: { build: { model } } });
+  const mcp = launch.mcp && { mcp: { [MCP_SERVER]: { type: "remote", url: launch.mcp.mcpUrl } } };
+  const config = JSON.stringify({ model, agents: { build: { model } }, ...mcp });
   const args = [harness.command!, ...PANE_ARGS, ...launchArgs(harness, launch)];
   return `env OPENCODE_CONFIG_CONTENT=${shellQuote(config)} ${args.map(shellQuote).join(" ")}`;
 }
