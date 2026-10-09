@@ -128,9 +128,12 @@ export function webHandler(context: WebContext) {
     if (pathname === "/api/events" && request.method === "GET") return events.stream(request.signal);
     if (pathname === TALK_PATH && request.method === "POST") return talk(events, request);
     const changes = await changesBoard(request, pathname);
+    // A Partner's tool writes its Thread, which the app hears of on the next look.
+    const writesThread = pathname.startsWith("/mcp/partner/") && request.method === "POST" && await isToolCall(request);
     try {
       return await handle(request);
     } finally {
+      if (writesThread) void look();
       // Even a failed action may have changed something, such as a Dispatch's recorded failure.
       if (changes) {
         events.emit("board-changed");
@@ -212,12 +215,13 @@ function fromAnotherSite(request: Request) {
 }
 
 /**
- * Whether a request may change the Board: any post, but on `/mcp` and a
- * Partner's server only a tool call (an action tool, or a read the Board cannot tell apart cheaply).
+ * Whether a request may change the Board: any post, but on `/mcp` only a
+ * tool call, and never a Partner's, which writes only its Thread (an action tool, or a read the Board cannot tell apart cheaply).
  */
 async function changesBoard(request: Request, pathname: string) {
   if (request.method !== "POST") return false;
-  return !(pathname === "/mcp" || pathname.startsWith("/mcp/")) || await isToolCall(request);
+  if (pathname.startsWith("/mcp/partner/")) return false;
+  return pathname !== "/mcp" || await isToolCall(request);
 }
 
 /** The Board's and the Lead panel's actions, by their `/api` path: each the CLI command of the same words. */

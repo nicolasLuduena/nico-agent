@@ -1,4 +1,4 @@
-import { PARTNER_NAMES, type PartnerTab } from "../partner-tabs";
+import type { PartnerTab } from "../partner-tabs";
 import type { ThreadEntry } from "../thread";
 import type { LaunchChoice } from "./actions";
 
@@ -17,9 +17,6 @@ export const PAGES: { page: Page; label: string; href: string }[] = [
 export function pageOf(hash: string): Page {
   return PAGES.find((p) => p.page !== "lead" && p.href === hash)?.page ?? "lead";
 }
-
-/** What each tab's Partner is called, as the glossary names it. */
-export const PARTNER_TITLES = PARTNER_NAMES;
 
 /** A Partner as `nico-agent partner list --json` lists it. */
 export interface PartnerJson {

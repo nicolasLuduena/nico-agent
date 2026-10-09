@@ -1,11 +1,11 @@
 import { type KeyboardEvent, useEffect, useLayoutEffect, useReducer, useRef, useState } from "react";
-import type { PartnerTab } from "../partner-tabs";
+import { PARTNER_NAMES, type PartnerTab } from "../partner-tabs";
 import type { ThreadEntry } from "../thread";
 import { type Chosen, type HarnessesJson, launchChoice } from "./actions";
 import { OutcomeNote, answerOf, post, usePost } from "./forms";
 import { followsNewEntries } from "./lead";
 import {
-  DRAFT_REQUEST, PARTNER_TITLES, type PartnerJson, type ThreadCard, type ThreadState,
+  DRAFT_REQUEST, type PartnerJson, type ThreadCard, type ThreadState,
   handOffArgs, partnerSayArgs, partnerStanding, partnerStartArgs, reduceThread, threadCards,
 } from "./partner";
 import { sendsOnEnter } from "./popover";
@@ -26,7 +26,7 @@ const LEDES: Record<PartnerTab, string> = {
 export function PartnerPanel({ tab, partner, harnesses, repos, hidden }: {
   tab: PartnerTab; partner: PartnerJson | undefined; harnesses: HarnessesJson | null; repos: string[]; hidden: boolean;
 }) {
-  const title = PARTNER_TITLES[tab];
+  const title = PARTNER_NAMES[tab];
   const standing = partnerStanding(partner);
   return (
     <main className="shell partner" hidden={hidden} aria-label={title}>
@@ -173,7 +173,7 @@ function Composer({ tab, send, disabled }: { tab: PartnerTab; send: (text: strin
   };
   return (
     <form className="write" onSubmit={(e) => { e.preventDefault(); submit(); }}>
-      <textarea aria-label={`Message to the ${PARTNER_TITLES[tab]}`} placeholder={disabled ? "The Partner is not running" : "Write to the Partner"} rows={2} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={onKey} />
+      <textarea aria-label={`Message to the ${PARTNER_NAMES[tab]}`} placeholder={disabled ? "The Partner is not running" : "Write to the Partner"} rows={2} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={onKey} />
       <button type="submit" className="primary" disabled={disabled || !text.trim()}>Send</button>
     </form>
   );

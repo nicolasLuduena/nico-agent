@@ -1,5 +1,6 @@
 import { ORDERS, type Order } from "./orders";
 import { render } from "./output";
+import type { PartnerTab } from "./partner-tabs";
 import { RECORDS, type RecordName } from "./records";
 import { VERSION } from "./version";
 
@@ -265,7 +266,7 @@ const PARTNER_TOOLS = [
  * A Partner's server (ADR-0014), scoped to the Thread of its `tab`: only
  * `say`, `hand_off` and `thread`, so a Partner can neither read the Board nor act on it.
  */
-export function partnerServer(tab: string): McpServer {
+export function partnerServer(tab: PartnerTab): McpServer {
   return {
     tools: PARTNER_TOOLS,
     instructions: "Reply to the user with `say`, draft a Hand-off for the user to approve with `hand_off`, and read your Thread with `thread`.",

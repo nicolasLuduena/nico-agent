@@ -60,6 +60,8 @@ describe("partner start", () => {
     const other = await cli("partner", "start", "review", "--repo", "acme/web", ...FLAGS, "--json");
     expect(other.exitCode).toBe(1);
     expect(other.json().error).toBe("the Review partner already runs in acme/api");
+    const port = await cli("partner", "start", "review", "--repo", "acme/api", ...FLAGS, "--port", "8080", "--json");
+    expect(port.json().error).toBe("the Review partner already runs connected to http://127.0.0.1:42069/mcp/partner/review");
   });
 
   test("an unknown tab or Repo is refused before anything starts", async () => {
@@ -115,7 +117,7 @@ describe("hand-off", () => {
       { id: 1, who: "user", at: "2026-09-30T12:00:00.000Z", type: "user", text: "Hand-off from the Review partner (acme/api):\n\nAsk the Implementer to add a test for retries." },
     ]);
     const thread = (await cli("partner", "log", "review", "--json")).json().entries;
-    expect(thread.at(-1)).toMatchObject({ type: "handoff", draft: 1, lead: 1, text: "Ask the Implementer to add a test for retries." });
+    expect(thread.at(-1)).toMatchObject({ type: "handoff", draft: 1, text: "Ask the Implementer to add a test for retries." });
   });
 
   test("the user may edit the draft before approving it", async () => {
@@ -134,6 +136,9 @@ describe("hand-off", () => {
     expect(stale.json().error).toBe("draft 1 is not the open hand-off (2 is)");
     expect((await cli("partner", "hand-off", "review", "2")).exitCode).toBe(0);
     expect((await cli("partner", "hand-off", "review", "2", "--json")).json().error).toBe("draft 2 was already handed to the Lead");
+    // Editing it is no way around that.
+    expect((await cli("partner", "hand-off", "review", "2", "--text", "Again", "--json")).exitCode).toBe(1);
+    expect((await cli("lead", "log", "--json")).json().entries).toHaveLength(1);
   });
 });
 

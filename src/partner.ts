@@ -10,7 +10,7 @@ import { nudgeLead } from "./nudge";
 import { PARTNER_NAMES, PARTNER_TABS, type PartnerTab, isPartnerTab } from "./partner-tabs";
 import type { Launch } from "./state";
 import { withFileLock, writeJsonAtomic } from "./state";
-import { type Draft, type ThreadEntry, appendThread, loadThread, openDraft, withThread, write } from "./thread";
+import { type Draft, type ThreadEntry, appendAfter, appendThread, loadThread, openDraft, withThread } from "./thread";
 import { type World, WorldError } from "./world";
 
 export { PARTNER_NAMES, PARTNER_TABS, type PartnerTab, isPartnerTab };
@@ -108,13 +108,7 @@ export async function startPartner(world: World, configDir: string, request: Par
     ]);
   }
   const existing = loadPartners(configDir)[tab];
-  if (existing) {
-    const { harness: h, model, effort } = existing.agent;
-    if (existing.repo !== repo.slug || h !== request.harness || model !== request.model || effort !== request.effort || existing.mcpUrl !== request.mcpUrl) {
-      const where = existing.repo === repo.slug ? `on ${h} ${model} ${effort}` : `in ${existing.repo}`;
-      throw new DispatchError(`the ${PARTNER_NAMES[tab]} already runs ${where}`, [`Run \`nico-agent partner end ${tab}\` to end it first`, LIST_HELP]);
-    }
-  }
+  if (existing) refuseOther(existing, request);
   const fresh = async (): Promise<Partner> => {
     const now = world.now();
     const stamp = now.toISOString().replace(/\D/g, "").slice(0, 14);
@@ -132,7 +126,8 @@ export async function startPartner(world: World, configDir: string, request: Par
       updatedAt: now.toISOString(),
     };
   };
-  const leased = await lease(world, configDir, tab, existing ? undefined : await fresh());
+  // Checked again under the lease: another start may have made the tab's Partner since.
+  const leased = await lease(world, configDir, tab, existing ? undefined : await fresh(), (record) => refuseOther(record, request));
   const record = leased.record;
   if (leased.created) {
     rememberLaunch(configDir, request.harness, request.model, request.effort);
@@ -145,6 +140,18 @@ export async function startPartner(world: World, configDir: string, request: Par
   }
   const resumedFrom = record.failure?.step ?? PARTNER_STEPS.find((s) => !record.completed.includes(s))!;
   return { partner: await runPartner(world, configDir, repo, harness, record), outcome: "resumed", resumedFrom };
+}
+
+/** Refuse a start that is not the running Partner's own: another Repo, launch, or `serve`. */
+function refuseOther(existing: Partner, request: PartnerRequest) {
+  const { tab } = request;
+  const { harness, model, effort } = existing.agent;
+  const where = existing.repo !== request.repo
+    ? `in ${existing.repo}`
+    : harness !== request.harness || model !== request.model || effort !== request.effort
+      ? `on ${harness} ${model} ${effort}`
+      : existing.mcpUrl !== request.mcpUrl ? `connected to ${existing.mcpUrl}` : null;
+  if (where) throw new DispatchError(`the ${PARTNER_NAMES[tab]} already runs ${where}`, [`Run \`nico-agent partner end ${tab}\` to end it first`, LIST_HELP]);
 }
 
 /** What `partner list` reports of each Partner: where it stands, as the Lead's status does, and its Agent state. */
@@ -226,20 +233,18 @@ export async function partnerWrites(world: World, configDir: string, tab: Partne
 
 /**
  * Hand the open draft `draft` to the Lead, as the user approved it or with
- * the user's `edited` text: it is appended to the Lead's Conversation as the
- * user's message naming the Partner, which Nudges the Lead, and recorded in
- * the Thread. Only the open draft is handed, once.
+ * the user's `edited` text. The Thread records the Hand-off first, under its
+ * lock, so a draft is handed once however many approvals race; then it is
+ * appended to the Lead's Conversation as the user's message naming the
+ * Partner, which Nudges the Lead.
  */
 export async function handOff(world: World, configDir: string, tab: PartnerTab, draft: number, edited?: string) {
   const partner = partnerOf(configDir, tab);
-  const open = await withThread(configDir, partner.thread, (entries) => openToHand(entries, tab, draft));
-  const text = edited ?? open.text;
-  const lead = await sayToLead(configDir, { text: `Hand-off from the ${PARTNER_NAMES[tab]} (${partner.repo}):\n\n${text}` }, world.now());
-  // Checked again, since the Lead's Conversation has its own lock: the Thread keeps the first Hand-off of a draft.
   const handoff = await withThread(configDir, partner.thread, (entries) => {
-    openToHand(entries, tab, draft);
-    return write(configDir, partner.thread, entries, { type: "handoff", draft, text, lead: lead.id }, world.now());
+    const open = openToHand(entries, tab, draft);
+    return appendAfter(configDir, partner.thread, entries, { type: "handoff", draft, text: edited ?? open.text }, world.now());
   });
+  const lead = await sayToLead(configDir, { text: `Hand-off from the ${PARTNER_NAMES[tab]} (${partner.repo}):\n\n${handoff.text}` }, world.now());
   return { lead, handoff, warnings: await nudgeLead(world, configDir) };
 }
 
@@ -297,13 +302,14 @@ async function runPartner(world: World, configDir: string, repo: Repo, harness: 
 }
 
 /**
- * Take over the tab's Partner record for this process: the existing one, or
- * `fresh` when there is none. Refused while another live process runs it.
+ * Take over the tab's Partner record for this process: the existing one, once
+ * `check` lets it, or `fresh` when there is none. Refused while another live process runs it.
  */
-async function lease(world: World, configDir: string, tab: PartnerTab, fresh?: Partner): Promise<{ record: Partner; created: boolean }> {
+async function lease(world: World, configDir: string, tab: PartnerTab, fresh?: Partner, check?: (existing: Partner) => void): Promise<{ record: Partner; created: boolean }> {
   return withFileLock(configDir, FILE, () => {
     const all = loadPartners(configDir);
     const existing = all[tab];
+    if (existing) check?.(existing);
     if (existing?.runner !== undefined && existing.runner !== world.processId() && world.processAlive(existing.runner)) {
       throw new DispatchError(`the ${PARTNER_NAMES[tab]} is busy with another nico-agent`, ["Try again once it is done", LIST_HELP]);
     }

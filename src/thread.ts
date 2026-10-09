@@ -13,11 +13,11 @@ export type ThreadEntry = { id: number; at: string } & (
   | { type: "partner"; text: string }
   /** A Hand-off the Partner drafted, open until the user hands it or a later draft replaces it. */
   | { type: "draft"; text: string }
-  /** The draft `draft` the user handed to the Lead, as approved, written as the Lead's Conversation entry `lead`. */
-  | { type: "handoff"; draft: number; text: string; lead: number }
+  /** The draft `draft` the user handed to the Lead, as approved; the Lead's Conversation holds it as the user's message. */
+  | { type: "handoff"; draft: number; text: string }
 );
 
-type Body = ThreadEntry extends infer E ? (E extends ThreadEntry ? Omit<E, "id" | "at"> : never) : never;
+type ThreadBody = ThreadEntry extends infer E ? (E extends ThreadEntry ? Omit<E, "id" | "at"> : never) : never;
 
 export type Draft = Extract<ThreadEntry, { type: "draft" }>;
 
@@ -41,8 +41,8 @@ export function openDraft(entries: ThreadEntry[]): Draft | null {
 }
 
 /** Append `body` to the Thread in `file` as its next entry, at `at`. */
-export function appendThread(configDir: string, file: string, body: Body, at: Date): Promise<ThreadEntry> {
-  return withThread(configDir, file, (entries) => write(configDir, file, entries, body, at));
+export function appendThread(configDir: string, file: string, body: ThreadBody, at: Date): Promise<ThreadEntry> {
+  return withThread(configDir, file, (entries) => appendAfter(configDir, file, entries, body, at));
 }
 
 /** Run `fn` on the Thread in `file` holding its lock, so it can check the entries before appending. */
@@ -52,8 +52,8 @@ export function withThread<T>(configDir: string, file: string, fn: (entries: Thr
   return withFileLock(dirname(path), file.split("/").pop()!, () => fn(loadThread(configDir, file)));
 }
 
-/** Append `body` after `entries`, the Thread as read under its lock. */
-export function write(configDir: string, file: string, entries: ThreadEntry[], body: Body, at: Date): ThreadEntry {
+/** Append `body` after `entries`, the Thread as read under its lock (see `withThread`). */
+export function appendAfter(configDir: string, file: string, entries: ThreadEntry[], body: ThreadBody, at: Date): ThreadEntry {
   const entry = { id: (entries.at(-1)?.id ?? 0) + 1, at: at.toISOString(), ...body } as ThreadEntry;
   appendFileSync(join(configDir, file), `${JSON.stringify(entry)}\n`);
   return entry;
