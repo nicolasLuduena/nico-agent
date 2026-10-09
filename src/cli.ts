@@ -22,6 +22,7 @@ import { type Proposal, type Proposed, ProposalRefused, type SourceWrite, addPro
 import { dequeue, enqueue, loadQueues, move, pruneBoardQueues, queueOf } from "./queue";
 import { RECORDS, type RecordName, StaleRecord, noneYet, readRecord, replaceRecord } from "./records";
 import { isCandidate, sameSpec } from "./spec";
+import { UnknownRepo, recordSighting, stats } from "./stats";
 import { VERSION } from "./version";
 import { sameSlug, slugOfRemote } from "./slug";
 import { cachingGitHubReads } from "./cached-world";
@@ -67,6 +68,7 @@ const SAY_USAGE = "nico-agent say [--answer <id>] [--raw <transcript>] <text>";
 const LEAD_SAY_USAGE = "nico-agent lead say <text>";
 const LEAD_ASK_USAGE = "nico-agent lead ask <question> [<choice>...]";
 const GITHUB_USAGE_USAGE = "nico-agent github usage [--since <time>]";
+const STATS_USAGE = "nico-agent stats [--days <n>] [--repo <owner/name>]";
 const RECALL_USAGE = "nico-agent lead recall <query> [--since <time>] [--until <time>]";
 const QUEUE_USAGE = "nico-agent queue <spec> --repo <owner/name>";
 const UNQUEUE_USAGE = "nico-agent unqueue <spec> --repo <owner/name>";
@@ -416,6 +418,22 @@ const commands: Command[] = [
     examples: ["nico-agent github usage", "nico-agent github usage --since 2026-10-09T15:00:00Z --json"],
     help: ["The account's spend beyond nico-agent's calls is everyone else on it: Implementers, Reviewers, the Lead"],
     run: githubUsageCommand,
+  },
+  {
+    name: "stats",
+    usage: STATS_USAGE,
+    summary: "Count PRs merged and issues defined per day, per Repo and in total, from what nico-agent already saw (no GitHub call)",
+    flags: {
+      "--days": { value: true, description: "how many days up to today to count (default 30)" },
+      "--repo": { value: true, description: "count only this Repo, e.g. acme/api" },
+    },
+    positionals: [],
+    examples: ["nico-agent stats", "nico-agent stats --days 7 --repo acme/api --json"],
+    help: [
+      "An issue is defined on the day the Board first lists it as Ready; those a Repo's first read finds were defined before, and are not counted",
+      "A day before nico-agent saw any PR event, or before it first read a Repo's issues, is no data (null), not zero; days are UTC",
+    ],
+    run: statsCommand,
   },
   {
     name: "harness list",
@@ -794,6 +812,7 @@ function queuedName(ctx: RunContext, repo: string, spec: string) {
 async function queueCommand(args: Args, ctx: RunContext): Promise<Output> {
   const { spec, repo } = queueArgs(args, ctx, QUEUE_USAGE);
   const board = await loadBoard(ctx.world, [repo], loadDispatches(ctx.configDir), ctx.prs ?? cachedPrs(ctx.world));
+  await recordSighting(ctx.configDir, board.sighting, ctx.world.now());
   const decision = board.specs.find((d) => sameSlug(d.repo, repo.slug));
   if (!decision || !isCandidate(decision, spec)) {
     throw new CliError(`${spec} is not a candidate Spec of ${repo.slug}`, [
@@ -935,6 +954,31 @@ async function githubUsageCommand(args: Args, ctx: RunContext): Promise<Output> 
   const quota = await ctx.world.githubRateLimit().catch((e) => worldErrorMessage(e));
   const help = [since ? "Run `nico-agent github usage` for the last hour and 24 hours" : "Run `nico-agent github usage --since <time>` to count from another time"];
   return { data: githubUsage(calls, ctx.world.now(), quota, since), help };
+}
+
+async function statsCommand(args: Args, ctx: RunContext): Promise<Output> {
+  const daysFlag = args.flags["--days"];
+  const days = typeof daysFlag === "string" ? Number(daysFlag) : 30;
+  if (!Number.isInteger(days) || days < 1 || days > 366) {
+    throw new CliError(`--days must be a whole number from 1 to 366 (got \`${daysFlag}\`)`, [`Usage: \`${STATS_USAGE}\``], 2);
+  }
+  const repoFlag = args.flags["--repo"];
+  if (repoFlag !== undefined && (typeof repoFlag !== "string" || !isSlug(repoFlag))) {
+    throw new CliError(`--repo must be an owner/name such as acme/api (got \`${repoFlag}\`)`, [`Usage: \`${STATS_USAGE}\``], 2);
+  }
+  const repos = loadConfig(ctx.configDir).repos.map((r) => r.slug);
+  let data;
+  try {
+    data = stats(ctx.configDir, loadConversation(ctx.configDir), { now: ctx.world.now(), days, repos, ...(repoFlag && { repo: repoFlag }) });
+  } catch (e) {
+    if (e instanceof UnknownRepo) throw new CliError(e.message, ["Run `nico-agent repo list` to see the Repos"]);
+    throw e;
+  }
+  const help = [
+    repoFlag ? "Run `nico-agent stats` to count every Repo" : "Run `nico-agent stats --repo <owner/name>` to count one Repo",
+    "Run `nico-agent stats --days <n>` to count another number of days",
+  ];
+  return { data: { ...data }, help };
 }
 
 async function leadLogCommand(_args: Args, ctx: RunContext): Promise<Output> {
@@ -1194,10 +1238,15 @@ function definedOnly(object: Record<string, unknown>) {
   return Object.fromEntries(Object.entries(object).filter(([, v]) => v !== undefined));
 }
 
+/** Whether `text` reads as a Repo's `owner/name`. */
+function isSlug(text: string) {
+  return /^[\w.-]+\/[\w.-]+$/.test(text);
+}
+
 function slugArg(args: Args, usage: string) {
   const slug = args.positionals[0];
   if (!slug) throw new CliError("<owner/name> is required", [`Usage: \`${usage}\``], 2);
-  if (!/^[\w.-]+\/[\w.-]+$/.test(slug)) {
+  if (!isSlug(slug)) {
     throw new CliError(`\`${slug}\` is not an owner/name slug`, [`Usage: \`${usage}\``], 2);
   }
   return slug;
@@ -1596,6 +1645,8 @@ async function board(ctx: RunContext, json: boolean): Promise<Output> {
     return { data: { ...header, ready: "0 issues (no Repos configured)" }, help: [ADD_REPO_HELP] };
   }
   const loaded = await loadBoard(ctx.world, repos, loadDispatches(ctx.configDir), ctx.prs ?? cachedPrs(ctx.world), rememberedLaunches(ctx.configDir).bases);
+  // Each read keeps when an issue was first seen, for `stats`' issues defined.
+  await recordSighting(ctx.configDir, loaded.sighting, ctx.world.now());
   const { ready, stackable, withPr, specs, inFlight } = loaded;
   // A rate-limited GitHub is one warning with its reset time, not an error on every Repo and Dispatch.
   const limited = (message?: string) => message?.startsWith(RATE_LIMITED) ?? false;

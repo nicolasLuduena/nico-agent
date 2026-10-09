@@ -2,6 +2,7 @@ import type { LinearSelector, Repo } from "./config";
 import { sameSlug } from "./slug";
 import { type SourceAdapter, type SourceIssue, canStart, canStartLinear, githubSource, isLinearReady, isReady, linearSource } from "./source";
 import type { RepoDecision } from "./spec";
+import type { BoardSighting } from "./stats";
 import { type SourceIssues, loadSpecs } from "./spec-facts";
 import { type InFlightRow, type PrLookup, loadInFlight } from "./stage";
 import type { Dispatch } from "./state";
@@ -48,6 +49,8 @@ export interface Board {
   bases: Record<string, BaseChoice>;
   /** `git` errors are about listing origin's branches; the Repo's issues still loaded. */
   errors: { repo: string; error: string; source?: "Linear" | "git" }[];
+  /** Each Source whose issues loaded, with every issue it listed, for counting issues defined. */
+  sighting: BoardSighting;
 }
 
 /** origin's branches, and the Base a dispatch starts from unless another is chosen. */
@@ -106,14 +109,15 @@ export async function loadBoard(world: World, repos: Repo[], dispatches: Dispatc
     const { repo, title, url, research } = i;
     return pr ? [{ repo, title, url, ...(research && { research }), ...(i.identifier ? { identifier: i.identifier } : { number: i.number! }), pr }] : [];
   });
+  const sighting: BoardSighting = sources.map((s) => ({ source: s.adapter.source ?? "GitHub", repo: s.repo.slug, issues: s.issues.map((i) => s.adapter.name(i)) }));
   return {
-    ...ready, ready: ready.ready.filter((i) => !prOf(i)), stackable: ready.stackable.filter((i) => !prOf(i)), withPr,
+    ...ready, sighting, ready: ready.ready.filter((i) => !prOf(i)), stackable: ready.stackable.filter((i) => !prOf(i)), withPr,
     errors: [...ready.errors, ...errors], inFlight, specs,
   };
 }
 
 async function loadReady(world: World, repos: Repo[], inFlight: Dispatch[], lastBases: Record<string, string>) {
-  const board: Omit<Board, "inFlight" | "specs" | "withPr"> & { sources: SourceIssues<any>[] } = { ready: [], stackable: [], bases: {}, errors: [], sources: [] };
+  const board: Omit<Board, "inFlight" | "specs" | "withPr" | "sighting"> & { sources: SourceIssues<any>[] } = { ready: [], stackable: [], bases: {}, errors: [], sources: [] };
   if (repos.length === 0) return board;
   const dispatched = new Set(inFlight.map((d) => d.issue));
   const github = async () => {

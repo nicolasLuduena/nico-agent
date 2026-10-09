@@ -94,7 +94,7 @@ export function webHandler(context: WebContext) {
     if (pathname.startsWith("/api/") && request.method === "POST") return await postApi(context, request, pathname);
     if (request.method !== "GET") return new Response("Method Not Allowed\n", { status: 405 });
     const read = API_READS[pathname];
-    if (read) return await cliJson(context, read);
+    if (read) return await cliJson(context, [...read, ...readFlags(pathname, url.searchParams)]);
     if (pathname === "/preview") return await getPreview(previews, url.searchParams);
     return new Response(`No page at ${pathname}\n`, { status: 404 });
   };
@@ -211,7 +211,21 @@ const API_READS: Record<string, string[]> = {
   "/api/notes": ["notes"],
   "/api/orders": ["orders"],
   "/api/voice/state": ["voice"],
+  "/api/stats": ["stats"],
 };
+
+/** The query parameters a read passes on as the CLI flags of the same names; others are ignored. */
+const API_READ_PARAMS: Record<string, string[]> = {
+  "/api/stats": ["days", "repo"],
+};
+
+/** `?days=7&repo=acme/api` on `/api/stats` as `--days 7 --repo acme/api`. */
+function readFlags(pathname: string, params: URLSearchParams) {
+  return (API_READ_PARAMS[pathname] ?? []).flatMap((name) => {
+    const value = params.get(name);
+    return value === null ? [] : [`--${name}`, value];
+  });
+}
 
 const API_HELP = `Post {"args": [...]} to one of ${Object.keys(API_ACTIONS).join(", ")}`;
 
