@@ -48,8 +48,8 @@ export interface Config {
   voice?: VoiceConfig;
 }
 
-/** Transcription, speech and the Scribe: each an OpenAI-compatible endpoint nico-agent doesn't run (ADR-0001). */
-export const VOICE_SERVICES = ["transcribe", "speak", "scribe"] as const;
+/** Transcription, speech and the Front voice: each an OpenAI-compatible endpoint nico-agent doesn't run (ADR-0001). */
+export const VOICE_SERVICES = ["transcribe", "speak", "front"] as const;
 export type VoiceService = (typeof VOICE_SERVICES)[number];
 export type VoiceConfig = Partial<Record<VoiceService, VoiceEndpoint>>;
 
@@ -68,8 +68,16 @@ export interface VoiceEndpoint {
 const VOICE_SETTINGS: Record<VoiceService, string[]> = {
   transcribe: ["url", "model", "keyEnv"],
   speak: ["url", "model", "keyEnv", "voice"],
-  scribe: ["url", "model", "keyEnv"],
+  front: ["url", "model", "keyEnv"],
 };
+
+/** The Front voice's thinking when voice.front is left out: opencode go, its key in OPENCODE_API_KEY (ADR-0013). */
+export const FRONT_VOICE_DEFAULT: VoiceEndpoint = { url: "https://opencode.ai/zen/go/v1", model: "deepseek-v4.1-flash", keyEnv: "OPENCODE_API_KEY" };
+
+/** The endpoint the Front voice thinks on: voice.front, else opencode go. */
+export function frontVoiceEndpoint(voice: VoiceConfig | undefined): VoiceEndpoint {
+  return voice?.front ?? FRONT_VOICE_DEFAULT;
+}
 /** Where the voice services are set up and configured. */
 export const VOICE_DOC = "docs/voice.md";
 const VOICE_HELP = `See ${VOICE_DOC} for the voice block`;
@@ -394,6 +402,7 @@ function checkVoice(file: string, voice: unknown): VoiceConfig {
   if (!isObject(voice)) throw new ConfigError(`${file}: voice is not an object`, VOICE_HELP);
   for (const [service, endpoint] of Object.entries(voice)) {
     const at = `${file}: voice.${service}`;
+    if (service === "scribe") throw new ConfigError(`${at} is gone: the Front voice replaces the Scribe`, `Drop voice.scribe; the Front voice runs on opencode go unless voice.front says otherwise (see ${VOICE_DOC})`);
     if (!(VOICE_SERVICES as readonly string[]).includes(service)) {
       throw new ConfigError(`${at} is not a voice service`, `Voice services: ${VOICE_SERVICES.join(", ")}`);
     }

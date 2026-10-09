@@ -10,6 +10,7 @@ import { type EventName, Events } from "./events";
 import { loadConfig, standingOrders } from "./config";
 import { leadStatus } from "./lead";
 import { RECORDS } from "./records";
+import { frontVoice } from "./front-voice";
 import { speaker } from "./speech";
 import { transcriptionSession } from "./transcription";
 import { stopwatch } from "./voice-timing";
@@ -134,13 +135,16 @@ export function webHandler(context: WebContext) {
 
 /**
  * What `serve` answers on WebSockets: on `/api/voice` the app's talk button
- * streams audio and hears transcripts back, and, with Voice on, the app hears
- * the Lead speak each entry it writes, as `events` tells of new ones.
+ * streams audio and hears transcripts back, the Front voice answers each one
+ * or hands it to the Lead, and, with Voice on, the app hears the Front voice
+ * and the Lead speak each entry it writes, as `events` tells of new ones.
+ * Talking over either (`hush`) stops both.
  */
 export function webSockets(context: Pick<WebContext, "world" | "configDir" | "runCli" | "events">): Sockets {
   const timing = stopwatch(context);
-  const transcription = transcriptionSession({ ...context, timing });
   const speech = speaker(context);
+  const front = frontVoice({ ...context, say: (text) => speech.line(text) });
+  const transcription = transcriptionSession({ ...context, timing, front });
   context.events?.on("conversation-entry", () => {
     speech.changed();
     timing.changed();
@@ -156,7 +160,10 @@ export function webSockets(context: Pick<WebContext, "world" | "configDir" | "ru
         return {
           message(data) {
             const command = typeof data === "string" ? parseJson(data) as { type?: unknown; entry?: unknown; at?: unknown } | null : null;
-            if (command?.type === "hush") return speech.hush();
+            if (command?.type === "hush") {
+              front.hush();
+              return speech.hush();
+            }
             if (command?.type === "played") {
               if (typeof command.entry === "number" && typeof command.at === "number") timing.played(command.entry, new Date(command.at));
               return;

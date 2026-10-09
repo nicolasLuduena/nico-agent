@@ -2,12 +2,13 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 import { sayArgs } from "../src/app/lead";
+import { loadConversation } from "../src/conversation";
 import { TIMING_FILE } from "../src/voice-timing";
 import { setup } from "./harness";
 
 const LAUNCH = { harness: "claude", model: "opus", effort: "high" };
 const TRANSCRIBE = { url: "http://127.0.0.1:8010/v1", model: "Systran/faster-whisper-small.en" };
-const SCRIBE = { url: "http://127.0.0.1:11434/v1", model: "qwen2.5:3b" };
+const FRONT = { url: "http://127.0.0.1:4100/v1", model: "glm-5.3-flash" };
 
 /** When the user stops talking in each test. */
 const SPOKE = new Date("2026-09-30T12:00:00.000Z");
@@ -16,7 +17,7 @@ const SPOKE = new Date("2026-09-30T12:00:00.000Z");
 const AUDIO = new Uint8Array(16_000);
 
 /** Voice configured, and the clock at SPOKE; the Lead started (idle) when `lead`. */
-async function withVoice({ voice = { transcribe: TRANSCRIBE, scribe: SCRIBE } as Record<string, unknown>, lead = true } = {}) {
+async function withVoice({ voice = { transcribe: TRANSCRIBE, front: FRONT } as Record<string, unknown>, lead = true } = {}) {
   const ctx = setup();
   mkdirSync(ctx.configDir, { recursive: true });
   writeFileSync(join(ctx.configDir, "config.json"), JSON.stringify({ repos: [], voice, lead: LAUNCH, scheduler: LAUNCH }));
@@ -55,6 +56,23 @@ async function speak({ talk, world }: Voiced, utterance: number, pause = 0) {
   return await talk.next();
 }
 
+/** A Front voice that hands `message` off, after `ms` on the clock. */
+function handsOff(world: Voiced["world"], message: string, ms = 0) {
+  world.endpoint(`${FRONT.url}/chat/completions`, async () => {
+    later(world, ms);
+    const call = { index: 0, function: { name: "hand_off", arguments: JSON.stringify({ message }) } };
+    return new Response(`data: ${JSON.stringify({ choices: [{ delta: { tool_calls: [call] } }] })}\n\ndata: [DONE]\n\n`, { headers: { "content-type": "text/event-stream" } });
+  });
+}
+
+/** Wait for the Front voice to hand the user's message to the Lead, and let serve see its entry. */
+async function handedOff(ctx: Voiced) {
+  for (const end = Date.now() + 1000; !loadConversation(ctx.configDir).some((e) => e.type === "user"); await Bun.sleep(2)) {
+    if (Date.now() > end) throw new Error("never handed off");
+  }
+  await ctx.look();
+}
+
 /** Post `text` as the page does, heard as `raw` when spoken, and let serve see the new entry. */
 async function post(ctx: Voiced, text: string, raw?: string) {
   await ctx.web("/api/say", { method: "POST", body: JSON.stringify({ args: sayArgs(text, undefined, raw) }) });
@@ -66,23 +84,16 @@ describe("the voice timing log", () => {
     const ctx = await withVoice();
     const { world, talk } = ctx;
     await ctx.cli("voice", "on");
-    // Transcription takes 1.2s, the Scribe 0.9s.
+    // Transcription takes 1.2s, the Front voice 0.9s to hand it off; the idle Lead is Nudged at once.
     world.endpoint(`${TRANSCRIBE.url}/audio/transcriptions`, async () => {
       later(world, 1200);
       return Response.json({ text: "um what is running" });
     });
-    world.endpoint(`${SCRIBE.url}/chat/completions`, async () => {
-      later(world, 900);
-      return Response.json({ choices: [{ message: { role: "assistant", content: "What is running?" } }] });
-    });
+    handsOff(world, "What is running?", 900);
 
     // The page hears the end of speech in a pause of 0.5s.
-    const final = await speak(ctx, 4, 500);
-    expect(final).toMatchObject({ type: "final", text: "What is running?" });
-
-    // The page posts it 0.1s later, and the idle Lead is Nudged at once.
-    later(world, 100);
-    await post(ctx, final.text, final.raw);
+    expect(await speak(ctx, 4, 500)).toMatchObject({ type: "final", text: "um what is running" });
+    await handedOff(ctx);
     expect(timings(ctx.configDir)).toEqual([]);
 
     // The Lead says something 6s later, and the page plays it 0.4s after that.
@@ -97,13 +108,13 @@ describe("the voice timing log", () => {
       spoke: "2026-09-30T12:00:00.000Z",
       ended: "2026-09-30T12:00:00.500Z",
       transcribed: "2026-09-30T12:00:01.700Z",
-      scribed: "2026-09-30T12:00:02.600Z",
-      written: "2026-09-30T12:00:02.700Z",
-      nudged: "2026-09-30T12:00:02.700Z",
-      said: "2026-09-30T12:00:08.700Z",
-      played: "2026-09-30T12:00:09.100Z",
-      took: { ended: 500, transcribed: 1200, scribed: 900, written: 100, nudged: 0, said: 6000, played: 400 },
-      total: 9100,
+      handed: "2026-09-30T12:00:02.600Z",
+      written: "2026-09-30T12:00:02.600Z",
+      nudged: "2026-09-30T12:00:02.600Z",
+      said: "2026-09-30T12:00:08.600Z",
+      played: "2026-09-30T12:00:09.000Z",
+      took: { ended: 500, transcribed: 1200, handed: 900, written: 0, nudged: 0, said: 6000, played: 400 },
+      total: 9000,
       slowest: "said",
     }]);
 
@@ -113,7 +124,7 @@ describe("the voice timing log", () => {
   });
 
   test("with Voice off the line is written when the Lead first says something, and the steps that did not happen are null", async () => {
-    // No Scribe: the transcript is sent as heard. No Lead running: nobody is Nudged.
+    // The Front voice's key not set: the transcript is sent as heard. No Lead running: nobody is Nudged.
     const ctx = await withVoice({ voice: { transcribe: TRANSCRIBE }, lead: false });
     const { world } = ctx;
     world.endpoint(`${TRANSCRIBE.url}/audio/transcriptions`, async () => {
@@ -121,8 +132,8 @@ describe("the voice timing log", () => {
       return Response.json({ text: "what is running" });
     });
 
-    const final = await speak(ctx, 1);
-    await post(ctx, final.text, final.raw);
+    await speak(ctx, 1);
+    await handedOff(ctx);
     later(world, 3000);
     await ctx.cli("lead", "say", "--", "Nothing is running.");
     await ctx.look();
@@ -133,12 +144,12 @@ describe("the voice timing log", () => {
       spoke: "2026-09-30T12:00:00.000Z",
       ended: "2026-09-30T12:00:00.000Z",
       transcribed: "2026-09-30T12:00:01.000Z",
-      scribed: null,
+      handed: null,
       written: "2026-09-30T12:00:01.000Z",
       nudged: null,
       said: "2026-09-30T12:00:04.000Z",
       played: null,
-      took: { ended: 0, transcribed: 1000, scribed: null, written: 0, nudged: null, said: 3000, played: null },
+      took: { ended: 0, transcribed: 1000, handed: null, written: 0, nudged: null, said: 3000, played: null },
       total: null,
       slowest: "said",
     }]);
@@ -157,12 +168,12 @@ describe("the voice timing log", () => {
       spoke: "2026-09-30T12:00:00.000Z",
       ended: "2026-09-30T12:00:00.000Z",
       transcribed: null,
-      scribed: null,
+      handed: null,
       written: null,
       nudged: null,
       said: null,
       played: null,
-      took: { ended: 0, transcribed: null, scribed: null, written: null, nudged: null, said: null, played: null },
+      took: { ended: 0, transcribed: null, handed: null, written: null, nudged: null, said: null, played: null },
       total: null,
       slowest: "ended",
     }]);
@@ -172,10 +183,10 @@ describe("the voice timing log", () => {
     const ctx = await withVoice();
     const { world } = ctx;
     world.endpoint(`${TRANSCRIBE.url}/audio/transcriptions`, async () => Response.json({ text: "what is running" }));
-    world.endpoint(`${SCRIBE.url}/chat/completions`, async () => Response.json({ choices: [{ message: { role: "assistant", content: "What is running?" } }] }));
+    handsOff(world, "What is running?");
 
-    const final = await speak(ctx, 3);
-    await post(ctx, final.text, final.raw);
+    await speak(ctx, 3);
+    await handedOff(ctx);
 
     later(world, 4 * 60_000);
     await post(ctx, "typed, not spoken");

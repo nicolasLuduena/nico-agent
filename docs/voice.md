@@ -1,16 +1,19 @@
-# Voice: transcription, speech and the Scribe
+# Voice: transcription, speech and the Front voice
 
 Talking to the Lead takes three services, each an OpenAI-compatible HTTP
 endpoint in `~/.config/nico-agent/config.json`:
 
 - **transcribe** turns the user's audio into text (`POST /audio/transcriptions`).
-- **speak** reads the Lead's replies aloud with Voice on (`POST /audio/speech`).
-- **scribe** cleans the raw transcript before the Lead reads it
-  (`POST /chat/completions`); see **Scribe** in `GLOSSARY.md`.
+- **speak** reads the Front voice's lines and the Lead's replies aloud with
+  Voice on (`POST /audio/speech`).
+- **front** is the Front voice's thinking (`POST /chat/completions`,
+  streamed, with one tool): it answers what you said or hands it to the Lead;
+  see **Front voice** in `GLOSSARY.md` and ADR-0013.
 
-nico-agent runs none of them (ADR-0001). On this machine they are local
-services under systemd user units, so no audio leaves it; any of the three
-moves to a cloud service by changing its `url`, `model` and `keyEnv`.
+nico-agent runs none of them (ADR-0001). On this machine transcription and
+speech are local services under systemd user units, so no audio leaves it;
+the Front voice runs on opencode go, so the text of what you say does. Any of
+the three moves elsewhere by changing its `url`, `model` and `keyEnv`.
 
 ## Config
 
@@ -19,10 +22,17 @@ moves to a cloud service by changing its `url`, `model` and `keyEnv`.
   "voice": {
     "transcribe": { "url": "http://127.0.0.1:8010/v1", "model": "Systran/faster-whisper-small.en" },
     "speak": { "url": "http://127.0.0.1:8880/v1", "model": "kokoro", "voice": "af_heart" },
-    "scribe": { "url": "http://127.0.0.1:11434/v1", "model": "qwen2.5:3b" }
+    "front": { "url": "https://opencode.ai/zen/go/v1", "model": "deepseek-v4.1-flash", "keyEnv": "OPENCODE_API_KEY" }
   }
 }
 ```
+
+Leave `front` out to get exactly that block: the Front voice runs on opencode
+go unless told otherwise, with the key of your opencode go subscription
+(OpenCode Console) in `OPENCODE_API_KEY`. Any endpoint that streams
+`/chat/completions` with tool calls will do; the models opencode go serves
+there are its GLM, Kimi, DeepSeek and MiMo ones. The old `scribe` block is
+refused: drop it.
 
 Each service takes:
 
@@ -46,9 +56,11 @@ nico-agent voice check --json
 
 It sends a 2.5-second WAV of "Dispatch the next issue on the Board." to
 transcription, a sentence to speech, and a messy transcript ("um dispatch the
-uh next issue on the bored") to the Scribe, one service at a time, and times
-each answer, the whole body included. A service left out of config shows as
-`not configured`. A missing key, an unreachable URL or an error answer fails
+uh next issue on the bored") to the Front voice, unstreamed, one service at a
+time, and times each answer, the whole body included. The Front voice should
+answer with its tool, `hand_off {"message":"Dispatch the next issue on the
+Board."}`. A service left out of config shows as `not configured`, except the
+Front voice, which is checked on opencode go. A missing key, an unreachable URL or an error answer fails
 that service with what to fix, and the command exits 1.
 
 ## Talk in the app
@@ -56,9 +68,10 @@ that service with what to fix, and the command exits 1.
 The **Talk** button, beside the Lead panel's text field, records from the browser's microphone and
 streams the audio to `serve` over a WebSocket (`/api/voice`, 16kHz 16-bit mono
 PCM). `serve` sends it to `voice.transcribe` and shows what it heard as you
-speak; the final transcript goes through the Scribe, and its text is sent to
-the Lead as your message at once, with the raw transcript kept on the entry
-(`nico-agent say --raw <raw> -- <text>`). The card shows the two side by side.
+speak; the final transcript goes to the Front voice (below), which answers it
+itself or sends it to the Lead as your message, cleaned, with the raw
+transcript kept on the entry (`nico-agent say --raw <raw> -- <text>`). The
+card shows the two side by side.
 
 - **Hold** the button (or Space or Enter on it) to talk; release to send.
 - **Tap** it to start a hands-free session (below): a pause of half a
@@ -89,9 +102,9 @@ end it. A walkthrough, with Voice on:
 2. You stop talking; half a second later it is sent. **Thinking**:
    "Transcribing…", then, once the Lead has your message, "The Lead is
    working on it."
-3. The Lead says "Checking the Board." within a few seconds (its skill
-   acknowledges a question that needs tools before it calls them), then
-   its answer. **Speaking**, with **Stop**.
+3. The Front voice says "I'll ask the Lead." as it hands your message on,
+   and the Lead's answer follows. **Speaking**, with **Stop**. Small talk,
+   or "say that again", the Front voice answers itself, at once.
 4. You answer back, without touching anything: the microphone was
    listening the whole time. Talking over the Lead stops it (barge-in), as
    does talking while your last message is still being transcribed: either
@@ -181,34 +194,62 @@ Hyprland runs it through `sh` with its own `PATH`; if `nico-agent` is not
 found, write its full path (`~/.local/bin/nico-agent`). Reload with
 `hyprctl reload`.
 
-### The Scribe
+### The Front voice
 
-The Scribe (`voice.scribe`) gets the final transcript with the same
-vocabulary, all of it, and the conversation's last four entries, for
-context. It is told to drop fillers, spell the vocabulary's terms as written,
-fix punctuation, and change nothing else; a few generic examples go with it,
-because a small model given only rules answers the question it was dictated
-or repeats its prompt. An answer much longer than what was heard is refused
-for the same reason.
+The Front voice (`voice.front`, ADR-0013) hears the final transcript, as
+heard, and reads, for context:
 
-When the Scribe is not configured, unreachable, answers an error, or is
-refused, the raw transcript is sent as it is, with a warning above the
-composer: the conversation never waits on it.
+- the words to spell as written: the vocabulary the transcription had;
+- the Lead's orient packet: its Intent and Notes, open questions and
+  Proposals, and the conversation's last ten entries;
+- the Board, as `board --json` prints it.
+
+Its one tool is `hand_off`; it has no shell, no MCP and nothing that acts.
+It answers small talk, "say that again" and what it can read itself, a
+sentence at a time aloud as the reply streams in. Anything that needs
+judgment, a decision or an action it hands off: it says "I'll ask the
+Lead." and writes your message, cleaned (fillers out, terms spelled as
+written, punctuation fixed), into the Conversation through the path
+`say --raw` uses, so the Lead gets it in its Inbox with a Nudge.
+
+Its own lines go in the Conversation under its own author, `front-voice`
+in `lead log --json`; one it answered without the Lead keeps what you said
+as `heard`. The Lead reads them in its orient packet, never in its Inbox,
+and they never Nudge it. The panel shows them under **Front voice**.
+
+Talk over it (or tap **Stop**) and it stops at once: its speech, and its
+reply, whose request is dropped, so what you say next is heard without
+waiting on it. What it said stays recorded; a hand-off it had begun is read
+to its end, silently, and still reaches the Lead. "I'll ask the Lead." is
+said the moment the hand-off is whole, not at the end of the reply.
+
+When it is unreachable, its key is not set, it answers an error, or it
+answers nothing, what you said goes to the Lead as heard, with a warning
+above the composer: the conversation never waits on it.
 
 Say (or type) "No, I said …" to correct your last message: the new entry
 supersedes it (`supersedes` in `lead log --json`), the old card is struck,
 and the Lead's Inbox hands it the correction with the text it replaces.
 
-Said right after the Lead's question, before anything else is said, what you
-say is the answer to it. For a question with choices, the Scribe is asked
-which choice it picks ("the second one", "the Linear one"), and the answer
+Said right after the Lead's question, with nothing but the Front voice's
+lines between, what you say and the Front voice hands off is the answer to
+it. For a question with choices, it is told the choices and names the one
+your answer picks ("the second one", "the Linear one"), and the answer
 recorded is that choice, with what was heard kept beside it; when it picks
-none clearly, or there is no Scribe, the answer is what you said.
+none clearly, the answer is what you said, cleaned. Asking it "what were the
+choices?" is answered by the Front voice and leaves the question open.
+
+To measure an endpoint's time to first token on requests like the Front
+voice's:
+
+```bash
+OPENCODE_API_KEY=… bun scripts/front-voice-ttft.ts [model …]
+```
 
 ### The Lead speaks
 
 With Voice on (`nico-agent voice on|off`, or the **Voice** switch in the Lead
-panel's bar), every reply and question the Lead writes is read by
+panel's bar), each line of the Front voice's, and every reply and question the Lead writes, is read by
 `voice.speak` and streamed to the app over the same `/api/voice` socket as it
 is made, as 24kHz 16-bit mono PCM (`response_format: "pcm"`, OpenAI's format,
 which Kokoro-FastAPI shares). A question is read with its choices as a
@@ -251,17 +292,19 @@ order:
 | `spoke` | you stopped talking: the release, the tap, or where the pause began | the page |
 | `ended` | the page ended the utterance: at once on a release or a tap, after the pause (see **Hearing speech**) hands-free | `serve`, on hearing it |
 | `transcribed` | `voice.transcribe` returned the final transcript | `serve` |
-| `scribed` | the Scribe returned its text (and its choice, answering a question) | `serve` |
+| `handed` | the Front voice handed it to the Lead (cleaned, and its choice, answering a question) | `serve` |
 | `written` | the message's entry was written to the conversation | the entry's `at` |
 | `nudged` | herdr took the Nudge: the first one sent after the entry, whatever sent it | `nudges-sent.json` |
 | `said` | the Lead wrote its first `say` or `ask` after the entry, whatever it answers | that entry's `at` |
 | `played` | the page began playing that entry's audio: speech made, and any earlier speech played out | the page |
 
-Each is an ISO time, or `null` for a step that did not happen: no Scribe
-configured or it failed (`scribed`), the Lead not running (`nudged`), Voice
-off (`played`), or the transcription failing (all after `ended`). A step
-that did not happen leaves its time to the next: with the Scribe failing,
-its wait shows in `written`. `took` is
+Each is an ISO time, or `null` for a step that did not happen: the Front
+voice failed and it was sent as heard (`handed`), the Lead not running
+(`nudged`), Voice off (`played`), or the transcription failing (all after
+`ended`). A step that did not happen leaves its time to the next: with the
+Front voice failing, its wait shows in `written`. A message the Front voice
+answers itself is logged at once, with no step after `transcribed`; lines
+logged before the Front voice name the step `scribed`. `took` is
 how long each step took after the last one that happened, in ms; `total` is
 `spoke` to `played`; `slowest` names the step with the longest `took`. The
 page and `serve` share a clock, being on one machine (on the phone the
@@ -284,12 +327,13 @@ jq -s 'def median: sort | .[length/2|floor]; [.[].took] as $t
 ### The fixture set
 
 `test/fixtures/scribe/` holds twenty utterances to the Lead with Board
-vocabulary, voiced by Kokoro, and each one's raw transcript and Scribe
-cleanup. To try another model or prompt, rerun them through the services in
+vocabulary, voiced by Kokoro, and each one's raw transcript and cleanup
+(the Scribe's, recorded before the Front voice replaced it). To try another
+model or prompt, rerun them through the services in
 `config.json` (or the local ones below) and read the table it prints:
 
 ```bash
-bun scripts/scribe-fixtures.ts           # transcribe and clean each WAV again
+bun scripts/scribe-fixtures.ts           # transcribe each WAV again and hand it to the Front voice
 bun scripts/scribe-fixtures.ts --speak   # voice them again first
 ```
 
@@ -413,17 +457,21 @@ WantedBy=default.target
 
 Measured: 0.3 to 0.5s for a short sentence, the whole WAV read.
 
-### ollama (the Scribe)
+### ollama (a local Front voice, optional)
 
-ollama ships an OpenAI-compatible API under `/v1`. The `ollama` package's
-system unit is disabled here; a user unit runs it as you, with your models in
-`~/.ollama`.
+ollama ships an OpenAI-compatible API under `/v1`, tool calls included, and
+can serve `voice.front` without opencode go: `{ "url":
+"http://127.0.0.1:11434/v1", "model": "qwen2.5:3b" }`. A 3B model on the CPU
+is slow and weak at choosing when to hand off; it was the Scribe's.
+
+The `ollama` package's system unit is disabled here; a user unit runs it as
+you, with your models in `~/.ollama`.
 
 `~/.config/systemd/user/ollama.service`:
 
 ```ini
 [Unit]
-Description=ollama: OpenAI-compatible chat for the Scribe on 127.0.0.1:11434
+Description=ollama: OpenAI-compatible chat on 127.0.0.1:11434
 
 [Service]
 ExecStart=/usr/bin/ollama serve
@@ -440,7 +488,7 @@ WantedBy=default.target
 ollama pull qwen2.5:3b
 ```
 
-Measured: 0.8 to 3s for the cleanup, on the CPU (the `ollama` package has no
+Measured as the Scribe: 0.8 to 3s for a cleanup, on the CPU (the `ollama` package has no
 GPU backend). For the RX 7600, `pacman -S ollama-rocm` instead; Navi 33
 (gfx1102) may need `Environment=HSA_OVERRIDE_GFX_VERSION=11.0.0`.
 
@@ -455,7 +503,7 @@ nico-agent voice check
 ```
 
 Put the config block above in `config.json`. What `voice check` printed here,
-with large-v3-turbo on int8:
+with large-v3-turbo on int8, before the Front voice replaced the Scribe:
 
 ```
 services[3]{service,status,url,model,ms,returned}:
@@ -475,8 +523,5 @@ runs in (for the Board service, its unit's `Environment=` or an
 | transcribe | `https://api.openai.com/v1`    | `gpt-4o-mini-transcribe` or `whisper-1`     | `OPENAI_API_KEY`    |
 | transcribe | `https://api.groq.com/openai/v1` | `whisper-large-v3-turbo`                  | `GROQ_API_KEY`      |
 | speak      | `https://api.openai.com/v1`    | `gpt-4o-mini-tts` (`voice`: e.g. `alloy`)   | `OPENAI_API_KEY`    |
-| scribe     | `https://api.anthropic.com/v1` | a Haiku model, e.g. `claude-haiku-5-5`      | `ANTHROPIC_API_KEY` |
-| scribe     | `https://api.openai.com/v1`    | a small model, e.g. `gpt-4o-mini`           | `OPENAI_API_KEY`    |
-
-Anthropic models reach the Scribe through Anthropic's OpenAI-compatible
-endpoint. A cloud service sends the audio or the text off this machine.
+| front      | `https://opencode.ai/zen/go/v1` | the default: `deepseek-v4.1-flash`, or `glm-5.3-flash`, `mimo-v2.6-flash`, `kimi-k2.6` | `OPENCODE_API_KEY` |
+| front      | `https://api.openai.com/v1`    | a small model, e.g. `gpt-4o-mini`           | `OPENAI_API_KEY`    | A cloud service sends the audio or the text off this machine.

@@ -25,6 +25,11 @@ export type Entry = { id: number; at: string } & (
    * is why it was declined or failed, if known.
    */
   | ({ type: "decision"; proposal: number; decision: Exclude<ProposalStatus, "open">; reason: string; text: string; outcome?: Record<string, unknown> } & Proposed)
+  /**
+   * What the Front voice said aloud (ADR-0013); `heard` is what the user said
+   * that it answered itself, never handed to the Lead.
+   */
+  | { type: "front-voice"; text: string; heard?: string }
   /** A change nico-agent saw on the PR `pr` (the URL) of the issue `issue`, summed up in one line. */
   | { type: "event"; pr: string; issue: string; change: PrChange; text: string }
 );
@@ -59,8 +64,8 @@ export interface Orient {
   last: Authored[];
 }
 
-/** Who wrote an entry: the user, the Lead, or nico-agent itself (an event). */
-export type Author = "user" | "lead" | "nico-agent";
+/** Who wrote an entry: the user, the Lead, the Front voice, or nico-agent itself (an event). */
+export type Author = "user" | "lead" | "front-voice" | "nico-agent";
 
 /** An entry with who wrote it, as the user and the Lead read the conversation. */
 export type Authored = Entry & { who: Author };
@@ -71,7 +76,7 @@ const LAST = 10;
 /** The id of the last entry the Lead read with `inbox`. */
 const CURSOR_FILE = "lead-cursor.json";
 
-/** Who wrote `entry`: the Lead's own entries never come back in its Inbox. */
+/** Who wrote `entry`: the Lead's own entries never come back in its Inbox, nor the Front voice's, which it reads in its orient packet. */
 function author(entry: Entry): Author {
   switch (entry.type) {
     case "user":
@@ -81,6 +86,8 @@ function author(entry: Entry): Author {
     case "lead":
     case "ask":
       return "lead";
+    case "front-voice":
+      return "front-voice";
     case "event":
       return "nico-agent";
   }
@@ -202,7 +209,7 @@ export function readInbox(dir: string): Promise<{ entries: InboxEntry[]; orient:
       return entry?.type === type ? entry.text : "";
     };
     const correction = new Map(entries.flatMap((e) => (e.type === "user" && e.supersedes !== undefined ? [[e.supersedes, e.id] as const] : [])));
-    const inbox = unread.filter((e) => author(e) !== "lead").map((e): InboxEntry => {
+    const inbox = unread.filter((e) => author(e) !== "lead" && author(e) !== "front-voice").map((e): InboxEntry => {
       if (e.type === "answer") return { ...e, asked: textOf(e.question, "ask") };
       if (e.type !== "user") return e;
       const supersededBy = correction.get(e.id);
@@ -212,15 +219,24 @@ export function readInbox(dir: string): Promise<{ entries: InboxEntry[]; orient:
         ...(supersededBy !== undefined && { supersededBy }),
       };
     });
-    const orient = {
-      intent: recordOrNone(dir, "intent"),
-      notes: recordOrNone(dir, "notes"),
-      open: openAsks(entries),
-      proposals: openProposals(dir),
-      last: entries.slice(-LAST).map(authored),
-    };
-    return { entries: inbox, orient };
+    return { entries: inbox, orient: orientOf(dir, entries) };
   });
+}
+
+/** The orient packet, read without moving the Lead's cursor: what the Front voice reads of where the Lead stands. */
+export function orient(dir: string): Orient {
+  return orientOf(dir, loadConversation(dir));
+}
+
+/** The orient packet of `entries`, the conversation as read. */
+function orientOf(dir: string, entries: Entry[]): Orient {
+  return {
+    intent: recordOrNone(dir, "intent"),
+    notes: recordOrNone(dir, "notes"),
+    open: openAsks(entries),
+    proposals: openProposals(dir),
+    last: entries.slice(-LAST).map(authored),
+  };
 }
 
 function loadCursor(dir: string): number {

@@ -127,12 +127,17 @@ export interface ShownAnswer {
   sending?: boolean;
 }
 
+/** Who wrote a message card: the user, the Lead, or the Front voice. */
+export type Speaker = "user" | "lead" | "front-voice";
+
 /** One card of the conversation, as the panel draws it. */
 export type Card =
   | {
-    kind: "message"; key: string; who: "user" | "lead"; text: string; at: string; spoken?: boolean; sending?: boolean; error?: string;
-    /** What was heard of a spoken message, when the Scribe's text differs from it. */
+    kind: "message"; key: string; who: Speaker; text: string; at: string; spoken?: boolean; sending?: boolean; error?: string;
+    /** What was heard of a spoken message, when the text handed to the Lead differs from it. */
     raw?: string;
+    /** What the user said that the Front voice answered itself. */
+    heard?: string;
     /** The id of the user's message this one corrects. */
     corrects?: number;
     /** Whether a later "No, I said …" corrects this message. */
@@ -175,7 +180,8 @@ export function cards({ entries, proposals, sends }: Conversation): Card[] {
         ...(e.supersedes !== undefined && { corrects: e.supersedes }),
         ...(superseded.has(e.id) && { superseded: true }),
       };
-      timeline.push({ kind: "message", key, who: e.type === "user" ? "user" : "lead", text: e.text, at: e.at, ...marks });
+      const heard = e.type === "front-voice" && e.heard !== undefined && { heard: e.heard };
+      timeline.push({ kind: "message", key, who: e.type === "user" || e.type === "front-voice" ? e.type : "lead", text: e.text, at: e.at, ...marks, ...heard });
       continue;
     }
     const given = answers.get(e.id);
@@ -259,7 +265,7 @@ export function freshItems<T extends { key: string }>(before: T[], now: T[]): T[
 /** The id of an open item's toast, which its line in the conversation brings forward. */
 export const toastId = (key: string) => `toast-${key}`;
 
-/** A message's marks when it was spoken: that it was, and what was heard when the Scribe changed it. */
+/** A message's marks when it was spoken: that it was, and what was heard when the Front voice changed it. */
 function spoken(text: string, raw: string | undefined) {
   if (raw === undefined) return {};
   return { spoken: true as const, ...(raw !== text && { raw }) };

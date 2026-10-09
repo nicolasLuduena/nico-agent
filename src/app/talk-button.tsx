@@ -170,7 +170,7 @@ class Player {
   private rate = 0;
   /** Whether the speech that began has ended (or none began), so once its chunks play out, the Lead is done. */
   private ended = true;
-  /** The entry whose speech began, until its first chunk is scheduled. */
+  /** The Lead's entry whose speech began, until its first chunk is scheduled. */
   private first: number | null = null;
 
   /** `done` once the Lead is done speaking; `played` when an entry's first audio is due to play, in epoch ms. */
@@ -194,12 +194,12 @@ class Player {
     return !this.ended || this.sources.size > 0;
   }
 
-  /** The speech of `entry` begins, its chunks at `rate`. */
-  begin(entry: number, rate: number) {
+  /** A speech begins, the Lead's `entry` or a line of the Front voice's, its chunks at `rate`. */
+  begin(entry: number | undefined, rate: number) {
     this.wake();
     this.rate = rate;
     this.ended = false;
-    this.first = entry;
+    this.first = entry ?? null;
   }
 
   /** Play a chunk of the speech right after the last one, or as soon as it can when none is playing. */
@@ -261,14 +261,13 @@ const EARLY_BATCHES = 12;
  * anywhere, `nico-agent voice talk`) to start a hands-free session, where a
  * pause or another tap sends, and the microphone keeps watching for the next
  * utterance, through the Lead's reply, until a tap while nobody talks ends it.
- * Interim transcripts show while the user speaks; the final one, the
- * Scribe's text and what was heard, is handed to `onFinal`, with the question
- * it answers when it was said right after the Lead asked. With `voice` on,
- * the Lead's replies are spoken as they come; a press, or the user talking
- * over it (the microphone watches while it speaks, once the page may use
- * it), stops it at once.
+ * Interim transcripts show while the user speaks; `serve`'s Front voice
+ * answers the final one or hands it to the Lead, and its lines and the
+ * Lead's show in the conversation. With `voice` on, both are spoken as they
+ * come; a press, or the user talking over them (the microphone watches
+ * while they speak, once the page may use it), stops them at once.
  */
-export function useTalk(onFinal: (text: string, raw: string, answers?: number) => void, voice: boolean) {
+export function useTalk(voice: boolean) {
   const [state, setState] = useState<Talk>({ mode: "idle" });
   const [interim, setInterim] = useState("");
   const [warning, setWarning] = useState<Warning | null>(null);
@@ -278,8 +277,6 @@ export function useTalk(onFinal: (text: string, raw: string, answers?: number) =
   const microphone = useRef<Microphone | null>(null);
   /** When the user stopped talking, by the pause that ended the utterance. */
   const pauseBegan = useRef(0);
-  const onFinalRef = useRef(onFinal);
-  onFinalRef.current = onFinal;
   const voiceRef = useRef(voice);
   voiceRef.current = voice;
   const socket = useRef<VoiceSocket | null>(null);
@@ -346,11 +343,9 @@ export function useTalk(onFinal: (text: string, raw: string, answers?: number) =
         if (latest) dispatch({ type: "failed" });
         return;
       }
-      // The last utterance's final is still sent while the next one records.
+      // The Front voice could not answer it: sent to the Lead as heard, saying why.
+      if (message.type === "warning") return setWarning(message);
       const text = message.text.trim();
-      if (text) onFinalRef.current(text, message.raw.trim(), message.answers);
-      // The Scribe could not clean it: sent as heard, saying why.
-      if (message.warning) setWarning(message.warning);
       if (!latest) return;
       setInterim("");
       if (!text) setNote("Heard nothing; try again.");

@@ -287,7 +287,8 @@ The one quiet place for warnings, under the Lead panel's bar: serve unreachable,
 ### Conversation
 - The conversation runs the Lead panel's width: each entry up to 62rem, the Lead's messages on the left and the user's on the right edge, so a big window is filled, not a centred strip.
 - The Lead's messages sit on the surface, unboxed, left, at 17px, under **Lead** in link iris; the user's are a bubble in the accent's soft tone on the right at 16px, at most 48rem or 80% of the panel. Each leads with its byline: who (700), the time, then a muted note ("sending…", "spoke", "corrects", "corrected below").
-- A spoken message shows the Scribe's text beside what was heard, under a "Heard" label, side by side while two 11rem columns fit.
+- A spoken message shows the text the Front voice handed to the Lead beside what was heard, under a "Heard" label, side by side while two 11rem columns fit.
+- The Front voice's lines sit left like the Lead's, unboxed, at 15px in muted ink under **Front voice**, so the Lead's own words stay the loudest; one it answered without the Lead leads with what the user said, in muted 13px after a bold "You said".
 - A superseded message keeps its card, its text muted and struck through.
 - Empty, the conversation centres **Talk to the Lead** in display type over one line of help.
 - The conversation follows new entries only while the user is at its end; reading back, it stays put. A message the user writes or speaks brings it to its end; answering a question where it is does not.
