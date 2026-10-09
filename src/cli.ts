@@ -249,7 +249,7 @@ const commands: Command[] = [
     summary: "Search the whole conversation with the Lead for text, optionally within a time range (its MCP `recall` tool)",
     flags: {
       "--since": { value: true, description: "only entries from this date or time on, e.g. 2026-09-01" },
-      "--until": { value: true, description: "only entries up to this date or time, e.g. 2026-09-30T18:00:00Z" },
+      "--until": { value: true, description: "only entries up to this date (through its end) or time, e.g. 2026-09-30" },
     },
     positionals: ["query..."],
     examples: ["nico-agent lead recall billing", "nico-agent lead recall \"Stripe contract\" --since 2026-09-01 --json"],
@@ -573,15 +573,16 @@ async function leadRecallCommand(args: Args, ctx: RunContext): Promise<Output> {
   if (!query.trim()) throw new CliError("<query> is required", [`Usage: \`${RECALL_USAGE}\``], 2);
   const since = timeFlag(args, "--since");
   const until = timeFlag(args, "--until");
-  const entries = recall(loadConversation(ctx.configDir), query, { ...(since && { since }), ...(until && { until }) });
+  const entries = recall(loadConversation(ctx.configDir), query, { since, until });
   const help = entries.length ? [LOG_HELP] : ["Try another word, or a wider time range", LOG_HELP];
   return { data: { recall: `${plural(entries.length, "entry matches", "entries match")} ${JSON.stringify(query)}`, entries }, help };
 }
 
+/** The time `flag` names; a bare date `--until` runs to the end of that day (UTC). */
 function timeFlag(args: Args, flag: "--since" | "--until"): Date | undefined {
   const value = args.flags[flag];
   if (typeof value !== "string") return undefined;
-  const time = new Date(value);
+  const time = new Date(flag === "--until" && /^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T23:59:59.999Z` : value);
   if (Number.isNaN(time.getTime())) {
     throw new CliError(`${flag} must be a date or time such as 2026-09-01 or 2026-09-01T12:00:00Z (got \`${value}\`)`, [`Usage: \`${RECALL_USAGE}\``], 2);
   }

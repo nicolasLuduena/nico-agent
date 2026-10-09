@@ -24,7 +24,7 @@ export type InboxEntry = Entry | (Answer & { asked: string });
 /**
  * What the Lead needs to know where it stands after a restart or a compacted
  * context, handed over with every Inbox: the Intent and Notes, its open
- * questions, and the last exchanges. Memory is nico-agent's, not the Harness's.
+ * questions, and the last exchanges. nico-agent keeps them, not the Harness.
  */
 export interface Orient {
   /** The Intent's Markdown, or a line saying there is none yet. */
@@ -96,7 +96,7 @@ function openAsks(entries: Entry[]): Entry[] {
  * The entries whose text, or a question's choices, contain `query` ignoring
  * case, written from `since` until `until` when given, oldest first.
  */
-export function recall(entries: Entry[], query: string, range: { since?: Date; until?: Date } = {}): Authored[] {
+export function recall(entries: Entry[], query: string, range: { since?: Date | undefined; until?: Date | undefined } = {}): Authored[] {
   const needle = query.toLowerCase();
   return entries
     .filter((e) => [e.text, ...(e.type === "ask" ? (e.choices ?? []) : [])].some((t) => t.toLowerCase().includes(needle)))

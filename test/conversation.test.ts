@@ -202,7 +202,9 @@ describe("the conversation with the Lead", () => {
 
     const range = (await tool(web, "recall", { query: "Billing", since: "2026-09-01", until: "2026-09-20T00:00:00Z" })).content;
     expect(range.entries.map((e: { id: number }) => e.id)).toEqual([2]);
-    expect((await cli("lead", "recall", "billing", "--until", "2026-08-02", "--json")).json().entries.map((e: { id: number }) => e.id)).toEqual([1]);
+    // A bare date runs through the end of that day.
+    expect((await cli("lead", "recall", "billing", "--until", "2026-08-01", "--json")).json().entries.map((e: { id: number }) => e.id)).toEqual([1]);
+    expect((await cli("lead", "recall", "billing", "--until", "2026-08-01T08:00:00Z", "--json")).json().entries).toEqual([]);
 
     const none = await tool(web, "recall", { query: "kubernetes" });
     expect(none.isError).toBe(false);

@@ -30,7 +30,7 @@ const TOOLS = [
       properties: {
         query: { type: "string", description: "Text to find" },
         since: { type: "string", description: "Only entries from this date or time on, e.g. 2026-09-01" },
-        until: { type: "string", description: "Only entries up to this date or time, e.g. 2026-09-30T18:00:00Z" },
+        until: { type: "string", description: "Only entries up to this date (through its end) or time, e.g. 2026-09-30" },
       },
       required: ["query"],
       additionalProperties: false,
