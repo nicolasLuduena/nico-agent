@@ -109,7 +109,19 @@ describe("the Lead panel's actions", () => {
     // The Scribe may drop the words; what was heard still says it.
     expect(JSON.parse((await post("/api/say", ["--raw", "no i said search", "--", "Search."])).body)).toMatchObject({ said: 4, supersedes: 1 });
     expect(JSON.parse((await post("/api/say", ["--", "no — I said search first"])).body)).toMatchObject({ said: 5, supersedes: 4 });
+    expect(JSON.parse((await post("/api/say", ["--", "No, no, I said billing"])).body)).toMatchObject({ said: 6, supersedes: 5 });
     expect(JSON.parse((await post("/api/say", ["--", "Not now; I said that before"])).body)).not.toHaveProperty("supersedes");
+  });
+
+  test("a message corrected before the Lead read it comes in the same Inbox marked with the correction's id", async () => {
+    const { cli, post } = withLead();
+    await post("/api/say", ["--", "Dispatch acme/api#7"]);
+    await post("/api/say", ["--", "No, I said acme/api#8"]);
+
+    expect((await cli("lead", "inbox", "--json")).json().entries).toMatchObject([
+      { id: 1, text: "Dispatch acme/api#7", supersededBy: 2 },
+      { id: 2, supersedes: 1, superseded: "Dispatch acme/api#7" },
+    ]);
   });
 
   test("/api/proposals/approve runs the action and answers its outcome; decline takes a reason", async () => {

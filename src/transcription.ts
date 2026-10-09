@@ -65,19 +65,23 @@ export function transcriptionSession(ctx: TranscriptionContext) {
     const send = (message: Transcript) => peer.send(JSON.stringify(message));
     /** The utterance streaming now, if any; a newer one makes an older one's interims stale. */
     let current: Utterance | null = null;
-    const fail = (utterance: number, error: string, help: string) => send({ type: "error", utterance, error, help: [`${help}; ${TYPING}`] });
+    const failure = (utterance: number, error: string, help: string): Transcript => ({ type: "error", utterance, error, help: [`${help}; ${TYPING}`] });
+    const fail = (utterance: number, error: string, help: string) => send(failure(utterance, error, help));
+    /** The finals told so far: each waits on the one before, so the app posts them in the order they were said. */
+    let told = Promise.resolve();
 
-    const ask = async (utterance: Utterance, kind: "interim" | "final") => {
+    /** What to tell the app of `utterance` now, if anything. */
+    const ask = async (utterance: Utterance, kind: "interim" | "final"): Promise<Transcript | null> => {
       const prompt = kind === "final" ? await utterance.prompt : known.hint;
       const answer = await transcribe(ctx.world, utterance.endpoint, wav(concat(utterance.audio), SAMPLE_RATE), prompt);
       // An interim that comes back after the end, or after another utterance began, is dropped.
-      if (kind === "interim" && current !== utterance) return;
+      if (kind === "interim" && current !== utterance) return null;
       if ("error" in answer) {
         if (current === utterance) current = null;
-        return fail(utterance.number, answer.error, answer.help);
+        return failure(utterance.number, answer.error, answer.help);
       }
-      if (kind === "interim") return send({ type: kind, utterance: utterance.number, text: answer.returned });
-      send({ type: kind, utterance: utterance.number, ...await clean(ctx, utterance, answer.returned, prompt) });
+      if (kind === "interim") return { type: kind, utterance: utterance.number, text: answer.returned };
+      return { type: kind, utterance: utterance.number, ...await clean(ctx, utterance, answer.returned, prompt) };
     };
 
     const start = (number: number) => {
@@ -102,7 +106,7 @@ export function transcriptionSession(ctx: TranscriptionContext) {
       if (utterance.asking || utterance.bytes - utterance.heardUpTo < INTERIM_EVERY) return;
       utterance.asking = true;
       utterance.heardUpTo = utterance.bytes;
-      void ask(utterance, "interim").catch(report(utterance)).finally(() => { utterance.asking = false; });
+      void ask(utterance, "interim").then((message) => { if (message) send(message); }).catch(report(utterance)).finally(() => { utterance.asking = false; });
     };
 
     const report = (utterance: Utterance) => (e: unknown) => fail(utterance.number, e instanceof Error ? e.message : String(e), "Try again");
@@ -114,7 +118,10 @@ export function transcriptionSession(ctx: TranscriptionContext) {
         if (command?.type === "start") return start(command.utterance);
         const utterance = current;
         current = null;
-        if (command?.type === "end" && utterance) void ask(utterance, "final").catch(report(utterance));
+        if (command?.type !== "end" || !utterance) return;
+        // Transcribed and cleaned at once, but told after the finals before it.
+        const final = ask(utterance, "final");
+        told = told.then(() => final).then((message) => { if (message) send(message); }).catch(report(utterance));
       },
       close() {
         current = null;
@@ -140,6 +147,7 @@ async function clean(ctx: TranscriptionContext, utterance: Utterance, raw: strin
   return { text: answer.returned, raw };
 }
 
+/** How many words `text` has. */
 function words(text: string) {
   return text.split(/\s+/).filter(Boolean).length;
 }

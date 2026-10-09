@@ -143,12 +143,12 @@ export function cards({ entries, proposals, sends }: Conversation): Card[] {
     proposalsUntil(e.at);
     const key = `entry-${e.id}`;
     if (e.type !== "ask") {
-      const user = e.type === "user" && {
+      const marks = e.type === "user" && {
         ...spoken(e.text, e.raw),
         ...(e.supersedes !== undefined && { corrects: e.supersedes }),
         ...(superseded.has(e.id) && { superseded: true }),
       };
-      timeline.push({ kind: "message", key, who: e.who, text: e.text, at: e.at, ...user });
+      timeline.push({ kind: "message", key, who: e.who, text: e.text, at: e.at, ...marks });
       continue;
     }
     const given = answers.get(e.id);

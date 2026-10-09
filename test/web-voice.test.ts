@@ -133,6 +133,28 @@ describe("/api/voice", () => {
     expect(answers).toContainEqual({ type: "final", utterance: 2, text: "heard 0.25s", raw: "heard 0.25s" });
   });
 
+  test("finals arrive in the order spoken, even when a later utterance is cleaned first", async () => {
+    const ctx = await withVoice();
+    transcriber(ctx.world);
+    // The Scribe takes longer over the first, longer utterance.
+    ctx.world.endpoint(CHAT, async (request) => {
+      const { messages } = await request.json() as { messages: { content: string }[] };
+      const heard = messages.at(-1)!.content.replace(/^Transcript: /, "");
+      if (heard === "heard 0.5s") await Bun.sleep(80);
+      return Response.json({ choices: [{ message: { role: "assistant", content: heard } }] });
+    });
+    const talk = await open(ctx);
+
+    talk.json({ type: "start", utterance: 1 });
+    talk.send(pcm(0.5));
+    talk.json({ type: "end" });
+    talk.json({ type: "start", utterance: 2 });
+    talk.send(pcm(0.25));
+    talk.json({ type: "end" });
+
+    expect([await talk.next(), await talk.next()]).toMatchObject([{ utterance: 1 }, { utterance: 2 }]);
+  });
+
   test("transcription down: a warning with what to do, and typing still reaches the Lead", async () => {
     const ctx = await withVoice();
     const talk = await open(ctx);

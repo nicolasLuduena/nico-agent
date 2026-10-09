@@ -171,7 +171,7 @@ export function scribe(world: World, endpoint: VoiceEndpoint, raw: string, conte
  * purpose; one with an issue in it taught the model to turn words into
  * issues (see test/fixtures/scribe).
  */
-const SCRIBE_EXAMPLES = [
+const SCRIBE_EXAMPLES: [heard: string, cleaned: string][] = [
   ["um so what's uh what's the status", "What's the status?"],
   ["no i said the other one", "No, I said the other one."],
   ["um approve it. yeah go ahead", "Approve it. Yeah, go ahead."],
@@ -201,7 +201,7 @@ function scribeRequest(endpoint: VoiceEndpoint, headers: Headers, raw: string, {
   const transcript = (text: string) => ({ role: "user", content: `Transcript: ${text}` });
   const messages = [
     { role: "system", content: system },
-    ...SCRIBE_EXAMPLES.flatMap(([heard, cleaned]) => [transcript(heard!), { role: "assistant", content: cleaned }]),
+    ...SCRIBE_EXAMPLES.flatMap(([heard, cleaned]) => [transcript(heard), { role: "assistant", content: cleaned }]),
     transcript(raw),
   ];
   return new Request(`${base(endpoint)}/chat/completions`, { method: "POST", headers, body: JSON.stringify({ model: endpoint.model, temperature: 0, messages }) });

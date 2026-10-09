@@ -105,10 +105,11 @@ bun scripts/scribe-fixtures.ts           # transcribe and clean each WAV again
 bun scripts/scribe-fixtures.ts --speak   # voice them again first
 ```
 
-With `Systran/faster-whisper-small.en` and `qwen2.5:3b` on the CPU, the
-Scribe kept the meaning of all twenty, in 2 to 3s each with transcription.
-It fixed issues said aloud ("acme API 15" to `acme/api#15`) more often than
-not, but left some ("ACME API 7") as heard.
+With `Systran/faster-whisper-small.en` and `qwen2.5:3b` on the CPU, in 2
+to 3s each with transcription, the Scribe answered or invented nothing and
+kept every sentence. It fixed issues said aloud ("acme API 15" to
+`acme/api#15`) more often than not, but left some as heard ("ACME API 7"),
+spelled one wrong ("acme/web3"), and kept an "Um" once.
 
 ### On the phone
 

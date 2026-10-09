@@ -30,8 +30,12 @@ export type Entry = { id: number; at: string } & (
 
 type Body = Entry extends infer E ? (E extends Entry ? Omit<E, "id" | "at"> : never) : never;
 
-/** An Inbox entry; an answer carries the text of the question it answers, a correction the text it supersedes. */
-export type InboxEntry = Entry | (Answer & { asked: string }) | (User & { superseded: string });
+/**
+ * An Inbox entry; an answer carries the text of the question it answers, a
+ * correction the text it supersedes, and a message corrected since the id of
+ * the correction.
+ */
+export type InboxEntry = Entry | (Answer & { asked: string }) | (User & { superseded?: string; supersededBy?: number });
 
 /**
  * What the Lead needs to know where it stands after a restart or a compacted
@@ -132,7 +136,7 @@ type Answer = Extract<Entry, { type: "answer" }>;
 type User = Extract<Entry, { type: "user" }>;
 
 /** How the user takes back their last message, typed or spoken: "No, I said …". */
-const CORRECTION = /^\s*no\b[\s,.;:!—–-]*i said\b/i;
+const CORRECTION = /^\s*(?:no\b[\s,.;:!—–-]*)+i said\b/i;
 
 /**
  * Append the user's message, as typed or, with `raw`, as spoken. One that
@@ -175,14 +179,20 @@ export function readInbox(dir: string): Promise<{ entries: InboxEntry[]; orient:
     const cursor = loadCursor(dir);
     const unread = entries.filter((e) => e.id > cursor);
     if (unread.length) writeJsonAtomic(join(dir, CURSOR_FILE), { cursor: unread.at(-1)!.id });
-    const text = (id: number, type: Entry["type"]) => {
+    const textOf = (id: number, type: Entry["type"]) => {
       const entry = entries.find((e) => e.id === id);
       return entry?.type === type ? entry.text : "";
     };
+    const correction = new Map(entries.flatMap((e) => (e.type === "user" && e.supersedes !== undefined ? [[e.supersedes, e.id] as const] : [])));
     const inbox = unread.filter((e) => author(e) === "user").map((e): InboxEntry => {
-      if (e.type === "answer") return { ...e, asked: text(e.question, "ask") };
-      if (e.type === "user" && e.supersedes !== undefined) return { ...e, superseded: text(e.supersedes, "user") };
-      return e;
+      if (e.type === "answer") return { ...e, asked: textOf(e.question, "ask") };
+      if (e.type !== "user") return e;
+      const supersededBy = correction.get(e.id);
+      return {
+        ...e,
+        ...(e.supersedes !== undefined && { superseded: textOf(e.supersedes, "user") }),
+        ...(supersededBy !== undefined && { supersededBy }),
+      };
     });
     const orient = {
       intent: recordOrNone(dir, "intent"),
