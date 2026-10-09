@@ -52,15 +52,10 @@ export function isOrder(name: string): name is Order {
   return Object.hasOwn(ORDERS, name);
 }
 
-/** Every Standing order, the config's over the defaults. */
+/** Every Standing order, the config's over the defaults; read from a fresh `loadConfig`, never cached. */
 export function standingOrders(config: Config): Orders {
   const defaults = Object.fromEntries(Object.entries(ORDERS).map(([name, order]) => [name, order.default])) as Orders;
   return { ...defaults, ...config.orders };
-}
-
-/** The Standing orders as config holds them now; never cached, so a change applies to the next read. */
-export function loadOrders(dir: string): Orders {
-  return standingOrders(loadConfig(dir));
 }
 
 /** The Harness, model and Effort of every Dispatch `advance` starts. */

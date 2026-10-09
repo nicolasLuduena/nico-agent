@@ -38,9 +38,11 @@ the ones you set; the rest keep their default:
 ```
 
 Orders are read from config every time they are used, never cached. A change,
-from `orders set` or by hand, applies to the Lead's next action without
+from `orders set` or by hand, applies to the next read without
 restarting `nico-agent serve`.
 
-nico-agent enforces the orders that pass through its own tools. `write` is
-the exception: the Lead writes to a Source with its own shell, so that order
-is a rule of the Lead's skill rather than something nico-agent can check.
+The Lead's tools, which check the order they fall under, are still to come;
+for now the orders are only stored and shown. Once the tools exist,
+nico-agent enforces every order that passes through them. `write` is the
+exception: the Lead writes to a Source with its own shell, so that order is a
+rule of the Lead's skill rather than something nico-agent can check.

@@ -2,7 +2,7 @@ import { resolve } from "node:path";
 import { advance } from "./advance";
 import { answer, loadAsking } from "./answer";
 import { loadBoard } from "./board";
-import { ConfigError, ORDERS, ORDERS_HELP, findRepo, isOrder, loadConfig, saveConfig, standingOrders } from "./config";
+import { ConfigError, ORDERS, type Order, ORDERS_HELP, findRepo, isOrder, loadConfig, saveConfig, standingOrders } from "./config";
 import { StepFailed, baseBranch, closeDispatch, dispatch, eachIssue, resolveIssue, review } from "./dispatch";
 import { DispatchError } from "./dispatch-error";
 import { PANE_ARGS } from "./opencode";
@@ -621,7 +621,7 @@ async function ordersList(ctx: RunContext, json: boolean): Promise<Output> {
   const orders = standingOrders(loadConfig(ctx.configDir));
   const help = [`Run \`${ORDERS_SET_USAGE}\` to change one`];
   if (json) return { data: { orders }, help };
-  const rows = Object.entries(ORDERS).map(([order, { lets }]) => ({ order, state: onOff(orders[order as keyof typeof orders]), lets }));
+  const rows = (Object.keys(ORDERS) as Order[]).map((order) => ({ order, state: orders[order] ? "on" : "off", lets: ORDERS[order].lets }));
   return { data: { orders: rows }, help };
 }
 
@@ -638,10 +638,6 @@ async function ordersSet(args: Args, ctx: RunContext): Promise<Output> {
   if (standingOrders(config)[order] === on) return { data: { order: `${order} already ${state} (no-op)` }, help };
   saveConfig(ctx.configDir, { ...config, orders: { ...config.orders, [order]: on } });
   return { data: { order: `${order} ${state}` }, help };
-}
-
-function onOff(on: boolean) {
-  return on ? "on" : "off";
 }
 
 const HARNESS_LIST_HELP = "Run `nico-agent harness list` to see the models and Effort levels";
