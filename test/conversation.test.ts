@@ -56,6 +56,20 @@ describe("the conversation with the Lead", () => {
     expect((await tool(web, "inbox")).content.entries.map((e: { id: number }) => e.id)).toEqual([1]);
   });
 
+  test("a new `ask` notifies the desktop once, with the Lead's words as the body; the next one only itself", async () => {
+    const { cli, web, world } = setup();
+    await tool(web, "ask", { question: "Close acme/api#7?", choices: ["yes", "no"] });
+    expect(world.notifications).toEqual([{ title: "The Lead asks", body: "Close acme/api#7? (yes / no)\nRun `nico-agent say --answer 1 <answer>` to answer" }]);
+    await tool(web, "ask", { question: "Which Spec next?" });
+    await cli("say", "--answer", "1", "yes");
+    await tool(web, "ask", { question: "Stack acme/api#9 on acme/api#8?" });
+    expect(world.notifications.map((n) => n.body)).toEqual([
+      "Close acme/api#7? (yes / no)\nRun `nico-agent say --answer 1 <answer>` to answer",
+      "Which Spec next?\nRun `nico-agent say --answer 2 <answer>` to answer",
+      "Stack acme/api#9 on acme/api#8?\nRun `nico-agent say --answer 4 <answer>` to answer",
+    ]);
+  });
+
   test("`lead log` is read-only: it leaves the Lead's Inbox unread", async () => {
     const { cli, web } = setup();
     expect((await cli("lead", "log", "--json")).json()).toMatchObject({ log: "0 entries", entries: [] });

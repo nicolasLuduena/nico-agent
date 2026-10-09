@@ -140,7 +140,8 @@ export function cards({ entries, proposals, sends }: Conversation): Card[] {
     }
   };
   for (const e of entries) {
-    if (e.type === "answer" || e.type === "decision") continue;
+    // Events are the Lead's to read in its Inbox; the user sees what it makes of them.
+    if (e.type === "answer" || e.type === "decision" || e.type === "event") continue;
     proposalsUntil(e.at);
     const key = `entry-${e.id}`;
     if (e.type !== "ask") {
@@ -149,7 +150,7 @@ export function cards({ entries, proposals, sends }: Conversation): Card[] {
         ...(e.supersedes !== undefined && { corrects: e.supersedes }),
         ...(superseded.has(e.id) && { superseded: true }),
       };
-      timeline.push({ kind: "message", key, who: e.who, text: e.text, at: e.at, ...marks });
+      timeline.push({ kind: "message", key, who: e.type === "user" ? "user" : "lead", text: e.text, at: e.at, ...marks });
       continue;
     }
     const given = answers.get(e.id);

@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import leadRetro from "./lead-retro.md" with { type: "text" };
 import leadShaping from "./lead-shaping.md" with { type: "text" };
 import leadSkill from "./lead-skill.md" with { type: "text" };
 import { LEAD_DEFAULTS, type LaunchDefaults, fillTemplate, findRepo, harnessConfigs, loadConfig, prompts, writeJson } from "./config";
@@ -19,6 +20,9 @@ export type LeadStep = (typeof LEAD_STEPS)[number];
 
 /** The skills the Lead shapes work with, linked into its home from the nico-agent checkout. */
 const SHAPING_SKILLS = ["grilling", "to-spec", "to-tickets", "triage", "retro"];
+
+/** The lead skill's pages, by the name each is written under. */
+const LEAD_PAGES = { "SKILL.md": leadSkill, "SHAPING.md": leadShaping, "RETRO.md": leadRetro };
 
 /** The Repo whose clone the shaping skills come from. */
 export const NICO_AGENT_SLUG = "nicolasLuduena/nico-agent";
@@ -253,7 +257,7 @@ async function runLead(world: World, configDir: string, harness: Harness, record
 const MCP_CONFIG = "mcp.json";
 
 /**
- * Write the Lead's home: its skill and the skill's shaping page where the
+ * Write the Lead's home: its skill and the skill's shaping and retro pages where the
  * Harness finds a project's skills, the MCP config naming `serve`'s server,
  * and links to the shaping skills of the nico-agent checkout when it is a
  * configured Repo. The skills an earlier start wrote for another Harness are
@@ -267,8 +271,7 @@ function writeHome(configDir: string, harness: Harness, mcpUrl: string): string[
     if (other !== skillsDir) rmSync(join(home, other), { recursive: true, force: true });
   }
   mkdirSync(join(skills, "lead"), { recursive: true });
-  writeFileSync(join(skills, "lead", "SKILL.md"), leadSkill);
-  writeFileSync(join(skills, "lead", "SHAPING.md"), leadShaping);
+  for (const [name, page] of Object.entries(LEAD_PAGES)) writeFileSync(join(skills, "lead", name), page);
   writeJson(home, MCP_CONFIG, { mcpServers: { [MCP_SERVER]: { type: "http", url: mcpUrl } } });
   const repo = findRepo(loadConfig(configDir), NICO_AGENT_SLUG);
   if (!repo) {

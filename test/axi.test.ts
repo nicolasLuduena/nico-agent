@@ -26,14 +26,14 @@ describe("AXI conventions", () => {
     const { cli } = setup();
     const { stdout, exitCode } = await cli("dispatch-all");
     expect(exitCode).toBe(2);
-    expect(stdout).toStartWith("error: unknown command `dispatch-all`\nhelp[40]:\n  Run `nico-agent [board]` to show Ready issues");
+    expect(stdout).toStartWith("error: unknown command `dispatch-all`\nhelp[41]:\n  Run `nico-agent [board]` to show Ready issues");
   });
 
   test("the retired Scheduler entry points are unknown: `mcp`, `--skill` and `advance --start` (ADR-0009)", async () => {
     const { cli, world } = setup();
     const mcp = await cli("mcp");
     expect(mcp.exitCode).toBe(2);
-    expect(mcp.stdout).toStartWith("error: unknown command `mcp`\nhelp[40]:\n  Run `nico-agent [board]` to show Ready issues");
+    expect(mcp.stdout).toStartWith("error: unknown command `mcp`\nhelp[41]:\n  Run `nico-agent [board]` to show Ready issues");
     expect(await cli("--skill")).toMatchObject({
       stdout: ["error: unknown flag --skill for `board`", "help[1]:", "  Valid flags for `board`: --json, --help", ""].join("\n"),
       exitCode: 2,
@@ -109,7 +109,7 @@ describe("AXI conventions", () => {
       [
         "bin: ~/.local/bin/nico-agent",
         "description: Dispatch coding agents onto ready-for-agent issues",
-        "commands[40]{usage,description}:",
+        "commands[41]{usage,description}:",
         '  "nico-agent [board]",Show Ready issues across all Repos (the default view)',
         "  nico-agent repo add <owner/name> --path <clone>,Add a Repo after checking the path is a clone of it",
         "  nico-agent repo rm <owner/name>,Remove a Repo (its clone is left untouched)",
@@ -122,6 +122,7 @@ describe("AXI conventions", () => {
         '  nico-agent review <issue>... --harness <harness> --model <model> --effort <effort>,"Start a Reviewer on each In-flight issue\'s linked PR, in its workspace (resumes a failed one)"',
         '  "nico-agent close <issue>... [--confirm]","Remove each Dispatch\'s workspace and forget it, keeping its branch"',
         `  nico-agent answer <issue> <text>,"Submit text, as typed, to an In-flight issue's Implementer while it waits on the user"`,
+        `  "nico-agent peek [<issue>] [--reviewer]","Show what an In-flight issue's Implementer (or Reviewer) has on screen right now; with no issue, the Lead's own"`,
         "  nico-agent orders,\"Show each Standing order, what it lets the Lead do unasked, and whether it is on\"",
         "  nico-agent orders set <order> on|off,Turn one Standing order on or off",
         "  nico-agent intent,\"Show the Intent: what the user is working toward and why, which the user and the Lead both edit\"",
@@ -137,7 +138,7 @@ describe("AXI conventions", () => {
         '  "nico-agent lead ask <question> [<choice>...]","Ask the user a question for the Lead, with optional choices; it stays open until answered (its MCP `ask` tool)"',
         '  nico-agent lead log,"Show the conversation with the Lead, oldest first, with who said what and when (read-only)"',
         '  "nico-agent lead recall <query> [--since <time>] [--until <time>]","Search the whole conversation with the Lead for text, optionally within a time range (its MCP `recall` tool)"',
-        '  "nico-agent lead propose --reason <why> (-- <command>... | --write <repo> [--file <path> | --text <markdown>])","Propose an action, or a Spec to write to a Repo\'s Source, for the user to approve or decline, as the Lead (its MCP `propose` tool)"',
+        '  "nico-agent lead propose --reason <why> (-- <command>... | --write <repo> [--file <path> | --text <markdown>])","Propose an action, or Markdown to write to a Repo\'s Source, for the user to approve or decline, as the Lead (its MCP `propose` tool)"',
         "  nico-agent harness list,List the Harnesses with their models and Effort levels (discovers uncached ones)",
         "  nico-agent harness refresh,Discover the Harnesses' models and Effort levels again and replace the cache",
         "  nico-agent show <issue>,Print the full Dispatch record of an In-flight issue",

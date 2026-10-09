@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import type { Address, IssueDescription, LinearIssue, GitHubIssue, GitHubSubIssue, PullRequest, Pages, RequestHandler, Sockets, World } from "../src/world";
+import type { Address, IssueDescription, LinearIssue, GitHubIssue, GitHubSubIssue, PullRequest, PullRequestActivity, Pages, RequestHandler, Sockets, World } from "../src/world";
 import { WorldError } from "../src/world";
 
 export class FakeWorld implements World {
@@ -95,6 +95,19 @@ export class FakeWorld implements World {
   async githubPullRequest(slug: string, number: number) {
     this.call(`github pr ${slug}#${number}`);
     return this.prs.get(`${slug}#${number}`) ?? this.knownPrs().find((pr) => pr.repo === slug && pr.number === number) ?? null;
+  }
+
+  /** What `githubPullRequestActivity` reports of each PR, by `slug#N`; an open draft with nothing on it when unset. */
+  activity = new Map<string, PullRequestActivity>();
+
+  async githubPullRequestActivity(slug: string, number: number, since?: Date): Promise<PullRequestActivity> {
+    this.call(`github pr activity ${slug}#${number}${since ? ` since ${since.toISOString()}` : ""}`);
+    const activity = this.activity.get(`${slug}#${number}`) ?? { state: "open", draft: true, comments: [], checks: [] };
+    return {
+      ...activity,
+      comments: activity.comments.filter((c) => !since || new Date(c.at) >= since),
+      checks: activity.checks.map((c) => ({ ...c })),
+    };
   }
 
   /** Every PR added or linked to an issue, without repeats. */

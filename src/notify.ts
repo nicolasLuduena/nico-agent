@@ -18,6 +18,9 @@ export interface Notice {
 /** The scope of open Proposals' Notices: only `propose` observes it. */
 export const PROPOSALS_SCOPE = "proposals";
 
+/** The scope of open questions' Notices: only `lead ask` observes it. */
+export const ASKS_SCOPE = "asks";
+
 /** The conditions already notified, so a timer running `advance` doesn't repeat them. */
 const FILE = "notified.json";
 
