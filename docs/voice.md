@@ -61,9 +61,10 @@ the Lead as your message at once, with the raw transcript kept on the entry
 (`nico-agent say --raw <raw> -- <text>`). The card shows the two side by side.
 
 - **Hold** the button (or Space or Enter on it) to talk; release to send.
-- **Tap** it to talk hands-free: a pause of about a second after you spoke
-  sends it, a second tap sends at once, and six seconds of silence gives up.
-  An utterance stops at one minute either way.
+- **Tap** it to start a hands-free session (below): a pause of about a
+  second after you spoke sends it, a second tap sends at once, and six
+  seconds of silence drops it unsent. An utterance stops at one minute
+  either way.
 
 Every request carries a vocabulary hint as the transcription `prompt`, built
 for each utterance: the terms each Repo's `GLOSSARY.md` defines (its
@@ -74,6 +75,78 @@ last hint built rather than wait for the Board.
 
 A failure (no `voice.transcribe`, the service down or answering an error, the
 microphone blocked) shows as a warning above the composer; typing still works.
+
+### Hands-free
+
+A tap on **Talk**, or the key anywhere (below), starts a hands-free
+session: the microphone stays open, between utterances as well, until you
+end it. A walkthrough, with Voice on:
+
+1. Press the key (or tap **Talk**). The strip above the composer reads
+   **Listening**, with what it hears as you say "What is running?".
+2. You stop talking; a second later it is sent. **Thinking**:
+   "Transcribing…", then, once the Lead has your message, "The Lead is
+   working on it."
+3. The Lead says "Checking the Board." within a few seconds (its skill
+   acknowledges a question that needs tools before it calls them), then
+   its answer. **Speaking**, with **Stop**.
+4. You answer back, without touching anything: the microphone was
+   listening the whole time. Talking over the Lead stops it (barge-in), as
+   does talking while your last message is still being transcribed: either
+   starts the next utterance from its first words.
+5. When the Lead is done and nobody talks, the strip reads **Listening**:
+   "Talk when you are ready.", with **End**; the talk button reads **End**
+   too.
+
+End the session with **End**, a tap on the talk button or the key, while
+nobody talks; a tap or the key while you talk sends what you said, and while
+the Lead speaks it stops the Lead (the talk button reads **Stop**); either
+way the session goes on. A failure ends it too: the microphone, `serve` or
+the transcription service, shown as a warning.
+
+The microphone watches for any fifth of a second of unbroken sound over the
+room all through a session, so a cough or a door may start an utterance;
+what transcription hears in it is sent, and "Heard nothing; try again." shows
+when it hears nothing. Headphones and a quiet room keep a session clean. Holding the
+button to talk is never a session: it sends one utterance and stops, as
+does talking over the Lead outside a session.
+
+Without Voice on, a session works the same, and the Lead's replies only
+show.
+
+### A key anywhere
+
+`nico-agent voice talk` asks `serve` (`--port`, 42069 by default) to press
+the talk button of the app for you: `serve` sends a `listen` event on the
+app's SSE stream to the page that connected to it last, and that page acts on it as a tap,
+so the first press starts a hands-free session, a press while you talk sends
+it, and a press while nobody talks ends the session. Bound to a key, it
+starts talking to the Lead from any window.
+
+With no page open it is refused (exit 1) with what to open; with `serve`
+down, with how to start it.
+
+The page needs the microphone allowed and, since it was loaded, one click or
+key on it: browsers start audio only after a gesture on the page. Without
+one, the page shows a warning asking for a click and stops listening.
+
+Opening the app on the phone after the desktop makes the phone the page
+that connected last, and so does a page reconnecting (after `serve`
+restarts, or the phone waking); reload the desktop tab to bring the key back
+to it. A page closed a moment ago may still count as open, so the key can
+go unheard once.
+
+On Hyprland, in `~/.config/hypr/hyprland.conf` (on Omarchy,
+`~/.config/hypr/bindings.conf`):
+
+```ini
+# Talk to the Lead from anywhere; a notification says why when nothing listens.
+bind = SUPER ALT, T, exec, nico-agent voice talk || notify-send "nico-agent" "No app is open to listen"
+```
+
+Hyprland runs it through `sh` with its own `PATH`; if `nico-agent` is not
+found, write its full path (`~/.local/bin/nico-agent`). Reload with
+`hyprctl reload`.
 
 ### The Scribe
 
@@ -153,16 +226,32 @@ spelled one wrong ("acme/web3"), and kept an "Um" once.
 
 ### On the phone
 
-Safari only allows the microphone over HTTPS. Publish `serve` to your tailnet
-with `tailscale serve`, which gives it a valid certificate:
+Safari only allows the microphone over HTTPS. `serve` listens on 127.0.0.1
+over plain HTTP; `tailscale serve` publishes it to your tailnet over HTTPS,
+with a valid certificate for the machine's tailnet name:
 
 ```bash
-tailscale serve --bg 42069
+tailscale serve --bg 42069     # https://<machine>.<tailnet>.ts.net/ → http://127.0.0.1:42069
+tailscale serve status         # what is published
+tailscale serve reset          # stop publishing (all of this machine's serve config)
 ```
 
 Then open `https://<machine>.<tailnet>.ts.net/` on the iPhone. The page and
 its WebSocket go through the same address; iOS stops capture when the screen
 locks.
+
+- **Tailnet only.** `tailscale serve` is reachable from devices on your
+  tailnet, as its ACLs allow, and never from the internet. Never use
+  `tailscale funnel` for it: that publishes it to the internet, and `serve`
+  has no login.
+- **Every path is exposed**, as on 127.0.0.1: `/` (the app and its
+  assets), `/api/*` (the Board and its actions, `say`, Voice on and off,
+  `/api/voice/talk`), `/api/events` (the SSE stream), `/api/voice` (the
+  WebSocket: your audio and the Lead's speech), `/preview` (issue cards),
+  and `/mcp` (the Lead's tools). Any device on the tailnet can act on the
+  Board as the app does.
+- **HTTPS** ends at Tailscale on this machine, which proxies to `serve` over
+  loopback.
 
 ## Local setup on this machine
 

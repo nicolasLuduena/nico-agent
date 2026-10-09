@@ -101,6 +101,7 @@ export function webHandler(context: WebContext) {
   return async (request: Request): Promise<Response> => {
     const { pathname } = new URL(request.url);
     if (pathname === "/api/events" && request.method === "GET") return events.stream(request.signal);
+    if (pathname === TALK_PATH && request.method === "POST") return talk(events, request);
     const changes = await changesBoard(request, pathname);
     try {
       return await handle(request);
@@ -143,6 +144,22 @@ export function webSockets(context: Pick<WebContext, "world" | "configDir" | "ru
       };
     },
   };
+}
+
+/** Where `nico-agent voice talk` asks `serve` to start the open page's talk button. */
+export const TALK_PATH = "/api/voice/talk";
+
+/** Press the talk button of the page that connected last, as a tap; refused when no page is open. */
+function talk(events: Events, request: Request) {
+  if (fromAnotherSite(request)) return apiError(403, "only the app itself or the CLI can start the microphone");
+  if (!events.command("listen")) {
+    const { origin } = new URL(request.url);
+    return apiError(422, "no app is open to listen", [`Open ${origin}/ in a browser, allow the microphone and click once on the page; then run \`nico-agent voice talk\` again`]);
+  }
+  return new Response(JSON.stringify({
+    listen: "sent",
+    help: ["The app's talk button listens hands-free; run `nico-agent voice talk` again to send at once, or to end the session"],
+  }), { headers: JSON_HEADERS });
 }
 
 /** Whether a browser says another site's page sent `request`: only the app's own page may act or listen. */
@@ -229,8 +246,8 @@ function parseJson(text: string): unknown {
   }
 }
 
-function apiError(status: number, error: string) {
-  return new Response(JSON.stringify({ error, help: [API_HELP] }), { status, headers: JSON_HEADERS });
+function apiError(status: number, error: string, help = [API_HELP]) {
+  return new Response(JSON.stringify({ error, help }), { status, headers: JSON_HEADERS });
 }
 
 /**

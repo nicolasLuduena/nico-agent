@@ -58,6 +58,7 @@ export function LeadPanel({ harnesses }: { harnesses: HarnessesJson | null }) {
   const { state, send, dismiss, failure } = useConversation();
   const [drawer, setDrawer] = useState(false);
   const voice = useResource<{ voice?: string }>("/api/voice/state", ["voice-changed"]).data?.voice === "on";
+  const { data: status = null } = useResource<LeadStatusJson>("/api/lead/status", ["lead-state"]);
   const shown = cards(state);
   const scroller = useRef<HTMLOListElement>(null);
   // A new card brings the conversation to its end, unless the user scrolled up to read.
@@ -68,7 +69,7 @@ export function LeadPanel({ harnesses }: { harnesses: HarnessesJson | null }) {
   }, [shown.length, drawer]);
   return (
     <aside className="lead-panel" aria-label="Lead">
-      <LeadHead harnesses={harnesses} drawer={drawer} onDrawer={setDrawer} voice={voice} />
+      <LeadHead harnesses={harnesses} status={status} drawer={drawer} onDrawer={setDrawer} voice={voice} />
       {failure && <p className="error" role="status">{failure}</p>}
       <LeadDrawer open={drawer} />
       <ol
@@ -85,7 +86,7 @@ export function LeadPanel({ harnesses }: { harnesses: HarnessesJson | null }) {
           ? shown.map((card) => <CardView key={card.key} card={card} send={send} dismiss={dismiss} />)
           : <li className="empty">No conversation yet. Write to the Lead below; it reads your message when it next looks at its Inbox.</li>}
       </ol>
-      <Composer send={send} voice={voice} />
+      <Composer send={send} voice={voice} working={status?.lead === "running" && status.state === "working"} />
     </aside>
   );
 }
@@ -95,8 +96,7 @@ export function LeadPanel({ harnesses }: { harnesses: HarnessesJson | null }) {
  * Stop on the picked launch, the Voice switch, and the button opening the
  * drawer in place of the conversation.
  */
-function LeadHead({ harnesses, drawer, onDrawer, voice }: { harnesses: HarnessesJson | null; drawer: boolean; onDrawer: (open: boolean) => void; voice: boolean }) {
-  const { data: status = null } = useResource<LeadStatusJson>("/api/lead/status", ["lead-state"]);
+function LeadHead({ harnesses, status, drawer, onDrawer, voice }: { harnesses: HarnessesJson | null; status: LeadStatusJson | null; drawer: boolean; onDrawer: (open: boolean) => void; voice: boolean }) {
   const [chosen, setChosen] = useState<LeadPicks>({});
   const { busy, outcome, act: post } = usePost();
   const choice = harnesses && leadChoice(harnesses, status, chosen);
@@ -298,9 +298,10 @@ function ProposalCard({ card }: { card: Card & { kind: "proposal" } }) {
  * Where the user writes or talks to the Lead: Enter sends, Shift+Enter starts
  * a new line; the talk button sends the Scribe's text, keeping what it heard,
  * as the answer to the Lead's question when said right after it. With `voice`
- * on, the Lead is heard here too.
+ * on, the Lead is heard here too; while the Lead is `working`, a conversation
+ * by voice shows it thinking.
  */
-function Composer({ send, voice }: { send: SendText; voice: boolean }) {
+function Composer({ send, voice, working }: { send: SendText; voice: boolean; working: boolean }) {
   const [text, setText] = useState("");
   const talking = useTalk((text, heard, answers) => void send(text, answers, heard), voice);
   const submit = () => {
@@ -316,7 +317,7 @@ function Composer({ send, voice }: { send: SendText; voice: boolean }) {
   };
   return (
     <>
-      <TalkStatus talk={talking} />
+      <TalkStatus talk={talking} working={working} />
       <form className="composer" onSubmit={(e) => { e.preventDefault(); submit(); }}>
         <textarea aria-label="Message to the Lead" placeholder="Write to the Lead" rows={2} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={onKey} />
         <TalkButton talk={talking} />

@@ -28,7 +28,7 @@ import { type PrLookup, cachedPrs, currentStage, freshPrs, loadInFlight, stageOf
 import { type Dispatch, findDispatch, loadDispatches } from "./state";
 import { probeVoice } from "./voice";
 import { setVoiceOn, voiceOn } from "./voice-on";
-import { lookAtLead, webHandler, webSockets } from "./web";
+import { TALK_PATH, lookAtLead, webHandler, webSockets } from "./web";
 import { Events } from "./events";
 import app from "./app/index.html";
 import { type World, WorldError } from "./world";
@@ -77,6 +77,7 @@ const LEAD_START_USAGE = "nico-agent lead start [--harness <harness>] [--model <
 const LEAD_STATUS_HELP = "Run `nico-agent lead status` to see the Lead";
 const LEAD_SCREEN_HELP = "Run `herdr agent read lead` to see its screen";
 const VOICE_DOCS_HELP = `See ${VOICE_DOC} to set up transcribe, speak and scribe under voice in config.json`;
+const VOICE_TALK_USAGE = "nico-agent voice talk [--port <port>]";
 const VOICE_ON_HELP = "Run `nico-agent voice on` or `nico-agent voice off` to switch it; the app has a Voice switch too";
 const LAUNCH_FLAGS = {
   "--harness": { value: true, description: "Harness to launch, e.g. claude (see `nico-agent harness list`)" },
@@ -471,6 +472,16 @@ const commands: Command[] = [
     examples: ["nico-agent voice check", "nico-agent voice check --json"],
     help: [VOICE_DOCS_HELP],
     run: (_args, ctx) => voiceCheckCommand(ctx),
+  },
+  {
+    name: "voice talk",
+    usage: VOICE_TALK_USAGE,
+    summary: "Start the open app's talk button hands-free, as a tap would: bind it to a key to talk from anywhere; again, it sends what was said, or ends the session",
+    flags: { "--port": { value: true, description: "port `nico-agent serve` listens on (default 42069)" } },
+    positionals: [],
+    examples: ["nico-agent voice talk", "nico-agent voice talk --port 8080"],
+    help: [`See ${VOICE_DOC} for the Hyprland binding`],
+    run: voiceTalk,
   },
   {
     name: "voice",
@@ -1235,6 +1246,22 @@ async function voiceCheckCommand(ctx: RunContext): Promise<Output> {
 
 async function voiceCommand(ctx: RunContext): Promise<Output> {
   return { data: { voice: voiceOn(ctx.configDir) ? "on" : "off" }, help: [VOICE_ON_HELP] };
+}
+
+/** Ask `serve` to start its open page's talk button; refused when serve is not running or no page is open. */
+async function voiceTalk(args: Args, ctx: RunContext): Promise<Output> {
+  const port = portFlag(args, VOICE_TALK_USAGE);
+  let response: Response;
+  try {
+    response = await ctx.world.http(new Request(`http://${HOSTNAME}:${port}${TALK_PATH}`, { method: "POST" }));
+  } catch {
+    throw new CliError(`could not reach nico-agent serve on port ${port}`, [`Start it with \`nico-agent serve${port === DEFAULT_PORT ? "" : ` --port ${port}`}\` and open the app`]);
+  }
+  const answer = await response.json().catch(() => null) as { listen?: string; error?: string; help?: string[] } | null;
+  if (!response.ok || !answer?.listen) {
+    throw new CliError(answer?.error ?? `nico-agent serve answered ${response.status}`, answer?.help ?? []);
+  }
+  return { data: { listen: answer.listen }, help: answer.help ?? [] };
 }
 
 async function voiceSet(ctx: RunContext, on: boolean): Promise<Output> {
