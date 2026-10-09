@@ -164,7 +164,7 @@ Every text pair is checked against WCAG AA (4.5:1) in both schemes: ink, muted i
 
 **The Stage Owns Its Hue Rule.** Orange, green, indigo, red and grey mean Implementing, PR ready, Review launched, Failed and unknown wherever a Stage is shown. Their only other uses are the ones listed above: orange for the notices, green for a done agent, red for errors and Close on hover.
 
-**The Magenta Means Waiting Rule.** Magenta marks an agent waiting on the user, and nothing else.
+**The Magenta Means Waiting Rule.** Magenta marks an agent waiting on the user (an Asking Implementer, its count and its question's edge), and nothing else.
 
 ## Typography
 
@@ -219,8 +219,11 @@ Subtle and short. A new card arrives with a 240ms fade and a 6px lift; the Lead 
 - **Count:** in the header on every page, a quiet pill reading **Questions** with the number of open questions and Proposals in a small round badge: on fill at zero, filled with the accent while anything waits on the user. It shows or hides the list.
 - **List:** under the Lead panel's bar, every open question and Proposal of the Lead's, oldest first, as the same waiting cards the conversation shows (Source writes at most 8rem tall), at most 40% of the panel and scrolling on its own, a hairline under it. Each is answered, approved or declined right there; an answer takes its question off at once (it comes back, with why, if it was not sent). An answered or decided item leaves the list and stays in the conversation, focus passing to the next item. Clicking an item away from its controls, or its quiet **Show in conversation**, closes the drawer and scrolls the conversation to the card, which takes focus and an accent ring until focus moves on.
 
+### Repos pane
+The Lead page's right column: under its **Repos** title, a row per configured Repo in config order, divided by hairlines. A row is a full-width button: a chevron (turning a quarter while open), the Repo's slug in mono, and at its end the summary in muted 13px: "2 In flight", "1 Asking" as the magenta Agent blocked pill, "Held" in failed red, "Could not load" in failed red, or "Idle" with nothing on it. Clicking it, or Enter or Space on it, expands it in place, and which Repos are expanded is remembered in the browser across reloads. Expanded, it lists under small uppercase labels: **In flight**, each Dispatch's issue link with its Stage, its Implementer's Agent State and its PR link, and an Asking Implementer's question in a mono box on the ground with a 3px magenta edge; **Held**, each Held Spec with its reason; **Starts next**, each running Spec's next issue with the Spec it belongs to; and **Queue**, the Repo's Queue numbered in start order. A Repo whose read failed says why in failed red. The pane reads the Board on load and on every Board-changed event, through `serve`'s one-minute cache; a Board that cannot be read at all, or a rate-limited GitHub, shows in the notices.
+
 ### Notices
-The one quiet place for warnings, under the Lead panel's bar: serve unreachable, the Lead not running or failed (with where to start it), the Lead's launch warnings, and voice failing (the service down, the microphone blocked). A strip tinted 8% Implementing orange, each line a small orange dot, the warning in ink and its help in muted ink, 13px. It shows only while something is wrong.
+The one quiet place for warnings, under the Lead panel's bar: serve unreachable, the Board unreadable or GitHub rate limited, the Lead not running or failed (with where to start it), the Lead's launch warnings, and voice failing (the service down, the microphone blocked). A strip tinted 8% Implementing orange, each line a small orange dot, the warning in ink and its help in muted ink, 13px. It shows only while something is wrong.
 
 ### Conversation
 - The Lead's messages sit on the surface, unboxed, left; the user's are a fill bubble (18px corners) on the right. Each leads with its byline: who, the time, then a muted note ("sending…", "spoke", "asks", "corrects", "corrected below").

@@ -328,6 +328,16 @@ describe("the one quiet place for warnings", () => {
       { key: "voice", text: "The voice service is down", help: ["Typing still works"] },
     ]);
   });
+
+  test("a rate-limited GitHub or a Board that could not be read shows here; a Repo's own failure stays on its row", () => {
+    const warning = "GitHub rate limit exceeded; nico-agent asks it again at 2026-10-09T19:00:00.000Z";
+    expect(notices({ failure: null, status: RUNNING, talk: null, board: { warning, errors: [{ repo: "acme/api", error: "not found" }] } })).toEqual([
+      { key: "board-warning", text: warning, help: [] },
+    ]);
+    expect(notices({ failure: null, status: RUNNING, talk: null, board: { error: "config.json is not valid JSON", help: ["Fix or delete the file and run `nico-agent repo add` again"] } })).toEqual([
+      { key: "board", text: "The Repos could not be read: config.json is not valid JSON", help: ["Fix or delete the file and run `nico-agent repo add` again"] },
+    ]);
+  });
 });
 
 describe("following new entries", () => {

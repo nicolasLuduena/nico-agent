@@ -150,6 +150,39 @@ label.switch:has(:checked) { color: var(--ink); }
 .side h1 { font-size: 21px; font-weight: 600; }
 .side .lede { font-size: 14px; max-width: 32ch; }
 
+/* The Repos pane: a row per Repo, divided by hairlines, each expanding in place. */
+.repos > .loading, .repos > .error { font-size: 14px; }
+.repo-rows { list-style: none; margin: 0.25rem -0.5rem 0; padding: 0; }
+.repo-row + .repo-row { border-top: 1px solid var(--rule); }
+.repo-head {
+  width: 100%; display: flex; align-items: center; gap: 0.5rem; min-height: 44px; padding: 0.4rem 0.5rem;
+  background: transparent; border-radius: 12px; text-align: left;
+}
+.repo-head .chevron { flex: none; width: 12px; height: 12px; fill: none; stroke: var(--ink-muted); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; transition: transform 200ms var(--ease); }
+.repo-row.open .chevron { transform: rotate(90deg); }
+.repo-name { font-family: var(--mono); font-size: 13px; font-weight: 500; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.summary { margin-left: auto; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.25rem 0.6rem; font-size: 13px; font-weight: 400; color: var(--ink-muted); }
+.summary .asking { color: var(--blocked-ink); background: var(--blocked); border-radius: 980px; padding: 0 0.5rem; font-weight: 600; }
+.summary .held-count, .summary .error { color: var(--failed); font-weight: 500; }
+.repo-body { display: grid; gap: 1rem; padding: 0.25rem 0.5rem 1rem 1.75rem; animation: arrive 240ms var(--ease); }
+.repo-body > .error, .repo-body > .empty { font-size: 13px; }
+.repo-group { display: grid; gap: 0.4rem; }
+.repo-group h3 { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-muted); }
+.repo-group ul, .repo-group ol { margin: 0; padding: 0; list-style: none; display: grid; gap: 0.6rem; }
+.repo-group ol.queue { counter-reset: queue; gap: 0.35rem; }
+.repo-group ol.queue li { counter-increment: queue; display: flex; gap: 0.5rem; }
+.repo-group ol.queue li::before { content: counter(queue); flex: none; width: 1.1rem; font-size: 12px; color: var(--ink-muted); text-align: right; line-height: 1.6rem; }
+.repo-group ul.next { gap: 0.35rem; }
+.repo-group .title { font-size: 14px; overflow-wrap: anywhere; }
+.repo-group .num { font-family: var(--mono); font-size: 12px; color: var(--ink-muted); }
+.repo-group .facts { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem 0.75rem; margin-top: 0.2rem; }
+.repo-group .pr { font-size: 13px; }
+.repo-group .reason, .repo-group .of { display: block; font-size: 13px; color: var(--ink-muted); }
+.repo-group .question {
+  margin: 0.4rem 0 0; padding: 0.5rem 0.65rem; max-height: 10rem; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere;
+  font-size: 12px; background: var(--ground); border-radius: 10px; box-shadow: inset 3px 0 0 var(--blocked);
+}
+
 .lead-panel { display: flex; flex-direction: column; min-height: 0; background: var(--surface); border-radius: 18px; overflow: hidden; }
 .lead-bar { position: relative; display: flex; align-items: center; gap: 1rem; padding: 0.9rem 1.25rem; border-bottom: 1px solid var(--rule); }
 .lead-bar h1 { font-size: 17px; font-weight: 600; margin-right: auto; }

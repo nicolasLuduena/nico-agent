@@ -1,5 +1,6 @@
 import { type FormEvent, type KeyboardEvent, type MouseEvent, useEffect, useLayoutEffect, useReducer, useRef, useState } from "react";
 import type { Authored } from "../conversation";
+import type { BoardJson } from "./board";
 import { OutcomeNote, answerOf, post, usePost } from "./forms";
 import {
   type Card, type Conversation, type LeadStatusJson, type OpenItem, type ProposalJson,
@@ -45,12 +46,12 @@ const inConversation = (key: string) => `conversation-${key}`;
 
 /**
  * The Lead panel: the Voice switch, the Research button and the drawer's
- * button, the one quiet place for warnings, the Questions list (`questions`,
- * null while hidden), the conversation as cards, and the composer, which stays
- * put and keeps its draft while entries arrive.
+ * button, the one quiet place for warnings (the Board's among them), the
+ * Questions list (`questions`, null while hidden), the conversation as cards,
+ * and the composer, which stays put and keeps its draft while entries arrive.
  */
-export function LeadPanel({ status, conversation, questions }: {
-  status: LeadStatusJson | null; conversation: ConversationState; questions: OpenItem[] | null;
+export function LeadPanel({ status, conversation, questions, board }: {
+  status: LeadStatusJson | null; conversation: ConversationState; questions: OpenItem[] | null; board: BoardJson | null;
 }) {
   const { state, send, dismiss, failure } = conversation;
   const [drawer, setDrawer] = useState(false);
@@ -91,7 +92,7 @@ export function LeadPanel({ status, conversation, questions }: {
     setJumped({ key });
   };
   const talking = useTalk((text, heard, answers) => void sendAndFollow(text, answers, heard), voice);
-  const warnings = notices({ failure, status, talk: talking.warning });
+  const warnings = notices({ failure, status, talk: talking.warning, board });
   return (
     <section className="lead-panel" aria-label="Conversation with the Lead">
       <div className="lead-bar">
