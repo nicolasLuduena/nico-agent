@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import type { LaunchAction } from "./actions";
 import { type BoardJson, agentClass, stageClass } from "./board";
 import { BUTTONS, CloseButton, IssueOutcome, LaunchForm } from "./forms";
-import { type DispatchLine, type IssueLine, type RepoRow, repoRows } from "./repo-rows";
+import { type DispatchLine, type GardenerLine, type IssueLine, type RepoRow, repoRows } from "./repo-rows";
 
 /** Where the expanded Repos are remembered, in this browser only. */
 const EXPANDED_KEY = "nico-agent.repos.expanded";
@@ -33,7 +33,7 @@ function useExpanded() {
 /**
  * The Repos pane: a row per configured Repo of `board` (null until it loads),
  * each summarising its work while collapsed and, expanded, listing its
- * In-flight Dispatches, its Held Specs, what starts next and its Ready and
+ * Gardener, its In-flight Dispatches, its Held Specs, what starts next and its Ready and
  * Stackable issues, with the Board's actions: dispatch, launch a review and
  * Close, their state kept in the App's `Actions`. An action's failure shows under its issue; what it did shows once
  * `serve` says the Board changed. A Board that could not be read says why in
@@ -62,17 +62,19 @@ export function ReposPane({ board }: { board: BoardJson | null }) {
 const bodyId = (repo: string) => `repo-${repo.replace(/[^\w-]/g, "-")}`;
 
 function RepoItem({ row: r, open, toggle }: { row: RepoRow; open: boolean; toggle: () => void }) {
+  const gardener = useGardenerShown(r.gardener);
   return (
     <li className={`repo-row${open ? " open" : ""}`}>
       <button type="button" className="repo-head" aria-expanded={open} aria-controls={bodyId(r.repo)} onClick={toggle}>
         <svg className="chevron" viewBox="0 0 12 12" aria-hidden="true"><path d="M4.5 2.5 8 6l-3.5 3.5" /></svg>
         <RepoName repo={r.repo} />
-        <Summary row={r} />
+        <Summary row={r} gardener={gardener} />
       </button>
       {open && (
         <div className="repo-body" id={bodyId(r.repo)}>
           {r.errors.map((e) => <p key={e} className="error">{e}</p>)}
-          {r.empty && <p className="empty">Nothing In flight, Held or queued.</p>}
+          {r.empty && !gardener && <p className="empty">Nothing In flight, Held or queued.</p>}
+          {gardener && <Gardener repo={r.repo} line={gardener} />}
           {r.dispatches.length > 0 && (
             <Group title="In flight">
               <ul className="dispatches">{r.dispatches.map((d) => <Dispatch key={d.issue} line={d} />)}</ul>
@@ -136,18 +138,19 @@ function RepoName({ repo }: { repo: string }) {
   return <span className="repo-name"><span className="owner">{repo.slice(0, slash)}</span>{repo.slice(slash)}</span>;
 }
 
-/** A collapsed Repo at a glance: what is In flight, Asking and Held, or that it could not be read. */
-function Summary({ row: r }: { row: RepoRow }) {
+/** A collapsed Repo at a glance: its Gardener, what is In flight, Asking and Held, or that it could not be read. */
+function Summary({ row: r, gardener }: { row: RepoRow; gardener?: GardenerLine }) {
   const { inFlight, asking, held } = r.summary;
   return (
     <span className="summary">
       {r.errors.length > 0 && <span className="error" title={r.errors.join("\n")}>Could not load</span>}
       {r.manual && <span className="manual" title="The Scheduler starts nothing here: only an explicit dispatch does">Manual</span>}
+      {gardener && <span className="gardening">{gardener.finished ? "Gardener finished" : "Gardening"}</span>}
       {inFlight > 0 && <span>{`${inFlight} In flight`}</span>}
       {asking > 0 && <span className="asking">{`${asking} Asking`}</span>}
       {held > 0 && <span className="held-count">{held === 1 ? "Held" : `${held} Held`}</span>}
       {r.issues.length > 0 && <span>{`${r.issues.length} to dispatch`}</span>}
-      {r.empty && <span>Idle</span>}
+      {r.empty && !gardener && <span>Idle</span>}
     </span>
   );
 }
@@ -156,7 +159,7 @@ function Group({ title, children }: { title: string; children: React.ReactNode }
   return <section className="repo-group"><h2>{title}</h2>{children}</section>;
 }
 
-/** How long a shown Dispatch waits after reading its Implementer's screen before reading it again. */
+/** How long a shown Dispatch or Gardener waits after reading its agent's screen before reading it again. */
 const SCREEN_POLL_MS = 4000;
 
 /** Whether the page is shown, not hidden behind another tab or a minimised window. */
@@ -171,11 +174,14 @@ function usePageShown() {
 }
 
 /**
- * What `issue`'s Implementer is doing: the last meaningful line of its screen,
- * read from herdr through `/api/peek` (no GitHub call) while `reading`, and
- * again a few seconds after each read. A screen that cannot be read is no line.
+ * What an agent is doing: the last meaningful line of its screen, read from
+ * herdr through `/api/peek` (no GitHub call) while `reading`, and again a few
+ * seconds after each read. `whose` is the peek's query: `{ issue }` for its
+ * Implementer, `{ repo }` for the Repo's Gardener. A screen that cannot be
+ * read is no line.
  */
-function useScreenLine(issue: string, reading: boolean) {
+function useScreenLine(whose: { issue: string } | { repo: string }, reading: boolean) {
+  const query = new URLSearchParams(whose).toString();
   const [line, setLine] = useState<string>();
   useEffect(() => {
     if (!reading) return;
@@ -184,7 +190,7 @@ function useScreenLine(issue: string, reading: boolean) {
     const read = async () => {
       let next: string | undefined;
       try {
-        const response = await fetch(`/api/peek?issue=${encodeURIComponent(issue)}`);
+        const response = await fetch(`/api/peek?${query}`);
         if (response.ok) next = ((await response.json()) as { line?: string }).line;
       } catch {
         // No line, until a read succeeds.
@@ -200,15 +206,54 @@ function useScreenLine(issue: string, reading: boolean) {
       // Not shown again once stale: back on the page, the line waits for a fresh read.
       setLine(undefined);
     };
-  }, [issue, reading]);
+  }, [query, reading]);
   return line;
+}
+
+/** How long a finished Gardener stays in its Repo's row, saying so, before the row drops it. */
+const FINISHED_SHOWN_MS = 10_000;
+
+/** The Repo's Gardener while the row shows it: until a few seconds after it finished. */
+function useGardenerShown(line: GardenerLine | undefined) {
+  const finished = line?.finished ?? false;
+  const [dropped, setDropped] = useState(false);
+  useEffect(() => {
+    setDropped(false);
+    if (!finished) return;
+    const timer = setTimeout(() => setDropped(true), FINISHED_SHOWN_MS);
+    return () => clearTimeout(timer);
+  }, [finished]);
+  return dropped ? undefined : line;
+}
+
+/**
+ * A Repo's Gardener: that it is gardening, the PRs it was started for and
+ * its live screen line; once finished, only that it did. An Asking one's
+ * question shows on its toast, so its screen is not read here.
+ */
+function Gardener({ repo, line: g }: { repo: string; line: GardenerLine }) {
+  const asking = g.agent === "blocked";
+  const doing = useScreenLine({ repo }, usePageShown() && !asking && !g.finished && !g.failure);
+  return (
+    <Group title="Gardener">
+      <div className="gardener">
+        <div className="facts">
+          {g.finished ? <span className="of">Finished</span> : <Agent role="Gardener" state={g.agent} />}
+          {g.prs.length > 0 ? g.prs.map((pr) => <PrLink key={pr.url} {...pr} />) : <span className="of">every PR that needs it</span>}
+        </div>
+        {g.failure && <p className="error">{g.failure}</p>}
+        {asking && <p className="reason">Asking: answer it on its toast</p>}
+        {!asking && !g.finished && doing && <p className="doing" title={doing}>{doing}</p>}
+      </div>
+    </Group>
+  );
 }
 
 function Dispatch({ line: d }: { line: DispatchLine }) {
   const [open, setOpen] = useState(false);
   // An Asking Implementer's question already shows its screen.
   const asking = Boolean(d.question);
-  const doing = useScreenLine(d.issue, usePageShown() && !asking);
+  const doing = useScreenLine({ issue: d.issue }, usePageShown() && !asking);
   return (
     <li>
       <IssueLink {...d} />

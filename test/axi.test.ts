@@ -123,7 +123,7 @@ describe("AXI conventions", () => {
         '  nico-agent review <issue>... --harness <harness> --model <model> --effort <effort>,"Start a Reviewer on each In-flight issue\'s linked PR, in its workspace (resumes a failed one)"',
         '  "nico-agent close <issue>... [--confirm]","Remove each Dispatch\'s workspace and forget it, keeping its branch"',
         `  nico-agent answer <issue|repo> <text>,"Submit text, as typed, to an In-flight issue's Implementer, or a Repo's Gardener, while it waits on the user"`,
-        `  "nico-agent peek [<issue>] [--reviewer]","Show what an In-flight issue's Implementer (or Reviewer) has on screen right now; with no issue, the Lead's own"`,
+        `  "nico-agent peek [<issue|repo>] [--reviewer]","Show what an In-flight issue's Implementer (or Reviewer), or a Repo's Gardener, has on screen right now; with no issue, the Lead's own"`,
         "  nico-agent orders,\"Show each Standing order, what it lets the Lead do unasked, and whether it is on\"",
         "  nico-agent orders set <order> on|off,Turn one Standing order on or off",
         "  nico-agent intent,\"Show the Intent: what the user is working toward and why, which the user and the Lead both edit\"",

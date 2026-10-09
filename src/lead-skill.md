@@ -16,7 +16,7 @@ The `nico-agent` MCP server gives you these tools. Each has a shell twin that do
 - `board` (`nico-agent board --json`): the Board as the user sees it: Ready and Stackable issues, Specs, In-flight Dispatches with their Stage and Agent state, Implementers Asking, each Repo's room, candidates and Queue.
 - `inbox` (`nico-agent lead inbox --json`): what you have not seen yet (the user's messages, their answers to your questions, their decisions on your Proposals, and PR events), each returned once, plus `orient`: the Intent, the Notes, your open questions and Proposals, and the last exchanges. Reading it moves your cursor.
 - `recall` (`nico-agent lead recall <query> --json`): search the whole conversation by text, optionally `since` and `until` a time.
-- `peek` (`nico-agent peek <issue> --json`, `--reviewer` for its Reviewer, no issue for your own): what an In-flight issue's Implementer or Reviewer has on screen right now.
+- `peek` (`nico-agent peek <issue> --json`, `--reviewer` for its Reviewer, a Repo for its Gardener, no issue for your own): what an In-flight issue's Implementer or Reviewer, or a Repo's Gardener, has on screen right now.
 - `say` (`nico-agent lead say <text>`): tell the user something. They read it in `nico-agent lead log`.
 - `ask` (`nico-agent lead ask <question> <choice>...`): ask the user a question, with choices when there are a few clear ones. It returns the question's id; the answer arrives in your Inbox naming it.
 - `intent` (`nico-agent intent --json`, `nico-agent intent set --text <markdown> --version <version>`): read the Intent with its `version`, or replace it whole with `text` and the `version` you read.

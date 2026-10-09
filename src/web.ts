@@ -249,18 +249,18 @@ const API_READ_PARAMS: Record<string, string[]> = {
   "/api/stats": ["days", "repo"],
 };
 
-/** The query parameter a read passes on as the CLI's argument, after `--`. */
-const API_READ_ARG: Record<string, string> = {
-  "/api/peek": "issue",
+/** The query parameters a read passes on as the CLI's argument, after `--`: the first one set. */
+const API_READ_ARG: Record<string, string[]> = {
+  "/api/peek": ["issue", "repo"],
 };
 
-/** `?days=7&repo=acme/api` on `/api/stats` as `--days 7 --repo acme/api`; `?issue=acme/api%237` on `/api/peek` as `-- acme/api#7`. */
+/** `?days=7&repo=acme/api` on `/api/stats` as `--days 7 --repo acme/api`; `?issue=acme/api%237` on `/api/peek` as `-- acme/api#7`, `?repo=acme/api` as `-- acme/api`. */
 function readArgs(pathname: string, params: URLSearchParams) {
   const flags = (API_READ_PARAMS[pathname] ?? []).flatMap((name) => {
     const value = params.get(name);
     return value === null ? [] : [`--${name}`, value];
   });
-  const arg = API_READ_ARG[pathname] && params.get(API_READ_ARG[pathname]);
+  const arg = (API_READ_ARG[pathname] ?? []).map((name) => params.get(name)).find(Boolean);
   return arg ? [...flags, "--", arg] : flags;
 }
 

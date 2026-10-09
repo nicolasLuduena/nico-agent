@@ -222,3 +222,43 @@ describe("Gardeners on the Board", () => {
     expect((await cli("board", "--json")).json().gardeners).toBeUndefined();
   });
 });
+
+describe("peeking at a Gardener", () => {
+  test("peek <repo> returns its Gardener's screen and line, read from herdr alone", async () => {
+    const { cli, world } = await withRepo();
+    world.addPr({ repo: "acme/api", number: 13 });
+    await cli("garden", "acme/api", "--pr", "https://github.com/acme/api/pull/13");
+    world.screens.set("garden-api", "Rebasing #13 onto main\n\n");
+    world.calls.length = 0;
+    const result = await cli("peek", "acme/api", "--json");
+    expect(result.exitCode).toBe(0);
+    expect(result.json()).toEqual({
+      gardener: "acme/api",
+      agent: "garden-api",
+      screen: "Rebasing #13 onto main",
+      line: "Rebasing #13 onto main",
+      help: ["Run `nico-agent` to see the Board"],
+    });
+    expect(world.calls).toEqual(["herdr agent read garden-api --source visible"]);
+  });
+
+  test("peek of a Repo with no Gardener is refused with help", async () => {
+    const { cli, world } = await withRepo();
+    const result = await cli("peek", "acme/api", "--json");
+    expect(result.exitCode).toBe(1);
+    expect(result.json()).toEqual({
+      error: "acme/api has no Gardener",
+      help: ["Run `nico-agent garden acme/api` to start one", "Run `nico-agent` to see the Board"],
+    });
+    expect(world.calls).toEqual([]);
+  });
+
+  test("/api/peek?repo= is the same read", async () => {
+    const { cli, web, world } = await withRepo();
+    await cli("garden", "acme/api");
+    world.screens.set("garden-api", "Resolving the conflict in src/a.ts");
+    const { status, body } = await web(`/api/peek?repo=${encodeURIComponent("acme/api")}`);
+    expect(status).toBe(200);
+    expect(JSON.parse(body)).toMatchObject({ gardener: "acme/api", agent: "garden-api", line: "Resolving the conflict in src/a.ts" });
+  });
+});

@@ -1,3 +1,5 @@
+import { readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 import { type HarnessesJson, closeArgs, launchArgs, launchChoice } from "../src/app/actions";
 import type { BoardJson } from "../src/app/board";
@@ -100,6 +102,45 @@ describe("the Repos pane's rows", () => {
       { spec: "acme/api#30", label: "#30", title: "Search", url: "https://github.com/acme/api/issues/30" },
       { spec: "acme/api#20", label: "#20", title: "A bug", url: "https://github.com/acme/api/issues/20" },
     ]);
+  });
+});
+
+describe("a Repo's Gardener in its row", () => {
+  /** acme/api with its Gardener launched on claude. */
+  async function gardening() {
+    const ctx = await githubRepo();
+    const file = join(ctx.configDir, "config.json");
+    writeFileSync(file, JSON.stringify({ ...JSON.parse(readFileSync(file, "utf8")), gardener: { harness: "claude", model: "opus", effort: "high" } }));
+    ctx.world.addPr({ repo: "acme/api", number: 13 });
+    ctx.world.addPr({ repo: "acme/api", number: 14 });
+    expect((await ctx.cli("garden", "acme/api", "--pr", "13", "--pr", "14")).exitCode).toBe(0);
+    return ctx;
+  }
+
+  test("a running Gardener shows with its Agent state and the PRs it was started for, and the Repo is not Idle", async () => {
+    const { board } = await gardening();
+    const [api] = repoRows(await board());
+    expect(api!.gardener).toEqual({
+      agent: "working",
+      prs: [{ url: "https://github.com/acme/api/pull/13", number: 13 }, { url: "https://github.com/acme/api/pull/14", number: 14 }],
+      finished: false,
+    });
+    expect(api!.empty).toBe(false);
+  });
+
+  test("a Gardener whose agent is idle or done is finished, and leaves the Repo Idle", async () => {
+    const { world, board } = await gardening();
+    for (const state of ["idle", "done"]) {
+      world.agentStates.set("garden-api", state);
+      const [api] = repoRows(await board());
+      expect(api!.gardener).toMatchObject({ agent: state, finished: true });
+      expect(api!.empty).toBe(true);
+    }
+  });
+
+  test("a Repo with no Gardener has none in its row", async () => {
+    const { board } = await githubRepo();
+    expect(repoRows(await board())[0]!.gardener).toBeUndefined();
   });
 });
 
