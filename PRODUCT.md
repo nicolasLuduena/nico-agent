@@ -53,6 +53,9 @@ open PR.
 
 ## Capabilities and Constraints
 
+- **One agent with reach:** the Lead (ADR-0010) is the only agent that acts on
+  the Board, within Standing orders the user sets; everything else it wants is
+  a Proposal the user approves.
 - **CLI parity:** every Board action must also be possible from the CLI, which
   follows AXI (ADR 0006). Mutations are idempotent, and the CLI never prompts
   interactively.

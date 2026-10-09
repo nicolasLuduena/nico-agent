@@ -1,3 +1,7 @@
+---
+status: superseded by ADR-0010
+---
+
 # The user picks which Spec starts through the Queue; no agent dispatches
 
 Supersedes ADR-0008. Choosing which Spec starts when a Repo has room was left
