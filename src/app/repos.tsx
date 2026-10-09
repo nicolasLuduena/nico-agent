@@ -43,6 +43,7 @@ export function ReposPane({ board }: { board: BoardJson | null }) {
       {!board && <p className="loading">Reading the Repos…</p>}
       {board?.error && <p className="error">The Repos could not be read.</p>}
       {rows?.length === 0 && <p className="lede">No Repos yet. Run <code>nico-agent repo add</code> to add one.</p>}
+      {rows && rows.length > 0 && <Totals rows={rows} />}
       {rows && rows.length > 0 && (
         <ul className="repo-rows">
           {rows.map((r) => <RepoItem key={r.repo} row={r} open={expanded.has(r.repo)} toggle={() => toggle(r.repo)} />)}
@@ -60,7 +61,7 @@ function RepoItem({ row: r, open, toggle }: { row: RepoRow; open: boolean; toggl
     <li className={`repo-row${open ? " open" : ""}`}>
       <button type="button" className="repo-head" aria-expanded={open} aria-controls={bodyId(r.repo)} onClick={toggle}>
         <svg className="chevron" viewBox="0 0 12 12" aria-hidden="true"><path d="M4.5 2.5 8 6l-3.5 3.5" /></svg>
-        <span className="repo-name">{r.repo}</span>
+        <RepoName repo={r.repo} />
         <Summary row={r} />
       </button>
       {open && (
@@ -99,6 +100,32 @@ function RepoItem({ row: r, open, toggle }: { row: RepoRow; open: boolean; toggl
   );
 }
 
+/** Across every Repo, what is In flight, Asking and Held, readable from across a desk. */
+function Totals({ rows }: { rows: RepoRow[] }) {
+  const sum = (key: keyof RepoRow["summary"]) => rows.reduce((n, r) => n + r.summary[key], 0);
+  const totals = [
+    { key: "in-flight", label: "In flight", count: sum("inFlight") },
+    { key: "asking", label: "Asking", count: sum("asking") },
+    { key: "held", label: "Held", count: sum("held") },
+  ];
+  return (
+    <dl className="totals">
+      {totals.map((t) => (
+        <div key={t.key} className={`${t.key}${t.count ? " some" : ""}`}>
+          <dt>{t.label}</dt>
+          <dd>{t.count}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+/** A Repo's slug, its owner quieter than its name. */
+function RepoName({ repo }: { repo: string }) {
+  const slash = repo.indexOf("/") + 1;
+  return <span className="repo-name"><span className="owner">{repo.slice(0, slash)}</span>{repo.slice(slash)}</span>;
+}
+
 /** A collapsed Repo at a glance: what is In flight, Asking and Held, or that it could not be read. */
 function Summary({ row: r }: { row: RepoRow }) {
   const { inFlight, asking, held } = r.summary;
@@ -114,7 +141,7 @@ function Summary({ row: r }: { row: RepoRow }) {
 }
 
 function Group({ title, children }: { title: string; children: React.ReactNode }) {
-  return <section className="repo-group"><h3>{title}</h3>{children}</section>;
+  return <section className="repo-group"><h2>{title}</h2>{children}</section>;
 }
 
 function Dispatch({ line: d }: { line: DispatchLine }) {

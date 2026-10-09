@@ -47,6 +47,8 @@ describe("the compiled binary", () => {
     expect(page.headers.get("content-type")).toStartWith("text/html");
     const html = await page.text();
     expect(html).toContain('<div id="root"></div>');
+    // The remembered theme is set in the head, before the first paint.
+    expect(html).toContain('localStorage.getItem("nico-agent.theme")');
     const script = html.match(/<script[^>]* src="([^"]+)"/)?.[1];
     const style = html.match(/<link[^>]* href="([^"]+\.css)"/)?.[1];
     expect(script).toBeDefined();
@@ -61,7 +63,7 @@ describe("the compiled binary", () => {
     expect(source).toContain("/api/board");
     const css = await fetch(new URL(style!, base));
     expect(css.status).toBe(200);
-    expect(await css.text()).toContain("prefers-color-scheme");
+    expect(await css.text()).toContain('[data-theme="dark"]');
   });
 
   test("no longer serves the htmx Board", async () => {

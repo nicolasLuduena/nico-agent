@@ -131,7 +131,12 @@ export function LeadPanel({ status, conversation, questions, board }: {
       >
         {shown.length
           ? shown.map((card) => <CardView key={card.key} card={card} send={send} dismiss={dismiss} id={inConversation(card.key)} />)
-          : <li className="empty">No conversation yet. Write or talk to the Lead below; it reads your message when it next looks at its Inbox.</li>}
+          : (
+            <li className="empty">
+              <h2>Talk to the Lead</h2>
+              <p>No conversation yet. Write or talk to the Lead below; it reads your message when it next looks at its Inbox.</p>
+            </li>
+          )}
       </ol>
       <Composer send={sendAndFollow} talk={talking} working={status?.lead === "running" && status.state === "working"} />
     </section>
@@ -170,6 +175,7 @@ function QuestionsList({ items, send, dismiss, jump }: {
       ref={list}
       hidden={!items?.length}
     >
+      <h2>Questions<b>{items?.length}</b></h2>
       <ol>
         {items?.map((item) => item.kind === "question"
           ? <QuestionCard key={item.key} card={item} send={send} dismiss={dismiss} jump={() => jump(item.key)} />
