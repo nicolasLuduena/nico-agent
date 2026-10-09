@@ -239,7 +239,7 @@ user's messages, the Front voice's lines, the Lead's replies, its questions
 and their answers. A question stays open until the user answers it by its id.
 The user reads it with `nico-agent lead log`; the Lead reads what is new in it
 through its Inbox.
-_Avoid_: Chat, history, transcript
+_Avoid_: Chat, history, transcript, Thread (that is a Partner's)
 
 **Questions list**:
 The app's list of what waits on the user: every question of the Lead's not
@@ -296,7 +296,9 @@ _Avoid_: Postmortem, review, report
 The fast model the user talks to by voice in front of the Lead: it answers
 what needs no judgment itself and hands the rest to the Lead as the user's
 message, cleaned (disfluencies out, glossary and Board terms spelled right,
-meaning untouched), and never acts (ADR-0013). It replaced the Scribe.
+meaning untouched), and never acts (ADR-0013). It replaced the Scribe. Each
+tab has its own: in a Partner's tab it hands off to that Partner, into its
+Thread, not to the Lead (ADR-0014).
 _Avoid_: Assistant, receptionist, voice agent, Scribe
 
 **Voice on**:
@@ -314,6 +316,42 @@ microphone keeps listening after each utterance, through the Lead's reply,
 for the next, until a tap or the key while nobody talks ends it. Holding Talk
 sends one utterance and is never a session.
 _Avoid_: Conversation mode, always listening, open mic
+
+### Partners
+
+**Partner**:
+An agent the user talks with in its own tab of the app, apart from the Lead,
+in its own Thread: a Review partner or an Idea partner. It is a herdr agent
+started on the Harness, model, Effort and Launch mode the user picks, in its
+own herdr workspace and worktree. It knows nothing of the Board, other Repos
+or the Standing orders, has no action tool, and its skill keeps it from
+writing to a Source. It reaches the Lead only by a Hand-off (ADR-0014).
+_Avoid_: Assistant, helper, sub-agent, sidekick
+
+**Review partner**:
+A Partner for one PR, running in a worktree on the PR's head branch so it can
+read and run the code; its tab shows the PR's diff beside its Thread. It never
+comments on, approves or merges the PR: it hands that to the Lead.
+_Avoid_: Reviewer (that is the agent launched on a Dispatch's PR), review chat
+
+**Idea partner**:
+A Partner for working through a problem in a Repo the user picks, running in a
+worktree of that Repo on its default branch so it can read the code.
+_Avoid_: Brainstormer, idea chat, Spec writer (the Lead writes Specs)
+
+**Thread**:
+What the user, a Partner and that tab's Front voice said to each other, as
+typed entries with ids and times in a file per Partner in the config
+directory, in the Conversation's entry shape. It is never read by the Lead;
+only a hand-off leaves it.
+_Avoid_: Conversation (that is the Lead's), chat, session, history
+
+**Hand-off**:
+A Partner's summary of what the user and it settled, sent to the Lead once the
+user approves it: nico-agent appends it to the Lead's Conversation as a user
+message, so it reaches the Lead's Inbox with a Nudge like anything the user
+types. The only way out of a Thread.
+_Avoid_: Escalation, report, forward (the Thread itself is never sent)
 
 ### Harnesses
 
