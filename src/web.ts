@@ -5,7 +5,8 @@ import sileroVad from "./app/models/silero-vad.onnx" with { type: "file" };
 import smartTurn from "./app/models/smart-turn-v3.2-cpu.onnx" with { type: "file" };
 import { HEARING_FILES } from "./app/hearing";
 import { type PreviewLookup, cachedPreviews } from "./preview";
-import { type CliRunner, isToolCall, mcpHandler, withJson } from "./mcp";
+import { type CliRunner, isToolCall, mcpHandler, partnerServer, withJson } from "./mcp";
+import { PARTNER_TABS, loadPartners, partnerMcpPath } from "./partner";
 import { type EventName, Events } from "./events";
 import { loadConfig, standingOrders } from "./config";
 import { leadStatus } from "./lead";
@@ -30,7 +31,8 @@ export interface WebContext {
 /**
  * A look at what the Lead panel shows besides the Board: each call sends
  * `conversation-entry`, `proposal-changed`, `lead-state`, or the drawer's
- * `intent-changed`, `notes-changed` or `orders-changed`, or `voice-changed` for what changed
+ * `intent-changed`, `notes-changed` or `orders-changed`, `voice-changed`, or
+ * `partner-changed` for a Partner or its Thread, for what changed
  * since the last, whoever changed it (the app, the Lead through MCP, the CLI,
  * an editor, or herdr for the Lead's Agent state).
  */
@@ -57,6 +59,8 @@ export function lookAtLead({ world, configDir }: { world: World; configDir: stri
     ["intent-changed", file(RECORDS.intent.file)],
     ["notes-changed", file(RECORDS.notes.file)],
     ["orders-changed", () => JSON.stringify(standingOrders(loadConfig(configDir)))],
+    // The Partners' records and each one's Thread; their Agent states come with `/api/partners`, refetched on every tick.
+    ["partner-changed", () => [file("partners.json")(), ...Object.values(loadPartners(configDir)).map((p) => file(p.thread)())].join(" ")],
   ];
   // A look that fails (herdr gone, say) is a sample of its own, never a failed request or tick.
   const sample = () => Promise.all(watched.map(async ([, look]) => {
@@ -100,12 +104,16 @@ export function webHandler(context: WebContext) {
   // Hovering an issue again shows its card without asking its Source.
   const previews = cachedPreviews(context.world);
   const mcp = mcpHandler(context.runCli);
+  // Each Partner's own server, scoped to its Thread (ADR-0014).
+  const partnerMcp = Object.fromEntries(PARTNER_TABS.map((tab) => [partnerMcpPath(tab), mcpHandler(context.runCli, partnerServer(tab))]));
   const events = context.events ?? new Events();
   const look = context.look ?? lookAtLead(context, events);
   const handle = async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
     const { pathname } = url;
     if (pathname === "/mcp") return await mcp(request);
+    const partner = partnerMcp[pathname];
+    if (partner) return await partner(request);
     if (pathname.startsWith("/api/") && request.method === "POST") return await postApi(context, request, pathname);
     if (request.method !== "GET") return new Response("Method Not Allowed\n", { status: 405 });
     const read = API_READS[pathname];
@@ -120,9 +128,12 @@ export function webHandler(context: WebContext) {
     if (pathname === "/api/events" && request.method === "GET") return events.stream(request.signal);
     if (pathname === TALK_PATH && request.method === "POST") return talk(events, request);
     const changes = await changesBoard(request, pathname);
+    // A Partner's tool writes its Thread, which the app hears of on the next look.
+    const writesThread = pathname.startsWith("/mcp/partner/") && request.method === "POST" && await isToolCall(request);
     try {
       return await handle(request);
     } finally {
+      if (writesThread) void look();
       // Even a failed action may have changed something, such as a Dispatch's recorded failure.
       if (changes) {
         events.emit("board-changed");
@@ -205,10 +216,11 @@ function fromAnotherSite(request: Request) {
 
 /**
  * Whether a request may change the Board: any post, but on `/mcp` only a
- * tool call (an action tool, or a read the Board cannot tell apart cheaply).
+ * tool call, and never a Partner's, which writes only its Thread (an action tool, or a read the Board cannot tell apart cheaply).
  */
 async function changesBoard(request: Request, pathname: string) {
   if (request.method !== "POST") return false;
+  if (pathname.startsWith("/mcp/partner/")) return false;
   return pathname !== "/mcp" || await isToolCall(request);
 }
 
@@ -234,6 +246,10 @@ const API_ACTIONS: Record<string, string[]> = {
   "/api/orders/set": ["orders", "set"],
   "/api/voice/on": ["voice", "on"],
   "/api/voice/off": ["voice", "off"],
+  "/api/partner/start": ["partner", "start"],
+  "/api/partner/say": ["partner", "say"],
+  "/api/partner/hand-off": ["partner", "hand-off"],
+  "/api/partner/end": ["partner", "end"],
 };
 
 /** What the app reads, with GET, by its `/api` path: each the CLI command of the same words. */
@@ -250,6 +266,8 @@ const API_READS: Record<string, string[]> = {
   "/api/voice/state": ["voice"],
   "/api/stats": ["stats"],
   "/api/peek": ["peek"],
+  "/api/partners": ["partner", "list"],
+  "/api/partner/log": ["partner", "log"],
 };
 
 /** The query parameters a read passes on as the CLI flags of the same names; others are ignored. */
@@ -260,6 +278,7 @@ const API_READ_PARAMS: Record<string, string[]> = {
 /** The query parameters a read passes on as the CLI's argument, after `--`: the first one set. */
 const API_READ_ARG: Record<string, string[]> = {
   "/api/peek": ["issue", "repo"],
+  "/api/partner/log": ["tab"],
 };
 
 /** `?days=7&repo=acme/api` on `/api/stats` as `--days 7 --repo acme/api`; `?issue=acme/api%237` on `/api/peek` as `-- acme/api#7`, `?repo=acme/api` as `-- acme/api`. */

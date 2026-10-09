@@ -7,6 +7,9 @@ import { type LeadStatusJson, freshItems, openItems } from "./lead";
 import { LeadMenu } from "./lead-menu";
 import { Actions, useBoardActions } from "./forms";
 import { LeadPanel, useConversation } from "./lead-panel";
+import { PAGES, type Page, type PartnerJson, pageOf } from "./partner";
+import { PartnerPanel } from "./partner-panel";
+import { PARTNER_TABS } from "../partner-tabs";
 import { ReposPane } from "./repos";
 import { StatsPane } from "./stats-page";
 import { useResource } from "./stream";
@@ -25,19 +28,11 @@ function useHarnesses() {
   return { harnesses, reload: useCallback(() => setAsked((n) => n + 1), []) };
 }
 
-type Page = "lead" | "stats";
-
-const PAGES: { page: Page; label: string; href: string }[] = [
-  { page: "lead", label: "Lead", href: "#/" },
-  { page: "stats", label: "Stats", href: "#/stats" },
-];
-
-/** The page the address names: `#/stats` is Stats, anything else the Lead. */
+/** The page the address names (see `pageOf`), followed as it changes. */
 function usePage(): Page {
-  const read = (): Page => (location.hash === "#/stats" ? "stats" : "lead");
-  const [page, setPage] = useState(read);
+  const [page, setPage] = useState(() => pageOf(location.hash));
   useEffect(() => {
-    const changed = () => setPage(read());
+    const changed = () => setPage(pageOf(location.hash));
     addEventListener("hashchange", changed);
     return () => removeEventListener("hashchange", changed);
   }, []);
@@ -86,11 +81,13 @@ function useAnswered(board: BoardJson | null) {
 }
 
 /**
- * The app: a header with the brand, the Lead and Stats pages, the count of
+ * The app: a header with the brand, the Lead's, the Partners' and the Stats pages, the count of
  * open questions, Proposals and Asking Implementers (which collapses or
  * expands their toasts) and the Lead's controls and the theme toggle, then
  * the Lead panel on the left and the page's own column on the right: the Repos on the Lead page, the
- * charts on the Stats page, and the toasts at the bottom right. The Board is
+ * charts on the Stats page, and the toasts at the bottom right. A Partner's
+ * page is its tab instead (ADR-0014); every page stays mounted while another
+ * shows, so switching keeps each one's drafts and picks. The Board is
  * asked of `serve` on load and on each `board-changed`, and `serve` answers
  * from its one-minute cache (ADR-0011), so the page never asks GitHub more
  * often than that.
@@ -105,6 +102,8 @@ function App() {
   const answered = useAnswered(board);
   const questions: ToastItem[] = [...openItems(conversation.state), ...askingItems(board, answered.questions)];
   const toasts = useToasts(questions);
+  const partners = useResource<{ partners?: PartnerJson[] }>("/api/partners", ["partner-changed", "board-changed"]).data?.partners ?? [];
+  const onPartner = page !== "lead" && page !== "stats";
   return (
     <>
       <header className="top">
@@ -131,10 +130,13 @@ function App() {
           <LeadMenu harnesses={harnesses} status={status} />
         </div>
       </header>
-      <main className={`shell ${page}`}>
+      <main className={`shell ${page}`} hidden={onPartner}>
         <LeadPanel status={status} conversation={conversation} summon={toasts.summon} board={board} />
         {page === "stats" ? <StatsPane /> : <Actions.Provider value={actions}><ReposPane board={board} /></Actions.Provider>}
       </main>
+      {PARTNER_TABS.map((tab) => (
+        <PartnerPanel key={tab} tab={tab} partner={partners.find((p) => p.tab === tab)} harnesses={harnesses} repos={board?.configured ?? []} hidden={page !== tab} />
+      ))}
       <Toasts
         items={questions}
         shown={toasts.shown}

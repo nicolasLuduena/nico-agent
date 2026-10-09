@@ -1,5 +1,6 @@
 import { ORDERS, type Order } from "./orders";
 import { render } from "./output";
+import type { PartnerTab } from "./partner-tabs";
 import { RECORDS, type RecordName } from "./records";
 import { VERSION } from "./version";
 
@@ -222,13 +223,82 @@ export async function isToolCall(request: Request) {
   }
 }
 
+/** What an MCP server offers: its tools, the instructions its handshake gives, and how it runs a tool call. */
+export interface McpServer {
+  tools: { name: string }[];
+  instructions: string;
+  call(runCli: CliRunner, params: unknown): Promise<unknown>;
+}
+
+/** The Lead's server: the Board, its conversation, the Intent and Notes, and the action tools behind the Standing orders. */
+export const LEAD_SERVER: McpServer = {
+  tools: TOOLS,
+  instructions: [
+    "Read the Board with `board`, your Inbox with `inbox`, and an agent's screen with `peek`; reply with `say`, ask the user with `ask`, and search the conversation with `recall`.",
+    "Read and replace the Intent and the Notes with `intent` and `notes`, carrying the version you read.",
+    "Act with `dispatch`, `review`, `close`, `answer`, `queue`, `unqueue` and `advance`, each under the Standing order its description names; one refused because its order is off gives you a `propose` call to make instead, and the user's decision on it arrives in your Inbox.",
+  ].join(" "),
+  call: callTool,
+};
+
+const PARTNER_TOOLS = [
+  {
+    name: "say",
+    title: "Say",
+    description: "Reply to the user: your words go into your Thread, which the user reads in your tab of the app (`nico-agent partner log <tab>`).",
+    inputSchema: { type: "object", properties: { text: { type: "string", description: "What to tell the user" } }, required: ["text"], additionalProperties: false },
+  },
+  {
+    name: "hand_off",
+    title: "Hand off",
+    description: "Draft the Hand-off: a summary of what the user and you settled, for the Lead to act on without the Thread. The user approves or edits it before it reaches the Lead; a later draft replaces it.",
+    inputSchema: { type: "object", properties: { text: { type: "string", description: "The summary, in Markdown" } }, required: ["text"], additionalProperties: false },
+  },
+  {
+    name: "thread",
+    title: "Thread",
+    description: "Read your whole Thread with the user, oldest first: their messages, your replies, your drafts and what was handed to the Lead.",
+    inputSchema: { type: "object", additionalProperties: false },
+  },
+];
+
 /**
- * nico-agent's MCP server over streamable HTTP (ADR-0010), answering one
- * JSON-RPC message per POST with a JSON body, never an SSE stream.
- * Hand-rolled JSON-RPC 2.0 over the 2025-11-25 handshake, whose tools run the
- * CLI's own `--json` commands, so it can do nothing the CLI can't.
+ * A Partner's server (ADR-0014), scoped to the Thread of its `tab`: only
+ * `say`, `hand_off` and `thread`, so a Partner can neither read the Board nor act on it.
  */
-export function mcpHandler(runCli: CliRunner) {
+export function partnerServer(tab: PartnerTab): McpServer {
+  return {
+    tools: PARTNER_TOOLS,
+    instructions: "Reply to the user with `say`, draft a Hand-off for the user to approve with `hand_off`, and read your Thread with `thread`.",
+    call: async (runCli, params) => {
+      if (!isObject(params) || typeof params.name !== "string") throw new RpcError(-32602, "tools/call needs a tool name");
+      const { name, arguments: args = {} } = params;
+      if (!isObject(args)) throw new RpcError(-32602, `${name}'s arguments must be an object`);
+      switch (name) {
+        case "say":
+          onlyArguments(name, args, ["text"]);
+          return await cliResult(runCli, ["partner", "reply", tab, "--json", "--", text(name, args, "text")]);
+        case "hand_off":
+          onlyArguments(name, args, ["text"]);
+          return await cliResult(runCli, ["partner", "draft", tab, "--json", "--", text(name, args, "text")]);
+        case "thread":
+          onlyArguments(name, args);
+          return await cliResult(runCli, ["partner", "log", tab, "--json"]);
+        default:
+          throw new RpcError(-32602, `Unknown tool: ${name} (the tools are ${PARTNER_TOOLS.map((t) => t.name).join(", ")})`);
+      }
+    },
+  };
+}
+
+/**
+ * An MCP server over streamable HTTP (ADR-0010), the Lead's unless `server`
+ * says otherwise, answering one JSON-RPC message per POST with a JSON body,
+ * never an SSE stream. Hand-rolled JSON-RPC 2.0 over the 2025-11-25
+ * handshake, whose tools run the CLI's own `--json` commands, so it can do
+ * nothing the CLI can't.
+ */
+export function mcpHandler(runCli: CliRunner, server: McpServer = LEAD_SERVER) {
   return async (request: Request): Promise<Response> => {
     if (!fromLoopback(request)) return fail(-32000, "Forbidden: only a loopback origin may connect", 403);
     if (request.method !== "POST") return fail(-32000, "Method Not Allowed: POST JSON-RPC messages to /mcp", 405, { allow: "POST" });
@@ -249,7 +319,7 @@ export function mcpHandler(runCli: CliRunner) {
     if (typeof method === "string" ? id === undefined : "result" in message || "error" in message) return new Response(null, { status: 202 });
     if (typeof method !== "string" || (typeof id !== "string" && typeof id !== "number")) return fail(-32600, "Invalid Request", 400);
     try {
-      return reply(id, { result: await respond(runCli, method, params) });
+      return reply(id, { result: await respond(runCli, server, method, params) });
     } catch (e) {
       if (e instanceof RpcError) return reply(id, { error: { code: e.code, message: e.message } });
       return reply(id, { error: { code: -32603, message: e instanceof Error ? e.message : String(e) } });
@@ -278,32 +348,28 @@ function fail(code: number, message: string, status: number, headers = {}) {
   return reply(null, { error: { code, message } }, status, headers);
 }
 
-async function respond(runCli: CliRunner, method: string, params: unknown) {
+async function respond(runCli: CliRunner, server: McpServer, method: string, params: unknown) {
   switch (method) {
     case "initialize":
-      return initialize(params);
+      return initialize(server, params);
     case "ping":
       return {};
     case "tools/list":
-      return { tools: TOOLS };
+      return { tools: server.tools };
     case "tools/call":
-      return await callTool(runCli, params);
+      return await server.call(runCli, params);
     default:
       throw new RpcError(-32601, `Method not found: ${method}`);
   }
 }
 
-function initialize(params: unknown) {
+function initialize(server: McpServer, params: unknown) {
   const asked = isObject(params) ? params.protocolVersion : undefined;
   return {
     protocolVersion: typeof asked === "string" && OLDER_VERSIONS.includes(asked) ? asked : PROTOCOL_VERSION,
     capabilities: { tools: {} },
     serverInfo: { name: "nico-agent", title: "nico-agent", version: VERSION },
-    instructions: [
-      "Read the Board with `board`, your Inbox with `inbox`, and an agent's screen with `peek`; reply with `say`, ask the user with `ask`, and search the conversation with `recall`.",
-      "Read and replace the Intent and the Notes with `intent` and `notes`, carrying the version you read.",
-      "Act with `dispatch`, `review`, `close`, `answer`, `queue`, `unqueue` and `advance`, each under the Standing order its description names; one refused because its order is off gives you a `propose` call to make instead, and the user's decision on it arrives in your Inbox.",
-    ].join(" "),
+    instructions: server.instructions,
   };
 }
 

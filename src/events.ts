@@ -1,11 +1,12 @@
 /**
  * What the app's SSE stream says changed; the app refetches the matching
  * resource: the Board, the conversation, the Proposals, the Lead's status,
- * the drawer's Intent, Notes or Standing orders, or whether Voice is on.
+ * the drawer's Intent, Notes or Standing orders, whether Voice is on, or
+ * the Partners and their Threads.
  */
 export type EventName =
   | "board-changed" | "conversation-entry" | "proposal-changed" | "lead-state"
-  | "intent-changed" | "notes-changed" | "orders-changed" | "voice-changed";
+  | "intent-changed" | "notes-changed" | "orders-changed" | "voice-changed" | "partner-changed";
 
 /** What the SSE stream asks one page to do rather than refetch: `listen` starts its talk button (`nico-agent voice talk`). */
 export type PageCommand = "listen";
