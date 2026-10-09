@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import ideaRole from "./partner-idea.md" with { type: "text" };
 import partnerSkill from "./partner-skill.md" with { type: "text" };
 import { type LaunchDefaults, type Repo, findRepo, loadConfig, writeJson } from "./config";
 import { sayToLead } from "./conversation";
@@ -82,6 +83,9 @@ export function partnerOf(configDir: string, tab: PartnerTab): Partner {
   if (!partner) throw new DispatchError(`no ${PARTNER_NAMES[tab]} runs`, [`Run \`nico-agent partner start ${tab} --repo <owner/name>\` to start one`, LIST_HELP]);
   return partner;
 }
+
+/** Each tab's role, after the skill every Partner shares. */
+const ROLES: Partial<Record<PartnerTab, string>> = { idea: ideaRole };
 
 /** A Partner's home: its skill and MCP config, outside the worktree so the worktree stays as the Repo has it. */
 function partnerHome(configDir: string, tab: PartnerTab) {
@@ -268,7 +272,7 @@ async function runPartner(world: World, configDir: string, repo: Repo, harness: 
   const steps: Record<PartnerStep, () => Promise<void>> = {
     home: async () => {
       writeJson(home, MCP_CONFIG, { mcpServers: { [MCP_SERVER]: { type: "http", url: record.mcpUrl } } });
-      writeFileSync(join(home, SKILL), partnerSkill);
+      writeFileSync(join(home, SKILL), partnerSkill + (ROLES[record.tab] ?? ""));
     },
     fetch: async () => {
       await world.gitFetch(repo.path);

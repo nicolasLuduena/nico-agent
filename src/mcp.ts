@@ -262,14 +262,68 @@ const PARTNER_TOOLS = [
   },
 ];
 
+const stringList = (description: string) => ({ type: "array", items: { type: "string" }, description });
+
+/** A tab's `hand_off`: its tool, what the server's instructions add of it, and the summary its arguments make. */
+interface HandOff {
+  tool: { name: "hand_off"; title: string; description: string; inputSchema: { properties: Record<string, unknown> } & Record<string, unknown> };
+  instructions?: string;
+  summary(args: Record<string, unknown>): string;
+}
+
+const TEXT_HAND_OFF: HandOff = {
+  tool: PARTNER_TOOLS.find((t) => t.name === "hand_off") as HandOff["tool"],
+  summary: (args) => text("hand_off", args, "text"),
+};
+
+/** The Idea partner's `hand_off`: the Hand-off in the four parts the Lead turns into a Spec, a Markdown heading each. */
+const IDEA_HAND_OFF: HandOff = {
+  tool: {
+    name: "hand_off",
+    title: "Hand off",
+    description: "Draft the Hand-off of a concrete idea, for the Lead to turn into a Spec without the Thread. The user approves or edits it before it reaches the Lead; a later draft replaces it.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        problem: { type: "string", description: "What is wrong or missing, for whom, and why it matters now" },
+        approach: { type: "string", description: "The approach chosen, naming the files, modules and behaviour it touches" },
+        ruledOut: stringList("Each approach weighed and dropped, with why; empty when none was"),
+        openQuestions: stringList("What is still undecided; empty when nothing is"),
+      },
+      required: ["problem", "approach", "ruledOut", "openQuestions"],
+      additionalProperties: false,
+    },
+  },
+  instructions: "Your Hand-off is what the Lead turns into a Spec: the problem, the approach chosen, what was ruled out, and the open questions.",
+  summary: (args) => {
+    const list = (key: string) => {
+      const items = strings("hand_off", args, key);
+      return items.length ? items.map((i) => `- ${i}`).join("\n") : "None.";
+    };
+    return [
+      ["Problem", text("hand_off", args, "problem")],
+      ["Approach", text("hand_off", args, "approach")],
+      ["Ruled out", list("ruledOut")],
+      ["Open questions", list("openQuestions")],
+    ].map(([heading, body]) => `## ${heading}\n\n${body}`).join("\n\n");
+  },
+};
+
+const HAND_OFFS: Record<PartnerTab, HandOff> = { review: TEXT_HAND_OFF, idea: IDEA_HAND_OFF };
+
 /**
  * A Partner's server (ADR-0014), scoped to the Thread of its `tab`: only
  * `say`, `hand_off` and `thread`, so a Partner can neither read the Board nor act on it.
  */
 export function partnerServer(tab: PartnerTab): McpServer {
+  const handOff = HAND_OFFS[tab];
+  const tools = PARTNER_TOOLS.map((t) => (t.name === "hand_off" ? handOff.tool : t));
   return {
-    tools: PARTNER_TOOLS,
-    instructions: "Reply to the user with `say`, draft a Hand-off for the user to approve with `hand_off`, and read your Thread with `thread`.",
+    tools,
+    instructions: [
+      "Reply to the user with `say`, draft a Hand-off for the user to approve with `hand_off`, and read your Thread with `thread`.",
+      ...(handOff.instructions ? [handOff.instructions] : []),
+    ].join(" "),
     call: async (runCli, params) => {
       if (!isObject(params) || typeof params.name !== "string") throw new RpcError(-32602, "tools/call needs a tool name");
       const { name, arguments: args = {} } = params;
@@ -279,13 +333,13 @@ export function partnerServer(tab: PartnerTab): McpServer {
           onlyArguments(name, args, ["text"]);
           return await cliResult(runCli, ["partner", "reply", tab, "--json", "--", text(name, args, "text")]);
         case "hand_off":
-          onlyArguments(name, args, ["text"]);
-          return await cliResult(runCli, ["partner", "draft", tab, "--json", "--", text(name, args, "text")]);
+          onlyArguments(name, args, Object.keys(handOff.tool.inputSchema.properties));
+          return await cliResult(runCli, ["partner", "draft", tab, "--json", "--", handOff.summary(args)]);
         case "thread":
           onlyArguments(name, args);
           return await cliResult(runCli, ["partner", "log", tab, "--json"]);
         default:
-          throw new RpcError(-32602, `Unknown tool: ${name} (the tools are ${PARTNER_TOOLS.map((t) => t.name).join(", ")})`);
+          throw new RpcError(-32602, `Unknown tool: ${name} (the tools are ${tools.map((t) => t.name).join(", ")})`);
       }
     },
   };
@@ -559,6 +613,13 @@ function onlyArguments(name: string, args: Record<string, unknown>, known: strin
 function text(name: string, args: Record<string, unknown>, key: string): string {
   const value = args[key];
   if (typeof value !== "string" || !value.trim()) throw new RpcError(-32602, `${name} needs ${key}, a non-empty string`);
+  return value;
+}
+
+/** The required argument `key`, a list of non-blank strings, possibly empty. */
+function strings(name: string, args: Record<string, unknown>, key: string): string[] {
+  const value = args[key];
+  if (!Array.isArray(value) || !value.every((v) => typeof v === "string" && v.trim())) throw new RpcError(-32602, `${name} needs ${key}, a list of non-empty strings`);
   return value;
 }
 

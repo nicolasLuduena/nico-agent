@@ -49,6 +49,24 @@ Review partner (acme/api):`, and the Lead is Nudged.
 nico-agent partner hand-off review 4 --text "Edited summary"
 ```
 
+## The Idea partner
+
+The Idea partner helps you think a problem through in the Repo you picked. It
+reads the code and may run it and its tests, but its skill (the idea role,
+after the shared Partner skill) tells it never to edit a file, commit, push or
+open an issue or PR: once the idea is handed off, the Lead does that. Its
+`hand_off` takes four parts, so its draft is what the Lead turns into a Spec:
+
+```markdown
+## Problem
+## Approach
+## Ruled out
+## Open questions
+```
+
+Ruled out and Open questions are lists, and read `None.` when empty. The
+Ideas tab's **Draft a hand-off** button asks for those parts.
+
 ## Ending one
 
 **End** in the tab, or `nico-agent partner end <tab>`, removes the Partner's

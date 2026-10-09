@@ -43,6 +43,22 @@ describe("partner start", () => {
     expect(readFileSync(join(home, "SKILL.md"), "utf8")).toStartWith("# A Partner\n");
   });
 
+  test("an Idea partner gets a worktree of the Repo on its default branch and the idea role: think it through, change nothing", async () => {
+    const { cli, world, configDir } = await withRepo();
+    const home = join(configDir, "partners", "idea");
+    expect((await cli("partner", "start", "idea", "--repo", "acme/api", ...FLAGS)).exitCode).toBe(0);
+    expect(world.calls).toContain("herdr worktree create --cwd /src/api --branch partner/idea-api-20260930120000 --base origin/main --label api:idea --no-focus");
+    expect(world.calls).toContain(`herdr agent prompt partner-idea Read the Partner skill at ${home}/SKILL.md and follow it: you are the Idea partner, in a worktree of acme/api.`);
+    const skill = readFileSync(join(home, "SKILL.md"), "utf8");
+    expect(skill).toStartWith("# A Partner\n");
+    expect(skill).toContain("## The Idea partner");
+    expect(skill).toContain("never edit, create or delete a file in the worktree, and never commit, push, or open an issue or a PR");
+    for (const section of ["Problem", "Approach", "Ruled out", "Open questions"]) expect(skill).toContain(section);
+    // The Review partner's skill holds no idea role.
+    await cli("partner", "start", "review", "--repo", "acme/api", ...FLAGS);
+    expect(readFileSync(join(configDir, "partners", "review", "SKILL.md"), "utf8")).not.toContain("## The Idea partner");
+  });
+
   test("the launch is remembered, so the next form starts on it", async () => {
     const { cli } = await withRepo();
     await cli("partner", "start", "idea", "--repo", "acme/api", "--harness", "claude", "--model", "sonnet", "--effort", "low");
@@ -193,10 +209,45 @@ describe("a Partner's MCP server", () => {
     expect(existsSync(join(configDir, "conversation.jsonl"))).toBe(false);
   });
 
+  test("the Idea partner's hand_off takes the problem, the approach, what was ruled out and the open questions, and drafts them as one summary", async () => {
+    const { cli, web } = await withRepo();
+    await cli("partner", "start", "idea", "--repo", "acme/api", ...FLAGS);
+    const listed = await rpc(web, "idea", { jsonrpc: "2.0", id: 1, method: "tools/list" });
+    const handOffTool = listed.json.result.tools.find((t: { name: string }) => t.name === "hand_off");
+    expect(handOffTool.inputSchema.required).toEqual(["problem", "approach", "ruledOut", "openQuestions"]);
+    const call = (args: unknown) => rpc(web, "idea", { jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "hand_off", arguments: args } });
+    const missing = await call({ problem: "Retries hammer the API.", approach: "A retry budget." });
+    expect(missing.json.error.message).toContain("ruledOut");
+    expect((await call({ text: "Just do it." })).json.error).toBeDefined();
+    await call({
+      problem: "Retries hammer the API during an outage.",
+      approach: "A retry budget in src/retry.ts, shared per host.",
+      ruledOut: ["Circuit breaker: too much for one caller", "Longer backoff: still unbounded"],
+      openQuestions: [],
+    });
+    const draft = (await cli("partner", "log", "idea", "--json")).json().entries.at(-1);
+    expect(draft).toMatchObject({ type: "draft", id: 1 });
+    expect(draft.text).toBe([
+      "## Problem", "", "Retries hammer the API during an outage.", "",
+      "## Approach", "", "A retry budget in src/retry.ts, shared per host.", "",
+      "## Ruled out", "", "- Circuit breaker: too much for one caller", "- Longer backoff: still unbounded", "",
+      "## Open questions", "", "None.",
+    ].join("\n"));
+  });
+
+  test("the Review partner's hand_off still takes free text", async () => {
+    const { web } = await started();
+    const listed = await rpc(web, "review", { jsonrpc: "2.0", id: 1, method: "tools/list" });
+    expect(listed.json.result.tools.find((t: { name: string }) => t.name === "hand_off").inputSchema.required).toEqual(["text"]);
+  });
+
   test("the instructions name the Partner's tools only", async () => {
     const { web } = await started();
     const { json } = await rpc(web, "idea", { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-11-25", capabilities: {} } });
     expect(json.result.instructions).toContain("`hand_off`");
     expect(json.result.instructions).not.toContain("dispatch");
+    expect(json.result.instructions).toContain("the problem, the approach chosen, what was ruled out, and the open questions");
+    const review = await rpc(web, "review", { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-11-25", capabilities: {} } });
+    expect(review.json.result.instructions).not.toContain("Spec");
   });
 });
