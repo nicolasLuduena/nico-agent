@@ -261,7 +261,7 @@ function ProposalCard({ card }: { card: Card & { kind: "proposal" } }) {
       {card.write
         ? (
           <>
-            <p className="action">{"Write a Spec and its tickets to "}<code>{card.write.repo}</code>{"’s Source"}</p>
+            <p className="action">{"Write to "}<code>{card.write.repo}</code>{"’s Source"}</p>
             <pre className="write" tabIndex={0} aria-label="What the Lead would write">{card.write.text}</pre>
           </>
         )

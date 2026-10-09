@@ -65,12 +65,34 @@ If `serve` listens on another port, pass it to `lead start --port <port>`.
 
 When something arrives for the Lead (your `say`, your `say --answer`, a PR
 event, the end of an `advance` run), nico-agent Nudges it: it prompts the Lead with "Read your
-Inbox" if herdr reports it idle (or `done` with its turn). While the Lead is working, one pending Nudge
+Inbox (local time: Wed 2026-09-30 23:30)" if herdr reports it idle (or `done` with its turn). While the Lead is working, one pending Nudge
 is kept in `nudge.json` in the config directory, and `serve` sends it within
 about 10 seconds of seeing the Lead idle, so three messages sent while it
 works bring one Nudge. A Lead that isn't running gets none; your messages
 wait in its Inbox and it reads them when it starts. A Nudge that can't be
 sent is a warning in the command's output, and `serve` tries it again.
+
+The local time is your clock, so the Lead can tell a new day began: on the
+first Nudge of each date it posts its daily brief, one `say` starting
+"Daily brief, <date>" with what ran since the last brief, what needs you, and
+what it continues with and why. Find past briefs with
+`nico-agent lead recall "Daily brief"`.
+
+On the first Nudge of each week (Monday to Sunday) it also runs the weekly
+retro (`RETRO.md` in its skill): it reads the PRs merged in each Repo since
+the last retro, with `gh` in the Repo's clone, through the `retro` skill's
+categories, and proposes each change to the agents' environment (a check, a
+coding standard, a navigation pointer; never the code) as a write Proposal:
+the ticket it would file on the Repo's Source, naming the PRs that showed
+the need. It always proposes, whatever the `write` order says. Approving one
+has the Lead file the ticket, labelled `ready-for-agent`, so the change lands
+through an Implementer's PR; declining files nothing. Each decision is in the
+conversation with the Lead's reason, so before the next retro the Lead
+recalls your declines and does not propose them again. Its summary is a
+`say` starting "Weekly retro, week of <Monday>".
+
+When the Lead asks you something (`ask`), you get one desktop notification
+with its question, as for a Proposal.
 
 ## The Lead's home
 
@@ -80,7 +102,8 @@ launching it there:
 - the `lead` skill, embedded in the nico-agent binary, where the Harness looks
   for a project's skills: `.claude/skills/` for claude, `.agents/skills/` for
   codex, `.opencode/skills/` for opencode2 (a Harness's `skillsDir` setting),
-  with `SHAPING.md` beside it, the Lead's procedure for new work (below);
+  with `SHAPING.md` beside it, the Lead's procedure for new work (below), and
+  `RETRO.md`, its procedure for the weekly retro (Nudges, below);
 - `mcp.json`, naming `serve`'s MCP server for claude's `--mcp-config`;
 - links to the shaping skills of the nico-agent checkout.
 
@@ -299,7 +322,8 @@ the approval is refused with the reason and the Proposal is closed as
 id that names none, is refused.
 
 Each decision becomes a `decision` entry in the conversation, with the
-command, its outcome and your reason, and the Lead is Nudged to read it in
+command, the Lead's reason, its outcome and yours (`lead recall` finds it by
+either reason), and the Lead is Nudged to read it in
 its Inbox. Open
 Proposals are also in the orient packet every `inbox` returns.
 
@@ -308,8 +332,9 @@ A Proposal can only run an action tool's command: `dispatch`, `review`,
 command, and any command line the CLI would reject, before recording it.
 
 A write Proposal runs no command. It holds Markdown for a configured Repo's
-Source (`lead propose --write <repo>` with `--file`, `--text` or standard
-input; the tool's `write`), which `proposals` shows whole. Approving it runs
+Source, a Spec and its tickets or a weekly retro's ticket (`lead propose
+--write <repo>` with `--file`, `--text` or standard input; the tool's
+`write`), which `proposals` shows whole. Approving it runs
 nothing in nico-agent: the decision, carrying the text, goes to the Lead's
 Inbox, and the Lead writes it.
 

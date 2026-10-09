@@ -5,7 +5,7 @@ import { answer, loadAsking } from "./answer";
 import { type BoardIssue, loadBoard } from "./board";
 import { ConfigError, VOICE_DOC, VOICE_SERVICES, findRepo, loadConfig, saveConfig, standingOrders } from "./config";
 import { ORDERS, ORDERS_HELP, type Order, isOrder } from "./orders";
-import { AnswerRefused, answerQuestion, append, authored, loadConversation, openQuestions, readInbox, recall, sayToLead } from "./conversation";
+import { AnswerRefused, type Ask, answerQuestion, append, authored, loadConversation, openAsks, openQuestions, readInbox, recall, sayToLead } from "./conversation";
 import { StepFailed, baseBranch, closeDispatch, dispatch, eachIssue, resolveIssue, review } from "./dispatch";
 import { DispatchError } from "./dispatch-error";
 import { PANE_ARGS } from "./opencode";
@@ -16,7 +16,7 @@ import { linearIdentifier } from "./linear";
 import { peek } from "./peek";
 import { PR_WATCH_INTERVAL_MS, watchPrs } from "./pr-events";
 import { PROPOSABLE, withJson } from "./mcp";
-import { PROPOSALS_SCOPE, notifyOnce } from "./notify";
+import { ASKS_SCOPE, PROPOSALS_SCOPE, notifyOnce } from "./notify";
 import { type Output, plural, render } from "./output";
 import { type Proposal, type Proposed, ProposalRefused, type SourceWrite, addProposal, commandLine, decide, describeProposed, loadProposals, openProposals, settle } from "./proposals";
 import { dequeue, enqueue, loadQueues, move, pruneBoardQueues, queueOf } from "./queue";
@@ -385,7 +385,7 @@ const commands: Command[] = [
   {
     name: "lead propose",
     usage: PROPOSE_USAGE,
-    summary: "Propose an action, or a Spec to write to a Repo's Source, for the user to approve or decline, as the Lead (its MCP `propose` tool)",
+    summary: "Propose an action, or Markdown to write to a Repo's Source, for the user to approve or decline, as the Lead (its MCP `propose` tool)",
     flags: {
       "--reason": { value: true, description: "why, in a sentence the user can decide on (required)" },
       "--write": { value: true, description: "propose writing Markdown to this Repo's Source instead of a command; approving lets the Lead write it" },
@@ -397,7 +397,7 @@ const commands: Command[] = [
       "nico-agent lead propose --reason \"Smallest unblocked Spec\" -- queue --repo acme/api -- acme/api#10",
       "nico-agent lead propose --reason \"The billing Spec we agreed on\" --write acme/api --file spec.md",
     ],
-    help: [`A Proposal runs one of: ${PROPOSABLE.join(", ")}; or, with --write, lets the Lead write a Spec and its tickets`],
+    help: [`A Proposal runs one of: ${PROPOSABLE.join(", ")}; or, with --write, lets the Lead write Markdown to a Repo's Source`],
     run: leadProposeCommand,
   },
   {
@@ -833,7 +833,20 @@ async function leadAskCommand(args: Args, ctx: RunContext): Promise<Output> {
   const [text, ...choices] = args.positionals;
   if (!text?.trim()) throw new CliError("<question> is required", [`Usage: \`${LEAD_ASK_USAGE}\``], 2);
   const entry = await append(ctx.configDir, { type: "ask", text, ...(choices.length && { choices }) }, ctx.world.now());
-  return { data: { asked: entry.id }, help: [`The answer arrives in the Inbox naming question ${entry.id}`, LOG_HELP] };
+  const open = openAsks(loadConversation(ctx.configDir));
+  const warnings = await notifyOnce(ctx.world, ctx.configDir, open.map(askNotice), (scope) => scope === ASKS_SCOPE);
+  return { data: { asked: entry.id, ...(warnings.length && { warnings }) }, help: [`The answer arrives in the Inbox naming question ${entry.id}`, LOG_HELP] };
+}
+
+/** A new question from the Lead, in its own words, for the user away from the Board. */
+function askNotice(ask: Ask) {
+  const choices = ask.choices?.length ? ` (${ask.choices.join(" / ")})` : "";
+  return {
+    key: `ask ${ask.id}`,
+    scope: ASKS_SCOPE,
+    title: "The Lead asks",
+    body: `${ask.text}${choices}\nRun \`nico-agent say --answer ${ask.id} <answer>\` to answer`,
+  };
 }
 
 async function leadRecallCommand(args: Args, ctx: RunContext): Promise<Output> {
@@ -882,13 +895,13 @@ async function leadProposeCommand(args: Args, ctx: RunContext): Promise<Output> 
 /** `--write`'s Proposal: the Markdown for a configured Repo's Source, never blank. */
 async function proposedWrite(args: Args, ctx: RunContext): Promise<Proposed> {
   const slug = args.flags["--write"] as string;
-  if (args.positionals.length) throw new CliError("a Proposal runs a command or writes a Spec, not both", [`Usage: \`${PROPOSE_USAGE}\``], 2);
+  if (args.positionals.length) throw new CliError("a Proposal runs a command or writes to a Source, not both", [`Usage: \`${PROPOSE_USAGE}\``], 2);
   const repo = findRepo(loadConfig(ctx.configDir), slug);
   if (!repo) throw new CliError(`${slug} is not a configured Repo`, ["Run `nico-agent repo list` to see the Repos"]);
   const { "--file": file, "--text": inline } = args.flags;
   if (typeof file === "string" && typeof inline === "string") throw new CliError("--file and --text give the Markdown two ways; pass one", [`Usage: \`${PROPOSE_USAGE}\``], 2);
   const text = typeof inline === "string" ? inline : typeof file === "string" ? readMarkdown(file) : await readStdin(ctx, PROPOSE_USAGE, "nothing to write: pass --file or --text, or pipe the Markdown in");
-  if (!text.trim()) throw new CliError("the Markdown to write is empty", ["Pass the Spec and its tickets as --text, --file or standard input"], 2);
+  if (!text.trim()) throw new CliError("the Markdown to write is empty", ["Pass the Markdown as --text, --file or standard input"], 2);
   return { write: { repo: repo.slug, text } };
 }
 
@@ -975,12 +988,12 @@ function idArg(args: Args, usage: string) {
 async function proposalsApprove(args: Args, ctx: RunContext): Promise<Output> {
   const proposal = await decideProposal(ctx, idArg(args, APPROVE_USAGE), "approved");
   const { id } = proposal;
-  if (!("action" in proposal)) return approveWrite(ctx, id, proposal.write);
-  const { action } = proposal;
+  if (!("action" in proposal)) return approveWrite(ctx, proposal);
+  const { action, reason } = proposal;
   /** Settle the Proposal and tell the Lead, answering the Nudge's warnings. */
   const close = async (outcome: Record<string, unknown>, why: string) => {
     await settle(ctx.configDir, id, outcome, why !== "");
-    await append(ctx.configDir, { type: "decision", proposal: id, decision: why ? "failed" : "approved", action, text: why, outcome }, ctx.world.now());
+    await append(ctx.configDir, { type: "decision", proposal: id, decision: why ? "failed" : "approved", action, reason, text: why, outcome }, ctx.world.now());
     return nudgeLead(ctx.world, ctx.configDir);
   };
   let result: RunResult;
@@ -1007,8 +1020,8 @@ async function proposalsApprove(args: Args, ctx: RunContext): Promise<Output> {
  * An approved write runs nothing in nico-agent: the Lead writes it with its
  * own shell (ADR-0010), so the decision, carrying the text, goes to its Inbox.
  */
-async function approveWrite(ctx: RunContext, id: number, write: SourceWrite): Promise<Output> {
-  await append(ctx.configDir, { type: "decision", proposal: id, decision: "approved", write, text: "" }, ctx.world.now());
+async function approveWrite(ctx: RunContext, { id, write, reason }: Proposal & { write: SourceWrite }): Promise<Output> {
+  await append(ctx.configDir, { type: "decision", proposal: id, decision: "approved", write, reason, text: "" }, ctx.world.now());
   const warnings = await nudgeLead(ctx.world, ctx.configDir);
   return {
     data: { approved: id, write: write.repo, ...(warnings.length && { warnings }) },
@@ -1039,7 +1052,7 @@ async function proposalsDecline(args: Args, ctx: RunContext): Promise<Output> {
   const reason = args.positionals.slice(1).join(" ").trim();
   const proposal = await decideProposal(ctx, idArg(args, DECLINE_USAGE), "declined", reason || undefined);
   const { id } = proposal;
-  await append(ctx.configDir, { type: "decision", proposal: id, decision: "declined", ...describeProposed(proposal).proposed, text: reason }, ctx.world.now());
+  await append(ctx.configDir, { type: "decision", proposal: id, decision: "declined", ...describeProposed(proposal).proposed, reason: proposal.reason, text: reason }, ctx.world.now());
   const warnings = await nudgeLead(ctx.world, ctx.configDir);
   return { data: { declined: id, ...describeProposed(proposal).summary, ...(warnings.length && { warnings }) }, help: [`The Lead reads the decision in its Inbox`, PROPOSALS_HELP] };
 }

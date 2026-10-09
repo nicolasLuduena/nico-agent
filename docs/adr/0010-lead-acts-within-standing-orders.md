@@ -48,6 +48,12 @@ writes it with its own shell, through the same to-spec and to-tickets path
 it takes with the order on. nico-agent still writes nothing to a Source
 (ADR-0007); declining writes nothing at all.
 
+The weekly retro uses the same kind of Proposal for each environment change
+it suggests: the ticket the Lead would file, proposed whatever the `write`
+order says, so nothing reaches a Repo from a retro without the user's
+approval. The change itself lands through an Implementer's PR on that
+ticket, never by the Lead editing the user's clone.
+
 ## Considered Options
 
 - **An advisor that only proposes.** Everything waits for a click; too slow for

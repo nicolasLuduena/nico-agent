@@ -86,7 +86,7 @@ describe("the Lead proposes, the user decides", () => {
     expect(world.calls).toEqual([]);
 
     const inbox = (await call(web, "inbox")).structuredContent.entries;
-    expect(inbox).toEqual([{ id: expect.any(Number), at: world.now().toISOString(), type: "decision", proposal: id, decision: "declined", action: DISPATCH, text: "Finish billing first" }]);
+    expect(inbox).toEqual([{ id: expect.any(Number), at: world.now().toISOString(), type: "decision", proposal: id, decision: "declined", action: DISPATCH, reason: "acme/api#7 is the smallest Ready issue", text: "Finish billing first" }]);
     expect((await cli("proposals", "--all", "--json")).json().proposals).toMatchObject([{ id, status: "declined", declineReason: "Finish billing first" }]);
   });
 
@@ -261,7 +261,7 @@ describe("the Lead proposes writing a Spec, the user decides", () => {
       reason: "We agreed on billing; the write order is off",
     }]);
     expect(world.notifications).toEqual([{
-      title: "The Lead proposes to write a Spec to acme/api's Source",
+      title: "The Lead proposes to write to acme/api's Source",
       body: `We agreed on billing; the write order is off\nRun \`nico-agent proposals\` to read it, then \`nico-agent proposals approve ${id}\` to have the Lead write it, or \`nico-agent proposals decline ${id} [reason]\``,
     }]);
   });
@@ -279,10 +279,20 @@ describe("the Lead proposes writing a Spec, the user decides", () => {
     expect(world.calls.filter((c) => !c.startsWith("herdr agent"))).toEqual([]);
 
     const inbox = (await call(web, "inbox")).structuredContent.entries;
-    expect(inbox).toEqual([{ id: expect.any(Number), at: world.now().toISOString(), type: "decision", proposal: id, decision: "approved", write: { repo: "acme/api", text: SPEC }, text: "" }]);
+    expect(inbox).toEqual([{ id: expect.any(Number), at: world.now().toISOString(), type: "decision", proposal: id, decision: "approved", write: { repo: "acme/api", text: SPEC }, reason: "We agreed on billing", text: "" }]);
     expect((await cli("proposals", "--all", "--json")).json().proposals).toEqual([{
       id, at: world.now().toISOString(), reason: "We agreed on billing", status: "approved", decidedAt: world.now().toISOString(), write: { repo: "acme/api", text: SPEC },
     }]);
+  });
+
+  test("a decision carries the Proposal's reason, so recall finds a declined retro Proposal by it", async () => {
+    const { web, cli } = await board();
+    const result = await call(web, "propose", { write: { repo: "acme/api", text: "# Lint floating promises\n" }, reason: "Weekly retro, week of 2026-10-05: catch floating promises" });
+    const id = result.structuredContent.proposed as number;
+    await cli("proposals", "decline", String(id), "We use effect");
+
+    const found = (await cli("lead", "recall", "Weekly retro", "--json")).json().entries;
+    expect(found).toMatchObject([{ type: "decision", proposal: id, decision: "declined", reason: "Weekly retro, week of 2026-10-05: catch floating promises", text: "We use effect" }]);
   });
 
   test("declining writes nothing and tells the Lead why", async () => {
@@ -339,7 +349,7 @@ describe("the Lead proposes writing a Spec, the user decides", () => {
 
     const both = await cli("lead", "propose", "--reason", "x", "--write", "acme/api", "--text", SPEC, "--json", "--", "advance");
     expect(both.exitCode).toBe(2);
-    expect(both.json().error).toBe("a Proposal runs a command or writes a Spec, not both");
+    expect(both.json().error).toBe("a Proposal runs a command or writes to a Source, not both");
     const stray = await cli("lead", "propose", "--reason", "x", "--text", SPEC, "--json", "--", "advance");
     expect(stray.json().error).toBe("--file and --text go with --write");
   });
