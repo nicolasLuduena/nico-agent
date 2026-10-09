@@ -75,7 +75,7 @@ const VOICE_SETTINGS: Record<VoiceService, string[]> = {
 export const FRONT_VOICE_DEFAULT: VoiceEndpoint = { url: "https://opencode.ai/zen/go/v1", model: "deepseek-v4.1-flash", keyEnv: "OPENCODE_API_KEY" };
 
 /** The endpoint the Front voice thinks on: voice.front, else opencode go. */
-export function frontVoice(voice: VoiceConfig | undefined): VoiceEndpoint {
+export function frontVoiceEndpoint(voice: VoiceConfig | undefined): VoiceEndpoint {
   return voice?.front ?? FRONT_VOICE_DEFAULT;
 }
 /** Where the voice services are set up and configured. */

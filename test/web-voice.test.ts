@@ -465,17 +465,32 @@ describe("/api/voice", () => {
     });
 
     describe("talked over", () => {
-      /** A reply the test streams itself: `write` sends parts, `end` closes it. */
+      /**
+       * A reply the test streams itself: `write` sends parts, `raw` events as
+       * they are, `end` closes it.
+       * Its request stopped, the stream fails, as fetch's does, and `stopped` says so.
+       */
       function controlled(world: ReturnType<typeof setup>["world"]) {
         let stream!: ReadableStreamDefaultController<Uint8Array>;
-        world.endpoint(CHAT, () => new Response(new ReadableStream<Uint8Array>({ start: (c) => { stream = c; } }), { headers: { "content-type": "text/event-stream" } }));
-        return {
-          write: (reply: Reply) => stream.enqueue(new TextEncoder().encode(events(reply, false))),
-          end: () => {
-            stream.enqueue(new TextEncoder().encode(events({}, true)));
-            stream.close();
-          },
+        const reply = { stopped: false };
+        world.endpoint(CHAT, (request) => {
+          request.signal.addEventListener("abort", () => {
+            reply.stopped = true;
+            stream.error(new DOMException("The operation was aborted.", "AbortError"));
+          });
+          return new Response(new ReadableStream<Uint8Array>({ start: (c) => { stream = c; } }), { headers: { "content-type": "text/event-stream" } });
+        });
+        const send = (text: string) => {
+          if (!reply.stopped) stream.enqueue(new TextEncoder().encode(text));
         };
+        return Object.assign(reply, {
+          write: (parts: Reply) => send(events(parts, false)),
+          raw: send,
+          end: () => {
+            send(events({}, true));
+            if (!reply.stopped) stream.close();
+          },
+        });
       }
 
       test("its reply and speech stop, and what it said stays recorded", async () => {
@@ -493,11 +508,28 @@ describe("/api/voice", () => {
 
         await until(async () => (await log(ctx)).length === 1);
         expect(await log(ctx)).toMatchObject([{ who: "front-voice", text: "Two issues are Ready.", heard: "tell me about the board" }]);
+        expect(reply.stopped).toBe(true);
         await Bun.sleep(20);
         expect(spoken).toEqual(["Two issues are Ready."]);
       });
 
-      test("a hand-off is still made", async () => {
+      test("the hand-off is made and said the moment its call is whole, before the reply ends", async () => {
+        const ctx = await withVoice(VOICED);
+        const spoken = await speaking(ctx);
+        const reply = controlled(ctx.world);
+
+        await say(ctx, "dispatch acme api seven");
+        await until(() => ctx.world.calls.some((c) => c === `http POST ${CHAT}`));
+        reply.write({ handOff: { message: "Dispatch acme/api#7." } });
+        reply.raw(`data: ${JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }] })}\n\n`);
+
+        await until(() => spoken.length === 1);
+        expect(spoken).toEqual([ASKING_THE_LEAD]);
+        await until(async () => (await log(ctx)).some((e) => e.type === "user"));
+        reply.end();
+      });
+
+      test("a hand-off it began is still made, and its words are not said", async () => {
         const ctx = await withVoice(VOICED);
         const spoken = await speaking(ctx);
         const reply = controlled(ctx.world);
@@ -506,9 +538,15 @@ describe("/api/voice", () => {
         await until(() => ctx.world.calls.some((c) => c === `http POST ${CHAT}`));
         reply.write({ say: ["Sure. "] });
         await until(() => spoken.length === 1);
+        // The hand-off's first piece is in when the user talks over it.
+        const args = JSON.stringify({ message: "Dispatch acme/api#7." });
+        const piece = (d: unknown) => `data: ${JSON.stringify({ choices: [{ index: 0, delta: d, finish_reason: null }] })}\n\n`;
+        reply.raw(piece({ tool_calls: [{ index: 0, function: { name: "hand_off", arguments: args.slice(0, 5) } }] }));
+        await Bun.sleep(10);
         talk.json({ type: "hush" });
-        reply.write({ handOff: { message: "Dispatch acme/api#7." } });
+        reply.raw(piece({ tool_calls: [{ index: 0, function: { arguments: args.slice(5) } }] }));
         reply.end();
+        expect(reply.stopped).toBe(false);
 
         await until(async () => (await log(ctx)).length === 2);
         expect(await log(ctx)).toMatchObject([

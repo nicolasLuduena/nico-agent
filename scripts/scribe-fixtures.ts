@@ -9,7 +9,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { SAMPLE_RATE, resampler } from "../src/app/talk";
-import { type VoiceConfig, defaultConfigDir, frontVoice, loadConfig } from "../src/config";
+import { type VoiceConfig, defaultConfigDir, frontVoiceEndpoint, loadConfig } from "../src/config";
 import { RealWorld } from "../src/real-world";
 import { frontVoiceReply, transcribe, wav } from "../src/voice";
 
@@ -30,7 +30,7 @@ interface Fixtures {
 
 const world = new RealWorld();
 const configured = loadConfig(defaultConfigDir(process.env)).voice;
-const voice = { ...LOCAL, ...configured, front: frontVoice(configured) };
+const voice = { ...LOCAL, ...configured, front: frontVoiceEndpoint(configured) };
 const fixtures = JSON.parse(readFileSync(FILE, "utf8")) as Fixtures;
 const respeak = process.argv.includes("--speak");
 

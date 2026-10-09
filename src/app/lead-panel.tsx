@@ -229,8 +229,9 @@ export function Byline({ who, at, note, status }: { who: Speaker; at: string; no
 /**
  * Where the user writes or talks to the Lead, side by side: Enter sends,
  * Shift+Enter starts a new line; what the talk button hears goes to the
- * Front voice, which answers it or hands it to the Lead. While the Lead is `working`, a conversation by voice shows it
- * thinking. The draft is the composer's own, so entries arriving never touch it.
+ * Front voice, which answers it or hands it to the Lead. While the Lead is
+ * `working`, a conversation by voice shows it thinking. The draft is the
+ * composer's own, so entries arriving never touch it.
  */
 function Composer({ send, talk, working }: { send: SendText; talk: ReturnType<typeof useTalk>; working: boolean }) {
   const [text, setText] = useState("");

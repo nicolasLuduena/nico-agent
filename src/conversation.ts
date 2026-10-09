@@ -228,6 +228,7 @@ export function orient(dir: string): Orient {
   return orientOf(dir, loadConversation(dir));
 }
 
+/** The orient packet of `entries`, the conversation as read. */
 function orientOf(dir: string, entries: Entry[]): Orient {
   return {
     intent: recordOrNone(dir, "intent"),

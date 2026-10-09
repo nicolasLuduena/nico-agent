@@ -1,5 +1,5 @@
 import { sayArgs } from "./app/lead";
-import { ConfigError, VOICE_DOC, frontVoice as frontVoiceEndpoint, loadConfig } from "./config";
+import { ConfigError, VOICE_DOC, frontVoiceEndpoint, loadConfig } from "./config";
 import { type Ask, type Authored, type Entry, append, isCorrection, loadConversation, orient } from "./conversation";
 import type { CliRunner } from "./mcp";
 import { describeProposed } from "./proposals";
@@ -26,6 +26,7 @@ export interface Hearing {
   handing(message: { text: string; raw: string }, cleaned: boolean): void;
 }
 
+/** What the Front voice runs with in `serve`: the world, the config directory, the CLI it writes and reads the Board through, and the speaker. */
 interface FrontVoiceContext {
   world: World;
   configDir: string;
@@ -44,8 +45,8 @@ interface FrontVoiceContext {
  * the rest of its reply; a hand-off is still made.
  */
 export function frontVoice(ctx: FrontVoiceContext) {
-  /** The replies streaming now; a hush silences each. */
-  const replying = new Set<{ hushed: boolean }>();
+  /** The replies streaming now: a hush silences each, and stops the ones not yet handing off. */
+  const replying = new Set<Reply>();
 
   /**
    * Answer `raw`, what the user said, primed with `vocabulary`, the words to
@@ -70,11 +71,13 @@ export function frontVoice(ctx: FrontVoiceContext) {
       if (!(e instanceof ConfigError)) throw e;
       return asHeard(e.message, "Fix config.json");
     }
-    const reply = { hushed: false };
+    const reply: Reply = { hushed: false, calling: false, stop: new AbortController() };
     replying.add(reply);
     try {
       const context = await readContext(vocabulary, question);
-      const answer = await frontVoiceReply(ctx.world, endpoint, { heard: raw, context });
+      const answer = await frontVoiceReply(ctx.world, endpoint, { heard: raw, context }, reply.stop.signal);
+      // Talked over while it thought: nothing to say, and nothing it was handing off.
+      if ("error" in answer && reply.stop.signal.aborted) return false;
       if ("error" in answer) return await asHeard(answer.error, answer.help);
       const said: string[] = [];
       /** Say a sentence, unless the user talked over it. */
@@ -94,8 +97,12 @@ export function frontVoice(ctx: FrontVoiceContext) {
             words = rest;
             continue;
           }
+          if ("calling" in part) {
+            reply.calling ||= part.calling === "hand_off";
+            continue;
+          }
           if (part.call.name !== "hand_off" || handedOff) continue;
-          const made = handOffOf(part.call.arguments, raw, question);
+          const made = handedMessage(part.call.arguments, raw, question);
           if (!made) continue;
           line(words.trim());
           words = "";
@@ -105,8 +112,12 @@ export function frontVoice(ctx: FrontVoiceContext) {
         }
       } catch (e) {
         // A reply cut off midway keeps what was said; with nothing said or handed off, the message still reaches the Lead.
-        if (!said.length && !handedOff) return await asHeard(`stopped answering: ${e instanceof Error ? e.message : String(e)}`, `Check voice.front (see ${VOICE_DOC})`);
-        warn({ error: `the Front voice stopped answering: ${e instanceof Error ? e.message : String(e)}`, help: [`Check voice.front (see ${VOICE_DOC})`] });
+        // Stopped by the user talking over it, it ends quietly.
+        if (!reply.stop.signal.aborted) {
+          const why = `stopped answering: ${e instanceof Error ? e.message : String(e)}`;
+          if (!said.length && !handedOff) return await asHeard(why, `Check voice.front (see ${VOICE_DOC})`);
+          warn({ error: `the Front voice ${why}`, help: [`Check voice.front (see ${VOICE_DOC})`] });
+        }
       }
       line(words.trim());
       // Talked over before it said anything, it answered nothing the user would hear again.
@@ -144,9 +155,20 @@ export function frontVoice(ctx: FrontVoiceContext) {
     hear,
     /** The user talked over the Front voice: stop what it says, and say nothing more of the replies streaming now. */
     hush() {
-      for (const reply of replying) reply.hushed = true;
+      for (const reply of replying) {
+        reply.hushed = true;
+        // A hand-off on its way is read to its end, and made.
+        if (!reply.calling) reply.stop.abort();
+      }
     },
   };
+}
+
+/** A reply streaming: whether the user talked over it, whether it began a hand-off, and how to stop its request. */
+interface Reply {
+  hushed: boolean;
+  calling: boolean;
+  stop: AbortController;
 }
 
 /** The Front voice as `serve` runs it. */
@@ -166,7 +188,7 @@ function asked(entries: Entry[], said: string): Ask | null {
  * question with choices, the choice it picks, by its number; null when the
  * arguments are not JSON with a message.
  */
-function handOffOf(args: string, raw: string, question: Ask | null): { text: string; raw: string } | null {
+function handedMessage(args: string, raw: string, question: Ask | null): { text: string; raw: string } | null {
   let parsed;
   try {
     parsed = JSON.parse(args || "{}") as { message?: unknown; choice?: unknown };

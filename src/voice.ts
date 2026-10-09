@@ -1,6 +1,6 @@
 // A 2.5s WAV, 16kHz mono, of "Dispatch the next issue on the Board."
 import sample from "./voice-sample.wav" with { type: "file" };
-import { VOICE_DOC, VOICE_SERVICES, frontVoice, type VoiceConfig, type VoiceEndpoint, type VoiceService } from "./config";
+import { VOICE_DOC, VOICE_SERVICES, frontVoiceEndpoint, type VoiceConfig, type VoiceEndpoint, type VoiceService } from "./config";
 import { type World, WorldError } from "./world";
 
 /** What `voice check` found of one voice service. */
@@ -85,7 +85,7 @@ export async function probeVoice(world: World, voice: VoiceConfig): Promise<Voic
   const probe: VoiceProbe = { services: [], help: [] };
   for (const service of VOICE_SERVICES) {
     // The Front voice always runs: on opencode go when voice.front is left out.
-    const check = await checkService(world, service, service === "front" ? frontVoice(voice) : voice[service]);
+    const check = await checkService(world, service, service === "front" ? frontVoiceEndpoint(voice) : voice[service]);
     if (check.status === "failed") {
       const { help, ...row } = check;
       probe.services.push(row);
@@ -194,7 +194,7 @@ export function transcribe(world: World, endpoint: VoiceEndpoint, audio: Uint8Ar
 
 /**
  * What the Front voice is sent for one thing the user said: `heard`, the raw
- * transcript, and `context`, what it reads (see `frontVoiceContext`); streamed
+ * transcript, and `context`, what it reads (see `readContext` in front-voice.ts); streamed
  * as it is made, or whole for `voice check`.
  */
 export interface FrontVoiceTurn {
@@ -242,8 +242,12 @@ export function frontVoiceRequest(endpoint: VoiceEndpoint, headers: Headers, { h
   return new Request(`${base(endpoint)}/chat/completions`, { method: "POST", headers, body: JSON.stringify(body) });
 }
 
-/** A piece of the Front voice's reply as it streams: words to say, or a tool call, once whole. */
-export type ReplyPart = { text: string } | { call: { name: string; arguments: string } };
+/**
+ * A piece of the Front voice's reply as it streams: words to say; that a
+ * tool call began (`calling`, its name); or the call, once its arguments
+ * are whole.
+ */
+export type ReplyPart = { text: string } | { calling: string } | { call: { name: string; arguments: string } };
 
 /**
  * The Front voice's reply to `turn`, read as the endpoint streams it
@@ -260,9 +264,18 @@ export async function frontVoiceReply(world: World, endpoint: VoiceEndpoint, tur
   return body ? { parts: replyParts(body) } : { error: "answered without a message", help: checkSettings("front") };
 }
 
-/** The parts of a streamed chat completion: its content as it comes, and each tool call once its arguments are whole, at the end. */
+/**
+ * The parts of a streamed chat completion: its content as it comes, and each
+ * tool call as it begins and once whole: when the next one begins, the
+ * choice finishes, or the stream ends.
+ */
 async function* replyParts(body: ReadableStream<Uint8Array>): AsyncGenerator<ReplyPart> {
-  const calls: { name: string; arguments: string }[] = [];
+  /** The tool call streaming now, by its index. */
+  let open: { index: number; name: string; arguments: string } | null = null;
+  const whole = function* (): Generator<ReplyPart> {
+    if (open?.name) yield { call: { name: open.name, arguments: open.arguments } };
+    open = null;
+  };
   const decoder = new TextDecoder();
   let buffer = "";
   for await (const chunk of body) {
@@ -272,22 +285,27 @@ async function* replyParts(body: ReadableStream<Uint8Array>): AsyncGenerator<Rep
     for (const line of lines) {
       const data = /^data:\s?(.*)$/.exec(line.trim())?.[1];
       if (data === undefined || data === "[DONE]") continue;
-      let delta;
+      let choice;
       try {
-        delta = JSON.parse(data)?.choices?.[0]?.delta;
+        choice = JSON.parse(data)?.choices?.[0];
       } catch {
         continue;
       }
+      const delta = choice?.delta;
       if (typeof delta?.content === "string" && delta.content) yield { text: delta.content };
       for (const call of Array.isArray(delta?.tool_calls) ? delta.tool_calls : []) {
-        const index = typeof call?.index === "number" ? call.index : calls.length;
-        const made = (calls[index] ??= { name: "", arguments: "" });
-        if (typeof call?.function?.name === "string") made.name += call.function.name;
-        if (typeof call?.function?.arguments === "string") made.arguments += call.function.arguments;
+        const index: number = typeof call?.index === "number" ? call.index : (open?.index ?? 0);
+        if (open && open.index !== index) yield* whole();
+        open ??= { index, name: "", arguments: "" };
+        const began = !open.name;
+        if (typeof call?.function?.name === "string") open.name += call.function.name;
+        if (began && open.name) yield { calling: open.name };
+        if (typeof call?.function?.arguments === "string") open.arguments += call.function.arguments;
       }
+      if (choice?.finish_reason) yield* whole();
     }
   }
-  for (const call of calls) if (call?.name) yield { call };
+  yield* whole();
 }
 
 /** A request to transcribe `file`, with `prompt` as the hint when given. */

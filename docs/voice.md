@@ -185,9 +185,11 @@ in `lead log --json`; one it answered without the Lead keeps what you said
 as `heard`. The Lead reads them in its orient packet, never in its Inbox,
 and they never Nudge it. The panel shows them under **Front voice**.
 
-Talk over it (or tap **Stop**) and it stops at once: its speech, and the
-rest of its reply. What it said stays recorded; a hand-off it makes still
-reaches the Lead.
+Talk over it (or tap **Stop**) and it stops at once: its speech, and its
+reply, whose request is dropped, so what you say next is heard without
+waiting on it. What it said stays recorded; a hand-off it had begun is read
+to its end, silently, and still reaches the Lead. "I'll ask the Lead." is
+said the moment the hand-off is whole, not at the end of the reply.
 
 When it is unreachable, its key is not set, it answers an error, or it
 answers nothing, what you said goes to the Lead as heard, with a warning
