@@ -108,8 +108,17 @@ user is notified once when a Spec becomes Held.
 _Avoid_: Paused, blocked, stuck
 
 **Implementer**:
-The agent a Dispatch starts to implement the issue and open a draft PR.
+The agent a Dispatch starts to implement the issue (or research a Research
+issue) and open a draft PR.
 _Avoid_: Worker, coder
+
+**Research issue**:
+An issue labelled `research` beside `ready-for-agent`. Its Dispatch sends the
+Implementer the `research` prompt instead of `implement`: investigate the
+issue's question against primary sources, write the findings with sources to
+one Markdown file in `docs/research/`, and open it as a draft PR against the
+Base. See `docs/research-issues.md`.
+_Avoid_: Spike, investigation issue
 
 **Asking**:
 An Implementer waiting on the user (Agent state `blocked`), with the question

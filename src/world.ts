@@ -236,6 +236,9 @@ export interface RateLimit {
 
 export const READY_LABEL = "ready-for-agent";
 
+/** Marks a Research issue: its Implementer researches its question instead of building. */
+export const RESEARCH_LABEL = "research";
+
 /** A failure reported by an adapter, already stripped of tool noise. */
 export class WorldError extends Error {}
 

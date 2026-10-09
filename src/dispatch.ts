@@ -17,7 +17,7 @@ import {
   removeDispatch,
   saveDispatch,
 } from "./state";
-import { type LinearIssue, type World, WorldError } from "./world";
+import { type LinearIssue, RESEARCH_LABEL, type World, WorldError } from "./world";
 import { type BlockerPrs, baseChoice, blockerPrs, matchesSelector } from "./board";
 import { canStart, githubSource, isLinearClosed, linearSource } from "./source";
 import { type StackTarget, chooseStackTarget } from "./stack";
@@ -142,7 +142,7 @@ export async function dispatch(world: World, configDir: string, request: Dispatc
     () => new DispatchError(`${key} has open Blockers without same-Repo open PRs`, ["Run `nico-agent` to see the Board"]));
   const base = await chooseBase(world, configDir, ref, request, stackedOn);
   const url = `https://github.com/${repo.slug}/issues/${number}`;
-  return startDispatch(world, configDir, ref, harness, templates, request, { title: issue.title, url, branch: githubBranch(repo.slug, number), base, stackedOn });
+  return startDispatch(world, configDir, ref, harness, templates, request, { title: issue.title, url, labels: issue.labels, branch: githubBranch(repo.slug, number), base, stackedOn });
 }
 
 /**
@@ -167,7 +167,7 @@ async function newLinearDispatch(world: World, configDir: string, identifier: st
       "Run `nico-agent` to see the Board",
     ]));
   const base = await chooseBase(world, configDir, ref, request, stackedOn);
-  return startDispatch(world, configDir, ref, harness, templates, request, { title: issue.title, url: issue.url, branch: issue.branchName, base, stackedOn });
+  return startDispatch(world, configDir, ref, harness, templates, request, { title: issue.title, url: issue.url, labels: issue.labels, branch: issue.branchName, base, stackedOn });
 }
 
 /** The Repo a Linear issue is dispatched into: `choice`, which must claim it, else the only Repo that does. */
@@ -194,7 +194,7 @@ async function startDispatch(
   harness: Harness,
   templates: Prompts,
   request: DispatchRequest,
-  { title, url, branch, base, stackedOn }: { title: string; url: string; branch: string; base: string; stackedOn?: StackTarget },
+  { title, url, labels, branch, base, stackedOn }: { title: string; url: string; labels: string[]; branch: string; base: string; stackedOn?: StackTarget },
 ): Promise<DispatchResult> {
   const { repo, key } = ref;
   const now = world.now().toISOString();
@@ -207,6 +207,7 @@ async function startDispatch(
     branch,
     base: `origin/${base}`,
     implementer: { agent: agentName("impl", repoName(repo), ref), harness: harness.name, model: request.model, effort: request.effort },
+    ...(labels.includes(RESEARCH_LABEL) && { research: true }),
     completed: [],
     runner: world.processId(),
     createdAt: now,
@@ -634,14 +635,15 @@ function warn(record: Dispatch, warning: string) {
 }
 
 /**
- * The Implementer's prompt, from the config's templates. When the bot's GitHub
+ * The Implementer's prompt, from the config's templates: `research` for a
+ * Research issue, else `implement`. When the bot's GitHub
  * App is installed on the Repo, checked afresh each time the prompt is sent,
  * the bot suffix is appended so the agent's PR and commits are attributed to
  * it. A failed check sends the plain prompt, with a warning.
  */
 async function implementPrompt(world: World, templates: Prompts, repo: Repo, harness: Harness, record: Dispatch) {
   const values = { sigil: harness.sigil, issueUrl: record.url, baseBranch: baseBranch(record) };
-  const text = fillTemplate(templates.implement, values) + (record.stackedOn
+  const text = fillTemplate(record.research ? templates.research : templates.implement, values) + (record.stackedOn
     ? ` as the top of the stacked PRs on top of ${record.stackedOn.pr.url} - check gh-stack if you are not aware of github's stacked PRs`
     : "");
   let installed: boolean;
