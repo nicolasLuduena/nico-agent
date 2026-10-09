@@ -257,7 +257,8 @@ An issue that is not In flight, or `--reviewer` before a review, is refused
 with help.
 
 While `serve` runs, it asks GitHub every minute what changed on each In-flight
-issue's open PR: new review comments and reviews, check results, ready for
+issue's open PR: new review comments and reviews, check results, a merge
+conflict with its base (once each time it turns conflicting), ready for
 review, merged and closed. Each change is written once into the conversation
 as an `event` entry (the PR's URL, the issue, the kind of change and a
 one-line summary), and the Lead is Nudged to read it in its Inbox. A PR stays
