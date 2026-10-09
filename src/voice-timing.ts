@@ -6,12 +6,13 @@ import { voiceOn } from "./voice-on";
 import type { World } from "./world";
 
 /**
- * The steps of a spoken message, in order: the user stops talking, the final
- * transcript comes, the Front voice hands it to the Lead, its entry is written, the Lead is
+ * The steps of a spoken message, in order: the user stops talking, the page
+ * ends the utterance (the end of speech heard), the final transcript comes,
+ * the Front voice hands it to the Lead, its entry is written, the Lead is
  * Nudged, the Lead first says something after it, and the page plays the
  * first audio of that.
  */
-const VOICE_STEPS = ["spoke", "transcribed", "handed", "written", "nudged", "said", "played"] as const;
+const VOICE_STEPS = ["spoke", "ended", "transcribed", "handed", "written", "nudged", "said", "played"] as const;
 type VoiceStep = (typeof VOICE_STEPS)[number];
 
 /** Where `serve` logs each spoken message's steps, a line each, in the config directory (see docs/voice.md). */
@@ -90,9 +91,9 @@ export function stopwatch({ world, configDir }: { world: World; configDir: strin
   };
 
   return {
-    /** A spoken message ends, the user having stopped talking at `spoke`. */
+    /** A spoken message ends now, the user having stopped talking at `spoke`. */
     start(utterance: number, spoke: Date): Timing {
-      const message: Timed = { utterance, text: "", raw: null, times: { spoke } };
+      const message: Timed = { utterance, text: "", raw: null, times: { spoke, ended: world.now() } };
       timed.push(message);
       return {
         transcribed: () => { message.times.transcribed = world.now(); },

@@ -1,4 +1,4 @@
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
@@ -219,6 +219,27 @@ describe("lead status and stop", () => {
     expect(existsSync(join(home, "mcp.json"))).toBe(true);
     expect((await cli("lead", "log")).stdout).toContain("keep this");
     expect((await cli("lead", "stop", "--json")).json().lead).toBe("not running (no-op)");
+  });
+
+  test("status shows how full the Lead's context is, from its session's transcript, once it has one", async () => {
+    const config = { lead: { ...CLAUDE.lead, contextWindow: 190_000, contextWarning: 75 } };
+    const { cli, world, home } = withConfig(config);
+    const claude = mkdtempSync(join(tmpdir(), "nico-agent-claude-"));
+    world.environment.set("CLAUDE_CONFIG_DIR", claude);
+    await cli("lead", "start");
+    expect((await cli("lead", "status", "--json")).json()).not.toHaveProperty("context");
+
+    const sessions = join(claude, "projects", home.replace(/[^A-Za-z0-9]/g, "-"));
+    mkdirSync(sessions, { recursive: true });
+    copyFileSync(join(import.meta.dir, "fixtures/lead-transcript.jsonl"), join(sessions, "f3c4210e.jsonl"));
+    const status = await cli("lead", "status", "--json");
+    expect(status.json().context).toEqual({ tokens: 156_000, window: 190_000, percent: 82, warning: true, session: "f3c4210e" });
+    expect((await cli("lead", "status")).stdout).toContain("percent: 82");
+  });
+
+  test("a context window or warning that is not a positive number is refused", async () => {
+    const { cli } = withConfig({ lead: { ...CLAUDE.lead, contextWindow: "big" } });
+    expect((await cli("lead", "start", "--json")).json().error).toContain("lead.contextWindow is not a positive number");
   });
 });
 

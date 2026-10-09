@@ -11,6 +11,7 @@ import { DispatchError } from "./dispatch-error";
 import { PANE_ARGS } from "./opencode";
 import { type Catalog, harnessCatalogs, harnesses, refreshHarnesses, rememberedLaunches } from "./harness";
 import { LEAD_AGENT, NICO_AGENT_SLUG, leadStatus, startLead, stopLead } from "./lead";
+import { claudeConfigDir, leadContext } from "./lead-context";
 import { describePrs, garden, gardenRepo, gardenerRows, startWaitingGardeners } from "./gardener";
 import { NUDGE_INTERVAL_MS, nudgeLead, sendPendingNudge } from "./nudge";
 import { linearIdentifier } from "./linear";
@@ -1694,6 +1695,16 @@ async function leadStatusCommand(ctx: RunContext): Promise<Output> {
   if (!status) return { data: { lead: "not running" }, help: [`Run \`${LEAD_START_USAGE}\` to start it`] };
   const { record, lead, state } = status;
   const { harness, model, effort } = record.agent;
+  const { contextWindow, contextWarning } = loadConfig(ctx.configDir).lead ?? {};
+  // Read from Claude Code's transcript of the Lead: no GitHub request, and nothing for a Lead on another Harness.
+  const context = leadContext({
+    claudeConfigDir: claudeConfigDir((name) => ctx.world.env(name)),
+    home: record.home,
+    startedAt: new Date(record.createdAt),
+    model,
+    ...(contextWindow !== undefined && { window: contextWindow }),
+    ...(contextWarning !== undefined && { warnAbove: contextWarning }),
+  });
   const help = lead === "running"
     ? [LEAD_SCREEN_HELP, "Run `nico-agent lead stop` to stop it"]
     : ["Run `nico-agent lead start` to start it again", "Run `nico-agent lead stop` to forget it"];
@@ -1709,6 +1720,7 @@ async function leadStatusCommand(ctx: RunContext): Promise<Output> {
       failure: record.failure,
       warnings: record.warnings,
       startedAt: record.createdAt,
+      context: context ?? undefined,
     }),
     help,
   };

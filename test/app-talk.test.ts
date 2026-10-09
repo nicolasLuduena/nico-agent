@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type Listening, type Talk, type TalkEvent, LISTENING, bargesIn, ends, indicator, level, listen, pcmSamples, resampler, talk } from "../src/app/talk";
+import { type Listening, type Talk, type TalkEvent, ASK_MS, LISTENING, LONGEST_PAUSE_MS, TURN_PAUSE_MS, bargesIn, ends, indicator, listen, pcmSamples, resampler, talk } from "../src/app/talk";
 
 /** A talk button state as these tests name it: its mode, and "(session)" in a hands-free session. */
 const named = (state: Talk) => ("session" in state && state.session ? `${state.mode} (session)` : state.mode);
@@ -196,55 +196,99 @@ describe("barge-in, while the Lead speaks", () => {
     expect(run([{ type: "failed" }], { mode: "watching" })).toEqual([["idle", null]]);
   });
 
-  test("speech onset is a fifth of a second of unbroken voice over the room; blips never add up", () => {
+  test("speech onset is a fifth of a second of unbroken voice; blips never add up", () => {
     const onset = (frames: [number, number][]) => {
       let state: Listening = LISTENING;
-      return frames.map(([l, ms]) => bargesIn((state = listen(state, l, ms).state)));
+      return frames.map(([p, ms]) => bargesIn((state = listen(state, p, ms).state)));
     };
     expect(onset([[QUIET, 100], [SPEECH, 100], [SPEECH, 100]])).toEqual([false, false, true]);
     expect(onset([[QUIET, 100], [SPEECH, 100], [QUIET, 100], [SPEECH, 100]])).toEqual([false, false, false, false]);
   });
 });
 
-/** `listen` over `frames` of [level, ms], until it ends: how it ended and after how long. */
-function hear(frames: [number, number][]) {
+/**
+ * `listen` over `frames` of [Silero's speech probability, ms], until it ends:
+ * how it ended and after how long, with Smart Turn answering whether the user
+ * `finished` (or not) `answerMs` after each time it is asked, and when it was asked.
+ */
+function hear(frames: [number, number][], finished = true, answerMs = 100) {
   let state: Listening = LISTENING;
   let elapsed = 0;
-  for (const [l, ms] of frames) {
-    const heard = listen(state, l, ms);
+  const asked: number[] = [];
+  let answers: number | null = null;
+  for (const [p, ms] of frames) {
+    const heard = listen(state, p, ms);
     state = heard.state;
     elapsed += ms;
-    if (heard.ended) return { ended: heard.ended, at: elapsed };
+    if (answers !== null && elapsed >= answers) {
+      // As the page does: an answer that comes after speech resumed is dropped.
+      if (!state.speaking) state = { ...state, finished };
+      answers = null;
+    }
+    if (heard.ask) {
+      asked.push(elapsed);
+      answers = elapsed + answerMs;
+    }
+    if (heard.ended) return { ended: heard.ended, at: elapsed, asked };
   }
-  return { ended: null, at: elapsed };
+  return { ended: null, at: elapsed, asked };
 }
 
-/** `ms` of frames at `l`, 100ms each. */
-const frames = (l: number, ms: number) => Array.from({ length: ms / 100 }, (): [number, number] => [l, 100]);
+/** `ms` of frames at `p`, 100ms each. */
+const frames = (p: number, ms: number) => Array.from({ length: ms / 100 }, (): [number, number] => [p, 100]);
 
-const QUIET = 0.002;
-const SPEECH = 0.1;
+const QUIET = 0.02;
+const SPEECH = 0.9;
 
 describe("hands-free listening", () => {
-  test("a pause after speech ends the utterance", () => {
-    expect(hear([...frames(QUIET, 500), ...frames(SPEECH, 1500), ...frames(QUIET, 3000)])).toEqual({ ended: "pause", at: 2800 });
+  test("a pause after speech asks Smart Turn, and the user having finished ends the utterance once the pause is long enough", () => {
+    expect(hear([...frames(QUIET, 500), ...frames(SPEECH, 1500), ...frames(QUIET, 3000)])).toEqual({ ended: "pause", at: 2000 + TURN_PAUSE_MS, asked: [2000 + ASK_MS] });
   });
 
-  test("a short breath between words does not", () => {
-    expect(hear([...frames(SPEECH, 1000), ...frames(QUIET, 400), ...frames(SPEECH, 1000), ...frames(QUIET, 400)])).toEqual({ ended: null, at: 2800 });
+  test("Smart Turn answering late ends the utterance with the next audio heard", () => {
+    expect(hear([...frames(SPEECH, 1000), ...frames(QUIET, 3000)], true, 600)).toEqual({ ended: "pause", at: 1000 + ASK_MS + 600 + 100, asked: [1000 + ASK_MS] });
+  });
+
+  test("a pause the user has not finished waits for more, and Smart Turn is asked again at the next pause", () => {
+    expect(hear([...frames(SPEECH, 1000), ...frames(QUIET, 1000), ...frames(SPEECH, 1000), ...frames(QUIET, 4000)], false)).toEqual({
+      ended: "pause",
+      at: 3000 + LONGEST_PAUSE_MS,
+      asked: [1000 + ASK_MS, 3000 + ASK_MS],
+    });
+  });
+
+  test("speech again makes Smart Turn's answer about the pause before it stale", () => {
+    // Finished, said of the first pause, would end the second at TURN_PAUSE_MS; asked again, it is not finished.
+    const said = [...frames(SPEECH, 1000), ...frames(QUIET, 400), ...frames(SPEECH, 1000), ...frames(QUIET, 4000)];
+    let state: Listening = LISTENING;
+    const endings: (string | undefined)[] = [];
+    said.forEach(([p, ms], i) => {
+      const heard = listen(state, p, ms);
+      state = heard.state;
+      if (i === 13) state = { ...state, finished: true };
+      endings.push(heard.ended);
+    });
+    expect(endings.indexOf("pause")).toBe(24 + LONGEST_PAUSE_MS / 100 - 1);
+  });
+
+  test("a short breath between words asks nothing", () => {
+    expect(hear([...frames(SPEECH, 1000), ...frames(QUIET, 100), ...frames(SPEECH, 1000), ...frames(QUIET, 100)])).toEqual({ ended: null, at: 2200, asked: [] });
+  });
+
+  test("speech that grows less certain at a word's end goes on until it is clearly not speech", () => {
+    expect(hear([...frames(SPEECH, 1000), ...frames(0.4, 1000), ...frames(QUIET, 3000)])).toEqual({ ended: "pause", at: 2000 + TURN_PAUSE_MS, asked: [2000 + ASK_MS] });
   });
 
   test("a click is not speech: with nothing said, it gives up after a while", () => {
-    expect(hear([...frames(QUIET, 500), [SPEECH, 100], ...frames(QUIET, 9000)])).toEqual({ ended: "nothing", at: 6000 });
+    expect(hear([...frames(QUIET, 500), [SPEECH, 100], ...frames(QUIET, 9000)])).toEqual({ ended: "nothing", at: 6000, asked: [] });
   });
 
-  test("steady background noise becomes the floor, and speech over it still counts", () => {
-    const noise = 0.03;
-    expect(hear([...frames(noise, 3000), ...frames(0.3, 1000), ...frames(noise, 2000)])).toEqual({ ended: "pause", at: 4800 });
+  test("noise Silero does not hear as speech is nothing, however loud", () => {
+    expect(hear(frames(0.3, 9000))).toEqual({ ended: "nothing", at: 6000, asked: [] });
   });
 
   test("an utterance that never pauses ends at the limit", () => {
-    expect(hear(frames(SPEECH, 70_000))).toEqual({ ended: "limit", at: 60_000 });
+    expect(hear(frames(SPEECH, 70_000))).toEqual({ ended: "limit", at: 60_000, asked: [] });
   });
 });
 
@@ -268,11 +312,6 @@ describe("the audio sent", () => {
 
   test("44.1kHz keeps the same duration", () => {
     expect(resampler(44_100)(new Float32Array(44_100)).length).toBe(16_000);
-  });
-
-  test("a batch's level is its root mean square", () => {
-    expect(level(Float32Array.from([0.5, -0.5, 0.5, -0.5]))).toBe(0.5);
-    expect(level(new Float32Array(0))).toBe(0);
   });
 });
 

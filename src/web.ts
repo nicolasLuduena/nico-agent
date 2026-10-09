@@ -1,5 +1,9 @@
 import { statSync } from "node:fs";
 import { join } from "node:path";
+import ortWasm from "onnxruntime-web/ort-wasm-simd-threaded.wasm" with { type: "file" };
+import sileroVad from "./app/models/silero-vad.onnx" with { type: "file" };
+import smartTurn from "./app/models/smart-turn-v3.2-cpu.onnx" with { type: "file" };
+import { HEARING_FILES } from "./app/hearing";
 import { type PreviewLookup, cachedPreviews } from "./preview";
 import { type CliRunner, isToolCall, mcpHandler, withJson } from "./mcp";
 import { type EventName, Events } from "./events";
@@ -79,9 +83,18 @@ export function lookAtLead({ world, configDir }: { world: World; configDir: stri
 const HTML_HEADERS = { "content-type": "text/html; charset=utf-8" };
 const JSON_HEADERS = { "content-type": "application/json; charset=utf-8" };
 
+/** What the page hears speech with (see src/app/hearing.ts), by its URL path: the file embedded in the binary, and its type. */
+const HEARING: Record<string, { file: string; type: string }> = {
+  [HEARING_FILES.vad]: { file: sileroVad, type: "application/octet-stream" },
+  [HEARING_FILES.turn]: { file: smartTurn, type: "application/octet-stream" },
+  // Its type lets the browser compile it as it downloads.
+  [HEARING_FILES.wasm]: { file: ortWasm, type: "application/wasm" },
+};
+
 /**
  * What `serve` answers besides the app's page at `/`: the app's JSON API over
- * the CLI (ADR-0006), its SSE stream, issues' hover cards, and the MCP server.
+ * the CLI (ADR-0006), its SSE stream, issues' hover cards, the models the
+ * page hears speech with, and the MCP server.
  */
 export function webHandler(context: WebContext) {
   // Hovering an issue again shows its card without asking its Source.
@@ -98,6 +111,8 @@ export function webHandler(context: WebContext) {
     const read = API_READS[pathname];
     if (read) return await cliJson(context, [...read, ...readArgs(pathname, url.searchParams)]);
     if (pathname === "/preview") return await getPreview(previews, url.searchParams);
+    const hearing = HEARING[pathname];
+    if (hearing) return new Response(Bun.file(hearing.file), { headers: { "content-type": hearing.type } });
     return new Response(`No page at ${pathname}\n`, { status: 404 });
   };
   return async (request: Request): Promise<Response> => {

@@ -188,7 +188,7 @@ Tinted neutrals (every one at the accent's hue, 272° in OKLCH), one iris accent
 
 ### Stage hues
 One colour per Stage, so a Stage is recognisable wherever it appears. Each is used only for its Stage: its name and dot on a pill tinted with it, never for anything else.
-- **Implementing** (implementing): orange. The notices borrow it, being the hue of "in progress, look when you can": their dots, and their strip, faintly tinted with it.
+- **Implementing** (implementing): orange. The notices borrow it, being the hue of "in progress, look when you can": their dots, and their strip, faintly tinted with it; and the Lead's context meter past its threshold, its fill and its pill tinted like the strip, beside the notice that says a restart is safe.
 - **PR ready** (pr-ready): green. Also the dot of a "done" agent.
 - **Review launched** (review-launched): violet, kept apart from the accent's iris.
 - **Failed** (failed): red. Also error text, Held on a Repo, Close on hover, and the dot of a failed Proposal's line.
@@ -232,6 +232,7 @@ Every text pair is checked against WCAG AA (4.5:1) in both themes: ink, muted in
 - **Title** (500 to 700, 15px): issue titles in the Repos, the page links, the talk button.
 - **Control** (600, 14px): buttons, switches' labels.
 - **Small** (13px): bylines, notices' help, outcomes, ledes in the drawer, the Repos' group names and summaries, Stage names.
+- **Context meter** (600, 12px, tabular figures): "Context 62%" in muted ink beside a 2.5rem hairline meter, after the Lead panel's "Lead"; past the threshold it turns to ink on a faint orange pill with an orange fill.
 - **Byline name** (700, 12px to 13px): "You" and "Lead"; "Heard" and "You answered" over a transcript or answer.
 - **Mono** (13px; 12px for chips, an Asking question, an Implementer's live line and the Lead's launch): issue numbers, branches, actions, a Proposal's Source write, code.
 
@@ -239,8 +240,8 @@ Every text pair is checked against WCAG AA (4.5:1) in both themes: ink, muted in
 
 - **Header:** 56px, sticky, translucent (the ground at 78% in Light, 72% in Dark, with a 20px blur and 180% saturation), a hairline under it. The brand (a 26px iris squircle with a drawn prompt, then the wordmark), then the pages (**Lead**, **Stats**) as pill links, the current one on the accent's soft tone in link iris, then at the far end the Questions count, the theme toggle, and the Lead's button.
 - **Shell:** a grid of the Lead panel (the rest of the width) and the right column (20 to 30rem; 20 to 36rem on the Stats page, for a bar a day), 1.5rem apart and from the edges, at most 150rem wide, under the header. On a 1920px window the Lead panel takes about 70% of it. The Lead panel fills the window's height; the right column's panel is as tall as its content and scrolls within the window's height.
-- **Lead panel:** a column of the bar (Lead, the Voice switch, Research, the drawer's button), the notices when there are any, the conversation (which scrolls) or the drawer, and the composer, which stays at the foot.
-- **Narrow window (900px and below):** one column, the Lead panel first and as tall as the window, then the right column. Under 560px the wordmark, the Lead panel's "Lead" and the word "Questions" hide (each keeps its accessible name; the brand's mark stays, at 24px), the Lead's button truncates, the talk button narrows to 5.5rem, and the Research box spans the panel less 1rem each side.
+- **Lead panel:** a column of the bar (Lead and its context meter, the Voice switch, Research, the drawer's button), the notices when there are any, the conversation (which scrolls) or the drawer, and the composer, which stays at the foot.
+- **Narrow window (900px and below):** one column, the Lead panel first and as tall as the window, then the right column. Under 560px the wordmark, the Lead panel's "Lead" and the word "Questions" hide (each keeps its accessible name; the brand's mark stays, at 24px), the Lead's button truncates, the talk button narrows to 5.5rem, the Research box spans the panel less 1rem each side, and the context meter shows only its figure ("86%").
 - **Pages:** `#/` is the Lead page, `#/stats` the Stats page; the Lead panel and the toasts stay on both.
 - **Toasts:** fixed at the bottom right of every page, over the right column, 26rem wide at most (the window less 1rem each side under 560px).
 

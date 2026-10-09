@@ -47,10 +47,11 @@ function timings(configDir: string) {
 
 type Voiced = Awaited<ReturnType<typeof withVoice>>;
 
-/** Say something into the page as `utterance`, having stopped talking at SPOKE; its final transcript, or the error. */
-async function speak({ talk }: Voiced, utterance: number) {
+/** Say something into the page as `utterance`, having stopped talking at SPOKE, and the page ending it `pause` ms later; its final transcript, or the error. */
+async function speak({ talk, world }: Voiced, utterance: number, pause = 0) {
   talk.json({ type: "start", utterance });
   talk.send(AUDIO);
+  later(world, pause);
   talk.json({ type: "end", spokeAt: SPOKE.getTime() });
   return await talk.next();
 }
@@ -90,7 +91,8 @@ describe("the voice timing log", () => {
     });
     handsOff(world, "What is running?", 900);
 
-    expect(await speak(ctx, 4)).toMatchObject({ type: "final", text: "um what is running" });
+    // The page hears the end of speech in a pause of 0.5s.
+    expect(await speak(ctx, 4, 500)).toMatchObject({ type: "final", text: "um what is running" });
     await handedOff(ctx);
     expect(timings(ctx.configDir)).toEqual([]);
 
@@ -104,14 +106,15 @@ describe("the voice timing log", () => {
       utterance: 4,
       text: "What is running?",
       spoke: "2026-09-30T12:00:00.000Z",
-      transcribed: "2026-09-30T12:00:01.200Z",
-      handed: "2026-09-30T12:00:02.100Z",
-      written: "2026-09-30T12:00:02.100Z",
-      nudged: "2026-09-30T12:00:02.100Z",
-      said: "2026-09-30T12:00:08.100Z",
-      played: "2026-09-30T12:00:08.500Z",
-      took: { transcribed: 1200, handed: 900, written: 0, nudged: 0, said: 6000, played: 400 },
-      total: 8500,
+      ended: "2026-09-30T12:00:00.500Z",
+      transcribed: "2026-09-30T12:00:01.700Z",
+      handed: "2026-09-30T12:00:02.600Z",
+      written: "2026-09-30T12:00:02.600Z",
+      nudged: "2026-09-30T12:00:02.600Z",
+      said: "2026-09-30T12:00:08.600Z",
+      played: "2026-09-30T12:00:09.000Z",
+      took: { ended: 500, transcribed: 1200, handed: 900, written: 0, nudged: 0, said: 6000, played: 400 },
+      total: 9000,
       slowest: "said",
     }]);
 
@@ -139,13 +142,14 @@ describe("the voice timing log", () => {
       utterance: 1,
       text: "what is running",
       spoke: "2026-09-30T12:00:00.000Z",
+      ended: "2026-09-30T12:00:00.000Z",
       transcribed: "2026-09-30T12:00:01.000Z",
       handed: null,
       written: "2026-09-30T12:00:01.000Z",
       nudged: null,
       said: "2026-09-30T12:00:04.000Z",
       played: null,
-      took: { transcribed: 1000, handed: null, written: 0, nudged: null, said: 3000, played: null },
+      took: { ended: 0, transcribed: 1000, handed: null, written: 0, nudged: null, said: 3000, played: null },
       total: null,
       slowest: "said",
     }]);
@@ -162,15 +166,16 @@ describe("the voice timing log", () => {
       utterance: 2,
       text: "",
       spoke: "2026-09-30T12:00:00.000Z",
+      ended: "2026-09-30T12:00:00.000Z",
       transcribed: null,
       handed: null,
       written: null,
       nudged: null,
       said: null,
       played: null,
-      took: { transcribed: null, handed: null, written: null, nudged: null, said: null, played: null },
+      took: { ended: 0, transcribed: null, handed: null, written: null, nudged: null, said: null, played: null },
       total: null,
-      slowest: null,
+      slowest: "ended",
     }]);
   });
 
@@ -190,6 +195,6 @@ describe("the voice timing log", () => {
     // serve's next tick, or anything else it hears, writes it.
     later(world, 60_000);
     await post(ctx, "still there?");
-    expect(timings(ctx.configDir)).toMatchObject([{ utterance: 3, written: "2026-09-30T12:00:00.000Z", nudged: "2026-09-30T12:00:00.000Z", said: null, played: null, slowest: "transcribed" }]);
+    expect(timings(ctx.configDir)).toMatchObject([{ utterance: 3, written: "2026-09-30T12:00:00.000Z", nudged: "2026-09-30T12:00:00.000Z", said: null, played: null, slowest: "ended" }]);
   });
 });

@@ -3,8 +3,8 @@ import type { Authored } from "../conversation";
 import type { BoardJson } from "./board";
 import { OutcomeNote, answerOf, post, usePost } from "./forms";
 import {
-  type Card, type Conversation, type ItemLine, type LeadStatusJson, type OpenItem, type ProposalJson, type Speaker,
-  cards, followsNewEntries, itemLine, notices, reduce, sayArgs, toastId,
+  type Card, type ContextMeter, type Conversation, type ItemLine, type LeadStatusJson, type OpenItem, type ProposalJson, type Speaker,
+  cards, contextMeter, followsNewEntries, itemLine, notices, reduce, sayArgs, toastId,
 } from "./lead";
 import { LeadDrawer } from "./lead-drawer";
 import { sendsOnEnter } from "./popover";
@@ -47,7 +47,7 @@ export function useConversation() {
 export type ConversationState = ReturnType<typeof useConversation>;
 
 /**
- * The Lead panel: the Voice switch, the Research button and the drawer's
+ * The Lead panel: how full the Lead's context is, the Voice switch, the Research button and the drawer's
  * button, the one quiet place for warnings (the Board's among them), the
  * conversation as cards, with a line for each question and Proposal (an open
  * one's line calls `summon` to bring its toast forward), and the composer,
@@ -80,6 +80,7 @@ export function LeadPanel({ status, conversation, summon, board }: {
     <section className="lead-panel" aria-label="Conversation with the Lead">
       <div className="lead-bar">
         <h1>Lead</h1>
+        <ContextMeterView meter={contextMeter(status)} />
         <label className="switch" title={voice ? "The Lead's replies are spoken, and it talks for the ear" : "Speak the Lead's replies, and have it talk for the ear"}>
           <input type="checkbox" role="switch" checked={voice} disabled={busy} onChange={(e) => void act(e.target.checked ? "/api/voice/on" : "/api/voice/off", [])} />
           Voice
@@ -122,6 +123,27 @@ export function LeadPanel({ status, conversation, summon, board }: {
       </ol>
       <Composer send={sendAndFollow} talk={talking} working={status?.lead === "running" && status.state === "working"} />
     </section>
+  );
+}
+
+/** How full the Lead's context is, as a quiet meter beside its name; past the threshold it turns to the warning tone. */
+function ContextMeterView({ meter }: { meter: ContextMeter | null }) {
+  if (!meter) return null;
+  return (
+    <span
+      className={`context-meter${meter.warning ? " warning" : ""}`}
+      role="meter"
+      aria-label="The Lead's context"
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={meter.fill}
+      aria-valuetext={meter.text}
+      title={meter.title}
+    >
+      <span className="track" aria-hidden="true"><i style={{ width: `${meter.fill}%` }} /></span>
+      {/* Under 560px only the figure shows; the meter's value text still names it. */}
+      <span><span className="word">Context </span>{meter.percent}%</span>
+    </span>
   );
 }
 

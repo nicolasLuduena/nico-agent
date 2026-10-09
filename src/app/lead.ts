@@ -1,4 +1,5 @@
 import type { Authored } from "../conversation";
+import type { LeadContext } from "../lead-context";
 import type { ProposalStatus, SourceWrite } from "../proposals";
 import { type HarnessesJson, type LaunchChoice, advanceReport, launchChoice } from "./actions";
 import type { BoardJson } from "./board";
@@ -30,6 +31,29 @@ export interface LeadStatusJson {
   workspace?: string;
   failure?: { step: string; error: string };
   warnings?: string[];
+  /** How full the Lead's context is after its latest turn; absent without a transcript to read it from. */
+  context?: LeadContext;
+}
+
+/** The Lead panel's context meter: how full the running Lead's context is, and whether a restart is due. */
+export interface ContextMeter {
+  text: string;
+  percent: number;
+  /** How full the meter's track is, 0 to 100: the percent, held at 100 past a full window. */
+  fill: number;
+  warning: boolean;
+  title: string;
+}
+
+/** The running Lead's context meter, or null: no transcript to read, or no Lead running. */
+export function contextMeter(status: LeadStatusJson | null): ContextMeter | null {
+  const context = status?.lead === "running" ? status.context : undefined;
+  if (!context) return null;
+  const { percent, warning, tokens, window } = context;
+  return {
+    text: `Context ${percent}%`, percent, fill: Math.min(percent, 100), warning,
+    title: `The Lead's context is ${percent}% full: ${tokens.toLocaleString("en-US")} of ${window.toLocaleString("en-US")} tokens`,
+  };
 }
 
 /** A message to the Lead, or an answer to its question `question`, shown before `serve` has it. */
@@ -329,7 +353,8 @@ export interface Notice {
 /**
  * Everything wrong at once, in the one quiet place above the conversation: `serve`
  * lost (`failure`), the Board unreadable or GitHub rate limited, the Lead not
- * running or failed and its launch's warnings, and voice failing (`talk`).
+ * running or failed and its launch's warnings, its context filling past the
+ * threshold, and voice failing (`talk`).
  * Nothing while the Lead's status is still loading.
  */
 export function notices({ failure, status, talk, board }: {
@@ -349,6 +374,14 @@ export function notices({ failure, status, talk, board }: {
     shown.push({ key: "lead", text: "The Lead is not running", help: ["Start it from Lead in the header"] });
   }
   status?.warnings?.forEach((w, i) => shown.push({ key: `lead-warning-${i}`, text: w, help: [] }));
+  const context = contextMeter(status);
+  if (context?.warning) {
+    shown.push({
+      key: "context",
+      text: `The Lead's context is ${context.percent}% full, so its work may slip`,
+      help: ["Restarting it is safe: the conversation, Notes, Intent and Board are kept. Stop and Start it from Lead in the header"],
+    });
+  }
   if (talk) shown.push({ key: "voice", text: talk.error, help: talk.help });
   return shown;
 }

@@ -61,6 +61,36 @@ there. `lead status` shows the failure in the meantime.
 
 If `serve` listens on another port, pass it to `lead start --port <port>`.
 
+## The Lead's context
+
+The Lead's work slips as its context fills. The Lead panel shows how full it
+is beside the Lead's name ("Context 62%"), and `lead status` reports it as
+`context` (`tokens`, `window`, `percent`, `warning`, `session`). Past the
+warning threshold the meter turns orange and the panel's warnings say a
+restart is safe. It is: the conversation, Notes, Intent and Board live in
+nico-agent, so Stop and Start the Lead from Lead in the header.
+
+The count comes from Claude Code's transcript of the Lead's current session:
+the newest `~/.claude/projects/<the Lead's home, path-escaped>/<session>.jsonl`
+written since the Lead started (`$CLAUDE_CONFIG_DIR` in place of `~/.claude`
+when set). It is the newest assistant entry's `input_tokens`,
+`cache_creation_input_tokens` and `cache_read_input_tokens`. A restarted Lead
+shows nothing until its first answer, then its new session's count. A Lead
+on another Harness, or one with no transcript yet, shows nothing. It is read
+whenever the Lead's status is, which the app refetches when the Lead's Agent
+state changes (as its turn ends), and it costs no GitHub request.
+
+Claude Code records no context window, so the window is
+`lead.contextWindow` in config when set. Otherwise it is 1,000,000 tokens for
+a model ending in `[1m]` (such as `opus[1m]`) and 200,000 for any other. The
+threshold is `lead.contextWarning`, in percent, 80 unless set:
+
+```json
+{
+  "lead": { "harness": "claude", "model": "opus", "effort": "high", "contextWindow": 200000, "contextWarning": 80 }
+}
+```
+
 ## Nudges
 
 When something arrives for the Lead (your `say`, your `say --answer`, a PR

@@ -295,6 +295,13 @@ label.switch:has(:checked) { color: var(--ink); }
 .lead-bar h1 { font-size: 24px; font-weight: 700; letter-spacing: -0.03em; margin-right: auto; }
 .lead-bar label.switch { margin-right: 0.5rem; }
 .lead-bar button { white-space: nowrap; }
+/* How full the Lead's context is: a quiet figure with a hairline meter beside the Lead's name, orange past the threshold. */
+.lead-bar h1:has(+ .context-meter) { margin-right: 0.35rem; }
+.context-meter { display: inline-flex; align-items: center; gap: 0.45rem; margin-right: auto; padding: 0.2rem 0.55rem; border-radius: 999px; font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--ink-muted); white-space: nowrap; transition: color 240ms var(--ease), background 240ms var(--ease); }
+.context-meter .track { position: relative; width: 2.5rem; height: 4px; border-radius: 2px; background: var(--rule); overflow: hidden; }
+.context-meter .track i { position: absolute; inset: 0 auto 0 0; border-radius: inherit; background: var(--ink-muted); transition: width 480ms var(--ease-out), background 240ms var(--ease); }
+.context-meter.warning { color: var(--ink); background: color-mix(in srgb, var(--implementing) calc(var(--tint) * 0.7), var(--surface)); }
+.context-meter.warning .track i { background: var(--implementing); }
 
 /* The Research box: it drops from the Lead bar over the conversation, as wide as the panel allows. */
 .research-box { z-index: 5; right: 1.25rem; top: calc(100% + 8px); width: min(26rem, calc(100% - 2.5rem)); }
@@ -490,6 +497,9 @@ button:disabled, button:disabled:hover, .repo-group form.launch > button:disable
   /* The header's page already names the Lead; its controls need the bar's width. */
   .lead-bar h1, .questions-count .label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .lead-bar label.switch { margin-right: auto; }
+  .lead-bar .context-meter + label.switch { margin-right: 0.25rem; }
+  .context-meter { padding: 0.2rem 0.45rem; }
+  .context-meter .track, .context-meter .word { display: none; }
   .lead-bar button.quiet { padding: 0 0.55rem; }
   .card-message.lead .text { font-size: 16px; }
   button.talk { min-width: 5.5rem; }
