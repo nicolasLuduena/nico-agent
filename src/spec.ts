@@ -33,6 +33,9 @@ export interface SpecFacts {
   issues: IssueFacts[];
 }
 
+/** An open PR whose head branch is in the Repo, so a Dispatch can start on it. */
+export type OpenPr = PullRequest & { headBranch: string };
+
 export interface RepoFacts {
   repo: string;
   /** The Base an issue starts from when none of its Blockers has an open PR. */
@@ -48,7 +51,7 @@ export interface RepoFacts {
 export interface Next {
   issue: string;
   /** Its Blockers' one open PR; unset when the issue starts from `base`, the Repo's default branch. */
-  stackOn?: PullRequest & { headBranch: string };
+  stackOn?: OpenPr;
   /** The branch the Dispatch starts from: `stackOn`'s head branch, else the Repo's default branch. */
   base: string;
   reason: string;
@@ -146,13 +149,14 @@ function decideSpec(repo: RepoFacts, spec: SpecFacts): SpecDecision {
   }
   decision.running = true;
   if (held) return decision;
+  // Implementing are the In-flight issues without a PR yet; the cap counts every In-flight one, PR ready or not.
   decision.implementing = remaining.filter((i) => i.inFlight).map((i) => i.issue);
   const inFlight = spec.issues.filter((i) => i.inFlight).length;
   decision.next = next.slice(0, Math.max(0, cap - inFlight));
   decision.waiting = waiting;
   if (decision.next.length) return decision;
   if (next.length) {
-    decision.reason = `${plural(inFlight, "issue")} of ${spec.spec} ${inFlight === 1 ? "is" : "are"} In flight, its cap of ${cap} Implementers`;
+    decision.reason = `${spec.spec} has ${inFlight} issues In flight, its cap of Implementers`;
   } else if (decision.implementing.length) {
     const names = decision.implementing.join(", ");
     decision.reason = `${names} ${decision.implementing.length === 1 ? "is" : "are"} Implementing, and no other issue is unblocked`;
@@ -163,10 +167,6 @@ function decideSpec(repo: RepoFacts, spec: SpecFacts): SpecDecision {
     decision.reason = "no remaining issue is Ready or unblocked";
   }
   return decision;
-}
-
-function plural(n: number, word: string) {
-  return `${n} ${word}${n === 1 ? "" : "s"}`;
 }
 
 /** An unresolved Blocker of `issue` outside its Spec. */
@@ -224,10 +224,14 @@ function nextIssues(repo: RepoFacts, spec: SpecFacts, remaining: IssueFacts[]): 
   return { next, waiting };
 }
 
-type OpenPr = PullRequest & { headBranch: string };
+/** An unresolved Blocker within the Spec, and its open PR. */
+interface BlockerPr {
+  blocker: string;
+  pr: OpenPr;
+}
 
 /** The open PRs of `issue`'s unresolved Blockers within the Spec. */
-function blockerPrs(spec: SpecFacts, issue: IssueFacts): { blocker: string; pr: OpenPr }[] {
+function blockerPrs(spec: SpecFacts, issue: IssueFacts): BlockerPr[] {
   return issue.blockers.filter((b) => !b.closed).flatMap((b) => {
     const pr = spec.issues.find((i) => i.issue === b.issue)?.pr;
     return pr && isOpen(pr) ? [{ blocker: b.issue, pr }] : [];
@@ -239,7 +243,7 @@ function blockerPrs(spec: SpecFacts, issue: IssueFacts): { blocker: string; pr: 
  * branch down through the Spec's open PRs: one top means every Blocker's PR
  * is in that top PR's Stack.
  */
-function stackTops<T extends { pr: OpenPr }>(spec: SpecFacts, prs: T[]): T[] {
+function stackTops(spec: SpecFacts, prs: BlockerPr[]): BlockerPr[] {
   const open = spec.issues.map((i) => i.pr).filter((pr): pr is OpenPr => pr !== null && isOpen(pr));
   const below = (pr: OpenPr) => {
     const branches = new Set<string>();
@@ -255,6 +259,7 @@ function stackTops<T extends { pr: OpenPr }>(spec: SpecFacts, prs: T[]): T[] {
   return unique.filter((p) => !unique.some((q) => q !== p && below(q.pr).has(p.pr.headBranch)));
 }
 
+/** Whether `pr` is open with a head branch in the Repo to start on. */
 function isOpen(pr: PullRequest): pr is OpenPr {
   return pr.state === "open" && Boolean(pr.headBranch);
 }

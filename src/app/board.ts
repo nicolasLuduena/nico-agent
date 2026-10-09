@@ -194,7 +194,7 @@ function repoSection(board: BoardJson, repo: string): RepoSection {
     .map((s, i) => ({ s, i, state: stateOf(s) }))
     .sort((a, b) => order.indexOf(a.state) - order.indexOf(b.state) || a.i - b.i)
     .map(({ s, state }): SpecGroup => {
-      const note = s.held?.reason ?? reasons(s.waiting) ?? reasons(s.next) ?? s.reason ?? (state === "not-startable" ? "None of its issues is Ready" : undefined);
+      const note = s.held?.reason ?? reasons([...(s.waiting ?? []), ...(s.next ?? [])]) ?? s.reason ?? (state === "not-startable" ? "None of its issues is Ready" : undefined);
       const own = flightOf(s.spec);
       return {
         spec: s.spec, state, label: repoKey(s.spec, repo), title: s.title, url: s.url,

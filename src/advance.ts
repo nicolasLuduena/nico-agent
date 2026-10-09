@@ -126,7 +126,7 @@ async function advanceOnce(world: World, configDir: string): Promise<AdvanceRepo
     }
     return rows;
   };
-  for (const { spec, plans } of running) await carry(spec, plans);
+  for (const { spec, plans: specPlans } of running) await carry(spec, specPlans);
   for (const { room, specs } of queued) {
     let left = room;
     for (const spec of specs) {

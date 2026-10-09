@@ -57,7 +57,7 @@ describe("several Implementers per Spec", () => {
     world.calls.length = 0;
     expect((await cli("advance", "--json")).json()).toEqual({ specs: [], help: ["Run `nico-agent` to see the Board"] });
     expect(worktreeBases(world.calls)).toEqual([]);
-    expect((await cli("--json")).json().specs[0]).toMatchObject({ running: true, reason: "2 issues of BLE-10 are In flight, its cap of 2 Implementers" });
+    expect((await cli("--json")).json().specs[0]).toMatchObject({ running: true, reason: "BLE-10 has 2 issues In flight, its cap of Implementers" });
   });
 
   test("by default a Spec runs up to 5 Implementers, and the cap must be a positive integer", async () => {
