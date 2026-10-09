@@ -178,7 +178,7 @@ A Dispatch is finished when its `dispatches` row has `stage` `PR ready` and its 
 
 ## Your shell
 
-You have a shell. Use it to look: `nico-agent lead log`, `nico-agent show <issue>`, `nico-agent orders`, `nico-agent proposals`, `nico-agent github usage` (nico-agent's own GitHub calls by caller and query, and the account's quota, when GitHub is rate limited), `herdr agent read <agent>`, `gh` and `git` read commands. Every change to the Board, herdr or an Implementer goes through your tools, which check your Standing orders. A change to a Source or a repo is the `write` order's: make it only when the user asks for it in the conversation, when `nico-agent orders` shows `write` on, or when the user approves your `write` Proposal. A research issue the user asks for, in the conversation or with the Research button, is asked for: write it without a Proposal (Research).
+You have a shell. Use it to look: `nico-agent lead log`, `nico-agent show <issue>`, `nico-agent orders`, `nico-agent proposals`, `nico-agent github usage` (nico-agent's own GitHub calls by caller and query, and the account's quota, when GitHub is rate limited), `herdr agent read <agent>`, `gh` and `git` read commands. Every change to the Board, herdr or an Implementer goes through your tools, which check your Standing orders. A change to a Source or a repo is the `write` order's: make it only when the user asks for it in the conversation, when `nico-agent orders` shows `write` on, or when the user approves your `write` Proposal. A Research issue the user asks for, in the conversation or with the Research button, is asked for: write it without a Proposal (Research).
 
 ## Shaping new work
 
@@ -188,4 +188,4 @@ The other shaping skills beside this one serve the user on request: `triage` for
 
 ## Research
 
-When the user asks you to research a question, in the conversation or with the app's Research button, read `RESEARCH.md` beside this skill and follow it: find the Repo, asking when it is unclear; write the research issue on its Source, labelled `research` and `ready-for-agent`, with no Proposal; and start it under the `start` order, as a Spec of its own or as the Blocker of the tickets that need its findings.
+When the user asks you to research a question, in the conversation or with the app's Research button, read `RESEARCH.md` beside this skill and follow it to a Research issue on the Source, started or proposed.

@@ -2,13 +2,13 @@
 
 The user asks you to research a question: in the conversation ("find out how codex loads skills"), or with the app's Research button, which sends their question to you as a message marked as a research request. You write a Research issue on the Repo's Source and start it. Its Implementer researches instead of building: it writes the findings, with their sources, to one Markdown file in the Repo's `docs/research/`, opened as a draft PR.
 
-Research issues are yours to write when the user asks: the user decided that this write needs no Proposal, whatever the `write` order says. A research issue you were not asked for is a new idea: shape it (`SHAPING.md`). Starting it is the `start` order's, like any Spec.
+Research issues are yours to write when the user asks: the user decided that this write needs no Proposal, whatever the `write` order says, and the same holds for linking it into a Spec as a sub-issue and a Blocker (Start it, below). A Research issue you were not asked for is a new idea: shape it (`SHAPING.md`). Starting it is the `start` order's, like any Spec.
 
 ## 1. Find the Repo
 
 The findings land in the Repo the research is for. Find it from the user's words, the Specs and issues they name, the Intent and the Notes, and the Repos in `nico-agent repo list --json`. When more than one Repo fits, or none clearly does, `ask` which, with the likely Repos as choices, and write nothing until the user answers.
 
-## 2. Write the research issue
+## 2. Write the Research issue
 
 Change into the Repo's clone (its `path` in `nico-agent repo list --json`) and read its `AGENTS.md`, its issue tracker doc and its triage labels doc, as Shaping new work does; follow them for the write, the identity and signature rules included. Write in the Repo's terms (its `GLOSSARY.md`).
 
@@ -22,12 +22,14 @@ Read the issue back from the Source to check its title, body and both labels.
 
 ## 3. Start it
 
-**On its own**: research no ticket waits on is a Spec of its own. Read `board` again, then `queue` it; `advance` starts it when its Repo has room.
+**On its own**: research no ticket waits on is a Spec of its own. Read `board`, then `queue` it; `advance` starts it when its Repo has room.
 
-**As a Blocker**: when the user names work that needs the findings (a Spec, or tickets of one), make the research issue a sub-issue of that Spec and the Blocker of each ticket that needs it, with the Source's native blocking links as the issue tracker doc says. Then the tickets wait for its PR to merge, and the Spec dispatches the research first:
+**As a Blocker**: when the user names work that needs the findings (a Spec, or tickets of one), make the Research issue a sub-issue of that Spec and the Blocker of each ticket that needs it, with the Source's native blocking links as the issue tracker doc says. Then the tickets wait for its PR to merge, and the Spec dispatches the research first:
 
-- the Spec is running: `advance` dispatches the research issue as the Spec's next issue, and nothing more is yours to start;
+- the Spec is running: its tickets that need the findings are now blocked, so `advance` dispatches the Research issue once the Spec's current issue is done, and nothing more is yours to start;
 - the Spec is not running: `queue` the Spec.
+
+A blocking link stops nothing already In flight: check `dispatches` in `board` first, and when a ticket that needs the findings is In flight, tell the user it will not wait for them, and leave Closing it to the user.
 
 When `queue` is refused because the `start` order is off, make the `propose` call the refusal hands you, with a reason naming the question. The issue is written either way.
 
