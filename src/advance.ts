@@ -4,7 +4,7 @@ import { loadBoard, specLoadErrors } from "./board";
 import { recordSighting } from "./stats";
 import { removeFinishedGardeners } from "./gardener";
 import { ConfigError, SCHEDULER_DEFAULTS, type LaunchDefaults, loadConfig } from "./config";
-import { type DispatchRequest, StepFailed, checkLaunch, closeDispatch, dispatch } from "./dispatch";
+import { type DispatchRequest, StepFailed, checkLaunch, closeDispatch, dispatch, isResumable } from "./dispatch";
 import { DispatchError, LaunchError } from "./dispatch-error";
 import { linearIdentifier } from "./linear";
 import { type Notice, PROPOSALS_SCOPE, notifyOnce } from "./notify";
@@ -49,7 +49,8 @@ export type SpecPlan =
  * Keep running Specs moving and fill each Repo's room from its Queue
  * (ADR-0009): dispatch each one's next issues, each on the PR or Base the
  * Spec rules chose (ADR-0012), with the Scheduler defaults from config, one
- * Spec at a time. Idempotent like `dispatch` (ADR-0006).
+ * Spec at a time. A manual Repo is left alone but for Closing its finished
+ * Dispatches. Idempotent like `dispatch` (ADR-0006).
  */
 export async function advance(world: World, configDir: string): Promise<AdvanceReport> {
   const holder = takeAdvanceLock(world, configDir);
@@ -110,10 +111,19 @@ async function advanceOnce(world: World, configDir: string): Promise<AdvanceRepo
   await recordSighting(configDir, board.sighting, world.now());
   const failedRepos = specLoadErrors(board.errors);
   report.errors = failedRepos.map(({ repo, error }) => ({ repo, error }));
-  const queued = fromQueues(await pruneBoardQueues(configDir, board), board.specs);
+  const queues = await pruneBoardQueues(configDir, board);
+  const manual = board.specs.filter((r) => r.manual);
+  const isManual = new Set(manual.map((r) => r.repo));
+  const queued = fromQueues(queues, board.specs.filter((r) => !r.manual));
   // A Spec waiting on another Spec's merges frees its slot, but is still reported.
   const running = board.specs.flatMap((r) => r.specs).filter((s) => s.running || s.waiting.length)
-    .map((spec) => ({ spec, plans: planSpec(spec, dispatches) }));
+    .map((spec) => {
+      const plans = planSpec(spec, dispatches);
+      if (!isManual.has(spec.repo)) return { spec, plans };
+      // A Dispatch whose runner still goes is no resume left undone, so it goes unsaid.
+      const undone = plans.filter((plan) => plan.action !== "resume" || isResumable(world, plan.dispatch));
+      return { spec, plans: undone.map((plan) => manualSkip(spec.repo, plan)) };
+    });
   if (running.some(({ plans }) => plans.some((p) => p.action === "start")) || queued.length) await checkDefaults(world, configDir, launch);
   const plans: { spec: SpecDecision; plan: SpecPlan }[] = [];
   /** Carry out a Spec's plans in order, stopping at a failed one, as a Failed Dispatch Holds its Spec. */
@@ -130,6 +140,12 @@ async function advanceOnce(world: World, configDir: string): Promise<AdvanceRepo
     return rows;
   };
   for (const { spec, plans: specPlans } of running) await carry(spec, specPlans);
+  // A manual Repo's Queue head stays queued, and the run says why.
+  for (const repo of manual) {
+    const head = queuedSpecs(queues, repo)[0];
+    const start = head && planSpec(head, dispatches).find((p) => p.action === "start");
+    if (start) await carry(head, [manualSkip(repo.repo, start, head.spec)]);
+  }
   for (const { room, specs } of queued) {
     let left = room;
     for (const spec of specs) {
@@ -174,17 +190,35 @@ async function advanceOnce(world: World, configDir: string): Promise<AdvanceRepo
  * candidate, as the Queues were just pruned.
  */
 function fromQueues(queues: Queues, repos: RepoDecision[]): { room: number; specs: SpecDecision[] }[] {
-  return repos.map((repo) => ({
-    room: repo.room,
-    specs: queueOf(queues, repo.repo)
-      .map((name) => repo.specs.find((s) => sameSpec(s.spec, name)))
-      .filter((s): s is SpecDecision => s !== undefined),
-  })).filter(({ room, specs }) => room > 0 && specs.length > 0);
+  return repos.map((repo) => ({ room: repo.room, specs: queuedSpecs(queues, repo) }))
+    .filter(({ room, specs }) => room > 0 && specs.length > 0);
+}
+
+/** A Repo's queued Specs, head first. */
+function queuedSpecs(queues: Queues, repo: RepoDecision): SpecDecision[] {
+  return queueOf(queues, repo.repo)
+    .map((name) => repo.specs.find((s) => sameSpec(s.spec, name)))
+    .filter((s): s is SpecDecision => s !== undefined);
 }
 
 /** What a Notice's condition is observed through: its Repo's Specs, or its Implementer's Agent state. */
 const repoScope = (repo: string) => `repo ${repo.toLowerCase()}`;
 const agentScope = (agent: string) => `agent ${agent}`;
+
+/**
+ * In a manual Repo `advance` starts and resumes nothing: each such plan is
+ * skipped, saying only an explicit `dispatch` starts it there.
+ */
+function manualSkip(repo: string, plan: SpecPlan, queueHead?: string): SpecPlan {
+  if (plan.action === "skip") return plan;
+  const issue = plan.action === "start" ? plan.issue : plan.dispatch.issue;
+  const why = `${repo} is manual: only an explicit dispatch ${plan.action === "start" ? "starts" : "resumes"} ${issue}`;
+  return {
+    action: "skip", issue,
+    reason: queueHead ? `${queueHead} is the head of the Queue, but ${why}` : why,
+    help: `Run \`nico-agent repo set ${repo} --manual off\` to let \`advance\` start work there`,
+  };
+}
 
 /** A queued Spec's start says it came from the Queue. */
 function fromQueue(plan: SpecPlan, spec: SpecDecision): SpecPlan {

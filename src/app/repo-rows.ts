@@ -53,6 +53,8 @@ export interface QueuedLine extends Named {
 /** A Repo's row in the Repos pane: a summary while collapsed, its In-flight work, Held Specs and what starts next once expanded. */
 export interface RepoRow {
   repo: string;
+  /** `advance` starts nothing there: only an explicit dispatch does. */
+  manual: boolean;
   errors: string[];
   summary: { inFlight: number; asking: number; held: number };
   dispatches: DispatchLine[];
@@ -109,6 +111,7 @@ export function repoRows(board: BoardJson): RepoRow[] {
     const errors = !failed.length && nothing && board.warning ? [`Could not load: ${board.warning}`] : failed;
     return {
       repo,
+      manual: room?.manual === true,
       errors,
       summary: { inFlight: dispatches.length, asking: dispatches.filter((d) => d.agent === ASKING).length, held: held.length },
       dispatches,

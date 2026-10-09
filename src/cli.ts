@@ -71,6 +71,7 @@ const LEAD_ASK_USAGE = "nico-agent lead ask <question> [<choice>...]";
 const GITHUB_USAGE_USAGE = "nico-agent github usage [--since <time>]";
 const STATS_USAGE = "nico-agent stats [--days <n>] [--repo <owner/name>]";
 const RECALL_USAGE = "nico-agent lead recall <query> [--since <time>] [--until <time>]";
+const REPO_SET_USAGE = "nico-agent repo set <owner/name> --manual on|off";
 const QUEUE_USAGE = "nico-agent queue <spec> --repo <owner/name>";
 const UNQUEUE_USAGE = "nico-agent unqueue <spec> --repo <owner/name>";
 const MOVE_USAGE = "nico-agent move <spec> up|down --repo <owner/name>";
@@ -164,6 +165,17 @@ const commands: Command[] = [
     run: repoRm,
   },
   {
+    name: "repo set",
+    usage: REPO_SET_USAGE,
+    summary: "Make a Repo manual, or not: `advance` starts no work in a manual Repo, only an explicit dispatch does",
+    flags: {
+      "--manual": { value: true, description: "on: `advance` starts no Queue head and no issue of a running Spec in the Repo; off: it does again (required)" },
+    },
+    positionals: ["owner/name"],
+    examples: ["nico-agent repo set acme/api --manual on", "nico-agent repo set acme/api --manual off"],
+    run: repoSet,
+  },
+  {
     name: "repo list",
     usage: "nico-agent repo list",
     summary: "List the configured Repos",
@@ -197,7 +209,7 @@ const commands: Command[] = [
   {
     name: "advance",
     usage: "nico-agent advance",
-    summary: "Dispatch each running Spec's next issue and start the head of each Repo's Queue while it has room, with the Scheduler defaults from config (skips Held Specs)",
+    summary: "Dispatch each running Spec's next issue and start the head of each Repo's Queue while it has room, with the Scheduler defaults from config (skips Held Specs and manual Repos)",
     flags: {},
     positionals: [],
     examples: ["nico-agent advance", "nico-agent advance --json"],
@@ -1322,6 +1334,22 @@ async function repoRm(args: Args, ctx: RunContext): Promise<Output> {
   return { data: { repo: `${existing.slug} removed` }, help };
 }
 
+async function repoSet(args: Args, ctx: RunContext): Promise<Output> {
+  const slug = slugArg(args, REPO_SET_USAGE);
+  const state = required(args, "--manual", REPO_SET_USAGE);
+  if (state !== "on" && state !== "off") throw new CliError(`\`${state}\` is not on or off`, [`Usage: \`${REPO_SET_USAGE}\``], 2);
+  const config = loadConfig(ctx.configDir);
+  const existing = findRepo(config, slug);
+  if (!existing) throw new CliError(`${slug} is not a configured Repo`, ["Run `nico-agent repo list` to see the Repos"]);
+  const help = ["Run `nico-agent repo list` to see all Repos"];
+  const manual = state === "on";
+  if ((existing.manual === true) === manual) return { data: { repo: `${existing.slug} already manual ${state} (no-op)` }, help };
+  const { manual: _, ...rest } = existing;
+  const updated = manual ? { ...rest, manual } : rest;
+  saveConfig(ctx.configDir, { ...config, repos: config.repos.map((r) => (r === existing ? updated : r)) });
+  return { data: { repo: `${existing.slug} manual ${state}` }, help };
+}
+
 async function repoList(ctx: RunContext): Promise<Output> {
   const { repos } = loadConfig(ctx.configDir);
   if (repos.length === 0) return { data: { repos: "0 configured" }, help: [ADD_REPO_HELP] };
@@ -1807,8 +1835,8 @@ async function board(ctx: RunContext, json: boolean): Promise<Output> {
   if (allSpecs.length) {
     // Each Repo's room, its candidate Specs, and its Queue head first, as `queue`, `unqueue` and `move` and the web Board edit it.
     const queues = await pruneBoardQueues(ctx.configDir, loaded);
-    data.rooms = specs.map(({ repo, specs: decided, room, candidates }) => ({
-      repo, running: decided.filter((s) => s.running).map((s) => s.spec), room,
+    data.rooms = specs.map(({ repo, specs: decided, room, candidates, manual }) => ({
+      repo, ...(manual && { manual }), running: decided.filter((s) => s.running).map((s) => s.spec), room,
       candidates: decided.filter((s) => candidates.includes(s.spec))
         .map(({ spec, title, url, next }) => ({ spec, title, url, issue: next[0]!.issue })),
       queue: queueOf(queues, repo).map((queued) => decided.find((s) => sameSpec(s.spec, queued))?.spec ?? queued),

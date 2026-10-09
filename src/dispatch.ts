@@ -451,7 +451,7 @@ function stackedBase(key: string) {
  * Whether a re-run may take over a Dispatch: nobody is running its steps (its
  * runner exited, or was killed mid-step) and something is left to do.
  */
-function isResumable(world: World, dispatch: Dispatch) {
+export function isResumable(world: World, dispatch: Dispatch) {
   if (dispatch.runner !== undefined && world.processAlive(dispatch.runner)) return false;
   return dispatch.failure !== undefined || dispatch.completed.length < STEPS.length || dispatch.claimed === undefined;
 }

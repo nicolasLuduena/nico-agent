@@ -26,14 +26,14 @@ describe("AXI conventions", () => {
     const { cli } = setup();
     const { stdout, exitCode } = await cli("dispatch-all");
     expect(exitCode).toBe(2);
-    expect(stdout).toStartWith("error: unknown command `dispatch-all`\nhelp[44]:\n  Run `nico-agent [board]` to show Ready issues");
+    expect(stdout).toStartWith("error: unknown command `dispatch-all`\nhelp[45]:\n  Run `nico-agent [board]` to show Ready issues");
   });
 
   test("the retired Scheduler entry points are unknown: `mcp`, `--skill` and `advance --start` (ADR-0009)", async () => {
     const { cli, world } = setup();
     const mcp = await cli("mcp");
     expect(mcp.exitCode).toBe(2);
-    expect(mcp.stdout).toStartWith("error: unknown command `mcp`\nhelp[44]:\n  Run `nico-agent [board]` to show Ready issues");
+    expect(mcp.stdout).toStartWith("error: unknown command `mcp`\nhelp[45]:\n  Run `nico-agent [board]` to show Ready issues");
     expect(await cli("--skill")).toMatchObject({
       stdout: ["error: unknown flag --skill for `board`", "help[1]:", "  Valid flags for `board`: --json, --help", ""].join("\n"),
       exitCode: 2,
@@ -109,13 +109,14 @@ describe("AXI conventions", () => {
       [
         "bin: ~/.local/bin/nico-agent",
         "description: Dispatch coding agents onto ready-for-agent issues",
-        "commands[44]{usage,description}:",
+        "commands[45]{usage,description}:",
         '  "nico-agent [board]",Show Ready issues across all Repos (the default view)',
         "  nico-agent repo add <owner/name> --path <clone>,Add a Repo after checking the path is a clone of it",
         "  nico-agent repo rm <owner/name>,Remove a Repo (its clone is left untouched)",
+        "  nico-agent repo set <owner/name> --manual on|off,\"Make a Repo manual, or not: `advance` starts no work in a manual Repo, only an explicit dispatch does\"",
         "  nico-agent repo list,List the configured Repos",
         "  nico-agent dispatch <issue>... --harness <harness> --model <model> --effort <effort>,Start an Implementer on each issue in a new herdr worktree workspace (resumes a failed one)",
-        '  nico-agent advance,"Dispatch each running Spec\'s next issue and start the head of each Repo\'s Queue while it has room, with the Scheduler defaults from config (skips Held Specs)"',
+        '  nico-agent advance,"Dispatch each running Spec\'s next issue and start the head of each Repo\'s Queue while it has room, with the Scheduler defaults from config (skips Held Specs and manual Repos)"',
         '  nico-agent queue <spec> --repo <owner/name>,"Put a candidate Spec last in its Repo\'s Queue, so `advance` starts it when the Repo has room"',
         "  nico-agent unqueue <spec> --repo <owner/name>,Take a Spec out of its Repo's Queue",
         "  nico-agent move <spec> up|down --repo <owner/name>,Move a queued Spec one place toward the head (up) or the tail (down) of its Repo's Queue",
