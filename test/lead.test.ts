@@ -204,9 +204,9 @@ describe("lead status and stop", () => {
   });
 
   test("stop closes the workspace and forgets the Lead, keeping its home and the conversation", async () => {
-    const { cli, world, home, configDir } = withConfig(CLAUDE);
+    const { cli, world, home } = withConfig(CLAUDE);
     await cli("lead", "start");
-    writeFileSync(join(configDir, "conversation.jsonl"), '{"id":1}\n');
+    expect((await cli("say", "keep this")).exitCode).toBe(0);
     world.calls.length = 0;
     const { json, exitCode } = await cli("lead", "stop", "--json");
     expect(exitCode).toBe(0);
@@ -214,7 +214,7 @@ describe("lead status and stop", () => {
     expect(herdrCalls(world.calls)).toEqual(["herdr workspace close w1"]);
     expect((await cli("lead", "status", "--json")).json().lead).toBe("not running");
     expect(existsSync(join(home, "mcp.json"))).toBe(true);
-    expect(readFileSync(join(configDir, "conversation.jsonl"), "utf8")).toBe('{"id":1}\n');
+    expect((await cli("lead", "log")).stdout).toContain("keep this");
     expect((await cli("lead", "stop", "--json")).json().lead).toBe("not running (no-op)");
   });
 });
