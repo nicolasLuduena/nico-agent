@@ -28,7 +28,7 @@ describe("Stackable Linear issues", () => {
 
     const board = (await cli("board", "--json")).json();
     expect(board.stackable).toEqual([{
-      issue: "BLE-27", title: "Compare PDFs", repo: "bleentr/pdf-diff",
+      issue: "BLE-27", title: "Compare PDFs", repo: "bleentr/pdf-diff", url: "https://linear.app/bleentr/issue/BLE-27/title",
       blockers: [{ issue: "BLE-26", pr: "https://github.com/bleentr/pdf-diff/pull/16", base: "nico/ble-26-parse-pdfs" }],
     }]);
     expect(board.issues).toBeUndefined();
@@ -42,7 +42,7 @@ describe("Stackable Linear issues", () => {
 
     const board = (await cli("board", "--json")).json();
     expect(board.stackable).toEqual([{
-      issue: "BLE-27", title: "Compare PDFs", repo: "bleentr/web",
+      issue: "BLE-27", title: "Compare PDFs", repo: "bleentr/web", url: "https://linear.app/bleentr/issue/BLE-27/title",
       blockers: [{ issue: "BLE-26", pr: "https://github.com/bleentr/web/pull/16", base: "nico/ble-26-parse-pdfs" }],
     }]);
 

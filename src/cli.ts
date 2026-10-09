@@ -1,7 +1,7 @@
 import { resolve } from "node:path";
 import { ADVANCE_INTERVAL_MS, type AdvanceReport, advance } from "./advance";
 import { answer, loadAsking } from "./answer";
-import { loadBoard } from "./board";
+import { type BoardIssue, loadBoard } from "./board";
 import { ConfigError, ORDERS, type Order, ORDERS_HELP, findRepo, isOrder, loadConfig, saveConfig, standingOrders } from "./config";
 import { AnswerRefused, answerQuestion, append, authored, loadConversation, openQuestions, readInbox, recall } from "./conversation";
 import { StepFailed, baseBranch, closeDispatch, dispatch, eachIssue, resolveIssue, review } from "./dispatch";
@@ -1257,7 +1257,8 @@ async function leadStopCommand(ctx: RunContext): Promise<Output> {
 
 async function board(ctx: RunContext, json: boolean): Promise<Output> {
   const { repos } = loadConfig(ctx.configDir);
-  const header = { bin: ctx.bin, description: DESCRIPTION, repos: `${repos.length} configured` };
+  // The app draws a section per Repo, so `--json` names them.
+  const header = { bin: ctx.bin, description: DESCRIPTION, repos: `${repos.length} configured`, ...(json && { configured: repos.map((r) => r.slug) }) };
   if (repos.length === 0) {
     return { data: { ...header, ready: "0 issues (no Repos configured)" }, help: [ADD_REPO_HELP] };
   }
@@ -1290,6 +1291,7 @@ async function board(ctx: RunContext, json: boolean): Promise<Output> {
       dispatches: inFlight.map(({ dispatch: d, stage, pr, prError, implementerState, reviewerState }) => ({
         issue: d.issue,
         title: d.title,
+        ...(json && { repo: d.repo, url: d.url }),
         stage,
         pr: pr?.url ?? "",
         ...(prError && { prError }),
@@ -1300,6 +1302,7 @@ async function board(ctx: RunContext, json: boolean): Promise<Output> {
         effort: d.implementer.effort,
         base: baseBranch(d) ?? "",
         workspace: d.workspace ?? "",
+        ...(json && definedOnly({ failure: (d.failure ?? d.reviewer?.failure)?.error, warnings: d.warnings?.length ? d.warnings : undefined })),
       })),
     }),
   };
@@ -1312,27 +1315,29 @@ async function board(ctx: RunContext, json: boolean): Promise<Output> {
     ? plural(ready.length, "issue")
     : `0 issues across ${plural(repos.length - failedRepos, "Repo")}`;
   const data: Record<string, unknown> = { ...header, ready: count };
+  // In TOON a GitHub key names its Repo already; the app is told each issue's Repo and URL, for its section and hover card.
+  const where = (i: BoardIssue) => (json ? { repo: i.repo, url: i.url } : i.identifier ? { repo: i.repo } : {});
   if (ready.length) {
-    data.issues = ready.map((i) => ({ issue: i.identifier ?? `${i.repo}#${i.number}`, title: i.title, ...(i.identifier && { repo: i.repo }), ...(i.base && { base: i.base }) }));
+    data.issues = ready.map((i) => ({ issue: i.identifier ?? `${i.repo}#${i.number}`, title: i.title, ...where(i), ...(i.base && { base: i.base }) }));
   }
   if (stackable.length) {
-    data.stackable = stackable.map((i) => ({ issue: i.identifier ?? `${i.repo}#${i.number}`, title: i.title, ...(i.identifier && { repo: i.repo }),
+    data.stackable = stackable.map((i) => ({ issue: i.identifier ?? `${i.repo}#${i.number}`, title: i.title, ...where(i),
       blockers: i.blockers.map((b) => ({ issue: b.blocker, pr: b.pr.url, base: b.pr.headBranch })) }));
     help.unshift("Run `nico-agent dispatch <issue> --stack-on <blocker> --harness <harness> --model <model> --effort <effort>` to dispatch a Stackable issue");
   }
   if (withPr.length) {
     // Started outside a Dispatch nico-agent still tracks: review or merge the PR, then close the issue.
-    data.prOpen = withPr.map((i) => ({ issue: i.identifier ?? `${i.repo}#${i.number}`, title: i.title, ...(i.identifier && { repo: i.repo }), pr: i.pr.url, state: i.pr.state }));
+    data.prOpen = withPr.map((i) => ({ issue: i.identifier ?? `${i.repo}#${i.number}`, title: i.title, ...where(i), pr: i.pr.url, state: i.pr.state }));
   }
   const allSpecs = specs.flatMap((r) => r.specs);
   // In TOON, Specs of one would only repeat the Ready and In-flight lists, unless Held.
   const specRows = json ? allSpecs : allSpecs.filter((s) => s.held || s.issues.length !== 1 || s.issues[0] !== s.spec);
   if (specRows.length) {
-    data.specs = specRows.map(({ spec, title, repo, issues, running, held, next, waiting, reason }) => ({
-      spec, title, repo, issues, running,
+    data.specs = specRows.map(({ spec, title, url, repo, issues, running, held, next, waiting, reason }) => ({
+      spec, title, ...(json && { url }), repo, issues, running,
       ...(held && { held }),
-      // A candidate's first issue is listed under `rooms`.
-      ...(running && next && { next: { issue: next.issue, ...(next.stackOn && { stackOn: next.stackOn.url }), base: next.base, reason: next.reason } }),
+      // In TOON a candidate's first issue is listed under `rooms`; the app shows why it is first.
+      ...((running || json) && next && { next: { issue: next.issue, ...(next.stackOn && { stackOn: next.stackOn.url }), base: next.base, reason: next.reason } }),
       ...(waiting && { waiting }),
       ...(reason && { reason }),
     }));

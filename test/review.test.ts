@@ -218,6 +218,8 @@ describe("In flight on the CLI Board", () => {
       {
         issue: "acme/api#7",
         title: "Add retries",
+        repo: "acme/api",
+        url: "https://github.com/acme/api/issues/7",
         stage: "Implementing",
         pr: "",
         implementer: "blocked",

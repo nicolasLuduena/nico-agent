@@ -68,6 +68,6 @@ describe("issues with a PR but no Dispatch", () => {
     const board = (await cli("--json")).json();
     expect(board.ready).toBe("1 issue");
     expect(board.issues.map((i: { issue: string }) => i.issue)).toEqual(["acme/api#21"]);
-    expect(board.prOpen).toEqual([{ issue: "acme/api#20", title: "Reviewed elsewhere", pr: "https://github.com/acme/api/pull/40", state: "open" }]);
+    expect(board.prOpen).toEqual([{ issue: "acme/api#20", title: "Reviewed elsewhere", repo: "acme/api", url: "https://github.com/acme/api/issues/20", pr: "https://github.com/acme/api/pull/40", state: "open" }]);
   });
 });
