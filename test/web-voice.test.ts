@@ -188,7 +188,7 @@ describe("/api/voice", () => {
       expect(sent).toHaveLength(2);
     });
 
-    test("is never what soft words after the speech sound like: they are heard in the final", async () => {
+    test("is never soft words the app's listening takes for the room: the final hears them", async () => {
       const ctx = await withVoice();
       const sent = transcriber(ctx.world);
       const talk = await open(ctx);

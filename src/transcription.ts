@@ -9,7 +9,11 @@ import { type Answered, transcribe, wav } from "./voice";
 import type { Stopwatch, Timing } from "./voice-timing";
 import type { SocketPeer, SocketSession, World } from "./world";
 
-/** How much more audio, in bytes, an interim transcript waits for after the last: a second's. */
+/**
+ * How much more audio, in bytes, an interim transcript waits for after the
+ * last was answered: a second's, which leaves the service idle for the
+ * transcript asked once the user is quiet.
+ */
 const INTERIM_EVERY = SAMPLE_RATE * 2;
 
 /**
@@ -78,14 +82,15 @@ interface TranscriptionContext {
 /**
  * One page's `/api/voice` socket. Each utterance is `start`, its audio, then
  * `end` (or `cancel`); while it streams, an interim transcript of all the
- * audio so far is sent at most a second of audio apart, one request at a
- * time. Once the user has been quiet for SETTLE_MS after speaking, all the
+ * audio so far is sent, each a second of audio after the last was answered,
+ * one request at a time. Once the user has been quiet for SETTLE_MS after speaking, all the
  * audio so far is transcribed, right after any request out, so that a
  * transcript of everything said is under way before `end`. On `end`
  * the final transcript is the last one asked, when it covers all the speech
- * and was primed as a final is; else all the audio is transcribed then. A
- * final is primed with the vocabulary built when the utterance started; an
- * interim one, not to wait on the Board, with the last vocabulary built. A
+ * and was primed with the final's vocabulary; else all the audio is
+ * transcribed then. A final, and the transcript asked once the user is quiet,
+ * is primed with the vocabulary built when the utterance started; any other
+ * interim, not to wait on the Board, with the last vocabulary built. A
  * failed request drops the utterance and says why at once. Each final
  * transcript then goes to the Front voice, one after another in the order
  * they were said. From its start until the Front voice has answered it or
@@ -114,12 +119,12 @@ export function transcriptionSession(ctx: TranscriptionContext) {
 
     /**
      * Transcribe all of `utterance`'s audio so far, primed with `prompt`, and
-     * `quiet` ms of silence after it; the last asked is the final's to take.
+     * `silenceMs` of silence after it; the last asked is the final's to take.
      * Sent once the last one asked is answered: requests at once to a
      * service on CPU only slow each other down.
      */
-    const hearSoFar = (utterance: Utterance, prompt: Promise<string>, quiet = 0): Heard => {
-      const audio = wav(concat([...utterance.audio, new Uint8Array(bytesOf(quiet))]), SAMPLE_RATE);
+    const transcribeSoFar = (utterance: Utterance, prompt: Promise<string>, silenceMs = 0): Heard => {
+      const audio = wav(concat([...utterance.audio, new Uint8Array(bytesOf(silenceMs))]), SAMPLE_RATE);
       const before = utterance.last?.answer.catch(() => {});
       const heard = { upTo: utterance.bytes, prompt, answer: Promise.all([prompt, before]).then(([p]) => transcribe(ctx.world, utterance.endpoint, audio, p)) };
       utterance.last = heard;
@@ -154,11 +159,11 @@ export function transcriptionSession(ctx: TranscriptionContext) {
       if (!handed) timing?.dropped();
     };
 
-    /** The final transcript of `utterance`: the last one asked, when it heard all the speech primed as a final is; else one of all the audio. */
-    const heardFinally = async (utterance: Utterance): Promise<Answered> => {
+    /** The final transcript of `utterance`: the last one asked, when it heard all the speech primed with the final's vocabulary; else one of all the audio. */
+    const finalAnswer = async (utterance: Utterance): Promise<Answered> => {
       const { last } = utterance;
-      if (last && heardAll(utterance) && await last.prompt === await utterance.prompt) return last.answer;
-      return hearSoFar(utterance, utterance.prompt).answer;
+      if (last && heardAllSaid(utterance) && await last.prompt === await utterance.prompt) return last.answer;
+      return transcribeSoFar(utterance, utterance.prompt).answer;
     };
 
     const start = (number: number) => {
@@ -183,20 +188,23 @@ export function transcriptionSession(ctx: TranscriptionContext) {
       utterance.bytes += chunk.byteLength;
       if (level(pcmSamples(chunk.slice().buffer)) > MIN_LEVEL) utterance.spokeUpTo = utterance.bytes;
       // Nothing new said since the last transcription: nothing to ask.
-      if (heardAll(utterance)) return;
+      if (heardAllSaid(utterance)) return;
       const tell = (asked: Promise<Transcript | null>) => asked.then((message) => { if (message) send(message); }).catch(report(utterance));
-      const quiet = utterance.bytes - utterance.spokeUpTo;
+      const quietBytes = utterance.bytes - utterance.spokeUpTo;
       // The user has gone quiet: what they said, primed as a final is and heard out to the end of
       // the pause that ends an utterance, as the final would be, so that it can be the final.
-      if (utterance.spokeUpTo > 0 && quiet >= SETTLE_BYTES) {
+      if (utterance.spokeUpTo > 0 && quietBytes >= SETTLE_BYTES) {
         utterance.heardUpTo = utterance.bytes;
-        return void tell(ask(utterance, "interim", hearSoFar(utterance, utterance.prompt, PAUSE_MS - msOf(quiet)).answer));
+        return void tell(ask(utterance, "interim", transcribeSoFar(utterance, utterance.prompt, PAUSE_MS - msOf(quietBytes)).answer));
       }
       // While the user is quiet, an interim would only hold up the one above.
-      if (quiet > 0 || utterance.asking || utterance.bytes - utterance.heardUpTo < INTERIM_EVERY) return;
+      if (quietBytes > 0 || utterance.asking || utterance.bytes - utterance.heardUpTo < INTERIM_EVERY) return;
       utterance.asking = true;
       utterance.heardUpTo = utterance.bytes;
-      void tell(ask(utterance, "interim", hearSoFar(utterance, Promise.resolve(known.hint)).answer)).finally(() => { utterance.asking = false; });
+      void tell(ask(utterance, "interim", transcribeSoFar(utterance, Promise.resolve(known.hint)).answer)).finally(() => {
+        utterance.asking = false;
+        utterance.heardUpTo = utterance.bytes;
+      });
     };
 
     const report = (utterance: Utterance) => (e: unknown) => fail(utterance.number, e instanceof Error ? e.message : String(e), "Try again");
@@ -212,7 +220,7 @@ export function transcriptionSession(ctx: TranscriptionContext) {
         if (!utterance) return;
         const timing = ctx.timing?.start(utterance.number, new Date(command.spokeAt ?? ctx.world.now().getTime()));
         // Transcribed at once, but told, and heard by the Front voice, after the finals before it.
-        const final = ask(utterance, "final", heardFinally(utterance), timing);
+        const final = ask(utterance, "final", finalAnswer(utterance), timing);
         told = told.then(() => final).then(async (message) => {
           if (!message) return;
           send(message);
@@ -237,9 +245,9 @@ interface Utterance {
   endpoint: VoiceEndpoint;
   audio: Uint8Array[];
   bytes: number;
-  /** How many bytes the last interim transcript was of. */
+  /** How many bytes had come when the last interim was answered, or the one once the user was quiet asked. */
   heardUpTo: number;
-  /** Whether an interim request is out, of those sent at most a second of audio apart. */
+  /** Whether an interim request is out, of those sent a second of audio after the last. */
   asking: boolean;
   /** The vocabulary its final transcript is primed with. */
   prompt: Promise<string>;
@@ -252,7 +260,7 @@ interface Utterance {
 }
 
 /** Whether the last transcription of `utterance` heard all its speech, and the start of the quiet after it. */
-function heardAll(utterance: Utterance) {
+function heardAllSaid(utterance: Utterance) {
   return utterance.spokeUpTo > 0 && (utterance.last?.upTo ?? 0) >= Math.min(utterance.bytes, utterance.spokeUpTo + SETTLE_BYTES);
 }
 

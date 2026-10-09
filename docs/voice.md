@@ -94,8 +94,10 @@ utterance's hint and silence to make up the pause that ends a hands-free
 utterance. When the utterance ends with nothing more said, that
 transcript is the final one; when you talk again, it is only an interim, and
 the whole utterance is transcribed at the end. An utterance's requests go one
-at a time, and while you are quiet no other interim is asked for, since
-requests to a local service on CPU at once only slow each other down.
+at a time, since requests to a local service on CPU at once only slow each
+other down. So that one is rarely still out when you go quiet, each interim
+waits for a second more of audio after the last one was answered, and none
+is asked for while you are quiet.
 
 A failure (no `voice.transcribe`, the service down or answering an error, the
 microphone blocked) shows with the app's other warnings, above the
