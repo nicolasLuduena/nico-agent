@@ -11,9 +11,11 @@
   /* How much of a hue a tinted pill or tile takes over the surface. */
   --tint: 11%;
   --veil: rgb(239 242 253 / 0.78);
-  --lift: 0 12px 40px rgb(19 23 60 / 0.14), 0 2px 6px rgb(19 23 60 / 0.06);
-  --toast-lift: 0 4px 16px rgb(19 23 60 / 0.14), 0 1px 3px rgb(19 23 60 / 0.08);
-  --knob: 0 1px 3px rgb(19 23 60 / 0.28);
+  /* Light's shadows are a deep navy, never neutral black. */
+  --shade: 19 23 60;
+  --lift: 0 12px 40px rgb(var(--shade) / 0.14), 0 2px 6px rgb(var(--shade) / 0.06);
+  --toast-lift: 0 4px 16px rgb(var(--shade) / 0.14), 0 1px 3px rgb(var(--shade) / 0.08);
+  --knob: 0 1px 3px rgb(var(--shade) / 0.28);
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
@@ -25,6 +27,7 @@
   --blocked: #fe75c9; --blocked-ink: #111524;
   --tint: 16%;
   --veil: rgb(7 10 19 / 0.72);
+  --shade: 0 0 0;
   --lift: 0 12px 40px rgb(0 0 0 / 0.6), 0 0 0 1px var(--rule);
   --toast-lift: 0 4px 16px rgb(0 0 0 / 0.6);
   --knob: 0 1px 3px rgb(0 0 0 / 0.5);
@@ -32,7 +35,7 @@
 :root {
   /* The accent fill is the same iris in both themes: white on it reads at 5.8:1. */
   --accent: #2e58e2; --accent-hover: #2145cf; --accent-ink: #ffffff;
-  --pick-lift: 0 1px 3px rgb(19 23 60 / 0.16);
+  --pick-lift: 0 1px 3px rgb(var(--shade) / 0.16);
   --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
   --ease: cubic-bezier(0.25, 0.1, 0.25, 1);
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
@@ -111,9 +114,9 @@ label.switch:has(:checked) { color: var(--ink); }
   border-bottom: 1px solid var(--rule);
 }
 .brand { display: inline-flex; align-items: center; gap: 0.55rem; font-size: 19px; font-weight: 700; color: var(--ink); letter-spacing: -0.03em; }
-.brand .mark { flex: none; width: 26px; height: 26px; }
-.brand .mark rect { fill: var(--accent); }
-.brand .mark path { fill: none; stroke: var(--accent-ink); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.brand-mark { flex: none; width: 26px; height: 26px; }
+.brand-mark rect { fill: var(--accent); }
+.brand-mark path { fill: none; stroke: var(--accent-ink); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .brand:hover { text-decoration: none; }
 .top nav { display: flex; gap: 0.25rem; }
 .top nav a { font-size: 15px; font-weight: 600; color: var(--ink-muted); padding: 0.4rem 0.9rem; border-radius: var(--r-pill); transition: color 160ms var(--ease), background-color 160ms var(--ease); }
@@ -160,7 +163,7 @@ label.switch:has(:checked) { color: var(--ink); }
 .agent.blocked { color: var(--blocked-ink); background: var(--blocked); border-radius: var(--r-pill); padding: 0.05rem 0.6rem; font-weight: 600; }
 .agent.blocked i { border-color: var(--blocked-ink); background: var(--blocked-ink); }
 
-/* A Stage in its own colour: a small dot before its name. */
+/* A Stage in its own colour: a small dot before its name, on a pill tinted with it. */
 .stage {
   display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.05rem 0.55rem; border-radius: var(--r-pill);
   font-size: 13px; font-weight: 600; color: var(--stage); background: color-mix(in srgb, var(--stage) var(--tint), var(--surface));
@@ -299,7 +302,7 @@ label.switch:has(:checked) { color: var(--ink); }
 .research-box textarea { resize: vertical; min-height: 5rem; }
 .research-box .lede { font-size: 13px; }
 
-/* The one quiet place for warnings: a neutral strip, each line marked with an orange dot. */
+/* The one quiet place for warnings: a strip faintly tinted orange, each line marked with an orange dot. */
 .notices { display: grid; gap: 0.5rem; padding: 0.75rem 1.5rem; background: color-mix(in srgb, var(--implementing) calc(var(--tint) * 0.7), var(--surface)); border-bottom: 1px solid var(--rule); font-size: 14px; }
 .notices p { position: relative; display: grid; padding-left: calc(8px + 0.65rem); font-weight: 600; }
 .notices p::before { content: ""; position: absolute; left: 0; top: 0.45rem; width: 8px; height: 8px; border-radius: 50%; background: var(--implementing); }
@@ -473,7 +476,7 @@ button:disabled, button:disabled:hover, .repo-group form.launch > button:disable
 }
 @media (max-width: 560px) {
   .brand .word { display: none; }
-  .brand .mark { width: 24px; height: 24px; }
+  .brand-mark { width: 24px; height: 24px; }
   .top { gap: 0.25rem; padding: 0 0.6rem; }
   .top nav a { padding: 0.35rem 0.55rem; }
   .top-end { gap: 0.3rem; }

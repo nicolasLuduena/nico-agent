@@ -124,10 +124,6 @@ components:
     textColor: "{colors.accent-ink}"
     rounded: "{rounded.pill}"
     height: "36px"
-  bubble-user:
-    backgroundColor: "{colors.accent-soft}"
-    textColor: "{colors.ink}"
-    rounded: "{rounded.xl}"
   button-primary-hover:
     backgroundColor: "{colors.accent-hover}"
   button-quiet:
@@ -139,6 +135,10 @@ components:
     textColor: "{colors.surface}"
     rounded: "{rounded.pill}"
     height: "54px"
+  bubble-user:
+    backgroundColor: "{colors.accent-soft}"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.xl}"
   panel:
     backgroundColor: "{colors.surface}"
     rounded: "{rounded.xl}"
@@ -157,7 +157,7 @@ components:
 
 **Creative North Star: "A Confident Desk"**
 
-The app is where the user talks to the Lead all day. It should feel finished and sure of itself, in the spirit of Apple's website: calm surfaces carrying a few decisive moments, in colour rather than grey. Every neutral carries the accent's hue, so the ground reads as a cool, faintly blue daylight and the panels as white paper on it; the type does the talking: large, heavy titles with tight tracking, the Lead's words set larger than everything around them, and numbers you can read from across a desk. One accent, iris, fills what to press and marks what waits on the user; its soft tone carries the user's own words and where they are; each Stage, and an agent waiting, wears its own hue as a tinted pill.
+The app is where the user talks to the Lead all day. It should feel finished and sure of itself, in the spirit of Apple's website: calm surfaces carrying a few decisive moments, in colour rather than grey. Every neutral carries the accent's hue, so the ground reads as a cool, faintly blue daylight and the panels as white paper on it; the type does the talking: large, heavy titles with tight tracking, the Lead's words set larger than everything around them, and numbers you can read from across a desk. One accent, iris, fills what to press and marks what waits on the user; its soft tone carries the user's own words and where they are; each Stage wears its own hue as a tinted pill, and an agent waiting is the one filled magenta badge.
 
 The page is a shell of two columns under a translucent header. The Lead panel, holding the conversation with the Lead, takes most of the window; the right column belongs to the page: the Repos on the Lead page, the charts on the Stats page. Each column is one rounded panel on the ground, as tall as it needs and no taller (the Lead panel fills the window).
 
@@ -174,7 +174,7 @@ The page is a shell of two columns under a translucent header. The Lead panel, h
 
 The header's theme toggle sets `data-theme="light"` or `"dark"` on the page's root; System shows whichever the system prefers and follows it as it changes. Light is the default. The choice is remembered in the browser (`nico-agent.theme`), and a small script in `index.html`'s head sets the theme before the first paint, so a reload never flashes the wrong one.
 
-The two themes are designed, not derived. Light is white panels on a pale, blue-tinted ground (#eff2fd), with waiting cards on the raised tone and toasts white, lifted by a shadow tinted with the ink's navy. Dark is midnight navy panels (#131722) on a near-black navy ground (#070a13), with waiting cards, toasts and popovers lifted to #1e2231 so they read as raised objects, not holes. Stage hues, links and errors take lighter values in Dark, and tinted pills and tiles take more of their hue (16% against Light's 11%) so they still read on the dark surface. The accent fill stays the same iris in both because white on it reads at 5.8:1; the focus ring and links use a lighter iris in Dark, and the soft tone darkens to a deep indigo (#213261) under light ink.
+The two themes are designed, not derived. Light is white panels on a pale, blue-tinted ground (#eff2fd), with waiting cards on the raised tone and toasts white, lifted by a deep navy shadow. Dark is midnight navy panels (#131722) on a near-black navy ground (#070a13), with waiting cards, toasts and popovers lifted to #1e2231 so they read as raised objects, not holes. Stage hues, links and errors take lighter values in Dark, and tinted pills and tiles take more of their hue (16% against Light's 11%) so they still read on the dark surface. The accent fill stays the same iris in both because white on it reads at 5.8:1; the focus ring and links use a lighter iris in Dark, and the soft tone darkens to a deep indigo (#213261) under light ink.
 
 ## Colors
 
@@ -200,7 +200,7 @@ One colour per Stage, so a Stage is recognisable wherever it appears. Each is us
 ### Neutral
 - **Ground** (ground): the page behind the panels, a pale blue in Light and a near-black navy in Dark.
 - **Surface** (surface): the panels and text fields.
-- **Raised** (raised): what sits on a panel as an object: waiting cards, the Repos totals, the composer's field, the notices strip, and in Dark the popovers.
+- **Raised** (raised): what sits on a panel as an object: waiting cards, the Repos totals, the composer's field, and in Dark the popovers.
 - **Fill / Fill hover** (fill, fill-hover): default buttons, the selected tab's track, the theme toggle's track, chips.
 - **Rule** (rule): hairlines between parts of a panel. Decorative only.
 - **Edge** (edge): the boundary of a control the user must find: text fields, the composer, the choice pills, the switch's off track. It reads at 3:1 on surface and raised.
@@ -212,7 +212,7 @@ Every text pair is checked against WCAG AA (4.5:1) in both themes: ink, muted in
 ### Named Rules
 **The One Accent Rule.** Iris is the only colour that asks to be pressed or looked at, and it fills only the primary action of its group; never two in one group. Its soft tone marks where the user is and what they said, never an action. Issue titles, page links other than the current one, and quiet buttons are ink, so iris keeps its meaning.
 
-**The Stage Owns Its Hue Rule.** Orange, green, indigo, red and grey mean Implementing, PR ready, Review launched, Failed and unknown wherever a Stage is shown. Their only other uses are listed above.
+**The Stage Owns Its Hue Rule.** Orange, green, violet, red and grey mean Implementing, PR ready, Review launched, Failed and unknown wherever a Stage is shown. Their only other uses are listed above.
 
 **The Magenta Means Waiting Rule.** Magenta marks an agent waiting on the user, and nothing else.
 
@@ -246,7 +246,7 @@ Every text pair is checked against WCAG AA (4.5:1) in both themes: ink, muted in
 
 ## Elevation & Depth
 
-Flat by tone: panels sit on the ground, raised objects sit on panels one step lighter (Dark) or on the raised tone (Light). Light's shadows are tinted with the ink's navy, never neutral black. The only shadows are on the toasts (a short lift, 0 4px 16px), on the boxes a button opens (the Lead menu and the Research box), a soft lift (0 12px 40px at 12%, plus a 2px contact shadow) that in Dark becomes a deeper shadow with a rule-coloured ring, and the small lift of the picked segment in the theme toggle and the drawer's tabs.
+Flat by tone: panels sit on the ground, raised objects sit on panels one step lighter (Dark) or on the raised tone (Light). Light's shadows are a deep navy (`--shade`, rgb 19 23 60), never neutral black. The only shadows are on the toasts (a short lift, 0 4px 16px), on the boxes a button opens (the Lead menu and the Research box), a soft lift (0 12px 40px at 12%, plus a 2px contact shadow) that in Dark becomes a deeper shadow with a rule-coloured ring, and the small lift of the picked segment in the theme toggle and the drawer's tabs.
 
 ## Shapes
 
