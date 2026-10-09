@@ -88,10 +88,14 @@ Lead, with `{mcpUrl}` for the server's URL and `{mcpConfig}` for the path of
 | Harness   | MCP wiring                                                 |
 | --------- | ---------------------------------------------------------- |
 | claude    | `--mcp-config {mcpConfig}`                                 |
-| codex     | `-c mcp_servers.nico-agent.url="{mcpUrl}"`                 |
+| codex     | `-c mcp_servers.nico-agent.url="{mcpUrl}" -c project_root_markers=[]` (the home is the project root, so codex finds the skill) |
 | opencode2 | `mcp.nico-agent` in `OPENCODE_CONFIG_CONTENT`, beside the model |
 
 A Harness you add in config needs `mcpArgs` to run the Lead.
+
+codex asks you to approve each call the Lead makes to a nico-agent tool. Until
+you allow them (in the Lead's pane in herdr, or in your codex config), a codex
+Lead stops at its first `inbox` and waits on you.
 
 ## Standing orders
 

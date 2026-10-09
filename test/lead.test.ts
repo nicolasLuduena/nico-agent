@@ -35,13 +35,13 @@ describe("lead start", () => {
     expect(readFileSync(join(home, ".claude/skills/lead/SKILL.md"), "utf8")).toStartWith("---\nname: lead\n");
   });
 
-  test("on codex: the MCP server in a -c override, the home trusted, the skill where codex finds it", async () => {
+  test("on codex: the MCP server in a -c override, the home trusted and its root, the skill where codex finds it", async () => {
     const { cli, world, home } = withConfig({ lead: { harness: "codex", model: "gpt-5.5", effort: "high" } });
     expect((await cli("lead", "start")).exitCode).toBe(0);
     expect(herdrCalls(world.calls)).toEqual([
       `herdr workspace create --cwd ${home} --label lead --no-focus`,
       `herdr tab create --workspace w1 --cwd ${home} --label lead --no-focus`,
-      `herdr agent start lead --kind codex --pane w1:p2 -- -m gpt-5.5 -c model_reasoning_effort=high -c projects={"${home}"={trust_level="trusted"}} -c mcp_servers.nico-agent.url="http://127.0.0.1:42069/mcp"`,
+      `herdr agent start lead --kind codex --pane w1:p2 -- -m gpt-5.5 -c model_reasoning_effort=high -c projects={"${home}"={trust_level="trusted"}} -c mcp_servers.nico-agent.url="http://127.0.0.1:42069/mcp" -c project_root_markers=[]`,
       "herdr agent prompt lead $lead",
     ]);
     expect(existsSync(join(home, ".agents/skills/lead/SKILL.md"))).toBe(true);
@@ -262,5 +262,39 @@ describe("the Lead's home", () => {
     expect(exitCode).toBe(1);
     expect(json().error).toBe("gemini has no mcpArgs to connect the Lead to nico-agent's MCP server");
     expect(herdrCalls(world.calls)).toEqual([]);
+  });
+});
+
+describe("the lead skill", () => {
+  /** The skill `lead start` wrote into the Lead's home. */
+  async function writtenSkill() {
+    const ctx = withConfig(CLAUDE);
+    expect((await ctx.cli("lead", "start")).exitCode).toBe(0);
+    return { ...ctx, skill: readFileSync(join(ctx.home, ".claude/skills/lead/SKILL.md"), "utf8") };
+  }
+
+  test("its Tools section names exactly the tools the MCP server offers", async () => {
+    const { web, skill } = await writtenSkill();
+    const reply = await web("/mcp", {
+      method: "POST",
+      headers: { "content-type": "application/json", accept: "application/json, text/event-stream" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
+    });
+    const offered = JSON.parse(reply.body).result.tools.map((t: { name: string }) => t.name);
+    const section = skill.split(/^## /m).find((s) => s.startsWith("Tools\n"));
+    expect(section).toBeDefined();
+    const named = [...section!.matchAll(/^- `([a-z]+)`/gm)].map((m) => m[1]);
+    expect(named).toEqual(offered);
+  });
+
+  test("every nico-agent command it names is a real command", async () => {
+    const { cli, skill } = await writtenSkill();
+    const commands = new Set([...skill.matchAll(/`nico-agent ([^`]*)`/g)]
+      .map((m) => m[1]!.split(" ").filter((w, i, all) => all.slice(0, i + 1).every((x) => /^[a-z]+$/.test(x))).join(" ")));
+    expect(commands.size).toBeGreaterThan(0);
+    for (const command of commands) {
+      const { exitCode } = await cli(...command.split(" ").filter(Boolean), "--help");
+      expect({ command, exitCode }).toEqual({ command, exitCode: 0 });
+    }
   });
 });
