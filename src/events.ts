@@ -13,7 +13,14 @@ export class Events {
   emit(name: EventName) {
     // `data` must be present and not empty, or a browser drops the event.
     const chunk = this.encoder.encode(`event: ${name}\ndata: {}\n\n`);
-    for (const stream of this.streams) stream.enqueue(chunk);
+    for (const stream of this.streams) {
+      try {
+        stream.enqueue(chunk);
+      } catch {
+        // A stream that closed unseen is dropped, not left to stop the others.
+        this.streams.delete(stream);
+      }
+    }
   }
 
   /** A stream open until the page goes away (`signal`) or stops reading. */

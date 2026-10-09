@@ -13,7 +13,7 @@ import { type AdvanceRow, advance } from "./advance";
 import { plural } from "./output";
 import { type PreviewLookup, cachedPreviews } from "./preview";
 import { type Queues, dequeue, enqueue, move, pruneBoardQueues, queueOf } from "./queue";
-import { type CliRunner, mcpHandler } from "./mcp";
+import { type CliRunner, isToolCall, mcpHandler } from "./mcp";
 import { sameSlug } from "./slug";
 import { Events } from "./events";
 import { type PullRequest, type World, WorldError } from "./world";
@@ -97,13 +97,7 @@ export function webHandler(context: WebContext) {
  */
 async function changesBoard(request: Request, pathname: string) {
   if (request.method !== "POST") return false;
-  if (pathname !== "/mcp") return true;
-  try {
-    const message: unknown = await request.clone().json();
-    return (message as { method?: unknown } | null)?.method === "tools/call";
-  } catch {
-    return false;
-  }
+  return pathname !== "/mcp" || await isToolCall(request);
 }
 
 /**

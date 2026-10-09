@@ -37,9 +37,9 @@ function App() {
   return (
     <>
       <header className="top">
-        <a className="brand" href="/">nico-agent</a>
+        <a className="brand" href="/"><Glyph />nico-agent</a>
         <h1>Board</h1>
-        <a className="classic" href="/classic">Classic Board</a>
+        <a className="classic" href="/classic">htmx Board</a>
       </header>
       <main>
         {failure && <p className="error" role="status">{failure}</p>}
@@ -76,6 +76,15 @@ function Row({ dispatch: d }: { dispatch: InFlightDispatch }) {
       </div>
       {d.prError && <p className="error">{d.prError}</p>}
     </li>
+  );
+}
+
+/** The brand glyph: a detector end-on with one amber trail. */
+function Glyph() {
+  return (
+    <svg className="glyph" viewBox="-12 -12 24 24" aria-hidden="true">
+      <circle r="4.5" /><circle r="8" /><circle r="11" /><path className="trail" d="M0 0 Q4 -1 8.5 -7" />
+    </svg>
   );
 }
 

@@ -37,8 +37,10 @@ a:hover { text-decoration: underline; text-underline-offset: 0.2em; text-decorat
 :focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
 
 header.top { display: flex; align-items: center; gap: 0.75rem; max-width: 76rem; margin: 0 auto; padding: 1.1rem 1.5rem 0.9rem; }
-.brand { font-size: 18px; font-weight: 700; color: var(--ink); letter-spacing: -0.015em; }
+.brand { display: inline-flex; align-items: center; gap: 0.5rem; font-size: 18px; font-weight: 700; color: var(--ink); letter-spacing: -0.015em; }
 .brand:hover { text-decoration: none; }
+.glyph { width: 22px; height: 22px; fill: none; stroke: var(--rule-strong); stroke-width: 1.4; }
+.glyph .trail { stroke: var(--implementing); stroke-width: 2; stroke-linecap: round; }
 header.top h1 { margin: 0; font-size: 18px; font-weight: 500; color: var(--ink-muted); }
 header.top h1::before { content: "/"; margin-right: 0.75rem; color: var(--rule-strong); }
 header.top .classic { margin-left: auto; font-size: 13px; font-weight: 500; }
