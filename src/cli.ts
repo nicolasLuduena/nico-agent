@@ -89,6 +89,7 @@ const LEAD_START_USAGE = "nico-agent lead start [--harness <harness>] [--model <
 const LEAD_STATUS_HELP = "Run `nico-agent lead status` to see the Lead";
 const LEAD_SCREEN_HELP = "Run `herdr agent read lead` to see its screen";
 const PARTNER_START_USAGE = "nico-agent partner start <tab> (--pr <url> | --repo <owner/name>) --harness <harness> --model <model> --effort <effort> [--port <port>]";
+const PARTNER_DIFF_USAGE = "nico-agent partner diff <tab>";
 const PARTNER_SAY_USAGE = "nico-agent partner say <tab> <text>";
 const PARTNER_REPLY_USAGE = "nico-agent partner reply <tab> <text>";
 const PARTNER_DRAFT_USAGE = "nico-agent partner draft <tab> <text>";
@@ -583,7 +584,7 @@ const commands: Command[] = [
   },
   {
     name: "partner diff",
-    usage: "nico-agent partner diff <tab>",
+    usage: PARTNER_DIFF_USAGE,
     summary: "Show the diff of the PR a Partner reviews, read from its checkout against the PR's base, file by file (read-only)",
     flags: {},
     positionals: ["tab"],
@@ -1874,7 +1875,9 @@ async function partnerStartCommand(args: Args, ctx: RunContext): Promise<Output>
 
 async function partnerPrsCommand(ctx: RunContext): Promise<Output> {
   const { prs, warnings } = await prsToReview(ctx.world, ctx.configDir);
-  const help = prs.length ? ["Run `nico-agent partner start review --pr <url> --harness <harness> --model <model> --effort <effort>` to review one"] : ["No configured Repo has an open PR from its own origin"];
+  const help = prs.length
+    ? ["Run `nico-agent partner start review --pr <url> --harness <harness> --model <model> --effort <effort>` to review one"]
+    : [warnings.length ? "Run `nico-agent github usage` to see why GitHub failed" : "No configured Repo has an open PR from its own origin"];
   return { data: { prs, ...(warnings.length && { warnings }) }, help };
 }
 
@@ -1893,7 +1896,7 @@ async function partnerLogCommand(args: Args, ctx: RunContext): Promise<Output> {
 }
 
 async function partnerDiffCommand(args: Args, ctx: RunContext): Promise<Output> {
-  const tab = tabArg(args, "nico-agent partner diff <tab>");
+  const tab = tabArg(args, PARTNER_DIFF_USAGE);
   const { partner, pr, files } = await partnerDiff(ctx.world, ctx.configDir, tab);
   return {
     data: { diff: diffSize(files), repo: partner.repo, pr: pr.url, base: pr.base, head: pr.head, files },

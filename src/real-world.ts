@@ -568,7 +568,8 @@ export class RealWorld implements World {
   async gitDiff(path: string, base: string) {
     // Not through `git`, which trims: a hunk's last line may be a blank context line.
     const args = ["diff", "--no-color", "--no-ext-diff", "--find-renames", `${base}...HEAD`];
-    const result = await exec(["git", "-C", path, ...args], { GIT_TERMINAL_PROMPT: "0" });
+    // Paths as they are, not C-quoted, so a non-ASCII one reads as it is named.
+    const result = await exec(["git", "-C", path, "-c", "core.quotePath=false", ...args], { GIT_TERMINAL_PROMPT: "0" });
     if (result.exitCode === 0) return result.stdout;
     const reason = result.stderr.trim().split("\n")[0] || `exit code ${result.exitCode}`;
     throw new WorldError(`\`git ${args.join(" ")}\` failed in ${path}: ${reason}`);

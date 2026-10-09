@@ -31,8 +31,8 @@ export function parseDiff(text: string): DiffFile[] {
   const files: DiffFile[] = [];
   let file: DiffFile | null = null;
   let hunk: DiffHunk | null = null;
-  let old = 0;
-  let now = 0;
+  let oldLine = 0;
+  let newLine = 0;
   for (const line of text.split("\n")) {
     if (line.startsWith("diff --git ")) {
       // The header's paths stand until `---`/`+++` or `rename` lines name them exactly.
@@ -48,13 +48,13 @@ export function parseDiff(text: string): DiffFile[] {
       if (kind) {
         const body = line.slice(1);
         if (kind === "add") {
-          hunk.lines.push({ kind, text: body, new: now++ });
+          hunk.lines.push({ kind, text: body, new: newLine++ });
           file.additions++;
         } else if (kind === "del") {
-          hunk.lines.push({ kind, text: body, old: old++ });
+          hunk.lines.push({ kind, text: body, old: oldLine++ });
           file.deletions++;
         } else {
-          hunk.lines.push({ kind, text: body, old: old++, new: now++ });
+          hunk.lines.push({ kind, text: body, old: oldLine++, new: newLine++ });
         }
         continue;
       }
@@ -63,8 +63,8 @@ export function parseDiff(text: string): DiffFile[] {
     }
     const range = line.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
     if (range) {
-      old = Number(range[1]);
-      now = Number(range[2]);
+      oldLine = Number(range[1]);
+      newLine = Number(range[2]);
       hunk = { header: line, lines: [] };
       file.hunks.push(hunk);
     } else if (line.startsWith("new file mode")) {
@@ -86,6 +86,9 @@ export function parseDiff(text: string): DiffFile[] {
   }
   return files;
 }
+
+/** The mark a diff puts before each kind of line. */
+export const DIFF_SIGNS: Record<DiffLine["kind"], string> = { context: " ", add: "+", del: "-" };
 
 /** `3 files, +12 −4`: how big a diff is. */
 export function diffSize(files: DiffFile[]) {

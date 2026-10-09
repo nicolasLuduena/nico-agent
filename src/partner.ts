@@ -156,7 +156,7 @@ export async function startPartner(world: World, configDir: string, request: Par
   const record = leased.record;
   if (leased.created) {
     rememberLaunch(configDir, request.harness, request.model, request.effort);
-    return { partner: await runPartner(world, configDir, repo, harness, record, pr), outcome: "new" };
+    return { partner: await runPartner(world, configDir, repo, harness, record, pr?.body), outcome: "new" };
   }
   const done = record.completed.length === PARTNER_STEPS.length && !record.failure;
   if (done) {
@@ -164,7 +164,7 @@ export async function startPartner(world: World, configDir: string, request: Par
     return { partner: record, outcome: "existing" };
   }
   const resumedFrom = record.failure?.step ?? PARTNER_STEPS.find((s) => !record.completed.includes(s))!;
-  return { partner: await runPartner(world, configDir, repo, harness, record, pr), outcome: "resumed", resumedFrom };
+  return { partner: await runPartner(world, configDir, repo, harness, record, pr?.body), outcome: "resumed", resumedFrom };
 }
 
 /** Where the tab's Partner works: the PR a Review partner reviews, with its Repo, or the Repo an Idea partner works in. */
@@ -231,7 +231,7 @@ export async function prsToReview(world: World, configDir: string): Promise<{ pr
 function refuseOther(existing: Partner, request: PartnerRequest, repo: string, pr: ReviewedPr | undefined) {
   const { tab } = request;
   const { harness, model, effort } = existing.agent;
-  const where = existing.pr && existing.pr.number !== pr?.number || existing.repo !== repo
+  const where = (existing.pr && existing.pr.number !== pr?.number) || existing.repo !== repo
     ? existing.pr ? `on ${existing.repo}#${existing.pr.number}` : `in ${existing.repo}`
     : harness !== request.harness || model !== request.model || effort !== request.effort
       ? `on ${harness} ${model} ${effort}`
@@ -359,15 +359,15 @@ function openToHand(entries: ThreadEntry[], tab: PartnerTab, draft: number): Dra
   throw new DispatchError(why, [`Run \`nico-agent partner log ${tab}\` to see the Thread`]);
 }
 
-/** Run the steps `record` has not completed, as the runner holding its lease; `pr` is a Review partner's, as GitHub has it now. */
-async function runPartner(world: World, configDir: string, repo: Repo, harness: Harness, record: Partner, pr?: PullRequestDescription) {
+/** Run the steps `record` has not completed, as the runner holding its lease; `prBody` is a Review partner's PR description, as GitHub has it now. */
+async function runPartner(world: World, configDir: string, repo: Repo, harness: Harness, record: Partner, prBody = "") {
   const home = partnerHome(configDir, record.tab);
   const reviewed = record.pr;
   const steps: Record<PartnerStep, () => Promise<void>> = {
     home: async () => {
       writeJson(home, MCP_CONFIG, { mcpServers: { [MCP_SERVER]: { type: "http", url: record.mcpUrl } } });
       writeFileSync(join(home, SKILL), partnerSkill + (ROLES[record.tab] ?? ""));
-      if (reviewed) writeFileSync(join(home, PR_BRIEF), prBrief(record.repo, reviewed, pr?.body ?? ""));
+      if (reviewed) writeFileSync(join(home, PR_BRIEF), prBrief(record.repo, reviewed, prBody));
     },
     fetch: async () => {
       if (!reviewed) return await world.gitFetch(repo.path);
@@ -414,7 +414,7 @@ function prBrief(repo: string, pr: ReviewedPr, body: string) {
     "",
     pr.url,
     "",
-    `- Head: \`${pr.head}\`, checked out in your worktree`,
+    `- Head: \`${pr.head}\`, checked out in your worktree as it was when you started; later pushes to the PR are not in it`,
     `- Base: \`${pr.base}\`; its diff is \`git diff origin/${pr.base}...HEAD\``,
     "",
     "## Description",

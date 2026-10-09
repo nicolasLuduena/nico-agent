@@ -91,7 +91,7 @@ describe("partner start", () => {
 });
 
 describe("the Review partner", () => {
-  test("opening a PR starts it in a worktree on the PR's head branch, prompted with the review role and the PR's title, description and base", async () => {
+  test("opening a PR starts it in a worktree at the tip of the PR's head branch, prompted with the review role and the PR's title, description and base", async () => {
     const { cli, world, home } = await withRepo();
     const { stdout, exitCode } = await cli("partner", "start", "review", "--pr", PR, ...FLAGS);
     expect(stdout).not.toContain("error");
@@ -110,7 +110,7 @@ describe("the Review partner", () => {
       "",
       PR,
       "",
-      "- Head: `agent/api-7`, checked out in your worktree",
+      "- Head: `agent/api-7`, checked out in your worktree as it was when you started; later pushes to the PR are not in it",
       "- Base: `main`; its diff is `git diff origin/main...HEAD`",
       "",
       "## Description",

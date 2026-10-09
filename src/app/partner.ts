@@ -1,4 +1,5 @@
-import type { DiffFile, DiffLine } from "../diff";
+import { DIFF_SIGNS, type DiffFile, type DiffLine } from "../diff";
+import type { PrToReview, ReviewedPr } from "../partner";
 import type { PartnerTab } from "../partner-tabs";
 import type { ThreadEntry } from "../thread";
 import type { LaunchChoice } from "./actions";
@@ -28,7 +29,7 @@ export interface PartnerJson {
   state: string;
   repo: string;
   /** The PR a Review partner reviews. */
-  pr?: { number: number; url: string; title: string; base: string; head: string };
+  pr?: ReviewedPr;
   agent: string;
   harness: string;
   model: string;
@@ -134,16 +135,7 @@ export function threadCards({ entries, sends }: ThreadState): ThreadCard[] {
 }
 
 /** A PR the Review tab offers, as `nico-agent partner prs --json` lists it. */
-export interface PrJson {
-  repo: string;
-  number: number;
-  url: string;
-  title: string;
-  author: string;
-  draft: boolean;
-  base: string;
-  head: string;
-}
+export type PrJson = PrToReview;
 
 /**
  * `partner start`'s arguments: the tab, the PR a Review partner reviews or
@@ -171,8 +163,7 @@ export function quoteLines(file: DiffFile, lines: DiffLine[]) {
   const first = numbers[0];
   const last = numbers.at(-1);
   const range = first === last ? `${first}` : `${first}-${last}`;
-  const sign = { context: " ", add: "+", del: "-" };
-  const body = lines.map((l) => `${sign[l.kind]}${l.text}`);
+  const body = lines.map((l) => `${DIFF_SIGNS[l.kind]}${l.text}`);
   return [`\`${file.path}:${range}\`${kept.length ? "" : " (removed)"}`, "```diff", ...body, "```"].join("\n");
 }
 

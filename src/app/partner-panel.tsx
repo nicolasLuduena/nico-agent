@@ -1,5 +1,5 @@
 import { type KeyboardEvent, type RefObject, useEffect, useLayoutEffect, useReducer, useRef, useState } from "react";
-import type { DiffFile, DiffHunk, DiffLine } from "../diff";
+import { DIFF_SIGNS, type DiffFile, type DiffHunk, type DiffLine } from "../diff";
 import { PARTNER_NAMES, type PartnerTab } from "../partner-tabs";
 import type { ThreadEntry } from "../thread";
 import { type Chosen, type HarnessesJson, launchChoice } from "./actions";
@@ -277,9 +277,10 @@ function PrPick({ picked, pasted, pick, paste }: { picked?: string; pasted: stri
   const prs = listed.data?.prs ?? [];
   const repos = [...new Set(prs.map((p) => p.repo))];
   // The first PR stands picked until the user picks another.
+  const first = prs[0]?.url;
   useEffect(() => {
-    if (!picked && prs[0]) pick(prs[0].url);
-  });
+    if (!picked && first) pick(first);
+  }, [picked, first, pick]);
   return (
     <>
       <label>Open PR
@@ -371,7 +372,7 @@ function Diff({ tab, quote, hidden }: { tab: PartnerTab; quote: (text: string) =
                   >
                     <span className="num">{line.old ?? ""}</span>
                     <span className="num">{line.new ?? ""}</span>
-                    <span className="code">{`${{ context: " ", add: "+", del: "-" }[line.kind]}${line.text}`}</span>
+                    <span className="code">{`${DIFF_SIGNS[line.kind]}${line.text}`}</span>
                   </button>
                 );
               })}
