@@ -1,11 +1,11 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { authored, isCorrection, loadConversation } from "./conversation";
 import { ConfigError, VOICE_DOC, type VoiceEndpoint, loadConfig } from "./config";
+import type { FrontVoice } from "./front-voice";
 import { harnesses } from "./harness";
 import type { CliRunner } from "./mcp";
 import { SAMPLE_RATE } from "./app/talk";
-import { choose, scribe, transcribe, wav } from "./voice";
+import { transcribe, wav } from "./voice";
 import type { Stopwatch, Timing } from "./voice-timing";
 import type { SocketPeer, SocketSession, World } from "./world";
 
@@ -27,19 +27,15 @@ export type VoiceCommand =
   | { type: "hush" }
   | { type: "played"; entry: number; at: number };
 
-/** How many of the conversation's last entries the Scribe reads, for context. */
-const RECENT = 4;
-
 /**
- * What `/api/voice` tells the app, each about the utterance it numbered. A
- * final transcript is the Scribe's text, with `raw` what was heard; when the
- * Scribe could not clean it, `text` is the raw and `warning` says why. Said
- * right after the Lead's question, it `answers` that question, and its text
- * is the choice it picks, if one.
+ * What `/api/voice` tells the app, each about the utterance it numbered: what
+ * was heard so far, and at the end; then, when the Front voice could not
+ * answer it and sent it to the Lead as heard, a warning saying why.
  */
 export type Transcript = { utterance: number } & (
   | { type: "interim"; text: string }
-  | { type: "final"; text: string; raw: string; answers?: number; warning?: { error: string; help: string[] } }
+  | { type: "final"; text: string }
+  | { type: "warning"; error: string; help: string[] }
   | { type: "error"; error: string; help: string[] }
 );
 
@@ -52,6 +48,8 @@ interface TranscriptionContext {
   runCli: CliRunner;
   /** Times each final transcript's steps, for the timing log. */
   timing?: Stopwatch;
+  /** Answers each final transcript, or hands it to the Lead. */
+  front: FrontVoice;
 }
 
 /**
@@ -61,7 +59,8 @@ interface TranscriptionContext {
  * time, and on `end` the final one. The final one is primed with the
  * vocabulary built when the utterance started; an interim one, not to wait
  * on the Board, with the last vocabulary built. A failed request drops the
- * utterance and says why at once.
+ * utterance and says why at once. Each final transcript then goes to the
+ * Front voice, one after another in the order they were said.
  */
 export function transcriptionSession(ctx: TranscriptionContext) {
   /** The last vocabulary built, for any page, and which build it came from, so an older one never replaces it. */
@@ -80,7 +79,7 @@ export function transcriptionSession(ctx: TranscriptionContext) {
     let current: Utterance | null = null;
     const failure = (utterance: number, error: string, help: string): Transcript => ({ type: "error", utterance, error, help: [`${help}; ${TYPING}`] });
     const fail = (utterance: number, error: string, help: string) => send(failure(utterance, error, help));
-    /** The finals told so far: each waits on the one before, so the app posts them in the order they were said. */
+    /** The finals heard so far: each waits on the one before, so the Front voice hears them in the order they were said. */
     let told = Promise.resolve();
 
     /** What to tell the app of `utterance` now, if anything. */
@@ -94,12 +93,18 @@ export function transcriptionSession(ctx: TranscriptionContext) {
         timing?.dropped();
         return failure(utterance.number, answer.error, answer.help);
       }
-      if (kind === "interim") return { type: kind, utterance: utterance.number, text: answer.returned };
-      timing?.transcribed();
-      const cleaned = await clean(ctx, utterance, answer.returned, prompt);
-      const said = await answering(ctx, utterance, cleaned);
-      timing?.scribed(!("warning" in cleaned) && Boolean(cleaned.raw), said);
-      return { type: kind, utterance: utterance.number, ...said };
+      if (kind === "final") timing?.transcribed();
+      return { type: kind, utterance: utterance.number, text: answer.returned };
+    };
+
+    /** Have the Front voice answer what was heard of `utterance`, or hand it to the Lead; nothing heard ends there. */
+    const respond = async (utterance: Utterance, heard: string, timing?: Timing) => {
+      if (!heard) return timing?.dropped();
+      const handed = await ctx.front.hear(heard, await utterance.prompt, {
+        warn: (warning) => send({ type: "warning", utterance: utterance.number, ...warning }),
+        handing: (message, cleaned) => timing?.handed(cleaned, message),
+      });
+      if (!handed) timing?.dropped();
     };
 
     const start = (number: number) => {
@@ -113,7 +118,7 @@ export function transcriptionSession(ctx: TranscriptionContext) {
       }
       const endpoint = voice?.transcribe;
       if (!endpoint) return fail(number, "no transcription service is configured", `Add voice.transcribe to config.json (see ${VOICE_DOC})`);
-      current = { number, endpoint, scribe: voice?.scribe, audio: [], bytes: 0, heardUpTo: 0, asking: false, prompt: build() };
+      current = { number, endpoint, audio: [], bytes: 0, heardUpTo: 0, asking: false, prompt: build() };
     };
 
     const hear = (chunk: Uint8Array) => {
@@ -138,9 +143,13 @@ export function transcriptionSession(ctx: TranscriptionContext) {
         current = null;
         if (command?.type !== "end" || !utterance) return;
         const timing = ctx.timing?.start(utterance.number, new Date(command.spokeAt ?? ctx.world.now().getTime()));
-        // Transcribed and cleaned at once, but told after the finals before it.
+        // Transcribed at once, but told, and heard by the Front voice, after the finals before it.
         const final = ask(utterance, "final", timing);
-        told = told.then(() => final).then((message) => { if (message) send(message); }).catch((e: unknown) => {
+        told = told.then(() => final).then(async (message) => {
+          if (!message) return;
+          send(message);
+          if (message.type === "final") await respond(utterance, message.text, timing);
+        }).catch((e: unknown) => {
           timing?.dropped();
           report(utterance)(e);
         });
@@ -152,52 +161,11 @@ export function transcriptionSession(ctx: TranscriptionContext) {
   };
 }
 
-/**
- * What the user said, `raw` as heard, cleaned by the Scribe with the
- * vocabulary and the conversation's last entries.
- */
-async function clean(ctx: TranscriptionContext, utterance: Utterance, raw: string, vocabulary: string) {
-  if (!raw) return { text: raw, raw };
-  const asHeard = (error: string, help: string) => ({ text: raw, raw, warning: { error, help: [`Sent as heard. ${help}`] } });
-  if (!utterance.scribe) return asHeard("no Scribe is configured", `Add voice.scribe to config.json (see ${VOICE_DOC})`);
-  const recent = loadConversation(ctx.configDir).slice(-RECENT).map(authored)
-    .flatMap((e) => (e.text ? [`${e.who === "user" ? "User" : "Lead"}: ${e.text}`] : []));
-  const answer = await scribe(ctx.world, utterance.scribe, raw, { vocabulary, recent });
-  if ("error" in answer) return asHeard(answer.error, answer.help);
-  // A small model may answer the message rather than clean it; a cleanup is never much longer than what was said.
-  if (words(answer.returned) > words(raw) * 1.5 + 4) return asHeard("the Scribe answered far more than was said", "Check voice.scribe.model, or try a larger one");
-  return { text: answer.returned, raw };
-}
-
-/**
- * `said` as the answer to the Lead's question when that question is the
- * conversation's last entry: what is said right after it answers it, unless
- * it is a Correction of the user's last message. A question with choices
- * takes the one the Scribe finds `said` picks; else what was said, as cleaned.
- */
-async function answering(ctx: TranscriptionContext, utterance: Utterance, said: Cleaned): Promise<Cleaned & { answers?: number }> {
-  const question = loadConversation(ctx.configDir).at(-1);
-  if (!said.text || question?.type !== "ask" || isCorrection(said)) return said;
-  const choices = question.choices ?? [];
-  const picked = choices.length && utterance.scribe ? await choose(ctx.world, utterance.scribe, { text: question.text, choices }, said.text) : null;
-  return { ...said, ...(picked !== null && { text: choices[picked]! }), answers: question.id };
-}
-
-/** What was said as it is sent: the Scribe's text, else the raw with why. */
-type Cleaned = Awaited<ReturnType<typeof clean>>;
-
-/** How many words `text` has. */
-function words(text: string) {
-  return text.split(/\s+/).filter(Boolean).length;
-}
-
 /** An utterance as it streams in. */
 interface Utterance {
   /** The number the app gave it, which every answer about it carries. */
   number: number;
   endpoint: VoiceEndpoint;
-  /** The Scribe that cleans its final transcript, if one is configured. */
-  scribe: VoiceEndpoint | undefined;
   audio: Uint8Array[];
   bytes: number;
   /** How many bytes the last interim transcript was of. */

@@ -195,7 +195,7 @@ describe("the Lead speaks", () => {
       type: "speech-error",
       entry: 1,
       error: `could not reach ${SPEECH}: connection refused`,
-      help: ["Start the speak service (see docs/voice.md) or fix voice.speak.url; the Lead's replies still show in the panel"],
+      help: ["Start the speak service (see docs/voice.md) or fix voice.speak.url; replies still show in the panel"],
     });
     expect(JSON.parse((await ctx.web("/api/lead/log")).body).entries).toMatchObject([{ type: "lead", text: "Two Specs are running." }]);
   });
@@ -209,7 +209,7 @@ describe("the Lead speaks", () => {
       type: "speech-error",
       entry: 1,
       error: "no speech service is configured",
-      help: ["Add voice.speak to config.json (see docs/voice.md); the Lead's replies still show in the panel"],
+      help: ["Add voice.speak to config.json (see docs/voice.md); replies still show in the panel"],
     });
   });
 

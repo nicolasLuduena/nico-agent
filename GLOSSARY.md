@@ -292,20 +292,12 @@ pointer), never to the code, becomes a write Proposal of a ticket naming the
 PRs that showed the need; a declined one is not proposed again.
 _Avoid_: Postmortem, review, report
 
-**Scribe**:
-The small fast model that cleans what the user said before the Lead reads it:
-disfluencies out, glossary and Board terms spelled right, punctuation in,
-meaning untouched. Both the raw transcript and the Scribe's text are kept on
-the user's entry. It is an OpenAI-compatible chat endpoint in config, like
-transcription and speech; nico-agent runs none of them. To be replaced by
-the Front voice (ADR-0013).
-_Avoid_: Cleaner, post-processor, rewriter (it never rewrites the meaning)
-
 **Front voice**:
 The fast model the user talks to by voice in front of the Lead: it answers
 what needs no judgment itself and hands the rest to the Lead as the user's
-message, and never acts (ADR-0013).
-_Avoid_: Assistant, receptionist, voice agent
+message, cleaned (disfluencies out, glossary and Board terms spelled right,
+meaning untouched), and never acts (ADR-0013). It replaced the Scribe.
+_Avoid_: Assistant, receptionist, voice agent, Scribe
 
 **Voice on**:
 The user talking to the Lead by voice instead of reading the screen, a flag in

@@ -7,11 +7,11 @@ import type { World } from "./world";
 
 /**
  * The steps of a spoken message, in order: the user stops talking, the final
- * transcript comes, the Scribe cleans it, its entry is written, the Lead is
+ * transcript comes, the Front voice hands it to the Lead, its entry is written, the Lead is
  * Nudged, the Lead first says something after it, and the page plays the
  * first audio of that.
  */
-const VOICE_STEPS = ["spoke", "transcribed", "scribed", "written", "nudged", "said", "played"] as const;
+const VOICE_STEPS = ["spoke", "transcribed", "handed", "written", "nudged", "said", "played"] as const;
 type VoiceStep = (typeof VOICE_STEPS)[number];
 
 /** Where `serve` logs each spoken message's steps, a line each, in the config directory (see docs/voice.md). */
@@ -49,9 +49,9 @@ function timingLine(utterance: number, text: string, times: Partial<Record<Voice
 export interface Timing {
   /** The final transcript came. */
   transcribed(): void;
-  /** The Scribe's text came (`cleaned` false when it was sent as heard), and the page will post it as `text`, heard as `raw`. */
-  scribed(cleaned: boolean, said: { text: string; raw: string }): void;
-  /** It ends here: it failed, or nothing was heard to send. */
+  /** The Front voice hands it to the Lead (`cleaned` false when sent as heard) as `text`, heard as `raw`. */
+  handed(cleaned: boolean, said: { text: string; raw: string }): void;
+  /** It ends here: it failed, nothing was heard, or the Front voice answered it itself. */
   dropped(): void;
 }
 
@@ -96,8 +96,8 @@ export function stopwatch({ world, configDir }: { world: World; configDir: strin
       timed.push(message);
       return {
         transcribed: () => { message.times.transcribed = world.now(); },
-        scribed: (cleaned, { text, raw }) => {
-          if (cleaned) message.times.scribed = world.now();
+        handed: (cleaned, { text, raw }) => {
+          if (cleaned) message.times.handed = world.now();
           if (!text) return log(message);
           message.text = text;
           message.raw = raw;

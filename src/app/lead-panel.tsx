@@ -3,7 +3,7 @@ import type { Authored } from "../conversation";
 import type { BoardJson } from "./board";
 import { OutcomeNote, answerOf, post, usePost } from "./forms";
 import {
-  type Card, type Conversation, type ItemLine, type LeadStatusJson, type OpenItem, type ProposalJson,
+  type Card, type Conversation, type ItemLine, type LeadStatusJson, type OpenItem, type ProposalJson, type Speaker,
   cards, followsNewEntries, itemLine, notices, reduce, sayArgs, toastId,
 } from "./lead";
 import { LeadDrawer } from "./lead-drawer";
@@ -74,7 +74,7 @@ export function LeadPanel({ status, conversation, summon, board }: {
     atEnd.current = true;
     return send(text, question, raw);
   };
-  const talking = useTalk((text, heard, answers) => void sendAndFollow(text, answers, heard), voice);
+  const talking = useTalk(voice);
   const warnings = notices({ failure, status, talk: talking.warning, board });
   return (
     <section className="lead-panel" aria-label="Conversation with the Lead">
@@ -135,6 +135,7 @@ function CardView({ card, send, dismiss, summon }: { card: Card; send: SendText;
       return (
         <li className={`card-message ${card.who}${card.sending ? " sending" : ""}${card.superseded ? " superseded" : ""}`}>
           <Byline who={card.who} at={card.at} note={messageNote(card)} />
+          {card.heard !== undefined && <p className="heard"><span>You said</span>{card.heard}</p>}
           {card.raw === undefined
             ? <p className="text">{card.text}</p>
             : (
@@ -209,12 +210,15 @@ function messageNote(card: Card & { kind: "message" }) {
   return notes.filter(Boolean).join(" · ") || undefined;
 }
 
+/** What a byline calls each speaker. */
+const WHO: Record<Speaker, string> = { user: "You", lead: "Lead", "front-voice": "Front voice" };
+
 /** Who wrote a card and when, then a muted note (such as "sending…") or, at its end, a Proposal's status. */
-export function Byline({ who, at, note, status }: { who: "user" | "lead"; at: string; note?: string | undefined; status?: string }) {
+export function Byline({ who, at, note, status }: { who: Speaker; at: string; note?: string | undefined; status?: string }) {
   const time = new Date(at);
   return (
     <p className="byline">
-      <b>{who === "user" ? "You" : "Lead"}</b>
+      <b>{WHO[who]}</b>
       <time dateTime={at} title={time.toLocaleString()}>{time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time>
       {note && <span>{note}</span>}
       {status && <span className="status">{status}</span>}
@@ -224,9 +228,8 @@ export function Byline({ who, at, note, status }: { who: "user" | "lead"; at: st
 
 /**
  * Where the user writes or talks to the Lead, side by side: Enter sends,
- * Shift+Enter starts a new line; the talk button sends the Scribe's text,
- * keeping what it heard, as the answer to the Lead's question when said right
- * after it. While the Lead is `working`, a conversation by voice shows it
+ * Shift+Enter starts a new line; what the talk button hears goes to the
+ * Front voice, which answers it or hands it to the Lead. While the Lead is `working`, a conversation by voice shows it
  * thinking. The draft is the composer's own, so entries arriving never touch it.
  */
 function Composer({ send, talk, working }: { send: SendText; talk: ReturnType<typeof useTalk>; working: boolean }) {

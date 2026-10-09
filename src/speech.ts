@@ -5,31 +5,36 @@ import { voiceOn } from "./voice-on";
 import type { SocketPeer, World } from "./world";
 
 /**
- * What `/api/voice` tells the app of the Lead's speech, besides the audio
+ * What `/api/voice` tells the app of the speech it plays, besides the audio
  * itself as binary messages between `speech` and `speech-end`: 16-bit
- * little-endian mono PCM at `rate`, whole samples each.
+ * little-endian mono PCM at `rate`, whole samples each. The Lead's speech
+ * names its `entry`; the Front voice's lines have none.
  */
 export type Speech =
-  | { type: "speech"; entry: number; rate: number }
-  | { type: "speech-end"; entry: number }
-  | { type: "speech-error"; entry: number; error: string; help: string[] };
+  | { type: "speech"; entry?: number; rate: number }
+  | { type: "speech-end"; entry?: number }
+  | { type: "speech-error"; entry?: number; error: string; help: string[] };
 
-/** The Lead's words still reach the user in writing, so every warning says so. */
-const STILL_SHOWN = "the Lead's replies still show in the panel";
+/** Something to read aloud: a Lead's entry, or a line of the Front voice's. */
+type Spoken = { text: string; entry?: number };
+
+/** What is said still reaches the user in writing, so every warning says so. */
+const STILL_SHOWN = "replies still show in the panel";
 
 /**
  * The Lead's voice in `serve`: with Voice on, each entry the Lead writes (a
  * reply, or a question with its choices numbered) is read by the speech
  * service, one after another, and its audio streamed to every page listening
  * as it is made. Only entries written after a page began listening are
- * spoken. `hush` (the user talking over it, or a tap) stops the speech at
- * once and drops what waits to be spoken.
+ * spoken. The Front voice's lines are read in the same queue, so no two
+ * voices ever overlap. `hush` (the user talking over it, or a tap) stops the
+ * speech at once and drops what waits to be spoken.
  */
 export function speaker({ world, configDir }: { world: World; configDir: string }) {
   const peers = new Set<SocketPeer>();
   /** The last entry looked at; the ones after it are new. */
   let seen = 0;
-  let waiting: Entry[] = [];
+  let waiting: Spoken[] = [];
   /** The speech streaming now: stop it to hush. */
   let streaming: { stop(): void } | null = null;
   let speaking = false;
@@ -44,8 +49,9 @@ export function speaker({ world, configDir }: { world: World; configDir: string 
     for (const peer of peers) peer.send(chunk);
   };
 
-  const read = async (entry: Entry) => {
-    const failed = (error: string, help: string) => tell({ type: "speech-error", entry: entry.id, error, help: [`${help}; ${STILL_SHOWN}`] });
+  const read = async ({ text, entry }: Spoken) => {
+    const which = entry === undefined ? {} : { entry };
+    const failed = (error: string, help: string) => tell({ type: "speech-error", ...which, error, help: [`${help}; ${STILL_SHOWN}`] });
     let endpoint;
     try {
       endpoint = loadConfig(configDir).voice?.speak;
@@ -55,13 +61,13 @@ export function speaker({ world, configDir }: { world: World; configDir: string 
     }
     if (!endpoint) return failed("no speech service is configured", `Add voice.speak to config.json (see ${VOICE_DOC})`);
     const asked = hushes;
-    const made = await speak(world, endpoint, spoken(entry));
+    const made = await speak(world, endpoint, text);
     if ("error" in made) return failed(made.error, made.help);
     const reader = made.audio.getReader();
     if (hushes !== asked) return void reader.cancel().catch(() => {});
     let stopped = false;
     streaming = { stop: () => { stopped = true; void reader.cancel().catch(() => {}); } };
-    tell({ type: "speech", entry: entry.id, rate: SPEECH_RATE });
+    tell({ type: "speech", ...which, rate: SPEECH_RATE });
     // A chunk may end inside a sample; its odd byte starts the next one.
     let carry = new Uint8Array(0);
     try {
@@ -81,8 +87,10 @@ export function speaker({ world, configDir }: { world: World; configDir: string 
       streaming = null;
     }
     // Hushed too: every other page listening stops waiting on it.
-    tell({ type: "speech-end", entry: entry.id });
+    tell({ type: "speech-end", ...which });
   };
+
+  const say = () => void speakWaiting().catch((e: unknown) => console.error(`speech failed: ${e instanceof Error ? e.message : String(e)}`));
 
   const speakWaiting = async () => {
     if (speaking) return;
@@ -112,8 +120,14 @@ export function speaker({ world, configDir }: { world: World; configDir: string 
       if (!fresh.length) return;
       seen = fresh.at(-1)!.id;
       if (!voiceOn(configDir)) return;
-      waiting.push(...fresh.filter((e) => e.type === "lead" || e.type === "ask"));
-      void speakWaiting().catch((e: unknown) => console.error(`speech failed: ${e instanceof Error ? e.message : String(e)}`));
+      waiting.push(...fresh.filter((e) => e.type === "lead" || e.type === "ask").map((e) => ({ text: spoken(e), entry: e.id })));
+      say();
+    },
+    /** Read a line of the Front voice's, after what waits, with Voice on and a page listening. */
+    line(text: string) {
+      if (peers.size === 0 || !voiceOn(configDir)) return;
+      waiting.push({ text: text.replace(/[`*]/g, "") });
+      say();
     },
     /** Stop speaking now, and drop what waits to be spoken. */
     hush() {

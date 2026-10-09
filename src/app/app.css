@@ -323,6 +323,9 @@ label.switch:has(:checked) { color: var(--ink); }
 .card-message.lead .byline b { color: var(--link); }
 .text { white-space: pre-wrap; overflow-wrap: anywhere; }
 .card-message.lead .text { font-size: 17px; line-height: 1.55; letter-spacing: -0.016em; }
+.card-message.front-voice .text { font-size: 15px; line-height: 1.5; color: var(--ink-muted); }
+.card-message .heard { font-size: 13px; color: var(--ink-muted); margin-bottom: 0.2rem; overflow-wrap: anywhere; }
+.card-message .heard span { font-weight: 700; margin-right: 0.4rem; }
 .card-message.user { align-self: flex-end; max-width: min(48rem, 80%); background: var(--accent-soft); padding: 0.7rem 1rem 0.8rem; border-radius: var(--r-xl) var(--r-xl) var(--r-sm) var(--r-xl); }
 .card-message.user .byline { justify-content: flex-end; }
 .card-message.sending .text { color: var(--ink-muted); }

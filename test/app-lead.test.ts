@@ -5,6 +5,7 @@ import type { HarnessesJson } from "../src/app/actions";
 import {
   type Conversation, type LeadStatusJson, type OpenItem, type ProposalJson, cards, freshItems, itemLine, declineArgs, leadChoice, openItems, leadControl, leadStartArgs, followsNewEntries, notices, proposalLines, reduce, researchMessage, sayArgs,
 } from "../src/app/lead";
+import { append } from "../src/conversation";
 import { setup } from "./harness";
 
 const CLAUDE = { lead: { harness: "claude", model: "opus", effort: "high" }, scheduler: { harness: "claude", model: "opus", effort: "high" } };
@@ -37,6 +38,18 @@ describe("the conversation's cards", () => {
     expect(cards(await loaded())).toMatchObject([
       { kind: "message", who: "user", text: "Finish billing first" },
       { kind: "message", who: "lead", text: "Will do" },
+    ]);
+  });
+
+  test("the Front voice's lines are its own messages, with what the user said that it answered itself", async () => {
+    const { cli, configDir, world, loaded } = withLead();
+    await cli("say", "--raw", "um dispatch acme api seven", "--", "Dispatch acme/api#7.");
+    await append(configDir, { type: "front-voice", text: "I'll ask the Lead." }, world.now());
+    await append(configDir, { type: "front-voice", text: "Two issues are Ready.", heard: "what's ready" }, world.now());
+    expect(cards(await loaded())).toEqual([
+      expect.objectContaining({ who: "user", text: "Dispatch acme/api#7." }),
+      { kind: "message", key: "entry-2", who: "front-voice", text: "I'll ask the Lead.", at: expect.any(String) },
+      { kind: "message", key: "entry-3", who: "front-voice", text: "Two issues are Ready.", heard: "what's ready", at: expect.any(String) },
     ]);
   });
 
@@ -300,7 +313,7 @@ describe("what the panel posts", () => {
     expect(cards(await loaded())[1]).not.toHaveProperty("spoken");
   });
 
-  test("a message the Scribe cleaned shows what was heard beside it, while sending and once in the conversation", async () => {
+  test("a message the Front voice cleaned shows what was heard beside it, while sending and once in the conversation", async () => {
     const { cli, loaded } = withLead();
     const sending = reduce(EMPTY, { type: "send", key: "s1", text: "Dispatch acme/api#7.", raw: "um dispatch acme api seven", at: NOW });
     expect(cards(sending)).toMatchObject([{ text: "Dispatch acme/api#7.", raw: "um dispatch acme api seven", sending: true }]);
