@@ -119,21 +119,18 @@ type Answer = Extract<Entry, { type: "answer" }>;
 
 /**
  * Append the user's answer to the open question with id `question`, as typed.
- * The same answer again returns the one written (`existing`); any other answer
- * to a question no longer open, or to an id that is not a question, is refused.
+ * A question already answered, or an id that is not a question, is refused.
  */
-export function answerQuestion(dir: string, question: string, text: string, at: Date): Promise<{ answer: Answer; existing: boolean }> {
+export function answerQuestion(dir: string, question: string, text: string, at: Date): Promise<Answer> {
   return withFileLock(dir, FILE, () => {
     const entries = loadConversation(dir);
     const open = openQuestions(entries);
     const id = open.find((q) => String(q) === question);
     if (id === undefined) {
-      const same = entries.find((e): e is Answer => e.type === "answer" && String(e.question) === question && e.text === text);
-      if (same) return { answer: same, existing: true };
       const asked = entries.some((e) => e.type === "ask" && String(e.id) === question);
       throw new AnswerRefused(asked ? `question ${question} was already answered` : `no question has id ${question}`, open);
     }
-    return { answer: write(dir, entries, { type: "answer", question: id, text }, at) as Answer, existing: false };
+    return write(dir, entries, { type: "answer", question: id, text }, at) as Answer;
   });
 }
 

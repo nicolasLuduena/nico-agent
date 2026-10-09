@@ -84,10 +84,13 @@ describe("the conversation with the Lead", () => {
     await tool(web, "ask", { question: "Start billing?" });
     await cli("say", "--answer", "1", "yes");
 
-    // The same answer again is a no-op.
-    expect((await cli("say", "--answer", "1", "yes", "--json")).json()).toMatchObject({ answered: "1 already, as given (no-op)", id: 3 });
-    for (const [id, error] of [["1", "question 1 was already answered"], ["9", "no question has id 9"], ["x", "no question has id x"]] as const) {
-      const refused = await cli("say", "--answer", id, "no", "--json");
+    for (const [id, text, error] of [
+      ["1", "yes", "question 1 was already answered"],
+      ["1", "no", "question 1 was already answered"],
+      ["9", "no", "no question has id 9"],
+      ["x", "no", "no question has id x"],
+    ] as const) {
+      const refused = await cli("say", "--answer", id, text, "--json");
       expect(refused.exitCode).toBe(1);
       expect(refused.json()).toEqual({ error, help: ["Run `nico-agent lead log` to see the Lead's questions (the open ones are 2)"] });
     }

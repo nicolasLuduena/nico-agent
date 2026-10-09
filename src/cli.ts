@@ -539,8 +539,8 @@ async function sayCommand(args: Args, ctx: RunContext): Promise<Output> {
     return { data: { said: entry.id }, help: [LOG_HELP] };
   }
   try {
-    const { answer, existing } = await answerQuestion(ctx.configDir, flag, text, ctx.world.now());
-    return { data: { answered: existing ? `${answer.question} already, as given (no-op)` : answer.question, id: answer.id }, help: [LOG_HELP] };
+    const answer = await answerQuestion(ctx.configDir, flag, text, ctx.world.now());
+    return { data: { answered: answer.question, id: answer.id }, help: [LOG_HELP] };
   } catch (e) {
     if (!(e instanceof AnswerRefused)) throw e;
     const open = e.open.length ? `the open ones are ${e.open.join(", ")}` : "none is open";
