@@ -98,6 +98,21 @@ describe("say Nudges the Lead", () => {
   });
 });
 
+describe("a decision on a Proposal Nudges the Lead", () => {
+  test("declining, approving, and an approval that fails each Nudge it once", async () => {
+    const { cli, world } = await lead("idle");
+    const propose = async () => (await cli("lead", "propose", "--reason", "It is done", "--json", "--", "close", "--", "acme/api#7")).json().proposed;
+    const [declined, failed] = [await propose(), await propose()];
+    world.calls.length = 0;
+
+    expect((await cli("proposals", "decline", String(declined))).exitCode).toBe(0);
+    expect(nudges(world.calls)).toEqual([NUDGE]);
+    world.agentStates.set("lead", "idle");
+    expect((await cli("proposals", "approve", String(failed))).exitCode).toBe(1);
+    expect(nudges(world.calls)).toEqual([NUDGE, NUDGE]);
+  });
+});
+
 describe("advance Nudges the Lead", () => {
   test("once at the end of each run, whatever it did", async () => {
     const { cli, world } = await lead("idle");

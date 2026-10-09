@@ -875,9 +875,11 @@ function idArg(args: Args, usage: string) {
  */
 async function proposalsApprove(args: Args, ctx: RunContext): Promise<Output> {
   const { id, action } = await decideProposal(ctx, idArg(args, APPROVE_USAGE), "approved");
+  /** Settle the Proposal and tell the Lead, answering the Nudge's warnings. */
   const close = async (outcome: Record<string, unknown>, why: string) => {
     await settle(ctx.configDir, id, outcome, why !== "");
     await append(ctx.configDir, { type: "decision", proposal: id, decision: why ? "failed" : "approved", action, text: why, outcome }, ctx.world.now());
+    return nudgeLead(ctx.world, ctx.configDir);
   };
   let result: RunResult;
   try {
@@ -889,13 +891,14 @@ async function proposalsApprove(args: Args, ctx: RunContext): Promise<Output> {
   }
   const { help = [], ...outcome } = JSON.parse(result.stdout) as { help?: string[] } & Record<string, unknown>;
   const why = notRun(outcome);
-  await close(outcome, why);
+  const warnings = await close(outcome, why);
+  const nudged = warnings.length ? { warnings } : {};
   if (why) {
     throw new CliError(`Proposal ${id} is no longer possible, so it was closed as failed: ${why}`, [...help, PROPOSALS_HELP], 1, {
-      proposal: id, action: commandLine(action), outcome,
+      proposal: id, action: commandLine(action), outcome, ...nudged,
     });
   }
-  return { data: { approved: id, action: commandLine(action), outcome }, help: [...help, PROPOSALS_HELP], exitCode: result.exitCode === 0 ? 0 : 1 };
+  return { data: { approved: id, action: commandLine(action), outcome, ...nudged }, help: [...help, PROPOSALS_HELP], exitCode: result.exitCode === 0 ? 0 : 1 };
 }
 
 /** Why an action's output shows it ran nothing, or "" when it did something. */
@@ -921,7 +924,8 @@ async function proposalsDecline(args: Args, ctx: RunContext): Promise<Output> {
   const reason = args.positionals.slice(1).join(" ").trim();
   const { id, action } = await decideProposal(ctx, idArg(args, DECLINE_USAGE), "declined", reason || undefined);
   await append(ctx.configDir, { type: "decision", proposal: id, decision: "declined", action, text: reason }, ctx.world.now());
-  return { data: { declined: id, action: commandLine(action) }, help: [`The Lead reads the decision in its Inbox`, PROPOSALS_HELP] };
+  const warnings = await nudgeLead(ctx.world, ctx.configDir);
+  return { data: { declined: id, action: commandLine(action), ...(warnings.length && { warnings }) }, help: [`The Lead reads the decision in its Inbox`, PROPOSALS_HELP] };
 }
 
 async function reviewCommand(args: Args, ctx: RunContext): Promise<Output> {

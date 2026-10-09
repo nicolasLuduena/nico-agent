@@ -192,7 +192,8 @@ the approval is refused with the reason and the Proposal is closed as
 id that names none, is refused.
 
 Each decision becomes a `decision` entry in the conversation, with the
-command, its outcome and your reason, so the Lead reads it in its Inbox. Open
+command, its outcome and your reason, and the Lead is Nudged to read it in
+its Inbox. Open
 Proposals are also in the orient packet every `inbox` returns.
 
 A Proposal can only run an action tool's command: `dispatch`, `review`,
