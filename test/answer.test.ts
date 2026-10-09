@@ -89,7 +89,7 @@ describe("nico-agent answer", () => {
     expect(refused.exitCode).toBe(1);
     expect(refused.json()).toEqual({
       error: "acme/api#11 has no Dispatch (it was never dispatched, or was Closed)",
-      help: ["Run `nico-agent` to see the Board and which Implementers are waiting on you"],
+      help: ["Run `nico-agent` to see the Board and which agents are waiting on you"],
     });
     expect(world.calls).toEqual([]);
   });
@@ -120,7 +120,7 @@ describe("nico-agent answer", () => {
     for (const argv of [["answer"], ["answer", "acme/api#11"], ["answer", "acme/api#11", ""]]) {
       const result = await cli(...argv, "--json");
       expect(result.exitCode).toBe(2);
-      expect(result.json().help).toEqual(["Usage: `nico-agent answer <issue> <text>`"]);
+      expect(result.json().help).toEqual(["Usage: `nico-agent answer <issue|repo> <text>`"]);
     }
     expect(world.calls).toEqual([]);
   });
@@ -157,7 +157,7 @@ describe("nico-agent answer", () => {
   test("--help documents it", async () => {
     const { cli } = setup();
     const help = (await cli("answer", "--help", "--json")).json();
-    expect(help.usage).toBe("nico-agent answer <issue> <text>");
+    expect(help.usage).toBe("nico-agent answer <issue|repo> <text>");
     expect(help.examples).toContain("nico-agent answer acme/api#7 \"2\"");
   });
 });

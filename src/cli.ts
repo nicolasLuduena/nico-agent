@@ -11,7 +11,7 @@ import { DispatchError } from "./dispatch-error";
 import { PANE_ARGS } from "./opencode";
 import { type Catalog, harnessCatalogs, harnesses, refreshHarnesses, rememberedLaunches } from "./harness";
 import { LEAD_AGENT, NICO_AGENT_SLUG, leadStatus, startLead, stopLead } from "./lead";
-import { describePrs, garden, gardenRepo, gardenerRows, queueGardening, startQueuedGardeners } from "./gardener";
+import { describePrs, garden, gardenRepo, gardenerRows, startWaitingGardeners } from "./gardener";
 import { NUDGE_INTERVAL_MS, nudgeLead, sendPendingNudge } from "./nudge";
 import { linearIdentifier } from "./linear";
 import { peek } from "./peek";
@@ -62,7 +62,7 @@ const BOARD_HELP = "Run `nico-agent` to see the Board";
 const DISPATCH_USAGE = "nico-agent dispatch <issue>... --harness <harness> --model <model> --effort <effort>";
 const REVIEW_USAGE = "nico-agent review <issue>... --harness <harness> --model <model> --effort <effort>";
 const CLOSE_USAGE = "nico-agent close <issue>... [--confirm]";
-const ANSWER_USAGE = "nico-agent answer <issue> <text>";
+const ANSWER_USAGE = "nico-agent answer <issue|repo> <text>";
 const PEEK_USAGE = "nico-agent peek [<issue>] [--reviewer]";
 const ORDERS_SET_USAGE = "nico-agent orders set <order> on|off";
 const SAY_USAGE = "nico-agent say [--answer <id>] [--raw <transcript>] <text>";
@@ -260,7 +260,7 @@ const commands: Command[] = [
       "nico-agent answer acme/api#7 --json -- \"--force is fine here\"",
       "nico-agent answer acme/api \"Keep both changes\"",
     ],
-    help: ["Run `nico-agent --json` to see which Implementers are waiting on you, under `asking`"],
+    help: ["Run `nico-agent --json` to see which Implementers and Gardeners are waiting on you, under `asking`"],
     run: answerCommand,
   },
   {
@@ -871,7 +871,7 @@ async function moveCommand(args: Args, ctx: RunContext): Promise<Output> {
 async function answerCommand(args: Args, ctx: RunContext): Promise<Output> {
   const [issue, ...words] = args.positionals;
   const text = words.join(" ");
-  if (!issue || !text) throw new CliError(issue ? "<text> is required" : "<issue> is required", [`Usage: \`${ANSWER_USAGE}\``], 2);
+  if (!issue || !text) throw new CliError(issue ? "<text> is required" : "<issue|repo> is required", [`Usage: \`${ANSWER_USAGE}\``], 2);
   const { answered, agent, gardener, started } = await answer(ctx.world, ctx.configDir, issue, text);
   const help = [gardener ? `Run \`herdr agent read ${agent}\` to see the Gardener` : `Run \`nico-agent show ${answered}\` to see the Dispatch`, BOARD_HELP];
   if (!started) help.unshift(`Run \`herdr agent read ${agent}\` to see whether it took the answer`);
@@ -1558,7 +1558,7 @@ async function serve(args: Args, ctx: RunContext): Promise<Output> {
   // each tick starts one wherever PRs wait and none runs.
   const startGardeners = async () => {
     try {
-      const { started, warnings } = await withCaller("gardener", () => startQueuedGardeners(served.world, ctx.configDir));
+      const { started, warnings } = await withCaller("gardener", () => startWaitingGardeners(served.world, ctx.configDir));
       for (const warning of warnings) console.error(`garden: ${warning}`);
       for (const g of started) console.error(`garden: started the Gardener of ${g.repo} for ${g.prs.map((pr) => pr.url).join(", ")}`);
       if (started.length) events.emit("board-changed");
@@ -1569,9 +1569,8 @@ async function serve(args: Args, ctx: RunContext): Promise<Output> {
   // What changes on a PR reaches the Lead as events in its Inbox.
   ctx.world.every(PR_WATCH_INTERVAL_MS, async () => {
     try {
-      const { events: written, warnings, gardening } = await withCaller("pr watch", () => watchPrs(served.world, ctx.configDir, shared.prs));
+      const { events: written, warnings } = await withCaller("pr watch", () => watchPrs(served.world, ctx.configDir, shared.prs));
       for (const warning of warnings) console.error(`PR events: ${warning}`);
-      await queueGardening(ctx.configDir, gardening);
       if (!written.length) return;
       // Something happened on a PR, so the Board may have moved with it.
       github.forget();

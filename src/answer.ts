@@ -90,7 +90,7 @@ export async function answer(world: World, configDir: string, issue: string, tex
   const record = findDispatch(configDir, key);
   if (!record) {
     throw new DispatchError(`${key} has no Dispatch (it was never dispatched, or was Closed)`, [
-      "Run `nico-agent` to see the Board and which Implementers are waiting on you",
+      "Run `nico-agent` to see the Board and which agents are waiting on you",
     ]);
   }
   const { agent } = record.implementer;

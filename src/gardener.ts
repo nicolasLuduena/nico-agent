@@ -4,6 +4,7 @@ import { GARDENER_DEFAULTS, type LaunchDefaults, type Repo, fillTemplate, findRe
 import { type Progress, agentSteps, chooseLaunch, prompt, repoName, runPhase, withBotSuffix } from "./dispatch";
 import { DispatchError, LaunchError } from "./dispatch-error";
 import type { Harness } from "./harness";
+import type { Gardening } from "./pr-events";
 import { sameSlug } from "./slug";
 import type { Launch } from "./state";
 import { withFileLock, writeJsonAtomic } from "./state";
@@ -57,8 +58,8 @@ export interface GardenStart {
 }
 
 const FILE = "gardeners.json";
-/** The PRs waiting for each Repo's next Gardener, by Repo. */
-const QUEUE_FILE = "garden-queue.json";
+/** The PRs waiting for each Repo's next Gardener, by Repo; not a Queue, which holds Specs. */
+const WAITING_FILE = "garden-waiting.json";
 
 /** Whether a Gardener with this Agent state has stopped, or is gone from herdr (undefined). */
 function isFinished(state: string | undefined) {
@@ -152,28 +153,27 @@ export async function removeFinishedGardeners(world: World, configDir: string): 
  * watch saw: a PR already waiting is replaced by its latest news. A PR of a
  * Repo that is not configured is dropped, as no Gardener could start there.
  */
-export async function queueGardening(configDir: string, gardening: { repo: string; pr: GardenPr }[]) {
+export async function keepForGardener(configDir: string, gardening: Gardening[]) {
   if (!gardening.length) return;
   const config = loadConfig(configDir);
-  await withFileLock(configDir, QUEUE_FILE, () => {
-    const queue = readQueue(configDir);
+  await withFileLock(configDir, WAITING_FILE, () => {
+    const waiting = readWaiting(configDir);
     for (const { repo, pr } of gardening) {
       const slug = findRepo(config, repo)?.slug;
       if (!slug) continue;
-      queue[slug] = [...(queue[slug] ?? []).filter((p) => p.url !== pr.url), pr];
+      waiting[slug] = [...(waiting[slug] ?? []).filter((p) => p.url !== pr.url), pr];
     }
-    writeJsonAtomic(join(configDir, QUEUE_FILE), queue);
+    writeJsonAtomic(join(configDir, WAITING_FILE), waiting);
   });
 }
 
 /**
  * Start a Gardener in each Repo with PRs waiting and none running there,
- * handing it those PRs, which leave the queue once it holds them. A failed
+ * handing it those PRs, which wait no more once it holds them. A failed
  * start is a warning, and resumed on the next call. Returns what started.
  */
-export async function startQueuedGardeners(world: World, configDir: string): Promise<{ started: Gardener[]; warnings: string[] }> {
-  const queue = readQueue(configDir);
-  const waiting = Object.entries(queue).filter(([, prs]) => prs.length);
+export async function startWaitingGardeners(world: World, configDir: string): Promise<{ started: Gardener[]; warnings: string[] }> {
+  const waiting = Object.entries(readWaiting(configDir)).filter(([, prs]) => prs.length);
   const started: Gardener[] = [];
   const warnings: string[] = [];
   if (!waiting.length) return { started, warnings };
@@ -181,6 +181,7 @@ export async function startQueuedGardeners(world: World, configDir: string): Pro
   let states: Map<string, string> | undefined;
   for (const [repo, prs] of waiting) {
     try {
+      // A running one is seen here, so its wait doesn't check the launch with `garden` every tick.
       const existing = records[repo];
       if (existing && isStarted(existing)) {
         states ??= new Map((await world.herdrAgents()).map((a) => [a.name, a.state]));
@@ -188,12 +189,12 @@ export async function startQueuedGardeners(world: World, configDir: string): Pro
       }
       const { gardener, outcome } = await garden(world, configDir, { repo, prs: [], tend: prs });
       if (outcome === "existing") continue;
-      await withFileLock(configDir, QUEUE_FILE, () => {
-        const now = readQueue(configDir);
+      await withFileLock(configDir, WAITING_FILE, () => {
+        const now = readWaiting(configDir);
         const left = (now[repo] ?? []).filter((p) => !gardener.prs.some((g) => samePr(g, p)));
         if (left.length) now[repo] = left;
         else delete now[repo];
-        writeJsonAtomic(join(configDir, QUEUE_FILE), now);
+        writeJsonAtomic(join(configDir, WAITING_FILE), now);
       });
       started.push(gardener);
     } catch (e) {
@@ -204,13 +205,15 @@ export async function startQueuedGardeners(world: World, configDir: string): Pro
   return { started, warnings };
 }
 
+/** Whether two are the same news of the same PR, so a newer one that came during a start still waits. */
 function samePr(a: GardenPr, b: GardenPr) {
-  return a.url === b.url && a.happened === b.happened;
+  if (a.happened === "conflict") return b.happened === "conflict" && a.url === b.url && a.base === b.base;
+  return b.happened === "merged below" && a.url === b.url && a.below === b.below && a.newBase === b.newBase;
 }
 
-function readQueue(configDir: string): Record<string, GardenPr[]> {
+function readWaiting(configDir: string): Record<string, GardenPr[]> {
   try {
-    return JSON.parse(readFileSync(join(configDir, QUEUE_FILE), "utf8")) as Record<string, GardenPr[]>;
+    return JSON.parse(readFileSync(join(configDir, WAITING_FILE), "utf8")) as Record<string, GardenPr[]>;
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code === "ENOENT") return {};
     throw e;

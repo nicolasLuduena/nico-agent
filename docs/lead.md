@@ -271,7 +271,7 @@ them.
 From the same answers, `serve` starts a Repo's Gardener by itself: on a
 `merged` event of a PR that other watched open PRs were stacked on, naming
 those, and on a `conflict` event, naming that PR. While a Gardener runs in the
-Repo, the PRs that come up wait in `garden-queue.json` in the config
+Repo, the PRs that come up wait in `garden-waiting.json` in the config
 directory, and the next tick after it is done starts the next Gardener with
 them. The Lead reports what a Gardener fixed (its comments on the PRs reach
 the Inbox as events) and relays its questions, listed under the Board's

@@ -127,10 +127,11 @@ Base. See `docs/research-issues.md`.
 _Avoid_: Spike, investigation issue
 
 **Asking**:
-An Implementer waiting on the user (Agent state `blocked`), with the question
-its screen shows. The user is notified once, and answers it in herdr or with
-`nico-agent answer`; the Lead answers it when its Standing orders allow, and
-otherwise relays the user's words.
+An Implementer, or a Repo's Gardener, waiting on the user (Agent state
+`blocked`), with the question its screen shows. The user is notified once of
+an Implementer's, and answers it in herdr or with `nico-agent answer` (the
+issue, or the Repo for its Gardener); the Lead answers an Implementer's when
+its Standing orders allow, and otherwise relays the user's words.
 _Avoid_: Stuck, blocked (a Blocker is an issue)
 
 **Reviewer**:

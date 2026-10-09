@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { type Entry, type PrChange, append } from "./conversation";
-import type { GardenPr } from "./gardener";
+import { type GardenPr, keepForGardener } from "./gardener";
 import type { PrLookup } from "./stage";
 import { loadDispatches, writeJsonAtomic } from "./state";
 import { type CheckResult, type PullRequest, type PullRequestActivity, type PullRequestComment, type World, WorldError, worldErrorMessage } from "./world";
@@ -47,11 +47,11 @@ interface Watched {
  * watched). Each new review comment, check result, merge conflict, ready for
  * review, merge and close is written once as an `event` entry, reaching the
  * Lead's Inbox. A PR GitHub cannot be asked about is a warning, and asked
- * again next time. `gardening` is what the Gardener should tend, read from
- * the same answers: each PR that turned conflicting, and each watched PR
- * whose base was the head branch of a PR that merged.
+ * again next time. From the same answers, each PR that turned conflicting,
+ * and each watched open PR whose base was the head branch of a PR that
+ * merged, waits for its Repo's next Gardener (`keepForGardener`).
  */
-export async function watchPrs(world: World, configDir: string, prs: PrLookup): Promise<{ events: Entry[]; warnings: string[]; gardening: Gardening[] }> {
+export async function watchPrs(world: World, configDir: string, prs: PrLookup): Promise<{ events: Entry[]; warnings: string[] }> {
   const dispatches = loadDispatches(configDir);
   const watched = load(configDir);
   for (const [url, pr] of Object.entries(watched)) {
@@ -75,7 +75,6 @@ export async function watchPrs(world: World, configDir: string, prs: PrLookup): 
   const bases = new Map(Object.entries(watched).map(([url, pr]) => [url, pr.base]));
   const events: Entry[] = [];
   const warnings: string[] = [];
-  const gardening: Gardening[] = [];
   for (const [url, pr] of Object.entries(watched)) {
     if (pr.finished) continue;
     let activity: PullRequestActivity;
@@ -85,17 +84,20 @@ export async function watchPrs(world: World, configDir: string, prs: PrLookup): 
       warnings.push(`${url}: ${worldErrorMessage(e)}`);
       continue;
     }
+    const gardening: Gardening[] = [];
     for (const { change, text } of changes(pr, activity)) {
       events.push(await append(configDir, { type: "event", pr: url, issue: pr.issue, change, text: `${url}: ${text}` }, world.now()));
       if (change === "conflict") gardening.push({ repo: pr.repo, pr: { url, happened: "conflict", base: activity.baseBranch } });
       if (change === "merged") gardening.push(...stackedOn(watched, bases, url, activity.baseBranch));
     }
+    // Kept before the PR is saved as seen, so no Gardener's PR is lost.
+    await keepForGardener(configDir, gardening);
     if (activity.state !== "open") pr.finished = true;
     // Saved after each PR's events, so none is written twice.
     writeJsonAtomic(join(configDir, FILE), watched);
   }
   writeJsonAtomic(join(configDir, FILE), watched);
-  return { events, warnings, gardening };
+  return { events, warnings };
 }
 
 /** A PR of `repo` for the Gardener to tend. */
