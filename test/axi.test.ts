@@ -26,14 +26,14 @@ describe("AXI conventions", () => {
     const { cli } = setup();
     const { stdout, exitCode } = await cli("dispatch-all");
     expect(exitCode).toBe(2);
-    expect(stdout).toStartWith("error: unknown command `dispatch-all`\nhelp[43]:\n  Run `nico-agent [board]` to show Ready issues");
+    expect(stdout).toStartWith("error: unknown command `dispatch-all`\nhelp[44]:\n  Run `nico-agent [board]` to show Ready issues");
   });
 
   test("the retired Scheduler entry points are unknown: `mcp`, `--skill` and `advance --start` (ADR-0009)", async () => {
     const { cli, world } = setup();
     const mcp = await cli("mcp");
     expect(mcp.exitCode).toBe(2);
-    expect(mcp.stdout).toStartWith("error: unknown command `mcp`\nhelp[43]:\n  Run `nico-agent [board]` to show Ready issues");
+    expect(mcp.stdout).toStartWith("error: unknown command `mcp`\nhelp[44]:\n  Run `nico-agent [board]` to show Ready issues");
     expect(await cli("--skill")).toMatchObject({
       stdout: ["error: unknown flag --skill for `board`", "help[1]:", "  Valid flags for `board`: --json, --help", ""].join("\n"),
       exitCode: 2,
@@ -109,7 +109,7 @@ describe("AXI conventions", () => {
       [
         "bin: ~/.local/bin/nico-agent",
         "description: Dispatch coding agents onto ready-for-agent issues",
-        "commands[43]{usage,description}:",
+        "commands[44]{usage,description}:",
         '  "nico-agent [board]",Show Ready issues across all Repos (the default view)',
         "  nico-agent repo add <owner/name> --path <clone>,Add a Repo after checking the path is a clone of it",
         "  nico-agent repo rm <owner/name>,Remove a Repo (its clone is left untouched)",
@@ -121,7 +121,7 @@ describe("AXI conventions", () => {
         "  nico-agent move <spec> up|down --repo <owner/name>,Move a queued Spec one place toward the head (up) or the tail (down) of its Repo's Queue",
         '  nico-agent review <issue>... --harness <harness> --model <model> --effort <effort>,"Start a Reviewer on each In-flight issue\'s linked PR, in its workspace (resumes a failed one)"',
         '  "nico-agent close <issue>... [--confirm]","Remove each Dispatch\'s workspace and forget it, keeping its branch"',
-        `  nico-agent answer <issue> <text>,"Submit text, as typed, to an In-flight issue's Implementer while it waits on the user"`,
+        `  nico-agent answer <issue|repo> <text>,"Submit text, as typed, to an In-flight issue's Implementer, or a Repo's Gardener, while it waits on the user"`,
         `  "nico-agent peek [<issue>] [--reviewer]","Show what an In-flight issue's Implementer (or Reviewer) has on screen right now; with no issue, the Lead's own"`,
         "  nico-agent orders,\"Show each Standing order, what it lets the Lead do unasked, and whether it is on\"",
         "  nico-agent orders set <order> on|off,Turn one Standing order on or off",
@@ -144,6 +144,7 @@ describe("AXI conventions", () => {
         "  nico-agent harness list,List the Harnesses with their models and Effort levels (discovers uncached ones)",
         "  nico-agent harness refresh,Discover the Harnesses' models and Effort levels again and replace the cache",
         "  nico-agent show <issue>,Print the full Dispatch record of an In-flight issue",
+        "  \"nico-agent garden <repo> [--pr <url>...]\",\"Start the Repo's Gardener: an agent that rebases, retargets and resolves conflicts in its open PRs, never merging (no-op while one runs)\"",
         `  "nico-agent lead start [--harness <harness>] [--model <model>] [--effort <effort>] [--port <port>]","Start the Lead as the herdr agent \`lead\` in its own workspace, connected to serve's MCP server (no-op while it runs)"`,
         `  nico-agent lead status,"Show whether the Lead runs, in which workspace, on which Harness, model and Effort, and its Agent state"`,
         `  nico-agent lead stop,"Close the Lead's workspace and forget it, keeping its home and the conversation"`,

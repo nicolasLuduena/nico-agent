@@ -1,4 +1,4 @@
-import { type Prompts, type Repo, fillTemplate, findRepo, loadConfig, prompts } from "./config";
+import { type Placeholder, type Prompts, type Repo, fillTemplate, findRepo, loadConfig, prompts } from "./config";
 import { type Harness, type McpWiring, harnessCatalog, harnesses, launchArgs, rememberLaunch, rememberedLaunches } from "./harness";
 import { linearIdentifier } from "./linear";
 import { paneCommand, saveVariant } from "./opencode";
@@ -646,6 +646,15 @@ async function implementPrompt(world: World, templates: Prompts, repo: Repo, har
   const text = fillTemplate(record.research ? templates.research : templates.implement, values) + (record.stackedOn
     ? ` as the top of the stacked PRs on top of ${record.stackedOn.pr.url} - check gh-stack if you are not aware of github's stacked PRs`
     : "");
+  return withBotSuffix(world, templates.botSuffix, repo, text, values);
+}
+
+/**
+ * `text` with the bot suffix appended when the bot's GitHub App is installed
+ * on the Repo, checked afresh on every call; a failed check leaves it plain,
+ * with a warning.
+ */
+export async function withBotSuffix(world: World, suffix: string, repo: Repo, text: string, values: Partial<Record<Placeholder, string>>) {
   let installed: boolean;
   try {
     installed = (await world.githubAppRepos()).some((slug) => sameSlug(slug, repo.slug));
@@ -654,7 +663,7 @@ async function implementPrompt(world: World, templates: Prompts, repo: Repo, har
     const warning = `could not check the GitHub App on ${repo.slug}, so the prompt has no bot suffix: ${e.message}`;
     return { text, botSuffix: false, warning };
   }
-  return { text: installed ? text + fillTemplate(templates.botSuffix, values) : text, botSuffix: installed };
+  return { text: installed ? text + fillTemplate(suffix, values) : text, botSuffix: installed };
 }
 
 const STARTUP_TIMEOUT_MS = 30_000;
@@ -746,7 +755,7 @@ function alreadyInFlight(key: string) {
 }
 
 /** The name part of a Repo's `owner/name` slug. */
-function repoName(repo: Repo) {
+export function repoName(repo: Repo) {
   return repo.slug.split("/")[1]!;
 }
 

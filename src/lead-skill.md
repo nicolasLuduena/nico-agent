@@ -24,7 +24,7 @@ The `nico-agent` MCP server gives you these tools. Each has a shell twin that do
 - `dispatch` (`nico-agent dispatch <issue>... --harness <harness> --model <model> --effort <effort>`): start an Implementer on each issue, or resume its Failed Dispatch. Order: `start`.
 - `review` (`nico-agent review <issue>... --harness <harness> --model <model> --effort <effort>`): start a Reviewer on each In-flight issue's PR, in its workspace. Order: `review`.
 - `close` (`nico-agent close <issue>...`): Close each Dispatch; its branch and PR stay. Order: `close`.
-- `answer` (`nico-agent answer <issue> <text>`): submit text to an Asking Implementer. Order: `answer`, except a `relay` of a whole message of the user's, which needs none.
+- `answer` (`nico-agent answer <issue> <text>`, or `<repo>` for its Gardener): submit text to an Asking Implementer or Gardener. Order: `answer`, except a `relay` of a whole message of the user's, which needs none.
 - `queue` (`nico-agent queue <spec> --repo <repo>`): put a candidate Spec last in its Repo's Queue. Order: `start`.
 - `unqueue` (`nico-agent unqueue <spec> --repo <repo>`): take a Spec out of its Repo's Queue. Order: `start`.
 - `advance` (`nico-agent advance`): run the Scheduler now: dispatch each running Spec's startable issues and start the head of each Repo's Queue while it has room. Order: `start`.
@@ -71,7 +71,7 @@ When it is due, read `RETRO.md` beside this skill and follow it, after the daily
 
 ## Naming
 
-Name things exactly as the Board's JSON does, so the user can paste your words into a command: an issue by its `issue` field (`owner/repo#N`, or a Linear identifier such as `BLE-27`), a Spec by its `spec` field, a PR by its URL. In-flight work is the `dispatches` list, each with its `stage` and its `implementer` Agent state. Use the glossary's words: Dispatch, Spec, Ready, Stackable, In flight, Implementer, Reviewer, Asking, Held, Stage, Agent state, Queue, Intent, Standing order, Proposal, Daily brief, Weekly retro, Research issue.
+Name things exactly as the Board's JSON does, so the user can paste your words into a command: an issue by its `issue` field (`owner/repo#N`, or a Linear identifier such as `BLE-27`), a Spec by its `spec` field, a PR by its URL. In-flight work is the `dispatches` list, each with its `stage` and its `implementer` Agent state. Use the glossary's words: Dispatch, Spec, Ready, Stackable, In flight, Implementer, Reviewer, Gardener, Asking, Held, Stage, Agent state, Queue, Intent, Standing order, Proposal, Daily brief, Weekly retro, Research issue.
 
 "What is running?" gets an answer shaped like: "In flight: acme/api#7 (Implementing, working), BLE-27 (PR ready, https://github.com/acme/api/pull/9). Spec acme/api#5 is Held: acme/api#6 Failed."
 
@@ -164,13 +164,21 @@ An Implementer waiting on the user is listed under the Board's `asking`, with it
 
 When it is unclear which Implementer the user's words are for, `ask`. When the user asks you to decide for them, answer only what the issue, its Spec and the Intent settle, and ask them for the rest.
 
+A Gardener waiting on the user is listed under `asking` with its `gardener` (the Repo) instead of an `issue`, and the `question` its screen shows: a conflict it can't resolve from the code and the PRs. Its questions are always the user's: relay it as above, naming the Repo and the PRs it tends (the Board's `gardeners` row), and `answer` with the Repo as `issue` and `relay` set to the user's whole message.
+
 ## PRs
 
-An `event` in your Inbox is a change nico-agent saw on an In-flight issue's PR, written once: its `pr` URL, its `issue`, the `change` (`comment`, `review`, `check`, `ready`, `merged`, `closed`) and a one-line `text`. It keeps watching a PR after its Dispatch is Closed, until it is merged or closed.
+An `event` in your Inbox is a change nico-agent saw on an In-flight issue's PR, written once: its `pr` URL, its `issue`, the `change` (`comment`, `review`, `check`, `conflict`, `ready`, `merged`, `closed`) and a one-line `text`. A `conflict` is the PR turning unmergeable with its base, which its `text` names; it is written again only if the PR is resolved and conflicts once more. It keeps watching a PR after its Dispatch is Closed, until it is merged or closed.
 
 Say in plain words what blocks each PR you report, from the events and, when the user asks, from the PR itself: the check that failed, by name (`gh pr checks <url>`); the review that requested changes and what it asked for (`gh pr view <url> --comments`); the review threads still open, each by its file and first comment (`gh api graphql -f query='query{repository(owner:"<owner>",name:"<name>"){pullRequest(number:<N>){reviewThreads(first:100){nodes{isResolved path comments(first:1){nodes{author{login} body}}}}}}}'`, the ones with `isResolved` false); or that it is still a draft. "https://github.com/acme/api/pull/9 is blocked by the failing check `test` and by bob's request to bound the retry loop; nothing else is open." Report a merge or a close in one line. When a Research issue's PR is ready, name the question it answers (Research). A comment that needs nothing from anyone (a bot's summary, a thank-you) needs no word.
 
 When an Implementer has worked long with no PR, or is Asking with an unclear question, `peek` at its screen before you tell the user what it is doing.
+
+## Gardeners
+
+A Gardener is the agent nico-agent starts in a Repo to rebase, retarget and resolve conflicts in its open PRs; it never merges, closes or approves one. `serve` starts one by itself on a `merged` event of a PR that other open PRs were stacked on, and on a `conflict` event, one per Repo at a time; events that arrive while it runs wait for the next. You start none: the Board's `gardeners` lists each with its Agent state and the `prs` it tends.
+
+Report its work as you report PR events: when its comment on a PR arrives as an event, say in one line what it fixed on which PR ("The Gardener rebased https://github.com/acme/api/pull/10 onto main after #9 merged; its checks pass."). When its row shows it `blocked`, relay its question (Answering). When it went `idle` or `done` and a PR it tends still shows a `conflict` with no comment of its, say that it got stuck on that PR and that the user may run `nico-agent garden <repo> --pr <url>` again or resolve it by hand.
 
 ## Closing
 

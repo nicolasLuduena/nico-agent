@@ -160,7 +160,7 @@ describe("prompt templates from config", () => {
       [
         `error: "${join(configDir, "config.json")}: prompts.botSuffix has an unknown placeholder {bot}"`,
         "help[1]:",
-        "  Placeholders: {sigil}, {issueUrl}, {baseBranch}, {prUrl}, {prBaseBranch}",
+        "  Placeholders: {sigil}, {issueUrl}, {baseBranch}, {prUrl}, {prBaseBranch}, {repo}, {prs}",
         "",
       ].join("\n"),
     );

@@ -13,13 +13,13 @@ const NUDGE = "herdr agent prompt lead Read your Inbox";
 async function serving() {
   const ctx = setup();
   mkdirSync(ctx.configDir, { recursive: true });
-  writeFileSync(join(ctx.configDir, "config.json"), JSON.stringify({ repos: [], lead: LAUNCH, scheduler: LAUNCH }));
+  writeFileSync(join(ctx.configDir, "config.json"), JSON.stringify({ repos: [], lead: LAUNCH, scheduler: LAUNCH, gardener: LAUNCH }));
   ctx.world.addClone("/src/api", "git@github.com:acme/api.git");
   expect((await ctx.cli("repo", "add", "acme/api", "--path", "/src/api")).exitCode).toBe(0);
   ctx.world.addIssue("acme/api", { number: 7 });
   expect((await ctx.cli("dispatch", "acme/api#7", ...FLAGS)).exitCode).toBe(0);
   ctx.world.linkPr("acme/api", 7, { number: 9 });
-  ctx.world.activity.set("acme/api#9", { state: "open", draft: true, comments: [], checks: [] });
+  ctx.world.activity.set("acme/api#9", { state: "open", draft: true, baseBranch: "main", mergeable: "mergeable", comments: [], checks: [] });
   expect((await ctx.cli("lead", "start")).exitCode).toBe(0);
   ctx.world.agentStates.set("lead", "idle");
   expect((await ctx.cli("serve")).exitCode).toBe(0);
@@ -47,6 +47,8 @@ describe("PR events", () => {
     world.activity.set("acme/api#9", {
       state: "open",
       draft: true,
+      baseBranch: "main",
+      mergeable: "mergeable",
       comments: [
         { id: "c1", author: "alice", at: "2026-09-30T11:00:00Z", body: "Use a Map here.\nIt is faster.", path: "src/retry.ts" },
         { id: "r1", author: "bob", at: "2026-09-30T11:05:00Z", body: "The retry loop never ends", review: "changes requested" },
@@ -146,6 +148,28 @@ describe("PR events", () => {
     await world.tick(MINUTE);
     expect(world.calls.filter((c) => c.startsWith("github pr activity"))).toEqual([]);
     expect(await logged(cli)).toHaveLength(4);
+  });
+
+  test("a PR turning conflicting is one event naming its base, and conflicting again after it is resolved is another", async () => {
+    const { cli, world } = await serving();
+    const activity = world.activity.get("acme/api#9")!;
+    activity.mergeable = "conflicting";
+    await world.tick(MINUTE);
+    await world.tick(MINUTE);
+    expect(await logged(cli)).toMatchObject([{ pr: PR, issue: "acme/api#7", change: "conflict", text: `${PR}: conflicts with main` }]);
+
+    // GitHub reports unknown while it works out mergeability again.
+    activity.mergeable = "unknown";
+    await world.tick(MINUTE);
+    activity.mergeable = "conflicting";
+    await world.tick(MINUTE);
+    expect(await logged(cli)).toHaveLength(1);
+
+    activity.mergeable = "mergeable";
+    await world.tick(MINUTE);
+    activity.mergeable = "conflicting";
+    await world.tick(MINUTE);
+    expect((await logged(cli)).map((e) => e.change)).toEqual(["conflict", "conflict"]);
   });
 
   test("a PR stays watched after its Dispatch is Closed, until it is closed", async () => {

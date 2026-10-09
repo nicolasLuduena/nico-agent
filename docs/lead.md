@@ -257,7 +257,8 @@ An issue that is not In flight, or `--reviewer` before a review, is refused
 with help.
 
 While `serve` runs, it asks GitHub every minute what changed on each In-flight
-issue's open PR: new review comments and reviews, check results, ready for
+issue's open PR: new review comments and reviews, check results, a merge
+conflict with its base (once each time it turns conflicting), ready for
 review, merged and closed. Each change is written once into the conversation
 as an `event` entry (the PR's URL, the issue, the kind of change and a
 one-line summary), and the Lead is Nudged to read it in its Inbox. A PR stays
@@ -266,6 +267,15 @@ last seen of each is kept in `pr-watch.json` in the config directory.
 `nico-agent lead log` shows the events with the rest of the conversation;
 the app's Lead panel leaves them out and shows what the Lead says about
 them.
+
+From the same answers, `serve` starts a Repo's Gardener by itself: on a
+`merged` event of a PR that other watched open PRs were stacked on, naming
+those, and on a `conflict` event, naming that PR. While a Gardener runs in the
+Repo, the PRs that come up wait in `garden-waiting.json` in the config
+directory, and the next tick after it is done starts the next Gardener with
+them. The Lead reports what a Gardener fixed (its comments on the PRs reach
+the Inbox as events) and relays its questions, listed under the Board's
+`asking` by Repo, with `nico-agent answer <repo> <text>`.
 
 ## The Intent and the Notes
 

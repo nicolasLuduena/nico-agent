@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
-import { THEME_KEY, shownTheme, themeChoice } from "../src/app/theme";
+import { SYSTEM_DARK, THEME_KEY, shownTheme, themeChoice } from "../src/app/theme";
 
 describe("the theme the header's toggle picks", () => {
   test("Light until the user picks otherwise; a remembered Dark or System is kept, anything else is Light", () => {
@@ -32,7 +32,7 @@ function headTheme(stored: string | null | Error, systemDark: boolean): string |
       return key === THEME_KEY ? stored : null;
     },
   };
-  const matchMedia = (query: string) => ({ matches: query === "(prefers-color-scheme: dark)" && systemDark });
+  const matchMedia = (query: string) => ({ matches: query === SYSTEM_DARK && systemDark });
   new Function("document", "localStorage", "matchMedia", script)({ documentElement: root }, localStorage, matchMedia);
   return root.dataset.theme;
 }
@@ -44,6 +44,12 @@ describe("the page's first paint", () => {
     expect(headTheme("system", true)).toBe("dark");
     expect(headTheme("system", false)).toBe("light");
     expect(headTheme("purple", true)).toBe("light");
+  });
+
+  test("agrees with the toggle on every remembered choice and system scheme", () => {
+    for (const stored of [null, "light", "dark", "system", "purple"]) {
+      for (const systemDark of [true, false]) expect(headTheme(stored, systemDark)).toBe(shownTheme(themeChoice(stored), systemDark));
+    }
   });
 
   test("storage that cannot be read shows Light", () => {

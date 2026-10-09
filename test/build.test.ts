@@ -2,6 +2,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { THEME_KEY } from "../src/app/theme";
 
 /** A port nothing listens on, from the OS. */
 function freePort() {
@@ -48,7 +49,7 @@ describe("the compiled binary", () => {
     const html = await page.text();
     expect(html).toContain('<div id="root"></div>');
     // The remembered theme is set in the head, before the first paint.
-    expect(html).toContain('localStorage.getItem("nico-agent.theme")');
+    expect(html).toContain(`localStorage.getItem("${THEME_KEY}")`);
     const script = html.match(/<script[^>]* src="([^"]+)"/)?.[1];
     const style = html.match(/<link[^>]* href="([^"]+\.css)"/)?.[1];
     expect(script).toBeDefined();

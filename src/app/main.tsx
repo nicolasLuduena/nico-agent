@@ -4,8 +4,10 @@ import type { HarnessesJson } from "./actions";
 import type { BoardJson } from "./board";
 import { type LeadStatusJson, openItems } from "./lead";
 import { LeadMenu } from "./lead-menu";
+import { Actions, useBoardActions } from "./forms";
 import { LeadPanel, useConversation } from "./lead-panel";
 import { ReposPane } from "./repos";
+import { StatsPane } from "./stats-page";
 import { useResource } from "./stream";
 import { ThemeToggle } from "./theme-toggle";
 
@@ -43,16 +45,18 @@ function usePage(): Page {
 /**
  * The app: a header with the brand, the Lead and Stats pages, the count of
  * open questions and Proposals (which shows or hides the Questions list) and
- * the Lead's controls and the theme toggle, then the Lead panel on the left and the page's own column
- * on the right: the Repos on the Lead page. The Board is asked of `serve` on
- * load and on each `board-changed`, and `serve` answers from its one-minute
- * cache (ADR-0011), so the page never asks GitHub more often than that.
+ * the Lead's controls and the theme toggle, then the Lead panel on the left
+ * and the page's own column on the right: the Repos on the Lead page, the
+ * charts on the Stats page. The Board is asked of `serve` on load and on each
+ * `board-changed`, and `serve` answers from its one-minute cache (ADR-0011),
+ * so the page never asks GitHub more often than that.
  */
 function App() {
-  const { harnesses } = useHarnesses();
+  const { harnesses, reload } = useHarnesses();
   const page = usePage();
   const { data: status = null } = useResource<LeadStatusJson>("/api/lead/status", ["lead-state"]);
   const { data: board = null } = useResource<BoardJson>("/api/board", ["board-changed"]);
+  const actions = useBoardActions(board ?? {}, harnesses, reload);
   const conversation = useConversation();
   const questions = openItems(conversation.state);
   const [questionsShown, showQuestions] = useState(true);
@@ -79,23 +83,11 @@ function App() {
           <LeadMenu harnesses={harnesses} status={status} />
         </div>
       </header>
-      <main className="shell">
+      <main className={`shell ${page}`}>
         <LeadPanel status={status} conversation={conversation} questions={questionsShown ? questions : null} board={board} />
-        {page === "stats"
-          ? <Side title="Stats" lede="Merged PRs and issues defined per day will show here, counted from what nico-agent has seen." />
-          : <ReposPane board={board} />}
+        {page === "stats" ? <StatsPane /> : <Actions.Provider value={actions}><ReposPane board={board} /></Actions.Provider>}
       </main>
     </>
-  );
-}
-
-/** The page's own column, beside the Lead panel. */
-function Side({ title, lede }: { title: string; lede: string }) {
-  return (
-    <section className="side" aria-labelledby="side-title">
-      <h1 id="side-title">{title}</h1>
-      <p className="lede">{lede}</p>
-    </section>
   );
 }
 

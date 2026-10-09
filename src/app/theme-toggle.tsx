@@ -1,7 +1,5 @@
 import { useEffect, useState } from "react";
-import { THEME_KEY, type ThemeChoice, shownTheme, themeChoice } from "./theme";
-
-const DARK = "(prefers-color-scheme: dark)";
+import { SYSTEM_DARK, THEME_KEY, type ThemeChoice, shownTheme, themeChoice } from "./theme";
 
 /**
  * The theme picked, remembered in this browser, shown on the page's root as
@@ -17,7 +15,7 @@ function useTheme() {
     }
   });
   useEffect(() => {
-    const system = matchMedia(DARK);
+    const system = matchMedia(SYSTEM_DARK);
     const show = () => { document.documentElement.dataset.theme = shownTheme(choice, system.matches); };
     show();
     if (choice !== "system") return;
@@ -45,11 +43,11 @@ const CHOICES: { choice: ThemeChoice; label: string; icon: React.ReactNode }[] =
   { choice: "system", label: "System", icon: <><rect x="1.75" y="2.5" width="12.5" height="8.5" rx="1.5" /><path d="M5.5 14h5M8 11v3" /></> },
 ];
 
-/** The header's Light, Dark and System toggle: three drawn icons, the picked one raised. */
+/** The header's Light, Dark and System toggle: three drawn icons in a segmented control, the picked one raised. */
 export function ThemeToggle() {
   const { choice, pick } = useTheme();
   return (
-    <div className="theme-toggle" role="group" aria-label="Theme">
+    <div className="segmented theme-toggle" role="group" aria-label="Theme">
       {CHOICES.map((c) => (
         <button key={c.choice} type="button" aria-pressed={choice === c.choice} aria-label={c.label} title={c.label} onClick={() => pick(c.choice)}>
           <svg viewBox="0 0 16 16" aria-hidden="true">{c.icon}</svg>

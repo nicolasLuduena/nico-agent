@@ -64,9 +64,9 @@ function actionTools() {
       properties: { issues: ISSUES, confirm: { type: "boolean", description: "Close even with no PR yet (still Implementing)" } },
       required: ["issues"],
     }),
-    tool("answer", "Answer", "Submit text to an In-flight issue's Implementer while it waits on the user, as `nico-agent answer` does. Pass `text` or `relay`, not both.", {
+    tool("answer", "Answer", "Submit text to an In-flight issue's Implementer, or a Repo's Gardener, while it waits on the user, as `nico-agent answer` does. Pass `text` or `relay`, not both.", {
       properties: {
-        issue: { type: "string", description: "The In-flight issue whose Implementer is Asking" },
+        issue: { type: "string", description: "The In-flight issue whose Implementer is Asking, or the Repo (owner/name) whose Gardener is" },
         text: { type: "string", description: "Your own answer; needs the `answer` order" },
         relay: { type: "string", description: "A whole message of the user's to pass on, exactly as written; needs no order" },
       },
