@@ -161,7 +161,7 @@ test("the Board shows the Base of every Ready, Stackable and In-flight issue", a
   await cli("dispatch", "acme/api#9", ...FLAGS, "--base", "beta");
 
   const board = (await cli("board", "--json")).json();
-  expect(board.issues).toEqual([{ issue: "acme/api#8", title: "Issue 8", base: "beta" }]);
+  expect(board.issues).toEqual([{ issue: "acme/api#8", title: "Issue 8", repo: "acme/api", url: "https://github.com/acme/api/issues/8", base: "beta" }]);
   expect(board.stackable[0].blockers).toEqual([{ issue: "acme/api#6", pr: "https://github.com/acme/api/pull/16", base: "agent/blocker-6" }]);
   expect(board.dispatches[0]).toMatchObject({ issue: "acme/api#9", base: "beta" });
 
@@ -177,6 +177,6 @@ test("a failed branch listing is reported per Repo and still shows its issues", 
   const result = await cli("board", "--json");
   expect(result.exitCode).toBe(0);
   const board = result.json();
-  expect(board.issues).toEqual([{ issue: "acme/api#8", title: "Issue 8" }]);
+  expect(board.issues).toEqual([{ issue: "acme/api#8", title: "Issue 8", repo: "acme/api", url: "https://github.com/acme/api/issues/8" }]);
   expect(board.errors).toEqual([{ repo: "acme/api", source: "git", error: "`git ls-remote` failed" }]);
 });
