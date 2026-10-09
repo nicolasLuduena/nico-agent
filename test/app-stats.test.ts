@@ -30,7 +30,7 @@ const lastDays = (chart: { days: { day: string; count: number | null }[] }, n: n
 describe("the Stats page's charts", () => {
   test("a chart of merged PRs and one of issues defined, over every Repo, matching `stats --json`", async () => {
     const { stats } = await counted();
-    const { charts } = statsCharts(await stats("--days", "7"), null);
+    const { charts } = statsCharts(await stats("--days", "7"));
 
     expect(charts.map((c) => [c.metric, c.title, c.total])).toEqual([
       ["merged", "PRs merged", 2],
@@ -41,30 +41,33 @@ describe("the Stats page's charts", () => {
     expect(charts[0]!.days).toHaveLength(7);
   });
 
-  test("one Repo's charts are what `stats --repo` gives for it, and every Repo can be picked", async () => {
+  test("every Repo counted can be picked, and a picked Repo's answer charts only it", async () => {
     const { stats } = await counted();
-    const all = await stats("--days", "7");
-    const web = statsCharts(all, "ACME/web");
+    expect(statsCharts(await stats("--days", "7")).repos).toEqual(["acme/api", "acme/web"]);
 
-    expect(web.repos).toEqual(["acme/api", "acme/web"]);
-    expect(web.repo).toBe("acme/web");
-    const one = statsCharts(await stats("--days", "7", "--repo", "acme/web"), null);
-    expect(web.charts).toEqual(one.charts);
+    const web = statsCharts(await stats("--days", "7", "--repo", "acme/web"));
+    expect(web.repos).toEqual(["acme/web"]);
     expect(web.charts.map((c) => c.total)).toEqual([1, 1]);
+    expect(lastDays(web.charts[0]!, 2)).toEqual([["2026-09-29", 0], ["2026-09-30", 1]]);
   });
 
-  test("a Repo no longer in the stats shows every Repo", async () => {
-    const { stats } = await counted();
-    const charts = statsCharts(await stats("--days", "7"), "acme/gone");
+  test("a picked Repo says since when it was counted, not when any Repo was", async () => {
+    const { cli, world, stats } = await counted();
+    world.clock = new Date(world.clock.getTime() + 24 * 60 * 60 * 1000);
+    world.addClone("/src/docs", "git@github.com:acme/docs.git");
+    await cli("repo", "add", "acme/docs", "--path", "/src/docs");
+    await cli("board");
 
-    expect(charts.repo).toBeNull();
-    expect(charts.charts.map((c) => c.total)).toEqual([2, 3]);
+    expect(statsCharts(await stats("--repo", "acme/docs")).counted).toBe(
+      "Counted from the PRs and issues nico-agent has seen, not the Repos' full history: merged PRs since Sep 28, issues defined since Oct 1.",
+    );
   });
 
   test("each day is labelled, a day with no data unlike a day with none, and bars scale to the busiest day", async () => {
     const { stats } = await counted();
-    const [merged, defined] = statsCharts(await stats("--days", "7"), null).charts;
+    const [merged, defined] = statsCharts(await stats("--days", "7")).charts;
 
+    expect(merged!.days.slice(-4).map((d) => d.kind)).toEqual(["no-data", "zero", "count", "count"]);
     expect(merged!.days.slice(-4).map((d) => d.label)).toEqual([
       "Sep 27: no data",
       "Sep 28: no PRs merged",
@@ -77,18 +80,18 @@ describe("the Stats page's charts", () => {
 
   test("a chart with nothing counted still has a scale", async () => {
     const ctx = setup();
-    const { charts } = statsCharts((await ctx.cli("stats", "--days", "7", "--json")).json(), null);
+    const { charts } = statsCharts((await ctx.cli("stats", "--days", "7", "--json")).json());
 
     expect(charts.map((c) => [c.total, c.top])).toEqual([[null, 1], [null, 1]]);
   });
 
   test("says what is counted, and since when", async () => {
     const { stats } = await counted();
-    expect(statsCharts(await stats(), null).counted).toBe(
+    expect(statsCharts(await stats()).counted).toBe(
       "Counted from the PRs and issues nico-agent has seen, not the Repos' full history: merged PRs since Sep 28, issues defined since Sep 30.",
     );
     const none = setup();
-    expect(statsCharts((await none.cli("stats", "--json")).json(), null).counted).toBe(
+    expect(statsCharts((await none.cli("stats", "--json")).json()).counted).toBe(
       "Counted from the PRs and issues nico-agent has seen, not the Repos' full history: nothing seen yet.",
     );
   });

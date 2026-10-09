@@ -1,8 +1,8 @@
-import { sameSlug } from "../slug";
 import type { Stats } from "../stats";
 
-/** What `/api/stats` answers: `nico-agent stats --json`. */
+/** What `/api/stats` answers: `nico-agent stats --json`, or why it could not count. */
 export type StatsJson = Stats;
+export type StatsAnswer = StatsJson | { error: string; help: string[] };
 
 type Metric = "merged" | "defined";
 
@@ -10,10 +10,13 @@ type Metric = "merged" | "defined";
 export interface ChartDay {
   day: string;
   count: number | null;
+  /** How the day is drawn: a bar for a count, a dash for none, hatched for no data. */
+  kind: "count" | "zero" | "no-data";
   /** The day and its count in words, such as `Sep 29: 1 PR merged` or `Sep 27: no data`. */
   label: string;
 }
 
+/** One count's chart: its title, its total over the window, and a bar a day. */
 export interface Chart {
   metric: Metric;
   title: string;
@@ -38,23 +41,20 @@ export function shortDay(day: string) {
 }
 
 /**
- * The Stats page's charts, one per count, over every Repo of `stats` or only
- * `repo`, with the Repos that can be picked. A `repo` the stats do not hold
- * shows every Repo, so a Repo removed since it was picked falls back to all.
+ * The Stats page's charts, one per count, over what `stats` counted: every
+ * Repo, or the one `/api/stats?repo=` narrowed it to; with the Repos it holds.
  */
-export function statsCharts(stats: StatsJson, repo: string | null) {
-  const repos = stats.total.repos.map((r) => r.repo);
-  const index = repo === null ? -1 : repos.findIndex((r) => sameSlug(r, repo));
+export function statsCharts(stats: StatsJson) {
   const charts = METRICS.map(({ metric, title, one, many }): Chart => {
     const days = stats.series.map((d): ChartDay => {
-      const count = (index < 0 ? d : d.repos[index]!)[metric];
-      const words = count === null ? "no data" : count === 0 ? `no ${many}` : `${count} ${count === 1 ? one : many}`;
-      return { day: d.day, count, label: `${shortDay(d.day)}: ${words}` };
+      const count = d[metric];
+      const kind = count === null ? "no-data" : count === 0 ? "zero" : "count";
+      const words = { "no-data": "no data", zero: `no ${many}`, count: `${count} ${count === 1 ? one : many}` }[kind];
+      return { day: d.day, count, kind, label: `${shortDay(d.day)}: ${words}` };
     });
-    const total = (index < 0 ? stats.total : stats.total.repos[index]!)[metric];
-    return { metric, title, total, top: Math.max(1, ...days.map((d) => d.count ?? 0)), days };
+    return { metric, title, total: stats.total[metric], top: Math.max(1, ...days.map((d) => d.count ?? 0)), days };
   });
-  return { repos, repo: index < 0 ? null : repos[index]!, charts, counted: countedLine(stats) };
+  return { repos: stats.total.repos.map((r) => r.repo), charts, counted: countedLine(stats) };
 }
 
 /** What the counts are, and the first day each was kept from. */

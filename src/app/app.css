@@ -159,7 +159,7 @@ label.switch:has(:checked) { color: var(--ink); }
 .segmented { display: inline-flex; padding: 2px; border-radius: 980px; background: var(--fill); }
 .segmented button { min-height: 28px; padding: 0 0.75rem; font-size: 13px; background: transparent; color: var(--ink-muted); }
 .segmented button:hover:not(:disabled) { background: transparent; color: var(--ink); }
-.segmented button[aria-pressed="true"], .segmented button[aria-pressed="true"]:hover { background: var(--surface); color: var(--ink); box-shadow: 0 1px 3px rgb(0 0 0 / 0.12); }
+.segmented button[aria-pressed="true"], .segmented button[aria-pressed="true"]:hover { background: var(--surface); color: var(--ink); }
 .repo-filter select { font-family: var(--mono); font-size: 13px; max-width: 100%; }
 .chart { margin: 0; display: grid; gap: 0.4rem; }
 .chart figcaption { display: flex; align-items: baseline; gap: 0.75rem; }
@@ -179,7 +179,7 @@ label.switch:has(:checked) { color: var(--ink); }
 .bars li.zero { width: 50%; height: 1px; min-height: 1px; border-radius: 0; background: var(--ink-muted); }
 /* No data: a faint hatched column the full height, so it never reads as zero. */
 .bars li.no-data, .key.no-data {
-  background: repeating-linear-gradient(135deg, var(--fill) 0 2px, transparent 2px 5px);
+  background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--ink-muted) 35%, transparent) 0 1px, transparent 1px 5px);
 }
 .bars li.no-data { height: 100%; border-radius: 3px 3px 0 0; }
 .chart .axis { display: flex; justify-content: space-between; margin-left: 1.75rem; font-size: 11px; color: var(--ink-muted); }
@@ -189,7 +189,6 @@ label.switch:has(:checked) { color: var(--ink); }
 .key { display: inline-block; width: 10px; height: 10px; border-radius: 2px; }
 .key.count { background: var(--ink-muted); }
 .key.zero { width: 6px; height: 1px; background: var(--ink-muted); }
-.key.no-data { box-shadow: inset 0 0 0 1px var(--fill); }
 
 /* The Repos pane: a row per Repo, divided by hairlines, each expanding in place. */
 .repos > .loading, .repos > .error { font-size: 14px; }

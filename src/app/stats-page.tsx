@@ -1,5 +1,6 @@
-import { type CSSProperties, useState } from "react";
-import { type Chart, type StatsJson, shortDay, statsCharts } from "./stats-charts";
+import { type CSSProperties, useEffect, useState } from "react";
+import { sameSlug } from "../slug";
+import { type Chart, type StatsAnswer, shortDay, statsCharts } from "./stats-charts";
 import { useResource } from "./stream";
 
 /** The windows the page offers, in days; `stats` counts 30 by default. */
@@ -7,17 +8,29 @@ const WINDOWS = [7, 30, 90];
 
 /**
  * The Stats page's column: PRs merged and issues defined per day, over a
- * window of days, for every Repo or one. Asked of `serve` again on each
- * conversation entry (a merge is one) and Board change (a new issue is one);
- * `stats` reads only what nico-agent keeps, so this costs no GitHub request.
+ * window of days, for every Repo or the one picked, as `/api/stats` counts
+ * them. Asked of `serve` again on each conversation entry (a merge is one)
+ * and Board change (a new issue is one); `stats` reads only what nico-agent
+ * keeps, so this costs no GitHub request.
  */
 export function StatsPane() {
   const [days, setDays] = useState(30);
   const [repo, setRepo] = useState<string | null>(null);
-  const { data, failure } = useResource<StatsJson>(`/api/stats?days=${days}`, ["conversation-entry", "board-changed"]);
-  // Until the new window's answer arrives, the last one is not shown as if it were it.
-  const stats = data && data.days === days && !("error" in data) ? data : null;
-  const view = stats && statsCharts(stats, repo);
+  // The Repos to pick from, as the last count of every Repo held them.
+  const [repos, setRepos] = useState<string[]>([]);
+  const path = `/api/stats?days=${days}${repo ? `&repo=${encodeURIComponent(repo)}` : ""}`;
+  const { data, failure } = useResource<StatsAnswer>(path, ["conversation-entry", "board-changed"]);
+  const refused = data && "error" in data ? data.error : null;
+  // Until the answer for this window and Repo arrives, the last one is not shown as if it were it.
+  const stats = data && !("error" in data) && data.days === days && (!repo || data.total.repos.every((r) => sameSlug(r.repo, repo))) ? data : null;
+  const view = stats && statsCharts(stats);
+  useEffect(() => {
+    if (view && !repo) setRepos(view.repos);
+  }, [view?.repos.join(" "), repo]);
+  // A Repo picked and since gone has nothing to count: back to every Repo.
+  useEffect(() => {
+    if (refused && repo) setRepo(null);
+  }, [refused, repo]);
   return (
     <section className="side stats" aria-labelledby="side-title">
       <h1 id="side-title">Stats</h1>
@@ -27,18 +40,18 @@ export function StatsPane() {
             <button key={n} type="button" aria-pressed={days === n} onClick={() => setDays(n)}>{`${n} days`}</button>
           ))}
         </div>
-        {view && view.repos.length > 1 && (
+        {repos.length > 1 && (
           <label className="repo-filter">
             <span className="visually-hidden">Repo</span>
-            <select value={view.repo ?? ""} onChange={(e) => setRepo(e.target.value || null)}>
+            <select value={repo ?? ""} onChange={(e) => setRepo(e.target.value || null)}>
               <option value="">All Repos</option>
-              {view.repos.map((r) => <option key={r} value={r}>{r}</option>)}
+              {repos.map((r) => <option key={r} value={r}>{r}</option>)}
             </select>
           </label>
         )}
       </div>
-      {failure && <p className="error">{failure}</p>}
-      {!view && !failure && <p className="loading">Counting…</p>}
+      {(failure ?? refused) && <p className="error">{failure ?? refused}</p>}
+      {!view && !failure && !refused && <p className="loading">Counting…</p>}
       {view && (
         <>
           {view.charts.map((c) => <BarChart key={c.metric} chart={c} />)}
@@ -50,7 +63,7 @@ export function StatsPane() {
   );
 }
 
-/** A count per day as bars: a bar for a count, a tick on the baseline for none, a hatched column for no data. */
+/** A count per day as bars: a bar for a count, a dash on the baseline for none, a hatched column for no data. */
 function BarChart({ chart: c }: { chart: Chart }) {
   const first = c.days[0];
   const last = c.days.at(-1);
@@ -66,8 +79,8 @@ function BarChart({ chart: c }: { chart: Chart }) {
           {c.days.map((d) => (
             <li
               key={d.day}
-              className={d.count === null ? "no-data" : d.count === 0 ? "zero" : undefined}
-              style={d.count ? ({ "--height": d.count / c.top } as CSSProperties) : undefined}
+              className={d.kind}
+              style={d.kind === "count" ? ({ "--height": d.count! / c.top } as CSSProperties) : undefined}
               title={d.label}
             >
               <span className="visually-hidden">{d.label}</span>
@@ -82,6 +95,7 @@ function BarChart({ chart: c }: { chart: Chart }) {
   );
 }
 
+/** What each kind of day looks like. */
 function Legend() {
   return (
     <ul className="legend" aria-label="Key">
