@@ -1,6 +1,7 @@
 import { closeSync, mkdirSync, openSync, readFileSync, unlinkSync, writeSync } from "node:fs";
 import { join } from "node:path";
 import { loadBoard, specLoadErrors } from "./board";
+import { recordSighting } from "./stats";
 import { ConfigError, SCHEDULER_DEFAULTS, type LaunchDefaults, loadConfig } from "./config";
 import { type DispatchRequest, StepFailed, checkLaunch, closeDispatch, dispatch } from "./dispatch";
 import { DispatchError, LaunchError } from "./dispatch-error";
@@ -104,6 +105,7 @@ async function advanceOnce(world: World, configDir: string): Promise<AdvanceRepo
   if (!repos.length) return report;
   const dispatches = loadDispatches(configDir);
   const board = await loadBoard(world, repos, dispatches, freshPrs(world));
+  await recordSighting(configDir, board.sighting, world.now());
   const failedRepos = specLoadErrors(board.errors);
   report.errors = failedRepos.map(({ repo, error }) => ({ repo, error }));
   const queued = fromQueues(await pruneBoardQueues(configDir, board), board.specs);
