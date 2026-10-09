@@ -2,15 +2,18 @@ import { beforeAll, describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import * as ort from "onnxruntime-web";
 import { Ears, MEL_BINS, MEL_FRAMES, Models, turnFeatures } from "../src/app/hearing";
-import { bargesIn } from "../src/app/talk";
+import { SAMPLE_RATE, bargesIn } from "../src/app/talk";
 
 const FIXTURES = join(import.meta.dir, "fixtures");
 
+/** A 16kHz 16-bit mono WAV's PCM. */
+async function wavPcm(path: string) {
+  return new Int16Array((await Bun.file(path).arrayBuffer()).slice(44));
+}
+
 /** A 16kHz 16-bit mono WAV's samples, from -1 to 1. */
 async function wavSamples(path: string) {
-  const bytes = await Bun.file(path).arrayBuffer();
-  const pcm = new Int16Array(bytes.slice(44));
-  return Float32Array.from(pcm, (s) => s / 32768);
+  return Float32Array.from(await wavPcm(path), (s) => s / 32768);
 }
 
 describe("what Smart Turn hears", () => {
@@ -29,10 +32,10 @@ describe("what Smart Turn hears", () => {
 
   test("an utterance longer than 8 seconds is heard by its end", async () => {
     const utterance = await wavSamples(join(FIXTURES, "scribe/09.wav"));
-    const longer = new Float32Array(utterance.length + 16_000 * 10);
-    longer.set(Float32Array.from({ length: 16_000 * 10 }, (_, i) => Math.sin(i / 7) * 0.3));
-    longer.set(utterance, 16_000 * 10);
-    const tail = longer.slice(-8 * 16_000);
+    const longer = new Float32Array(utterance.length + SAMPLE_RATE * 10);
+    longer.set(Float32Array.from({ length: SAMPLE_RATE * 10 }, (_, i) => Math.sin(i / 7) * 0.3));
+    longer.set(utterance, SAMPLE_RATE * 10);
+    const tail = longer.slice(-8 * SAMPLE_RATE);
     expect(turnFeatures(longer)).toEqual(turnFeatures(tail));
   });
 });
@@ -43,7 +46,7 @@ const { utterances } = (await Bun.file(join(FIXTURES, "scribe/utterances.json"))
 const BATCH = 683;
 
 /** 16-bit PCM of `seconds` of `sample(i)` (at 16kHz, from -1 to 1). */
-const pcmOf = (seconds: number, sample: (i: number) => number) => Int16Array.from({ length: seconds * 16_000 }, (_, i) => Math.round(Math.max(-1, Math.min(1, sample(i))) * 32767));
+const pcmOf = (seconds: number, sample: (i: number) => number) => Int16Array.from({ length: seconds * SAMPLE_RATE }, (_, i) => Math.round(Math.max(-1, Math.min(1, sample(i))) * 32767));
 
 /** A quiet room's hiss. */
 const hiss = (seconds: number) => pcmOf(seconds, () => (Math.random() - 0.5) * 0.002);
@@ -70,7 +73,7 @@ describe("hearing the microphone, with Silero VAD and Smart Turn", () => {
   for (const { file, said } of utterances) {
     // Several pause mid-sentence, as long as 450ms ("Tell the implementer on B L E forty two to, um, ...").
     test(`"${said}" ends on the pause after its last word, not before`, async () => {
-      const wav = new Int16Array((await Bun.file(join(FIXTURES, "scribe", file)).arrayBuffer()).slice(44));
+      const wav = await wavPcm(join(FIXTURES, "scribe", file));
       const ears = new Ears(models);
       ears.begin(false);
       const { ended, after } = await through(ears, Int16Array.from([...wav, ...hiss(3)]));
@@ -83,7 +86,7 @@ describe("hearing the microphone, with Silero VAD and Smart Turn", () => {
     ["a door slamming", Int16Array.from([...hiss(1), ...pcmOf(1, (i) => Math.exp(-i / 1600) * (Math.sin(i / 40) * 0.8 + (Math.random() - 0.5) * 0.6)), ...hiss(1)])],
     ["knocks", Int16Array.from(Array.from({ length: 4 }, () => [...pcmOf(0.04, (i) => Math.exp(-i / 80) * (Math.random() - 0.5) * 1.6), ...hiss(0.3)]).flat())],
     ["loud steady noise", pcmOf(3, () => (Math.random() - 0.5) * 0.5)],
-    ["a hum", pcmOf(3, (i) => Math.sin((2 * Math.PI * 100 * i) / 16_000) * 0.4)],
+    ["a hum", pcmOf(3, (i) => Math.sin((2 * Math.PI * 100 * i) / SAMPLE_RATE) * 0.4)],
   ];
   for (const [noise, pcm] of noises) {
     test(`${noise}, without speech, starts no utterance and talks over nothing`, async () => {
@@ -97,7 +100,7 @@ describe("hearing the microphone, with Silero VAD and Smart Turn", () => {
   }
 
   test("speech while it only listens is the user talking over the Lead", async () => {
-    const wav = new Int16Array((await Bun.file(join(FIXTURES, "scribe/03.wav")).arrayBuffer()).slice(44));
+    const wav = await wavPcm(join(FIXTURES, "scribe/03.wav"));
     expect(await through(new Ears(models), wav)).toMatchObject({ ended: null, barged: true });
   }, 20_000);
 });

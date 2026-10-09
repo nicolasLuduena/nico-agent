@@ -212,6 +212,8 @@ export class Ears {
   /** The utterance's frames, its last 8 seconds; outside one, the last of what was heard, for words that break in. */
   private frames: Float32Array[] = [];
   private inUtterance = false;
+  /** How many times Smart Turn was asked: an answer counts only if it answers the last one asked. */
+  private asked = 0;
   private readonly ready: Promise<void>;
   private queue: Promise<unknown> = Promise.resolve();
 
@@ -227,6 +229,7 @@ export class Ears {
   begin(barged: boolean) {
     this.enqueue(async () => {
       this.inUtterance = true;
+      this.asked++;
       this.listening = barged ? { ...this.listening, elapsed: this.listening.voiced } : LISTENING;
       this.frames = barged ? this.frames.slice(-BROKE_IN_FRAMES) : [];
     });
@@ -260,14 +263,17 @@ export class Ears {
     });
   }
 
-  /** Ask Smart Turn whether the user finished, while the pause goes on; its answer, if no speech came since, goes in `listening`. */
+  /**
+   * Ask Smart Turn whether the user finished, while the pause goes on; its
+   * answer, if nothing came since (speech, another pause, another utterance),
+   * goes in `listening`. Without an answer the pause ends it as if finished.
+   */
   private ask() {
-    const { speech } = this.listening;
-    this.models.finished(joined(this.frames)).then((probability) => {
-      if (this.inUtterance && this.listening.speech === speech) this.listening = { ...this.listening, finished: probability > FINISHED };
-    }, () => {
-      // Without an answer, the pause ends the utterance only at its longest.
-    });
+    const asked = ++this.asked;
+    const answer = (finished: boolean) => {
+      if (this.asked === asked && this.inUtterance && !this.listening.speaking) this.listening = { ...this.listening, finished };
+    };
+    this.models.finished(joined(this.frames)).then((probability) => answer(probability > FINISHED), () => answer(true));
   }
 
   private enqueue<T>(work: () => Promise<T>): Promise<T> {

@@ -132,8 +132,9 @@ microphone):
 
 The half second is also why a pause mid-sentence of under half a second
 (Kokoro's comma or colon in the fixture set) is never cut, however Smart
-Turn judges it. When the models cannot load, the microphone fails with a
-warning, and typing still works.
+Turn judges it. When Smart Turn fails to answer, the half-second pause ends
+the utterance as before. When the models cannot load, the microphone fails
+with a warning, and typing still works.
 
 The models are `src/app/models/silero-vad.onnx` (Silero VAD v5, from its
 repo's `src/silero_vad/data/`) and `src/app/models/smart-turn-v3.2-cpu.onnx`

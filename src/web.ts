@@ -80,15 +80,15 @@ export function lookAtLead({ world, configDir }: { world: World; configDir: stri
 }
 
 const HTML_HEADERS = { "content-type": "text/html; charset=utf-8" };
-
-/** What the page hears speech with (see src/app/hearing.ts), embedded in the binary: each file and its type. */
-const HEARING: Record<string, [path: string, type: string]> = {
-  [HEARING_FILES.vad]: [sileroVad, "application/octet-stream"],
-  [HEARING_FILES.turn]: [smartTurn, "application/octet-stream"],
-  // Its type lets the browser compile it as it downloads.
-  [HEARING_FILES.wasm]: [ortWasm, "application/wasm"],
-};
 const JSON_HEADERS = { "content-type": "application/json; charset=utf-8" };
+
+/** What the page hears speech with (see src/app/hearing.ts), by its URL path: the file embedded in the binary, and its type. */
+const HEARING: Record<string, { file: string; type: string }> = {
+  [HEARING_FILES.vad]: { file: sileroVad, type: "application/octet-stream" },
+  [HEARING_FILES.turn]: { file: smartTurn, type: "application/octet-stream" },
+  // Its type lets the browser compile it as it downloads.
+  [HEARING_FILES.wasm]: { file: ortWasm, type: "application/wasm" },
+};
 
 /**
  * What `serve` answers besides the app's page at `/`: the app's JSON API over
@@ -111,7 +111,7 @@ export function webHandler(context: WebContext) {
     if (read) return await cliJson(context, [...read, ...readArgs(pathname, url.searchParams)]);
     if (pathname === "/preview") return await getPreview(previews, url.searchParams);
     const hearing = HEARING[pathname];
-    if (hearing) return new Response(Bun.file(hearing[0]), { headers: { "content-type": hearing[1] } });
+    if (hearing) return new Response(Bun.file(hearing.file), { headers: { "content-type": hearing.type } });
     return new Response(`No page at ${pathname}\n`, { status: 404 });
   };
   return async (request: Request): Promise<Response> => {
