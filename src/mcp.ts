@@ -173,7 +173,7 @@ const TOOLS = [
   {
     name: "propose",
     title: "Propose",
-    description: "Propose an action your Standing orders do not allow, for the user to approve or decline: either `action`, the CLI command an action tool's refusal hands you (without `nico-agent`), which approving runs in nico-agent; or `write`, the Markdown of a Spec and its tickets for a Repo's Source while the `write` order is off, which approving lets you write. The decision arrives in your Inbox.",
+    description: "Propose an action your Standing orders do not allow, for the user to approve or decline: either `action`, the CLI command an action tool's refusal hands you (without `nico-agent`), which approving runs in nico-agent; or `write`, Markdown for a Repo's Source (a Spec and its tickets while the `write` order is off, or a weekly retro's ticket), which approving lets you write. The decision arrives in your Inbox.",
     inputSchema: {
       type: "object",
       properties: {
@@ -183,7 +183,7 @@ const TOOLS = [
           description: "Instead of action: what you would write to a Repo's Source",
           properties: {
             repo: { type: "string", description: "The Repo, as `owner/name` from the Board" },
-            text: { type: "string", description: "The Spec and its tickets, in Markdown, as you would write them" },
+            text: { type: "string", description: "The Spec and its tickets, or the retro's ticket, in Markdown, as you would write them" },
           },
           required: ["repo", "text"],
           additionalProperties: false,

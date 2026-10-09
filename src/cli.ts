@@ -385,7 +385,7 @@ const commands: Command[] = [
   {
     name: "lead propose",
     usage: PROPOSE_USAGE,
-    summary: "Propose an action, or a Spec to write to a Repo's Source, for the user to approve or decline, as the Lead (its MCP `propose` tool)",
+    summary: "Propose an action, or Markdown to write to a Repo's Source, for the user to approve or decline, as the Lead (its MCP `propose` tool)",
     flags: {
       "--reason": { value: true, description: "why, in a sentence the user can decide on (required)" },
       "--write": { value: true, description: "propose writing Markdown to this Repo's Source instead of a command; approving lets the Lead write it" },
@@ -397,7 +397,7 @@ const commands: Command[] = [
       "nico-agent lead propose --reason \"Smallest unblocked Spec\" -- queue --repo acme/api -- acme/api#10",
       "nico-agent lead propose --reason \"The billing Spec we agreed on\" --write acme/api --file spec.md",
     ],
-    help: [`A Proposal runs one of: ${PROPOSABLE.join(", ")}; or, with --write, lets the Lead write a Spec and its tickets`],
+    help: [`A Proposal runs one of: ${PROPOSABLE.join(", ")}; or, with --write, lets the Lead write a Spec and its tickets, or a retro's ticket`],
     run: leadProposeCommand,
   },
   {
@@ -895,13 +895,13 @@ async function leadProposeCommand(args: Args, ctx: RunContext): Promise<Output> 
 /** `--write`'s Proposal: the Markdown for a configured Repo's Source, never blank. */
 async function proposedWrite(args: Args, ctx: RunContext): Promise<Proposed> {
   const slug = args.flags["--write"] as string;
-  if (args.positionals.length) throw new CliError("a Proposal runs a command or writes a Spec, not both", [`Usage: \`${PROPOSE_USAGE}\``], 2);
+  if (args.positionals.length) throw new CliError("a Proposal runs a command or writes to a Source, not both", [`Usage: \`${PROPOSE_USAGE}\``], 2);
   const repo = findRepo(loadConfig(ctx.configDir), slug);
   if (!repo) throw new CliError(`${slug} is not a configured Repo`, ["Run `nico-agent repo list` to see the Repos"]);
   const { "--file": file, "--text": inline } = args.flags;
   if (typeof file === "string" && typeof inline === "string") throw new CliError("--file and --text give the Markdown two ways; pass one", [`Usage: \`${PROPOSE_USAGE}\``], 2);
   const text = typeof inline === "string" ? inline : typeof file === "string" ? readMarkdown(file) : await readStdin(ctx, PROPOSE_USAGE, "nothing to write: pass --file or --text, or pipe the Markdown in");
-  if (!text.trim()) throw new CliError("the Markdown to write is empty", ["Pass the Spec and its tickets as --text, --file or standard input"], 2);
+  if (!text.trim()) throw new CliError("the Markdown to write is empty", ["Pass the Markdown as --text, --file or standard input"], 2);
   return { write: { repo: repo.slug, text } };
 }
 

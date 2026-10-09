@@ -174,8 +174,8 @@ _Avoid_: Permissions, policy, guardrails
 An action the Lead wants to take that its Standing orders do not allow, held
 in nico-agent until the user approves or declines it on the Board or CLI.
 Approving runs it in nico-agent, not in the Lead; except a write Proposal (a
-Spec and its tickets drafted while the `write` order is off), whose approval
-lets the Lead write it to the Source itself.
+Spec and its tickets drafted while the `write` order is off, or a Weekly
+retro's ticket), whose approval lets the Lead write it to the Source itself.
 _Avoid_: Suggestion, request
 
 **Intent**:
@@ -226,6 +226,14 @@ what ran since the last brief (Dispatches started, PRs ready and merged,
 Dispatches Closed), what needs the user (Asking, Held, Failed, open questions
 and Proposals), and what the Lead continues with and why (the Intent).
 _Avoid_: Digest, standup, summary
+
+**Weekly retro**:
+The Lead's look back, on the first Nudge of each local week, over the PRs
+merged across the Repos since the last one. Each change it suggests to the
+agents' environment (an automated check, a coding standard, a navigation
+pointer), never to the code, becomes a write Proposal of a ticket naming the
+PRs that showed the need; a declined one is not proposed again.
+_Avoid_: Postmortem, review, report
 
 **Scribe**:
 The small fast model that cleans what the user said before the Lead reads it:

@@ -261,7 +261,7 @@ describe("the Lead proposes writing a Spec, the user decides", () => {
       reason: "We agreed on billing; the write order is off",
     }]);
     expect(world.notifications).toEqual([{
-      title: "The Lead proposes to write a Spec to acme/api's Source",
+      title: "The Lead proposes to write to acme/api's Source",
       body: `We agreed on billing; the write order is off\nRun \`nico-agent proposals\` to read it, then \`nico-agent proposals approve ${id}\` to have the Lead write it, or \`nico-agent proposals decline ${id} [reason]\``,
     }]);
   });
@@ -339,7 +339,7 @@ describe("the Lead proposes writing a Spec, the user decides", () => {
 
     const both = await cli("lead", "propose", "--reason", "x", "--write", "acme/api", "--text", SPEC, "--json", "--", "advance");
     expect(both.exitCode).toBe(2);
-    expect(both.json().error).toBe("a Proposal runs a command or writes a Spec, not both");
+    expect(both.json().error).toBe("a Proposal runs a command or writes to a Source, not both");
     const stray = await cli("lead", "propose", "--reason", "x", "--text", SPEC, "--json", "--", "advance");
     expect(stray.json().error).toBe("--file and --text go with --write");
   });
