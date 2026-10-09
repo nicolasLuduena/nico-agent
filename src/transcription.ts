@@ -6,6 +6,7 @@ import { harnesses } from "./harness";
 import type { CliRunner } from "./mcp";
 import { SAMPLE_RATE } from "./app/talk";
 import { choose, scribe, transcribe, wav } from "./voice";
+import type { Stopwatch, Timing } from "./voice-timing";
 import type { SocketPeer, SocketSession, World } from "./world";
 
 /** How much more audio, in bytes, an interim transcript waits for after the last: a second's. */
@@ -14,10 +15,17 @@ const INTERIM_EVERY = SAMPLE_RATE * 2;
 /**
  * What the app tells `/api/voice`, besides the audio itself as binary
  * messages: an utterance starts, under the number the app gave it; it ends,
- * to be transcribed; or it is dropped. `hush` stops the Lead's speech (see
- * `speaker`), whatever the utterance does.
+ * to be transcribed, the user having stopped talking at `spokeAt` (epoch
+ * ms); or it is dropped. `hush` stops the Lead's speech (see `speaker`),
+ * whatever the utterance does; `played` says the page began playing the
+ * Lead's entry `entry` at `at` (epoch ms), for the timing log.
  */
-export type VoiceCommand = { type: "start"; utterance: number } | { type: "end" } | { type: "cancel" } | { type: "hush" };
+export type VoiceCommand =
+  | { type: "start"; utterance: number }
+  | { type: "end"; spokeAt?: number }
+  | { type: "cancel" }
+  | { type: "hush" }
+  | { type: "played"; entry: number; at: number };
 
 /** How many of the conversation's last entries the Scribe reads, for context. */
 const RECENT = 4;
@@ -42,6 +50,8 @@ interface TranscriptionContext {
   world: World;
   configDir: string;
   runCli: CliRunner;
+  /** Times each final transcript's steps, for the timing log. */
+  timing?: Stopwatch;
 }
 
 /**
@@ -74,17 +84,22 @@ export function transcriptionSession(ctx: TranscriptionContext) {
     let told = Promise.resolve();
 
     /** What to tell the app of `utterance` now, if anything. */
-    const ask = async (utterance: Utterance, kind: "interim" | "final"): Promise<Transcript | null> => {
+    const ask = async (utterance: Utterance, kind: "interim" | "final", timing?: Timing): Promise<Transcript | null> => {
       const prompt = kind === "final" ? await utterance.prompt : known.hint;
       const answer = await transcribe(ctx.world, utterance.endpoint, wav(concat(utterance.audio), SAMPLE_RATE), prompt);
       // An interim that comes back after the end, or after another utterance began, is dropped.
       if (kind === "interim" && current !== utterance) return null;
       if ("error" in answer) {
         if (current === utterance) current = null;
+        timing?.dropped();
         return failure(utterance.number, answer.error, answer.help);
       }
       if (kind === "interim") return { type: kind, utterance: utterance.number, text: answer.returned };
-      return { type: kind, utterance: utterance.number, ...await answering(ctx, utterance, await clean(ctx, utterance, answer.returned, prompt)) };
+      timing?.transcribed();
+      const cleaned = await clean(ctx, utterance, answer.returned, prompt);
+      const said = await answering(ctx, utterance, cleaned);
+      timing?.scribed(!("warning" in cleaned) && Boolean(cleaned.raw), said);
+      return { type: kind, utterance: utterance.number, ...said };
     };
 
     const start = (number: number) => {
@@ -122,9 +137,13 @@ export function transcriptionSession(ctx: TranscriptionContext) {
         const utterance = current;
         current = null;
         if (command?.type !== "end" || !utterance) return;
+        const timing = ctx.timing?.start(utterance.number, new Date(command.spokeAt ?? ctx.world.now().getTime()));
         // Transcribed and cleaned at once, but told after the finals before it.
-        const final = ask(utterance, "final");
-        told = told.then(() => final).then((message) => { if (message) send(message); }).catch(report(utterance));
+        const final = ask(utterance, "final", timing);
+        told = told.then(() => final).then((message) => { if (message) send(message); }).catch((e: unknown) => {
+          timing?.dropped();
+          report(utterance)(e);
+        });
       },
       close() {
         current = null;
@@ -192,7 +211,8 @@ function parse(data: string): VoiceCommand | null {
   try {
     const command = JSON.parse(data);
     if (command?.type === "start") return typeof command.utterance === "number" ? command : null;
-    return command?.type === "end" || command?.type === "cancel" ? command : null;
+    if (command?.type === "end") return typeof command.spokeAt === "number" ? command : { type: "end" };
+    return command?.type === "cancel" ? command : null;
   } catch {
     return null;
   }

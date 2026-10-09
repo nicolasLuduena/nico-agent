@@ -207,6 +207,46 @@ the start, the first click or key on the page lets the Lead be heard.
 When `voice.speak` is not configured, unreachable or answers an error, the
 reply shows in the Lead panel as ever, with a warning above the conversation.
 
+### Timing each step
+
+`serve` logs every spoken message to `voice-timing.jsonl` in the config
+directory (`~/.config/nico-agent/`), one JSON line each, to tell where the
+wait between talking and hearing the Lead goes. A line has seven times, in
+order:
+
+| Field | When | Taken by |
+| --- | --- | --- |
+| `spoke` | you stopped talking: the release, the tap, or where the pause began | the page |
+| `transcribed` | `voice.transcribe` returned the final transcript | `serve` |
+| `scribed` | the Scribe returned its text (and its choice, answering a question) | `serve` |
+| `written` | the message's entry was written to the conversation | the entry's `at` |
+| `nudged` | herdr took the Nudge: the first one sent after the entry, whatever sent it | `nudges-sent.json` |
+| `said` | the Lead wrote its first `say` or `ask` after the entry, whatever it answers | that entry's `at` |
+| `played` | the page began playing that entry's audio: speech made, and any earlier speech played out | the page |
+
+Each is an ISO time, or `null` for a step that did not happen: no Scribe
+configured or it failed (`scribed`), the Lead not running (`nudged`), Voice
+off (`played`), or the transcription failing (all after `spoke`). A step
+that did not happen leaves its time to the next: with the Scribe failing,
+its wait shows in `written`. `took` is
+how long each step took after the last one that happened, in ms; `total` is
+`spoke` to `played`; `slowest` names the step with the longest `took`. The
+page and `serve` share a clock, being on one machine (on the phone the
+phone's clock takes `spoke` and `played`).
+
+A line is written once the page plays the Lead's reply; with Voice off, once
+the Lead first says something; for a failed or empty transcript, at once;
+and otherwise after five minutes, with what happened by then. `utterance` is
+the page's number for it and `text` what was sent. A typed message is not
+logged.
+
+```bash
+tail -n 20 ~/.config/nico-agent/voice-timing.jsonl | jq -c '{text, took, total, slowest}'
+# The median of each step over the log:
+jq -s 'def median: sort | .[length/2|floor]; [.[].took] as $t
+  | ($t[0] | keys_unsorted) | map({(.): ([$t[][.] // empty] | median)}) | add' ~/.config/nico-agent/voice-timing.jsonl
+```
+
 ### The fixture set
 
 `test/fixtures/scribe/` holds twenty utterances to the Lead with Board

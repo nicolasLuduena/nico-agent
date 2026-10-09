@@ -1,4 +1,4 @@
-import { existsSync, unlinkSync } from "node:fs";
+import { existsSync, readFileSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { LEAD_AGENT, leadStatus } from "./lead";
 import { withFileLock, writeJsonAtomic } from "./state";
@@ -57,6 +57,7 @@ export async function nudgeLead(world: World, configDir: string): Promise<string
   await setPending(configDir, false);
   try {
     const { started } = await world.herdrAgentPrompt(LEAD_AGENT, nudgeText(world.now(), voiceOn(configDir)));
+    await recordSent(configDir, world.now());
     return started ? [] : [`the Lead was Nudged, but has not started working; run \`herdr agent read ${LEAD_AGENT}\` to see its screen`];
   } catch (e) {
     return failed(configDir, e);
@@ -73,6 +74,29 @@ async function failed(configDir: string, e: unknown): Promise<string[]> {
   if (!(e instanceof WorldError)) throw e;
   await setPending(configDir, true);
   return [`could not Nudge the Lead: ${e.message}`];
+}
+
+/** When the last Nudges were sent, by `serve` or the CLI, newest last, for `serve` to time spoken messages by (see voice-timing.ts). */
+const SENT_FILE = "nudges-sent.json";
+
+/** How many Nudges SENT_FILE keeps: enough to outlast the few minutes a spoken message is timed for. */
+const SENT_KEPT = 20;
+
+/** When the last Nudges were sent, oldest first. */
+export function nudgesSent(configDir: string): Date[] {
+  try {
+    return (JSON.parse(readFileSync(join(configDir, SENT_FILE), "utf8")) as { sent: string[] }).sent.map((at) => new Date(at));
+  } catch {
+    return [];
+  }
+}
+
+/** Record a Nudge sent at `at`, keeping the last SENT_KEPT. */
+async function recordSent(configDir: string, at: Date) {
+  await withFileLock(configDir, SENT_FILE, () => {
+    const sent = [...nudgesSent(configDir), at].slice(-SENT_KEPT).map((d) => d.toISOString());
+    writeJsonAtomic(join(configDir, SENT_FILE), { sent });
+  });
 }
 
 async function setPending(configDir: string, pending: boolean) {

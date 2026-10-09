@@ -147,8 +147,14 @@ class Player {
   private rate = 0;
   /** Whether the speech that began has ended (or none began), so once its chunks play out, the Lead is done. */
   private ended = true;
+  /** The entry whose speech began, until its first chunk is scheduled. */
+  private first: number | null = null;
 
-  constructor(private readonly done: () => void) {}
+  /** `done` once the Lead is done speaking; `played` when an entry's first audio is due to play, in epoch ms. */
+  constructor(
+    private readonly done: () => void,
+    private readonly played: (entry: number, at: number) => void,
+  ) {}
 
   /** Created and resumed in a user gesture, as browsers let audio start only then; a browser without audio stays silent. */
   wake() {
@@ -165,11 +171,12 @@ class Player {
     return !this.ended || this.sources.size > 0;
   }
 
-  /** A speech begins, its chunks at `rate`. */
-  begin(rate: number) {
+  /** The speech of `entry` begins, its chunks at `rate`. */
+  begin(entry: number, rate: number) {
     this.wake();
     this.rate = rate;
     this.ended = false;
+    this.first = entry;
   }
 
   /** Play a chunk of the speech right after the last one, or as soon as it can when none is playing. */
@@ -184,6 +191,8 @@ class Player {
     source.connect(context.destination);
     const at = Math.max(this.until, context.currentTime + PLAY_AHEAD_S);
     source.start(at);
+    if (this.first !== null) this.played(this.first, Date.now() + (at - context.currentTime) * 1000);
+    this.first = null;
     this.until = at + buffer.duration;
     this.sources.add(source);
     source.onended = () => {
@@ -268,6 +277,8 @@ export function useTalk(onFinal: (text: string, raw: string, answers?: number) =
     if (next.mode === "idle" || (next.mode === "transcribing" && !watches(next))) stopMicrophone();
     if (watches(next) && !watches(before)) void watch();
     if (send === "start") start(event.type === "barge");
+    // A pause ends the utterance once the quiet has lasted; the user stopped talking when it began.
+    else if (send === "end") socket.current?.command({ type: "end", spokeAt: Date.now() - (event.type === "pause" ? listening.current.quiet : 0) });
     else if (send) socket.current?.command({ type: send });
   };
 
@@ -275,7 +286,7 @@ export function useTalk(onFinal: (text: string, raw: string, answers?: number) =
   playerRef.current ??= new Player(() => {
     setSpeaking(false);
     dispatch({ type: "lead-done" });
-  });
+  }, (entry, at) => socket.current?.command({ type: "played", entry, at }));
   const player = playerRef.current;
 
   /** Stop the Lead speaking, here and at `serve`, which drops what waits to be spoken. */
@@ -289,7 +300,7 @@ export function useTalk(onFinal: (text: string, raw: string, answers?: number) =
     (message) => {
       if (message.type === "speech") {
         if (!voiceRef.current) return;
-        player.begin(message.rate);
+        player.begin(message.entry, message.rate);
         setSpeaking(true);
         dispatch({ type: "lead-speaks" });
         return;
