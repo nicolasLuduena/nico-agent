@@ -1,7 +1,7 @@
 import { findRepo, loadConfig } from "./config";
 import { resolveIssue } from "./dispatch";
 import { DispatchError } from "./dispatch-error";
-import { loadGardeners } from "./gardener";
+import { findGardener } from "./gardener";
 import { LEAD_AGENT } from "./lead";
 import { meaningfulLine } from "./screen-line";
 import { findDispatch } from "./state";
@@ -49,14 +49,7 @@ export async function peek(world: World, configDir: string, issue: string | unde
 }
 
 async function peekGardener(world: World, configDir: string, repo: string): Promise<Peeked> {
-  const gardener = loadGardeners(configDir).find((g) => g.repo === repo);
-  if (!gardener) {
-    throw new DispatchError(`${repo} has no Gardener`, [
-      `Run \`nico-agent garden ${repo}\` to start one`,
-      "Run `nico-agent` to see the Board",
-    ]);
-  }
-  const { agent } = gardener.agent;
+  const { agent } = findGardener(configDir, repo, [`Run \`nico-agent garden ${repo}\` to start one`, "Run `nico-agent` to see the Board"]).agent;
   return { gardener: repo, agent, ...peeked(await world.herdrAgentRead(agent)) };
 }
 

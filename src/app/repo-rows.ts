@@ -31,10 +31,12 @@ export interface GardenerLine {
   agent: string;
   /** The PRs it was started for; none for every PR of the Repo that needs it. */
   prs: { url: string; number: number }[];
-  /** Its agent stopped (idle or done): the row says so briefly, then drops it. */
+  /** Its agent stopped (idle or done) with no failure: the row says so briefly, then drops it. */
   finished: boolean;
-  /** Why its start Failed. */
+  /** Why its start Failed; a Failed one stays until it is resumed or removed. */
   failure?: string;
+  /** What an Asking Gardener's screen shows, or why it could not be read. */
+  question?: string;
 }
 
 /** A Ready or Stackable issue, with what its dispatch form offers. */
@@ -82,10 +84,15 @@ export interface RepoRow {
   empty: boolean;
 }
 
-/** The Agent state of an Implementer that is Asking. */
+/** The Agent state of an Implementer or Gardener that is Asking. */
 const ASKING = "blocked";
 /** The Agent states of a Gardener whose agent stopped, as `advance` removes it. */
 const FINISHED = ["idle", "done"];
+
+/** What an Asking agent's screen shows, or why it could not be read. */
+function questionOf(asking: { question: string; error?: string }) {
+  return asking.error ? `Could not read its screen: ${asking.error}` : asking.question;
+}
 
 /** A row per configured Repo, in config order, from the same Board the app's Board model reads. */
 export function repoRows(board: BoardJson): RepoRow[] {
@@ -101,7 +108,7 @@ export function repoRows(board: BoardJson): RepoRow[] {
     const flights = mine(board.dispatches);
     const dispatches = flights.map((d): DispatchLine => {
       const asking = d.implementer === ASKING ? board.asking?.find((a) => a.issue === d.issue) : undefined;
-      const question = asking && (asking.error ? `Could not read its screen: ${asking.error}` : asking.question);
+      const question = asking && questionOf(asking);
       return {
         issue: d.issue, ...named(d.issue, d.title, d.url), stage: d.stage, agent: d.implementer,
         ...(d.pr && { pr: prOf(d.pr) }),
@@ -110,11 +117,13 @@ export function repoRows(board: BoardJson): RepoRow[] {
       };
     });
     const garden = mine(board.gardeners)[0];
+    const gardenAsking = garden?.state === ASKING ? board.asking?.find((a) => a.gardener !== undefined && sameSlug(a.gardener, repo)) : undefined;
     const gardener: GardenerLine | undefined = garden && {
       agent: garden.state,
       prs: garden.prs.map(prOf),
-      finished: FINISHED.includes(garden.state),
+      finished: !garden.failure && FINISHED.includes(garden.state),
       ...(garden.failure && { failure: garden.failure }),
+      ...(gardenAsking && { question: questionOf(gardenAsking) }),
     };
     const held = specs.flatMap((s): HeldLine[] => (s.held ? [{ spec: s.spec, ...named(s.spec, s.title, s.url), reason: s.held.reason }] : []));
     const next = specs.flatMap((s): NextLine[] =>

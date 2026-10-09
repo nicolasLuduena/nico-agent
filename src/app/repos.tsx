@@ -228,11 +228,11 @@ function useGardenerShown(line: GardenerLine | undefined) {
 
 /**
  * A Repo's Gardener: that it is gardening, the PRs it was started for and
- * its live screen line; once finished, only that it did. An Asking one's
- * question shows on its toast, so its screen is not read here.
+ * its live screen line; once finished, only that it did. An Asking one shows
+ * its question instead, with how to answer it.
  */
 function Gardener({ repo, line: g }: { repo: string; line: GardenerLine }) {
-  const asking = g.agent === "blocked";
+  const asking = g.question !== undefined;
   const doing = useScreenLine({ repo }, usePageShown() && !asking && !g.finished && !g.failure);
   return (
     <Group title="Gardener">
@@ -242,8 +242,9 @@ function Gardener({ repo, line: g }: { repo: string; line: GardenerLine }) {
           {g.prs.length > 0 ? g.prs.map((pr) => <PrLink key={pr.url} {...pr} />) : <span className="of">every PR that needs it</span>}
         </div>
         {g.failure && <p className="error">{g.failure}</p>}
-        {asking && <p className="reason">Asking: answer it on its toast</p>}
-        {!asking && !g.finished && doing && <p className="doing" title={doing}>{doing}</p>}
+        {asking && <pre className="question">{g.question}</pre>}
+        {asking && <p className="reason">Answer it in herdr, or with <code>{`nico-agent answer ${repo} <text>`}</code></p>}
+        {!asking && !g.finished && !g.failure && doing && <p className="doing" title={doing}>{doing}</p>}
       </div>
     </Group>
   );
