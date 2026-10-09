@@ -30,10 +30,11 @@ export function setup() {
     const response = await handler(new Request(`http://127.0.0.1:42069${path}`, init));
     return { status: response.status, type: response.headers.get("content-type"), body: await response.text() };
   };
-  let sockets = webSockets({ world, configDir, runCli: (argv) => run(argv, served), events });
+  const startSockets = () => webSockets({ world, configDir, runCli: (argv) => run(argv, served), events });
+  let sockets = startSockets();
   /** Start `serve`'s sockets afresh on the same config directory, as a restart does. */
   const restart = () => {
-    sockets = webSockets({ world, configDir, runCli: (argv) => run(argv, served), events });
+    sockets = startSockets();
   };
   /** A WebSocket to the web app, as a page on `origin` opens it: its refusal, or the session. */
   const socket = (path: string, headers: Record<string, string> = {}) => openSocket(sockets[path], new Request(`http://127.0.0.1:42069${path}`, { headers: { upgrade: "websocket", ...headers } }));

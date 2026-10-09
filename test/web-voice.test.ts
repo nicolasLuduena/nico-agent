@@ -462,7 +462,7 @@ describe("/api/voice", () => {
       expect((await sent[0]!.json()).model).toBe("deepseek-v4.1-flash");
     });
 
-    test("each request names nico-agent as its User-Agent, and one session per conversation, kept across messages and a restart, new once the conversation is reset", async () => {
+    test("each request names nico-agent as its User-Agent, and one session id per Conversation, kept across messages and a restart, new once the conversation is reset", async () => {
       const ctx = await withVoice();
       const sent: Request[] = [];
       talker(ctx.world, () => ({ say: ["Hello."] }), (request) => sent.push(request));

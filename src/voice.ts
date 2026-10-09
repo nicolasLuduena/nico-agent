@@ -47,7 +47,7 @@ const PROBES: Record<VoiceService, Probe> = {
   front: {
     async request(endpoint, headers) {
       // A check is a conversation of its own.
-      const turn = { heard: RAW_TRANSCRIPT, context: `Terms: ${VOCABULARY.join(", ")}.`, session: crypto.randomUUID(), stream: false };
+      const turn = { heard: RAW_TRANSCRIPT, context: `Terms: ${VOCABULARY.join(", ")}.`, sessionId: crypto.randomUUID(), stream: false };
       return frontVoiceRequest(endpoint, headers, turn);
     },
     async read(response) {
@@ -169,9 +169,14 @@ async function reach(
   return { response };
 }
 
-/** The header an error message says the request is missing, as opencode go's "Request is missing x-opencode-session"; else null. */
+/**
+ * The header an error message says the request is missing: an `x-` header, as
+ * opencode go's "Request is missing x-opencode-session", or one it calls a
+ * header ("missing Authorization header"); else null.
+ */
 function missingHeader(message: string): string | null {
-  return /\bmissing (?:the )?(?:header )?["'`]?([a-z][a-z0-9]*(?:-[a-z0-9]+)+)\b/i.exec(message)?.[1] ?? null;
+  const said = /\bmissing (?:the )?["'`]?(x-[\w-]+|[\w-]+(?=["'`]? header\b))/i.exec(message);
+  return said?.[1] ?? null;
 }
 
 /** The rate of the audio `speak` streams: 16-bit mono PCM at 24kHz, OpenAI's `pcm` format, which Kokoro-FastAPI shares. */
@@ -211,13 +216,13 @@ export function transcribe(world: World, endpoint: VoiceEndpoint, audio: Uint8Ar
 /**
  * What the Front voice is sent for one thing the user said: `heard`, the raw
  * transcript, and `context`, what it reads (see `readContext` in front-voice.ts),
- * in the conversation `session`; streamed as it is made, or whole for `voice check`.
+ * in the Conversation `sessionId` names; streamed as it is made, or whole for `voice check`.
  */
 export interface FrontVoiceTurn {
   heard: string;
   context: string;
-  /** The conversation's stable id, sent as `x-opencode-session` for opencode go to route and cache by; other endpoints ignore it. */
-  session: string;
+  /** The Conversation's stable id, sent as `x-opencode-session` for opencode go to route and cache by; other endpoints ignore it. */
+  sessionId: string;
   stream: boolean;
 }
 
@@ -253,9 +258,9 @@ const FRONT_VOICE_RULES = [
 ].join("\n");
 
 /** A request for the Front voice's reply to `turn`, with hand_off its only tool. */
-export function frontVoiceRequest(endpoint: VoiceEndpoint, headers: Headers, { heard, context, session, stream }: FrontVoiceTurn) {
+export function frontVoiceRequest(endpoint: VoiceEndpoint, headers: Headers, { heard, context, sessionId, stream }: FrontVoiceTurn) {
   headers.set("content-type", "application/json");
-  headers.set("x-opencode-session", session);
+  headers.set("x-opencode-session", sessionId);
   const messages = [{ role: "system", content: `${FRONT_VOICE_RULES}\n\n${context}` }, { role: "user", content: heard }];
   const body = { model: endpoint.model, temperature: 0, stream, tools: [HAND_OFF], messages };
   return new Request(`${base(endpoint)}/chat/completions`, { method: "POST", headers, body: JSON.stringify(body) });

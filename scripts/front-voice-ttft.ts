@@ -24,8 +24,8 @@ const CONTEXT = "Terms: Board, Lead, Dispatch, acme/api#7.\n\nThe Board (board -
 const SAID = { answer: "hey how's it going", "hand off": "um dispatch the uh acme api seven" };
 
 const world = new RealWorld();
-/** One session for the whole run, as the Front voice keeps one per conversation. */
-const session = crypto.randomUUID();
+/** One session id for the whole run, as the Front voice keeps one per Conversation. */
+const sessionId = crypto.randomUUID();
 const rows: { model: string; kind: string; ttft: number | null; total: number; got: string }[] = [];
 for (const model of MODELS) {
   for (let round = 0; round < ROUNDS; round++) {
@@ -33,7 +33,7 @@ for (const model of MODELS) {
       const started = performance.now();
       let first: number | null = null;
       let got = "";
-      const reply = await frontVoiceReply(world, { url: URL, model, ...(KEY_ENV && { keyEnv: KEY_ENV }) }, { heard, context: CONTEXT, session });
+      const reply = await frontVoiceReply(world, { url: URL, model, ...(KEY_ENV && { keyEnv: KEY_ENV }) }, { heard, context: CONTEXT, sessionId });
       if ("error" in reply) {
         got = `${reply.error}. ${reply.help}`;
       } else {
