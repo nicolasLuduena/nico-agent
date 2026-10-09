@@ -7,21 +7,13 @@ import { type Progress, agentSteps, chooseLaunch, prompt, repoName, runPhase } f
 import { DispatchError } from "./dispatch-error";
 import { type Harness, MCP_SERVER, rememberLaunch } from "./harness";
 import { nudgeLead } from "./nudge";
+import { PARTNER_NAMES, PARTNER_TABS, type PartnerTab, isPartnerTab } from "./partner-tabs";
 import type { Launch } from "./state";
 import { withFileLock, writeJsonAtomic } from "./state";
 import { type Draft, type ThreadEntry, appendThread, loadThread, openDraft, withThread, write } from "./thread";
 import { type World, WorldError } from "./world";
 
-/** The app's tabs a Partner runs in, one Partner each. */
-export const PARTNER_TABS = ["review", "idea"] as const;
-export type PartnerTab = (typeof PARTNER_TABS)[number];
-
-export function isPartnerTab(tab: string): tab is PartnerTab {
-  return (PARTNER_TABS as readonly string[]).includes(tab);
-}
-
-/** What the glossary calls each tab's Partner. */
-export const PARTNER_NAMES: Record<PartnerTab, string> = { review: "Review partner", idea: "Idea partner" };
+export { PARTNER_NAMES, PARTNER_TABS, type PartnerTab, isPartnerTab };
 
 /** The steps that start a Partner, in order: a Gardener's, after writing its home. */
 export const PARTNER_STEPS = ["home", "fetch", "worktree", "tab", "agent start", "agent ready", "prompt"] as const;

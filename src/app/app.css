@@ -362,6 +362,24 @@ label.switch:has(:checked) { color: var(--ink); }
 .card-proposal .action code { font-size: 13px; font-weight: 400; background: var(--surface); padding: 0.1rem 0.3rem; border-radius: var(--r-sm); overflow-wrap: anywhere; }
 .card-proposal .write { font-family: var(--mono); font-size: 13px; line-height: 1.55; white-space: pre-wrap; max-height: 16rem; overflow: auto; margin: 0; padding: 0.8rem 0.9rem; background: var(--surface); border-radius: var(--r-md); border: 1px solid var(--rule); }
 
+/* A Partner's tab (ADR-0014): its Thread where the Lead's conversation is, the Partner or its start form in the side column. */
+.thread-panel .lead-bar h1 { margin-right: auto; }
+.partner-side form, .partner-start { display: grid; gap: 0.7rem; }
+.partner-empty .partner-start { width: min(20rem, 100%); margin: 0.75rem auto 0; text-align: left; }
+.partner-empty .partner-start .buttons { justify-content: flex-end; }
+:is(.partner-side, .partner-start) label { display: grid; gap: 0.3rem; font-size: 13px; font-weight: 600; color: var(--ink-muted); }
+.partner-facts { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.35rem 1rem; margin: 0.25rem 0 0.5rem; font-size: 14px; }
+.partner-facts dt { color: var(--ink-muted); font-weight: 600; }
+.partner-facts dd { margin: 0; overflow-wrap: anywhere; }
+.partner-facts .mono { font-family: var(--mono); font-size: 13px; }
+/* A Hand-off draft: ringed in the accent while it waits on the user, quiet once replaced or handed. */
+.card-draft form.draft { display: grid; gap: 0.6rem; }
+.card-draft textarea { width: 100%; min-height: 8rem; font-size: 15px; line-height: 1.5; resize: vertical; }
+.card-draft.open .status { color: var(--link); }
+.card-draft.replaced, .card-draft.handed { box-shadow: inset 0 0 0 1px var(--rule); background: var(--surface); }
+.card-draft.replaced .write { color: var(--ink-muted); }
+.card-draft.handed .status { color: var(--ink); }
+
 /* A question's or Proposal's line in the conversation: one quiet row, its dot in the accent while it waits on a toast. */
 .conversation > li.item-line { max-width: 62rem; width: 100%; }
 .item-line button {
