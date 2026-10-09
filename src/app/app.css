@@ -44,7 +44,7 @@ a:hover { text-decoration: underline; text-underline-offset: 0.2em; text-decorat
 :focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
 code { font: 0.9em ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--panel-raised); padding: 0.1em 0.35em; border-radius: 3px; }
 
-header.top { display: flex; align-items: center; gap: 0.75rem; max-width: 76rem; margin: 0 auto; padding: 1.1rem 1.5rem 0.9rem; }
+header.top { display: flex; align-items: center; gap: 0.75rem; max-width: 104rem; margin: 0 auto; padding: 1.1rem 1.5rem 0.9rem; }
 .brand { display: inline-flex; align-items: center; gap: 0.5rem; font-size: 18px; font-weight: 700; color: var(--ink); letter-spacing: -0.015em; }
 .brand:hover { text-decoration: none; }
 .glyph { width: 22px; height: 22px; fill: none; stroke: var(--rule-strong); stroke-width: 1.4; }
@@ -75,7 +75,9 @@ form.launch { display: flex; align-items: center; gap: 0.35rem; margin: 0 0 0 au
 li:not(:hover) form.launch select:not(:focus) { border-color: var(--rule); }
 .loading { margin-left: auto; font-size: 12px; color: var(--ink-muted); }
 
-main { max-width: 76rem; margin: 0 auto; padding: 0 1.5rem 3rem; }
+/* The Lead panel beside the Board on a wide screen, above it on a narrow one. */
+.layout { display: grid; grid-template-columns: minmax(20rem, 26rem) minmax(0, 1fr); align-items: start; gap: 1.5rem; max-width: 104rem; margin: 0 auto; padding: 0 1.5rem 3rem; }
+main { min-width: 0; }
 .empty { margin: 0; padding: 0.9rem 1rem; color: var(--ink-muted); }
 .error { color: var(--failed-ink); }
 .warning { color: var(--implementing-ink); }
@@ -271,10 +273,61 @@ ul.advanced li.error::before { content: "Error"; }
 ul.advanced li.warning { color: var(--implementing-ink); }
 ul.advanced li.empty { color: var(--ink-muted); }
 
+/* The Lead panel: its state and controls, the conversation as cards, and the composer; it stays in view while the Board scrolls. */
+aside.lead-panel { position: sticky; top: 1rem; display: flex; flex-direction: column; height: calc(100vh - 5.5rem); min-height: 24rem; background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; box-shadow: var(--shadow); overflow: hidden; }
+aside.lead-panel > p.error { margin: 0; padding: 0.5rem 1rem; border-bottom: 1px solid var(--rule); }
+.lead-head { display: grid; gap: 0.45rem; background: var(--panel-raised); padding: 0.65rem 1rem; border-bottom: 1px solid var(--rule); }
+.lead-head p { margin: 0; font-size: 12px; }
+.lead-line { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; min-width: 0; }
+.lead-line h2 { margin: 0; font-size: 14px; font-weight: 650; letter-spacing: -0.005em; }
+.lead-state { font-size: 12px; color: var(--ink-muted); }
+.lead-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; }
+.lead-controls select { flex: 1 1 5rem; width: auto; max-width: none; }
+.lead-controls .loading { margin-left: 0; }
+
+ol.conversation { flex: 1; overflow-y: auto; margin: 0; padding: 0.25rem 0; list-style: none; overscroll-behavior: contain; }
+ol.conversation > li { padding: 0.6rem 1rem; border-top: 1px solid var(--rule); }
+ol.conversation > li:first-child { border-top: none; }
+ol.conversation > li.empty { color: var(--ink-muted); }
+ol.conversation p { margin: 0; }
+ol.conversation .text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.byline { display: flex; align-items: baseline; gap: 0.5rem; margin-bottom: 0.15rem !important; font-size: 12px; color: var(--ink-muted); }
+.byline b { font-weight: 650; color: var(--ink); }
+.byline .status { margin-left: auto; font-weight: 650; }
+li.card-message.user { background: var(--panel-raised); }
+li.card-message.sending .text { color: var(--ink-muted); }
+.send-failure { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; margin-top: 0.35rem; font-size: 12px; }
+.send-failure p.error { flex-basis: 100%; }
+/* A question and a Proposal wait on the user: a 2px rule in ink while open, gone once decided. */
+li:is(.card-question, .card-proposal.open) { box-shadow: inset 2px 0 0 var(--ink); }
+.choices, .card-proposal .buttons { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.5rem; }
+.choices button { white-space: normal; height: auto; min-height: 28px; padding: 0.2rem 0.6rem; text-align: left; }
+form.free-answer, form.decline { display: flex; gap: 0.35rem; margin-top: 0.45rem; }
+:is(form.free-answer, form.decline, form.composer) :is(input, textarea) { flex: 1; min-width: 0; font: inherit; font-size: 13px; color: var(--ink); background: var(--panel); border: 1px solid var(--rule-strong); border-radius: 4px; padding: 0.3rem 0.5rem; }
+:is(form.free-answer, form.decline) input { height: 28px; }
+li.card-question.answered { box-shadow: none; }
+.answer { margin-top: 0.35rem !important; white-space: pre-wrap; }
+.answer span { margin-right: 0.5rem; font-size: 12px; font-weight: 650; color: var(--ink-muted); }
+.card-proposal .action { margin: 0.15rem 0 0.25rem !important; overflow-wrap: anywhere; }
+.card-proposal .decided { margin-top: 0.25rem !important; font-size: 12px; color: var(--ink-muted); }
+ol.conversation li > .outcome { margin-top: 0.3rem; padding-left: 0; }
+.card-proposal.approved .status { color: var(--ink); }
+.card-proposal.declined .status { color: var(--ink-muted); }
+.card-proposal.failed .status { color: var(--failed-ink); }
+button.approve { background: var(--ink); border-color: var(--ink); color: var(--panel); font-weight: 600; }
+button.approve:hover:not(:disabled) { background: color-mix(in srgb, var(--ink) 85%, var(--panel)); }
+form.composer { display: flex; align-items: flex-end; gap: 0.4rem; padding: 0.6rem 1rem; border-top: 1px solid var(--rule); background: var(--panel-raised); }
+form.composer textarea { resize: vertical; min-height: 2.6rem; max-height: 12rem; line-height: 1.4; }
+
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 
+@media (max-width: 1100px) {
+  .layout { grid-template-columns: minmax(0, 1fr); }
+  aside.lead-panel { position: static; height: auto; max-height: 75vh; }
+}
+
 @media (max-width: 760px) {
-  header.top, main { padding-left: 1rem; padding-right: 1rem; }
+  header.top, .layout { padding-left: 1rem; padding-right: 1rem; }
   figure.event { grid-template-columns: 1fr; gap: 1rem; padding: 1rem; }
   figure.event svg { max-width: 300px; margin: 0 auto; }
   figure.event .key { display: none; }

@@ -1,0 +1,169 @@
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { describe, expect, test } from "bun:test";
+import type { HarnessesJson } from "../src/app/actions";
+import {
+  type Conversation, type LeadStatusJson, type ProposalJson, cards, declineArgs, leadChoice, leadControl, leadStartArgs, proposalLines, reduce, sayArgs,
+} from "../src/app/lead";
+import { setup } from "./harness";
+
+const CLAUDE = { lead: { harness: "claude", model: "opus", effort: "high" }, scheduler: { harness: "claude", model: "opus", effort: "high" } };
+
+/** A Lead's conversation as the panel loads it: `/api/lead/log` and `/api/proposals`, each a second apart. */
+function withLead() {
+  const ctx = setup();
+  mkdirSync(ctx.configDir, { recursive: true });
+  writeFileSync(join(ctx.configDir, "config.json"), JSON.stringify({ repos: [], ...CLAUDE }));
+  const cli = async (...argv: string[]) => {
+    await ctx.world.tick(1000);
+    return ctx.cli(...argv);
+  };
+  const loaded = async (state: Conversation = EMPTY): Promise<Conversation> => {
+    const log = JSON.parse((await ctx.web("/api/lead/log")).body);
+    const proposals = JSON.parse((await ctx.web("/api/proposals")).body);
+    return reduce(reduce(state, { type: "log", entries: log.entries }), { type: "proposals", proposals: proposals.proposals });
+  };
+  return { ...ctx, cli, loaded };
+}
+
+const EMPTY: Conversation = { entries: [], proposals: [], sends: [] };
+const NOW = "2026-09-30T13:00:00.000Z";
+
+describe("the conversation's cards", () => {
+  test("the user's and the Lead's messages, oldest first", async () => {
+    const { cli, loaded } = withLead();
+    await cli("say", "Finish billing first");
+    await cli("lead", "say", "Will do");
+    expect(cards(await loaded())).toMatchObject([
+      { kind: "message", who: "user", text: "Finish billing first" },
+      { kind: "message", who: "lead", text: "Will do" },
+    ]);
+  });
+
+  test("a question is a card with its choices, open until answered; the answer shows on it, not as a card of its own", async () => {
+    const { cli, loaded } = withLead();
+    await cli("lead", "ask", "Which first?", "billing", "search");
+    await cli("lead", "ask", "Anything else?");
+    expect(cards(await loaded())).toMatchObject([
+      { kind: "question", id: 1, text: "Which first?", choices: ["billing", "search"], answer: undefined },
+      { kind: "question", id: 2, choices: [] },
+    ]);
+
+    await cli("say", "--answer", "1", "billing");
+    const after = cards(await loaded());
+    expect(after).toHaveLength(2);
+    expect(after[0]).toMatchObject({ kind: "question", id: 1, answer: { text: "billing" } });
+  });
+
+  test("a Proposal is a card in its place in time, with its action, reason and status; its decision is no card of its own", async () => {
+    const { cli, loaded } = withLead();
+    await cli("say", "Keep going");
+    await cli("lead", "propose", "--reason", "It is next in the Queue", "advance");
+    await cli("lead", "say", "Proposed it");
+    await cli("proposals", "decline", "1", "Finish billing first");
+    expect(cards(await loaded())).toMatchObject([
+      { kind: "message", text: "Keep going" },
+      { kind: "proposal", id: 1, action: "nico-agent advance", reason: "It is next in the Queue", status: "declined", declineReason: "Finish billing first" },
+      { kind: "message", text: "Proposed it" },
+    ]);
+  });
+
+  test("a decided Proposal shows what its action did, or why it failed", async () => {
+    const { cli, loaded } = withLead();
+    await cli("lead", "propose", "--reason", "Next", "advance");
+    await cli("lead", "propose", "--reason", "Wrong", "--", "queue", "acme/api#9", "--repo", "acme/api");
+    await cli("proposals", "approve", "1");
+    await cli("proposals", "approve", "2");
+    const [approved, failed] = cards(await loaded()) as ProposalJson[];
+    expect(approved).toMatchObject({ status: "approved" });
+    expect(proposalLines(approved!)).toEqual([{ text: "Nothing to do: no running Spec needs a step and no queued Spec could start.", error: false }]);
+    expect(failed).toMatchObject({ status: "failed" });
+    expect(proposalLines(failed!)).toEqual([{ text: "acme/api is not a configured Repo", error: true }]);
+  });
+});
+
+describe("optimistic sends", () => {
+  test("a message shows at once, then stays one card once the log has it", async () => {
+    const { cli, loaded, post } = withSay();
+    const before = await loaded();
+    const sending = reduce(before, { type: "send", key: "s1", text: "Hello", at: NOW });
+    expect(cards(sending)).toEqual([{ kind: "message", key: "s1", who: "user", text: "Hello", at: NOW, sending: true }]);
+
+    const { said } = await post(["--", "Hello"]);
+    const sent = reduce(sending, { type: "sent", key: "s1", id: said });
+    // The answer came before the log was fetched again: still one card.
+    expect(cards(sent)).toMatchObject([{ kind: "message", text: "Hello" }]);
+    await cli("lead", "say", "Hi");
+    const after = await loaded(sent);
+    expect(after.sends).toEqual([]);
+    expect(cards(after)).toMatchObject([{ kind: "message", key: "entry-1", who: "user", text: "Hello" }, { kind: "message", who: "lead", text: "Hi" }]);
+    expect(cards(after)[0]).not.toHaveProperty("sending");
+  });
+
+  test("a message that failed stays with its error, after the log, until dismissed", async () => {
+    const { loaded } = withLead();
+    const failed = reduce(reduce(EMPTY, { type: "send", key: "s1", text: "Hello", at: NOW }), { type: "failed", key: "s1", error: "Could not reach nico-agent serve; try again." });
+    const after = await loaded(failed);
+    expect(cards(after)).toEqual([{ kind: "message", key: "s1", who: "user", text: "Hello", at: NOW, error: "Could not reach nico-agent serve; try again." }]);
+    expect(cards(reduce(after, { type: "dismiss", key: "s1" }))).toEqual([]);
+  });
+
+  test("an answer shows on its question at once; one refused leaves the question open, with why", async () => {
+    const { cli, loaded } = withLead();
+    await cli("lead", "ask", "Which first?", "billing", "search");
+    const answering = reduce(await loaded(), { type: "send", key: "s1", text: "billing", question: 1, at: NOW });
+    expect(cards(answering)).toMatchObject([{ kind: "question", id: 1, answer: { text: "billing", sending: true } }]);
+    const refused = reduce(answering, { type: "failed", key: "s1", error: "question 1 was already answered" });
+    expect(cards(refused)).toMatchObject([{ kind: "question", id: 1, answer: undefined, failure: { key: "s1", text: "billing", error: "question 1 was already answered" } }]);
+  });
+});
+
+/** A Lead whose messages are sent as the panel does: posted to `/api/say`. */
+function withSay() {
+  const ctx = withLead();
+  const post = async (args: string[]) => JSON.parse((await ctx.web("/api/say", { method: "POST", body: JSON.stringify({ args }) })).body) as { said: number };
+  return { ...ctx, post };
+}
+
+describe("what the panel posts", () => {
+  test("a message, an answer and a decline put the text after `--`, so it is never read as a flag", () => {
+    expect(sayArgs("--force is fine")).toEqual(["--", "--force is fine"]);
+    expect(sayArgs("billing", 4)).toEqual(["--answer", "4", "--", "billing"]);
+    expect(declineArgs(3, "  ")).toEqual(["3"]);
+    expect(declineArgs(3, "Finish billing first")).toEqual(["3", "--", "Finish billing first"]);
+  });
+
+  test("a start names the Harness, model and Effort picked and the port the page was served from", () => {
+    const choice = { harnesses: ["claude"], harness: "claude", models: ["opus"], model: "opus", efforts: ["high"], effort: "high" };
+    expect(leadStartArgs(choice, "8080")).toEqual(["--harness", "claude", "--model", "opus", "--effort", "high", "--port", "8080"]);
+    // A page on the default port of its scheme names none.
+    expect(leadStartArgs(choice, "")).toEqual(["--harness", "claude", "--model", "opus", "--effort", "high"]);
+  });
+});
+
+describe("the Lead's controls", () => {
+  const HARNESSES: HarnessesJson = {
+    harnesses: [
+      { name: "claude", models: [{ model: "opus", efforts: ["low", "high"] }, { model: "sonnet", efforts: ["low"] }] },
+      { name: "codex", models: [{ model: "gpt-5.5", efforts: ["high"] }] },
+    ],
+    remembered: { last: { harness: "codex", model: "gpt-5.5" }, efforts: {} },
+  };
+  const RUNNING: LeadStatusJson = { lead: "running", harness: "claude", model: "opus", effort: "high", state: "idle" };
+
+  test("the pickers start on the running Lead's launch, else on the last launch", () => {
+    expect(leadChoice(HARNESSES, RUNNING, {})).toMatchObject({ harness: "claude", model: "opus", effort: "high" });
+    expect(leadChoice(HARNESSES, { lead: "not running" }, {})).toMatchObject({ harness: "codex", model: "gpt-5.5", effort: "high" });
+    expect(leadChoice(HARNESSES, RUNNING, { harness: "codex" })).toMatchObject({ harness: "codex", model: "gpt-5.5" });
+  });
+
+  test("a stopped Lead can be started; a running one restarted on another launch, and stopped", () => {
+    const same = leadChoice(HARNESSES, RUNNING, {})!;
+    const other = leadChoice(HARNESSES, RUNNING, { model: "sonnet" })!;
+    expect(leadControl({ lead: "not running" }, same)).toEqual({ start: "Start", stop: false });
+    expect(leadControl(RUNNING, same)).toEqual({ start: null, stop: true });
+    expect(leadControl(RUNNING, other)).toEqual({ start: "Restart", stop: true });
+    // One that failed, or is gone from herdr, starts again where it stopped, and can be forgotten.
+    expect(leadControl({ ...RUNNING, lead: "Failed at agent start" }, same)).toEqual({ start: "Start", stop: true });
+  });
+});

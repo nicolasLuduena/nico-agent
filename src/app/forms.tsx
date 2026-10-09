@@ -35,10 +35,10 @@ const BUTTONS: Record<LaunchAction, string> = { dispatch: "Dispatch", review: "L
 const UNREACHABLE: Outcome = { failed: true, lines: [{ text: "Could not reach nico-agent serve; try again.", error: true }], help: [] };
 
 /** What an action's answer says, or that `serve` could not be reached. */
-const answerOf = (json: Record<string, unknown> | null) => (json ? outcomeOf(json) : UNREACHABLE);
+export const answerOf = (json: Record<string, unknown> | null) => (json ? outcomeOf(json) : UNREACHABLE);
 
 /** Post the CLI's arguments to an `/api` action; null when `serve` could not be reached. */
-async function post(path: string, args: string[] = []): Promise<Record<string, unknown> | null> {
+export async function post(path: string, args: string[] = []): Promise<Record<string, unknown> | null> {
   try {
     const response = await fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ args }) });
     return (await response.json()) as Record<string, unknown>;

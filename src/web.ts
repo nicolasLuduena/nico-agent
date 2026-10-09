@@ -1,6 +1,9 @@
+import { statSync } from "node:fs";
+import { join } from "node:path";
 import { type PreviewLookup, cachedPreviews } from "./preview";
 import { type CliRunner, isToolCall, mcpHandler, withJson } from "./mcp";
-import { Events } from "./events";
+import { type EventName, Events } from "./events";
+import { leadStatus } from "./lead";
 import type { World } from "./world";
 
 export interface WebContext {
@@ -10,6 +13,54 @@ export interface WebContext {
   runCli: CliRunner;
   /** The app's SSE stream; `serve` shares it to send its ticks. */
   events?: Events;
+  /** `lookAtLead` over `events`; `serve` shares it to look again on its ticks. */
+  look?: () => Promise<void>;
+}
+
+/**
+ * A look at what the Lead panel shows besides the Board: each call sends
+ * `conversation-entry`, `proposal-changed` or `lead-state` for what changed
+ * since the last, whoever changed it (the app, the Lead through MCP, the CLI,
+ * or herdr for the Lead's Agent state).
+ */
+export function lookAtLead({ world, configDir }: { world: World; configDir: string }, events: Events) {
+  /** When a file last changed, as its size and time; the conversation only grows. */
+  const file = (name: string) => () => {
+    try {
+      const { size, mtimeMs } = statSync(join(configDir, name));
+      return `${size} ${mtimeMs}`;
+    } catch {
+      return "";
+    }
+  };
+  const watched: [EventName, () => string | Promise<string>][] = [
+    ["conversation-entry", file("conversation.jsonl")],
+    ["proposal-changed", file("proposals.json")],
+    ["lead-state", async () => {
+      const status = await leadStatus(world, configDir);
+      if (!status) return "";
+      const { lead, state, record: { agent: { harness, model, effort } } } = status;
+      return JSON.stringify([lead, state, harness, model, effort]);
+    }],
+  ];
+  // A look that fails (herdr gone, say) is a sample of its own, never a failed request or tick.
+  const sample = () => Promise.all(watched.map(async ([, look]) => {
+    try {
+      return await look();
+    } catch (e) {
+      return `failed: ${String(e)}`;
+    }
+  }));
+  // Taken now, so the first change is told even if it comes before the first look.
+  let seen = sample();
+  return async () => {
+    const [before, now] = [await seen, sample()];
+    seen = now;
+    const after = await now;
+    watched.forEach(([name], i) => {
+      if (after[i] !== before[i]) events.emit(name);
+    });
+  };
 }
 
 const HTML_HEADERS = { "content-type": "text/html; charset=utf-8" };
@@ -24,14 +75,15 @@ export function webHandler(context: WebContext) {
   const previews = cachedPreviews(context.world);
   const mcp = mcpHandler(context.runCli);
   const events = context.events ?? new Events();
+  const look = context.look ?? lookAtLead(context, events);
   const handle = async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
     const { pathname } = url;
     if (pathname === "/mcp") return await mcp(request);
     if (pathname.startsWith("/api/") && request.method === "POST") return await postApi(context, request, pathname);
     if (request.method !== "GET") return new Response("Method Not Allowed\n", { status: 405 });
-    if (pathname === "/api/board") return await cliJson(context, ["board"]);
-    if (pathname === "/api/harnesses") return await cliJson(context, ["harness", "list"]);
+    const read = API_READS[pathname];
+    if (read) return await cliJson(context, read);
     if (pathname === "/preview") return await getPreview(previews, url.searchParams);
     return new Response(`No page at ${pathname}\n`, { status: 404 });
   };
@@ -43,7 +95,10 @@ export function webHandler(context: WebContext) {
       return await handle(request);
     } finally {
       // Even a failed action may have changed something, such as a Dispatch's recorded failure.
-      if (changes) events.emit("board-changed");
+      if (changes) {
+        events.emit("board-changed");
+        await look();
+      }
     }
   };
 }
@@ -57,7 +112,7 @@ async function changesBoard(request: Request, pathname: string) {
   return pathname !== "/mcp" || await isToolCall(request);
 }
 
-/** The Board's actions, by their `/api` path: each the CLI command of the same words. */
+/** The Board's and the Lead panel's actions, by their `/api` path: each the CLI command of the same words. */
 const API_ACTIONS: Record<string, string[]> = {
   "/api/dispatch": ["dispatch"],
   "/api/review": ["review"],
@@ -67,10 +122,22 @@ const API_ACTIONS: Record<string, string[]> = {
   "/api/move": ["move"],
   "/api/advance": ["advance"],
   "/api/harness/refresh": ["harness", "refresh"],
+  "/api/say": ["say"],
+  "/api/proposals/approve": ["proposals", "approve"],
+  "/api/proposals/decline": ["proposals", "decline"],
+  "/api/lead/start": ["lead", "start"],
+  "/api/lead/stop": ["lead", "stop"],
 };
 
-/** What the app reads, with GET. */
-const API_READS = ["/api/board", "/api/harnesses", "/api/events"];
+/** What the app reads, with GET, by its `/api` path: each the CLI command of the same words. */
+const API_READS: Record<string, string[]> = {
+  "/api/board": ["board"],
+  "/api/harnesses": ["harness", "list"],
+  "/api/lead/log": ["lead", "log"],
+  "/api/lead/status": ["lead", "status"],
+  // Decided Proposals too, so a card keeps its outcome.
+  "/api/proposals": ["proposals", "--all"],
+};
 
 const API_HELP = `Post {"args": [...]} to one of ${Object.keys(API_ACTIONS).join(", ")}`;
 
@@ -82,12 +149,12 @@ const API_HELP = `Post {"args": [...]} to one of ${Object.keys(API_ACTIONS).join
 async function postApi(ctx: WebContext, request: Request, pathname: string) {
   const command = API_ACTIONS[pathname];
   if (!command) {
-    const read = API_READS.includes(pathname);
+    const read = pathname in API_READS || pathname === "/api/events";
     return apiError(read ? 405 : 404, read ? `${pathname} is read with GET` : `no action at ${pathname}`);
   }
   // A browser says when another site's page sends the request; only the app's own page may act.
   const site = request.headers.get("sec-fetch-site");
-  if (site && site !== "same-origin" && site !== "none") return apiError(403, "only the app itself can act on the Board");
+  if (site && site !== "same-origin" && site !== "none") return apiError(403, "only the app itself can act");
   const text = await request.text();
   // No body is no arguments; a body that is not a JSON object is refused.
   const body: unknown = text.trim() ? parseJson(text) : {};

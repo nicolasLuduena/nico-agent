@@ -49,6 +49,13 @@ directory, not in the agent, so the new Lead picks it up where the old one
 left off. The same happens when the Lead's agent is gone from herdr (its
 workspace was closed by hand, say).
 
+The app at `serve`'s URL does the same from its Lead panel, beside the
+Board: the Lead's Agent state and launch, Start, Restart on another Harness,
+model or Effort, and Stop; the conversation, live, with a composer that posts
+`nico-agent say`; the Lead's questions as cards with their choices as buttons
+and a free-text answer (`say --answer`); and its Proposals as cards with
+Approve and Decline (`proposals approve|decline`), showing what approving did.
+
 If a step fails, `lead start` says which one; run it again to resume from
 there. `lead status` shows the failure in the meantime.
 

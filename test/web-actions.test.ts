@@ -111,10 +111,10 @@ describe("/api actions", () => {
     });
   });
 
-  test("only the Board's actions are routes, and their body must be a list of arguments", async () => {
+  test("only the app's actions are routes, and their body must be a list of arguments", async () => {
     const { web, world } = await mixed();
     expect((await web("/api/repo/rm", { method: "POST", body: JSON.stringify({ args: ["acme/api"] }) })).status).toBe(404);
-    expect((await web("/api/lead/stop", { method: "POST", body: "{}" })).status).toBe(404);
+    expect((await web("/api/lead/inbox", { method: "POST", body: "{}" })).status).toBe(404);
     const bad = await web("/api/dispatch", { method: "POST", body: JSON.stringify({ args: "acme/api#1" }) });
     expect(bad.status).toBe(400);
     expect(JSON.parse(bad.body)).toEqual({ error: "the body must be {\"args\": [...]}, the CLI's arguments", help: [expect.any(String)] });
@@ -134,7 +134,7 @@ describe("/api actions", () => {
     const crossSite = { method: "POST", body: JSON.stringify({ args: ["acme/api#1", ...FLAGS] }), headers: { "sec-fetch-site": "cross-site" } };
     const { status, body } = await web("/api/dispatch", crossSite);
     expect(status).toBe(403);
-    expect(JSON.parse(body).error).toBe("only the app itself can act on the Board");
+    expect(JSON.parse(body).error).toBe("only the app itself can act");
     expect(world.calls).toEqual([]);
     expect((await cli("show", "acme/api#1")).exitCode).toBe(1);
     // The app's own page is same-origin.

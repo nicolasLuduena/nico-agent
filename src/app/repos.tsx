@@ -1,4 +1,4 @@
-import { type IssueRow, type RepoSection, type RoomReadout, type SpecGroup, SPEC_STATES } from "./board";
+import { type IssueRow, type RepoSection, type RoomReadout, type SpecGroup, SPEC_STATES, agentClass } from "./board";
 import { dispatchTarget, isLinear } from "./actions";
 import { reachOf } from "./event";
 import { IssueOutcome, LaunchForm, Pick, QueueControl, useActions } from "./forms";
@@ -99,4 +99,9 @@ export function BaseChip({ branch }: { branch: string }) {
       {branch}
     </span>
   );
+}
+
+/** An agent's Agent state as herdr reports it; `blocked` stands out since it waits on the user. */
+export function Agent({ role, state }: { role: string; state: string }) {
+  return <span className={`agent ${agentClass(state)}`}><i aria-hidden="true" />{`${role} ${state}`}</span>;
 }
