@@ -233,11 +233,12 @@ durable and keeps it under a page; the user reads and edits it too.
 _Avoid_: Memory, profile, settings
 
 **Conversation**:
-What the user and the Lead said to each other, as typed entries with ids and
-times appended to a file in the config directory: the user's messages, the
-Lead's replies, its questions and their answers. A question stays open until
-the user answers it by its id. The user reads it with `nico-agent lead log`;
-the Lead reads what is new in it through its Inbox.
+What the user, the Lead and the Front voice said to each other, as typed
+entries with ids and times appended to a file in the config directory: the
+user's messages, the Front voice's lines, the Lead's replies, its questions
+and their answers. A question stays open until the user answers it by its id.
+The user reads it with `nico-agent lead log`; the Lead reads what is new in it
+through its Inbox.
 _Avoid_: Chat, history, transcript
 
 **Questions list**:
@@ -296,18 +297,15 @@ The small fast model that cleans what the user said before the Lead reads it:
 disfluencies out, glossary and Board terms spelled right, punctuation in,
 meaning untouched. Both the raw transcript and the Scribe's text are kept on
 the user's entry. It is an OpenAI-compatible chat endpoint in config, like
-transcription and speech; nico-agent runs none of them. The Front voice
-replaces it (ADR-0013).
+transcription and speech; nico-agent runs none of them. To be replaced by
+the Front voice (ADR-0013).
 _Avoid_: Cleaner, post-processor, rewriter (it never rewrites the meaning)
 
 **Front voice**:
-The fast model that holds the spoken conversation in front of the Lead. It
-answers conversation itself and hands anything needing judgment or action to
-the Lead as the user's message, cleaned, saying it will ask the Lead. It has
-exactly two capabilities, read (the Conversation, the orient packet, the
-Board, a PR under review) and hand-off, and never acts (ADR-0013). Its lines
-are in the Conversation under their own author.
-_Avoid_: Assistant, receptionist, voice agent, Scribe (which it replaces)
+The fast model the user talks to by voice in front of the Lead: it answers
+what needs no judgment itself and hands the rest to the Lead as the user's
+message, and never acts (ADR-0013).
+_Avoid_: Assistant, receptionist, voice agent
 
 **Voice on**:
 The user talking to the Lead by voice instead of reading the screen, a flag in
