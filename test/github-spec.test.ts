@@ -33,8 +33,10 @@ describe("GitHub Specs", () => {
 
     const { specs } = (await cli("--json")).json();
     expect(specs).toEqual([
-      { spec: "acme/api#10", title: "Billing", repo: "acme/api", issues: ["acme/api#13", "acme/api#11", "acme/api#12"], running: false },
-      { spec: "acme/api#20", title: "A bug from triage", repo: "acme/api", issues: ["acme/api#20"], running: false },
+      { spec: "acme/api#10", title: "Billing", url: "https://github.com/acme/api/issues/10", repo: "acme/api", issues: ["acme/api#13", "acme/api#11", "acme/api#12"], running: false,
+        next: { issue: "acme/api#13", base: "main", reason: "acme/api#13 is the first unblocked issue of acme/api#10; the Spec has no open PR, so it starts from main" } },
+      { spec: "acme/api#20", title: "A bug from triage", url: "https://github.com/acme/api/issues/20", repo: "acme/api", issues: ["acme/api#20"], running: false,
+        next: { issue: "acme/api#20", base: "main", reason: "acme/api#20 is the first unblocked issue of acme/api#20; the Spec has no open PR, so it starts from main" } },
     ]);
     // In TOON, the Spec of one would repeat the Ready list.
     const { stdout } = await cli();
@@ -50,7 +52,7 @@ describe("GitHub Specs", () => {
 
     const implementing = (await cli("--json")).json().specs;
     expect(implementing).toEqual([{
-      spec: "acme/api#10", title: "Billing", repo: "acme/api", issues: ["acme/api#11", "acme/api#12", "acme/api#13"], running: true,
+      spec: "acme/api#10", title: "Billing", url: "https://github.com/acme/api/issues/10", repo: "acme/api", issues: ["acme/api#11", "acme/api#12", "acme/api#13"], running: true,
       reason: "acme/api#11 is Implementing; a Spec has one Implementer at a time",
     }]);
 
@@ -86,7 +88,7 @@ describe("GitHub Specs", () => {
 
     const board = (await cli("--json")).json();
     expect(board.specs.find((s: { spec: string }) => s.spec === "acme/api#10")).toEqual({
-      spec: "acme/api#10", title: "Billing", repo: "acme/api", issues: ["acme/api#11", "acme/api#12"], running: false,
+      spec: "acme/api#10", title: "Billing", url: "https://github.com/acme/api/issues/10", repo: "acme/api", issues: ["acme/api#11", "acme/api#12"], running: false,
       waiting: { issue: "acme/api#12", blocker: "acme/api#21", reason: "acme/api#12 waits for acme/api#21, in another Spec, to close; a Stack never mixes Specs" },
     });
     expect(board.stackable).toBeUndefined();

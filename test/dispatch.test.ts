@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { FakeWorld } from "./fake-world";
+import { repoSections } from "../src/app/board";
 import { setup } from "./harness";
 
 async function withRepo(slug = "acme/api", path = "/src/api") {
@@ -354,69 +355,37 @@ describe("In flight on the Board", () => {
     );
   });
 
-  test("the web Board lists In-flight issues and not under Ready", async () => {
+  test("the app's Board lists In-flight issues and not under Ready", async () => {
     const { cli, web, world } = await withRepo();
     world.addIssue("acme/api", { number: 7, title: "Add retries" });
     await cli("dispatch", "acme/api#7", ...FLAGS);
 
-    const { body } = await web("/");
-    expect(body).toContain('<p class="empty">No Ready issues.</p>');
-    expect(body).toContain(
-      [
-        '<section class="in-flight" hx-get="/in-flight" hx-trigger="every 5s" hx-swap="outerHTML">',
-        '<header><h2>In flight</h2><span class="count">1</span></header>',
-        '<ul class="flights">',
-        '<li class="flight">\n<div class="head"><input type="checkbox" class="pick" name="issue" value="acme/api#7" form="batch" autocomplete="off" id="pick-acme-api-7" hx-preserve="true" aria-label="Select acme/api#7"> <a class="title" href="https://github.com/acme/api/issues/7"><span class="num">api#7</span> Add retries</a><span class="stage implementing">Implementing</span></div>',
-        '<div class="meta"><span class="chip">claude · opus · high</span><span class="chip" title="Base"><svg class="icon" viewBox="0 0 12 12" aria-hidden="true"><circle cx="3" cy="2.5" r="1.5"/><circle cx="3" cy="9.5" r="1.5"/><circle cx="9" cy="3.5" r="1.5"/><path d="M3 4v4M9 5c0 2.5-6 1.5-6 3"/></svg>main</span><span class="chip" title="herdr workspace">w1</span><span class="agent working"><i></i>implementer working</span></div>',
-        '<div class="row-actions">',
-        '<form method="post" action="/close">',
-        '<input type="hidden" name="issue" value="acme/api#7">',
-        '<button>Close</button>',
-        '</form>',
-        "</div>",
-        "</li>",
-        "</ul>",
-        "</section>",
-      ].join("\n"),
-    );
+    const [section] = repoSections(JSON.parse((await web("/api/board")).body));
+    expect(section).toMatchObject({ empty: true, specsOfOne: [] });
+    expect(JSON.parse((await web("/api/board")).body).dispatches).toMatchObject([{ issue: "acme/api#7", stage: "Implementing", base: "main", workspace: "w1", implementer: "working" }]);
   });
 });
 
-describe("web dispatch", () => {
-  test("each Ready issue has a dispatch form offering the Harnesses, claude's models and their Efforts", async () => {
-    const { web, world } = await withRepo();
-    world.addIssue("acme/api", { number: 7, title: "Add retries" });
+describe("dispatch from the app", () => {
+  const post = (web: Awaited<ReturnType<typeof withRepo>>["web"], args: string[]) =>
+    web("/api/dispatch", { method: "POST", body: JSON.stringify({ args }) });
 
-    const { body } = await web("/");
-    expect(body).toContain('<form method="post" action="/dispatch" class="dispatch">');
-    expect(body).toContain('<input type="hidden" name="issue" value="acme/api#7">');
-    expect(body).toContain('<option selected>claude</option><option>codex</option><option>opencode2</option></select>');
-    expect(body).toContain(
-      '<option selected>fable</option><option>opus</option><option>sonnet</option><option>haiku</option></select>',
-    );
-    expect(body).toContain(
-      '<select name="effort"><option selected>low</option><option>medium</option><option>high</option><option>xhigh</option><option>max</option></select>',
-    );
-  });
-
-  test("posting the form dispatches the issue and redirects to the Board", async () => {
+  test("posting the form's arguments dispatches the issue", async () => {
     const { cli, web, world } = await withRepo();
     world.addIssue("acme/api", { number: 7 });
 
-    const form = new URLSearchParams({ issue: "acme/api#7", harness: "claude", model: "sonnet", effort: "max" });
-    const response = await web("/dispatch", { method: "POST", body: form });
-    expect(response.status).toBe(303);
+    const response = await post(web, ["acme/api#7", "--harness", "claude", "--model", "sonnet", "--effort", "max"]);
+    expect(response.status).toBe(200);
     expect(world.calls).toContain("herdr agent start impl-api-7 --kind claude --pane w1:p2 -- --model sonnet --effort max");
     expect((await cli("show", "acme/api#7", "--json")).json().implementer.model).toBe("sonnet");
   });
 
-  test("a failed dispatch from the web is an error page with the same help as the CLI", async () => {
+  test("a failed dispatch answers with the same error and help as the CLI", async () => {
     const { web, world } = await withRepo();
     world.addIssue("acme/api", { number: 7 });
-    const form = new URLSearchParams({ issue: "acme/api#7", harness: "claude", model: "gpt", effort: "max" });
-    const { status, body } = await web("/dispatch", { method: "POST", body: form });
+    const { status, body } = await post(web, ["acme/api#7", "--harness", "claude", "--model", "gpt", "--effort", "max"]);
     expect(status).toBe(400);
-    expect(body).toContain('<p class="error">unknown model `gpt` for claude</p>\n<p>Valid models for claude: fable, opus, sonnet, haiku</p>');
+    expect(JSON.parse(body)).toEqual({ error: "unknown model `gpt` for claude", help: ["Valid models for claude: fable, opus, sonnet, haiku"] });
     expect(world.calls).toEqual([]);
   });
 });
@@ -506,48 +475,25 @@ describe("resuming a failed Dispatch", () => {
   });
 });
 
-describe("web Retry", () => {
-  test("a failed Dispatch shows its Stage and error on the web Board, and Retry resumes it", async () => {
+describe("Retry in the app", () => {
+  test("a failed Dispatch shows its Stage and error on the Board, and Retry resumes it", async () => {
     const { web, world, cli } = await withRepo();
     world.addIssue("acme/api", { number: 7, title: "Add retries" });
     world.failHerdr("tab create", "workspace_not_found: no workspace w1");
+    const post = (args: string[]) => web("/api/dispatch", { method: "POST", body: JSON.stringify({ args }) });
 
-    const form = new URLSearchParams({ issue: "acme/api#7", harness: "claude", model: "opus", effort: "high" });
-    const failed = await web("/dispatch", { method: "POST", body: form });
-    expect(failed.status).toBe(502);
-    expect(failed.body).toContain('<p class="error">workspace_not_found: no workspace w1</p>');
-    expect(failed.body).toContain("<p>Run `nico-agent show acme/api#7` to see the Dispatch</p>");
+    const failed = await post(["acme/api#7", ...FLAGS]);
+    expect(failed.status).toBe(422);
+    expect(JSON.parse(failed.body)).toMatchObject({ error: "workspace_not_found: no workspace w1", help: expect.arrayContaining(["Run `nico-agent show acme/api#7` to see the Dispatch"]) });
 
-    const { body } = await web("/");
-    expect(body).toContain(
-      [
-        '<li class="flight">\n<div class="head"><input type="checkbox" class="pick" name="issue" value="acme/api#7" form="batch" autocomplete="off" id="pick-acme-api-7" hx-preserve="true" aria-label="Select acme/api#7"> <a class="title" href="https://github.com/acme/api/issues/7"><span class="num">api#7</span> Add retries</a><span class="stage failed">Failed at tab</span></div>',
-        '<div class="meta"><span class="chip">claude · opus · high</span><span class="chip" title="Base"><svg class="icon" viewBox="0 0 12 12" aria-hidden="true"><circle cx="3" cy="2.5" r="1.5"/><circle cx="3" cy="9.5" r="1.5"/><circle cx="9" cy="3.5" r="1.5"/><path d="M3 4v4M9 5c0 2.5-6 1.5-6 3"/></svg>main</span><span class="chip" title="herdr workspace">w1</span><span class="agent unknown"><i></i>implementer unknown</span></div>',
-        '<div class="notes"><p class="error">workspace_not_found: no workspace w1</p></div>',
-        '<div class="row-actions">',
-        '<form method="post" action="/close">',
-        '<input type="hidden" name="issue" value="acme/api#7">',
-        '<button>Close</button>',
-        '</form>',
-        '<form method="post" action="/dispatch" class="dispatch">',
-        '<input type="hidden" name="issue" value="acme/api#7">',
-        '<input type="hidden" name="harness" value="claude">',
-        '<input type="hidden" name="model" value="opus">',
-        '<input type="hidden" name="effort" value="high">',
-        "<button>Retry</button>",
-        "</form>",
-        "</div>",
-        "</li>",
-      ].join("\n"),
-    );
+    const [row] = JSON.parse((await web("/api/board")).body).dispatches;
+    expect(row).toMatchObject({ stage: "Failed at tab", failure: "workspace_not_found: no workspace w1", retry: ["dispatch", "acme/api#7", ...FLAGS] });
 
     world.clearFailures();
     world.calls.length = 0;
-    const retried = await web("/dispatch", { method: "POST", body: form });
-    expect(retried.status).toBe(303);
+    expect((await post(row.retry.slice(1))).status).toBe(200);
     expect(world.calls[0]).toStartWith("herdr tab create --workspace w1 ");
     expect((await cli("show", "acme/api#7", "--json")).json().stage).toBe("Implementing");
-    expect((await web("/")).body).toContain('<span class="stage implementing">Implementing</span>');
   });
 });
 

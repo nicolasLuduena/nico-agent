@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { dispatchTarget, launchArgs, launchChoice } from "../src/app/actions";
+import { repoSections } from "../src/app/board";
 import { setup } from "./harness";
 
 const FLAGS = ["--harness", "claude", "--model", "opus", "--effort", "high"];
@@ -28,7 +30,7 @@ describe("Stackable Linear issues", () => {
 
     const board = (await cli("board", "--json")).json();
     expect(board.stackable).toEqual([{
-      issue: "BLE-27", title: "Compare PDFs", repo: "bleentr/pdf-diff",
+      issue: "BLE-27", title: "Compare PDFs", repo: "bleentr/pdf-diff", url: "https://linear.app/bleentr/issue/BLE-27/title",
       blockers: [{ issue: "BLE-26", pr: "https://github.com/bleentr/pdf-diff/pull/16", base: "nico/ble-26-parse-pdfs" }],
     }]);
     expect(board.issues).toBeUndefined();
@@ -42,7 +44,7 @@ describe("Stackable Linear issues", () => {
 
     const board = (await cli("board", "--json")).json();
     expect(board.stackable).toEqual([{
-      issue: "BLE-27", title: "Compare PDFs", repo: "bleentr/web",
+      issue: "BLE-27", title: "Compare PDFs", repo: "bleentr/web", url: "https://linear.app/bleentr/issue/BLE-27/title",
       blockers: [{ issue: "BLE-26", pr: "https://github.com/bleentr/web/pull/16", base: "nico/ble-26-parse-pdfs" }],
     }]);
 
@@ -103,19 +105,19 @@ describe("Stackable Linear issues", () => {
     expect((await cli("dispatch", "BLE-27", ...FLAGS, "--base", "main", "--json")).json().error).toBe("BLE-27 is Stacked; its Base is the head branch of the PR it stacks on");
   });
 
-  test("the web lists a Stackable Linear row under its Repo, with Blocker choices, and dispatches it there", async () => {
+  test("the app lists a Stackable Linear row under its Repo, with Blocker choices, and dispatches it there", async () => {
     const { web, cli } = await stackable();
-    const { body } = await web("/");
-    expect(body).toContain("<h3>Stackable</h3>");
-    expect(body).toContain('<input type="hidden" name="repo" value="bleentr/pdf-diff">');
-    expect(body).toContain('value="BLE-26"');
+    const board = JSON.parse((await web("/api/board")).body);
+    expect(repoSections(board)[0]!.stackable.map((r) => r.key)).toEqual(["BLE-27"]);
+    const target = dispatchTarget(board, "BLE-27", "bleentr/pdf-diff")!;
+    expect(target.repo).toBe("bleentr/pdf-diff");
+    expect(target.base).toBeUndefined();
+    expect(target.stack!.map((o) => o.value)).toContain("BLE-26");
 
-    const changed = await web("/dispatch-form?issue=BLE-27&repo=bleentr/pdf-diff&harness=claude&model=sonnet&effort=high&stackOn=BLE-26");
-    expect(changed.body).toContain('<option value="BLE-26" selected>');
-    expect(changed.body).not.toContain('name="base"');
-
-    const form = new URLSearchParams({ issue: "BLE-27", repo: "bleentr/pdf-diff", harness: "claude", model: "opus", effort: "high", stackOn: "BLE-26" });
-    expect((await web("/dispatch", { method: "POST", body: form })).status).toBe(303);
+    const choice = launchChoice(JSON.parse((await web("/api/harnesses")).body), { harness: "claude", model: "opus", effort: "high" })!;
+    const args = launchArgs("dispatch", target, choice, { stackOn: "BLE-26" });
+    expect(args).toEqual(["BLE-27", ...FLAGS, "--repo", "bleentr/pdf-diff", "--stack-on", "BLE-26"]);
+    expect((await web("/api/dispatch", { method: "POST", body: JSON.stringify({ args }) })).status).toBe(200);
     expect((await cli("show", "BLE-27", "--json")).json().base).toBe("origin/nico/ble-26-parse-pdfs");
   });
 });

@@ -100,10 +100,4 @@ describe("web Board issue previews", () => {
     const notIssue = await preview(web, "https://example.com/elsewhere");
     expect(notIssue.status).toBe(400);
   });
-
-  test("the Board loads the hover script that asks for previews", async () => {
-    const { web } = setup();
-    const { body } = await web("/");
-    expect(body).toContain('fetch("/preview?url="');
-  });
 });

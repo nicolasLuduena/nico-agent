@@ -64,7 +64,7 @@ describe("MCP over HTTP at /mcp", () => {
 
     const reply = (await post(web, { jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "board", arguments: {} } })).json();
     const expected = (await cli("board", "--json")).stdout;
-    expect(JSON.parse(expected).issues).toEqual([{ issue: "acme/api#7", title: "Add retries", base: "main" }]);
+    expect(JSON.parse(expected).issues).toEqual([{ issue: "acme/api#7", title: "Add retries", repo: "acme/api", url: "https://github.com/acme/api/issues/7", base: "main" }]);
     expect(reply).toEqual({
       jsonrpc: "2.0", id: 2,
       result: { content: [{ type: "text", text: expected }], structuredContent: JSON.parse(expected), isError: false },

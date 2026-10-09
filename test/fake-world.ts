@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import type { Address, IssueDescription, LinearIssue, GitHubIssue, GitHubSubIssue, PullRequest, RequestHandler, World } from "../src/world";
+import type { Address, IssueDescription, LinearIssue, GitHubIssue, GitHubSubIssue, PullRequest, Pages, RequestHandler, World } from "../src/world";
 import { WorldError } from "../src/world";
 
 export class FakeWorld implements World {
@@ -107,7 +107,7 @@ export class FakeWorld implements World {
   failures = new Map<string, string>();
   calls: string[] = [];
   /** What the last `serve` call would be answering, for tests to send requests to. */
-  server: { address: Address; handler: RequestHandler } | null = null;
+  server: { address: Address; handler: RequestHandler; pages: Pages } | null = null;
   serveFailure: string | null = null;
   /** Default branch of each clone's origin; `main` when unset. */
   defaultBranches = new Map<string, string>();
@@ -432,22 +432,28 @@ export class FakeWorld implements World {
     this.notifications.push({ title, body });
   }
 
-  async serve(address: Address, handler: RequestHandler) {
+  async serve(address: Address, handler: RequestHandler, pages: Pages) {
     this.calls.push(`serve ${address.hostname}:${address.port}`);
     if (this.serveFailure) throw new WorldError(this.serveFailure);
-    this.server = { address, handler };
+    this.server = { address, handler, pages };
   }
 
-  /** Tasks `every` would repeat, run once each by `tick`. */
-  private repeated: (() => Promise<void>)[] = [];
+  /** Tasks `every` repeats, with the time since each last ran; `tick` runs the ones due. */
+  private repeated: { ms: number; task: () => Promise<void>; elapsed: number }[] = [];
 
-  every(_ms: number, task: () => Promise<void>) {
-    this.repeated.push(task);
+  every(ms: number, task: () => Promise<void>) {
+    this.repeated.push({ ms, task, elapsed: 0 });
   }
 
-  /** As if each repeated task's interval elapsed once. */
-  async tick() {
-    for (const task of this.repeated) await task();
+  /**
+   * Move the clock on by `ms` (the shortest repeated interval by default) and
+   * run each repeated task once per interval of it that elapsed.
+   */
+  async tick(ms = Math.min(...this.repeated.map((r) => r.ms))) {
+    this.clock = new Date(this.clock.getTime() + ms);
+    for (const repeated of this.repeated) {
+      for (repeated.elapsed += ms; repeated.elapsed >= repeated.ms; repeated.elapsed -= repeated.ms) await repeated.task();
+    }
   }
 
   /** This process's environment variables. */

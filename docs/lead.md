@@ -49,6 +49,13 @@ directory, not in the agent, so the new Lead picks it up where the old one
 left off. The same happens when the Lead's agent is gone from herdr (its
 workspace was closed by hand, say).
 
+The app at `serve`'s URL does the same from its Lead panel, beside the
+Board: the Lead's Agent state and launch, Start, Restart on another Harness,
+model or Effort, and Stop; the conversation, live, with a composer that posts
+`nico-agent say`; the Lead's questions as cards with their choices as buttons
+and a free-text answer (`say --answer`); and its Proposals as cards with
+Approve and Decline (`proposals approve|decline`), showing what approving did.
+
 If a step fails, `lead start` says which one; run it again to resume from
 there. `lead status` shows the failure in the meantime.
 
@@ -141,6 +148,14 @@ restarting `nico-agent serve`.
 
 `write` is the one order nico-agent cannot check: the Lead writes to a Source
 with its own shell, so that order is a rule of the Lead's skill.
+
+## What the Lead does with them
+
+The `lead` skill (`src/lead-skill.md`) sets the Lead's judgment within its
+orders: which candidate Spec takes a Repo's room (the Intent, then the Queue
+head, then the smallest that unblocks the most), when it acts and when it
+proposes, what it answers an Asking Implementer itself, when it Closes, and
+that Held Specs are yours to clear.
 
 ## The Lead's tools
 

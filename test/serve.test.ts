@@ -1,5 +1,8 @@
-import { describe, expect, test } from "bun:test";
-import { setup } from "./harness";
+import { mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
+import { ADVANCE_INTERVAL_MS as TEN_MINUTES } from "../src/advance";
+import { events, setup } from "./harness";
 
 describe("serve", () => {
   test("serves the web Board on 127.0.0.1:42069", async () => {
@@ -21,9 +24,11 @@ describe("serve", () => {
       ].join("\n"),
     );
     expect(world.calls).toContain("serve 127.0.0.1:42069");
+    // `/` is the app's page, bundled by Bun; the build smoke test serves it.
+    expect(Object.keys(world.server!.pages)).toEqual(["/"]);
 
-    const response = await world.server!.handler(new Request("http://127.0.0.1:42069/"));
-    expect(await response.text()).toContain('<a class="title" href="https://github.com/acme/api/issues/7"><span class="num">#7</span> Add retries</a>');
+    const response = await world.server!.handler(new Request("http://127.0.0.1:42069/api/board"));
+    expect((await response.json()).issues).toMatchObject([{ issue: "acme/api#7", title: "Add retries" }]);
 
     const mcp = await world.server!.handler(
       new Request("http://127.0.0.1:42069/mcp", { method: "POST", body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "board" } }) }),
@@ -59,5 +64,95 @@ describe("serve", () => {
     expect(stdout).toBe(
       ["error: port 42069 is already in use", "help[1]:", "  Run `nico-agent serve --port <port>` with a free port", ""].join("\n"),
     );
+  });
+});
+
+const LAUNCH = { harness: "claude", model: "opus", effort: "high" };
+const NUDGE = "herdr agent prompt lead Read your Inbox";
+
+function nudges(calls: string[]) {
+  return calls.filter((c) => c === NUDGE);
+}
+
+describe("serve ticks", () => {
+  let log: string[];
+  let spy: ReturnType<typeof spyOn>;
+  beforeEach(() => {
+    log = [];
+    spy = spyOn(console, "error").mockImplementation((...args: unknown[]) => void log.push(args.map(String).join(" ")));
+  });
+  afterEach(() => spy.mockRestore());
+
+  /** `serve` up, with an idle Lead started and the calls so far forgotten. */
+  async function serving() {
+    const ctx = setup();
+    mkdirSync(ctx.configDir, { recursive: true });
+    writeFileSync(join(ctx.configDir, "config.json"), JSON.stringify({ repos: [], lead: LAUNCH, scheduler: LAUNCH }));
+    expect((await ctx.cli("lead", "start")).exitCode).toBe(0);
+    ctx.world.agentStates.set("lead", "idle");
+    expect((await ctx.cli("serve")).exitCode).toBe(0);
+    ctx.world.calls.length = 0;
+    return ctx;
+  }
+
+  test("every 10 minutes serve runs advance, which Nudges the Lead once, and logs its report", async () => {
+    const { world } = await serving();
+    await world.tick(TEN_MINUTES - 10_000);
+    expect(nudges(world.calls)).toEqual([]);
+    expect(log).toEqual([]);
+
+    await world.tick(10_000);
+    expect(nudges(world.calls)).toEqual([NUDGE]);
+    expect(log).toEqual(["advance: specs: []"]);
+
+    world.agentStates.set("lead", "idle");
+    await world.tick(TEN_MINUTES);
+    expect(nudges(world.calls)).toEqual([NUDGE, NUDGE]);
+    expect(log).toEqual(["advance: specs: []", "advance: specs: []"]);
+  });
+
+  test("each tick tells the app the Board may have changed", async () => {
+    const { world } = await serving();
+    const stream = await events(world.server!.handler);
+    await world.tick(10_000);
+    expect(await stream.next()).toEqual({ event: "board-changed", data: "{}" });
+    expect(await stream.next(50)).toBeNull();
+
+    await world.tick(TEN_MINUTES - 10_000);
+    // One per Nudge tick, and one more for the advance tick.
+    const sent = [];
+    for (let event = await stream.next(50); event; event = await stream.next(50)) sent.push(event.event);
+    expect(sent).toEqual(Array(TEN_MINUTES / 10_000).fill("board-changed"));
+    await stream.close();
+  });
+
+  test("a tick while another advance holds the lock skips with its warning, and the next tick runs", async () => {
+    const { configDir, world } = await serving();
+    writeFileSync(join(configDir, "advance.lock"), "777");
+    await world.tick(TEN_MINUTES);
+    expect(nudges(world.calls)).toEqual([]);
+    expect(log).toEqual(["advance: specs: []\nwarnings[1]: another advance is running (pid 777); left it to finish"]);
+
+    unlinkSync(join(configDir, "advance.lock"));
+    await world.tick(TEN_MINUTES);
+    expect(nudges(world.calls)).toEqual([NUDGE]);
+    expect(log[1]).toBe("advance: specs: []");
+  });
+
+  test("a tick that throws is logged, and serve keeps ticking", async () => {
+    const { configDir, world } = await serving();
+    const config = join(configDir, "config.json");
+    const good = readFileSync(config, "utf8");
+    writeFileSync(config, "{ not json");
+    await world.tick(TEN_MINUTES);
+    expect(log).toHaveLength(1);
+    expect(log[0]).toStartWith("advance failed: ");
+
+    writeFileSync(config, good);
+    world.agentStates.set("lead", "idle");
+    world.calls.length = 0;
+    await world.tick(TEN_MINUTES);
+    expect(nudges(world.calls)).toEqual([NUDGE]);
+    expect(log[1]).toBe("advance: specs: []");
   });
 });
