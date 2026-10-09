@@ -1,6 +1,8 @@
 import { useState } from "react";
+import type { HarnessesJson, LaunchAction } from "./actions";
 import { type BoardJson, agentClass, stageClass } from "./board";
-import { type DispatchLine, type RepoRow, repoRows } from "./repo-rows";
+import { Actions, CloseButton, IssueOutcome, LaunchForm, useBoardActions } from "./forms";
+import { type DispatchLine, type IssueLine, type RepoRow, repoRows } from "./repo-rows";
 
 /** Where the expanded Repos are remembered, in this browser only. */
 const EXPANDED_KEY = "nico-agent.repos.expanded";
@@ -31,24 +33,30 @@ function useExpanded() {
 /**
  * The Repos pane: a row per configured Repo of `board` (null until it loads),
  * each summarising its work while collapsed and, expanded, listing its
- * In-flight Dispatches, its Held Specs and what starts next. A Board that
- * could not be read says why in the notices.
+ * In-flight Dispatches, its Held Specs, what starts next and its Ready and
+ * Stackable issues, with the Board's actions: dispatch, launch a review and
+ * Close. An action's failure shows under its issue; what it did shows once
+ * `serve` says the Board changed. A Board that could not be read says why in
+ * the notices.
  */
-export function ReposPane({ board }: { board: BoardJson | null }) {
+export function ReposPane({ board, harnesses, reloadHarnesses }: { board: BoardJson | null; harnesses: HarnessesJson | null; reloadHarnesses: () => void }) {
   const { expanded, toggle } = useExpanded();
+  const actions = useBoardActions(board ?? {}, harnesses, reloadHarnesses);
   const rows = board && !board.error ? repoRows(board) : null;
   return (
-    <section className="side repos" aria-labelledby="side-title">
-      <h1 id="side-title">Repos</h1>
-      {!board && <p className="loading">Reading the Repos…</p>}
-      {board?.error && <p className="error">The Repos could not be read.</p>}
-      {rows?.length === 0 && <p className="lede">No Repos yet. Run <code>nico-agent repo add</code> to add one.</p>}
-      {rows && rows.length > 0 && (
-        <ul className="repo-rows">
-          {rows.map((r) => <RepoItem key={r.repo} row={r} open={expanded.has(r.repo)} toggle={() => toggle(r.repo)} />)}
-        </ul>
-      )}
-    </section>
+    <Actions.Provider value={actions}>
+      <section className="side repos" aria-labelledby="side-title">
+        <h1 id="side-title">Repos</h1>
+        {!board && <p className="loading">Reading the Repos…</p>}
+        {board?.error && <p className="error">The Repos could not be read.</p>}
+        {rows?.length === 0 && <p className="lede">No Repos yet. Run <code>nico-agent repo add</code> to add one.</p>}
+        {rows && rows.length > 0 && (
+          <ul className="repo-rows">
+            {rows.map((r) => <RepoItem key={r.repo} row={r} open={expanded.has(r.repo)} toggle={() => toggle(r.repo)} />)}
+          </ul>
+        )}
+      </section>
+    </Actions.Provider>
   );
 }
 
@@ -86,6 +94,11 @@ function RepoItem({ row: r, open, toggle }: { row: RepoRow; open: boolean; toggl
               </ul>
             </Group>
           )}
+          {r.issues.length > 0 && (
+            <Group title="To dispatch">
+              <ul className="dispatchable">{r.issues.map((i) => <Dispatchable key={i.target.issue} line={i} />)}</ul>
+            </Group>
+          )}
           {r.queue.length > 0 && (
             <Group title="Queue">
               <ol className="queue" aria-label={`Queue of ${r.repo}`}>
@@ -108,6 +121,7 @@ function Summary({ row: r }: { row: RepoRow }) {
       {inFlight > 0 && <span>{`${inFlight} In flight`}</span>}
       {asking > 0 && <span className="asking">{`${asking} Asking`}</span>}
       {held > 0 && <span className="held-count">{held === 1 ? "Held" : `${held} Held`}</span>}
+      {r.issues.length > 0 && <span>{`${r.issues.length} to dispatch`}</span>}
       {r.empty && <span>Idle</span>}
     </span>
   );
@@ -118,6 +132,7 @@ function Group({ title, children }: { title: string; children: React.ReactNode }
 }
 
 function Dispatch({ line: d }: { line: DispatchLine }) {
+  const [open, setOpen] = useState(false);
   return (
     <li>
       <IssueLink {...d} />
@@ -127,7 +142,40 @@ function Dispatch({ line: d }: { line: DispatchLine }) {
         {d.pr && <PrLink {...d.pr} />}
       </div>
       {d.question && <pre className="question">{d.question}</pre>}
+      <div className="row-actions">
+        {d.review && <Toggle action="review" issue={d.issue} open={open} setOpen={setOpen} />}
+        <CloseButton issue={d.issue} confirm={d.confirmClose} />
+      </div>
+      {open && <LaunchForm action="review" target={{ issue: d.issue }} onDone={() => setOpen(false)} />}
+      <IssueOutcome issue={d.issue} />
     </li>
+  );
+}
+
+/** A Ready or Stackable issue, with its dispatch form a click away. */
+function Dispatchable({ line: i }: { line: IssueLine }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <li>
+      <IssueLink {...i} />
+      <div className="facts">
+        {i.kind === "stackable" && <span className="kind">Stackable</span>}
+        <Toggle action="dispatch" issue={i.target.issue} open={open} setOpen={setOpen} />
+      </div>
+      {open && <LaunchForm action="dispatch" target={i.target} onDone={() => setOpen(false)} />}
+      <IssueOutcome issue={i.target.issue} />
+    </li>
+  );
+}
+
+const TOGGLES: Record<LaunchAction, string> = { dispatch: "Dispatch…", review: "Launch review…" };
+
+/** Opens and closes an issue's launch form. */
+function Toggle({ action, issue, open, setOpen }: { action: LaunchAction; issue: string; open: boolean; setOpen: (open: boolean) => void }) {
+  return (
+    <button type="button" className="quiet" aria-expanded={open} aria-label={`${open ? "Cancel" : TOGGLES[action].slice(0, -1)} ${issue}`} onClick={() => setOpen(!open)}>
+      {open ? "Cancel" : TOGGLES[action]}
+    </button>
   );
 }
 

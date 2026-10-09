@@ -1,5 +1,6 @@
 import { sameSlug } from "../slug";
 import { sameSpec } from "../spec";
+import { type DispatchTarget, canReview, dispatchTarget } from "./actions";
 import { type BoardJson, prOf, repoKey, repoSections } from "./board";
 
 /** An issue or Spec as a row names it: its key, labelled within the Repo, its title and its link. */
@@ -18,6 +19,16 @@ export interface DispatchLine extends Named {
   pr?: { url: string; number: number };
   /** What an Asking Implementer's screen shows, or why it could not be read. */
   question?: string;
+  /** A Reviewer can be launched: its PR is linked and none was started. */
+  review: boolean;
+  /** Close asks first: it has no PR yet, so it is still Implementing. */
+  confirmClose: boolean;
+}
+
+/** A Ready or Stackable issue, with what its dispatch form offers. */
+export interface IssueLine extends Named {
+  kind: "ready" | "stackable";
+  target: DispatchTarget;
 }
 
 /** A Held Spec and why `advance` holds it. */
@@ -49,7 +60,9 @@ export interface RepoRow {
   next: NextLine[];
   /** Its Queue, head first. */
   queue: QueuedLine[];
-  /** It loaded and has nothing In flight, Held or to start. */
+  /** Its Ready and Stackable issues, to dispatch. */
+  issues: IssueLine[];
+  /** It loaded and has nothing In flight, Held, to start or to dispatch. */
   empty: boolean;
 }
 
@@ -67,13 +80,15 @@ export function repoRows(board: BoardJson): RepoRow[] {
       return { label: repoKey(key, repo), title: title ?? issue?.title ?? key, url: url ?? issue?.url ?? "" };
     };
 
-    const dispatches = mine(board.dispatches).map((d): DispatchLine => {
+    const flights = mine(board.dispatches);
+    const dispatches = flights.map((d): DispatchLine => {
       const asking = d.implementer === ASKING ? board.asking?.find((a) => a.issue === d.issue) : undefined;
       const question = asking && (asking.error ? `Could not read its screen: ${asking.error}` : asking.question);
       return {
         issue: d.issue, ...named(d.issue, d.title, d.url), stage: d.stage, agent: d.implementer,
         ...(d.pr && { pr: prOf(d.pr) }),
         ...(question && { question }),
+        review: canReview(d), confirmClose: !d.pr,
       };
     });
     const held = specs.flatMap((s): HeldLine[] => (s.held ? [{ spec: s.spec, ...named(s.spec, s.title, s.url), reason: s.held.reason }] : []));
@@ -84,7 +99,12 @@ export function repoRows(board: BoardJson): RepoRow[] {
       const spec = specs.find((s) => sameSpec(s.spec, key));
       return { spec: key, ...named(key, spec?.title, spec?.url) };
     });
-    const nothing = !dispatches.length && !held.length && !next.length && !queue.length;
+    const dispatchable = (kind: IssueLine["kind"], items: { issue: string; title: string; url: string }[]) => items.flatMap((i): IssueLine[] => {
+      const target = !flights.some((d) => sameSlug(d.issue, i.issue)) && dispatchTarget(board, i.issue, repo);
+      return target ? [{ kind, ...named(i.issue, i.title, i.url), target }] : [];
+    });
+    const ready = [...dispatchable("ready", mine(board.issues)), ...dispatchable("stackable", mine(board.stackable))];
+    const nothing = !dispatches.length && !held.length && !next.length && !queue.length && !ready.length;
     // A rate-limited read is one Board warning, not each Repo's error; a Repo it left with nothing was not read, not Idle.
     const errors = !failed.length && nothing && board.warning ? [`Could not load: ${board.warning}`] : failed;
     return {
@@ -95,6 +115,7 @@ export function repoRows(board: BoardJson): RepoRow[] {
       held,
       next,
       queue,
+      issues: ready,
       empty: !errors.length && nothing,
     };
   });

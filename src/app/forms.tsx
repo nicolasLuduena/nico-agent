@@ -3,7 +3,7 @@ import {
   type BatchPlan, type Chosen, type DispatchTarget, type HarnessesJson, type LaunchAction, type LaunchChoice, type Outcome,
   advanceReport, baseOf, batchPlan, closePlan, launchArgs, launchChoice, outcomeOf, stackOnOf,
 } from "./actions";
-import type { BoardJson, InFlightDispatch, QueueStatus } from "./board";
+import type { BoardJson, QueueStatus } from "./board";
 
 /**
  * What the Board's forms share, kept by the App so a refetched Board keeps it:
@@ -28,6 +28,23 @@ export const Actions = createContext<BoardActions | null>(null);
 
 export function useActions() {
   return useContext(Actions)!;
+}
+
+/** The Board's forms' shared state for `board`, as `Actions` provides it; it outlives each refetched Board. */
+export function useBoardActions(board: BoardJson, harnesses: HarnessesJson | null, reloadHarnesses: () => void): BoardActions {
+  const [chosen, setChosen] = useState<Record<string, Chosen>>({});
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [outcomes, setOutcomes] = useState<Record<string, Outcome>>({});
+  return {
+    board, harnesses, chosen, picked, outcomes, reloadHarnesses,
+    choose: (key, patch) => setChosen((was) => ({ ...was, [key]: { ...was[key], ...patch } })),
+    pick: (issues, on) => setPicked((was) => {
+      const next = new Set(was);
+      for (const issue of issues) if (on) next.add(issue); else next.delete(issue);
+      return next;
+    }),
+    report: (key, outcome) => setOutcomes(({ [key]: _, ...rest }) => (outcome ? { ...rest, [key]: outcome } : rest)),
+  };
 }
 
 const BUTTONS: Record<LaunchAction, string> = { dispatch: "Dispatch", review: "Launch review" };
@@ -139,8 +156,8 @@ function useChosen(action: LaunchAction, issue: string) {
 
 const NO_HARNESS = <p className="empty">No Harness has models to launch with.</p>;
 
-/** An issue's dispatch or review form; its failure is shown under the issue. */
-export function LaunchForm({ action, target }: { action: LaunchAction; target: DispatchTarget }) {
+/** An issue's dispatch or review form; its failure is shown under the issue, and `onDone` is called once it launched. */
+export function LaunchForm({ action, target, onDone }: { action: LaunchAction; target: DispatchTarget; onDone?: () => void }) {
   const { harnesses } = useActions();
   const { chosen, choose } = useChosen(action, target.issue);
   const { busy, run } = useAction(target.issue);
@@ -150,7 +167,7 @@ export function LaunchForm({ action, target }: { action: LaunchAction; target: D
   return (
     <form className={`launch ${action}`} onSubmit={(e) => {
       e.preventDefault();
-      void run(`/api/${action}`, launchArgs(action, target, choice, chosen));
+      void run(`/api/${action}`, launchArgs(action, target, choice, chosen)).then((done) => { if (done) onDone?.(); });
     }}>
       <LaunchFields target={target} choice={choice} chosen={chosen} onChoose={choose} />
       <button disabled={busy}>{BUTTONS[action]}</button>
@@ -168,20 +185,20 @@ export function RetryButton({ issue, retry }: { issue: string; retry: string[] }
   return <button className={`retry ${command === "dispatch" ? "primary" : "review"}`} disabled={busy} onClick={() => void run(`/api/${command}`, args)}>Retry</button>;
 }
 
-/** Close an In-flight issue: straight away once it has a PR, else only after confirming, since it is still Implementing. */
-export function CloseButton({ dispatch: d }: { dispatch: InFlightDispatch }) {
-  const { busy, run } = useAction(d.issue);
+/** Close an In-flight issue: straight away once it has a PR, else only after confirming (`confirm`), since it is still Implementing. */
+export function CloseButton({ issue, confirm }: { issue: string; confirm: boolean }) {
+  const { busy, run } = useAction(issue);
   const [confirming, setConfirming] = useState(false);
   if (confirming) {
     return (
-      <span className="confirm" role="group" aria-label={`Close ${d.issue}`}>
+      <span className="confirm" role="group" aria-label={`Close ${issue}`}>
         <span>No PR yet. Close removes the worktree and workspace and forgets the Dispatch; the branch is kept.</span>
-        <button className="close" disabled={busy} onClick={() => void run("/api/close", [d.issue, "--confirm"]).then(() => setConfirming(false))}>Confirm close</button>
+        <button className="close" disabled={busy} onClick={() => void run("/api/close", [issue, "--confirm"]).then(() => setConfirming(false))}>Confirm close</button>
         <button onClick={() => setConfirming(false)}>Cancel</button>
       </span>
     );
   }
-  return <button className="close" disabled={busy} onClick={() => (d.pr ? void run("/api/close", [d.issue]) : setConfirming(true))}>Close</button>;
+  return <button className="close" disabled={busy} onClick={() => (confirm ? setConfirming(true) : void run("/api/close", [issue]))}>Close</button>;
 }
 
 /**

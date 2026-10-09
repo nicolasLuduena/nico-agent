@@ -48,7 +48,7 @@ function usePage(): Page {
  * cache (ADR-0011), so the page never asks GitHub more often than that.
  */
 function App() {
-  const { harnesses } = useHarnesses();
+  const { harnesses, reload: reloadHarnesses } = useHarnesses();
   const page = usePage();
   const { data: status = null } = useResource<LeadStatusJson>("/api/lead/status", ["lead-state"]);
   const { data: board = null } = useResource<BoardJson>("/api/board", ["board-changed"]);
@@ -81,7 +81,7 @@ function App() {
         <LeadPanel status={status} conversation={conversation} questions={questionsShown ? questions : null} board={board} />
         {page === "stats"
           ? <Side title="Stats" lede="Merged PRs and issues defined per day will show here, counted from what nico-agent has seen." />
-          : <ReposPane board={board} />}
+          : <ReposPane board={board} harnesses={harnesses} reloadHarnesses={reloadHarnesses} />}
       </main>
     </>
   );
