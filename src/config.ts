@@ -30,6 +30,32 @@ export interface Config {
   harnesses?: Record<string, Partial<HarnessConfig>>;
   /** The launch `advance` dispatches with, so no one chooses it at start time (ADR-0009). */
   scheduler?: Partial<SchedulerDefaults>;
+  /** The Standing orders the user set; unset ones take their default from ORDERS (ADR-0010). */
+  orders?: Partial<Orders>;
+}
+
+/** What the Lead may do without asking; each on or off. */
+export const ORDERS = {
+  start: { default: false, lets: "the Lead queue and start Specs (the Repo's room still caps it)" },
+  answer: { default: false, lets: "the Lead answer an Asking Implementer in its own words" },
+  review: { default: true, lets: "the Lead launch Reviewers" },
+  close: { default: true, lets: "the Lead Close Dispatches whose PR is ready" },
+  write: { default: false, lets: "the Lead write Specs and tickets to a Source" },
+} as const;
+
+export type Order = keyof typeof ORDERS;
+export type Orders = Record<Order, boolean>;
+
+export const ORDERS_HELP = `Standing orders: ${Object.keys(ORDERS).join(", ")}`;
+
+export function isOrder(name: string): name is Order {
+  return Object.hasOwn(ORDERS, name);
+}
+
+/** Every Standing order, the config's over the defaults; read from a fresh `loadConfig`, never cached. */
+export function standingOrders(config: Config): Orders {
+  const defaults = Object.fromEntries(Object.entries(ORDERS).map(([name, order]) => [name, order.default])) as Orders;
+  return { ...defaults, ...config.orders };
 }
 
 /** The Harness, model and Effort of every Dispatch `advance` starts. */
@@ -211,6 +237,7 @@ export function loadConfig(dir: string): Config {
   if (parsed.prompts !== undefined) config.prompts = checkPrompts(file, parsed.prompts);
   if (parsed.harnesses !== undefined) config.harnesses = checkHarnesses(file, parsed.harnesses);
   if (parsed.scheduler !== undefined) config.scheduler = checkScheduler(file, parsed.scheduler);
+  if (parsed.orders !== undefined) config.orders = checkOrders(file, parsed.orders);
   return config;
 }
 
@@ -253,6 +280,15 @@ function checkScheduler(file: string, scheduler: unknown): Partial<SchedulerDefa
     if (typeof value !== "string") throw new ConfigError(`${file}: scheduler.${key} is not a string`);
   }
   return scheduler as Partial<SchedulerDefaults>;
+}
+
+function checkOrders(file: string, orders: unknown): Partial<Orders> {
+  if (!isObject(orders)) throw new ConfigError(`${file}: orders is not an object`);
+  for (const [key, value] of Object.entries(orders)) {
+    if (!isOrder(key)) throw new ConfigError(`${file}: orders.${key} is not a Standing order`, ORDERS_HELP);
+    if (typeof value !== "boolean") throw new ConfigError(`${file}: orders.${key} is not true or false`);
+  }
+  return orders as Partial<Orders>;
 }
 
 function checkHarnesses(file: string, harnesses: unknown): Record<string, Partial<HarnessConfig>> {
