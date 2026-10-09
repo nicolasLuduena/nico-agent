@@ -81,6 +81,8 @@ li:not(:hover) form.launch select:not(:focus) { border-color: var(--rule); }
 /* The Lead panel beside the Board on a wide screen, above it on a narrow one. */
 .layout { display: grid; grid-template-columns: minmax(20rem, 26rem) minmax(0, 1fr); align-items: start; gap: 1.5rem; max-width: 104rem; margin: 0 auto; padding: 0 1.5rem 3rem; }
 main { min-width: 0; }
+/* With the Board view off, the Lead panel alone, centred. */
+.layout.chat-only { grid-template-columns: minmax(0, 48rem); justify-content: center; }
 .empty { margin: 0; padding: 0.9rem 1rem; color: var(--ink-muted); }
 .error { color: var(--failed-ink); }
 .warning { color: var(--implementing-ink); }
