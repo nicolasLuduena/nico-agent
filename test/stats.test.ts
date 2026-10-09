@@ -29,6 +29,7 @@ function onDay(stats: { series: Record<string, unknown>[] }, day: string) {
 describe("nico-agent stats", () => {
   test("counts an issue as defined on the day a Board read first saw it", async () => {
     const { cli, world } = await withRepo();
+    expect((await cli("board")).exitCode).toBe(0);
     world.addIssue("acme/api", { number: 7 });
     expect((await cli("board")).exitCode).toBe(0);
 
@@ -36,8 +37,37 @@ describe("nico-agent stats", () => {
     expect(onDay(stats, "2026-09-30")).toMatchObject({ defined: 1, repos: [{ repo: "acme/api", defined: 1 }] });
   });
 
+  test("the issues a Repo's first read finds were defined before, so they are not counted on that day", async () => {
+    const { cli, world } = await withRepo();
+    world.addIssue("acme/api", { number: 7 });
+    world.addIssue("acme/api", { number: 8 });
+    await cli("board");
+
+    const stats = (await cli("stats", "--json")).json();
+    expect(onDay(stats, "2026-09-30")).toMatchObject({ defined: 0 });
+    expect(stats.countedSince.defined).toBe("2026-09-30");
+  });
+
+  test("a Repo's Linear issues start counting from Linear's own first read", async () => {
+    const ctx = setup();
+    ctx.world.addClone("/src/pdf", "git@github.com:bleentr/pdf-diff.git");
+    await ctx.cli("repo", "add", "bleentr/pdf-diff", "--path", "/src/pdf", "--linear-team", "BLE");
+    ctx.world.linearFailure = "Linear is down";
+    await ctx.cli("board");
+    ctx.world.clock = new Date(ctx.world.clock.getTime() + DAY);
+    ctx.world.linearFailure = null;
+    ctx.world.addLinearIssue({ identifier: "BLE-1" });
+    await ctx.cli("board");
+    ctx.world.addLinearIssue({ identifier: "BLE-2" });
+    await ctx.cli("board");
+
+    const stats = (await ctx.cli("stats", "--json")).json();
+    expect(onDay(stats, "2026-10-01")).toMatchObject({ defined: 1 });
+  });
+
   test("counts each issue once, on its first day, across reads on later days", async () => {
     const { cli, world } = await withRepo();
+    await cli("board");
     world.addIssue("acme/api", { number: 7 });
     await cli("board");
     world.clock = new Date(world.clock.getTime() + 2 * DAY);
@@ -54,6 +84,7 @@ describe("nico-agent stats", () => {
 
   test("keeps the record across restarts: a new process counts the same issues once", async () => {
     const { cli, configDir, world } = await withRepo();
+    await cli("board");
     world.addIssue("acme/api", { number: 7 });
     await cli("board");
 
@@ -72,6 +103,7 @@ describe("nico-agent stats", () => {
     const { cli, configDir, world } = await withRepo();
     const config = JSON.parse(readFileSync(join(configDir, "config.json"), "utf8"));
     writeFileSync(join(configDir, "config.json"), JSON.stringify({ ...config, scheduler: { harness: "claude", model: "opus", effort: "high" } }));
+    expect((await cli("advance")).exitCode).toBe(0);
     world.addIssue("acme/api", { number: 7 });
     expect((await cli("advance")).exitCode).toBe(0);
 
@@ -84,7 +116,7 @@ describe("nico-agent stats", () => {
     await cli("board");
 
     const stats = (await cli("stats", "--json")).json();
-    expect(stats).toMatchObject({ from: "2026-09-01", to: "2026-09-30", days: 30, recordSince: { defined: "2026-09-30", merged: null } });
+    expect(stats).toMatchObject({ from: "2026-09-01", to: "2026-09-30", days: 30, countedSince: { defined: "2026-09-30", merged: null } });
     expect(stats.series).toHaveLength(30);
     expect(onDay(stats, "2026-09-29")).toEqual({ day: "2026-09-29", merged: null, defined: null, repos: [{ repo: "acme/api", merged: null, defined: null }] });
   });
@@ -101,7 +133,7 @@ describe("nico-agent stats", () => {
     await event(configDir, "https://github.com/acme/web/pull/4", "closed", "2026-09-28T12:00:00Z");
 
     const stats = (await cli("stats", "--json")).json();
-    expect(stats.recordSince.merged).toBe("2026-09-27");
+    expect(stats.countedSince.merged).toBe("2026-09-27");
     expect(onDay(stats, "2026-09-26")).toMatchObject({ merged: null });
     expect(onDay(stats, "2026-09-27")).toMatchObject({ merged: 0 });
     expect(onDay(stats, "2026-09-28")).toMatchObject({ merged: 2, repos: [{ repo: "acme/api", merged: 1 }, { repo: "acme/web", merged: 1 }] });
@@ -113,6 +145,7 @@ describe("nico-agent stats", () => {
     const { cli, configDir, world } = await withRepo();
     world.addClone("/src/web", "git@github.com:acme/web.git");
     await cli("repo", "add", "acme/web", "--path", "/src/web");
+    await cli("board");
     world.addIssue("acme/api", { number: 7 });
     world.addIssue("acme/web", { number: 1 });
     await cli("board");
@@ -136,6 +169,13 @@ describe("nico-agent stats", () => {
     }
   });
 
+  test("refuses a --repo that is neither configured nor counted before", async () => {
+    const { cli } = await withRepo();
+    const result = await cli("stats", "--repo", "acme/typo", "--json");
+    expect(result.exitCode).toBe(1);
+    expect(result.json()).toEqual({ error: "acme/typo is not a configured Repo, and nico-agent has counted nothing for it", help: ["Run `nico-agent repo list` to see the Repos"] });
+  });
+
   test("reads nothing from GitHub", async () => {
     const { cli, configDir, world } = await withRepo();
     world.addIssue("acme/api", { number: 7 });
@@ -151,6 +191,7 @@ describe("nico-agent stats", () => {
 describe("/api/stats", () => {
   test("is `stats --json`, narrowed by days and repo in the query", async () => {
     const { cli, configDir, web, world } = await withRepo();
+    await cli("board");
     world.addIssue("acme/api", { number: 7 });
     await cli("board");
     await event(configDir, "https://github.com/acme/api/pull/9", "merged", "2026-09-30T08:00:00Z");

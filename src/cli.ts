@@ -22,7 +22,7 @@ import { type Proposal, type Proposed, ProposalRefused, type SourceWrite, addPro
 import { dequeue, enqueue, loadQueues, move, pruneBoardQueues, queueOf } from "./queue";
 import { RECORDS, type RecordName, StaleRecord, noneYet, readRecord, replaceRecord } from "./records";
 import { isCandidate, sameSpec } from "./spec";
-import { recordSighting, stats } from "./stats";
+import { UnknownRepo, recordSighting, stats } from "./stats";
 import { VERSION } from "./version";
 import { sameSlug, slugOfRemote } from "./slug";
 import { cachingGitHubReads } from "./cached-world";
@@ -428,7 +428,10 @@ const commands: Command[] = [
     },
     positionals: [],
     examples: ["nico-agent stats", "nico-agent stats --days 7 --repo acme/api --json"],
-    help: ["A day before nico-agent saw any PR event, or before it first read a Repo's issues, is no data (null), not zero"],
+    help: [
+      "An issue is defined on the day the Board first lists it as Ready; those a Repo's first read finds were defined before, and are not counted",
+      "A day before nico-agent saw any PR event, or before it first read a Repo's issues, is no data (null), not zero; days are UTC",
+    ],
     run: statsCommand,
   },
   {
@@ -959,11 +962,17 @@ async function statsCommand(args: Args, ctx: RunContext): Promise<Output> {
     throw new CliError(`--days must be a whole number from 1 to 366 (got \`${daysFlag}\`)`, [`Usage: \`${STATS_USAGE}\``], 2);
   }
   const repoFlag = args.flags["--repo"];
-  if (repoFlag !== undefined && (typeof repoFlag !== "string" || !/^[\w.-]+\/[\w.-]+$/.test(repoFlag))) {
+  if (repoFlag !== undefined && (typeof repoFlag !== "string" || !isSlug(repoFlag))) {
     throw new CliError(`--repo must be an owner/name such as acme/api (got \`${repoFlag}\`)`, [`Usage: \`${STATS_USAGE}\``], 2);
   }
   const repos = loadConfig(ctx.configDir).repos.map((r) => r.slug);
-  const data = stats(ctx.configDir, loadConversation(ctx.configDir), { now: ctx.world.now(), days, repos, ...(repoFlag && { repo: repoFlag }) });
+  let data;
+  try {
+    data = stats(ctx.configDir, loadConversation(ctx.configDir), { now: ctx.world.now(), days, repos, ...(repoFlag && { repo: repoFlag }) });
+  } catch (e) {
+    if (e instanceof UnknownRepo) throw new CliError(e.message, ["Run `nico-agent repo list` to see the Repos"]);
+    throw e;
+  }
   const help = [
     repoFlag ? "Run `nico-agent stats` to count every Repo" : "Run `nico-agent stats --repo <owner/name>` to count one Repo",
     "Run `nico-agent stats --days <n>` to count another number of days",
@@ -1228,10 +1237,15 @@ function definedOnly(object: Record<string, unknown>) {
   return Object.fromEntries(Object.entries(object).filter(([, v]) => v !== undefined));
 }
 
+/** Whether `text` reads as a Repo's `owner/name`. */
+function isSlug(text: string) {
+  return /^[\w.-]+\/[\w.-]+$/.test(text);
+}
+
 function slugArg(args: Args, usage: string) {
   const slug = args.positionals[0];
   if (!slug) throw new CliError("<owner/name> is required", [`Usage: \`${usage}\``], 2);
-  if (!/^[\w.-]+\/[\w.-]+$/.test(slug)) {
+  if (!isSlug(slug)) {
     throw new CliError(`\`${slug}\` is not an owner/name slug`, [`Usage: \`${usage}\``], 2);
   }
   return slug;

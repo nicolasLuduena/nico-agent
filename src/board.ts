@@ -47,7 +47,7 @@ export interface Board {
   bases: Record<string, BaseChoice>;
   /** `git` errors are about listing origin's branches; the Repo's issues still loaded. */
   errors: { repo: string; error: string; source?: "Linear" | "git" }[];
-  /** The Repos whose issues loaded, and every issue their Sources listed, for the record of issues defined. */
+  /** Each Source whose issues loaded, with every issue it listed, for counting issues defined. */
   sighting: BoardSighting;
 }
 
@@ -107,10 +107,7 @@ export async function loadBoard(world: World, repos: Repo[], dispatches: Dispatc
     const { repo, title, url } = i;
     return pr ? [{ repo, title, url, ...(i.identifier ? { identifier: i.identifier } : { number: i.number! }), pr }] : [];
   });
-  const sighting: BoardSighting = {
-    repos: [...new Set(sources.map((s) => s.repo.slug))],
-    issues: sources.flatMap((s) => s.issues.map((issue) => ({ repo: s.repo.slug, issue: s.adapter.name(issue) }))),
-  };
+  const sighting: BoardSighting = sources.map((s) => ({ source: s.adapter.source ?? "GitHub", repo: s.repo.slug, issues: s.issues.map((i) => s.adapter.name(i)) }));
   return {
     ...ready, sighting, ready: ready.ready.filter((i) => !prOf(i)), stackable: ready.stackable.filter((i) => !prOf(i)), withPr,
     errors: [...ready.errors, ...errors], inFlight, specs,
