@@ -108,7 +108,10 @@ function App() {
   return (
     <>
       <header className="top">
-        <a className="brand" href="#/">nico-agent</a>
+        <a className="brand" href="#/" aria-label="nico-agent">
+          <svg className="brand-mark" viewBox="0 0 26 26" aria-hidden="true"><rect width="26" height="26" rx="8" /><path d="M8 8.5l4.5 4.5L8 17.5M14.5 17.5H19" /></svg>
+          <span className="word">nico-agent</span>
+        </a>
         <nav aria-label="Pages">
           {PAGES.map((p) => <a key={p.page} href={p.href} aria-current={page === p.page ? "page" : undefined}>{p.label}</a>)}
         </nav>

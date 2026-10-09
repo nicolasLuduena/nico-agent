@@ -17,13 +17,13 @@ User red lines: anything that feels unpolished or busy; sci-fi costume; external
 
 ## Direction contract
 
-THESIS: A polished, bold, clean app in the spirit of Apple's website, conversation first: the conversation with the Lead is the centre, the work a glance away.
+THESIS: A polished, bold, clean app in the spirit of Apple's website, light-first and in colour, conversation first: the conversation with the Lead fills most of the window, the work a glance away beside it.
 
-OWN-WORLD: Soft grey ground, panels with 22px corners, generous whitespace, the system face at a bold scale (32/24/17px, weights to 700), one accent (Apple blue) used sparingly for the primary action, focus, a switch on and what waits on the user, and one colour per Stage. Pill controls with weight. Motion that settles, never loops.
+OWN-WORLD: A cool, faintly blue ground with every neutral tinted toward it, white panels with 22px corners, generous whitespace, the system face at a bold scale (32/24/17px, weights to 700), one iris accent filling the primary action and marking focus, a switch on and what waits on the user, its soft tone for the user's words and the current page, and one colour per Stage worn as a tinted pill. Pill controls with weight. Motion that settles, never loops.
 
 STORY: The user writes or talks to the Lead as equals, sees its replies arrive without losing their place, answers its questions where they are, and glances right at the Repos.
 
-FIRST VIEWPORT: On a wide screen, the translucent header, then the Lead panel (the wider column) beside the right column's panel. At 900px and below, one column with the Lead panel first.
+FIRST VIEWPORT: On a wide screen, the translucent header, then the Lead panel (about 70% of a 1920px window) beside the right column's panel. At 900px and below, one column with the Lead panel first.
 
 FORM: An Apple-like two-column shell. Code-led.
 
