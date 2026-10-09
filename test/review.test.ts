@@ -266,13 +266,13 @@ describe("In flight on the CLI Board", () => {
   test("a herdr failure leaves the Agent states unknown, and a GitHub failure is reported with the row", async () => {
     const { cli, world } = await dispatched();
     world.failHerdr("agent list", "herdr is not running");
-    world.failCall("github linked prs", "GitHub rate limit exceeded; try again later");
+    world.failCall("github linked prs", "GitHub request failed; check your network and `gh auth status`");
     const { json, exitCode } = await cli("--json");
     expect(exitCode).toBe(0);
     const [row] = json().dispatches;
     expect(row.implementer).toBe("unknown");
     expect(row.stage).toBe("unknown");
-    expect(row.prError).toBe("GitHub rate limit exceeded; try again later");
+    expect(row.prError).toBe("GitHub request failed; check your network and `gh auth status`");
   });
 });
 
@@ -298,10 +298,10 @@ describe("In flight in the app", () => {
 
   test("a failed GitHub lookup is cached too, so an outage isn't asked every refetch", async () => {
     const { web, world } = await dispatched();
-    world.failCall("github linked prs", "GitHub rate limit exceeded; try again later");
-    expect((await boardOf(web)).dispatches[0].prError).toBe("GitHub rate limit exceeded; try again later");
+    world.failCall("github linked prs", "GitHub request failed; check your network and `gh auth status`");
+    expect((await boardOf(web)).dispatches[0].prError).toBe("GitHub request failed; check your network and `gh auth status`");
     world.clearFailures();
-    expect((await boardOf(web)).dispatches[0].prError).toBe("GitHub rate limit exceeded; try again later");
+    expect((await boardOf(web)).dispatches[0].prError).toBe("GitHub request failed; check your network and `gh auth status`");
     expect(world.calls.filter((c) => c.startsWith("github linked prs"))).toHaveLength(1);
   });
 

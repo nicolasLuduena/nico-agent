@@ -239,6 +239,16 @@ export const READY_LABEL = "ready-for-agent";
 /** A failure reported by an adapter, already stripped of tool noise. */
 export class WorldError extends Error {}
 
+/** GitHub refused a call for its rate limit, until `resumesAt`. */
+export class RateLimited extends WorldError {
+  constructor(readonly resumesAt: Date) {
+    super(`${RATE_LIMITED}; nico-agent asks it again at ${resumesAt.toISOString()}`);
+  }
+}
+
+/** How every rate-limit message starts, so a report can tell them from other failures. */
+export const RATE_LIMITED = "GitHub rate limit exceeded";
+
 /** The message of an adapter failure; anything else is a bug and propagates. */
 export function worldErrorMessage(e: unknown) {
   if (e instanceof WorldError) return e.message;

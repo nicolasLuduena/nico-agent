@@ -117,7 +117,7 @@ export class FakeWorld implements World {
   }
   clones = new Map<string, string[]>();
   issues = new Map<string, GitHubIssue[]>();
-  failures = new Map<string, string>();
+  failures = new Map<string, string | WorldError>();
   calls: string[] = [];
   /** What the last `serve` call would be answering, for tests to send requests to. */
   server: { address: Address; handler: RequestHandler; pages: Pages; sockets: Sockets } | null = null;
@@ -221,9 +221,9 @@ export class FakeWorld implements World {
     this.serveFailure = message;
   }
 
-  /** Make the next calls to `githubIssues(slug)` fail with `message`. */
-  failGitHub(slug: string, message: string) {
-    this.failures.set(slug, message);
+  /** Make the next calls to `githubIssues(slug)` fail with `message`, or with `error` itself. */
+  failGitHub(slug: string, failure: string | WorldError) {
+    this.failures.set(slug, failure);
   }
 
   /** Make the herdr `command` (e.g. `agent start`) fail with `message`. */
@@ -283,7 +283,7 @@ export class FakeWorld implements World {
   async githubIssues(slug: string) {
     this.calls.push(`github issues ${slug}`);
     const failure = this.failures.get(slug);
-    if (failure) throw new WorldError(failure);
+    if (failure) throw failure instanceof WorldError ? failure : new WorldError(failure);
     // Like the adapter, only open `ready-for-agent` issues: a Spec is found through its sub-issues.
     return (this.issues.get(slug) ?? []).filter((i) => i.state === "open" && i.labels.includes("ready-for-agent"));
   }
