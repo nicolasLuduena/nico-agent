@@ -1,47 +1,49 @@
 ---
 name: nico-agent
-description: A localhost app, polished and sure of itself in the spirit of Apple's website: the Lead panel with the conversation on the left, the Repos on the right, in a designed Light theme (the default) and a designed Dark one.
+description: A localhost app, polished and sure of itself in the spirit of Apple's website, in iris on a cool blue-tinted ground: the Lead panel with the conversation filling most of the window, the Repos beside it, in a designed Light theme (the default) and a designed Dark one.
 colors:
-  ground: "#f5f5f7"
+  ground: "#eff2fd"
   surface: "#ffffff"
-  raised: "#f5f5f7"
-  fill: "#e8e8ed"
-  fill-hover: "#dcdce1"
-  rule: "#d2d2d7"
-  edge: "#86868b"
-  ink: "#1d1d1f"
-  ink-muted: "#5e5e63"
-  accent: "#0071e3"
-  accent-hover: "#0062c4"
+  raised: "#f3f5fe"
+  fill: "#e5eaf9"
+  fill-hover: "#d8dff4"
+  rule: "#dbdfec"
+  edge: "#787f99"
+  ink: "#131728"
+  ink-muted: "#555d75"
+  accent: "#2e58e2"
+  accent-hover: "#2145cf"
   accent-ink: "#ffffff"
-  link: "#0066cc"
-  focus: "#0071e3"
-  implementing: "#a04800"
-  pr-ready: "#16723a"
-  review-launched: "#5856d6"
-  failed: "#bf0011"
-  unknown: "#5e5e63"
-  blocked: "#b4009e"
+  accent-soft: "#dae8ff"
+  link: "#2d54d3"
+  focus: "#2e58e2"
+  implementing: "#a44200"
+  pr-ready: "#037138"
+  review-launched: "#7a38bf"
+  failed: "#c21725"
+  unknown: "#555d75"
+  blocked: "#bf008a"
   blocked-ink: "#ffffff"
-  ground-dark: "#000000"
-  surface-dark: "#1c1c1e"
-  raised-dark: "#2c2c2e"
-  fill-dark: "#3a3a3c"
-  fill-hover-dark: "#444446"
-  rule-dark: "#38383a"
-  edge-dark: "#8e8e93"
-  ink-dark: "#f5f5f7"
-  ink-muted-dark: "#b4b4b9"
-  accent-dark: "#0071e3"
-  link-dark: "#4aa8ff"
-  focus-dark: "#4aa8ff"
-  implementing-dark: "#ff9f0a"
-  pr-ready-dark: "#30d158"
-  review-launched-dark: "#a09eff"
-  failed-dark: "#ff8a84"
-  unknown-dark: "#b4b4b9"
-  blocked-dark: "#ff6fd8"
-  blocked-ink-dark: "#1d1d1f"
+  ground-dark: "#070a13"
+  surface-dark: "#131722"
+  raised-dark: "#1e2231"
+  fill-dark: "#282d3d"
+  fill-hover-dark: "#33384b"
+  rule-dark: "#292d3b"
+  edge-dark: "#81889f"
+  ink-dark: "#f1f3f9"
+  ink-muted-dark: "#aeb4c7"
+  accent-dark: "#2e58e2"
+  accent-soft-dark: "#213261"
+  link-dark: "#83b0ff"
+  focus-dark: "#83b0ff"
+  implementing-dark: "#f9a63e"
+  pr-ready-dark: "#52d982"
+  review-launched-dark: "#c29afb"
+  failed-dark: "#ff7d7c"
+  unknown-dark: "#aeb4c7"
+  blocked-dark: "#fe75c9"
+  blocked-ink-dark: "#111524"
 typography:
   display:
     fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif"
@@ -122,6 +124,10 @@ components:
     textColor: "{colors.accent-ink}"
     rounded: "{rounded.pill}"
     height: "36px"
+  bubble-user:
+    backgroundColor: "{colors.accent-soft}"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.xl}"
   button-primary-hover:
     backgroundColor: "{colors.accent-hover}"
   button-quiet:
@@ -151,15 +157,15 @@ components:
 
 **Creative North Star: "A Confident Desk"**
 
-The app is where the user talks to the Lead all day. It should feel finished and sure of itself, in the spirit of Apple's website: quiet surfaces carrying a few decisive moments. The surfaces stay calm (a soft grey ground, white panels, generous space, the system face) and the type does the talking: large, heavy titles with tight tracking, the Lead's words set larger than everything around them, and numbers you can read from across a desk. One accent, used sparingly, marks what to press and what waits on the user.
+The app is where the user talks to the Lead all day. It should feel finished and sure of itself, in the spirit of Apple's website: calm surfaces carrying a few decisive moments, in colour rather than grey. Every neutral carries the accent's hue, so the ground reads as a cool, faintly blue daylight and the panels as white paper on it; the type does the talking: large, heavy titles with tight tracking, the Lead's words set larger than everything around them, and numbers you can read from across a desk. One accent, iris, fills what to press and marks what waits on the user; its soft tone carries the user's own words and where they are; each Stage, and an agent waiting, wears its own hue as a tinted pill.
 
-The page is a shell of two columns under a translucent header. The Lead panel, holding the conversation with the Lead, takes the left and wider column; the right column belongs to the page: the Repos on the Lead page, the charts on the Stats page. Each column is one rounded panel on the ground, as tall as it needs and no taller (the Lead panel fills the window).
+The page is a shell of two columns under a translucent header. The Lead panel, holding the conversation with the Lead, takes most of the window; the right column belongs to the page: the Repos on the Lead page, the charts on the Stats page. Each column is one rounded panel on the ground, as tall as it needs and no taller (the Lead panel fills the window).
 
 **Key Characteristics:**
-- Soft grey ground, panels with large (22px) corners, no borders around them.
+- A cool, blue-tinted ground, white panels with large (22px) corners, no borders around them; every grey is tinted toward the accent.
 - A bold type scale on the system face: 32px/700 titles, 24px/700 for the Lead, 17px for the Lead's words, 14px/600 controls. Steps are obvious; weight carries hierarchy.
-- One accent, Apple blue, only for the primary action, focus, a switch turned on, the talk button while it records, and what waits on the user. Links in running text are its text form; issue titles and quiet buttons are ink.
-- One colour per Stage, used only to name that Stage.
+- One accent, iris, filling only the primary action, a switch turned on, the talk button while it records, and marking focus and what waits on the user. Its text form names the Lead and carries links; its soft tone is the user's bubble and the current page. Issue titles and quiet buttons are ink.
+- One colour per Stage, used only to name that Stage, as its text on a pill tinted with it.
 - Two designed themes, Light (the default) and Dark, chosen in the header (Light, Dark or System); both pass WCAG AA.
 - Pill-shaped controls with weight; disabled controls go flat grey, never pastel.
 - Motion that settles: arrivals ease out on an exponential curve; nothing loops.
@@ -168,42 +174,43 @@ The page is a shell of two columns under a translucent header. The Lead panel, h
 
 The header's theme toggle sets `data-theme="light"` or `"dark"` on the page's root; System shows whichever the system prefers and follows it as it changes. Light is the default. The choice is remembered in the browser (`nico-agent.theme`), and a small script in `index.html`'s head sets the theme before the first paint, so a reload never flashes the wrong one.
 
-The two themes are designed, not derived. Light is white panels on a pale grey ground, with waiting cards on the ground's tone and toasts white, lifted by their shadow. Dark is near-black panels (#1c1c1e) on true black, with waiting cards, toasts and popovers lifted to #2c2c2e so they read as raised objects, not holes. Stage hues, links and errors take lighter values in Dark. The accent fill stays the same blue in both because white on it reads at 4.7:1; the focus ring and links use a lighter blue in Dark.
+The two themes are designed, not derived. Light is white panels on a pale, blue-tinted ground (#eff2fd), with waiting cards on the raised tone and toasts white, lifted by a shadow tinted with the ink's navy. Dark is midnight navy panels (#131722) on a near-black navy ground (#070a13), with waiting cards, toasts and popovers lifted to #1e2231 so they read as raised objects, not holes. Stage hues, links and errors take lighter values in Dark, and tinted pills and tiles take more of their hue (16% against Light's 11%) so they still read on the dark surface. The accent fill stays the same iris in both because white on it reads at 5.8:1; the focus ring and links use a lighter iris in Dark, and the soft tone darkens to a deep indigo (#213261) under light ink.
 
 ## Colors
 
-A neutral grey palette, one blue accent, and five Stage hues. Light values are listed first; dark values carry `-dark`.
+Tinted neutrals (every one at the accent's hue, 272° in OKLCH), one iris accent with a soft tone, and five Stage hues. Light values are listed first; dark values carry `-dark`. A tinted pill or tile is its hue mixed into the surface at `--tint` (11% Light, 16% Dark).
 
 ### Primary
-- **Accent** (accent, hover accent-hover, text accent-ink): the one filled control of any group (Send, Approve, Save, Start, Send to the Lead), a switch turned on, the talk button while it records, the dot of a working agent, the ring of a card waiting on the user (a toast), the dot of an open question's or Proposal's line, the count of what waits, and the dot on a drawer tab with an unsaved edit. Disabled, a primary button goes to the fill with muted ink.
-- **Link** (link): links in running text ("PR #111"), the "asks" and "Proposes" notes on a toast, and "Open" on a line in the conversation. It is the accent's text form.
-- **Focus** (focus): the focus ring and a focused field's border. The accent in Light, the link's lighter blue in Dark, so it reads at 3:1 on every surface.
+- **Accent** (accent, hover accent-hover, text accent-ink): the brand mark, the one filled control of any group (Send, Approve, Save, Start, Send to the Lead), a switch turned on, the talk button while it records, the dot of a working agent, the ring of a card waiting on the user (a toast), the dot and faint ring and tint of an open question's or Proposal's line, the count of what waits, and the dot on a drawer tab with an unsaved edit. Disabled, a primary button goes to the fill with muted ink.
+- **Accent soft** (accent-soft): the user's message bubble and the current page in the header. Ink, muted ink and link all read on it at 4.5:1.
+- **Link** (link): the accent's text form. Links in running text ("PR #111"), the Lead's name over its messages, the current page's name, the "asks" and "Proposes" notes on a toast, "Open" on a line in the conversation, the In flight total, and the Stats charts' bars.
+- **Focus** (focus): the focus ring and a focused field's border. The accent in Light, the link's lighter iris in Dark, so it reads at 3:1 on every surface.
 
 ### Stage hues
-One colour per Stage, so a Stage is recognisable wherever it appears. Each is used only for its Stage name and dot, never for anything else.
-- **Implementing** (implementing): orange. The notices' dots borrow it, being the hue of "in progress, look when you can".
+One colour per Stage, so a Stage is recognisable wherever it appears. Each is used only for its Stage: its name and dot on a pill tinted with it, never for anything else.
+- **Implementing** (implementing): orange. The notices borrow it, being the hue of "in progress, look when you can": their dots, and their strip, faintly tinted with it.
 - **PR ready** (pr-ready): green. Also the dot of a "done" agent.
-- **Review launched** (review-launched): indigo, kept apart from the accent's blue.
+- **Review launched** (review-launched): violet, kept apart from the accent's iris.
 - **Failed** (failed): red. Also error text, Held on a Repo, Close on hover, and the dot of a failed Proposal's line.
 - **Unknown** (unknown): grey, for a Stage nico-agent cannot read.
 
 ### Attention
-- **Agent blocked** (blocked / blocked-ink): magenta, the one filled badge, for an agent waiting on the user: Agent blocked, "1 Asking" on a Repo, the Asking total, and the tinted box around an Asking Implementer's question.
+- **Agent blocked** (blocked / blocked-ink): magenta, the one filled badge, for an agent waiting on the user: Agent blocked, "1 Asking" on a Repo, the Asking total and its tinted tile, and the tinted box around an Asking Implementer's question.
 
 ### Neutral
-- **Ground** (ground): the page behind the panels.
+- **Ground** (ground): the page behind the panels, a pale blue in Light and a near-black navy in Dark.
 - **Surface** (surface): the panels and text fields.
 - **Raised** (raised): what sits on a panel as an object: waiting cards, the Repos totals, the composer's field, the notices strip, and in Dark the popovers.
-- **Fill / Fill hover** (fill, fill-hover): default buttons, the selected page and tab, the theme toggle's track, the user's message bubble, chips.
+- **Fill / Fill hover** (fill, fill-hover): default buttons, the selected tab's track, the theme toggle's track, chips.
 - **Rule** (rule): hairlines between parts of a panel. Decorative only.
 - **Edge** (edge): the boundary of a control the user must find: text fields, the composer, the choice pills, the switch's off track. It reads at 3:1 on surface and raised.
 - **Ink / Ink muted** (ink, ink-muted): text and secondary text.
 
 ### Contrast
-Every text pair is checked against WCAG AA (4.5:1) in both themes: ink, muted ink, link and each Stage hue on surface, raised, fill and ground; muted ink and failed on fill hover (except failed on Dark's fill hover, which no control produces: a hovered Repo row uses the fill); white on the accent and its hover; blocked-ink on blocked. Control boundaries (edge), the focus ring and the accent as a graphic pass 3:1.
+Every text pair is checked against WCAG AA (4.5:1) in both themes: ink, muted ink, link and each Stage hue on surface, raised, fill and ground; each Stage hue and ink on its own tinted pill; ink, muted ink and each total's hue on its tinted tile; ink, muted ink and link on the accent's soft tone; muted ink and failed on fill hover (except failed on Dark's fill hover, which no control produces: a hovered Repo row uses the fill); white on the accent (5.8:1) and its hover; blocked-ink on blocked. Control boundaries (edge), the focus ring and the accent as a graphic pass 3:1.
 
 ### Named Rules
-**The One Accent Rule.** Blue is the only colour that asks to be pressed or looked at, and it fills only the primary action of its group; never two in one group. Issue titles, page links and quiet buttons are ink, so blue keeps its meaning.
+**The One Accent Rule.** Iris is the only colour that asks to be pressed or looked at, and it fills only the primary action of its group; never two in one group. Its soft tone marks where the user is and what they said, never an action. Issue titles, page links other than the current one, and quiet buttons are ink, so iris keeps its meaning.
 
 **The Stage Owns Its Hue Rule.** Orange, green, indigo, red and grey mean Implementing, PR ready, Review launched, Failed and unknown wherever a Stage is shown. Their only other uses are listed above.
 
@@ -230,16 +237,16 @@ Every text pair is checked against WCAG AA (4.5:1) in both themes: ink, muted in
 
 ## Layout
 
-- **Header:** 56px, sticky, translucent (the ground at 78% in Light, black at 72% in Dark, with a 20px blur and 180% saturation), a hairline under it. The brand, then the pages (**Lead**, **Stats**) as pill links, the current one on fill, then at the far end the Questions count, the theme toggle, and the Lead's button.
-- **Shell:** a grid of the Lead panel (the rest of the width) and the right column (20 to 30rem; 20 to 36rem on the Stats page, for a bar a day), 1.5rem apart and from the edges, at most 92rem wide, under the header. The Lead panel fills the window's height; the right column's panel is as tall as its content and scrolls within the window's height.
+- **Header:** 56px, sticky, translucent (the ground at 78% in Light, 72% in Dark, with a 20px blur and 180% saturation), a hairline under it. The brand (a 26px iris squircle with a drawn prompt, then the wordmark), then the pages (**Lead**, **Stats**) as pill links, the current one on the accent's soft tone in link iris, then at the far end the Questions count, the theme toggle, and the Lead's button.
+- **Shell:** a grid of the Lead panel (the rest of the width) and the right column (20 to 30rem; 20 to 36rem on the Stats page, for a bar a day), 1.5rem apart and from the edges, at most 150rem wide, under the header. On a 1920px window the Lead panel takes about 70% of it. The Lead panel fills the window's height; the right column's panel is as tall as its content and scrolls within the window's height.
 - **Lead panel:** a column of the bar (Lead, the Voice switch, Research, the drawer's button), the notices when there are any, the conversation (which scrolls) or the drawer, and the composer, which stays at the foot.
-- **Narrow window (900px and below):** one column, the Lead panel first and as tall as the window, then the right column. Under 560px the brand, the Lead panel's "Lead" and the word "Questions" hide (each keeps its accessible name), the Lead's button truncates, the talk button narrows to 5.5rem, and the Research box spans the panel less 1rem each side.
+- **Narrow window (900px and below):** one column, the Lead panel first and as tall as the window, then the right column. Under 560px the wordmark, the Lead panel's "Lead" and the word "Questions" hide (each keeps its accessible name; the brand's mark stays, at 24px), the Lead's button truncates, the talk button narrows to 5.5rem, and the Research box spans the panel less 1rem each side.
 - **Pages:** `#/` is the Lead page, `#/stats` the Stats page; the Lead panel and the toasts stay on both.
 - **Toasts:** fixed at the bottom right of every page, over the right column, 26rem wide at most (the window less 1rem each side under 560px).
 
 ## Elevation & Depth
 
-Flat by tone: panels sit on the ground, raised objects sit on panels one step lighter (Dark) or on the ground's grey (Light). The only shadows are on the toasts (a short lift, 0 4px 16px), on the boxes a button opens (the Lead menu and the Research box), a soft lift (0 12px 40px at 12%, plus a 2px contact shadow) that in Dark becomes a deeper shadow with a rule-coloured ring, and the small lift of the picked segment in the theme toggle and the drawer's tabs.
+Flat by tone: panels sit on the ground, raised objects sit on panels one step lighter (Dark) or on the raised tone (Light). Light's shadows are tinted with the ink's navy, never neutral black. The only shadows are on the toasts (a short lift, 0 4px 16px), on the boxes a button opens (the Lead menu and the Research box), a soft lift (0 12px 40px at 12%, plus a 2px contact shadow) that in Dark becomes a deeper shadow with a rule-coloured ring, and the small lift of the picked segment in the theme toggle and the drawer's tabs.
 
 ## Shapes
 
@@ -268,16 +275,17 @@ Short and settling. A new card or an expanded Repo arrives in 280ms with an 8px 
 - **Asking Implementer toasts:** after the Lead's, one per Asking Implementer: its issue in mono and "Implementer asks" (with its Spec) in magenta, the issue's title in 600, its screen in the mono box tinted and edged magenta that its Repo row shows (10rem tall at most), the screen's numbered choices as buttons ("1. Yes"), each sending its number, and a free-text answer. It is ringed 1.5px in magenta, like Agent blocked, not the accent. Sent, it leaves at once; refused (the Implementer stopped Asking), it stays with the CLI's message in failed red; once the Implementer stops Asking, whoever answered, it leaves.
 
 ### Repos pane
-The Lead page's right column: under its **Repos** title, the totals across every Repo (In flight, Asking, Held) as three raised tiles with 32px/700 numbers, muted at zero, Asking in magenta and Held in failed red when above it. Then a row per configured Repo in config order, divided by hairlines. A row is a full-width button, 56px tall: a chevron (turning a quarter while open), the Repo's name at 17px/600 after its owner in muted ink, and at its end the summary in 13px/600: "Manual" as an ink pill on fill for a manual Repo (the Scheduler starts nothing there, so the mark stays quiet, not a warning), "2 In flight", "1 Asking" as the magenta pill, "Held" in failed red, "Could not load" in failed red, "3 to dispatch", or "Idle". Clicking it, or Enter or Space on it, expands it in place, and which Repos are expanded is remembered in the browser across reloads. Expanded, it lists under 13px/600 muted group names (headings): **In flight**, each Dispatch's issue (its number in mono, its title in ink) with its Stage, its Implementer's Agent State and its PR link, then what the Implementer is doing as one muted 12px mono line, ellipsized: the last meaningful line of its screen, read from herdr every few seconds while the Repo is expanded and the page is shown, and nothing when it cannot be read; and an Asking Implementer's question in a mono box tinted and edged magenta; **Held**, each Held Spec with its reason; **Starts next**, each running Spec's next issue with the Spec it belongs to; **To dispatch**, its Ready and Stackable issues (a Stackable one marked so in muted text); and **Queue**, the Repo's Queue numbered in start order. The Board's actions sit on these rows: "Dispatch…" on an issue to dispatch, and on a Dispatch "Launch review…" once its PR is linked and no Reviewer was started, as quiet ink buttons, then Close as the default pill. Dispatch and Launch review open the launch form under the row, a raised box (Base or Stack on, Harness, model and Effort as selects, Base or Stack on labelled 13px/600 beside its own, then the submit as the group's one filled control); Close of a Dispatch with no PR yet first asks to confirm, in place. An action's failure shows under its issue with the CLI's message in failed red and its help in muted text; what it did shows once the Board is read again. A Repo whose read failed says why in failed red. The pane reads the Board on load and on every Board-changed event, through `serve`'s one-minute cache; a Board that cannot be read at all, or a rate-limited GitHub, shows in the notices.
+The Lead page's right column: under its **Repos** title, the totals across every Repo (In flight, Asking, Held) as three raised tiles with 32px/700 numbers, muted at zero; above it a tile takes its hue, as its number on the tile tinted with it: In flight in link iris, Asking in magenta, Held in failed red. Then a row per configured Repo in config order, divided by hairlines. A row is a full-width button, 56px tall: a chevron (turning a quarter while open), the Repo's name at 17px/600 after its owner in muted ink, and at its end the summary in 13px/600: "Manual" as an ink pill on fill for a manual Repo (the Scheduler starts nothing there, so the mark stays quiet, not a warning), "2 In flight", "1 Asking" as the magenta pill, "Held" in failed red, "Could not load" in failed red, "3 to dispatch", or "Idle". Clicking it, or Enter or Space on it, expands it in place, and which Repos are expanded is remembered in the browser across reloads. Expanded, it lists under 13px/600 muted group names (headings): **In flight**, each Dispatch's issue (its number in mono, its title in ink) with its Stage, its Implementer's Agent State and its PR link, then what the Implementer is doing as one muted 12px mono line, ellipsized: the last meaningful line of its screen, read from herdr every few seconds while the Repo is expanded and the page is shown, and nothing when it cannot be read; and an Asking Implementer's question in a mono box tinted and edged magenta; **Held**, each Held Spec with its reason; **Starts next**, each running Spec's next issue with the Spec it belongs to; **To dispatch**, its Ready and Stackable issues (a Stackable one marked so in muted text); and **Queue**, the Repo's Queue numbered in start order. The Board's actions sit on these rows: "Dispatch…" on an issue to dispatch, and on a Dispatch "Launch review…" once its PR is linked and no Reviewer was started, as quiet ink buttons, then Close as the default pill. Dispatch and Launch review open the launch form under the row, a raised box (Base or Stack on, Harness, model and Effort as selects, Base or Stack on labelled 13px/600 beside its own, then the submit as the group's one filled control); Close of a Dispatch with no PR yet first asks to confirm, in place. An action's failure shows under its issue with the CLI's message in failed red and its help in muted text; what it did shows once the Board is read again. A Repo whose read failed says why in failed red. The pane reads the Board on load and on every Board-changed event, through `serve`'s one-minute cache; a Board that cannot be read at all, or a rate-limited GitHub, shows in the notices.
 
 ### Stats charts
-The Stats page's right column: under its **Stats** title, the window as a segmented control (**7 days**, **30 days**, **90 days**: a fill track, the chosen one raised on it) and, with more than one Repo, a select of **All Repos** or one Repo in mono. Then two charts, **PRs merged** and **Issues defined**, each its title (15px/700) with the window's total in heading type (24px/700) on the right, and a bar a day over an edge-coloured baseline, the busiest day's count muted above the scale and the first and last days below, in 12px. A day's count is a muted-ink bar (ink while hovered, at most 1.75rem wide, at least 3px tall) as tall as its share of the busiest day; a day with none is a short 1px muted dash on the baseline, lower than any bar; a day with no data, before nico-agent was counting, is a column the full height hatched with fine muted lines, so it never reads as zero. Every day's bar carries its words ("Sep 29: 1 PR merged", "Sep 27: no data") as its tooltip and for a screen reader. Under the charts a muted line says the counts are the PRs and issues nico-agent has seen, not the Repos' full history, and since when, then a small key of the three kinds of day. The charts are `nico-agent stats --json`, read on load, on a new window or Repo (a Repo picked is counted by `--repo`), and on each conversation entry and Board change; neither the accent nor a Stage's colour is used: the charts are ink on the panel, in both themes.
+The Stats page's right column: under its **Stats** title, the window as a segmented control (**7 days**, **30 days**, **90 days**: a fill track, the chosen one raised on it) and, with more than one Repo, a select of **All Repos** or one Repo in mono. Then two charts, **PRs merged** and **Issues defined**, each its title (15px/700) with the window's total in heading type (24px/700) on the right, and a bar a day over an edge-coloured baseline, the busiest day's count muted above the scale and the first and last days below, in 12px. A day's count is a link-iris bar (ink while hovered, at most 1.75rem wide, at least 3px tall) as tall as its share of the busiest day; a day with none is a short 1px muted dash on the baseline, lower than any bar; a day with no data, before nico-agent was counting, is a column the full height hatched with fine muted lines, so it never reads as zero. Every day's bar carries its words ("Sep 29: 1 PR merged", "Sep 27: no data") as its tooltip and for a screen reader. Under the charts a muted line says the counts are the PRs and issues nico-agent has seen, not the Repos' full history, and since when, then a small key of the three kinds of day. The charts are `nico-agent stats --json`, read on load, on a new window or Repo (a Repo picked is counted by `--repo`), and on each conversation entry and Board change; the bars are the accent's text form, and no Stage's colour is used.
 
 ### Notices
-The one quiet place for warnings, under the Lead panel's bar: serve unreachable, the Board unreadable or GitHub rate limited, the Lead not running or failed (with where to start it), the Lead's launch warnings, and voice failing. A raised strip; each warning is a line of 14px/600 ink after an 8px orange dot, its help below it in muted 13px, aligned with the text. It shows only while something is wrong.
+The one quiet place for warnings, under the Lead panel's bar: serve unreachable, the Board unreadable or GitHub rate limited, the Lead not running or failed (with where to start it), the Lead's launch warnings, and voice failing. A strip faintly tinted with Implementing's orange (70% of `--tint`); each warning is a line of 14px/600 ink after an 8px orange dot, its help below it in muted 13px, aligned with the text. It shows only while something is wrong.
 
 ### Conversation
-- The Lead's messages sit on the surface, unboxed, left, at 17px; the user's are a fill bubble on the right at 16px. Each leads with its byline: who (700), the time, then a muted note ("sending…", "spoke", "corrects", "corrected below").
+- The conversation runs the Lead panel's width: each entry up to 62rem, the Lead's messages on the left and the user's on the right edge, so a big window is filled, not a centred strip.
+- The Lead's messages sit on the surface, unboxed, left, at 17px, under **Lead** in link iris; the user's are a bubble in the accent's soft tone on the right at 16px, at most 48rem or 80% of the panel. Each leads with its byline: who (700), the time, then a muted note ("sending…", "spoke", "corrects", "corrected below").
 - A spoken message shows the Scribe's text beside what was heard, under a "Heard" label, side by side while two 11rem columns fit.
 - A superseded message keeps its card, its text muted and struck through.
 - Empty, the conversation centres **Talk to the Lead** in display type over one line of help.
@@ -285,7 +293,7 @@ The one quiet place for warnings, under the Lead panel's bar: serve unreachable,
 
 ### Question and Proposal lines
 - In the conversation, in its place in time, a question or Proposal is one line: a 14px row ringed by a hairline (a pill; 16px corners where it wraps on a phone), an 8px dot, **Lead** asked or proposed, the time, then the question, or the Proposal's action as inline code and its reason, ellipsized, and at its end where it stands at 600.
-- **Open:** the dot in the accent and **Open** in link blue at 700. Clicking it expands the toasts and brings its toast forward, focused.
+- **Open:** the dot in the accent, the row faintly tinted with it and ringed in it at 40%, and **Open** in link iris at 700. Clicking it expands the toasts and brings its toast forward, focused.
 - **Decided:** a muted-ink dot; **You answered** and the answer (what was heard, when spoken and different), **Approved** and what the action did, **Declined** in muted ink with the reason in quotes, or **Failed** in red (its dot too) with why. Clicking it unfolds the line to everything it carries, wrapped, and folds it again.
 - A toast's question is set at 17px/600; its choices are surface pills with an edge, then a free-text field and Answer. A Proposal's toast names its action as inline code, or the Source write as a mono box, then the reason, then Approve (primary) and Decline, which opens an optional reason field.
 
@@ -302,7 +310,7 @@ At the Lead panel's foot, always. The text field (a raised pill, 54px tall, edge
 Apple's toggle: 40×24, a white 18px knob; off, the fill with a 1.5px edge ring (so it reads at 3:1); on, the accent.
 
 ### Stage and Agent State
-- **Stage:** its name at 13px/600 in its hue, after a 7px dot of the same hue.
+- **Stage:** its name at 13px/600 in its hue, after a 7px dot of the same hue, on a pill tinted with it.
 - **Agent State:** an 8px dot and "role state" in muted 13px text: filled accent with a soft halo while working, outlined while idle, filled green when done, dashed when unknown. Agent blocked is a magenta pill with its text in blocked-ink.
 
 ### Icons
@@ -316,14 +324,15 @@ Text selection is the accent at 28%; the caret is the accent; scrollbars are thi
 ### Do:
 - **Do** fill only each group's primary action with the accent, and keep issue titles and quiet buttons in ink.
 - **Do** let size and weight carry hierarchy: the display steps (32, 24, 17) are the system's strongest moves; use them for titles and the Lead's voice, not for decoration.
-- **Do** check every new colour in both themes: text at 4.5:1, control boundaries and focus at 3:1.
+- **Do** check every new colour in both themes: text at 4.5:1, control boundaries and focus at 3:1, including text on a tint.
+- **Do** keep every neutral on the accent's hue; a pure grey reads as a hole in this palette.
 - **Do** design each theme on its own terms; raise objects in Dark rather than sinking them.
 - **Do** keep the composer at the Lead panel's foot and leave the user's scroll alone while they read back.
 - **Do** put every warning in the notices, quiet and together.
 - **Do** gate every animation and transition behind `prefers-reduced-motion`.
 
 ### Don't:
-- **Don't** add a second accent, gradients (beyond the toasts' fade at their top as they scroll), glow or decorative illustration.
+- **Don't** add a second accent, gradients (beyond the toasts' fade at their top as they scroll), glow or decorative illustration. Colour comes from roles (the accent, its soft tone, the Stage and waiting hues as tints), not decoration.
 - **Don't** mark a card with a coloured stripe down one side; a toast is ringed all round.
 - **Don't** fade a disabled primary to a pastel of the accent.
 - **Don't** box things inside a panel with borders when space and a hairline will do.

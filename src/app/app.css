@@ -1,32 +1,38 @@
 /* DESIGN.md's tokens. The header's toggle sets data-theme on the root (index.html's head before the first paint); Light is the default. */
+/* Iris on a cool, faintly blue ground: every neutral carries the accent's hue, so the page reads as one colour, never as grey. */
 :root, :root[data-theme="light"] {
   color-scheme: light;
-  --ground: #f5f5f7; --surface: #ffffff; --raised: #f5f5f7; --fill: #e8e8ed; --fill-hover: #dcdce1;
-  --rule: #d2d2d7; --edge: #86868b; --ink: #1d1d1f; --ink-muted: #5e5e63;
-  --link: #0066cc; --focus: #0071e3; --picked: var(--surface); --popover: var(--surface);
-  --implementing: #a04800; --pr-ready: #16723a; --review-launched: #5856d6; --failed: #bf0011; --unknown: #5e5e63;
-  --blocked: #b4009e; --blocked-ink: #ffffff;
-  --veil: rgb(245 245 247 / 0.78);
-  --lift: 0 12px 40px rgb(0 0 0 / 0.12), 0 2px 6px rgb(0 0 0 / 0.06);
-  --toast-lift: 0 4px 16px rgb(0 0 0 / 0.12), 0 1px 3px rgb(0 0 0 / 0.08);
-  --knob: 0 1px 3px rgb(0 0 0 / 0.25);
+  --ground: #eff2fd; --surface: #ffffff; --raised: #f3f5fe; --fill: #e5eaf9; --fill-hover: #d8dff4;
+  --rule: #dbdfec; --edge: #787f99; --ink: #131728; --ink-muted: #555d75;
+  --link: #2d54d3; --focus: #2e58e2; --picked: var(--surface); --popover: var(--surface);
+  --accent-soft: #dae8ff;
+  --implementing: #a44200; --pr-ready: #037138; --review-launched: #7a38bf; --failed: #c21725; --unknown: #555d75;
+  --blocked: #bf008a; --blocked-ink: #ffffff;
+  /* How much of a hue a tinted pill or tile takes over the surface. */
+  --tint: 11%;
+  --veil: rgb(239 242 253 / 0.78);
+  --lift: 0 12px 40px rgb(19 23 60 / 0.14), 0 2px 6px rgb(19 23 60 / 0.06);
+  --toast-lift: 0 4px 16px rgb(19 23 60 / 0.14), 0 1px 3px rgb(19 23 60 / 0.08);
+  --knob: 0 1px 3px rgb(19 23 60 / 0.28);
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --ground: #000000; --surface: #1c1c1e; --raised: #2c2c2e; --fill: #3a3a3c; --fill-hover: #444446;
-  --rule: #38383a; --edge: #8e8e93; --ink: #f5f5f7; --ink-muted: #b4b4b9;
-  --link: #4aa8ff; --focus: #4aa8ff; --picked: var(--fill-hover); --popover: var(--raised);
-  --implementing: #ff9f0a; --pr-ready: #30d158; --review-launched: #a09eff; --failed: #ff8a84; --unknown: #b4b4b9;
-  --blocked: #ff6fd8; --blocked-ink: #1d1d1f;
-  --veil: rgb(0 0 0 / 0.72);
+  --ground: #070a13; --surface: #131722; --raised: #1e2231; --fill: #282d3d; --fill-hover: #33384b;
+  --rule: #292d3b; --edge: #81889f; --ink: #f1f3f9; --ink-muted: #aeb4c7;
+  --link: #83b0ff; --focus: #83b0ff; --picked: var(--fill-hover); --popover: var(--raised);
+  --accent-soft: #213261;
+  --implementing: #f9a63e; --pr-ready: #52d982; --review-launched: #c29afb; --failed: #ff7d7c; --unknown: #aeb4c7;
+  --blocked: #fe75c9; --blocked-ink: #111524;
+  --tint: 16%;
+  --veil: rgb(7 10 19 / 0.72);
   --lift: 0 12px 40px rgb(0 0 0 / 0.6), 0 0 0 1px var(--rule);
   --toast-lift: 0 4px 16px rgb(0 0 0 / 0.6);
   --knob: 0 1px 3px rgb(0 0 0 / 0.5);
 }
 :root {
-  /* The accent fill is the same blue in both themes: white on it reads at 4.7:1. */
-  --accent: #0071e3; --accent-hover: #0062c4; --accent-ink: #ffffff;
-  --pick-lift: 0 1px 3px rgb(0 0 0 / 0.14);
+  /* The accent fill is the same iris in both themes: white on it reads at 5.8:1. */
+  --accent: #2e58e2; --accent-hover: #2145cf; --accent-ink: #ffffff;
+  --pick-lift: 0 1px 3px rgb(19 23 60 / 0.16);
   --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
   --ease: cubic-bezier(0.25, 0.1, 0.25, 1);
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
@@ -104,12 +110,15 @@ label.switch:has(:checked) { color: var(--ink); }
   background: var(--veil); backdrop-filter: saturate(180%) blur(20px); -webkit-backdrop-filter: saturate(180%) blur(20px);
   border-bottom: 1px solid var(--rule);
 }
-.brand { font-size: 19px; font-weight: 700; color: var(--ink); letter-spacing: -0.03em; }
+.brand { display: inline-flex; align-items: center; gap: 0.55rem; font-size: 19px; font-weight: 700; color: var(--ink); letter-spacing: -0.03em; }
+.brand .mark { flex: none; width: 26px; height: 26px; }
+.brand .mark rect { fill: var(--accent); }
+.brand .mark path { fill: none; stroke: var(--accent-ink); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .brand:hover { text-decoration: none; }
 .top nav { display: flex; gap: 0.25rem; }
 .top nav a { font-size: 15px; font-weight: 600; color: var(--ink-muted); padding: 0.4rem 0.9rem; border-radius: var(--r-pill); transition: color 160ms var(--ease), background-color 160ms var(--ease); }
 .top nav a:hover { color: var(--ink); text-decoration: none; }
-.top nav a[aria-current="page"] { color: var(--ink); background: var(--fill); }
+.top nav a[aria-current="page"] { color: var(--link); background: var(--accent-soft); }
 
 .top-end { margin-left: auto; display: flex; align-items: center; gap: 0.6rem; }
 .lead-menu { position: relative; }
@@ -152,7 +161,10 @@ label.switch:has(:checked) { color: var(--ink); }
 .agent.blocked i { border-color: var(--blocked-ink); background: var(--blocked-ink); }
 
 /* A Stage in its own colour: a small dot before its name. */
-.stage { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 13px; font-weight: 600; color: var(--stage); }
+.stage {
+  display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.05rem 0.55rem; border-radius: var(--r-pill);
+  font-size: 13px; font-weight: 600; color: var(--stage); background: color-mix(in srgb, var(--stage) var(--tint), var(--surface));
+}
 .stage::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--stage); }
 .stage.implementing { --stage: var(--implementing); }
 .stage.pr-ready { --stage: var(--pr-ready); }
@@ -164,7 +176,7 @@ label.switch:has(:checked) { color: var(--ink); }
 /* The shell: the Lead panel on the left, the page's own column on the right, each a panel as tall as it needs. */
 .shell {
   display: grid; grid-template-columns: minmax(0, 1fr) minmax(20rem, 30rem); gap: 1.5rem; align-items: start;
-  max-width: 92rem; margin: 0 auto; padding: 1.5rem;
+  max-width: 150rem; margin: 0 auto; padding: 1.5rem;
   height: calc(100dvh - 56px);
 }
 .side { background: var(--surface); border-radius: var(--r-xl); padding: 1.75rem; display: grid; align-content: start; gap: 0.75rem; max-height: 100%; overflow: auto; }
@@ -194,7 +206,7 @@ label.switch:has(:checked) { color: var(--ink); }
   border-bottom: 1px solid var(--edge);
 }
 /* A count: a bar as tall as its share of the busiest day. */
-.bars li { justify-self: center; width: 100%; max-width: 1.75rem; height: calc(var(--height, 0) * 100%); min-height: 3px; border-radius: 3px 3px 0 0; background: var(--ink-muted); transition: background-color 160ms var(--ease); }
+.bars li { justify-self: center; width: 100%; max-width: 1.75rem; height: calc(var(--height, 0) * 100%); min-height: 3px; border-radius: 3px 3px 0 0; background: var(--link); transition: background-color 160ms var(--ease); }
 .bars li:hover { background: var(--ink); }
 /* None: a short dash on the baseline, lower than any bar. */
 .bars li.zero { width: 50%; height: 1px; min-height: 1px; border-radius: 0; background: var(--ink-muted); }
@@ -208,7 +220,7 @@ label.switch:has(:checked) { color: var(--ink); }
 .legend { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.35rem 1rem; font-size: 12px; color: var(--ink-muted); }
 .legend li { display: inline-flex; align-items: center; gap: 0.4rem; }
 .key { display: inline-block; width: 10px; height: 10px; border-radius: 2px; }
-.key.count { background: var(--ink-muted); }
+.key.count { background: var(--link); }
 .key.zero { width: 6px; height: 1px; background: var(--ink-muted); }
 
 /* The Repos pane: the totals at a glance, then a row per Repo, divided by hairlines, each expanding in place. */
@@ -217,9 +229,11 @@ label.switch:has(:checked) { color: var(--ink); }
 .totals > div { background: var(--raised); border-radius: var(--r-lg); padding: 0.75rem 0.9rem 0.8rem; display: flex; flex-direction: column-reverse; gap: 0.1rem; }
 .totals dt { font-size: 13px; font-weight: 600; color: var(--ink-muted); }
 .totals dd { margin: 0; font-size: 32px; font-weight: 700; line-height: 1.1; letter-spacing: -0.035em; color: var(--ink-muted); }
-.totals .some dd { color: var(--ink); }
-.totals .asking.some dd { color: var(--blocked); }
-.totals .held.some dd { color: var(--failed); }
+.totals .some { --hue: var(--link); background: color-mix(in srgb, var(--hue) var(--tint), var(--surface)); }
+.totals .some dd { color: var(--hue); }
+.totals .some dt { color: var(--ink); }
+.totals .asking.some { --hue: var(--blocked); }
+.totals .held.some { --hue: var(--failed); }
 .repo-rows { list-style: none; margin: 0 -0.6rem; padding: 0; }
 .repo-row + .repo-row { border-top: 1px solid var(--rule); }
 .repo-head {
@@ -286,7 +300,7 @@ label.switch:has(:checked) { color: var(--ink); }
 .research-box .lede { font-size: 13px; }
 
 /* The one quiet place for warnings: a neutral strip, each line marked with an orange dot. */
-.notices { display: grid; gap: 0.5rem; padding: 0.75rem 1.5rem; background: var(--raised); border-bottom: 1px solid var(--rule); font-size: 14px; }
+.notices { display: grid; gap: 0.5rem; padding: 0.75rem 1.5rem; background: color-mix(in srgb, var(--implementing) calc(var(--tint) * 0.7), var(--surface)); border-bottom: 1px solid var(--rule); font-size: 14px; }
 .notices p { position: relative; display: grid; padding-left: calc(8px + 0.65rem); font-weight: 600; }
 .notices p::before { content: ""; position: absolute; left: 0; top: 0.45rem; width: 8px; height: 8px; border-radius: 50%; background: var(--implementing); }
 .notices .help { font-size: 13px; font-weight: 400; }
@@ -294,7 +308,7 @@ label.switch:has(:checked) { color: var(--ink); }
 /* The conversation: the Lead's words set large on the surface, the user's in a bubble at the right. */
 .conversation { flex: 1; min-height: 0; overflow-y: auto; list-style: none; margin: 0; padding: 1.75rem 1.5rem; display: flex; flex-direction: column; gap: 1.5rem; overscroll-behavior: contain; }
 .conversation:focus-visible { outline-offset: -2px; border-radius: 0; }
-.conversation > li { max-width: 44rem; animation: arrive 280ms var(--ease-out); }
+.conversation > li { max-width: 62rem; animation: arrive 280ms var(--ease-out); }
 .conversation > li:focus { outline: 2px solid var(--focus); outline-offset: 4px; border-radius: var(--r-lg); }
 @keyframes arrive { from { opacity: 0; transform: translateY(8px); } }
 .conversation .empty { margin: auto; text-align: center; max-width: 34ch; display: grid; gap: 0.6rem; animation: none; }
@@ -303,9 +317,10 @@ label.switch:has(:checked) { color: var(--ink); }
 .byline { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; font-size: 13px; color: var(--ink-muted); margin-bottom: 0.3rem; }
 .byline b { color: var(--ink); font-weight: 700; }
 .byline .status { font-weight: 600; color: var(--ink); }
+.card-message.lead .byline b { color: var(--link); }
 .text { white-space: pre-wrap; overflow-wrap: anywhere; }
 .card-message.lead .text { font-size: 17px; line-height: 1.55; letter-spacing: -0.016em; }
-.card-message.user { align-self: flex-end; background: var(--fill); padding: 0.7rem 1rem 0.8rem; border-radius: var(--r-xl) var(--r-xl) var(--r-sm) var(--r-xl); }
+.card-message.user { align-self: flex-end; max-width: min(48rem, 80%); background: var(--accent-soft); padding: 0.7rem 1rem 0.8rem; border-radius: var(--r-xl) var(--r-xl) var(--r-sm) var(--r-xl); }
 .card-message.user .byline { justify-content: flex-end; }
 .card-message.sending .text { color: var(--ink-muted); }
 .card-message.superseded .text { color: var(--ink-muted); text-decoration: line-through; text-decoration-color: var(--edge); }
@@ -335,7 +350,7 @@ label.switch:has(:checked) { color: var(--ink); }
 .card-proposal .write { font-family: var(--mono); font-size: 13px; line-height: 1.55; white-space: pre-wrap; max-height: 16rem; overflow: auto; margin: 0; padding: 0.8rem 0.9rem; background: var(--surface); border-radius: var(--r-md); border: 1px solid var(--rule); }
 
 /* A question's or Proposal's line in the conversation: one quiet row, its dot in the accent while it waits on a toast. */
-.conversation > li.item-line { max-width: 44rem; width: 100%; }
+.conversation > li.item-line { max-width: 62rem; width: 100%; }
 .item-line button {
   all: unset; box-sizing: border-box; width: 100%; cursor: pointer; display: grid; grid-template-columns: auto auto auto minmax(0, 1fr) minmax(0, max-content); align-items: baseline; gap: 0.55rem;
   padding: 0.55rem 0.9rem; border-radius: var(--r-pill); font-size: 14px; color: var(--ink-muted); box-shadow: inset 0 0 0 1px var(--rule);
@@ -355,6 +370,8 @@ label.switch:has(:checked) { color: var(--ink); }
 .item-line .where .error { color: var(--failed); }
 .item-line .where .raw { font-size: 13px; white-space: nowrap; }
 .item-line.open .mark { background: var(--accent); }
+.item-line.open button { background: color-mix(in srgb, var(--accent) 6%, var(--surface)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent); }
+.item-line.open button:hover { background: color-mix(in srgb, var(--accent) 10%, var(--surface)); }
 .item-line.open .where b, .item-line.answering .where b { color: var(--link); font-weight: 700; }
 .item-line.declined .where b { color: var(--ink-muted); }
 .item-line.failed .mark { background: var(--failed); }
@@ -455,14 +472,15 @@ button:disabled, button:disabled:hover, .repo-group form.launch > button:disable
   .lead-button .agent { max-width: 9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
 @media (max-width: 560px) {
-  .brand { display: none; }
+  .brand .word { display: none; }
+  .brand .mark { width: 24px; height: 24px; }
   .top { gap: 0.25rem; padding: 0 0.6rem; }
   .top nav a { padding: 0.35rem 0.55rem; }
   .top-end { gap: 0.3rem; }
   .questions-count { padding: 0 0.35rem; }
   .segmented.theme-toggle button { width: 26px; }
   .lead-button { padding: 0 0.6rem; }
-  .lead-button .agent { max-width: 5.25rem; }
+  .lead-button .agent { max-width: 4.25rem; }
   /* The header's page already names the Lead; its controls need the bar's width. */
   .lead-bar h1, .questions-count .label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .lead-bar label.switch { margin-right: auto; }
