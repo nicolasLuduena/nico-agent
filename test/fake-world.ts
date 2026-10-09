@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import type { Address, IssueDescription, LinearIssue, GitHubIssue, GitHubSubIssue, PullRequest, Pages, RequestHandler, World } from "../src/world";
+import type { Address, IssueDescription, LinearIssue, GitHubIssue, GitHubSubIssue, PullRequest, Pages, RequestHandler, Sockets, World } from "../src/world";
 import { WorldError } from "../src/world";
 
 export class FakeWorld implements World {
@@ -107,7 +107,7 @@ export class FakeWorld implements World {
   failures = new Map<string, string>();
   calls: string[] = [];
   /** What the last `serve` call would be answering, for tests to send requests to. */
-  server: { address: Address; handler: RequestHandler; pages: Pages } | null = null;
+  server: { address: Address; handler: RequestHandler; pages: Pages; sockets: Sockets } | null = null;
   serveFailure: string | null = null;
   /** Default branch of each clone's origin; `main` when unset. */
   defaultBranches = new Map<string, string>();
@@ -432,10 +432,10 @@ export class FakeWorld implements World {
     this.notifications.push({ title, body });
   }
 
-  async serve(address: Address, handler: RequestHandler, pages: Pages) {
+  async serve(address: Address, handler: RequestHandler, pages: Pages, sockets: Sockets) {
     this.calls.push(`serve ${address.hostname}:${address.port}`);
     if (this.serveFailure) throw new WorldError(this.serveFailure);
-    this.server = { address, handler, pages };
+    this.server = { address, handler, pages, sockets };
   }
 
   /** Tasks `every` repeats, with the time since each last ran; `tick` runs the ones due. */

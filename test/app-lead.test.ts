@@ -144,6 +144,20 @@ describe("what the panel posts", () => {
     expect(declineArgs(3, "Finish billing first")).toEqual(["3", "--", "Finish billing first"]);
   });
 
+  test("a spoken message keeps what was heard, so the entry carries the raw transcript", () => {
+    expect(sayArgs("Dispatch acme/api#7", undefined, "dispatch acme api 7")).toEqual(["--raw", "dispatch acme api 7", "--", "Dispatch acme/api#7"]);
+  });
+
+  test("a spoken message shows as spoken, while sending and once in the conversation", async () => {
+    const { cli, loaded } = withLead();
+    const sending = reduce(EMPTY, { type: "send", key: "s1", text: "Hello", raw: "hello", at: NOW });
+    expect(cards(sending)).toMatchObject([{ kind: "message", key: "s1", text: "Hello", sending: true, spoken: true }]);
+    await cli("say", "--raw", "hello", "--", "Hello");
+    expect(cards(await loaded(reduce(sending, { type: "sent", key: "s1", id: 1 })))).toEqual([{ kind: "message", key: "entry-1", who: "user", text: "Hello", at: expect.any(String), spoken: true }]);
+    await cli("say", "Typed");
+    expect(cards(await loaded())[1]).not.toHaveProperty("spoken");
+  });
+
   test("a start names the Harness, model and Effort picked and the port the page was served from", () => {
     const choice = { harnesses: ["claude"], harness: "claude", models: ["opus"], model: "opus", efforts: ["high"], effort: "high" };
     expect(leadStartArgs(choice, "8080")).toEqual(["--harness", "claude", "--model", "opus", "--effort", "high", "--port", "8080"]);

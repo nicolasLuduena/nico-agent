@@ -127,7 +127,7 @@ describe("AXI conventions", () => {
         '  "nico-agent proposals [--all]","List the Lead\'s open Proposals: what each would run and why"',
         "  nico-agent proposals approve <id>,Run an open Proposal's action in nico-agent and report the outcome; one no longer possible is closed as failed",
         '  "nico-agent proposals decline <id> [reason]","Turn down an open Proposal, telling the Lead why"',
-        '  "nico-agent say [--answer <id>] <text>","Write to the Lead, or answer one of its open questions with --answer"',
+        '  "nico-agent say [--answer <id> | --raw <transcript>] <text>","Write to the Lead, or answer one of its open questions with --answer"',
         "  nico-agent lead inbox,\"Read the Lead's Inbox: the entries it has not seen, each returned once, with the orient packet (its MCP `inbox` tool)\"",
         "  nico-agent lead say <text>,Write the Lead's reply into the conversation (its MCP `say` tool)",
         '  "nico-agent lead ask <question> [<choice>...]","Ask the user a question for the Lead, with optional choices; it stays open until answered (its MCP `ask` tool)"',

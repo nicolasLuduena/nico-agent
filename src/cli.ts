@@ -22,7 +22,7 @@ import { sameSlug, slugOfRemote } from "./slug";
 import { type PrLookup, cachedPrs, currentStage, freshPrs, loadInFlight, stageOf } from "./stage";
 import { type Dispatch, findDispatch, loadDispatches } from "./state";
 import { probeVoice } from "./voice";
-import { lookAtLead, webHandler } from "./web";
+import { lookAtLead, webHandler, webSockets } from "./web";
 import { Events } from "./events";
 import app from "./app/index.html";
 import { type World, WorldError } from "./world";
@@ -52,7 +52,7 @@ const REVIEW_USAGE = "nico-agent review <issue>... --harness <harness> --model <
 const CLOSE_USAGE = "nico-agent close <issue>... [--confirm]";
 const ANSWER_USAGE = "nico-agent answer <issue> <text>";
 const ORDERS_SET_USAGE = "nico-agent orders set <order> on|off";
-const SAY_USAGE = "nico-agent say [--answer <id>] <text>";
+const SAY_USAGE = "nico-agent say [--answer <id> | --raw <transcript>] <text>";
 const LEAD_SAY_USAGE = "nico-agent lead say <text>";
 const LEAD_ASK_USAGE = "nico-agent lead ask <question> [<choice>...]";
 const RECALL_USAGE = "nico-agent lead recall <query> [--since <time>] [--until <time>]";
@@ -294,12 +294,16 @@ const commands: Command[] = [
     name: "say",
     usage: SAY_USAGE,
     summary: "Write to the Lead, or answer one of its open questions with --answer",
-    flags: { "--answer": { value: true, description: "id of the Lead's open question this answers (see `nico-agent lead log`)" } },
+    flags: {
+      "--answer": { value: true, description: "id of the Lead's open question this answers (see `nico-agent lead log`)" },
+      "--raw": { value: true, description: "what the transcription service heard, when the message was spoken; kept on the entry" },
+    },
     positionals: ["text..."],
     examples: [
       "nico-agent say \"Finish acme/api#12 before starting the billing Spec\"",
       "nico-agent say --answer 4 \"Yes, close it\"",
       "nico-agent say --json -- \"--force is fine here\"",
+      "nico-agent say --raw \"dispatch acme api twelve\" -- \"Dispatch acme/api#12\"",
     ],
     help: ["The Lead is Nudged to read its Inbox: now if it is idle, else by `nico-agent serve` once it is", LOG_HELP],
     run: sayCommand,
@@ -752,12 +756,13 @@ async function answerCommand(args: Args, ctx: RunContext): Promise<Output> {
 async function sayCommand(args: Args, ctx: RunContext): Promise<Output> {
   const text = args.positionals.join(" ");
   if (!text.trim()) throw new CliError("<text> is required", [`Usage: \`${SAY_USAGE}\``], 2);
-  const flag = args.flags["--answer"];
+  const { "--answer": flag, "--raw": raw } = args.flags;
   let data: Record<string, unknown>;
   if (typeof flag !== "string") {
-    const entry = await append(ctx.configDir, { type: "user", text }, ctx.world.now());
+    const entry = await append(ctx.configDir, { type: "user", text, ...(typeof raw === "string" && { raw }) }, ctx.world.now());
     data = { said: entry.id };
   } else {
+    if (raw !== undefined) throw new CliError("--raw is for a spoken message, not an answer", [`Usage: \`${SAY_USAGE}\``], 2);
     try {
       const answer = await answerQuestion(ctx.configDir, flag, text, ctx.world.now());
       data = { answered: answer.question, id: answer.id };
@@ -1184,7 +1189,8 @@ async function serve(args: Args, ctx: RunContext): Promise<Output> {
   const look = lookAtLead(ctx, events);
   try {
     const shared = { ...ctx, prs: ctx.prs ?? cachedPrs(ctx.world) };
-    await ctx.world.serve({ hostname: HOSTNAME, port }, webHandler({ ...ctx, events, look, runCli: (argv) => run(argv, shared) }), { "/": app });
+    const runCli = (argv: string[]) => run(argv, shared);
+    await ctx.world.serve({ hostname: HOSTNAME, port }, webHandler({ ...ctx, events, look, runCli }), { "/": app }, webSockets({ ...ctx, runCli }));
   } catch (e) {
     if (!(e instanceof WorldError)) throw e;
     throw new CliError(e.message, ["Run `nico-agent serve --port <port>` with a free port"]);

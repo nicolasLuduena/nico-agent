@@ -4,7 +4,8 @@ import { type PreviewLookup, cachedPreviews } from "./preview";
 import { type CliRunner, isToolCall, mcpHandler, withJson } from "./mcp";
 import { type EventName, Events } from "./events";
 import { leadStatus } from "./lead";
-import type { World } from "./world";
+import { transcriptionSession } from "./transcription";
+import type { Sockets, World } from "./world";
 
 export interface WebContext {
   world: World;
@@ -106,6 +107,20 @@ export function webHandler(context: WebContext) {
   };
 }
 
+/** What `serve` answers on WebSockets: the app's talk button streams audio to `/api/voice` and hears transcripts back. */
+export function webSockets(context: Pick<WebContext, "world" | "configDir" | "runCli">): Sockets {
+  const transcription = transcriptionSession(context);
+  return {
+    "/api/voice": (request) => (fromAnotherSite(request) ? apiError(403, "only the app itself can listen") : transcription),
+  };
+}
+
+/** Whether a browser says another site's page sent `request`: only the app's own page may act or listen. */
+function fromAnotherSite(request: Request) {
+  const site = request.headers.get("sec-fetch-site");
+  return Boolean(site && site !== "same-origin" && site !== "none");
+}
+
 /**
  * Whether a request may change the Board: any post, but on `/mcp` only a
  * tool call (an action tool, or a read the Board cannot tell apart cheaply).
@@ -155,9 +170,7 @@ async function postApi(ctx: WebContext, request: Request, pathname: string) {
     const read = pathname in API_READS || pathname === "/api/events";
     return apiError(read ? 405 : 404, read ? `${pathname} is read with GET` : `no action at ${pathname}`);
   }
-  // A browser says when another site's page sends the request; only the app's own page may act.
-  const site = request.headers.get("sec-fetch-site");
-  if (site && site !== "same-origin" && site !== "none") return apiError(403, "only the app itself can act");
+  if (fromAnotherSite(request)) return apiError(403, "only the app itself can act");
   const text = await request.text();
   // No body is no arguments; a body that is not a JSON object is refused.
   const body: unknown = text.trim() ? parseJson(text) : {};

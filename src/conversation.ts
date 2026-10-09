@@ -9,7 +9,8 @@ import { withFileLock, writeJsonAtomic } from "./state";
  * without changing the shape: an id, a type, a time.
  */
 export type Entry = { id: number; at: string } & (
-  | { type: "user"; text: string }
+  /** A message from the user; `raw` is what the transcription service heard when it was spoken. */
+  | { type: "user"; text: string; raw?: string }
   | { type: "lead"; text: string }
   /** A question from the Lead, open until an `answer` names it. */
   | { type: "ask"; text: string; choices?: string[] }
