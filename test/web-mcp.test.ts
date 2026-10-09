@@ -103,9 +103,11 @@ describe("MCP over HTTP at /mcp", () => {
     const malformed = await post(web, "{not json");
     expect(malformed.status).toBe(400);
     expect(malformed.json()).toEqual({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } });
-    const batch = await post(web, [{ jsonrpc: "2.0", id: 1, method: "ping" }]);
-    expect(batch.status).toBe(400);
-    expect(batch.json()).toEqual({ jsonrpc: "2.0", id: null, error: { code: -32600, message: "Invalid Request" } });
+    for (const message of [[{ jsonrpc: "2.0", id: 1, method: "ping" }], { jsonrpc: "2.0", id: 1 }, { jsonrpc: "2.0", id: {}, method: "ping" }]) {
+      const invalid = await post(web, message);
+      expect(invalid.status).toBe(400);
+      expect(invalid.json()).toEqual({ jsonrpc: "2.0", id: null, error: { code: -32600, message: "Invalid Request" } });
+    }
   });
 
   test("a method other than POST is refused, with no SSE stream offered", async () => {
@@ -134,5 +136,16 @@ describe("MCP over HTTP at /mcp", () => {
     expect(rebound.status).toBe(403);
     const local = await handler(new Request("http://localhost:42069/mcp", { method: "POST", body: JSON.stringify(ping) }));
     expect(local.status).toBe(200);
+  });
+
+  test("a request under an MCP-Protocol-Version it does not answer is a bad request", async () => {
+    const { web } = setup();
+    const ping = { jsonrpc: "2.0", id: 1, method: "ping" };
+    for (const revision of ["2025-11-25", "2025-06-18"]) {
+      expect((await post(web, ping, { "mcp-protocol-version": revision })).status).toBe(200);
+    }
+    const response = await post(web, ping, { "mcp-protocol-version": "2099-01-01" });
+    expect(response.status).toBe(400);
+    expect(response.json()).toEqual({ jsonrpc: "2.0", id: null, error: { code: -32000, message: "Bad Request: unsupported MCP-Protocol-Version 2099-01-01" } });
   });
 });

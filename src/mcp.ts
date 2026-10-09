@@ -41,23 +41,26 @@ class RpcError extends Error {
  */
 export function mcpHandler(runCli: CliRunner) {
   return async (request: Request): Promise<Response> => {
-    if (!fromLoopback(request)) return reply(null, { error: { code: -32000, message: "Forbidden: only a loopback origin may connect" } }, 403);
-    if (request.method !== "POST") {
-      return reply(null, { error: { code: -32000, message: "Method Not Allowed: POST JSON-RPC messages to /mcp" } }, 405, { allow: "POST" });
+    if (!fromLoopback(request)) return fail(-32000, "Forbidden: only a loopback origin may connect", 403);
+    if (request.method !== "POST") return fail(-32000, "Method Not Allowed: POST JSON-RPC messages to /mcp", 405, { allow: "POST" });
+    // Sent after initialize; the revisions answered are the ones initialize offers.
+    const revision = request.headers.get("mcp-protocol-version");
+    if (revision !== null && revision !== PROTOCOL_VERSION && !OLDER_VERSIONS.includes(revision)) {
+      return fail(-32000, `Bad Request: unsupported MCP-Protocol-Version ${revision}`, 400);
     }
     let message: unknown;
     try {
       message = JSON.parse(await request.text());
     } catch {
-      return reply(null, { error: { code: -32700, message: "Parse error" } }, 400);
+      return fail(-32700, "Parse error", 400);
     }
-    if (!isObject(message)) return reply(null, { error: { code: -32600, message: "Invalid Request" } }, 400);
+    if (!isObject(message)) return fail(-32600, "Invalid Request", 400);
     const { id, method, params } = message;
     // A notification or a client's response: accepted, nothing to answer.
-    if (typeof method !== "string" || id === undefined) return new Response(null, { status: 202 });
-    if (typeof id !== "string" && typeof id !== "number") return reply(null, { error: { code: -32600, message: "Invalid Request" } }, 400);
+    if (typeof method === "string" ? id === undefined : "result" in message || "error" in message) return new Response(null, { status: 202 });
+    if (typeof method !== "string" || (typeof id !== "string" && typeof id !== "number")) return fail(-32600, "Invalid Request", 400);
     try {
-      return reply(id, { result: await answer(runCli, method, params) });
+      return reply(id, { result: await respond(runCli, method, params) });
     } catch (e) {
       if (e instanceof RpcError) return reply(id, { error: { code: e.code, message: e.message } });
       return reply(id, { error: { code: -32603, message: e instanceof Error ? e.message : String(e) } });
@@ -81,7 +84,12 @@ function reply(id: Id, body: { result: unknown } | { error: { code: number; mess
   return new Response(JSON.stringify({ jsonrpc: "2.0", id, ...body }), { status, headers: { ...JSON_HEADERS, ...headers } });
 }
 
-async function answer(runCli: CliRunner, method: string, params: unknown) {
+/** A JSON-RPC error answering a message that could not be read as a request, so it has no id. */
+function fail(code: number, message: string, status: number, headers = {}) {
+  return reply(null, { error: { code, message } }, status, headers);
+}
+
+async function respond(runCli: CliRunner, method: string, params: unknown) {
   switch (method) {
     case "initialize":
       return initialize(params);

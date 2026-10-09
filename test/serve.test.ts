@@ -28,7 +28,7 @@ describe("serve", () => {
     const mcp = await world.server!.handler(
       new Request("http://127.0.0.1:42069/mcp", { method: "POST", body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "board" } }) }),
     );
-    expect(((await mcp.json()) as { result: { structuredContent: { issues: unknown } } }).result.structuredContent.issues).toMatchObject([{ issue: "acme/api#7" }]);
+    expect(JSON.parse(await mcp.text()).result.structuredContent.issues).toMatchObject([{ issue: "acme/api#7" }]);
   });
 
   test("--port overrides the port", async () => {
