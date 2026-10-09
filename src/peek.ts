@@ -1,6 +1,7 @@
 import { resolveIssue } from "./dispatch";
 import { DispatchError } from "./dispatch-error";
 import { LEAD_AGENT } from "./lead";
+import { meaningfulLine } from "./screen-line";
 import { findDispatch } from "./state";
 import type { World } from "./world";
 
@@ -11,6 +12,8 @@ export interface Peeked {
   agent: string;
   /** The visible text of its pane, trailing blank lines dropped. */
   screen: string;
+  /** Its last line that says what the agent is doing; unset when none does. */
+  line?: string;
 }
 
 /**
@@ -19,7 +22,7 @@ export interface Peeked {
  * not In flight, or a Reviewer that was never launched, is refused.
  */
 export async function peek(world: World, configDir: string, issue: string | undefined, reviewer: boolean): Promise<Peeked> {
-  if (issue === undefined) return { agent: LEAD_AGENT, screen: trimmed(await world.herdrAgentRead(LEAD_AGENT)) };
+  if (issue === undefined) return { agent: LEAD_AGENT, ...read(await world.herdrAgentRead(LEAD_AGENT)) };
   const { key } = resolveIssue(configDir, issue);
   const record = findDispatch(configDir, key);
   if (!record) {
@@ -35,9 +38,11 @@ export async function peek(world: World, configDir: string, issue: string | unde
     ]);
   }
   const { agent } = reviewer ? record.reviewer! : record.implementer;
-  return { issue: key, agent, screen: trimmed(await world.herdrAgentRead(agent)) };
+  return { issue: key, agent, ...read(await world.herdrAgentRead(agent)) };
 }
 
-function trimmed(screen: string) {
-  return screen.replace(/\s+$/, "");
+/** A screen as peeked: trailing blank lines dropped, and its meaningful line. */
+function read(screen: string) {
+  const line = meaningfulLine(screen);
+  return { screen: screen.replace(/\s+$/, ""), ...(line !== undefined && { line }) };
 }

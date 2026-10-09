@@ -34,6 +34,7 @@ describe("nico-agent peek", () => {
       issue: "acme/api#7",
       agent: "impl-api-7",
       screen: "$ bun test\n 3 pass\n 1 fail",
+      line: "1 fail",
       help: ["Run `nico-agent show acme/api#7` to see the Dispatch", "Run `nico-agent` to see the Board"],
     });
     expect(world.calls).toEqual(["herdr agent read impl-api-7 --source visible"]);
@@ -73,7 +74,7 @@ describe("nico-agent peek", () => {
     world.screens.set("lead", "Reading the Inbox");
     const result = await cli("peek", "--json");
     expect(result.exitCode).toBe(0);
-    expect(result.json()).toEqual({ agent: "lead", screen: "Reading the Inbox", help: ["Run `nico-agent lead status` to see the Lead"] });
+    expect(result.json()).toEqual({ agent: "lead", screen: "Reading the Inbox", line: "Reading the Inbox", help: ["Run `nico-agent lead status` to see the Lead"] });
   });
 
   test("a screen herdr cannot read is an error", async () => {

@@ -45,6 +45,29 @@ describe("/api/board", () => {
   });
 });
 
+describe("/api/peek", () => {
+  test("is an In-flight issue's Implementer screen and its last meaningful line, read from herdr alone", async () => {
+    const { cli, web, world } = await withIssue();
+    expect((await cli("dispatch", "acme/api#7", "--harness", "claude", "--model", "opus", "--effort", "high")).exitCode).toBe(0);
+    world.screens.set("impl-api-7", "⏺ Running the tests\n  3 pass\n\n╭───╮\n│ > │\n╰───╯\n");
+    world.calls.length = 0;
+
+    const { status, body } = await web(`/api/peek?issue=${encodeURIComponent("acme/api#7")}`);
+    expect(status).toBe(200);
+    expect(JSON.parse(body)).toMatchObject({ issue: "acme/api#7", agent: "impl-api-7", line: "3 pass" });
+    expect(world.calls).toEqual(["herdr agent read impl-api-7 --source visible"]);
+  });
+
+  test("a screen herdr cannot read is the CLI's error", async () => {
+    const { cli, web, world } = await withIssue();
+    await cli("dispatch", "acme/api#7", "--harness", "claude", "--model", "opus", "--effort", "high");
+    world.failHerdr("agent read", "herdr is not running");
+    const { status, body } = await web(`/api/peek?issue=${encodeURIComponent("acme/api#7")}`);
+    expect(status).toBe(422);
+    expect(JSON.parse(body).error).toContain("herdr is not running");
+  });
+});
+
 describe("/api/events", () => {
   test("sends board-changed after a Board action posted to the web app", async () => {
     const { handler, web } = await withIssue();

@@ -212,6 +212,7 @@ const API_READS: Record<string, string[]> = {
   "/api/orders": ["orders"],
   "/api/voice/state": ["voice"],
   "/api/stats": ["stats"],
+  "/api/peek": ["peek"],
 };
 
 /** The query parameters a read passes on as the CLI flags of the same names; others are ignored. */
@@ -219,12 +220,19 @@ const API_READ_PARAMS: Record<string, string[]> = {
   "/api/stats": ["days", "repo"],
 };
 
-/** `?days=7&repo=acme/api` on `/api/stats` as `--days 7 --repo acme/api`. */
+/** The query parameter a read passes on as the CLI's argument, after `--`. */
+const API_READ_ARG: Record<string, string> = {
+  "/api/peek": "issue",
+};
+
+/** `?days=7&repo=acme/api` on `/api/stats` as `--days 7 --repo acme/api`; `?issue=acme/api%237` on `/api/peek` as `-- acme/api#7`. */
 function readFlags(pathname: string, params: URLSearchParams) {
-  return (API_READ_PARAMS[pathname] ?? []).flatMap((name) => {
+  const flags = (API_READ_PARAMS[pathname] ?? []).flatMap((name) => {
     const value = params.get(name);
     return value === null ? [] : [`--${name}`, value];
   });
+  const arg = API_READ_ARG[pathname] && params.get(API_READ_ARG[pathname]);
+  return arg ? [...flags, "--", arg] : flags;
 }
 
 const API_HELP = `Post {"args": [...]} to one of ${Object.keys(API_ACTIONS).join(", ")}`;

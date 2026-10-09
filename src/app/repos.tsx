@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { type BoardJson, agentClass, stageClass } from "./board";
 import { type DispatchLine, type RepoRow, repoRows } from "./repo-rows";
 
@@ -117,7 +117,55 @@ function Group({ title, children }: { title: string; children: React.ReactNode }
   return <section className="repo-group"><h3>{title}</h3>{children}</section>;
 }
 
+/** How long a shown Dispatch waits after reading its Implementer's screen before reading it again. */
+const SCREEN_EVERY_MS = 4000;
+
+/** Whether the page is shown, not hidden behind another tab or a minimised window. */
+function usePageShown() {
+  const [shown, setShown] = useState(() => document.visibilityState !== "hidden");
+  useEffect(() => {
+    const changed = () => setShown(document.visibilityState !== "hidden");
+    document.addEventListener("visibilitychange", changed);
+    return () => document.removeEventListener("visibilitychange", changed);
+  }, []);
+  return shown;
+}
+
+/**
+ * What `issue`'s Implementer is doing: the last meaningful line of its screen,
+ * read from herdr through `/api/peek` (no GitHub call) while `reading`, and
+ * again a few seconds after each read. A screen that cannot be read is no line.
+ */
+function useScreenLine(issue: string, reading: boolean) {
+  const [line, setLine] = useState<string>();
+  useEffect(() => {
+    if (!reading) return;
+    let current = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const read = async () => {
+      let next: string | undefined;
+      try {
+        const response = await fetch(`/api/peek?issue=${encodeURIComponent(issue)}`);
+        if (response.ok) next = ((await response.json()) as { line?: string }).line;
+      } catch {
+        // No line, until a read succeeds.
+      }
+      if (!current) return;
+      setLine(next);
+      timer = setTimeout(read, SCREEN_EVERY_MS);
+    };
+    void read();
+    return () => {
+      current = false;
+      clearTimeout(timer);
+    };
+  }, [issue, reading]);
+  return line;
+}
+
 function Dispatch({ line: d }: { line: DispatchLine }) {
+  // An Asking Implementer's question already shows its screen.
+  const doing = useScreenLine(d.issue, usePageShown() && !d.question);
   return (
     <li>
       <IssueLink {...d} />
@@ -127,6 +175,7 @@ function Dispatch({ line: d }: { line: DispatchLine }) {
         {d.pr && <PrLink {...d.pr} />}
       </div>
       {d.question && <pre className="question">{d.question}</pre>}
+      {!d.question && doing && <p className="doing" title={doing}>{doing}</p>}
     </li>
   );
 }
