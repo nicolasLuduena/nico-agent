@@ -129,9 +129,10 @@ _Avoid_: Spike, investigation issue
 **Asking**:
 An Implementer, or a Repo's Gardener, waiting on the user (Agent state
 `blocked`), with the question its screen shows. The user is notified once of
-an Implementer's, and answers it in herdr or with `nico-agent answer` (the
-issue, or the Repo for its Gardener); the Lead answers an Implementer's when
-its Standing orders allow, and otherwise relays the user's words.
+an Implementer's, and answers it in herdr, on its toast in the app's
+Questions list, or with `nico-agent answer` (the issue, or the Repo for its
+Gardener); the Lead answers an Implementer's when its Standing orders allow,
+and otherwise relays the user's words.
 _Avoid_: Stuck, blocked (a Blocker is an issue)
 
 **Reviewer**:
@@ -232,9 +233,14 @@ _Avoid_: Chat, history, transcript
 
 **Questions list**:
 The app's list of what waits on the user: every question of the Lead's not
-answered yet and every Proposal not decided, shown as toasts at the bottom
-right of every page, oldest nearest the corner, and answered or decided on
-its toast. A toast leaves once its item is answered or decided. The
+answered yet, every Proposal not decided, and every Asking Implementer, shown
+as toasts at the bottom right of every page, oldest nearest the corner, and
+answered or decided on its toast. An Asking Implementer's toast names its
+issue and shows its question, the numbered choices on its screen as buttons,
+and a text box; what the user picks or types goes straight to that
+Implementer, as `nico-agent answer` does, and is refused once it no longer
+Asks. A toast leaves once its item is answered or decided, or its
+Implementer stops Asking, whoever answered it. The
 Conversation keeps a line for each question and Proposal, saying whether it
 is open or answered; an open one's line brings its toast forward. The
 header counts the list and collapses or expands it.
