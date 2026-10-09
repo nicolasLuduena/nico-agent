@@ -31,7 +31,9 @@ const STILL_SHOWN = "replies still show in the panel";
  * then the Front voice answering), the Lead's entries wait, and are spoken at
  * the next pause, after the Front voice's last line. `hush` (the user talking
  * over it, or a tap) stops the speech at once and drops what waits to be
- * spoken; the Lead's entries waiting for a pause were never cut off, and stay.
+ * spoken. Only the Lead's own speech, talked over, loses the entries behind
+ * it: the ones waiting behind the Front voice's lines, or for a pause, were
+ * never cut off, and wait for the next pause.
  */
 export function speaker({ world, configDir }: { world: World; configDir: string }) {
   const peers = new Set<SocketPeer>();
@@ -44,6 +46,8 @@ export function speaker({ world, configDir }: { world: World; configDir: string 
   /** The speech streaming now: stop it to hush. */
   let streaming: { stop(): void } | null = null;
   let speaking = false;
+  /** What is being read now, if anything. */
+  let reading: Spoken | null = null;
   /** How many times the Lead was hushed: a speech asked for before the last hush is never played. */
   let hushes = 0;
 
@@ -102,8 +106,9 @@ export function speaker({ world, configDir }: { world: World; configDir: string 
     if (speaking) return;
     speaking = true;
     try {
-      for (let entry = waiting.shift(); entry; entry = waiting.shift()) await read(entry);
+      for (reading = waiting.shift() ?? null; reading; reading = waiting.shift() ?? null) await read(reading);
     } finally {
+      reading = null;
       speaking = false;
     }
   };
@@ -118,8 +123,8 @@ export function speaker({ world, configDir }: { world: World; configDir: string 
     leave(peer: SocketPeer) {
       peers.delete(peer);
       if (peers.size === 0) {
-        held = [];
         this.hush();
+        held = [];
       }
     },
     /** The conversation changed: speak what the Lead wrote since, with Voice on and a page listening. */
@@ -129,9 +134,9 @@ export function speaker({ world, configDir }: { world: World; configDir: string 
       if (!fresh.length) return;
       seen = fresh.at(-1)!.id;
       if (!voiceOn(configDir)) return;
-      const lead = fresh.filter((e) => e.type === "lead" || e.type === "ask").map((e) => ({ text: spoken(e), entry: e.id }));
-      if (holds) return void held.push(...lead);
-      waiting.push(...lead);
+      const leadLines = fresh.filter((e) => e.type === "lead" || e.type === "ask").map((e) => ({ text: spoken(e), entry: e.id }));
+      if (holds) return void held.push(...leadLines);
+      waiting.push(...leadLines);
       say();
     },
     /**
@@ -146,7 +151,8 @@ export function speaker({ world, configDir }: { world: World; configDir: string 
         if (released) return;
         released = true;
         if (--holds) return;
-        waiting.push(...held);
+        // Voice turned off while they waited: they only show in the panel.
+        if (voiceOn(configDir)) waiting.push(...held);
         held = [];
         say();
       };
@@ -157,9 +163,11 @@ export function speaker({ world, configDir }: { world: World; configDir: string 
       waiting.push({ text: text.replace(/[`*]/g, "") });
       say();
     },
-    /** Stop speaking now, and drop what waits to be spoken. */
+    /** Stop speaking now, and drop what waits to be spoken; talking over the Front voice, the Lead's entries wait for the next pause. */
     hush() {
       hushes++;
+      const frontVoiceTalkedOver = reading !== null && reading.entry === undefined;
+      held = [...(frontVoiceTalkedOver ? waiting.filter((s) => s.entry !== undefined) : []), ...held];
       waiting = [];
       streaming?.stop();
     },

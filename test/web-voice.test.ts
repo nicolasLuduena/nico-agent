@@ -531,6 +531,35 @@ describe("/api/voice", () => {
         expect(spoken).toEqual(["Two issues are Ready.", "The first is the herdr client.", "The retries PR is ready."]);
       });
 
+      test("talking over the Front voice drops its lines, never the Lead's reply waiting behind them", async () => {
+        const ctx = await withVoice(VOICED);
+        const spoken: string[] = [];
+        let answer = () => {};
+        ctx.world.endpoint(SPEECH, async (request) => {
+          spoken.push(((await request.json()) as { input: string }).input);
+          // The Front voice's line takes a while to be made.
+          if (spoken.length === 1) await new Promise<void>((resolve) => { answer = resolve; });
+          return new Response(new Uint8Array([1, 0]), { headers: { "content-type": "audio/pcm" } });
+        });
+        await ctx.cli("voice", "on");
+        talker(ctx.world, () => ({ say: ["Hi there.", " Anything else?"] }));
+
+        const talk = await say(ctx, "hey");
+        await until(() => spoken.length === 1);
+        await until(async () => (await log(ctx)).length === 1);
+        await ctx.cli("lead", "say", "The retries PR is ready.");
+        await ctx.look();
+        talk.json({ type: "hush" });
+        answer();
+        await Bun.sleep(20);
+        expect(spoken).toEqual(["Hi there."]);
+
+        talk.json({ type: "start", utterance: 2 });
+        talk.json({ type: "cancel" });
+        await until(() => spoken.length === 2);
+        expect(spoken).toEqual(["Hi there.", "The retries PR is ready."]);
+      });
+
       test("a cancelled utterance lets it be spoken at once", async () => {
         const ctx = await withVoice(VOICED);
         const spoken = await speaking(ctx);

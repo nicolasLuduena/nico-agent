@@ -145,7 +145,7 @@ export function webSockets(context: Pick<WebContext, "world" | "configDir" | "ru
   const timing = stopwatch(context);
   const speech = speaker(context);
   const front = frontVoice({ ...context, say: (text) => speech.line(text) });
-  const transcription = transcriptionSession({ ...context, timing, front, hold: () => speech.hold() });
+  const transcription = transcriptionSession({ ...context, timing, front, hold: speech.hold });
   context.events?.on("conversation-entry", () => {
     speech.changed();
     timing.changed();
