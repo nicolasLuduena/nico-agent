@@ -3,6 +3,7 @@ import { advance } from "./advance";
 import { answer, loadAsking } from "./answer";
 import { loadBoard } from "./board";
 import { ConfigError, findRepo, loadConfig, saveConfig } from "./config";
+import { AnswerRefused, answerQuestion, append, loadConversation, openQuestions, readInbox } from "./conversation";
 import { StepFailed, baseBranch, closeDispatch, dispatch, eachIssue, resolveIssue, review } from "./dispatch";
 import { DispatchError } from "./dispatch-error";
 import { PANE_ARGS } from "./opencode";
@@ -37,6 +38,8 @@ const DISPATCH_USAGE = "nico-agent dispatch <issue>... --harness <harness> --mod
 const REVIEW_USAGE = "nico-agent review <issue>... --harness <harness> --model <model> --effort <effort>";
 const CLOSE_USAGE = "nico-agent close <issue>... [--confirm]";
 const ANSWER_USAGE = "nico-agent answer <issue> <text>";
+const SAY_USAGE = "nico-agent say [--answer <id>] <text>";
+const LOG_HELP = "Run `nico-agent lead log` to see the conversation with the Lead";
 const LAUNCH_FLAGS = {
   "--harness": { value: true, description: "Harness to launch, e.g. claude (see `nico-agent harness list`)" },
   "--model": { value: true, description: "model for the Harness, e.g. opus" },
@@ -183,6 +186,58 @@ const commands: Command[] = [
     ],
     help: ["Run `nico-agent --json` to see which Implementers are waiting on you, under `asking`"],
     run: answerCommand,
+  },
+  {
+    name: "say",
+    usage: SAY_USAGE,
+    summary: "Write to the Lead, or answer one of its open questions with --answer",
+    flags: { "--answer": { value: true, description: "id of the Lead's open question this answers (see `nico-agent lead log`)" } },
+    positionals: ["text..."],
+    examples: [
+      "nico-agent say \"Finish acme/api#12 before starting the billing Spec\"",
+      "nico-agent say --answer 4 \"Yes, close it\"",
+      "nico-agent say --json -- \"--force is fine here\"",
+    ],
+    help: [LOG_HELP],
+    run: sayCommand,
+  },
+  {
+    name: "lead inbox",
+    usage: "nico-agent lead inbox",
+    summary: "Read the Lead's Inbox: the entries it has not seen, each returned once (its MCP `inbox` tool)",
+    flags: {},
+    positionals: [],
+    examples: ["nico-agent lead inbox --json"],
+    run: leadInboxCommand,
+  },
+  {
+    name: "lead say",
+    usage: "nico-agent lead say <text>",
+    summary: "Write the Lead's reply into the conversation (its MCP `say` tool)",
+    flags: {},
+    positionals: ["text..."],
+    examples: ["nico-agent lead say \"Two Specs are running; acme/api#7 waits on you\""],
+    help: [LOG_HELP],
+    run: leadSayCommand,
+  },
+  {
+    name: "lead ask",
+    usage: "nico-agent lead ask <question> [<choice>...]",
+    summary: "Ask the user a question for the Lead, with optional choices; it stays open until answered (its MCP `ask` tool)",
+    flags: {},
+    positionals: ["question", "choice..."],
+    examples: ["nico-agent lead ask \"Close acme/api#7?\" yes no", "nico-agent lead ask --json -- \"Which base?\" main beta"],
+    help: [LOG_HELP],
+    run: leadAskCommand,
+  },
+  {
+    name: "lead log",
+    usage: "nico-agent lead log",
+    summary: "Show the conversation with the Lead, oldest first, with who said what and when (read-only)",
+    flags: {},
+    positionals: [],
+    examples: ["nico-agent lead log", "nico-agent lead log --json"],
+    run: leadLogCommand,
   },
   {
     name: "harness list",
@@ -457,6 +512,52 @@ async function answerCommand(args: Args, ctx: RunContext): Promise<Output> {
     data: { answered: key, agent, ...(!started && { warning: "the answer was submitted, but the Implementer has not started working" }) },
     help,
   };
+}
+
+async function sayCommand(args: Args, ctx: RunContext): Promise<Output> {
+  const text = args.positionals.join(" ");
+  if (!text) throw new CliError("<text> is required", [`Usage: \`${SAY_USAGE}\``], 2);
+  const flag = args.flags["--answer"];
+  if (typeof flag !== "string") {
+    const entry = await append(ctx.configDir, { type: "user", text }, ctx.world.now());
+    return { data: { said: entry.id }, help: [LOG_HELP] };
+  }
+  try {
+    const entry = await answerQuestion(ctx.configDir, flag, text, ctx.world.now());
+    return { data: { answered: entry.question, id: entry.id }, help: [LOG_HELP] };
+  } catch (e) {
+    if (!(e instanceof AnswerRefused)) throw e;
+    const open = e.open.length ? `the open ones are ${e.open.join(", ")}` : "none is open";
+    throw new CliError(e.message, [`Run \`nico-agent lead log\` to see the Lead's questions (${open})`]);
+  }
+}
+
+async function leadInboxCommand(_args: Args, ctx: RunContext): Promise<Output> {
+  const entries = await readInbox(ctx.configDir);
+  return { data: { inbox: plural(entries.length, "new entry", "new entries"), entries } };
+}
+
+async function leadSayCommand(args: Args, ctx: RunContext): Promise<Output> {
+  const text = args.positionals.join(" ");
+  if (!text) throw new CliError("<text> is required", ["Usage: `nico-agent lead say <text>`"], 2);
+  const entry = await append(ctx.configDir, { type: "lead", text }, ctx.world.now());
+  return { data: { said: entry.id }, help: [LOG_HELP] };
+}
+
+async function leadAskCommand(args: Args, ctx: RunContext): Promise<Output> {
+  const [text, ...choices] = args.positionals;
+  if (!text) throw new CliError("<question> is required", ["Usage: `nico-agent lead ask <question> [<choice>...]`"], 2);
+  const entry = await append(ctx.configDir, { type: "ask", text, ...(choices.length && { choices }) }, ctx.world.now());
+  return { data: { asked: entry.id }, help: [`The answer arrives in the Inbox naming question ${entry.id}`, LOG_HELP] };
+}
+
+async function leadLogCommand(_args: Args, ctx: RunContext): Promise<Output> {
+  const conversation = loadConversation(ctx.configDir);
+  const entries = conversation.map(({ id, type, ...rest }) => ({ id, who: type === "lead" || type === "ask" ? "lead" : "user", type, ...rest }));
+  const open = openQuestions(conversation);
+  const help = [`Run \`${SAY_USAGE}\` to write to the Lead`];
+  if (open.length) help.unshift(`Run \`nico-agent say --answer <id> <text>\` to answer the Lead's open questions (${open.join(", ")})`);
+  return { data: { log: plural(entries.length, "entry", "entries"), entries }, help };
 }
 
 async function reviewCommand(args: Args, ctx: RunContext): Promise<Output> {

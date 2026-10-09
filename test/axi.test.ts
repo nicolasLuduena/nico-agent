@@ -26,14 +26,14 @@ describe("AXI conventions", () => {
     const { cli } = setup();
     const { stdout, exitCode } = await cli("dispatch-all");
     expect(exitCode).toBe(2);
-    expect(stdout).toStartWith("error: unknown command `dispatch-all`\nhelp[13]:\n  Run `nico-agent [board]` to show Ready issues");
+    expect(stdout).toStartWith("error: unknown command `dispatch-all`\nhelp[18]:\n  Run `nico-agent [board]` to show Ready issues");
   });
 
   test("the retired Scheduler entry points are unknown: `mcp`, `--skill` and `advance --start` (ADR-0009)", async () => {
     const { cli, world } = setup();
     const mcp = await cli("mcp");
     expect(mcp.exitCode).toBe(2);
-    expect(mcp.stdout).toStartWith("error: unknown command `mcp`\nhelp[13]:\n  Run `nico-agent [board]` to show Ready issues");
+    expect(mcp.stdout).toStartWith("error: unknown command `mcp`\nhelp[18]:\n  Run `nico-agent [board]` to show Ready issues");
     expect(await cli("--skill")).toMatchObject({
       stdout: ["error: unknown flag --skill for `board`", "help[1]:", "  Valid flags for `board`: --json, --help", ""].join("\n"),
       exitCode: 2,
@@ -109,7 +109,7 @@ describe("AXI conventions", () => {
       [
         "bin: ~/.local/bin/nico-agent",
         "description: Dispatch coding agents onto ready-for-agent issues",
-        "commands[13]{usage,description}:",
+        "commands[18]{usage,description}:",
         '  "nico-agent [board]",Show Ready issues across all Repos (the default view)',
         "  nico-agent repo add <owner/name> --path <clone>,Add a Repo after checking the path is a clone of it",
         "  nico-agent repo rm <owner/name>,Remove a Repo (its clone is left untouched)",
@@ -119,6 +119,11 @@ describe("AXI conventions", () => {
         '  nico-agent review <issue>... --harness <harness> --model <model> --effort <effort>,"Start a Reviewer on each In-flight issue\'s linked PR, in its workspace (resumes a failed one)"',
         '  "nico-agent close <issue>... [--confirm]","Remove each Dispatch\'s workspace and forget it, keeping its branch"',
         `  nico-agent answer <issue> <text>,"Submit text, as typed, to an In-flight issue's Implementer while it waits on the user"`,
+        '  "nico-agent say [--answer <id>] <text>","Write to the Lead, or answer one of its open questions with --answer"',
+        "  nico-agent lead inbox,\"Read the Lead's Inbox: the entries it has not seen, each returned once (its MCP `inbox` tool)\"",
+        "  nico-agent lead say <text>,Write the Lead's reply into the conversation (its MCP `say` tool)",
+        '  "nico-agent lead ask <question> [<choice>...]","Ask the user a question for the Lead, with optional choices; it stays open until answered (its MCP `ask` tool)"',
+        '  nico-agent lead log,"Show the conversation with the Lead, oldest first, with who said what and when (read-only)"',
         "  nico-agent harness list,List the Harnesses with their models and Effort levels (discovers uncached ones)",
         "  nico-agent harness refresh,Discover the Harnesses' models and Effort levels again and replace the cache",
         "  nico-agent show <issue>,Print the full Dispatch record of an In-flight issue",
