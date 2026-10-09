@@ -108,9 +108,10 @@ export interface World {
   notify(title: string, body: string): Promise<void>;
   /**
    * Start answering HTTP requests on `hostname:port`; resolves once listening.
-   * `pages` are HTML pages Bun bundles, by path; `handler` answers the rest.
+   * `pages` are HTML pages Bun bundles, by path; `sockets` answer WebSocket
+   * requests, by path; `handler` answers the rest.
    */
-  serve(address: Address, handler: RequestHandler, pages: Pages): Promise<void>;
+  serve(address: Address, handler: RequestHandler, pages: Pages, sockets: Sockets): Promise<void>;
   /** Run `task` every `ms` milliseconds for the life of the process, the next run only once the last is done. */
   every(ms: number, task: () => Promise<void>): void;
   /** The value of an environment variable of this process, or undefined when unset or empty. */
@@ -129,6 +130,24 @@ export interface Address {
 }
 
 export type RequestHandler = (request: Request) => Promise<Response>;
+
+/** What a WebSocket's server side sends to the page on the other end. */
+export interface SocketPeer {
+  send(message: string): void;
+  close(): void;
+}
+
+/** A WebSocket's server side, once open: what it does with each message, and when the page goes. */
+export interface SocketSession {
+  message(data: string | Uint8Array): void;
+  close(): void;
+}
+
+/** Answers a request for a WebSocket: a refusal, or the session to open on it. */
+export type SocketHandler = (request: Request) => Response | ((peer: SocketPeer) => SocketSession);
+
+/** WebSocket handlers by the path they are served at. */
+export type Sockets = Record<string, SocketHandler>;
 
 /** HTML pages, imported from their entry file, by the path they are served at. */
 export type Pages = Record<string, import("bun").HTMLBundle>;

@@ -22,11 +22,7 @@ class ProbeFailed extends Error {}
 const PROBES: Record<VoiceService, Probe> = {
   transcribe: {
     async request(endpoint, headers) {
-      const form = new FormData();
-      form.set("file", new File([await Bun.file(sample).arrayBuffer()], "sample.wav", { type: "audio/wav" }));
-      form.set("model", endpoint.model);
-      form.set("response_format", "json");
-      return new Request(`${base(endpoint)}/audio/transcriptions`, { method: "POST", headers, body: form });
+      return transcriptionRequest(endpoint, headers, new File([await Bun.file(sample).arrayBuffer()], "sample.wav", { type: "audio/wav" }));
     },
     async read(response) {
       const text = (await responseJson(response))?.text;
@@ -114,7 +110,16 @@ export async function probeVoice(world: World, voice: VoiceConfig): Promise<Voic
 async function checkService(world: World, service: VoiceService, endpoint: VoiceEndpoint | undefined): Promise<ServiceCheck> {
   if (!endpoint) return { service, status: "not configured" };
   const { url, model } = endpoint;
-  const failed = (error: string, help: string): ServiceCheck => ({ service, status: "failed", url, model, error, help });
+  const answer = await ask(world, service, endpoint, PROBES[service]);
+  return "error" in answer ? { service, status: "failed", url, model, ...answer } : { service, status: "ok", url, model, ...answer };
+}
+
+/** What a voice service answered, and how long it took; or why it did not, and what to do. */
+export type Answered = { ms: number; returned: string } | { error: string; help: string };
+
+/** Send `probe`'s request to `endpoint`, with its key, and read the answer. */
+async function ask(world: World, service: VoiceService, endpoint: VoiceEndpoint, probe: Probe): Promise<Answered> {
+  const failed = (error: string, help: string) => ({ error, help });
   const headers = new Headers();
   if (endpoint.keyEnv) {
     const key = world.env(endpoint.keyEnv);
@@ -126,7 +131,6 @@ async function checkService(world: World, service: VoiceService, endpoint: Voice
     }
     headers.set("authorization", `Bearer ${key}`);
   }
-  const probe = PROBES[service];
   const request = await probe.request(endpoint, headers);
   const started = world.now().getTime();
   let response: Response;
@@ -146,7 +150,50 @@ async function checkService(world: World, service: VoiceService, endpoint: Voice
     return failed(e.message, checkSettings);
   }
   // Up to the whole answer read: a streamed one's headers come long before its audio.
-  return { service, status: "ok", url, model, ms: world.now().getTime() - started, returned };
+  return { ms: world.now().getTime() - started, returned };
+}
+
+/**
+ * What the transcription service hears in `audio`, a WAV, told to expect the
+ * words of `prompt` (the vocabulary hint).
+ */
+export function transcribe(world: World, endpoint: VoiceEndpoint, audio: Uint8Array<ArrayBuffer>, prompt: string): Promise<Answered> {
+  return ask(world, "transcribe", endpoint, {
+    request: async (endpoint, headers) => transcriptionRequest(endpoint, headers, new File([audio], "utterance.wav", { type: "audio/wav" }), prompt),
+    read: PROBES.transcribe.read,
+  });
+}
+
+/** A request to transcribe `file`, with `prompt` as the hint when given. */
+function transcriptionRequest(endpoint: VoiceEndpoint, headers: Headers, file: File, prompt?: string) {
+  const form = new FormData();
+  form.set("file", file);
+  form.set("model", endpoint.model);
+  form.set("response_format", "json");
+  if (prompt) form.set("prompt", prompt);
+  return new Request(`${base(endpoint)}/audio/transcriptions`, { method: "POST", headers, body: form });
+}
+
+/** `pcm`, 16-bit little-endian mono samples at `rate`, as a WAV file. */
+export function wav(pcm: Uint8Array, rate: number): Uint8Array<ArrayBuffer> {
+  const file = new Uint8Array(44 + pcm.byteLength);
+  const view = new DataView(file.buffer);
+  const text = (at: number, value: string) => [...value].forEach((c, i) => view.setUint8(at + i, c.charCodeAt(0)));
+  text(0, "RIFF");
+  view.setUint32(4, 36 + pcm.byteLength, true);
+  text(8, "WAVE");
+  text(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true); // PCM
+  view.setUint16(22, 1, true); // mono
+  view.setUint32(24, rate, true);
+  view.setUint32(28, rate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  text(36, "data");
+  view.setUint32(40, pcm.byteLength, true);
+  file.set(pcm, 44);
+  return file;
 }
 
 /** The endpoint's base URL, without a trailing slash. */

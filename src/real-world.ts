@@ -1,6 +1,6 @@
 import { LinearSource } from "./linear";
 import { realpathSync } from "node:fs";
-import type { Address, GitHubIssue, IssueDescription, GitHubSubIssue, PullRequest, Pages, RequestHandler, World } from "./world";
+import type { Address, GitHubIssue, IssueDescription, GitHubSubIssue, PullRequest, Pages, RequestHandler, SocketPeer, SocketSession, Sockets, World } from "./world";
 import { READY_LABEL, WorldError } from "./world";
 
 interface Exec {
@@ -497,11 +497,36 @@ export class RealWorld implements World {
     if (result.exitCode !== 0) throw new WorldError(`\`notify-send\` failed: ${result.stderr.trim().split("\n")[0] || `exit code ${result.exitCode}`}`);
   }
 
-  async serve(address: Address, handler: RequestHandler, pages: Pages) {
+  async serve(address: Address, handler: RequestHandler, pages: Pages, sockets: Sockets) {
     try {
       // A Board asks GitHub per issue and can take longer than Bun's 10s default; 255s is Bun's maximum.
       // Not `development`: the pages are served as bundled, with no hot reloading, from source as from the binary.
-      Bun.serve({ ...address, routes: pages, fetch: handler, idleTimeout: 255, development: false });
+      Bun.serve({
+        ...address,
+        routes: pages,
+        async fetch(request, server) {
+          const socket = sockets[new URL(request.url).pathname];
+          if (!socket) return handler(request);
+          const answer = socket(request);
+          if (answer instanceof Response) return answer;
+          if (server.upgrade(request, { data: { open: answer } })) return undefined;
+          return new Response("Expected a WebSocket\n", { status: 426 });
+        },
+        websocket: {
+          data: {} as { open: (peer: SocketPeer) => SocketSession; session?: SocketSession },
+          open(ws) {
+            ws.data.session = ws.data.open({ send: (message) => ws.send(message), close: () => ws.close() });
+          },
+          message(ws, message) {
+            ws.data.session?.message(typeof message === "string" ? message : new Uint8Array(message));
+          },
+          close(ws) {
+            ws.data.session?.close();
+          },
+        },
+        idleTimeout: 255,
+        development: false,
+      });
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code === "EADDRINUSE") {
         throw new WorldError(`port ${address.port} is already in use`);

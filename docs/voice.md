@@ -17,7 +17,7 @@ moves to a cloud service by changing its `url`, `model` and `keyEnv`.
 ```json
 {
   "voice": {
-    "transcribe": { "url": "http://127.0.0.1:8010/v1", "model": "deepdml/faster-whisper-large-v3-turbo-ct2" },
+    "transcribe": { "url": "http://127.0.0.1:8010/v1", "model": "Systran/faster-whisper-small.en" },
     "speak": { "url": "http://127.0.0.1:8880/v1", "model": "kokoro", "voice": "af_heart" },
     "scribe": { "url": "http://127.0.0.1:11434/v1", "model": "qwen2.5:3b" }
   }
@@ -50,6 +50,42 @@ uh next issue on the bored") to the Scribe, one service at a time, and times
 each answer, the whole body included. A service left out of config shows as
 `not configured`. A missing key, an unreachable URL or an error answer fails
 that service with what to fix, and the command exits 1.
+
+## Talk in the app
+
+The Lead panel's **Talk** button records from the browser's microphone and
+streams the audio to `serve` over a WebSocket (`/api/voice`, 16kHz 16-bit mono
+PCM). `serve` sends it to `voice.transcribe` and shows what it heard as you
+speak; the final transcript is sent to the Lead as your message, with the raw
+transcript kept on the entry (`nico-agent say --raw`).
+
+- **Hold** the button (or Space or Enter on it) to talk; release to send.
+- **Tap** it to talk hands-free: a pause of about a second after you spoke
+  sends it, a second tap sends at once, and six seconds of silence gives up.
+  An utterance stops at one minute either way.
+
+Every request carries a vocabulary hint as the transcription `prompt`, built
+for each utterance: the terms each Repo's `GLOSSARY.md` defines (its
+`**Term**:` lines), the Harness and Repo names, and every issue and Spec on
+the Board by its identifier and title. Whisper reads only the last ~224
+tokens of a prompt, so the Board comes last. The interim transcripts use the
+last hint built rather than wait for the Board.
+
+A failure (no `voice.transcribe`, the service down or answering an error, the
+microphone blocked) shows as a warning above the composer; typing still works.
+
+### On the phone
+
+Safari only allows the microphone over HTTPS. Publish `serve` to your tailnet
+with `tailscale serve`, which gives it a valid certificate:
+
+```bash
+tailscale serve --bg 42069
+```
+
+Then open `https://<machine>.<tailnet>.ts.net/` on the iPhone. The page and
+its WebSocket go through the same address; iOS stops capture when the screen
+locks.
 
 ## Local setup on this machine
 
@@ -95,9 +131,15 @@ curl -X POST http://127.0.0.1:8010/v1/models/deepdml/faster-whisper-large-v3-tur
 ```
 
 Measured on the sample: large-v3-turbo answers in 7 to 10s (15 to 20s with
-the defaults), which is too slow for a conversation. `Systran/faster-distil-whisper-small.en`
-transcribes the same sample with the same words in 0.9s; download it the same
-way and set it as `voice.transcribe.model` while there is no GPU path.
+the defaults), which is too slow for a conversation. `Systran/faster-whisper-small.en`
+transcribes the same sample with the same words in about 1.2s, with the app's
+full vocabulary hint too; download it the same way and set it as
+`voice.transcribe.model` while there is no GPU path.
+
+Avoid the distilled models (`Systran/faster-distil-whisper-small.en` and
+kin) for the app: they are as fast, but past about thirty words of prompt
+they lose the speech ("Dispatch the next issue on the board." came back as
+"This,"), and the app's prompt is longer than that.
 
 ### Kokoro-FastAPI (speech)
 

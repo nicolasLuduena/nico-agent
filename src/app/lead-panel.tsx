@@ -8,6 +8,7 @@ import {
 } from "./lead";
 import { Agent } from "./repos";
 import { useResource } from "./stream";
+import { TalkButton, TalkStatus, useTalk } from "./talk-button";
 
 const EMPTY: Conversation = { entries: [], proposals: [], sends: [] };
 
@@ -22,11 +23,11 @@ function useConversation() {
   useEffect(() => dispatch({ type: "log", entries: log.data?.entries }), [log.data]);
   useEffect(() => dispatch({ type: "proposals", proposals: proposals.data?.proposals }), [proposals.data]);
   const sent = useRef(0);
-  /** Send a message, or the answer to `question`, showing it at once. */
-  const send = async (text: string, question?: number) => {
+  /** Send a message, or the answer to `question`, showing it at once; a spoken message keeps what was heard as `raw`. */
+  const send = async (text: string, question?: number, raw?: string) => {
     const key = `send-${++sent.current}`;
-    dispatch({ type: "send", key, text, at: new Date().toISOString(), ...(question !== undefined && { question }) });
-    const json = await post("/api/say", sayArgs(text, question));
+    dispatch({ type: "send", key, text, at: new Date().toISOString(), ...(question !== undefined && { question }), ...(raw !== undefined && { raw }) });
+    const json = await post("/api/say", sayArgs(text, question, raw));
     // `say` names the entry it wrote: `said` for a message, `id` for an answer.
     const id = json?.said ?? json?.id;
     if (typeof id === "number") dispatch({ type: "sent", key, id });
@@ -135,15 +136,15 @@ function LeadHead({ harnesses }: { harnesses: HarnessesJson | null }) {
   );
 }
 
-/** Send a message to the Lead, or the answer to its question `question`. */
-type SendText = (text: string, question?: number) => Promise<void>;
+/** Send a message to the Lead, or the answer to its question `question`; `raw` is what was heard of a spoken one. */
+type SendText = (text: string, question?: number, raw?: string) => Promise<void>;
 
 function CardView({ card, send, dismiss }: { card: Card; send: SendText; dismiss: (key: string) => void }) {
   switch (card.kind) {
     case "message":
       return (
         <li className={`card-message ${card.who}${card.sending ? " sending" : ""}`}>
-          <Byline who={card.who} at={card.at} note={card.sending ? "sending…" : undefined} />
+          <Byline who={card.who} at={card.at} note={card.sending ? "sending…" : card.spoken ? "spoke" : undefined} />
           <p className="text">{card.text}</p>
           {card.error && (
             <div className="send-failure">
@@ -251,9 +252,13 @@ function ProposalCard({ card }: { card: Card & { kind: "proposal" } }) {
   );
 }
 
-/** Where the user writes to the Lead: Enter sends, Shift+Enter starts a new line. */
+/**
+ * Where the user writes or talks to the Lead: Enter sends, Shift+Enter starts
+ * a new line; the talk button sends what it heard, the raw transcript as it is.
+ */
 function Composer({ send }: { send: SendText }) {
   const [text, setText] = useState("");
+  const talking = useTalk((heard) => void send(heard, undefined, heard));
   const submit = () => {
     if (!text.trim()) return;
     void send(text);
@@ -266,9 +271,13 @@ function Composer({ send }: { send: SendText }) {
     }
   };
   return (
-    <form className="composer" onSubmit={(e) => { e.preventDefault(); submit(); }}>
-      <textarea aria-label="Message to the Lead" placeholder="Write to the Lead" rows={2} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={onKey} />
-      <button type="submit" disabled={!text.trim()}>Send</button>
-    </form>
+    <>
+      <TalkStatus talk={talking} />
+      <form className="composer" onSubmit={(e) => { e.preventDefault(); submit(); }}>
+        <textarea aria-label="Message to the Lead" placeholder="Write to the Lead" rows={2} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={onKey} />
+        <TalkButton talk={talking} />
+        <button type="submit" disabled={!text.trim()}>Send</button>
+      </form>
+    </>
   );
 }
