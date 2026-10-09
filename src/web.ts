@@ -186,6 +186,8 @@ const API_ACTIONS: Record<string, string[]> = {
   "/api/unqueue": ["unqueue"],
   "/api/move": ["move"],
   "/api/advance": ["advance"],
+  // The user's own words to an Asking Implementer, from its toast: as a Lead's `relay`, they need no Standing order.
+  "/api/answer": ["answer"],
   "/api/harness/refresh": ["harness", "refresh"],
   "/api/say": ["say"],
   "/api/proposals/approve": ["proposals", "approve"],

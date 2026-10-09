@@ -67,8 +67,8 @@ export interface BoardJson {
   bases?: { repo: string; branches: string[] }[];
   inFlight?: string;
   dispatches?: InFlightDispatch[];
-  /** Each Implementer waiting on the user, with the question its screen shows. */
-  asking?: { issue: string; spec?: string; question: string; error?: string }[];
+  /** Each Implementer, then each Repo's Gardener, waiting on the user, with the question its screen shows. */
+  asking?: (({ issue: string; spec?: string; gardener?: never } | { gardener: string; issue?: never }) & { question: string; error?: string })[];
   errors?: { repo: string; error: string; source?: string }[];
   /** Set when the Board could not be read at all, with the CLI's help. */
   error?: string;
