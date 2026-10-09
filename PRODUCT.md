@@ -66,8 +66,9 @@ open PR.
   Repo, Ready, Stackable, Board, Dispatch, Base, In flight, Stage, Agent state,
   Claim, Close, Harness, Effort). Use those terms, not the listed "Avoid"
   synonyms.
-- **Light and dark:** the UI follows the system color scheme and must work in
-  both.
+- **Light and dark:** two designed themes, Light (the default) and Dark,
+  picked in the header (Light, Dark or System) and remembered in the browser;
+  both must work and pass WCAG AA.
 - Stage comes from the Source and GitHub (ADR 0003). Agent state is shown but
   never used to decide Stage.
 - Close is allowed once a Dispatch has a PR. While it is still Implementing,
