@@ -184,6 +184,44 @@ export function openItems(conversation: Conversation): OpenItem[] {
     (c.kind === "question" && !c.answer) || (c.kind === "proposal" && c.status === "open"));
 }
 
+/**
+ * A question's or Proposal's one line in the conversation: that the Lead
+ * asked or proposed, its text (and a Proposal's action), whether it is open,
+ * and the answer or decision with what the action did once there is one.
+ */
+export interface ItemLine {
+  verb: "asked" | "proposed";
+  /** A Proposal's action as the command line, or the Source it would write. */
+  action?: string;
+  /** The question, or the Proposal's reason. */
+  text: string;
+  status: "open" | "answering" | "answered" | Exclude<ProposalStatus, "open">;
+  /** The answer, or the reason the user gave declining. */
+  answer?: string;
+  /** What was heard of a spoken answer, when it differs. */
+  raw?: string;
+  outcome: { text: string; error: boolean }[];
+}
+
+/** What `item`'s line in the conversation carries; the item itself, while open, is a toast. */
+export function line(item: OpenItem): ItemLine {
+  if (item.kind === "question") {
+    const { answer } = item;
+    return {
+      verb: "asked", text: item.text, status: !answer ? "open" : answer.sending ? "answering" : "answered",
+      ...(answer && { answer: answer.text }), ...(answer?.raw !== undefined && { raw: answer.raw }), outcome: [],
+    };
+  }
+  return {
+    verb: "proposed",
+    action: item.write ? `Write to ${item.write.repo}’s Source` : item.action ?? "",
+    text: item.reason,
+    status: item.status,
+    ...(item.declineReason && { answer: item.declineReason }),
+    outcome: proposalLines(item),
+  };
+}
+
 /** A message's marks when it was spoken: that it was, and what was heard when the Scribe changed it. */
 function spoken(text: string, raw: string | undefined) {
   if (raw === undefined) return {};

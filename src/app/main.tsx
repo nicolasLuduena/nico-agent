@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import type { HarnessesJson } from "./actions";
 import type { BoardJson } from "./board";
-import { type LeadStatusJson, openItems } from "./lead";
+import { type LeadStatusJson, type OpenItem, openItems } from "./lead";
 import { LeadMenu } from "./lead-menu";
 import { Actions, useBoardActions } from "./forms";
 import { LeadPanel, useConversation } from "./lead-panel";
@@ -10,6 +10,7 @@ import { ReposPane } from "./repos";
 import { StatsPane } from "./stats-page";
 import { useResource } from "./stream";
 import { ThemeToggle } from "./theme-toggle";
+import { Toasts } from "./toasts";
 
 /** The Harnesses' models and the remembered launch, for the Lead's pickers, asked on load and again on `reload`. */
 function useHarnesses() {
@@ -43,11 +44,35 @@ function usePage(): Page {
 }
 
 /**
+ * Whether the toasts show: from the start, and again whenever a new item
+ * arrives; the header's Questions count collapses and expands them, and an
+ * open item's line in the conversation summons its toast, expanding them.
+ */
+function useToasts(items: OpenItem[]) {
+  const [shown, setShown] = useState(true);
+  const [summoned, setSummoned] = useState<{ key: string } | null>(null);
+  const known = useRef(new Set<string>());
+  const keys = items.map((i) => i.key).join(" ");
+  useEffect(() => {
+    if (items.some((i) => !known.current.has(i.key))) setShown(true);
+    known.current = new Set(items.map((i) => i.key));
+  }, [keys]);
+  return {
+    shown, summoned,
+    toggle: () => setShown(!shown),
+    summon: (key: string) => {
+      setShown(true);
+      setSummoned({ key });
+    },
+  };
+}
+
+/**
  * The app: a header with the brand, the Lead and Stats pages, the count of
- * open questions and Proposals (which shows or hides the Questions list) and
+ * open questions and Proposals (which collapses or expands their toasts) and
  * the Lead's controls and the theme toggle, then the Lead panel on the left
  * and the page's own column on the right: the Repos on the Lead page, the
- * charts on the Stats page. The Board is asked of `serve` on load and on each
+ * charts on the Stats page, and the toasts at the bottom right. The Board is asked of `serve` on load and on each
  * `board-changed`, and `serve` answers from its one-minute cache (ADR-0011),
  * so the page never asks GitHub more often than that.
  */
@@ -59,7 +84,7 @@ function App() {
   const actions = useBoardActions(board ?? {}, harnesses, reload);
   const conversation = useConversation();
   const questions = openItems(conversation.state);
-  const [questionsShown, showQuestions] = useState(true);
+  const toasts = useToasts(questions);
   return (
     <>
       <header className="top">
@@ -71,11 +96,11 @@ function App() {
           <button
             type="button"
             className={`questions-count${questions.length ? " waiting" : ""}`}
-            aria-expanded={questionsShown}
+            aria-expanded={toasts.shown && questions.length > 0}
             aria-controls="questions"
             aria-label={`Questions, ${questions.length} open`}
-            title={questionsShown ? "Hide the Questions list" : "Show the Questions list"}
-            onClick={() => showQuestions(!questionsShown)}
+            title={!questions.length ? "Nothing waits on you" : toasts.shown ? "Collapse the questions" : "Expand the questions"}
+            onClick={toasts.toggle}
           >
             <span className="label">Questions</span><b>{questions.length}</b>
           </button>
@@ -84,9 +109,17 @@ function App() {
         </div>
       </header>
       <main className={`shell ${page}`}>
-        <LeadPanel status={status} conversation={conversation} questions={questionsShown ? questions : null} board={board} />
+        <LeadPanel status={status} conversation={conversation} summon={toasts.summon} board={board} />
         {page === "stats" ? <StatsPane /> : <Actions.Provider value={actions}><ReposPane board={board} /></Actions.Provider>}
       </main>
+      <Toasts
+        items={questions}
+        shown={toasts.shown}
+        loaded={conversation.loaded}
+        summoned={toasts.summoned}
+        send={conversation.send}
+        dismiss={conversation.dismiss}
+      />
     </>
   );
 }
