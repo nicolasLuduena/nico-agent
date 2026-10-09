@@ -2,10 +2,14 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
+import { sayArgs } from "../src/app/lead";
+import fixtures from "./fixtures/scribe/utterances.json";
 import { setup } from "./harness";
 
 const TRANSCRIBE = { url: "http://127.0.0.1:8010/v1", model: "Systran/faster-whisper-small.en" };
 const ENDPOINT = "http://127.0.0.1:8010/v1/audio/transcriptions";
+const SCRIBE = { url: "http://127.0.0.1:11434/v1", model: "qwen2.5:3b" };
+const CHAT = "http://127.0.0.1:11434/v1/chat/completions";
 
 /** A second of 16kHz mono 16-bit PCM, as the app streams it. */
 const SECOND = 32_000;
@@ -17,8 +21,8 @@ function pcm(seconds: number) {
   return new Uint8Array(samples.buffer);
 }
 
-/** A Repo with a glossary and a Ready issue, and a transcription service in config. */
-async function withVoice(voice: unknown = { transcribe: TRANSCRIBE }) {
+/** A Repo with a glossary and a Ready issue, and transcription and the Scribe in config. */
+async function withVoice(voice: unknown = { transcribe: TRANSCRIBE, scribe: SCRIBE }) {
   const ctx = setup();
   const repo = mkdtempSync(join(tmpdir(), "nico-agent-repo-"));
   writeFileSync(join(repo, "GLOSSARY.md"), "# acme\n\n## Language\n\n**Stackable**:\nAn issue that waits on a PR.\n_Avoid_: Blocked\n\n**Held**:\nA Dispatch paused by the user.\n");
@@ -30,9 +34,13 @@ async function withVoice(voice: unknown = { transcribe: TRANSCRIBE }) {
   return ctx;
 }
 
-/** Answer transcriptions with how much audio each one carried, keeping the forms sent. */
+/** Answer transcriptions with how much audio each one carried, keeping the forms sent; the Scribe hands the text back as it is. */
 function transcriber(world: ReturnType<typeof setup>["world"]) {
   const sent: FormData[] = [];
+  world.endpoint(CHAT, async (request) => {
+    const { messages } = await request.json() as { messages: { content: string }[] };
+    return Response.json({ choices: [{ message: { role: "assistant", content: messages.at(-1)!.content.replace(/^Transcript: /, "") } }] });
+  });
   world.endpoint(ENDPOINT, async (request) => {
     const form = await request.formData();
     sent.push(form);
@@ -58,7 +66,7 @@ describe("/api/voice", () => {
     talk.send(pcm(0.5));
     talk.json({ type: "end" });
 
-    expect(await talk.next()).toEqual({ type: "final", utterance: 1, text: "heard 0.5s" });
+    expect(await talk.next()).toEqual({ type: "final", utterance: 1, text: "heard 0.5s", raw: "heard 0.5s" });
     expect(sent).toHaveLength(1);
     const prompt = String(sent[0]!.get("prompt"));
     for (const term of ["acme/api#7", "Add retries to the herdr client", "Stackable", "Held", "claude", "codex", "acme/api"]) {
@@ -89,7 +97,7 @@ describe("/api/voice", () => {
     expect(await talk.next()).toEqual({ type: "interim", utterance: 1, text: "heard 2s" });
     talk.send(pcm(0.25));
     talk.json({ type: "end" });
-    expect(await talk.next()).toEqual({ type: "final", utterance: 1, text: "heard 2.25s" });
+    expect(await talk.next()).toEqual({ type: "final", utterance: 1, text: "heard 2.25s", raw: "heard 2.25s" });
   });
 
   test("each utterance starts afresh on the same socket, and a cancelled one is never transcribed", async () => {
@@ -104,7 +112,7 @@ describe("/api/voice", () => {
     talk.send(pcm(0.25));
     talk.json({ type: "end" });
 
-    expect(await talk.next()).toEqual({ type: "final", utterance: 2, text: "heard 0.25s" });
+    expect(await talk.next()).toEqual({ type: "final", utterance: 2, text: "heard 0.25s", raw: "heard 0.25s" });
     expect(sent).toHaveLength(1);
   });
 
@@ -121,8 +129,8 @@ describe("/api/voice", () => {
     talk.json({ type: "end" });
 
     const answers = [await talk.next(), await talk.next()];
-    expect(answers).toContainEqual({ type: "final", utterance: 1, text: "heard 0.5s" });
-    expect(answers).toContainEqual({ type: "final", utterance: 2, text: "heard 0.25s" });
+    expect(answers).toContainEqual({ type: "final", utterance: 1, text: "heard 0.5s", raw: "heard 0.5s" });
+    expect(answers).toContainEqual({ type: "final", utterance: 2, text: "heard 0.25s", raw: "heard 0.25s" });
   });
 
   test("transcription down: a warning with what to do, and typing still reaches the Lead", async () => {
@@ -197,6 +205,151 @@ describe("/api/voice", () => {
     const ask = await ctx.cli("lead", "ask", "Which first?");
     expect(ask.exitCode).toBe(0);
     expect((await post(["--answer", "2", "--raw", "billing", "--", "billing"])).status).toBe(400);
+  });
+
+  describe("the Scribe", () => {
+    /** Transcription that hears `raw`, keeping nothing. */
+    function hears(world: ReturnType<typeof setup>["world"], raw: string) {
+      world.endpoint(ENDPOINT, () => Response.json({ text: ` ${raw}` }));
+    }
+
+    /** A Scribe answering `cleaned`, keeping the bodies it was sent. */
+    function scribe(world: ReturnType<typeof setup>["world"], cleaned: string) {
+      const sent: any[] = [];
+      world.endpoint(CHAT, async (request) => {
+        sent.push(await request.json());
+        return Response.json({ choices: [{ message: { role: "assistant", content: `${cleaned}\n` } }] });
+      });
+      return sent;
+    }
+
+    test("the final transcript is cleaned, primed with the vocabulary and the last entries, and keeps what was heard", async () => {
+      const ctx = await withVoice({ transcribe: TRANSCRIBE, scribe: SCRIBE });
+      await ctx.cli("say", "What is running?");
+      await ctx.cli("lead", "say", "Nothing yet; acme/api#7 is Ready.");
+      hears(ctx.world, "um dispatch the uh acme api seven");
+      const sent = scribe(ctx.world, "Dispatch acme/api#7.");
+      const talk = await open(ctx);
+
+      talk.json({ type: "start", utterance: 1 });
+      talk.send(pcm(0.5));
+      talk.json({ type: "end" });
+
+      expect(await talk.next()).toEqual({ type: "final", utterance: 1, text: "Dispatch acme/api#7.", raw: "um dispatch the uh acme api seven" });
+      expect(sent).toHaveLength(1);
+      expect(sent[0].model).toBe(SCRIBE.model);
+      const prompt = sent[0].messages.map((m: { content: string }) => m.content).join("\n");
+      for (const term of ["acme/api#7", "Add retries to the herdr client", "Stackable", "claude"]) expect(prompt).toContain(term);
+      expect(prompt).toContain("What is running?");
+      expect(prompt).toContain("Nothing yet; acme/api#7 is Ready.");
+      expect(sent[0].messages.at(-1)).toEqual({ role: "user", content: "Transcript: um dispatch the uh acme api seven" });
+    });
+
+    test("each recorded utterance's raw transcript becomes a cleaned user entry that keeps the raw", async () => {
+      const ctx = await withVoice({ transcribe: TRANSCRIBE, scribe: SCRIBE });
+      const talk = await open(ctx);
+
+      for (const [i, { raw, cleaned }] of fixtures.utterances.entries()) {
+        hears(ctx.world, raw);
+        const sent = scribe(ctx.world, cleaned);
+        talk.json({ type: "start", utterance: i + 1 });
+        talk.send(pcm(0.5));
+        talk.json({ type: "end" });
+        const final = await talk.next();
+        expect(final).toEqual({ type: "final", utterance: i + 1, text: cleaned, raw });
+        expect(sent[0].messages.at(-1).content).toBe(`Transcript: ${raw}`);
+        const said = await ctx.web("/api/say", { method: "POST", body: JSON.stringify({ args: sayArgs(final.text, undefined, final.raw) }) });
+        expect(said.status).toBe(200);
+      }
+
+      const entries = (await ctx.cli("lead", "log", "--json")).json().entries;
+      expect(entries.map(({ text, raw }: { text: string; raw: string }) => ({ text, raw }))).toEqual(fixtures.utterances.map(({ raw, cleaned }) => ({ text: cleaned, raw })));
+      // "No, I said …" in the set corrects the message before it.
+      expect(entries.filter((e: { supersedes?: number }) => e.supersedes).map((e: { id: number; supersedes: number }) => [e.id, e.supersedes])).toEqual([[5, 4], [20, 19]]);
+    });
+
+    test("Scribe down: what was heard is sent as it is, with a warning, so the conversation never stalls", async () => {
+      const ctx = await withVoice({ transcribe: TRANSCRIBE, scribe: SCRIBE });
+      hears(ctx.world, "dispatch acme api seven");
+      const talk = await open(ctx);
+
+      talk.json({ type: "start", utterance: 1 });
+      talk.send(pcm(0.5));
+      talk.json({ type: "end" });
+
+      expect(await talk.next()).toEqual({
+        type: "final",
+        utterance: 1,
+        text: "dispatch acme api seven",
+        raw: "dispatch acme api seven",
+        warning: {
+          error: `could not reach ${CHAT}: connection refused`,
+          help: ["Sent as heard. Start the scribe service (see docs/voice.md) or fix voice.scribe.url"],
+        },
+      });
+    });
+
+    test("an empty answer from the Scribe never drops what was said", async () => {
+      const ctx = await withVoice({ transcribe: TRANSCRIBE, scribe: SCRIBE });
+      hears(ctx.world, "dispatch acme api seven");
+      scribe(ctx.world, "  ");
+      const talk = await open(ctx);
+
+      talk.json({ type: "start", utterance: 1 });
+      talk.send(pcm(0.5));
+      talk.json({ type: "end" });
+
+      expect(await talk.next()).toMatchObject({ type: "final", text: "dispatch acme api seven", warning: { error: "answered with an empty message", help: ["Sent as heard. Check voice.scribe.url and voice.scribe.model"] } });
+    });
+
+    test("a Scribe that answers the message instead of cleaning it is not taken at its word", async () => {
+      const ctx = await withVoice({ transcribe: TRANSCRIBE, scribe: SCRIBE });
+      hears(ctx.world, "what's uh what's on the board right now");
+      scribe(ctx.world, "acme/api#7 Add retries to the herdr client; acme/web#9 Fix the login redirect; BLE-42 Export invoices as CSV.");
+      const talk = await open(ctx);
+
+      talk.json({ type: "start", utterance: 1 });
+      talk.send(pcm(0.5));
+      talk.json({ type: "end" });
+
+      expect(await talk.next()).toMatchObject({
+        type: "final",
+        text: "what's uh what's on the board right now",
+        warning: { error: "the Scribe answered far more than was said", help: ["Sent as heard. Check voice.scribe.model, or try a larger one"] },
+      });
+    });
+
+    test("without a Scribe in config, what was heard is sent with a warning saying where to set one up", async () => {
+      const ctx = await withVoice({ transcribe: TRANSCRIBE });
+      hears(ctx.world, "dispatch acme api seven");
+      const talk = await open(ctx);
+
+      talk.json({ type: "start", utterance: 1 });
+      talk.send(pcm(0.5));
+      talk.json({ type: "end" });
+
+      expect(await talk.next()).toEqual({
+        type: "final",
+        utterance: 1,
+        text: "dispatch acme api seven",
+        raw: "dispatch acme api seven",
+        warning: { error: "no Scribe is configured", help: ["Sent as heard. Add voice.scribe to config.json (see docs/voice.md)"] },
+      });
+    });
+
+    test("nothing heard is never sent to the Scribe", async () => {
+      const ctx = await withVoice({ transcribe: TRANSCRIBE, scribe: SCRIBE });
+      hears(ctx.world, "");
+      const sent = scribe(ctx.world, "Something.");
+      const talk = await open(ctx);
+
+      talk.json({ type: "start", utterance: 1 });
+      talk.send(pcm(0.5));
+      talk.json({ type: "end" });
+
+      expect(await talk.next()).toEqual({ type: "final", utterance: 1, text: "", raw: "" });
+      expect(sent).toHaveLength(0);
+    });
   });
 
   test("another site's page cannot open it", async () => {

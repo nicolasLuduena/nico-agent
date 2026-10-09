@@ -143,9 +143,16 @@ function CardView({ card, send, dismiss }: { card: Card; send: SendText; dismiss
   switch (card.kind) {
     case "message":
       return (
-        <li className={`card-message ${card.who}${card.sending ? " sending" : ""}`}>
-          <Byline who={card.who} at={card.at} note={card.sending ? "sending…" : card.spoken ? "spoke" : undefined} />
-          <p className="text">{card.text}</p>
+        <li className={`card-message ${card.who}${card.sending ? " sending" : ""}${card.superseded ? " superseded" : ""}`}>
+          <Byline who={card.who} at={card.at} note={messageNote(card)} />
+          {card.raw === undefined
+            ? <p className="text">{card.text}</p>
+            : (
+              <div className="spoken">
+                <p className="text">{card.text}</p>
+                <p className="raw"><span>Heard</span>{card.raw}</p>
+              </div>
+            )}
           {card.error && (
             <div className="send-failure">
               <p className="error">{card.error}</p>
@@ -160,6 +167,13 @@ function CardView({ card, send, dismiss }: { card: Card; send: SendText; dismiss
     case "proposal":
       return <ProposalCard card={card} />;
   }
+}
+
+/** A message's muted note: on its way, spoken, correcting an earlier one, or corrected since. */
+function messageNote(card: Card & { kind: "message" }) {
+  if (card.sending) return "sending…";
+  const notes = [card.spoken && "spoke", card.corrects !== undefined && "corrects", card.superseded && "corrected below"];
+  return notes.filter(Boolean).join(" · ") || undefined;
 }
 
 /** Who wrote a card and when, then a muted note (such as "sending…") or, at its end, a Proposal's status. */
@@ -261,11 +275,11 @@ function ProposalCard({ card }: { card: Card & { kind: "proposal" } }) {
 
 /**
  * Where the user writes or talks to the Lead: Enter sends, Shift+Enter starts
- * a new line; the talk button sends what it heard, the raw transcript as it is.
+ * a new line; the talk button sends the Scribe's text, keeping what it heard.
  */
 function Composer({ send }: { send: SendText }) {
   const [text, setText] = useState("");
-  const talking = useTalk((heard) => void send(heard, undefined, heard));
+  const talking = useTalk((text, heard) => void send(text, undefined, heard));
   const submit = () => {
     if (!text.trim()) return;
     void send(text);

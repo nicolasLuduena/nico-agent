@@ -1,0 +1,130 @@
+{
+  "about": "Twenty utterances to the Lead, voiced by Kokoro (af_heart) at 16kHz mono, transcribed with the vocabulary as the prompt and cleaned by the Scribe. Rerun with `bun scripts/scribe-fixtures.ts`.",
+  "vocabulary": "Glossary: Source, Repo, Linear selector, Blocker, Spec, Ready, Stackable, Board, Queue, Dispatch, Base, Stack, Stacked dispatch, In flight, Scheduler, Held, Implementer, Asking, Reviewer, Bot suffix, Stage, Agent state, Claim, Close, Lead, Standing orders, Proposal, Intent, Notes, Conversation, Inbox, Nudge, Scribe, Voice on, Harness, Launch mode, Sigil, Effort. Names: claude, codex, opencode, acme/api, acme/web. Issues: acme/api#7 Add retries to the herdr client; acme/api#10 Billing; acme/api#12 Billing webhooks; acme/api#15 Rate limit the search endpoint; acme/api#20 Search; acme/web#3 Dark mode for the settings page; acme/web#9 Fix the login redirect; BLE-42 Export invoices as CSV.",
+  "recent": [
+    "User: What is running?",
+    "Lead: Nothing yet. acme/api#7 and acme/web#9 are Ready; the Billing Spec is next in the Queue."
+  ],
+  "utterances": [
+    {
+      "file": "01.wav",
+      "said": "Um, dispatch acme api seven.",
+      "raw": "Um, Dispatch ACME API 7.",
+      "cleaned": "Dispatch ACME API 7."
+    },
+    {
+      "file": "02.wav",
+      "said": "What's, uh, what's on the board right now?",
+      "raw": "What's a, what's on the board right now?",
+      "cleaned": "What's on the board right now?"
+    },
+    {
+      "file": "03.wav",
+      "said": "Queue the billing spec after the search one.",
+      "raw": "Queue the billing spec after the search one.",
+      "cleaned": "Queue the Billing Spec after the Search one."
+    },
+    {
+      "file": "04.wav",
+      "said": "Review acme web nine with codex on high effort.",
+      "raw": "Review Acme Web 9 with codex on high effort.",
+      "cleaned": "Review acme/web#9 with codex on high effort."
+    },
+    {
+      "file": "05.wav",
+      "said": "No, I said acme web three, not nine.",
+      "raw": "No, I said acme web3, not 9.",
+      "cleaned": "No, I said acme/web3, not acme/web9."
+    },
+    {
+      "file": "06.wav",
+      "said": "Uh, close acme api twelve, the PR merged.",
+      "raw": "A close acme API 12, the PR merged.",
+      "cleaned": "Close acme/api#12, the PR merged."
+    },
+    {
+      "file": "07.wav",
+      "said": "Is anything held? I mean, is any spec held?",
+      "raw": "Is anything held? I mean is any spec held?",
+      "cleaned": "Is anything held? I mean, is any spec held?"
+    },
+    {
+      "file": "08.wav",
+      "said": "Start the reviewer on the stackable one.",
+      "raw": "Start the reviewer on the stackable one.",
+      "cleaned": "Start the reviewer on the stackable one."
+    },
+    {
+      "file": "09.wav",
+      "said": "Tell the implementer on B L E forty two to, um, use the existing CSV helper.",
+      "raw": "Tell the implementer on BLE-42 to, um, use the existing CSV helper.",
+      "cleaned": "Tell the implementer on BLE-42 to use the existing CSV helper."
+    },
+    {
+      "file": "10.wav",
+      "said": "Unqueue the dark mode issue for now.",
+      "raw": "Unqueue the dark mode issue for now.",
+      "cleaned": "Unqueue the dark mode issue for now."
+    },
+    {
+      "file": "11.wav",
+      "said": "What is the implementer asking about on acme api fifteen?",
+      "raw": "What is the implementer asking about on acme API 15?",
+      "cleaned": "What is the implementer asking about on acme/api#15?"
+    },
+    {
+      "file": "12.wav",
+      "said": "Dispatch the next ready issue with claude, opus, medium effort.",
+      "raw": "Dispatch the next ready issue with Claude, Opus, Medium, Effort.",
+      "cleaned": "Dispatch the next Ready issue with Claude, Opus, Medium, Effort."
+    },
+    {
+      "file": "13.wav",
+      "said": "Approve the proposal. Yeah, go ahead.",
+      "raw": "Approve the proposal. Yeah, go ahead.",
+      "cleaned": "Approve the proposal. Yeah, go ahead."
+    },
+    {
+      "file": "14.wav",
+      "said": "Um, decline that. We, we finish billing first.",
+      "raw": "Um, decline that. We finish billing first.",
+      "cleaned": "Um, decline that. We finish billing first."
+    },
+    {
+      "file": "15.wav",
+      "said": "What's in flight right now?",
+      "raw": "What's in flight right now?",
+      "cleaned": "What's in flight right now?"
+    },
+    {
+      "file": "16.wav",
+      "said": "Move the search spec to the top of the queue.",
+      "raw": "Move the search spec to the top of the queue.",
+      "cleaned": "Move the search spec to the top of the queue."
+    },
+    {
+      "file": "17.wav",
+      "said": "Advance billing, uh, advance the billing spec.",
+      "raw": "Advanced billing, uh, advanced the billing spec.",
+      "cleaned": "Advanced billing, advanced the billing spec."
+    },
+    {
+      "file": "18.wav",
+      "said": "Answer acme api seven: use exponential backoff, um, capped at thirty seconds.",
+      "raw": "Answer ACME API 7. Use Exponential Backoff, UM, capped at 30 seconds.",
+      "cleaned": "Answer ACME API 7. Use Exponential Backoff, capped at 30 seconds."
+    },
+    {
+      "file": "19.wav",
+      "said": "Check the standing orders. Can you dispatch without asking?",
+      "raw": "Check the standing orders. Can you dispatch without asking?",
+      "cleaned": "Check the standing orders. Can you dispatch without asking?"
+    },
+    {
+      "file": "20.wav",
+      "said": "No, I said opencode, not codex.",
+      "raw": "No, I said opencode, not codex.",
+      "cleaned": "No, I said opencode, not codex."
+    }
+  ]
+}

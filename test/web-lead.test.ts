@@ -83,6 +83,35 @@ describe("the Lead panel's actions", () => {
     expect(JSON.parse(body)).toMatchObject({ error: "question 1 was already answered", help: ["Run `nico-agent lead log` to see the Lead's questions (none is open)"] });
   });
 
+  test("\"No, I said …\" supersedes the last message, and the Lead's Inbox shows it as a correction of that entry", async () => {
+    const { cli, post } = withLead();
+    await post("/api/say", ["--", "Dispatch acme/api#7"]);
+    await cli("lead", "say", "Dispatching acme/api#7.");
+    expect((await cli("lead", "inbox", "--json")).json().entries).toHaveLength(1);
+
+    const said = await post("/api/say", ["--raw", "no i said acme api eight", "--", "No, I said acme/api#8."]);
+
+    expect(said.status).toBe(200);
+    expect(JSON.parse(said.body)).toMatchObject({ said: 3, supersedes: 1 });
+    expect((await cli("lead", "inbox", "--json")).json().entries).toEqual([
+      {
+        id: 3, at: expect.any(String), type: "user", text: "No, I said acme/api#8.", raw: "no i said acme api eight",
+        supersedes: 1, superseded: "Dispatch acme/api#7",
+      },
+    ]);
+  });
+
+  test("a correction typed or spoken in any case corrects; one with nothing before it, or an answer, is only what it says", async () => {
+    const { cli, post } = withLead();
+    expect(JSON.parse((await post("/api/say", ["--", "No, I said billing"])).body)).not.toHaveProperty("supersedes");
+    await cli("lead", "ask", "Which first?");
+    expect(JSON.parse((await post("/api/say", ["--answer", "2", "--", "no I said search"])).body)).not.toHaveProperty("supersedes");
+    // The Scribe may drop the words; what was heard still says it.
+    expect(JSON.parse((await post("/api/say", ["--raw", "no i said search", "--", "Search."])).body)).toMatchObject({ said: 4, supersedes: 1 });
+    expect(JSON.parse((await post("/api/say", ["--", "no — I said search first"])).body)).toMatchObject({ said: 5, supersedes: 4 });
+    expect(JSON.parse((await post("/api/say", ["--", "Not now; I said that before"])).body)).not.toHaveProperty("supersedes");
+  });
+
   test("/api/proposals/approve runs the action and answers its outcome; decline takes a reason", async () => {
     const { cli, post, configure } = withLead();
     for (const reason of ["Next in the Queue", "Again", "Not now"]) await cli("lead", "propose", "--reason", reason, "advance");

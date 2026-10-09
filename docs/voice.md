@@ -56,8 +56,9 @@ that service with what to fix, and the command exits 1.
 The Lead panel's **Talk** button records from the browser's microphone and
 streams the audio to `serve` over a WebSocket (`/api/voice`, 16kHz 16-bit mono
 PCM). `serve` sends it to `voice.transcribe` and shows what it heard as you
-speak; the final transcript is sent to the Lead as your message, with the raw
-transcript kept on the entry (`nico-agent say --raw`).
+speak; the final transcript goes through the Scribe, and its text is sent to
+the Lead as your message at once, with the raw transcript kept on the entry
+(`nico-agent say --raw <raw> -- <text>`). The card shows the two side by side.
 
 - **Hold** the button (or Space or Enter on it) to talk; release to send.
 - **Tap** it to talk hands-free: a pause of about a second after you spoke
@@ -73,6 +74,41 @@ last hint built rather than wait for the Board.
 
 A failure (no `voice.transcribe`, the service down or answering an error, the
 microphone blocked) shows as a warning above the composer; typing still works.
+
+### The Scribe
+
+The Scribe (`voice.scribe`) gets the final transcript with the same
+vocabulary, all of it, and the conversation's last four entries, for
+context. It is told to drop fillers, spell the vocabulary's terms as written,
+fix punctuation, and change nothing else; a few generic examples go with it,
+because a small model given only rules answers the question it was dictated
+or repeats its prompt. An answer much longer than what was heard is refused
+for the same reason.
+
+When the Scribe is not configured, unreachable, answers an error, or is
+refused, the raw transcript is sent as it is, with a warning above the
+composer: the conversation never waits on it.
+
+Say (or type) "No, I said …" to correct your last message: the new entry
+supersedes it (`supersedes` in `lead log --json`), the old card is struck,
+and the Lead's Inbox hands it the correction with the text it replaces.
+
+### The fixture set
+
+`test/fixtures/scribe/` holds twenty utterances to the Lead with Board
+vocabulary, voiced by Kokoro, and each one's raw transcript and Scribe
+cleanup. To try another model or prompt, rerun them through the services in
+`config.json` (or the local ones below) and read the table it prints:
+
+```bash
+bun scripts/scribe-fixtures.ts           # transcribe and clean each WAV again
+bun scripts/scribe-fixtures.ts --speak   # voice them again first
+```
+
+With `Systran/faster-whisper-small.en` and `qwen2.5:3b` on the CPU, the
+Scribe kept the meaning of all twenty, in 2 to 3s each with transcription.
+It fixed issues said aloud ("acme API 15" to `acme/api#15`) more often than
+not, but left some ("ACME API 7") as heard.
 
 ### On the phone
 

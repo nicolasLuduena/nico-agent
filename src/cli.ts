@@ -4,7 +4,7 @@ import { ADVANCE_INTERVAL_MS, type AdvanceReport, advance } from "./advance";
 import { answer, loadAsking } from "./answer";
 import { type BoardIssue, loadBoard } from "./board";
 import { ConfigError, ORDERS, VOICE_DOC, VOICE_SERVICES, type Order, ORDERS_HELP, findRepo, isOrder, loadConfig, saveConfig, standingOrders } from "./config";
-import { AnswerRefused, answerQuestion, append, authored, loadConversation, openQuestions, readInbox, recall } from "./conversation";
+import { AnswerRefused, answerQuestion, append, authored, loadConversation, openQuestions, readInbox, recall, sayToLead } from "./conversation";
 import { StepFailed, baseBranch, closeDispatch, dispatch, eachIssue, resolveIssue, review } from "./dispatch";
 import { DispatchError } from "./dispatch-error";
 import { PANE_ARGS } from "./opencode";
@@ -311,7 +311,11 @@ const commands: Command[] = [
       "nico-agent say --json -- \"--force is fine here\"",
       "nico-agent say --raw \"dispatch acme api twelve\" -- \"Dispatch acme/api#12\"",
     ],
-    help: ["The Lead is Nudged to read its Inbox: now if it is idle, else by `nico-agent serve` once it is", LOG_HELP],
+    help: [
+      "The Lead is Nudged to read its Inbox: now if it is idle, else by `nico-agent serve` once it is",
+      "A message starting \"No, I said\" supersedes your last one; the Lead reads it as a correction",
+      LOG_HELP,
+    ],
     run: sayCommand,
   },
   {
@@ -773,8 +777,8 @@ async function sayCommand(args: Args, ctx: RunContext): Promise<Output> {
   const { "--answer": flag, "--raw": raw } = args.flags;
   let data: Record<string, unknown>;
   if (typeof flag !== "string") {
-    const entry = await append(ctx.configDir, { type: "user", text, ...(typeof raw === "string" && { raw }) }, ctx.world.now());
-    data = { said: entry.id };
+    const entry = await sayToLead(ctx.configDir, { text, ...(typeof raw === "string" && { raw }) }, ctx.world.now());
+    data = { said: entry.id, ...(entry.supersedes !== undefined && { supersedes: entry.supersedes }) };
   } else {
     if (raw !== undefined) throw new CliError("--raw is for a spoken message, not an answer", [`Usage: \`${SAY_USAGE}\``], 2);
     try {
