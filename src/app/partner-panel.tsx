@@ -198,7 +198,8 @@ function Composer({ tab, send, disabled, text, setText, field }: {
     }
   };
   return (
-    <form className="write" onSubmit={(e) => { e.preventDefault(); submit(); }}>
+    // A quote spans lines, which a pill can't hold.
+    <form className={`write${text.includes("\n") ? " tall" : ""}`} onSubmit={(e) => { e.preventDefault(); submit(); }}>
       <textarea ref={field} aria-label={`Message to the ${PARTNER_NAMES[tab]}`} placeholder={disabled ? "The Partner is not running" : "Write to the Partner"} rows={2} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={onKey} />
       <button type="submit" className="primary" disabled={disabled || !text.trim()}>Send</button>
     </form>
@@ -295,7 +296,7 @@ function PrPick({ picked, pasted, pick, paste }: { picked?: string; pasted: stri
       </label>
       {listed.data?.warnings?.map((w) => <p key={w} className="error">{w}</p>)}
       <label>Or paste its URL
-        <input name="pr-url" type="url" inputMode="url" placeholder="https://github.com/owner/name/pull/12" value={pasted} onChange={(e) => paste(e.target.value)} />
+        <input name="pr-url" type="text" inputMode="url" placeholder="https://github.com/owner/name/pull/12" value={pasted} onChange={(e) => paste(e.target.value)} />
       </label>
     </>
   );

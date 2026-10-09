@@ -365,6 +365,9 @@ label.switch:has(:checked) { color: var(--ink); }
 /* A Partner's tab (ADR-0014): its Thread where the Lead's conversation is, the Partner or its start form in the side column. */
 .thread-panel .lead-bar h1 { margin-right: auto; }
 .partner-side form, .partner-start { display: grid; gap: 0.7rem; }
+/* A PR's long title must not widen the form past its panel. */
+.partner-start { grid-template-columns: minmax(0, 1fr); }
+.partner-start :is(select, input) { width: 100%; min-width: 0; }
 .partner-empty .partner-start { width: min(20rem, 100%); margin: 0.75rem auto 0; text-align: left; }
 .partner-empty .partner-start .buttons { justify-content: flex-end; }
 :is(.partner-side, .partner-start) label { display: grid; gap: 0.3rem; font-size: 13px; font-weight: 600; color: var(--ink-muted); }
@@ -484,6 +487,7 @@ label.switch:has(:checked) { color: var(--ink); }
 .composer { border-top: 1px solid var(--rule); padding: 1rem 1.25rem 1.25rem; display: grid; gap: 0.6rem; }
 .composer-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.75rem; align-items: end; }
 .composer .write { display: flex; align-items: flex-end; gap: 0.5rem; min-height: 54px; background: var(--raised); border: 1px solid var(--edge); border-radius: var(--r-pill); padding: 0.4rem 0.4rem 0.4rem 1.1rem; transition: border-color 160ms var(--ease), box-shadow 160ms var(--ease); }
+.composer .write.tall { border-radius: var(--r-lg); }
 .composer .write:focus-within { border-color: var(--focus); box-shadow: 0 0 0 4px color-mix(in srgb, var(--focus) 22%, transparent); }
 .composer textarea { flex: 1; align-self: center; border: 0; border-radius: 0; background: transparent; padding: 0.35rem 0; max-height: 12rem; field-sizing: content; min-height: 1.6rem; font-size: 16px; }
 .composer textarea:focus { box-shadow: none; }
