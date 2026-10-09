@@ -71,7 +71,7 @@ When it is due, read `RETRO.md` beside this skill and follow it, after the daily
 
 ## Naming
 
-Name things exactly as the Board's JSON does, so the user can paste your words into a command: an issue by its `issue` field (`owner/repo#N`, or a Linear identifier such as `BLE-27`), a Spec by its `spec` field, a PR by its URL. In-flight work is the `dispatches` list, each with its `stage` and its `implementer` Agent state. Use the glossary's words: Dispatch, Spec, Ready, Stackable, In flight, Implementer, Reviewer, Asking, Held, Stage, Agent state, Queue, Intent, Standing order, Proposal, Daily brief, Weekly retro.
+Name things exactly as the Board's JSON does, so the user can paste your words into a command: an issue by its `issue` field (`owner/repo#N`, or a Linear identifier such as `BLE-27`), a Spec by its `spec` field, a PR by its URL. In-flight work is the `dispatches` list, each with its `stage` and its `implementer` Agent state. Use the glossary's words: Dispatch, Spec, Ready, Stackable, In flight, Implementer, Reviewer, Asking, Held, Stage, Agent state, Queue, Intent, Standing order, Proposal, Daily brief, Weekly retro, Research issue.
 
 "What is running?" gets an answer shaped like: "In flight: acme/api#7 (Implementing, working), BLE-27 (PR ready, https://github.com/acme/api/pull/9). Spec acme/api#5 is Held: acme/api#6 Failed."
 
@@ -168,7 +168,7 @@ When it is unclear which Implementer the user's words are for, `ask`. When the u
 
 An `event` in your Inbox is a change nico-agent saw on an In-flight issue's PR, written once: its `pr` URL, its `issue`, the `change` (`comment`, `review`, `check`, `ready`, `merged`, `closed`) and a one-line `text`. It keeps watching a PR after its Dispatch is Closed, until it is merged or closed.
 
-Say in plain words what blocks each PR you report, from the events and, when the user asks, from the PR itself: the check that failed, by name (`gh pr checks <url>`); the review that requested changes and what it asked for (`gh pr view <url> --comments`); the review threads still open, each by its file and first comment (`gh api graphql -f query='query{repository(owner:"<owner>",name:"<name>"){pullRequest(number:<N>){reviewThreads(first:100){nodes{isResolved path comments(first:1){nodes{author{login} body}}}}}}}'`, the ones with `isResolved` false); or that it is still a draft. "https://github.com/acme/api/pull/9 is blocked by the failing check `test` and by bob's request to bound the retry loop; nothing else is open." Report a merge or a close in one line. A comment that needs nothing from anyone (a bot's summary, a thank-you) needs no word.
+Say in plain words what blocks each PR you report, from the events and, when the user asks, from the PR itself: the check that failed, by name (`gh pr checks <url>`); the review that requested changes and what it asked for (`gh pr view <url> --comments`); the review threads still open, each by its file and first comment (`gh api graphql -f query='query{repository(owner:"<owner>",name:"<name>"){pullRequest(number:<N>){reviewThreads(first:100){nodes{isResolved path comments(first:1){nodes{author{login} body}}}}}}}'`, the ones with `isResolved` false); or that it is still a draft. "https://github.com/acme/api/pull/9 is blocked by the failing check `test` and by bob's request to bound the retry loop; nothing else is open." Report a merge or a close in one line. When a Research issue's PR is ready, name the question it answers (Research). A comment that needs nothing from anyone (a bot's summary, a thank-you) needs no word.
 
 When an Implementer has worked long with no PR, or is Asking with an unclear question, `peek` at its screen before you tell the user what it is doing.
 
@@ -178,10 +178,14 @@ A Dispatch is finished when its `dispatches` row has `stage` `PR ready` and its 
 
 ## Your shell
 
-You have a shell. Use it to look: `nico-agent lead log`, `nico-agent show <issue>`, `nico-agent orders`, `nico-agent proposals`, `nico-agent github usage` (nico-agent's own GitHub calls by caller and query, and the account's quota, when GitHub is rate limited), `herdr agent read <agent>`, `gh` and `git` read commands. Every change to the Board, herdr or an Implementer goes through your tools, which check your Standing orders. A change to a Source or a repo is the `write` order's: make it only when the user asks for it in the conversation, when `nico-agent orders` shows `write` on, or when the user approves your `write` Proposal.
+You have a shell. Use it to look: `nico-agent lead log`, `nico-agent show <issue>`, `nico-agent orders`, `nico-agent proposals`, `nico-agent github usage` (nico-agent's own GitHub calls by caller and query, and the account's quota, when GitHub is rate limited), `herdr agent read <agent>`, `gh` and `git` read commands. Every change to the Board, herdr or an Implementer goes through your tools, which check your Standing orders. A change to a Source or a repo is the `write` order's: make it only when the user asks for it in the conversation, when `nico-agent orders` shows `write` on, or when the user approves your `write` Proposal. A research issue the user asks for, in the conversation or with the Research button, is asked for: write it without a Proposal (Research).
 
 ## Shaping new work
 
 When the user brings an idea for new work, read `SHAPING.md` beside this skill before your first question, and follow it to a Spec and its tickets on the Source, queued or proposed.
 
 The other shaping skills beside this one serve the user on request: `triage` for incoming issues, `retro` to look back (and you, weekly: The weekly retro).
+
+## Research
+
+When the user asks you to research a question, in the conversation or with the app's Research button, read `RESEARCH.md` beside this skill and follow it: find the Repo, asking when it is unclear; write the research issue on its Source, labelled `research` and `ready-for-agent`, with no Proposal; and start it under the `start` order, as a Spec of its own or as the Blocker of the tickets that need its findings.

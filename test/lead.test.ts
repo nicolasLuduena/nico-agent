@@ -35,6 +35,7 @@ describe("lead start", () => {
     expect(readFileSync(join(home, ".claude/skills/lead/SKILL.md"), "utf8")).toStartWith("---\nname: lead\n");
     expect(readFileSync(join(home, ".claude/skills/lead/SHAPING.md"), "utf8")).toStartWith("# Shaping new work\n");
     expect(readFileSync(join(home, ".claude/skills/lead/RETRO.md"), "utf8")).toStartWith("# The weekly retro\n");
+    expect(readFileSync(join(home, ".claude/skills/lead/RESEARCH.md"), "utf8")).toStartWith("# Research\n");
   });
 
   test("on codex: the MCP server in a -c override, the home trusted and its root, the skill where codex finds it", async () => {
@@ -268,12 +269,12 @@ describe("the Lead's home", () => {
 });
 
 describe("the lead skill", () => {
-  /** The skill `lead start` wrote into the Lead's home, its shaping and retro pages after it. */
+  /** The skill `lead start` wrote into the Lead's home, its shaping, retro and research pages after it. */
   async function writtenSkill() {
     const ctx = withConfig(CLAUDE);
     expect((await ctx.cli("lead", "start")).exitCode).toBe(0);
     const page = (name: string) => readFileSync(join(ctx.home, ".claude/skills/lead", name), "utf8");
-    return { ...ctx, skill: `${page("SKILL.md")}\n${page("SHAPING.md")}\n${page("RETRO.md")}` };
+    return { ...ctx, skill: `${page("SKILL.md")}\n${page("SHAPING.md")}\n${page("RETRO.md")}\n${page("RESEARCH.md")}` };
   }
 
   test("it points to its shaping page by the name lead start writes it under", async () => {
@@ -284,6 +285,11 @@ describe("the lead skill", () => {
   test("it points to its retro page by the name lead start writes it under", async () => {
     const { skill } = await writtenSkill();
     expect(skill).toContain("read `RETRO.md` beside this skill");
+  });
+
+  test("it points to its research page by the name lead start writes it under", async () => {
+    const { skill } = await writtenSkill();
+    expect(skill).toContain("read `RESEARCH.md` beside this skill");
   });
 
   test("its Tools section names exactly the tools the MCP server offers", async () => {
