@@ -1,3 +1,5 @@
+import { readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 import { setup } from "./harness";
 
@@ -10,6 +12,16 @@ async function dispatched() {
   await ctx.cli("repo", "add", "acme/api", "--path", "/src/api");
   ctx.world.addGitHubSpec("acme/api", { number: 10, title: "Billing" }, { number: 11 }, { number: 12 });
   expect((await ctx.cli("dispatch", "acme/api#11", ...FLAGS)).exitCode).toBe(0);
+  ctx.world.calls.length = 0;
+  return ctx;
+}
+
+/** acme/api#11 dispatched, and acme/api's Gardener started on claude. */
+async function gardening() {
+  const ctx = await dispatched();
+  const file = join(ctx.configDir, "config.json");
+  writeFileSync(file, JSON.stringify({ ...JSON.parse(readFileSync(file, "utf8")), gardener: { harness: "claude", model: "opus", effort: "high" } }));
+  expect((await ctx.cli("garden", "acme/api")).exitCode).toBe(0);
   ctx.world.calls.length = 0;
   return ctx;
 }
@@ -113,6 +125,35 @@ describe("nico-agent answer", () => {
     expect(world.calls).toEqual([]);
   });
 
+  test("a Repo answers its Gardener while it waits on the user", async () => {
+    const { cli, world } = await gardening();
+    world.agentStates.set("garden-api", "blocked");
+    const result = await cli("answer", "acme/api", "--json", "--", "Keep both changes");
+    expect(result.exitCode).toBe(0);
+    expect(result.json()).toEqual({
+      answered: "acme/api",
+      agent: "garden-api",
+      help: ["Run `herdr agent read garden-api` to see the Gardener", "Run `nico-agent` to see the Board"],
+    });
+    expect(world.calls).toEqual(["herdr agent list", "herdr agent prompt garden-api Keep both changes"]);
+
+    world.agentStates.set("garden-api", "working");
+    const refused = await cli("answer", "acme/api", "again", "--json");
+    expect(refused.exitCode).toBe(1);
+    expect(refused.json().error).toBe("acme/api's Gardener is not waiting on the user (it is working)");
+  });
+
+  test("refuses a Repo with no Gardener", async () => {
+    const { cli, world } = await dispatched();
+    const refused = await cli("answer", "acme/api", "yes", "--json");
+    expect(refused.exitCode).toBe(1);
+    expect(refused.json()).toEqual({
+      error: "acme/api has no Gardener",
+      help: ["Run `nico-agent` to see the Board and which agents are waiting on you"],
+    });
+    expect(world.calls).toEqual([]);
+  });
+
   test("--help documents it", async () => {
     const { cli } = setup();
     const help = (await cli("answer", "--help", "--json")).json();
@@ -146,6 +187,15 @@ describe("the Board's asking list", () => {
       "herdr agent read impl-api-7 --source visible",
     ]);
     expect(board.help).toContain("Run `nico-agent answer <issue> <text>` to answer an Implementer waiting on you");
+  });
+
+  test("lists a Gardener waiting on the user, by its Repo", async () => {
+    const { cli, world } = await gardening();
+    world.agentStates.set("garden-api", "blocked");
+    world.screens.set("garden-api", "Both sides rename `retry`. Which name wins?");
+    const board = (await cli("--json")).json();
+    expect(board.asking).toEqual([{ gardener: "acme/api", question: "Both sides rename `retry`. Which name wins?" }]);
+    expect(board.help).toContain("Run `nico-agent answer <repo> <text>` to answer a Gardener waiting on you");
   });
 
   test("names a Linear issue's Spec too", async () => {

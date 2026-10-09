@@ -144,9 +144,11 @@ Dispatch (it has no issue): `nico-agent garden <repo>` starts it in its own
 herdr workspace on a worktree of the Repo, on the `gardener` launch in config
 (opencode2, `opencode-go/deepseek-v4.1-flash`, max Effort unless set), with
 the `garden` prompt naming each PR and what happened to it (the PR below it
-merged, or it conflicts) and the Bot suffix. One per Repo at a time: a second
-`garden` returns the running one. `advance` removes its workspace once its
-Agent state is idle or done.
+merged, or it conflicts) and the Bot suffix. `serve` starts one by itself
+when a watched PR merges with other open PRs stacked on it, or turns
+conflicting. One per Repo at a time: a second `garden` returns the running
+one, and the PRs `serve` saw meanwhile wait for the next. `advance` removes
+its workspace once its Agent state is idle or done.
 _Avoid_: Rebaser, merger, maintainer
 
 **Bot suffix**:
