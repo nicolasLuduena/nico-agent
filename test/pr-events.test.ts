@@ -13,7 +13,7 @@ const NUDGE = "herdr agent prompt lead Read your Inbox";
 async function serving() {
   const ctx = setup();
   mkdirSync(ctx.configDir, { recursive: true });
-  writeFileSync(join(ctx.configDir, "config.json"), JSON.stringify({ repos: [], lead: LAUNCH, scheduler: LAUNCH }));
+  writeFileSync(join(ctx.configDir, "config.json"), JSON.stringify({ repos: [], lead: LAUNCH, scheduler: LAUNCH, gardener: LAUNCH }));
   ctx.world.addClone("/src/api", "git@github.com:acme/api.git");
   expect((await ctx.cli("repo", "add", "acme/api", "--path", "/src/api")).exitCode).toBe(0);
   ctx.world.addIssue("acme/api", { number: 7 });

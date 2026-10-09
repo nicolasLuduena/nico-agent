@@ -4,6 +4,7 @@ import { GARDENER_DEFAULTS, type LaunchDefaults, type Repo, fillTemplate, findRe
 import { type Progress, agentSteps, chooseLaunch, prompt, repoName, runPhase, withBotSuffix } from "./dispatch";
 import { DispatchError, LaunchError } from "./dispatch-error";
 import type { Harness } from "./harness";
+import type { Gardening } from "./pr-events";
 import { sameSlug } from "./slug";
 import type { Launch } from "./state";
 import { withFileLock, writeJsonAtomic } from "./state";
@@ -45,6 +46,8 @@ export interface GardenRequest {
   repo: string;
   /** The PRs to tend, by URL or number; none for every one that needs it. */
   prs: string[];
+  /** The PRs to tend, already known with what happened to each, in place of `prs`: asks GitHub nothing. */
+  tend?: GardenPr[];
 }
 
 export interface GardenStart {
@@ -55,6 +58,8 @@ export interface GardenStart {
 }
 
 const FILE = "gardeners.json";
+/** The PRs waiting for each Repo's next Gardener, by Repo; not a Queue, which holds Specs. */
+const WAITING_FILE = "garden-waiting.json";
 
 /** Whether a Gardener with this Agent state has stopped, or is gone from herdr (undefined). */
 function isFinished(state: string | undefined) {
@@ -110,7 +115,7 @@ export async function garden(world: World, configDir: string, request: GardenReq
       branch: `gardener/${name}-${now.toISOString().replace(/\D/g, "").slice(0, 14)}`,
       base: `origin/${repo.base ?? (await world.gitDefaultBranch(repo.path))}`,
       agent: { agent: agentName(name), ...launch },
-      prs: await gardenPrs(world, repo, request.prs),
+      prs: request.tend ?? await gardenPrs(world, repo, request.prs),
       completed: [],
       createdAt: now.toISOString(),
       updatedAt: now.toISOString(),
@@ -141,6 +146,78 @@ export async function removeFinishedGardeners(world: World, configDir: string): 
     if (await removeGardener(world, configDir, gardener)) removed.push(gardener.repo);
   }
   return removed;
+}
+
+/**
+ * Keep each PR for its Repo's next Gardener, as `serve` does with what the PR
+ * watch saw: a PR already waiting is replaced by its latest news. A PR of a
+ * Repo that is not configured is dropped, as no Gardener could start there.
+ */
+export async function keepForGardener(configDir: string, gardening: Gardening[]) {
+  if (!gardening.length) return;
+  const config = loadConfig(configDir);
+  await withFileLock(configDir, WAITING_FILE, () => {
+    const waiting = readWaiting(configDir);
+    for (const { repo, pr } of gardening) {
+      const slug = findRepo(config, repo)?.slug;
+      if (!slug) continue;
+      waiting[slug] = [...(waiting[slug] ?? []).filter((p) => p.url !== pr.url), pr];
+    }
+    writeJsonAtomic(join(configDir, WAITING_FILE), waiting);
+  });
+}
+
+/**
+ * Start a Gardener in each Repo with PRs waiting and none running there,
+ * handing it those PRs, which wait no more once it holds them. A failed
+ * start is a warning, and resumed on the next call. Returns what started.
+ */
+export async function startWaitingGardeners(world: World, configDir: string): Promise<{ started: Gardener[]; warnings: string[] }> {
+  const waiting = Object.entries(readWaiting(configDir)).filter(([, prs]) => prs.length);
+  const started: Gardener[] = [];
+  const warnings: string[] = [];
+  if (!waiting.length) return { started, warnings };
+  const records = read(configDir);
+  let states: Map<string, string> | undefined;
+  for (const [repo, prs] of waiting) {
+    try {
+      // A running one is seen here, so its wait doesn't check the launch with `garden` every tick.
+      const existing = records[repo];
+      if (existing && isStarted(existing)) {
+        states ??= new Map((await world.herdrAgents()).map((a) => [a.name, a.state]));
+        if (!isFinished(states.get(existing.agent.agent))) continue;
+      }
+      const { gardener, outcome } = await garden(world, configDir, { repo, prs: [], tend: prs });
+      if (outcome === "existing") continue;
+      await withFileLock(configDir, WAITING_FILE, () => {
+        const now = readWaiting(configDir);
+        const left = (now[repo] ?? []).filter((p) => !gardener.prs.some((g) => samePr(g, p)));
+        if (left.length) now[repo] = left;
+        else delete now[repo];
+        writeJsonAtomic(join(configDir, WAITING_FILE), now);
+      });
+      started.push(gardener);
+    } catch (e) {
+      if (!(e instanceof DispatchError || e instanceof WorldError)) throw e;
+      warnings.push(`the Gardener of ${repo} did not start: ${e.message}`);
+    }
+  }
+  return { started, warnings };
+}
+
+/** Whether two are the same news of the same PR, so a newer one that came during a start still waits. */
+function samePr(a: GardenPr, b: GardenPr) {
+  if (a.happened === "conflict") return b.happened === "conflict" && a.url === b.url && a.base === b.base;
+  return b.happened === "merged below" && a.url === b.url && a.below === b.below && a.newBase === b.newBase;
+}
+
+function readWaiting(configDir: string): Record<string, GardenPr[]> {
+  try {
+    return JSON.parse(readFileSync(join(configDir, WAITING_FILE), "utf8")) as Record<string, GardenPr[]>;
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return {};
+    throw e;
+  }
 }
 
 /** Each Gardener as the Board shows it, with its Agent state; `unknown` when herdr can't be asked. */

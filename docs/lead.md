@@ -268,6 +268,15 @@ last seen of each is kept in `pr-watch.json` in the config directory.
 the app's Lead panel leaves them out and shows what the Lead says about
 them.
 
+From the same answers, `serve` starts a Repo's Gardener by itself: on a
+`merged` event of a PR that other watched open PRs were stacked on, naming
+those, and on a `conflict` event, naming that PR. While a Gardener runs in the
+Repo, the PRs that come up wait in `garden-waiting.json` in the config
+directory, and the next tick after it is done starts the next Gardener with
+them. The Lead reports what a Gardener fixed (its comments on the PRs reach
+the Inbox as events) and relays its questions, listed under the Board's
+`asking` by Repo, with `nico-agent answer <repo> <text>`.
+
 ## The Intent and the Notes
 
 Two Markdown files in the config directory that you and the Lead both edit:

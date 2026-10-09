@@ -11,7 +11,7 @@ import { DispatchError } from "./dispatch-error";
 import { PANE_ARGS } from "./opencode";
 import { type Catalog, harnessCatalogs, harnesses, refreshHarnesses, rememberedLaunches } from "./harness";
 import { LEAD_AGENT, NICO_AGENT_SLUG, leadStatus, startLead, stopLead } from "./lead";
-import { describePrs, garden, gardenRepo, gardenerRows } from "./gardener";
+import { describePrs, garden, gardenRepo, gardenerRows, startWaitingGardeners } from "./gardener";
 import { NUDGE_INTERVAL_MS, nudgeLead, sendPendingNudge } from "./nudge";
 import { linearIdentifier } from "./linear";
 import { peek } from "./peek";
@@ -62,7 +62,7 @@ const BOARD_HELP = "Run `nico-agent` to see the Board";
 const DISPATCH_USAGE = "nico-agent dispatch <issue>... --harness <harness> --model <model> --effort <effort>";
 const REVIEW_USAGE = "nico-agent review <issue>... --harness <harness> --model <model> --effort <effort>";
 const CLOSE_USAGE = "nico-agent close <issue>... [--confirm]";
-const ANSWER_USAGE = "nico-agent answer <issue> <text>";
+const ANSWER_USAGE = "nico-agent answer <issue|repo> <text>";
 const PEEK_USAGE = "nico-agent peek [<issue>] [--reviewer]";
 const ORDERS_SET_USAGE = "nico-agent orders set <order> on|off";
 const SAY_USAGE = "nico-agent say [--answer <id>] [--raw <transcript>] <text>";
@@ -251,15 +251,16 @@ const commands: Command[] = [
   {
     name: "answer",
     usage: ANSWER_USAGE,
-    summary: "Submit text, as typed, to an In-flight issue's Implementer while it waits on the user",
+    summary: "Submit text, as typed, to an In-flight issue's Implementer, or a Repo's Gardener, while it waits on the user",
     flags: {},
     positionals: ["issue", "text..."],
     examples: [
       "nico-agent answer acme/api#7 \"2\"",
       "nico-agent answer BLE-27 \"Stop: this is already done in #48\"",
       "nico-agent answer acme/api#7 --json -- \"--force is fine here\"",
+      "nico-agent answer acme/api \"Keep both changes\"",
     ],
-    help: ["Run `nico-agent --json` to see which Implementers are waiting on you, under `asking`"],
+    help: ["Run `nico-agent --json` to see which Implementers and Gardeners are waiting on you, under `asking`"],
     run: answerCommand,
   },
   {
@@ -870,12 +871,13 @@ async function moveCommand(args: Args, ctx: RunContext): Promise<Output> {
 async function answerCommand(args: Args, ctx: RunContext): Promise<Output> {
   const [issue, ...words] = args.positionals;
   const text = words.join(" ");
-  if (!issue || !text) throw new CliError(issue ? "<text> is required" : "<issue> is required", [`Usage: \`${ANSWER_USAGE}\``], 2);
-  const { issue: key, agent, started } = await answer(ctx.world, ctx.configDir, issue, text);
-  const help = [`Run \`nico-agent show ${key}\` to see the Dispatch`, BOARD_HELP];
+  if (!issue || !text) throw new CliError(issue ? "<text> is required" : "<issue|repo> is required", [`Usage: \`${ANSWER_USAGE}\``], 2);
+  const { answered, agent, gardener, started } = await answer(ctx.world, ctx.configDir, issue, text);
+  const help = [gardener ? `Run \`herdr agent read ${agent}\` to see the Gardener` : `Run \`nico-agent show ${answered}\` to see the Dispatch`, BOARD_HELP];
   if (!started) help.unshift(`Run \`herdr agent read ${agent}\` to see whether it took the answer`);
+  const who = gardener ? "Gardener" : "Implementer";
   return {
-    data: { answered: key, agent, ...(!started && { warning: "the answer was submitted, but the Implementer has not started working" }) },
+    data: { answered, agent, ...(!started && { warning: `the answer was submitted, but the ${who} has not started working` }) },
     help,
   };
 }
@@ -1552,6 +1554,18 @@ async function serve(args: Args, ctx: RunContext): Promise<Output> {
     await look();
     for (const warning of await sendPendingNudge(ctx.world, ctx.configDir)) console.error(warning);
   });
+  // A merged PR with others stacked on it, or a conflict, waits for its Repo's next Gardener;
+  // each tick starts one wherever PRs wait and none runs.
+  const startGardeners = async () => {
+    try {
+      const { started, warnings } = await withCaller("gardener", () => startWaitingGardeners(served.world, ctx.configDir));
+      for (const warning of warnings) console.error(`garden: ${warning}`);
+      for (const g of started) console.error(`garden: started the Gardener of ${g.repo} for ${g.prs.map((pr) => pr.url).join(", ")}`);
+      if (started.length) events.emit("board-changed");
+    } catch (e) {
+      console.error(`garden failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  };
   // What changes on a PR reaches the Lead as events in its Inbox.
   ctx.world.every(PR_WATCH_INTERVAL_MS, async () => {
     try {
@@ -1563,6 +1577,8 @@ async function serve(args: Args, ctx: RunContext): Promise<Output> {
       for (const warning of await nudgeLead(ctx.world, ctx.configDir)) console.error(warning);
     } catch (e) {
       console.error(`PR events failed: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      await startGardeners();
     }
   });
   // The Scheduler: serve tends the Board while it is up, reading GitHub through the same cache.
@@ -1712,9 +1728,10 @@ async function board(ctx: RunContext, json: boolean): Promise<Output> {
   if (inFlight.some((row) => row.implementerState === "blocked")) blocked.push("Run `nico-agent answer <issue> <text>` to answer an Implementer waiting on you");
   help.unshift(...blocked);
   // The question `nico-agent answer` replies to, for a user away from herdr; the TOON Board points at `herdr agent read` instead.
-  const asking = json ? await loadAsking(ctx.world, inFlight, specs) : [];
+  const gardenerStates = await gardenerRows(ctx.world, ctx.configDir);
+  const asking = json ? await loadAsking(ctx.world, inFlight, specs, gardenerStates) : [];
   // Each Repo's Gardener, with the PRs it was sent to; none listed means every one that needs it.
-  const gardeners = (await gardenerRows(ctx.world, ctx.configDir)).map(({ gardener: g, state }) => ({
+  const gardeners = gardenerStates.map(({ gardener: g, state }) => ({
     repo: g.repo,
     agent: g.agent.agent,
     state,
@@ -1725,7 +1742,9 @@ async function board(ctx: RunContext, json: boolean): Promise<Output> {
     effort: g.agent.effort,
     ...(json && definedOnly({ failure: g.failure?.error, warnings: g.warnings?.length ? g.warnings : undefined })),
   }));
-  help.unshift(...gardeners.filter((g) => g.state === "blocked").map((g) => `Run \`herdr agent read ${g.agent}\` to see what the Gardener of ${g.repo} is asking`));
+  const askingGardeners = gardeners.filter((g) => g.state === "blocked");
+  if (askingGardeners.length) help.unshift("Run `nico-agent answer <repo> <text>` to answer a Gardener waiting on you");
+  help.unshift(...askingGardeners.map((g) => `Run \`herdr agent read ${g.agent}\` to see what the Gardener of ${g.repo} is asking`));
   const inFlightData = {
     ...(gardeners.length > 0 && { gardeners }),
     inFlight: plural(inFlight.length, "Dispatch", "Dispatches"),

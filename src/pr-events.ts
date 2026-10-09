@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { type Entry, type PrChange, append } from "./conversation";
+import { type GardenPr, keepForGardener } from "./gardener";
 import type { PrLookup } from "./stage";
 import { loadDispatches, writeJsonAtomic } from "./state";
 import { type CheckResult, type PullRequest, type PullRequestActivity, type PullRequestComment, type World, WorldError, worldErrorMessage } from "./world";
@@ -19,6 +20,10 @@ interface Watched {
   number: number;
   /** The issue whose Dispatch opened it. */
   issue: string;
+  /** Its head branch, which the PRs stacked on it target. */
+  head?: string;
+  /** The branch it merges into, as last seen; unset until it is first asked about. */
+  base?: string;
   /** Whether it was a draft; unset until it is first asked about. */
   draft?: boolean;
   /** Whether it was last known to conflict with its base. */
@@ -42,7 +47,9 @@ interface Watched {
  * watched). Each new review comment, check result, merge conflict, ready for
  * review, merge and close is written once as an `event` entry, reaching the
  * Lead's Inbox. A PR GitHub cannot be asked about is a warning, and asked
- * again next time.
+ * again next time. From the same answers, each PR that turned conflicting,
+ * and each watched open PR whose base was the head branch of a PR that
+ * merged, waits for its Repo's next Gardener (`keepForGardener`).
  */
 export async function watchPrs(world: World, configDir: string, prs: PrLookup): Promise<{ events: Entry[]; warnings: string[] }> {
   const dispatches = loadDispatches(configDir);
@@ -59,10 +66,13 @@ export async function watchPrs(world: World, configDir: string, prs: PrLookup): 
       if (e instanceof WorldError) continue;
       throw e;
     }
+    const head = pr?.headBranch ?? dispatch.branch;
     if (pr?.state === "open" && !watched[pr.url]) {
-      watched[pr.url] = { repo: pr.repo, number: pr.number, issue: dispatch.issue, checks: {}, seen: [] };
-    }
+      watched[pr.url] = { repo: pr.repo, number: pr.number, issue: dispatch.issue, head, checks: {}, seen: [] };
+    } else if (pr && watched[pr.url] && !watched[pr.url]!.head) watched[pr.url]!.head = head;
   }
+  // The bases as seen before this tick: GitHub may retarget a PR stacked on one that just merged.
+  const bases = new Map(Object.entries(watched).map(([url, pr]) => [url, pr.base]));
   const events: Entry[] = [];
   const warnings: string[] = [];
   for (const [url, pr] of Object.entries(watched)) {
@@ -74,9 +84,14 @@ export async function watchPrs(world: World, configDir: string, prs: PrLookup): 
       warnings.push(`${url}: ${worldErrorMessage(e)}`);
       continue;
     }
+    const gardening: Gardening[] = [];
     for (const { change, text } of changes(pr, activity)) {
       events.push(await append(configDir, { type: "event", pr: url, issue: pr.issue, change, text: `${url}: ${text}` }, world.now()));
+      if (change === "conflict") gardening.push({ repo: pr.repo, pr: { url, happened: "conflict", base: activity.baseBranch } });
+      if (change === "merged") gardening.push(...stackedOn(watched, bases, url, activity.baseBranch));
     }
+    // Kept before the PR is saved as seen, so no Gardener's PR is lost.
+    await keepForGardener(configDir, gardening);
     if (activity.state !== "open") pr.finished = true;
     // Saved after each PR's events, so none is written twice.
     writeJsonAtomic(join(configDir, FILE), watched);
@@ -85,11 +100,27 @@ export async function watchPrs(world: World, configDir: string, prs: PrLookup): 
   return { events, warnings };
 }
 
+/** A PR of `repo` for the Gardener to tend. */
+export interface Gardening {
+  repo: string;
+  pr: GardenPr;
+}
+
+/** The open watched PRs whose base, before this tick, was the head of `below`, which merged into `newBase`. */
+function stackedOn(watched: Record<string, Watched>, bases: Map<string, string | undefined>, below: string, newBase: string): Gardening[] {
+  const merged = watched[below]!;
+  if (!merged.head) return [];
+  return Object.entries(watched)
+    .filter(([url, pr]) => url !== below && !pr.finished && pr.repo === merged.repo && (bases.get(url) ?? pr.base) === merged.head)
+    .map(([url, pr]) => ({ repo: pr.repo, pr: { url, happened: "merged below", below, newBase } }));
+}
+
 /** What changed on `pr` since it was last seen, in order; `pr` is updated to what is seen now. */
 function changes(pr: Watched, activity: PullRequestActivity): { change: PrChange; text: string }[] {
   const found: { change: PrChange; text: string }[] = [];
   if (activity.state === "open" && pr.draft === true && !activity.draft) found.push({ change: "ready", text: "ready for review" });
   pr.draft = activity.draft;
+  pr.base = activity.baseBranch;
   const fresh = activity.comments.filter((c) => !pr.seen.includes(c.id));
   for (const comment of fresh) {
     const said = commentText(comment);
