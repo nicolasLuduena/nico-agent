@@ -256,10 +256,18 @@ which Kokoro-FastAPI shares). A question is read with its choices as a
 numbered list. With Voice on, the page keeps the socket open, and every open
 page hears the Lead.
 
+The Lead never talks over you or the Front voice. A reply or question it
+writes while you are talking (from the moment the page starts an utterance)
+or while the Front voice is answering what you said waits for the next
+pause: it is read once the Front voice has finished, or handed off to the
+Lead, after the Front voice's last line. One written while the Front voice's
+lines are still being read follows them.
+
 The Nudge carries it too: the Lead is prompted "Read your Inbox (voice on)",
-then the local time, and its skill then talks for the ear: an acknowledgment
-before a slow answer, short sentences, issues by title, choices left to the
-numbered list.
+then the local time, and its skill then talks for the ear: short sentences,
+issues by title, choices left to the numbered list. It gives no
+acknowledgment of its own: the Front voice already said it would ask the
+Lead.
 
 The Lead stops at once, and what it had still to say is dropped, when:
 

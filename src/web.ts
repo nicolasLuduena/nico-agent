@@ -138,13 +138,14 @@ export function webHandler(context: WebContext) {
  * streams audio and hears transcripts back, the Front voice answers each one
  * or hands it to the Lead, and, with Voice on, the app hears the Front voice
  * and the Lead speak each entry it writes, as `events` tells of new ones.
+ * The Lead waits for a pause in what the user and the Front voice say.
  * Talking over either (`hush`) stops both.
  */
 export function webSockets(context: Pick<WebContext, "world" | "configDir" | "runCli" | "events">): Sockets {
   const timing = stopwatch(context);
   const speech = speaker(context);
   const front = frontVoice({ ...context, say: (text) => speech.line(text) });
-  const transcription = transcriptionSession({ ...context, timing, front });
+  const transcription = transcriptionSession({ ...context, timing, front, hold: speech.hold });
   context.events?.on("conversation-entry", () => {
     speech.changed();
     timing.changed();
