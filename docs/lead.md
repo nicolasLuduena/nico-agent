@@ -280,11 +280,14 @@ has on screen right now, through `herdr agent read`:
 ```bash
 nico-agent peek acme/api#7              # the issue's Implementer
 nico-agent peek acme/api#7 --reviewer   # its Reviewer, once one was launched
+nico-agent peek acme/api                # the Repo's Gardener, while it has one
 nico-agent peek                         # the Lead's own screen
 ```
 
-An issue that is not In flight, or `--reviewer` before a review, is refused
-with help.
+An issue that is not In flight, `--reviewer` before a review, or a Repo with
+no Gardener, is refused with help. The app's Repo rows read each Implementer's
+and Gardener's line the same way, through `/api/peek?issue=` and
+`/api/peek?repo=`.
 
 While `serve` runs, it asks GitHub every minute what changed on each In-flight
 issue's open PR: new review comments and reviews, check results, a merge

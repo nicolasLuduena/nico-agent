@@ -1,5 +1,7 @@
+import { findRepo, loadConfig } from "./config";
 import { resolveIssue } from "./dispatch";
 import { DispatchError } from "./dispatch-error";
+import { findGardener } from "./gardener";
 import { LEAD_AGENT } from "./lead";
 import { meaningfulLine } from "./screen-line";
 import { findDispatch } from "./state";
@@ -7,8 +9,10 @@ import type { World } from "./world";
 
 /** What an agent's pane shows right now, and whose it is. */
 export interface Peeked {
-  /** The In-flight issue the agent works on; unset for the Lead. */
+  /** The In-flight issue the agent works on; unset for the Lead and a Gardener. */
   issue?: string;
+  /** The Repo whose Gardener the agent is. */
+  gardener?: string;
   agent: string;
   /** The visible text of its pane, trailing blank lines dropped. */
   screen: string;
@@ -18,11 +22,14 @@ export interface Peeked {
 
 /**
  * The screen of an In-flight issue's Implementer, or its Reviewer with
- * `reviewer`, through herdr's read; with no issue, the Lead's own. An issue
- * not In flight, or a Reviewer that was never launched, is refused.
+ * `reviewer`, through herdr's read; of a Repo's Gardener when `issue` names
+ * a Repo; with no issue, the Lead's own. An issue not In flight, a Reviewer
+ * that was never launched, or a Repo with no Gardener, is refused.
  */
 export async function peek(world: World, configDir: string, issue: string | undefined, reviewer: boolean): Promise<Peeked> {
   if (issue === undefined) return { agent: LEAD_AGENT, ...peeked(await world.herdrAgentRead(LEAD_AGENT)) };
+  const repo = issue.includes("#") || reviewer ? undefined : findRepo(loadConfig(configDir), issue);
+  if (repo) return peekGardener(world, configDir, repo.slug);
   const { key } = resolveIssue(configDir, issue);
   const record = findDispatch(configDir, key);
   if (!record) {
@@ -39,6 +46,11 @@ export async function peek(world: World, configDir: string, issue: string | unde
   }
   const { agent } = reviewer ? record.reviewer! : record.implementer;
   return { issue: key, agent, ...peeked(await world.herdrAgentRead(agent)) };
+}
+
+async function peekGardener(world: World, configDir: string, repo: string): Promise<Peeked> {
+  const { agent } = findGardener(configDir, repo, [`Run \`nico-agent garden ${repo}\` to start one`, "Run `nico-agent` to see the Board"]).agent;
+  return { gardener: repo, agent, ...peeked(await world.herdrAgentRead(agent)) };
 }
 
 /** A screen as peeked: trailing blank lines dropped, and its meaningful line. */

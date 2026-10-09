@@ -56,6 +56,17 @@ export interface JsonRoom {
   queue: string[];
 }
 
+/** A Repo's Gardener as `board --json` lists it under `gardeners`. */
+export interface JsonGardener {
+  repo: string;
+  /** Its herdr agent's name. */
+  agent: string;
+  /** Its Agent state; `unknown` when herdr could not be asked. */
+  state: string;
+  prs: string[];
+  failure?: string;
+}
+
 /** The parts of `nico-agent board --json` the app reads. */
 export interface BoardJson {
   /** Every configured Repo, in config order; unset when none is. */
@@ -67,6 +78,8 @@ export interface BoardJson {
   rooms?: JsonRoom[];
   /** origin's branches of each Repo with Ready issues, for the dispatch form's Base. */
   bases?: { repo: string; branches: string[] }[];
+  /** Each Repo's Gardener, with the PRs it was started for; none listed means every one that needs it. */
+  gardeners?: JsonGardener[];
   inFlight?: string;
   dispatches?: InFlightDispatch[];
   /** Each Implementer, then each Repo's Gardener, waiting on the user, with the question its screen shows. */

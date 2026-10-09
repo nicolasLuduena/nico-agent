@@ -1,7 +1,7 @@
 import { findRepo, loadConfig } from "./config";
 import { resolveIssue } from "./dispatch";
 import { DispatchError } from "./dispatch-error";
-import { type Gardener, loadGardeners } from "./gardener";
+import { type Gardener, findGardener } from "./gardener";
 import type { RepoDecision } from "./spec";
 import type { InFlightRow } from "./stage";
 import { findDispatch } from "./state";
@@ -106,9 +106,7 @@ export async function answer(world: World, configDir: string, issue: string, tex
 }
 
 async function answerGardener(world: World, configDir: string, repo: string, text: string): Promise<Answered> {
-  const gardener = loadGardeners(configDir).find((g) => g.repo === repo);
-  if (!gardener) throw new DispatchError(`${repo} has no Gardener`, ["Run `nico-agent` to see the Board and which agents are waiting on you"]);
-  const { agent } = gardener.agent;
+  const { agent } = findGardener(configDir, repo, ["Run `nico-agent` to see the Board and which agents are waiting on you"]).agent;
   const state = (await world.herdrAgents()).find((a) => a.name === agent)?.state ?? "unknown";
   if (state !== WAITING) {
     throw new DispatchError(`${repo}'s Gardener is not waiting on the user (it is ${state})`, [

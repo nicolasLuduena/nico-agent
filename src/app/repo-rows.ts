@@ -25,6 +25,20 @@ export interface DispatchLine extends Named {
   confirmClose: boolean;
 }
 
+/** A Repo's Gardener as its row shows it. */
+export interface GardenerLine {
+  /** Its Agent state. */
+  agent: string;
+  /** The PRs it was started for; none for every PR of the Repo that needs it. */
+  prs: { url: string; number: number }[];
+  /** Its agent stopped (idle or done) with no failure: the row says so briefly, then drops it. */
+  finished: boolean;
+  /** Why its start Failed; a Failed one stays until it is resumed or removed. */
+  failure?: string;
+  /** What an Asking Gardener's screen shows, or why it could not be read. */
+  question?: string;
+}
+
 /** A Ready or Stackable issue, with what its dispatch form offers. */
 export interface IssueLine extends Named {
   kind: "ready" | "stackable";
@@ -58,18 +72,27 @@ export interface RepoRow {
   errors: string[];
   summary: { inFlight: number; asking: number; held: number };
   dispatches: DispatchLine[];
+  /** Its Gardener, while it has one. */
+  gardener?: GardenerLine;
   held: HeldLine[];
   next: NextLine[];
   /** Its Queue, head first. */
   queue: QueuedLine[];
   /** Its Ready and Stackable issues, to dispatch. */
   issues: IssueLine[];
-  /** It loaded and has nothing In flight, Held, to start or to dispatch. */
+  /** It loaded and has nothing In flight, gardening, Held, to start or to dispatch. */
   empty: boolean;
 }
 
-/** The Agent state of an Implementer that is Asking. */
+/** The Agent state of an Implementer or Gardener that is Asking. */
 const ASKING = "blocked";
+/** The Agent states of a Gardener whose agent stopped, as `advance` removes it. */
+const FINISHED = ["idle", "done"];
+
+/** What an Asking agent's screen shows, or why it could not be read. */
+function questionOf(asking: { question: string; error?: string }) {
+  return asking.error ? `Could not read its screen: ${asking.error}` : asking.question;
+}
 
 /** A row per configured Repo, in config order, from the same Board the app's Board model reads. */
 export function repoRows(board: BoardJson): RepoRow[] {
@@ -85,7 +108,7 @@ export function repoRows(board: BoardJson): RepoRow[] {
     const flights = mine(board.dispatches);
     const dispatches = flights.map((d): DispatchLine => {
       const asking = d.implementer === ASKING ? board.asking?.find((a) => a.issue === d.issue) : undefined;
-      const question = asking && (asking.error ? `Could not read its screen: ${asking.error}` : asking.question);
+      const question = asking && questionOf(asking);
       return {
         issue: d.issue, ...named(d.issue, d.title, d.url), stage: d.stage, agent: d.implementer,
         ...(d.pr && { pr: prOf(d.pr) }),
@@ -93,6 +116,15 @@ export function repoRows(board: BoardJson): RepoRow[] {
         review: canReview(d), confirmClose: !d.pr,
       };
     });
+    const garden = mine(board.gardeners)[0];
+    const gardenAsking = garden?.state === ASKING ? board.asking?.find((a) => a.gardener !== undefined && sameSlug(a.gardener, repo)) : undefined;
+    const gardener: GardenerLine | undefined = garden && {
+      agent: garden.state,
+      prs: garden.prs.map(prOf),
+      finished: !garden.failure && FINISHED.includes(garden.state),
+      ...(garden.failure && { failure: garden.failure }),
+      ...(gardenAsking && { question: questionOf(gardenAsking) }),
+    };
     const held = specs.flatMap((s): HeldLine[] => (s.held ? [{ spec: s.spec, ...named(s.spec, s.title, s.url), reason: s.held.reason }] : []));
     const next = specs.flatMap((s): NextLine[] =>
       s.running && !s.held ? (s.next ?? []).map((n) => ({ spec: s.spec, specLabel: repoKey(s.spec, repo), specTitle: s.title, issue: n.issue, ...named(n.issue) })) : []);
@@ -106,7 +138,7 @@ export function repoRows(board: BoardJson): RepoRow[] {
       return target ? [{ kind, ...named(i.issue, i.title, i.url), target }] : [];
     });
     const dispatchable = [...toDispatch("ready", mine(board.issues)), ...toDispatch("stackable", mine(board.stackable))];
-    const nothing = !dispatches.length && !held.length && !next.length && !queue.length && !dispatchable.length;
+    const nothing = !dispatches.length && (!gardener || gardener.finished) && !held.length && !next.length && !queue.length && !dispatchable.length;
     // A rate-limited read is one Board warning, not each Repo's error; a Repo it left with nothing was not read, not Idle.
     const errors = !failed.length && nothing && board.warning ? [`Could not load: ${board.warning}`] : failed;
     return {
@@ -115,6 +147,7 @@ export function repoRows(board: BoardJson): RepoRow[] {
       errors,
       summary: { inFlight: dispatches.length, asking: dispatches.filter((d) => d.agent === ASKING).length, held: held.length },
       dispatches,
+      ...(gardener && { gardener }),
       held,
       next,
       queue,

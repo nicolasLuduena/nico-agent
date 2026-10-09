@@ -71,6 +71,13 @@ export function loadGardeners(configDir: string): Gardener[] {
   return Object.values(read(configDir));
 }
 
+/** The Repo's Gardener's record, or a refusal naming what to run instead. */
+export function findGardener(configDir: string, repo: string, help: string[]): Gardener {
+  const gardener = read(configDir)[repo];
+  if (!gardener) throw new DispatchError(`${repo} has no Gardener`, help);
+  return gardener;
+}
+
 function read(configDir: string): Record<string, Gardener> {
   try {
     return JSON.parse(readFileSync(join(configDir, FILE), "utf8")) as Record<string, Gardener>;

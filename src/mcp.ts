@@ -133,11 +133,11 @@ const TOOLS = [
   {
     name: "peek",
     title: "Peek",
-    description: "Read what an agent's pane shows right now: an In-flight issue's Implementer, its Reviewer with `reviewer`, or with no issue your own. Same JSON as `nico-agent peek --json`.",
+    description: "Read what an agent's pane shows right now: an In-flight issue's Implementer, its Reviewer with `reviewer`, a Repo's Gardener given the Repo as `issue`, or with no issue your own. Same JSON as `nico-agent peek --json`.",
     inputSchema: {
       type: "object",
       properties: {
-        issue: { type: "string", description: "The In-flight issue, e.g. acme/api#7 or BLE-27; omit for your own screen" },
+        issue: { type: "string", description: "The In-flight issue, e.g. acme/api#7 or BLE-27, or a Repo, e.g. acme/api, for its Gardener; omit for your own screen" },
         reviewer: { type: "boolean", description: "The issue's Reviewer instead of its Implementer" },
       },
       additionalProperties: false,

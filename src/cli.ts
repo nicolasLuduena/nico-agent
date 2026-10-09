@@ -64,7 +64,7 @@ const DISPATCH_USAGE = "nico-agent dispatch <issue>... --harness <harness> --mod
 const REVIEW_USAGE = "nico-agent review <issue>... --harness <harness> --model <model> --effort <effort>";
 const CLOSE_USAGE = "nico-agent close <issue>... [--confirm]";
 const ANSWER_USAGE = "nico-agent answer <issue|repo> <text>";
-const PEEK_USAGE = "nico-agent peek [<issue>] [--reviewer]";
+const PEEK_USAGE = "nico-agent peek [<issue|repo>] [--reviewer]";
 const ORDERS_SET_USAGE = "nico-agent orders set <order> on|off";
 const SAY_USAGE = "nico-agent say [--answer <id>] [--raw <transcript>] <text>";
 const LEAD_SAY_USAGE = "nico-agent lead say <text>";
@@ -279,10 +279,10 @@ const commands: Command[] = [
   {
     name: "peek",
     usage: PEEK_USAGE,
-    summary: "Show what an In-flight issue's Implementer (or Reviewer) has on screen right now; with no issue, the Lead's own",
+    summary: "Show what an In-flight issue's Implementer (or Reviewer), or a Repo's Gardener, has on screen right now; with no issue, the Lead's own",
     flags: { "--reviewer": { value: false, description: "the issue's Reviewer instead of its Implementer" } },
     positionals: ["issue"],
-    examples: ["nico-agent peek acme/api#7", "nico-agent peek BLE-27 --reviewer --json", "nico-agent peek"],
+    examples: ["nico-agent peek acme/api#7", "nico-agent peek BLE-27 --reviewer --json", "nico-agent peek acme/api", "nico-agent peek"],
     run: peekCommand,
   },
   {
@@ -900,7 +900,7 @@ async function peekCommand(args: Args, ctx: RunContext): Promise<Output> {
   const reviewer = args.flags["--reviewer"] === true;
   if (reviewer && !issue) throw new CliError("--reviewer needs an <issue>", [`Usage: \`${PEEK_USAGE}\``], 2);
   const peeked = await peek(ctx.world, ctx.configDir, issue, reviewer);
-  const help = peeked.issue ? [`Run \`nico-agent show ${peeked.issue}\` to see the Dispatch`, BOARD_HELP] : [LEAD_STATUS_HELP];
+  const help = peeked.issue ? [`Run \`nico-agent show ${peeked.issue}\` to see the Dispatch`, BOARD_HELP] : peeked.gardener ? [BOARD_HELP] : [LEAD_STATUS_HELP];
   return { data: { ...peeked }, help };
 }
 
