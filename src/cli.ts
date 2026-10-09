@@ -12,8 +12,8 @@ import { LEAD_AGENT, NICO_AGENT_SLUG, leadStatus, startLead, stopLead } from "./
 import { NUDGE_INTERVAL_MS, nudgeLead, sendPendingNudge } from "./nudge";
 import { linearIdentifier } from "./linear";
 import { type Output, plural, render } from "./output";
-import { pruneBoardQueues, queueOf } from "./queue";
-import { sameSpec } from "./spec";
+import { dequeue, enqueue, loadQueues, move, pruneBoardQueues, queueOf } from "./queue";
+import { isCandidate, sameSpec } from "./spec";
 import { VERSION } from "./version";
 import { sameSlug, slugOfRemote } from "./slug";
 import { cachedPrs, currentStage, freshPrs, loadInFlight, stageOf } from "./stage";
@@ -45,6 +45,9 @@ const SAY_USAGE = "nico-agent say [--answer <id>] <text>";
 const LEAD_SAY_USAGE = "nico-agent lead say <text>";
 const LEAD_ASK_USAGE = "nico-agent lead ask <question> [<choice>...]";
 const RECALL_USAGE = "nico-agent lead recall <query> [--since <time>] [--until <time>]";
+const QUEUE_USAGE = "nico-agent queue <spec> --repo <owner/name>";
+const UNQUEUE_USAGE = "nico-agent unqueue <spec> --repo <owner/name>";
+const MOVE_USAGE = "nico-agent move <spec> up|down --repo <owner/name>";
 const LOG_HELP = "Run `nico-agent lead log` to see the conversation with the Lead";
 const LEAD_START_USAGE = "nico-agent lead start [--harness <harness>] [--model <model>] [--effort <effort>] [--port <port>]";
 const LEAD_STATUS_HELP = "Run `nico-agent lead status` to see the Lead";
@@ -163,6 +166,33 @@ const commands: Command[] = [
     positionals: [],
     examples: ["nico-agent advance", "nico-agent advance --json"],
     run: advanceCommand,
+  },
+  {
+    name: "queue",
+    usage: QUEUE_USAGE,
+    summary: "Put a candidate Spec last in its Repo's Queue, so `advance` starts it when the Repo has room",
+    flags: { "--repo": { value: true, description: "Repo whose Queue it joins (required)" } },
+    positionals: ["spec"],
+    examples: ["nico-agent queue BLE-20 --repo bleentr/pdf-diff", "nico-agent queue acme/api#10 --repo acme/api --json"],
+    run: queueCommand,
+  },
+  {
+    name: "unqueue",
+    usage: UNQUEUE_USAGE,
+    summary: "Take a Spec out of its Repo's Queue",
+    flags: { "--repo": { value: true, description: "Repo whose Queue it leaves (required)" } },
+    positionals: ["spec"],
+    examples: ["nico-agent unqueue BLE-20 --repo bleentr/pdf-diff"],
+    run: unqueueCommand,
+  },
+  {
+    name: "move",
+    usage: MOVE_USAGE,
+    summary: "Move a queued Spec one place toward the head (up) or the tail (down) of its Repo's Queue",
+    flags: { "--repo": { value: true, description: "Repo whose Queue it is in (required)" } },
+    positionals: ["spec", "up|down"],
+    examples: ["nico-agent move BLE-20 up --repo bleentr/pdf-diff", "nico-agent move acme/api#10 down --repo acme/api --json"],
+    run: moveCommand,
   },
   {
     name: "review",
@@ -573,6 +603,69 @@ async function advanceCommand(_args: Args, ctx: RunContext): Promise<Output> {
     help: [...help, BOARD_HELP],
     exitCode: errors.length || specs.some((s) => s.result === "failed") ? 1 : 0,
   };
+}
+
+/** The Spec and the configured Repo a Queue command names. */
+function queueArgs(args: Args, ctx: RunContext, usage: string) {
+  const spec = args.positionals[0];
+  if (!spec) throw new CliError("<spec> is required", [`Usage: \`${usage}\``], 2);
+  const slug = required(args, "--repo", usage);
+  const repo = findRepo(loadConfig(ctx.configDir), slug);
+  if (!repo) throw new CliError(`${slug} is not a configured Repo`, ["Run `nico-agent repo list` to see the Repos"]);
+  return { spec, repo };
+}
+
+/** A Queue command's answer: what happened to the Spec, its place if queued, and the Queue head first. */
+function queueOutput(spec: string, queue: string[], summary: Record<string, string>, help: string[] = []): Output {
+  const place = queue.findIndex((s) => sameSpec(s, spec));
+  return {
+    data: { ...summary, ...(place >= 0 && { place: `${place + 1} of ${queue.length}` }), queue },
+    help: [...help, BOARD_HELP],
+  };
+}
+
+/** `spec` as `repo`'s Queue spells it, whatever case it was typed in; unqueued, as typed. */
+function queuedName(ctx: RunContext, repo: string, spec: string) {
+  return queueOf(loadQueues(ctx.configDir), repo).find((s) => sameSpec(s, spec)) ?? spec;
+}
+
+async function queueCommand(args: Args, ctx: RunContext): Promise<Output> {
+  const { spec, repo } = queueArgs(args, ctx, QUEUE_USAGE);
+  const board = await loadBoard(ctx.world, [repo], loadDispatches(ctx.configDir), cachedPrs(ctx.world));
+  const decision = board.specs.find((d) => sameSlug(d.repo, repo.slug));
+  if (!decision || !isCandidate(decision, spec)) {
+    throw new CliError(`${spec} is not a candidate Spec of ${repo.slug}`, [
+      "Only a candidate Spec, not started, not Held and with a Ready first issue, can be queued",
+      "Run `nico-agent --json` to see each Repo's candidates under `rooms`",
+    ]);
+  }
+  // Queued as the Board names it, so the Queue reads the same everywhere.
+  const name = decision.specs.find((s) => sameSpec(s.spec, spec))!.spec;
+  const { queue, changed } = await enqueue(ctx.configDir, repo.slug, name);
+  const help = queue.findIndex((s) => sameSpec(s, name)) > 0 ? [`Run \`nico-agent move ${name} up --repo ${repo.slug}\` to start it sooner`] : [];
+  return queueOutput(name, queue, { queued: changed ? name : `${name} already queued (no-op)` }, help);
+}
+
+async function unqueueCommand(args: Args, ctx: RunContext): Promise<Output> {
+  const { spec, repo } = queueArgs(args, ctx, UNQUEUE_USAGE);
+  const name = queuedName(ctx, repo.slug, spec);
+  const { queue, changed } = await dequeue(ctx.configDir, repo.slug, name);
+  return queueOutput(name, queue, { unqueued: changed ? name : `${name} not queued (no-op)` });
+}
+
+async function moveCommand(args: Args, ctx: RunContext): Promise<Output> {
+  const { spec, repo } = queueArgs(args, ctx, MOVE_USAGE);
+  const direction = args.positionals[1];
+  if (direction !== "up" && direction !== "down") {
+    throw new CliError(direction ? `\`${direction}\` is not a direction; move a queued Spec \`up\` or \`down\`` : "<up|down> is required", [`Usage: \`${MOVE_USAGE}\``], 2);
+  }
+  const name = queuedName(ctx, repo.slug, spec);
+  if (!queueOf(loadQueues(ctx.configDir), repo.slug).some((s) => sameSpec(s, name))) {
+    throw new CliError(`${name} is not queued in ${repo.slug}`, [`Run \`nico-agent queue ${name} --repo ${repo.slug}\` to queue it`]);
+  }
+  const { queue, changed } = await move(ctx.configDir, repo.slug, name, direction);
+  const end = direction === "up" ? "head" : "tail";
+  return queueOutput(name, queue, { moved: changed ? `${name} ${direction}` : `${name} already at the ${end} (no-op)` });
 }
 
 async function answerCommand(args: Args, ctx: RunContext): Promise<Output> {
@@ -1050,7 +1143,7 @@ async function board(ctx: RunContext, json: boolean): Promise<Output> {
     }));
   }
   if (allSpecs.length) {
-    // Each Repo's room, its candidate Specs, and its Queue head first; the Queue is edited on the web Board only (ADR-0009).
+    // Each Repo's room, its candidate Specs, and its Queue head first, as `queue`, `unqueue` and `move` and the web Board edit it.
     const queues = await pruneBoardQueues(ctx.configDir, loaded);
     data.rooms = specs.map(({ repo, specs: decided, room, candidates }) => ({
       repo, running: decided.filter((s) => s.running).map((s) => s.spec), room,

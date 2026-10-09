@@ -1,3 +1,5 @@
+import { ORDERS, type Order } from "./config";
+import { render } from "./output";
 import { VERSION } from "./version";
 
 /** Runs a CLI command line in-process, as `nico-agent` would. */
@@ -7,6 +9,77 @@ export type CliRunner = (argv: string[]) => Promise<{ stdout: string; exitCode: 
 const PROTOCOL_VERSION = "2025-11-25";
 /** Older handshake revisions whose tool messages are the same, echoed back to a client asking for one. */
 const OLDER_VERSIONS = ["2025-06-18", "2025-03-26", "2024-11-05"];
+
+/** The launch arguments `dispatch` and `review` take, as their CLI flags do. */
+const LAUNCH_PROPERTIES = {
+  harness: { type: "string", description: "Harness to launch, e.g. claude (see `nico-agent harness list`)" },
+  model: { type: "string", description: "Model for the Harness, e.g. opus" },
+  effort: { type: "string", description: "Effort level for the Harness, e.g. high" },
+};
+const ISSUES = { type: "array", items: { type: "string" }, minItems: 1, description: "Issues, e.g. acme/api#7 or BLE-27" };
+const QUEUE_PROPERTIES = {
+  spec: { type: "string", description: "The Spec, e.g. BLE-20 or acme/api#10" },
+  repo: { type: "string", description: "The Repo whose Queue it is, e.g. acme/api" },
+};
+
+/** The Standing order each action tool falls under (ADR-0010). */
+const ORDER_OF = {
+  dispatch: "start",
+  review: "review",
+  close: "close",
+  answer: "answer",
+  queue: "start",
+  unqueue: "start",
+  advance: "start",
+} as const satisfies Record<string, Order>;
+type ActionTool = keyof typeof ORDER_OF;
+
+/** The Lead's action tools: each the CLI command of the same name, behind the Standing order it falls under. */
+function actionTools() {
+  const tool = (name: ActionTool, title: string, does: string, inputSchema: Record<string, unknown>, except = "") => ({
+    name,
+    title,
+    description: `${does} Falls under the \`${ORDER_OF[name]}\` Standing order (it lets ${ORDERS[ORDER_OF[name]].lets})${except}: while it is off the tool is refused, with a ready-made \`propose\` call in its help.`,
+    inputSchema: { type: "object", ...inputSchema, additionalProperties: false },
+  });
+  return [
+    tool("dispatch", "Dispatch", "Start an Implementer on each issue, as `nico-agent dispatch` does.", {
+      properties: {
+        issues: ISSUES,
+        ...LAUNCH_PROPERTIES,
+        stackOn: { type: "string", description: "Open PR to stack on, named by its issue or its PR URL" },
+        base: { type: "string", description: "Branch on origin to start from and open the PR against" },
+        repo: { type: "string", description: "Repo to dispatch a Linear issue into, when several claim it" },
+      },
+      required: ["issues", "harness", "model", "effort"],
+    }),
+    tool("review", "Review", "Start a Reviewer on each In-flight issue's PR, as `nico-agent review` does.", {
+      properties: { issues: ISSUES, ...LAUNCH_PROPERTIES },
+      required: ["issues", "harness", "model", "effort"],
+    }),
+    tool("close", "Close", "Close each Dispatch, removing its workspace and keeping its branch, as `nico-agent close` does.", {
+      properties: { issues: ISSUES, confirm: { type: "boolean", description: "Close even with no PR yet (still Implementing)" } },
+      required: ["issues"],
+    }),
+    tool("answer", "Answer", "Submit text to an In-flight issue's Implementer while it waits on the user, as `nico-agent answer` does. Pass `text` or `relay`, not both.", {
+      properties: {
+        issue: { type: "string", description: "The In-flight issue whose Implementer is Asking" },
+        text: { type: "string", description: "Your own answer; needs the `answer` order" },
+        relay: { type: "string", description: "A whole message of the user's to pass on, exactly as written; needs no order" },
+      },
+      required: ["issue"],
+    }, ", except a `relay` of the user's own words, which needs no order"),
+    tool("queue", "Queue", "Put a candidate Spec last in its Repo's Queue, as `nico-agent queue` does.", {
+      properties: QUEUE_PROPERTIES,
+      required: ["spec", "repo"],
+    }),
+    tool("unqueue", "Unqueue", "Take a Spec out of its Repo's Queue, as `nico-agent unqueue` does.", {
+      properties: QUEUE_PROPERTIES,
+      required: ["spec", "repo"],
+    }),
+    tool("advance", "Advance", "Dispatch each running Spec's next issue and start the head of each Repo's Queue while it has room, as `nico-agent advance` does.", {}),
+  ];
+}
 
 const TOOLS = [
   {
@@ -61,6 +134,7 @@ const TOOLS = [
       additionalProperties: false,
     },
   },
+  ...actionTools(),
 ];
 
 const JSON_HEADERS = { "content-type": "application/json" };
@@ -156,27 +230,86 @@ function initialize(params: unknown) {
     protocolVersion: typeof asked === "string" && OLDER_VERSIONS.includes(asked) ? asked : PROTOCOL_VERSION,
     capabilities: { tools: {} },
     serverInfo: { name: "nico-agent", title: "nico-agent", version: VERSION },
-    instructions: "Read the Board with `board` and your Inbox with `inbox`; reply with `say`, ask the user with `ask`, and search the conversation with `recall`.",
+    instructions: [
+      "Read the Board with `board` and your Inbox with `inbox`; reply with `say`, ask the user with `ask`, and search the conversation with `recall`.",
+      "Act with `dispatch`, `review`, `close`, `answer`, `queue`, `unqueue` and `advance`, each under the Standing order its description names; one refused because its order is off gives you a `propose` call to make instead.",
+    ].join(" "),
   };
 }
 
-/** Runs the tool as its CLI command with `--json`; a CLI failure is a tool error, its `help` included. */
+/**
+ * What a tool runs: a read tool, its CLI argv; an action tool, the CLI command
+ * (without `--json`) as a Proposal would record it, the Standing order it
+ * falls under, and for an answer relaying the user, the words relayed.
+ */
+type ToolRun = { argv: string[] } | { action: string[]; tool: ActionTool; relay?: string };
+
+/**
+ * Runs the tool as its CLI command with `--json`; a CLI failure is a tool
+ * error, its `help` included. An action tool first reads its Standing order,
+ * fresh, and is refused with nothing run while the order is off.
+ */
 async function callTool(runCli: CliRunner, params: unknown) {
-  const { stdout, exitCode } = await runCli(toolArgv(params));
-  return { content: [{ type: "text", text: stdout }], structuredContent: JSON.parse(stdout), isError: exitCode !== 0 };
+  const run = toolRun(params);
+  if ("argv" in run) return await cliResult(runCli, run.argv);
+  const json = withJson(run.action);
+  if (run.relay !== undefined) {
+    const log = await runCli(["lead", "log", "--json"]);
+    if (log.exitCode !== 0) return toolResult(log.stdout, true);
+    const { entries } = JSON.parse(log.stdout) as { entries: { who: string; text: string }[] };
+    if (entries.some((e) => e.who === "user" && e.text.trim() === run.relay!.trim())) return await cliResult(runCli, json);
+    return refusal("relay must be the user's own words, as written in the conversation", [
+      "Relay a whole message of the user's exactly as written (see `recall`), or pass your own words as `text`, which needs the `answer` Standing order",
+      proposeHelp(run.action),
+    ]);
+  }
+  const order = ORDER_OF[run.tool];
+  const listed = await runCli(["orders", "--json"]);
+  if (listed.exitCode !== 0) return toolResult(listed.stdout, true);
+  const { orders } = JSON.parse(listed.stdout) as { orders: Record<Order, boolean> };
+  if (orders[order]) return await cliResult(runCli, json);
+  return refusal(`the \`${order}\` Standing order is off, so ${run.tool} needs the user's approval`, [
+    `The \`${order}\` order lets ${ORDERS[order].lets}; the user has not turned it on`,
+    proposeHelp(run.action),
+  ]);
 }
 
-function toolArgv(params: unknown): string[] {
+/** The `propose` call that asks the user to approve `action`, the CLI command a Proposal runs. */
+function proposeHelp(action: string[]) {
+  return `Propose it instead: call \`propose\` with ${JSON.stringify({ action, reason: "<why, in a sentence the user can decide on>" })}`;
+}
+
+async function cliResult(runCli: CliRunner, argv: string[]) {
+  const { stdout, exitCode } = await runCli(argv);
+  return toolResult(stdout, exitCode !== 0);
+}
+
+function toolResult(text: string, isError: boolean) {
+  return { content: [{ type: "text", text }], structuredContent: JSON.parse(text), isError };
+}
+
+/** A tool refused before anything ran, shaped as a CLI failure printed with `--json`. */
+function refusal(error: string, help: string[]) {
+  return toolResult(render({ data: { error }, help }, true), true);
+}
+
+/** `action` with `--json`, ahead of any `--` so it stays a flag. */
+function withJson(action: string[]) {
+  const end = action.indexOf("--");
+  return end === -1 ? [...action, "--json"] : [...action.slice(0, end), "--json", ...action.slice(end)];
+}
+
+function toolRun(params: unknown): ToolRun {
   if (!isObject(params) || typeof params.name !== "string") throw new RpcError(-32602, "tools/call needs a tool name");
   const { name, arguments: args = {} } = params;
   if (!isObject(args)) throw new RpcError(-32602, `${name}'s arguments must be an object`);
   switch (name) {
     case "board":
       onlyArguments(name, args);
-      return ["board", "--json"];
+      return { argv: ["board", "--json"] };
     case "inbox":
       onlyArguments(name, args);
-      return ["lead", "inbox", "--json"];
+      return { argv: ["lead", "inbox", "--json"] };
     case "recall": {
       onlyArguments(name, args, ["query", "since", "until"]);
       const query = text(name, args, "query");
@@ -186,11 +319,11 @@ function toolArgv(params: unknown): string[] {
         if (typeof value !== "string") throw new RpcError(-32602, `recall's ${key} must be a string`);
         return [`--${key}`, value];
       });
-      return ["lead", "recall", "--json", ...range, "--", query];
+      return { argv: ["lead", "recall", "--json", ...range, "--", query] };
     }
     case "say":
       onlyArguments(name, args, ["text"]);
-      return ["lead", "say", "--json", "--", text(name, args, "text")];
+      return { argv: ["lead", "say", "--json", "--", text(name, args, "text")] };
     case "ask": {
       onlyArguments(name, args, ["question", "choices"]);
       const question = text(name, args, "question");
@@ -198,11 +331,55 @@ function toolArgv(params: unknown): string[] {
       if (!Array.isArray(choices) || !choices.every((c) => typeof c === "string" && c)) {
         throw new RpcError(-32602, "ask's choices must be a list of non-empty strings");
       }
-      return ["lead", "ask", "--json", "--", question, ...choices];
+      return { argv: ["lead", "ask", "--json", "--", question, ...choices] };
     }
+    case "dispatch": {
+      onlyArguments(name, args, ["issues", "harness", "model", "effort", "stackOn", "base", "repo"]);
+      const optional = ([["stackOn", "--stack-on"], ["base", "--base"], ["repo", "--repo"]] as const).flatMap(([key, flag]) =>
+        args[key] === undefined ? [] : [flag, text(name, args, key)]);
+      return { action: ["dispatch", ...launchFlags(name, args), ...optional, "--", ...issueList(name, args)], tool: name };
+    }
+    case "review":
+      onlyArguments(name, args, ["issues", "harness", "model", "effort"]);
+      return { action: ["review", ...launchFlags(name, args), "--", ...issueList(name, args)], tool: name };
+    case "close": {
+      onlyArguments(name, args, ["issues", "confirm"]);
+      const { confirm = false } = args;
+      if (typeof confirm !== "boolean") throw new RpcError(-32602, "close's confirm must be true or false");
+      return { action: ["close", ...(confirm ? ["--confirm"] : []), "--", ...issueList(name, args)], tool: name };
+    }
+    case "answer": {
+      onlyArguments(name, args, ["issue", "text", "relay"]);
+      const issue = text(name, args, "issue");
+      if ((args.text === undefined) === (args.relay === undefined)) throw new RpcError(-32602, "answer takes text or relay, exactly one");
+      const relayed = args.relay !== undefined;
+      const words = text(name, args, relayed ? "relay" : "text");
+      return { action: ["answer", "--", issue, words], tool: name, ...(relayed && { relay: words }) };
+    }
+    case "queue":
+    case "unqueue":
+      onlyArguments(name, args, ["spec", "repo"]);
+      return { action: [name, "--repo", text(name, args, "repo"), "--", text(name, args, "spec")], tool: name };
+    case "advance":
+      onlyArguments(name, args);
+      return { action: ["advance"], tool: name };
     default:
       throw new RpcError(-32602, `Unknown tool: ${name} (the tools are ${TOOLS.map((t) => t.name).join(", ")})`);
   }
+}
+
+/** The `--harness`, `--model` and `--effort` flags from their required arguments. */
+function launchFlags(name: string, args: Record<string, unknown>) {
+  return ["--harness", text(name, args, "harness"), "--model", text(name, args, "model"), "--effort", text(name, args, "effort")];
+}
+
+/** The required `issues` argument: a non-empty list of non-empty strings. */
+function issueList(name: string, args: Record<string, unknown>): string[] {
+  const { issues } = args;
+  if (!Array.isArray(issues) || !issues.length || !issues.every((i) => typeof i === "string" && i.trim())) {
+    throw new RpcError(-32602, `${name} needs issues, a list of one or more issues`);
+  }
+  return issues;
 }
 
 function onlyArguments(name: string, args: Record<string, unknown>, known: string[] = []) {

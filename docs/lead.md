@@ -131,8 +131,55 @@ Orders are read from config every time they are used, never cached. A change,
 from `orders set` or by hand, applies to the next read without
 restarting `nico-agent serve`.
 
-The Lead's tools, which check the order they fall under, are still to come;
-for now the orders are only stored and shown. Once the tools exist,
-nico-agent enforces every order that passes through them. `write` is the
-exception: the Lead writes to a Source with its own shell, so that order is a
-rule of the Lead's skill rather than something nico-agent can check.
+`write` is the one order nico-agent cannot check: the Lead writes to a Source
+with its own shell, so that order is a rule of the Lead's skill.
+
+## The Lead's tools
+
+The Lead acts through MCP tools on `nico-agent serve`'s `/mcp`. Each runs the
+CLI command of the same name with `--json`, in-process, so it does exactly
+what you would; before running, it reads its Standing order fresh:
+
+| Tool       | Runs                  | Order    |
+| ---------- | --------------------- | -------- |
+| `dispatch` | `nico-agent dispatch` | `start`  |
+| `queue`    | `nico-agent queue`    | `start`  |
+| `unqueue`  | `nico-agent unqueue`  | `start`  |
+| `advance`  | `nico-agent advance`  | `start`  |
+| `review`   | `nico-agent review`   | `review` |
+| `close`    | `nico-agent close`    | `close`  |
+| `answer`   | `nico-agent answer`   | `answer` |
+
+A tool whose order is off runs nothing. It returns a tool error whose `help`
+names the order and gives the `propose` call to make instead, with the exact
+command a Proposal would run:
+
+```json
+{
+  "error": "the `start` Standing order is off, so queue needs the user's approval",
+  "help": [
+    "The `start` order lets the Lead queue and start Specs (the Repo's room still caps it); the user has not turned it on",
+    "Propose it instead: call `propose` with {\"action\":[\"queue\",\"--repo\",\"acme/api\",\"--\",\"acme/api#10\"],\"reason\":\"<why, in a sentence the user can decide on>\"}"
+  ]
+}
+```
+
+`answer` has a second mode that needs no order: relaying your own words. Pass
+`relay` instead of `text`, and the Lead may send it whatever the `answer`
+order says, as long as it is a whole message of yours in the conversation (one
+you wrote with `nico-agent say`, or an answer to one of its questions), exactly
+as you wrote it. Anything else passed as `relay` is refused, with a `propose`
+call to send it once you approve.
+
+## The Queue from the CLI
+
+The CLI edits the Queue the way the web Board's Queue controls do:
+
+```bash
+nico-agent queue BLE-20 --repo bleentr/pdf-diff        # last in the Queue; a candidate Spec only
+nico-agent move BLE-20 up --repo bleentr/pdf-diff      # one place toward the head (down: toward the tail)
+nico-agent unqueue BLE-20 --repo bleentr/pdf-diff
+```
+
+Each is idempotent: queuing a queued Spec, unqueuing one that isn't queued, or
+moving one past either end says `(no-op)` and changes nothing.

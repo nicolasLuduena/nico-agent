@@ -30,18 +30,24 @@ export function queueOf(queues: Queues, repo: string): string[] {
   return Object.entries(queues).find(([slug]) => sameSlug(slug, repo))?.[1] ?? [];
 }
 
+/** A Queue edit's result: the Queue left, head first, and whether the edit changed it. */
+export interface QueueChange {
+  queue: string[];
+  changed: boolean;
+}
+
 /** Put `spec` last in `repo`'s Queue, unless it is already queued. */
-export function enqueue(dir: string, repo: string, spec: string): Promise<void> {
+export function enqueue(dir: string, repo: string, spec: string): Promise<QueueChange> {
   return update(dir, repo, (queue) => (queue.some((s) => sameSpec(s, spec)) ? queue : [...queue, spec]));
 }
 
 /** Take `spec` out of `repo`'s Queue. */
-export function dequeue(dir: string, repo: string, spec: string): Promise<void> {
-  return update(dir, repo, (queue) => queue.filter((s) => !sameSpec(s, spec)));
+export function dequeue(dir: string, repo: string, spec: string): Promise<QueueChange> {
+  return update(dir, repo, (queue) => (queue.some((s) => sameSpec(s, spec)) ? queue.filter((s) => !sameSpec(s, spec)) : queue));
 }
 
 /** Swap `spec` with its neighbour toward the head (`up`) or the tail (`down`); at that end, or not queued, nothing moves. */
-export function move(dir: string, repo: string, spec: string, direction: "up" | "down"): Promise<void> {
+export function move(dir: string, repo: string, spec: string, direction: "up" | "down"): Promise<QueueChange> {
   return update(dir, repo, (queue) => {
     const from = queue.findIndex((s) => sameSpec(s, spec));
     const to = from + (direction === "up" ? -1 : 1);
@@ -79,12 +85,16 @@ export function pruneBoardQueues(dir: string, board: { specs: RepoDecision[]; er
   return pruneQueues(dir, board.specs.filter((d) => !failed.some((e) => sameSlug(e.repo, d.repo))));
 }
 
-function update(dir: string, repo: string, change: (queue: string[]) => string[]) {
+function update(dir: string, repo: string, change: (queue: string[]) => string[]): Promise<QueueChange> {
   return withFileLock(dir, FILE, () => {
     const queues = loadQueues(dir);
     const slug = Object.keys(queues).find((s) => sameSlug(s, repo)) ?? repo;
-    queues[slug] = change(queues[slug] ?? []);
+    const before = queues[slug] ?? [];
+    const queue = change(before);
+    if (queue === before) return { queue, changed: false };
+    queues[slug] = queue;
     write(dir, queues);
+    return { queue, changed: true };
   });
 }
 

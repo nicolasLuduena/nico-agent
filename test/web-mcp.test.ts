@@ -41,12 +41,12 @@ describe("MCP over HTTP at /mcp", () => {
     expect(await version("2099-01-01")).toBe("2025-11-25");
   });
 
-  test("tools/list offers board and the conversation tools: inbox, recall, say and ask", async () => {
+  test("tools/list offers board, the conversation tools inbox, recall, say and ask, then the action tools", async () => {
     const { web } = setup();
     const reply = (await post(web, { jsonrpc: "2.0", id: "list", method: "tools/list" })).json();
     expect(reply.id).toBe("list");
     const tools = reply.result.tools;
-    expect(tools.map((t: { name: string }) => t.name)).toEqual(["board", "inbox", "recall", "say", "ask"]);
+    expect(tools.map((t: { name: string }) => t.name)).toEqual(["board", "inbox", "recall", "say", "ask", "dispatch", "review", "close", "answer", "queue", "unqueue", "advance"]);
     expect(tools[0]).toEqual({
       name: "board", title: "Board", description: expect.stringContaining("nico-agent board --json"), inputSchema: { type: "object", additionalProperties: false },
     });
@@ -94,10 +94,11 @@ describe("MCP over HTTP at /mcp", () => {
   test("any other tool or argument is invalid params, and nothing runs", async () => {
     const { web, world } = setup();
     const call = async (params: unknown) => (await post(web, { jsonrpc: "2.0", id: 7, method: "tools/call", params })).json();
-    for (const params of [{ name: "advance" }, { name: "board", arguments: { start: "BLE-10" } }, { name: "board", arguments: "x" }, {}]) {
+    for (const params of [{ name: "start" }, { name: "board", arguments: { start: "BLE-10" } }, { name: "advance", arguments: { start: "BLE-10" } }, { name: "board", arguments: "x" }, {}]) {
       expect(await call(params)).toEqual({ jsonrpc: "2.0", id: 7, error: { code: -32602, message: expect.any(String) } });
     }
-    expect((await call({ name: "advance" })).error.message).toBe("Unknown tool: advance (the tools are board, inbox, recall, say, ask)");
+    expect((await call({ name: "start" })).error.message)
+      .toBe("Unknown tool: start (the tools are board, inbox, recall, say, ask, dispatch, review, close, answer, queue, unqueue, advance)");
     expect(world.calls).toEqual([]);
   });
 
