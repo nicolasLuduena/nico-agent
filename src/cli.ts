@@ -16,6 +16,8 @@ import { describePrs, garden, gardenRepo, gardenerRows, startWaitingGardeners } 
 import { NUDGE_INTERVAL_MS, nudgeLead, sendPendingNudge } from "./nudge";
 import { linearIdentifier } from "./linear";
 import { peek } from "./peek";
+import { PARTNER_TABS, type PartnerTab, endPartner, handOff, isPartnerTab, partnerMcpPath, partnerRows, partnerThread, partnerWrites, sayToPartner, startPartner } from "./partner";
+import { openDraft } from "./thread";
 import { PR_WATCH_INTERVAL_MS, watchPrs } from "./pr-events";
 import { PROPOSABLE, withJson } from "./mcp";
 import { ASKS_SCOPE, PROPOSALS_SCOPE, notifyOnce } from "./notify";
@@ -85,6 +87,13 @@ const GARDEN_USAGE = "nico-agent garden <repo> [--pr <url>...]";
 const LEAD_START_USAGE = "nico-agent lead start [--harness <harness>] [--model <model>] [--effort <effort>] [--port <port>]";
 const LEAD_STATUS_HELP = "Run `nico-agent lead status` to see the Lead";
 const LEAD_SCREEN_HELP = "Run `herdr agent read lead` to see its screen";
+const PARTNER_START_USAGE = "nico-agent partner start <tab> --repo <owner/name> --harness <harness> --model <model> --effort <effort> [--port <port>]";
+const PARTNER_SAY_USAGE = "nico-agent partner say <tab> <text>";
+const PARTNER_REPLY_USAGE = "nico-agent partner reply <tab> <text>";
+const PARTNER_DRAFT_USAGE = "nico-agent partner draft <tab> <text>";
+const PARTNER_HAND_OFF_USAGE = "nico-agent partner hand-off <tab> <draft> [--text <markdown>]";
+const PARTNER_TABS_HELP = `A Partner's tab is one of: ${PARTNER_TABS.join(", ")}`;
+const PARTNER_LIST_HELP = "Run `nico-agent partner list` to see the Partners";
 const VOICE_DOCS_HELP = `See ${VOICE_DOC} to set up transcribe, speak and front under voice in config.json`;
 const VOICE_TALK_USAGE = "nico-agent voice talk [--port <port>]";
 const VOICE_ON_HELP = "Run `nico-agent voice on` or `nico-agent voice off` to switch it; the app has a Voice switch too";
@@ -525,6 +534,84 @@ const commands: Command[] = [
     positionals: [],
     examples: ["nico-agent lead stop"],
     run: (_args, ctx) => leadStopCommand(ctx),
+  },
+  {
+    name: "partner start",
+    usage: PARTNER_START_USAGE,
+    summary: "Start a tab's Partner in a worktree of the Repo on its default branch, connected to the MCP server scoped to its Thread (no-op while it runs)",
+    flags: {
+      "--repo": { value: true, description: "the Repo whose worktree it runs in, e.g. acme/api (required)" },
+      ...LAUNCH_FLAGS,
+      "--port": { value: true, description: "port `nico-agent serve` listens on (default 42069)" },
+    },
+    positionals: ["tab"],
+    examples: ["nico-agent partner start idea --repo acme/api --harness claude --model opus --effort high"],
+    help: [PARTNER_TABS_HELP, "One Partner per tab: end it to start another"],
+    run: partnerStartCommand,
+  },
+  {
+    name: "partner list",
+    usage: "nico-agent partner list",
+    summary: "List the Partners: each one's tab, Repo, launch, where it stands and its Agent state",
+    flags: {},
+    positionals: [],
+    examples: ["nico-agent partner list", "nico-agent partner list --json"],
+    run: (_args, ctx) => partnerListCommand(ctx),
+  },
+  {
+    name: "partner log",
+    usage: "nico-agent partner log <tab>",
+    summary: "Show a Partner's Thread, oldest first: the user's messages, its replies, its Hand-off drafts and what was handed to the Lead (read-only)",
+    flags: {},
+    positionals: ["tab"],
+    examples: ["nico-agent partner log review", "nico-agent partner log idea --json"],
+    run: partnerLogCommand,
+  },
+  {
+    name: "partner say",
+    usage: PARTNER_SAY_USAGE,
+    summary: "Write to a Partner: the message is kept in its Thread and typed into its pane",
+    flags: {},
+    positionals: ["tab", "text..."],
+    examples: ["nico-agent partner say review \"What does retry.ts do?\""],
+    run: partnerSayCommand,
+  },
+  {
+    name: "partner reply",
+    usage: PARTNER_REPLY_USAGE,
+    summary: "Write a Partner's reply into its Thread (its MCP `say` tool)",
+    flags: {},
+    positionals: ["tab", "text..."],
+    examples: ["nico-agent partner reply review \"It backs off exponentially.\""],
+    run: (args, ctx) => partnerWriteCommand(args, ctx, "partner"),
+  },
+  {
+    name: "partner draft",
+    usage: PARTNER_DRAFT_USAGE,
+    summary: "Draft a Partner's Hand-off for the user to approve (its MCP `hand_off` tool); a later draft replaces it",
+    flags: {},
+    positionals: ["tab", "text..."],
+    examples: ["nico-agent partner draft review \"Ask the Implementer of acme/api#7 to add a retry test.\""],
+    run: (args, ctx) => partnerWriteCommand(args, ctx, "draft"),
+  },
+  {
+    name: "partner hand-off",
+    usage: PARTNER_HAND_OFF_USAGE,
+    summary: "Approve a Partner's open Hand-off draft, as written or edited, and send it to the Lead as your message naming the Partner",
+    flags: { "--text": { value: true, description: "the Hand-off as you edited it, instead of the draft's text" } },
+    positionals: ["tab", "draft"],
+    examples: ["nico-agent partner hand-off review 4", "nico-agent partner hand-off idea 7 --text \"Spec the retry budget\""],
+    help: [LOG_HELP],
+    run: partnerHandOffCommand,
+  },
+  {
+    name: "partner end",
+    usage: "nico-agent partner end <tab>",
+    summary: "End a tab's Partner: remove its worktree and workspace, stopping its agent; its Thread's file stays",
+    flags: {},
+    positionals: ["tab"],
+    examples: ["nico-agent partner end review"],
+    run: partnerEndCommand,
   },
   {
     name: "voice check",
@@ -1731,6 +1818,80 @@ async function leadStopCommand(ctx: RunContext): Promise<Output> {
   const help = [`Run \`${LEAD_START_USAGE}\` to start it again; the conversation is kept`];
   if (outcome === "none") return { data: { lead: "not running (no-op)" }, help };
   return { data: definedOnly({ lead: "stopped", workspace }), help };
+}
+
+/** The `<tab>` argument, one of the Partners' tabs. */
+function tabArg(args: Args, usage: string): PartnerTab {
+  const tab = args.positionals[0];
+  if (!tab) throw new CliError("<tab> is required", [`Usage: \`${usage}\``, PARTNER_TABS_HELP], 2);
+  if (!isPartnerTab(tab)) throw new CliError(`\`${tab}\` is not a Partner's tab`, [PARTNER_TABS_HELP], 2);
+  return tab;
+}
+
+/** The text after `<tab>`, which must not be blank. */
+function textAfterTab(args: Args, usage: string) {
+  const text = args.positionals.slice(1).join(" ");
+  if (!text.trim()) throw new CliError("<text> is required", [`Usage: \`${usage}\``], 2);
+  return text;
+}
+
+async function partnerStartCommand(args: Args, ctx: RunContext): Promise<Output> {
+  const tab = tabArg(args, PARTNER_START_USAGE);
+  const repo = required(args, "--repo", PARTNER_START_USAGE);
+  const port = portFlag(args, PARTNER_START_USAGE);
+  const request = { tab, repo, ...launchFlags(args, PARTNER_START_USAGE), mcpUrl: `http://${HOSTNAME}:${port}${partnerMcpPath(tab)}` };
+  const { partner, outcome, resumedFrom } = await startPartner(ctx.world, ctx.configDir, request);
+  const { agent, harness, model, effort } = partner.agent;
+  const result = { new: "started", existing: "already running (no-op)", resumed: `resumed from ${resumedFrom}` }[outcome];
+  return {
+    data: definedOnly({ partner: result, tab, repo: partner.repo, workspace: partner.workspace, agent, harness, model, effort, thread: partner.thread }),
+    help: [`Run \`${PARTNER_SAY_USAGE}\` to write to it`, `Run \`herdr agent read ${agent}\` to see its screen`, `Make sure \`nico-agent serve\` runs, so it reaches ${partner.mcpUrl}`],
+  };
+}
+
+async function partnerListCommand(ctx: RunContext): Promise<Output> {
+  const partners = await partnerRows(ctx.world, ctx.configDir);
+  return { data: { partners }, help: [partners.length ? "Run `nico-agent partner log <tab>` to read a Partner's Thread" : `Run \`${PARTNER_START_USAGE}\` to start one`] };
+}
+
+async function partnerLogCommand(args: Args, ctx: RunContext): Promise<Output> {
+  const tab = tabArg(args, "nico-agent partner log <tab>");
+  const { partner, entries } = partnerThread(ctx.configDir, tab);
+  const draft = openDraft(entries);
+  const help = [`Run \`${PARTNER_SAY_USAGE}\` to write to it`];
+  if (draft) help.unshift(`Run \`nico-agent partner hand-off ${tab} ${draft.id}\` to send its Hand-off to the Lead`);
+  return { data: { log: plural(entries.length, "entry", "entries"), repo: partner.repo, entries }, help };
+}
+
+async function partnerSayCommand(args: Args, ctx: RunContext): Promise<Output> {
+  const tab = tabArg(args, PARTNER_SAY_USAGE);
+  const { entry, warnings } = await sayToPartner(ctx.world, ctx.configDir, tab, textAfterTab(args, PARTNER_SAY_USAGE));
+  return { data: { said: entry.id, ...(warnings.length && { warnings }) }, help: [`Run \`nico-agent partner log ${tab}\` to read the Thread`] };
+}
+
+async function partnerWriteCommand(args: Args, ctx: RunContext, type: "partner" | "draft"): Promise<Output> {
+  const usage = type === "partner" ? PARTNER_REPLY_USAGE : PARTNER_DRAFT_USAGE;
+  const tab = tabArg(args, usage);
+  const entry = await partnerWrites(ctx.world, ctx.configDir, tab, type, textAfterTab(args, usage));
+  if (type === "partner") return { data: { said: entry.id }, help: [] };
+  return { data: { drafted: entry.id }, help: ["The user approves or edits it in the app before it reaches the Lead; a later draft replaces it"] };
+}
+
+async function partnerHandOffCommand(args: Args, ctx: RunContext): Promise<Output> {
+  const tab = tabArg(args, PARTNER_HAND_OFF_USAGE);
+  const draft = Number(args.positionals[1]);
+  if (!Number.isInteger(draft) || draft < 1) throw new CliError("<draft> must be a draft's id", [`Usage: \`${PARTNER_HAND_OFF_USAGE}\``], 2);
+  const edited = args.flags["--text"];
+  if (edited !== undefined && (typeof edited !== "string" || !edited.trim())) throw new CliError("--text must not be blank", [`Usage: \`${PARTNER_HAND_OFF_USAGE}\``], 2);
+  const { lead, handoff, warnings } = await handOff(ctx.world, ctx.configDir, tab, draft, typeof edited === "string" ? edited : undefined);
+  return { data: { handed: handoff.id, said: lead.id, ...(warnings.length && { warnings }) }, help: [LOG_HELP] };
+}
+
+async function partnerEndCommand(args: Args, ctx: RunContext): Promise<Output> {
+  const tab = tabArg(args, "nico-agent partner end <tab>");
+  const { outcome, workspace } = await endPartner(ctx.world, ctx.configDir, tab);
+  if (outcome === "none") return { data: { partner: "not running (no-op)" }, help: [PARTNER_LIST_HELP] };
+  return { data: definedOnly({ partner: "ended", tab, workspace }), help: [`Run \`${PARTNER_START_USAGE}\` to start another`] };
 }
 
 async function board(ctx: RunContext, json: boolean): Promise<Output> {
