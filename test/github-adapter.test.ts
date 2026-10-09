@@ -88,13 +88,14 @@ test("a Repo the bot's App is installed on is read as the bot, any other as the 
   });
 });
 
-test("a read the App has no permission for is made as the user", async () => {
+test("a PR's activity is read as the user, even where the App is installed: the App can't read check results", async () => {
+  const activity = { data: { repository: { pullRequest: { state: "OPEN", isDraft: true, comments: { nodes: [] }, reviews: { nodes: [] }, commits: { nodes: [] } } } } };
   await withCommands((bin) => ({
-    ghbot: `#!/bin/sh\ncase "$*" in *installation/repositories*) echo acme/api;; *) echo "gh: Resource not accessible by integration" >&2; exit 1;; esac\n`,
-    gh: `#!/bin/sh\necho "gh $*" >> "${bin}/calls"\necho '${NO_ISSUES}'\n`,
+    ghbot: `#!/bin/sh\ncase "$*" in *installation/repositories*) echo acme/api;; *) echo ghbot >> "${bin}/calls"; exit 1;; esac\n`,
+    gh: `#!/bin/sh\necho gh >> "${bin}/calls"\necho '${JSON.stringify(activity)}'\n`,
   }), async (bin) => {
-    expect(await new RealWorld().githubIssues("acme/api")).toEqual([]);
-    expect(await Bun.file(join(bin, "calls")).text()).toStartWith("gh api graphql");
+    expect(await new RealWorld().githubPullRequestActivity("acme/api", 18)).toEqual({ state: "open", draft: true, comments: [], checks: [] });
+    expect(await Bun.file(join(bin, "calls")).text()).toBe("gh\n");
   });
 });
 

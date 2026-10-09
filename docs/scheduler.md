@@ -62,13 +62,14 @@ is only a warning in the report; it doesn't fail the run.
 `advance`. It keeps what GitHub said for a minute, so polling costs GitHub a
 read a minute, not one per poll. What nico-agent does itself (a dispatch, a
 review, a Close, a Queue change, an `advance` run, an approved Proposal, a new
-PR event) drops the kept reads, so the next Board shows it at once.
+PR event) drops the kept reads, so the next Board shows it at once. A command
+you type in a terminal runs in its own process, so `serve` may show its effect
+up to a minute later.
 
 A Repo the bot's GitHub App is installed on is read as the bot, through
 `ghbot`, whose installation token has its own rate limit; your own `gh` keeps
 working whatever nico-agent does. Other Repos are read through your `gh`, as
-is anything the App has no permission for (a PR's check results, unless the
-App can read Checks and Commit statuses).
+is the PR watch, since the App can't read a PR's check results.
 
 When GitHub answers with its rate limit, `serve` makes no GitHub call until
 the reset, and the Board shows one `warning` naming when calls resume.

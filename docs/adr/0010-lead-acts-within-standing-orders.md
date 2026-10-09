@@ -7,7 +7,8 @@ user sets Standing orders saying which of those it may do unasked; anything
 else becomes a Proposal the user approves or declines, and nico-agent runs the
 approved action itself. ADR-0009's Queue and the `advance` timer stay as the
 mechanical floor: running Specs keep moving when the Lead is down, and
-`advance` Nudges the Lead on every run.
+`advance` Nudges the Lead on every run. (_Amended by ADR-0011: `serve` runs
+`advance` now, not a timer._)
 
 The Lead runs as a herdr agent on any Harness (ADR-0001 holds: nico-agent owns
 no process), from a home directory nico-agent writes with the Lead's skill, and

@@ -291,20 +291,18 @@ export class RealWorld implements World {
   /** Who reads `slug`: the bot where its App is installed, else the user. */
   private async readerOf(slug: string): Promise<GitHubAs> {
     if (!this.botRepos || Date.now() - this.botRepos.at >= BOT_REPOS_MS) {
-      const repos = this.githubAppRepos().then((r) => new Set(r.map((s) => s.toLowerCase())), () => new Set<string>());
+      // A failed listing (the bot rate-limited, say) keeps the Repos it knew, so their reads don't move onto the user's budget.
+      const known = this.botRepos?.repos ?? Promise.resolve(new Set<string>());
+      const repos = this.githubAppRepos().then((r) => new Set(r.map((s) => s.toLowerCase())), () => known);
       this.botRepos = { at: Date.now(), repos };
     }
     return (await this.botRepos.repos).has(slug.toLowerCase()) ? "ghbot" : "gh";
   }
 
-  /** A GitHub read in `slug`, as its reader; one the App has no permission for (check results) goes as the user. */
+  /** A GitHub read in `slug`, as its reader. */
   private async readExec(slug: string, args: string[]): Promise<Exec & { as: GitHubAs }> {
     const as = await this.readerOf(slug);
-    const result = await this.ghCall(args, { bin: as });
-    if (as === "ghbot" && result.exitCode !== 0 && /Resource not accessible by integration/i.test(result.stderr)) {
-      return { ...(await this.ghCall(args)), as: "gh" };
-    }
-    return { ...result, as };
+    return { ...(await this.ghCall(args, { bin: as })), as };
   }
 
   private async read(slug: string, args: string[]): Promise<string> {
@@ -467,27 +465,20 @@ export class RealWorld implements World {
   }
 
   async githubPullRequest(slug: string, number: number): Promise<PullRequest | null> {
-    const args = ["pr", "view", String(number), "--repo", slug, "--json", "number,url,state,baseRefName,headRefName,isCrossRepository"];
+    const args = ["pr", "view", String(number), "--repo", slug, "--json", LISTED_PR_FIELDS];
     const result = await this.readExec(slug, args);
     if (result.exitCode !== 0) {
       if (/Could not resolve to a PullRequest|no pull requests found/i.test(result.stderr)) return null;
       throw await ghFailure(result.stderr, result.as);
     }
-    const pr = JSON.parse(result.stdout) as { number: number; url: string; state: string; baseRefName: string; headRefName: string; isCrossRepository: boolean };
-    return {
-      repo: slug,
-      number: pr.number,
-      url: pr.url,
-      state: pr.state.toLowerCase() as PullRequest["state"],
-      baseBranch: pr.baseRefName,
-      ...(!pr.isCrossRepository && { headBranch: pr.headRefName }),
-    };
+    return toListedPr(slug, JSON.parse(result.stdout));
   }
 
   async githubPullRequestActivity(slug: string, number: number, since?: Date): Promise<PullRequestActivity> {
     const [owner, name] = slug.split("/") as [string, string];
     const args = ["api", "graphql", "-f", `query=${PR_ACTIVITY_QUERY}`, "-f", `owner=${owner}`, "-f", `name=${name}`, "-F", `number=${number}`];
-    const pr = JSON.parse(await this.read(slug, args)).data?.repository?.pullRequest as PrActivityNode | null | undefined;
+    // As the user: the App can't read check results.
+    const pr = JSON.parse(await this.gh(args)).data?.repository?.pullRequest as PrActivityNode | null | undefined;
     if (!pr) throw new WorldError(`${slug}#${number} was not found on GitHub`);
     const login = (author: { login: string } | null) => author?.login ?? "ghost";
     const comments: PullRequestComment[] = [
@@ -525,15 +516,9 @@ export class RealWorld implements World {
 
   // Only the branch's own PRs: a Repo's whole PR history grows with it, and the Board needs none of the rest.
   async githubBranchPullRequests(slug: string, branch: string): Promise<PullRequest[]> {
-    const fields = "number,url,state,baseRefName,headRefName,isCrossRepository";
-    const listed = JSON.parse(await this.read(slug, ["pr", "list", "--repo", slug, "--head", branch, "--state", "all", "--limit", "100", "--json", fields])) as
-      { number: number; url: string; state: string; baseRefName: string; headRefName: string; isCrossRepository: boolean }[];
+    const listed: ListedPr[] = JSON.parse(await this.read(slug, ["pr", "list", "--repo", slug, "--head", branch, "--state", "all", "--limit", "100", "--json", LISTED_PR_FIELDS]));
     // gh lists newest first; linkedPr expects the latest at the end.
-    return listed.reverse().filter((pr) => pr.headRefName === branch).map((pr) => ({
-      repo: slug, number: pr.number, url: pr.url, state: pr.state.toLowerCase() as PullRequest["state"], baseBranch: pr.baseRefName,
-      // A fork head is not fetchable as origin/<head branch> in this clone.
-      ...(!pr.isCrossRepository && { headBranch: pr.headRefName }),
-    }));
+    return listed.reverse().filter((pr) => pr.headRefName === branch).map((pr) => toListedPr(slug, pr));
   }
 
   async gitFetch(path: string, branch?: string) {
@@ -754,6 +739,30 @@ export class RealWorld implements World {
 
 /** How long a voice service may take to answer; a local one loads its model on the first request. */
 const HTTP_TIMEOUT_MS = 120_000;
+
+/** The fields `gh pr view` and `gh pr list` give a PR by. */
+const LISTED_PR_FIELDS = "number,url,state,baseRefName,headRefName,isCrossRepository";
+
+interface ListedPr {
+  number: number;
+  url: string;
+  state: string;
+  baseRefName: string;
+  headRefName: string;
+  isCrossRepository: boolean;
+}
+
+function toListedPr(repo: string, pr: ListedPr): PullRequest {
+  return {
+    repo,
+    number: pr.number,
+    url: pr.url,
+    state: pr.state.toLowerCase() as PullRequest["state"],
+    baseBranch: pr.baseRefName,
+    // A fork head is not fetchable as origin/<head branch> in this clone.
+    ...(!pr.isCrossRepository && { headBranch: pr.headRefName }),
+  };
+}
 
 function toPullRequest(pr: LinkedPrNode): PullRequest {
   return {

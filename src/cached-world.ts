@@ -27,7 +27,9 @@ type Entry = { at: number; value: unknown } | { at: number; error: WorldError };
 export function cachingGitHubReads(world: World, ms = GITHUB_READ_CACHE_MS): { world: World; forget(): void } {
   const cache = new Map<string, Entry>();
   let limit: RateLimited | null = null;
-  const call = async (target: World, member: Function, args: unknown[]) => {
+  // Bumped by `forget`, so a read that was in flight then doesn't store what it read before.
+  let generation = 0;
+  const throughRateLimit = async (target: World, member: Function, args: unknown[]) => {
     if (limit && target.now() < limit.resumesAt) throw limit;
     try {
       return await member.apply(target, args);
@@ -41,7 +43,7 @@ export function cachingGitHubReads(world: World, ms = GITHUB_READ_CACHE_MS): { w
       const member = Reflect.get(target, name, receiver);
       if (typeof member !== "function") return member;
       if (!String(name).startsWith("github")) return member.bind(target);
-      if (!CACHED_READS.has(name as keyof World)) return (...args: unknown[]) => call(target, member, args);
+      if (!CACHED_READS.has(name as keyof World)) return (...args: unknown[]) => throughRateLimit(target, member, args);
       return async (...args: unknown[]) => {
         const key = `${String(name)} ${JSON.stringify(args)}`;
         const now = target.now().getTime();
@@ -50,17 +52,22 @@ export function cachingGitHubReads(world: World, ms = GITHUB_READ_CACHE_MS): { w
           if ("error" in hit) throw hit.error;
           return hit.value;
         }
+        const asked = generation;
         try {
-          const value = await call(target, member, args);
-          cache.set(key, { at: now, value });
+          const value = await throughRateLimit(target, member, args);
+          if (asked === generation) cache.set(key, { at: now, value });
           return value;
         } catch (e) {
           // A rate limit is held off by its reset time instead, which may come sooner.
-          if (e instanceof WorldError && !(e instanceof RateLimited)) cache.set(key, { at: now, error: e });
+          if (asked === generation && e instanceof WorldError && !(e instanceof RateLimited)) cache.set(key, { at: now, error: e });
           throw e;
         }
       };
     },
   });
-  return { world: cached, forget: () => cache.clear() };
+  const forget = () => {
+    generation++;
+    cache.clear();
+  };
+  return { world: cached, forget };
 }
