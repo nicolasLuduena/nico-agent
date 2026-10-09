@@ -69,11 +69,11 @@ export async function advance(world: World, configDir: string): Promise<AdvanceR
 
 const ADVANCE_LOCK = "advance.lock";
 
-/** How often `serve` runs `advance`, the same as the Scheduler's timer. */
+/** How often `serve` runs `advance`: the Scheduler. */
 export const ADVANCE_INTERVAL_MS = 10 * 60_000;
 
 /**
- * One `advance` at a time across processes (the timer, the CLI, the Board's
+ * One `advance` at a time across processes (`serve`, the CLI, the Board's
  * button), so two runs never start the same queued Spec. Takes the lock and
  * returns null, or returns the pid of the live process holding it. A lock
  * whose process is gone is taken over.

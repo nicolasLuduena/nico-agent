@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Install (or re-install, or remove) the systemd user service that keeps the
 # web Board (`nico-agent serve`) running in the background, from login on.
-# See docs/scheduler-timer.md.
+# It is the Scheduler too: serve runs `advance` every 10 minutes. See docs/scheduler.md.
 #
 #   scripts/install-board-service.sh            install, asking before each change
 #   scripts/install-board-service.sh --yes      install without asking
@@ -63,8 +63,8 @@ bin="${NICO_AGENT_BIN:-$(command -v nico-agent || echo "$HOME/.local/bin/nico-ag
 port="${NICO_AGENT_PORT:-42069}"
 shims="${MISE_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/mise}/shims"
 
-# The Board dispatches too, so it needs the same PATH as the advance timer:
-# mise's shims first, so `gh` resolves to the real binary instead of looping.
+# serve dispatches, so it needs mise's shims first on PATH: then `gh`
+# resolves to the real binary instead of looping.
 service=$(cat <<EOF
 [Unit]
 Description=nico-agent serve: the web Board on 127.0.0.1:$port
