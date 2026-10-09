@@ -168,14 +168,14 @@ The page is a shell of two columns under a translucent header. The Lead panel, h
 
 The header's theme toggle sets `data-theme="light"` or `"dark"` on the page's root; System shows whichever the system prefers and follows it as it changes. Light is the default. The choice is remembered in the browser (`nico-agent.theme`), and a small script in `index.html`'s head sets the theme before the first paint, so a reload never flashes the wrong one.
 
-The two themes are designed, not derived. Light is white panels on a pale grey ground, with waiting cards on the ground's tone. Dark is near-black panels (#1c1c1e) on true black, with waiting cards and popovers lifted to #2c2c2e so they read as raised objects, not holes. Stage hues, links and errors take lighter values in Dark. The accent fill stays the same blue in both because white on it reads at 4.7:1; the focus ring and links use a lighter blue in Dark.
+The two themes are designed, not derived. Light is white panels on a pale grey ground, with waiting cards on the ground's tone and toasts white, lifted by their shadow. Dark is near-black panels (#1c1c1e) on true black, with waiting cards, toasts and popovers lifted to #2c2c2e so they read as raised objects, not holes. Stage hues, links and errors take lighter values in Dark. The accent fill stays the same blue in both because white on it reads at 4.7:1; the focus ring and links use a lighter blue in Dark.
 
 ## Colors
 
 A neutral grey palette, one blue accent, and five Stage hues. Light values are listed first; dark values carry `-dark`.
 
 ### Primary
-- **Accent** (accent, hover accent-hover, text accent-ink): the one filled control of any group (Send, Approve, Save, Start, Send to the Lead), a switch turned on, the talk button while it records, the dot of a working agent, the ring of a card waiting on the user, the count of what waits, and the dot on a drawer tab with an unsaved edit. Disabled, a primary button goes to the fill with muted ink.
+- **Accent** (accent, hover accent-hover, text accent-ink): the one filled control of any group (Send, Approve, Save, Start, Send to the Lead), a switch turned on, the talk button while it records, the dot of a working agent, the ring of a card waiting on the user (a toast), the dot of an open question's or Proposal's line, the count of what waits, and the dot on a drawer tab with an unsaved edit. Disabled, a primary button goes to the fill with muted ink.
 - **Link** (link): links in running text ("PR #111"), the "asks" and "Proposes" notes on a toast, and "Open" on a line in the conversation. It is the accent's text form.
 - **Focus** (focus): the focus ring and a focused field's border. The accent in Light, the link's lighter blue in Dark, so it reads at 3:1 on every surface.
 
@@ -184,7 +184,7 @@ One colour per Stage, so a Stage is recognisable wherever it appears. Each is us
 - **Implementing** (implementing): orange. The notices' dots borrow it, being the hue of "in progress, look when you can".
 - **PR ready** (pr-ready): green. Also the dot of a "done" agent.
 - **Review launched** (review-launched): indigo, kept apart from the accent's blue.
-- **Failed** (failed): red. Also error text, Held on a Repo, and Close on hover.
+- **Failed** (failed): red. Also error text, Held on a Repo, Close on hover, and the dot of a failed Proposal's line.
 - **Unknown** (unknown): grey, for a Stage nico-agent cannot read.
 
 ### Attention
@@ -285,7 +285,7 @@ The one quiet place for warnings, under the Lead panel's bar: serve unreachable,
 ### Question and Proposal lines
 - In the conversation, in its place in time, a question or Proposal is one line: a 14px row ringed by a hairline (a pill; 16px corners where it wraps on a phone), an 8px dot, **Lead** asked or proposed, the time, then the question, or the Proposal's action as inline code and its reason, ellipsized, and at its end where it stands at 600.
 - **Open:** the dot in the accent and **Open** in link blue at 700. Clicking it expands the toasts and brings its toast forward, focused.
-- **Decided:** a muted dot; **You answered** and the answer (what was heard, when spoken and different), **Approved** and what the action did, **Declined** in muted ink with the reason in quotes, or **Failed** in red (its dot too) with why. Clicking it unfolds the line to everything it carries, wrapped, and folds it again.
+- **Decided:** a muted-ink dot; **You answered** and the answer (what was heard, when spoken and different), **Approved** and what the action did, **Declined** in muted ink with the reason in quotes, or **Failed** in red (its dot too) with why. Clicking it unfolds the line to everything it carries, wrapped, and folds it again.
 - A toast's question is set at 17px/600; its choices are surface pills with an edge, then a free-text field and Answer. A Proposal's toast names its action as inline code, or the Source write as a mono box, then the reason, then Approve (primary) and Decline, which opens an optional reason field.
 
 ### Composer
@@ -322,7 +322,7 @@ Text selection is the accent at 28%; the caret is the accent; scrollbars are thi
 - **Do** gate every animation and transition behind `prefers-reduced-motion`.
 
 ### Don't:
-- **Don't** add a second accent, gradients, glow or decorative illustration.
+- **Don't** add a second accent, gradients (beyond the toasts' fade at their top as they scroll), glow or decorative illustration.
 - **Don't** mark a card with a coloured stripe down one side; a toast is ringed all round.
 - **Don't** fade a disabled primary to a pastel of the accent.
 - **Don't** box things inside a panel with borders when space and a hairline will do.

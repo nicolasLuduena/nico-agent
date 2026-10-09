@@ -341,7 +341,7 @@ label.switch:has(:checked) { color: var(--ink); }
 }
 .item-line button:hover { background: var(--raised); }
 .item-line button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-.item-line .mark { width: 8px; height: 8px; border-radius: 50%; background: var(--edge); align-self: center; }
+.item-line .mark { width: 8px; height: 8px; border-radius: 50%; background: var(--ink-muted); align-self: center; }
 .item-line .who { white-space: nowrap; }
 .item-line .who b { color: var(--ink); font-weight: 700; }
 .item-line time { font-size: 13px; white-space: nowrap; }
@@ -351,7 +351,7 @@ label.switch:has(:checked) { color: var(--ink); }
 .item-line .where > * { overflow: hidden; text-overflow: ellipsis; }
 .item-line .where b { flex: none; color: var(--ink); font-weight: 600; }
 .item-line .where .error { color: var(--failed); }
-.item-line .where .raw { font-size: 13px; }
+.item-line .where .raw { font-size: 13px; white-space: nowrap; }
 .item-line.open .mark { background: var(--accent); }
 .item-line.open .where b, .item-line.answering .where b { color: var(--link); font-weight: 700; }
 .item-line.declined .where b { color: var(--ink-muted); }
@@ -373,7 +373,7 @@ label.switch:has(:checked) { color: var(--ink); }
   /* A toast scrolled past the top fades out rather than being cut. */
   mask-image: linear-gradient(transparent, #000 1.5rem);
 }
-.toasts .toast { pointer-events: auto; }
+.toasts ol { pointer-events: auto; }
 .toasts ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column-reverse; gap: 0.75rem; }
 .toasts .toast { background: var(--popover); box-shadow: inset 0 0 0 1.5px var(--accent), var(--toast-lift); animation: toast-in 320ms var(--ease-out); }
 .toasts .toast:focus { outline: 2px solid var(--focus); outline-offset: 3px; }

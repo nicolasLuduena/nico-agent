@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import type { HarnessesJson } from "./actions";
 import type { BoardJson } from "./board";
-import { type LeadStatusJson, type OpenItem, openItems } from "./lead";
+import { type LeadStatusJson, type OpenItem, freshItems, openItems } from "./lead";
 import { LeadMenu } from "./lead-menu";
 import { Actions, useBoardActions } from "./forms";
 import { LeadPanel, useConversation } from "./lead-panel";
@@ -51,11 +51,11 @@ function usePage(): Page {
 function useToasts(items: OpenItem[]) {
   const [shown, setShown] = useState(true);
   const [summoned, setSummoned] = useState<{ key: string } | null>(null);
-  const known = useRef(new Set<string>());
+  const before = useRef<OpenItem[]>([]);
   const keys = items.map((i) => i.key).join(" ");
   useEffect(() => {
-    if (items.some((i) => !known.current.has(i.key))) setShown(true);
-    known.current = new Set(items.map((i) => i.key));
+    if (freshItems(before.current, items).length) setShown(true);
+    before.current = items;
   }, [keys]);
   return {
     shown, summoned,
@@ -72,9 +72,10 @@ function useToasts(items: OpenItem[]) {
  * open questions and Proposals (which collapses or expands their toasts) and
  * the Lead's controls and the theme toggle, then the Lead panel on the left
  * and the page's own column on the right: the Repos on the Lead page, the
- * charts on the Stats page, and the toasts at the bottom right. The Board is asked of `serve` on load and on each
- * `board-changed`, and `serve` answers from its one-minute cache (ADR-0011),
- * so the page never asks GitHub more often than that.
+ * charts on the Stats page, and the toasts at the bottom right. The Board is
+ * asked of `serve` on load and on each `board-changed`, and `serve` answers
+ * from its one-minute cache (ADR-0011), so the page never asks GitHub more
+ * often than that.
  */
 function App() {
   const { harnesses, reload } = useHarnesses();

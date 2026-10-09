@@ -1,10 +1,7 @@
 import { type FormEvent, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { OutcomeNote, usePost } from "./forms";
-import { type OpenItem, type ProposalJson, declineArgs } from "./lead";
+import { type OpenItem, type ProposalJson, declineArgs, freshItems, toastId } from "./lead";
 import { Byline, type SendText } from "./lead-panel";
-
-/** The id of an item's toast, which its line in the conversation brings forward. */
-export const toastId = (key: string) => `toast-${key}`;
 
 /**
  * The Questions list as toasts at the bottom right of every page: each open
@@ -57,19 +54,14 @@ export function Toasts({ items, shown, loaded, summoned, send, dismiss }: {
 
 /** What a screen reader hears of the newest toast: the Lead's question or Proposal, once the conversation has loaded. */
 function useAnnouncement(items: OpenItem[], loaded: boolean) {
-  const seen = useRef<Set<string> | null>(null);
+  const before = useRef<OpenItem[] | null>(null);
   const [announced, setAnnounced] = useState("");
   const keys = items.map((i) => i.key).join(" ");
   useEffect(() => {
     if (!loaded) return;
     // What was open when the page loaded is no news.
-    if (!seen.current) {
-      seen.current = new Set(items.map((i) => i.key));
-      return;
-    }
-    const fresh = items.filter((i) => !seen.current!.has(i.key));
-    for (const i of fresh) seen.current.add(i.key);
-    const newest = fresh.at(-1);
+    const newest = before.current && freshItems(before.current, items).at(-1);
+    before.current = items;
     if (newest) setAnnounced(newest.kind === "question" ? `The Lead asks: ${newest.text}` : `The Lead proposes: ${newest.reason}`);
   }, [keys, loaded]);
   return announced;

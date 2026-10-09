@@ -4,14 +4,13 @@ import type { BoardJson } from "./board";
 import { OutcomeNote, answerOf, post, usePost } from "./forms";
 import {
   type Card, type Conversation, type ItemLine, type LeadStatusJson, type OpenItem, type ProposalJson,
-  cards, followsNewEntries, line, notices, reduce, sayArgs,
+  cards, followsNewEntries, itemLine, notices, reduce, sayArgs, toastId,
 } from "./lead";
 import { LeadDrawer } from "./lead-drawer";
 import { sendsOnEnter } from "./popover";
 import { ResearchBox } from "./research-box";
 import { useResource } from "./stream";
 import { TalkButton, TalkStatus, useTalk } from "./talk-button";
-import { toastId } from "./toasts";
 
 const EMPTY: Conversation = { entries: [], proposals: [], sends: [] };
 
@@ -172,29 +171,31 @@ const STATUS: Record<ItemLine["status"], string> = {
  */
 function ItemLineView({ item, summon }: { item: OpenItem; summon: (key: string) => void }) {
   const [whole, setWhole] = useState(false);
-  const l = line(item);
-  const open = l.status === "open";
-  const after = [l.answer && (l.status === "declined" ? `“${l.answer}”` : l.answer), ...l.outcome.map((o) => o.text)].filter(Boolean).join(" · ");
+  const shown = itemLine(item);
+  const open = shown.status === "open";
+  /** The answer or decline reason, then what the action did. */
+  const settled = [shown.answer && (shown.status === "declined" ? `“${shown.answer}”` : shown.answer), ...shown.outcome.map((o) => o.text)]
+    .filter(Boolean).join(" · ");
   const time = new Date(item.at);
   return (
-    <li className={`item-line ${l.status}${whole ? " whole" : ""}`}>
+    <li className={`item-line ${shown.status}${whole ? " whole" : ""}`}>
       <button
         type="button"
         {...(open ? { "aria-controls": toastId(item.key) } : { "aria-expanded": whole })}
-        title={open ? (l.verb === "asked" ? "Answer it" : "Decide it") : undefined}
+        title={open ? (shown.verb === "asked" ? "Answer it" : "Decide it") : undefined}
         onClick={() => (open ? summon(item.key) : setWhole(!whole))}
       >
         <span className="mark" aria-hidden="true" />
-        <span className="who"><b>Lead</b>{` ${l.verb}`}</span>
+        <span className="who"><b>Lead</b>{` ${shown.verb}`}</span>
         <time dateTime={item.at} title={time.toLocaleString()}>{time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time>
         <span className="what">
-          {l.action !== undefined && <code>{l.action}</code>}
-          {l.text}
+          {shown.action !== undefined && <code>{shown.action}</code>}
+          {shown.text}
         </span>
         <span className="where">
-          <b>{STATUS[l.status]}</b>
-          {after && <span className={l.outcome.some((o) => o.error) ? "error" : undefined}>{after}</span>}
-          {l.raw !== undefined && <span className="raw">{`heard “${l.raw}”`}</span>}
+          <b>{STATUS[shown.status]}</b>
+          {settled && <span className={shown.outcome.some((o) => o.error) ? "error" : undefined}>{settled}</span>}
+          {shown.raw !== undefined && <span className="raw">{`heard “${shown.raw}”`}</span>}
         </span>
       </button>
     </li>

@@ -204,7 +204,7 @@ export interface ItemLine {
 }
 
 /** What `item`'s line in the conversation carries; the item itself, while open, is a toast. */
-export function line(item: OpenItem): ItemLine {
+export function itemLine(item: OpenItem): ItemLine {
   if (item.kind === "question") {
     const { answer } = item;
     return {
@@ -221,6 +221,18 @@ export function line(item: OpenItem): ItemLine {
     outcome: proposalLines(item),
   };
 }
+
+/**
+ * The open items not open `before`: a question just asked or a Proposal just
+ * made, or a question whose answer was refused. Each expands the toasts.
+ */
+export function freshItems(before: OpenItem[], now: OpenItem[]): OpenItem[] {
+  const known = new Set(before.map((i) => i.key));
+  return now.filter((i) => !known.has(i.key));
+}
+
+/** The id of an open item's toast, which its line in the conversation brings forward. */
+export const toastId = (key: string) => `toast-${key}`;
 
 /** A message's marks when it was spoken: that it was, and what was heard when the Scribe changed it. */
 function spoken(text: string, raw: string | undefined) {

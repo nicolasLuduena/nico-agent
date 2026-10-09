@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 import type { HarnessesJson } from "../src/app/actions";
 import {
-  type Conversation, type LeadStatusJson, type OpenItem, type ProposalJson, cards, line, declineArgs, leadChoice, openItems, leadControl, leadStartArgs, followsNewEntries, notices, proposalLines, reduce, researchMessage, sayArgs,
+  type Conversation, type LeadStatusJson, type OpenItem, type ProposalJson, cards, freshItems, itemLine, declineArgs, leadChoice, openItems, leadControl, leadStartArgs, followsNewEntries, notices, proposalLines, reduce, researchMessage, sayArgs,
 } from "../src/app/lead";
 import { setup } from "./harness";
 
@@ -144,6 +144,20 @@ describe("the Questions list, as toasts", () => {
     expect(cards(await loaded())[0]).toMatchObject({ kind: "question", id: 1, answer: { text: "billing" } });
     expect(openItems(await loaded())).toMatchObject([{ kind: "question", id: 2 }]);
   });
+
+  test("a toast is new when it was not open before: one just asked, or one whose answer was refused", async () => {
+    const { cli, loaded } = withLead();
+    await cli("lead", "ask", "Which first?", "billing", "search");
+    const before = openItems(await loaded());
+    await cli("lead", "propose", "--reason", "Next", "advance");
+    const after = await loaded();
+    expect(freshItems(before, openItems(after))).toMatchObject([{ kind: "proposal", id: 1 }]);
+
+    const answering = reduce(after, { type: "send", key: "s1", text: "billing", question: 1, at: NOW });
+    const refused = reduce(answering, { type: "failed", key: "s1", error: "Could not reach nico-agent serve; try again." });
+    expect(freshItems(openItems(answering), openItems(refused))).toMatchObject([{ kind: "question", id: 1 }]);
+    expect(freshItems(openItems(refused), openItems(refused))).toEqual([]);
+  });
 });
 
 describe("a question's and a Proposal's line in the conversation", () => {
@@ -151,20 +165,20 @@ describe("a question's and a Proposal's line in the conversation", () => {
     const { cli, loaded } = withLead();
     await cli("lead", "ask", "Which first?", "billing", "search");
     const [open] = cards(await loaded());
-    expect(line(open as OpenItem)).toEqual({ verb: "asked", text: "Which first?", status: "open", outcome: [] });
+    expect(itemLine(open as OpenItem)).toEqual({ verb: "asked", text: "Which first?", status: "open", outcome: [] });
 
     await cli("say", "--answer", "1", "--raw", "the second one", "--", "search");
     const [answered] = cards(await loaded());
-    expect(line(answered as OpenItem)).toEqual({ verb: "asked", text: "Which first?", status: "answered", answer: "search", raw: "the second one", outcome: [] });
+    expect(itemLine(answered as OpenItem)).toEqual({ verb: "asked", text: "Which first?", status: "answered", answer: "search", raw: "the second one", outcome: [] });
   });
 
   test("an answer on its way shows on the line as answering; one refused leaves it open", async () => {
     const { cli, loaded } = withLead();
     await cli("lead", "ask", "Which first?", "billing", "search");
     const answering = reduce(await loaded(), { type: "send", key: "s1", text: "billing", question: 1, at: NOW });
-    expect(line(cards(answering)[0] as OpenItem)).toMatchObject({ status: "answering", answer: "billing" });
+    expect(itemLine(cards(answering)[0] as OpenItem)).toMatchObject({ status: "answering", answer: "billing" });
     const refused = reduce(answering, { type: "failed", key: "s1", error: "question 1 was already answered" });
-    expect(line(cards(refused)[0] as OpenItem)).toEqual({ verb: "asked", text: "Which first?", status: "open", outcome: [] });
+    expect(itemLine(cards(refused)[0] as OpenItem)).toEqual({ verb: "asked", text: "Which first?", status: "open", outcome: [] });
   });
 
   test("a Proposal says the Lead proposed its action, with its reason; decided, it carries the decision and what the action did", async () => {
@@ -176,7 +190,7 @@ describe("a question's and a Proposal's line in the conversation", () => {
     await cli("lead", "propose", "--reason", "Not now", "advance");
     await cli("lead", "propose", "--reason", "The billing Spec", "--write", "acme/api", "--text", "# Spec: billing\n");
     const open = cards(await loaded()) as OpenItem[];
-    expect(open.map(line)).toEqual([
+    expect(open.map(itemLine)).toEqual([
       { verb: "proposed", action: "nico-agent advance", text: "It is next in the Queue", status: "open", outcome: [] },
       { verb: "proposed", action: "nico-agent queue acme/api#9 --repo acme/nope", text: "Wrong", status: "open", outcome: [] },
       { verb: "proposed", action: "nico-agent advance", text: "Not now", status: "open", outcome: [] },
@@ -187,7 +201,7 @@ describe("a question's and a Proposal's line in the conversation", () => {
     await cli("proposals", "approve", "2");
     await cli("proposals", "decline", "3", "Finish billing first");
     await cli("proposals", "approve", "4");
-    expect((cards(await loaded()) as OpenItem[]).map(line)).toEqual([
+    expect((cards(await loaded()) as OpenItem[]).map(itemLine)).toEqual([
       expect.objectContaining({ status: "approved", outcome: [{ text: "Nothing to do: no running Spec needs a step and no queued Spec could start.", error: false }] }),
       expect.objectContaining({ status: "failed", outcome: [{ text: "acme/nope is not a configured Repo", error: true }] }),
       expect.objectContaining({ status: "declined", answer: "Finish billing first", outcome: [] }),
