@@ -8,6 +8,7 @@ import { leadStatus } from "./lead";
 import { RECORDS } from "./records";
 import { speaker } from "./speech";
 import { transcriptionSession } from "./transcription";
+import { stopwatch } from "./voice-timing";
 import type { Sockets, World } from "./world";
 
 export interface WebContext {
@@ -122,9 +123,15 @@ export function webHandler(context: WebContext) {
  * the Lead speak each entry it writes, as `events` tells of new ones.
  */
 export function webSockets(context: Pick<WebContext, "world" | "configDir" | "runCli" | "events">): Sockets {
-  const transcription = transcriptionSession(context);
+  const timing = stopwatch(context);
+  const transcription = transcriptionSession({ ...context, timing });
   const speech = speaker(context);
-  context.events?.on("conversation-entry", () => speech.changed());
+  context.events?.on("conversation-entry", () => {
+    speech.changed();
+    timing.changed();
+  });
+  // serve's tick, every few seconds, logs the spoken messages the Lead never answered.
+  context.events?.on("board-changed", () => timing.expire());
   return {
     "/api/voice": (request) => {
       if (fromAnotherSite(request)) return apiError(403, "only the app itself can listen");
@@ -133,7 +140,12 @@ export function webSockets(context: Pick<WebContext, "world" | "configDir" | "ru
         speech.join(peer);
         return {
           message(data) {
-            if (typeof data === "string" && (parseJson(data) as { type?: unknown } | null)?.type === "hush") return speech.hush();
+            const command = typeof data === "string" ? parseJson(data) as { type?: unknown; entry?: unknown; at?: unknown } | null : null;
+            if (command?.type === "hush") return speech.hush();
+            if (command?.type === "played") {
+              if (typeof command.entry === "number" && typeof command.at === "number") timing.played(command.entry, new Date(command.at));
+              return;
+            }
             talk.message(data);
           },
           close() {
