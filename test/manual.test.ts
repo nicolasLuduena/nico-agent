@@ -113,6 +113,31 @@ describe("a manual Repo", () => {
     expect((await cli("--json")).json().rooms[0].running).toEqual(["acme/api#10"]);
   });
 
+  test("advance resumes no interrupted Dispatch there, and says nothing of one whose runner still goes", async () => {
+    const { cli, world, configDir } = await manualRepo();
+    world.addGitHubSpec("acme/api", { number: 10 }, { number: 11 });
+    expect((await cli("dispatch", "acme/api#11", ...FLAGS)).exitCode).toBe(0);
+    const file = join(configDir, "dispatches.json");
+    const interrupt = (runner?: number) => {
+      const state = JSON.parse(readFileSync(file, "utf8"));
+      const d = state.dispatches["acme/api#11"];
+      d.completed = d.completed.filter((s: string) => s !== "prompt");
+      if (runner !== undefined) d.runner = runner;
+      writeFileSync(file, JSON.stringify(state));
+    };
+    interrupt();
+    world.calls.length = 0;
+
+    expect((await cli("advance", "--json")).json().specs).toEqual([{
+      spec: "acme/api#10", repo: "acme/api", result: "skipped", issue: "acme/api#11",
+      reason: "acme/api is manual: only an explicit dispatch resumes acme/api#11",
+    }]);
+    expect(world.calls.some((c) => c.startsWith("herdr agent prompt"))).toBe(false);
+
+    interrupt(world.processId());
+    expect((await cli("advance", "--json")).json().specs).toEqual([]);
+  });
+
   test("the Board marks its room as manual, and a Repo that is not manual has no mark", async () => {
     const { cli, world } = await manualRepo();
     world.addClone("/src/web", "git@github.com:acme/web.git");

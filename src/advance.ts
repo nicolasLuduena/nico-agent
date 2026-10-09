@@ -4,7 +4,7 @@ import { loadBoard, specLoadErrors } from "./board";
 import { recordSighting } from "./stats";
 import { removeFinishedGardeners } from "./gardener";
 import { ConfigError, SCHEDULER_DEFAULTS, type LaunchDefaults, loadConfig } from "./config";
-import { type DispatchRequest, StepFailed, checkLaunch, closeDispatch, dispatch } from "./dispatch";
+import { type DispatchRequest, StepFailed, checkLaunch, closeDispatch, dispatch, isResumable } from "./dispatch";
 import { DispatchError, LaunchError } from "./dispatch-error";
 import { linearIdentifier } from "./linear";
 import { type Notice, PROPOSALS_SCOPE, notifyOnce } from "./notify";
@@ -113,12 +113,16 @@ async function advanceOnce(world: World, configDir: string): Promise<AdvanceRepo
   report.errors = failedRepos.map(({ repo, error }) => ({ repo, error }));
   const queues = await pruneBoardQueues(configDir, board);
   const manual = board.specs.filter((r) => r.manual);
+  const isManual = new Set(manual.map((r) => r.repo));
   const queued = fromQueues(queues, board.specs.filter((r) => !r.manual));
   // A Spec waiting on another Spec's merges frees its slot, but is still reported.
   const running = board.specs.flatMap((r) => r.specs).filter((s) => s.running || s.waiting.length)
     .map((spec) => {
       const plans = planSpec(spec, dispatches);
-      return { spec, plans: manual.some((r) => r.repo === spec.repo) ? plans.map((plan) => manualSkip(spec.repo, plan)) : plans };
+      if (!isManual.has(spec.repo)) return { spec, plans };
+      // A Dispatch whose runner still goes is no resume left undone, so it goes unsaid.
+      const undone = plans.filter((plan) => plan.action !== "resume" || isResumable(world, plan.dispatch));
+      return { spec, plans: undone.map((plan) => manualSkip(spec.repo, plan)) };
     });
   if (running.some(({ plans }) => plans.some((p) => p.action === "start")) || queued.length) await checkDefaults(world, configDir, launch);
   const plans: { spec: SpecDecision; plan: SpecPlan }[] = [];
