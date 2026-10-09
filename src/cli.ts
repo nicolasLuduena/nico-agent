@@ -5,7 +5,7 @@ import { answer, loadAsking } from "./answer";
 import { type BoardIssue, loadBoard } from "./board";
 import { ConfigError, VOICE_DOC, VOICE_SERVICES, findRepo, loadConfig, saveConfig, standingOrders } from "./config";
 import { ORDERS, ORDERS_HELP, type Order, isOrder } from "./orders";
-import { AnswerRefused, answerQuestion, append, authored, loadConversation, openQuestions, readInbox, recall, sayToLead } from "./conversation";
+import { AnswerRefused, type Ask, answerQuestion, append, authored, loadConversation, openAsks, openQuestions, readInbox, recall, sayToLead } from "./conversation";
 import { StepFailed, baseBranch, closeDispatch, dispatch, eachIssue, resolveIssue, review } from "./dispatch";
 import { DispatchError } from "./dispatch-error";
 import { PANE_ARGS } from "./opencode";
@@ -16,7 +16,7 @@ import { linearIdentifier } from "./linear";
 import { peek } from "./peek";
 import { PR_WATCH_INTERVAL_MS, watchPrs } from "./pr-events";
 import { PROPOSABLE, withJson } from "./mcp";
-import { PROPOSALS_SCOPE, notifyOnce } from "./notify";
+import { ASKS_SCOPE, PROPOSALS_SCOPE, notifyOnce } from "./notify";
 import { type Output, plural, render } from "./output";
 import { type Proposal, type Proposed, ProposalRefused, type SourceWrite, addProposal, commandLine, decide, describeProposed, loadProposals, openProposals, settle } from "./proposals";
 import { dequeue, enqueue, loadQueues, move, pruneBoardQueues, queueOf } from "./queue";
@@ -833,7 +833,20 @@ async function leadAskCommand(args: Args, ctx: RunContext): Promise<Output> {
   const [text, ...choices] = args.positionals;
   if (!text?.trim()) throw new CliError("<question> is required", [`Usage: \`${LEAD_ASK_USAGE}\``], 2);
   const entry = await append(ctx.configDir, { type: "ask", text, ...(choices.length && { choices }) }, ctx.world.now());
-  return { data: { asked: entry.id }, help: [`The answer arrives in the Inbox naming question ${entry.id}`, LOG_HELP] };
+  const open = openAsks(loadConversation(ctx.configDir));
+  const warnings = await notifyOnce(ctx.world, ctx.configDir, open.map(askNotice), (scope) => scope === ASKS_SCOPE);
+  return { data: { asked: entry.id, ...(warnings.length && { warnings }) }, help: [`The answer arrives in the Inbox naming question ${entry.id}`, LOG_HELP] };
+}
+
+/** A new question from the Lead, in its own words, for the user away from the Board. */
+function askNotice(ask: Ask) {
+  const choices = ask.choices?.length ? ` (${ask.choices.join(" / ")})` : "";
+  return {
+    key: `ask ${ask.id}`,
+    scope: ASKS_SCOPE,
+    title: "The Lead asks",
+    body: `${ask.text}${choices}\nRun \`nico-agent say --answer ${ask.id} <answer>\` to answer`,
+  };
 }
 
 async function leadRecallCommand(args: Args, ctx: RunContext): Promise<Output> {

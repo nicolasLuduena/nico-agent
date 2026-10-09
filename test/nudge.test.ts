@@ -1,10 +1,15 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { setup } from "./harness";
 
 const LAUNCH = { harness: "claude", model: "opus", effort: "high" };
 const NUDGE = "herdr agent prompt lead Read your Inbox";
+const TZ = process.env.TZ;
+
+afterEach(() => {
+  process.env.TZ = TZ;
+});
 
 /** A started Lead on claude, in the Agent state `state`, with the calls so far forgotten. */
 async function lead(state = "idle") {
@@ -18,7 +23,7 @@ async function lead(state = "idle") {
 }
 
 function nudges(calls: string[]) {
-  return calls.filter((c) => c === NUDGE);
+  return calls.filter((c) => c.startsWith(NUDGE)).map(() => NUDGE);
 }
 
 describe("say Nudges the Lead", () => {
@@ -95,6 +100,16 @@ describe("say Nudges the Lead", () => {
     world.calls.length = 0;
     await world.tick();
     expect(nudges(world.calls)).toEqual([NUDGE]);
+  });
+});
+
+describe("the Nudge's text", () => {
+  test("carries the local date and time, so the Lead can tell a new day began", async () => {
+    process.env.TZ = "America/Argentina/Buenos_Aires";
+    const { cli, world } = await lead("idle");
+    world.clock = new Date("2026-10-01T02:30:00.000Z");
+    await cli("say", "hello");
+    expect(world.calls.filter((c) => c.startsWith(NUDGE))).toEqual([`${NUDGE} (local time: Wed 2026-09-30 23:30)`]);
   });
 });
 

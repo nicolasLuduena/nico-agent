@@ -216,8 +216,16 @@ _Avoid_: Events, feed, notifications (those go to the user)
 
 **Nudge**:
 nico-agent prompting the Lead to read its Inbox: sent when the Lead is idle and
-something arrived, and on every Scheduler run.
+something arrived, and on every Scheduler run. It carries the user's local date
+and time, which tells the Lead when the daily brief is due.
 _Avoid_: Wake, ping, trigger
+
+**Daily brief**:
+The Lead's one `say` on the first Nudge of each local date, in three parts:
+what ran since the last brief (Dispatches started, PRs ready and merged,
+Dispatches Closed), what needs the user (Asking, Held, Failed, open questions
+and Proposals), and what the Lead continues with and why (the Intent).
+_Avoid_: Digest, standup, summary
 
 **Scribe**:
 The small fast model that cleans what the user said before the Lead reads it:

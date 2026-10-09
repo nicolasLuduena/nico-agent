@@ -65,12 +65,21 @@ If `serve` listens on another port, pass it to `lead start --port <port>`.
 
 When something arrives for the Lead (your `say`, your `say --answer`, a PR
 event, the end of an `advance` run), nico-agent Nudges it: it prompts the Lead with "Read your
-Inbox" if herdr reports it idle (or `done` with its turn). While the Lead is working, one pending Nudge
+Inbox (local time: Wed 2026-09-30 23:30)" if herdr reports it idle (or `done` with its turn). While the Lead is working, one pending Nudge
 is kept in `nudge.json` in the config directory, and `serve` sends it within
 about 10 seconds of seeing the Lead idle, so three messages sent while it
 works bring one Nudge. A Lead that isn't running gets none; your messages
 wait in its Inbox and it reads them when it starts. A Nudge that can't be
 sent is a warning in the command's output, and `serve` tries it again.
+
+The local time is your clock, so the Lead can tell a new day began: on the
+first Nudge of each date it posts its daily brief, one `say` starting
+"Daily brief, <date>" with what ran since the last brief, what needs you, and
+what it continues with and why. Find past briefs with
+`nico-agent lead recall "Daily brief"`.
+
+When the Lead asks you something (`ask`), you get one desktop notification
+with its question, as for a Proposal.
 
 ## The Lead's home
 
