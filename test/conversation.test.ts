@@ -1,3 +1,5 @@
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 import { setup } from "./harness";
 
@@ -143,5 +145,81 @@ describe("the conversation with the Lead", () => {
       ["--json is fine", undefined],
       ["--force?", ["--yes", "--no"]],
     ]);
+  });
+
+  test("every inbox carries an orient packet, saying so when there is no Intent or Notes", async () => {
+    const { cli, web, configDir } = setup();
+    const empty = (await tool(web, "inbox")).content.orient;
+    expect(empty).toEqual({
+      intent: `none yet: ${join(configDir, "intent.md")} is missing or empty`,
+      notes: `none yet: ${join(configDir, "notes.md")} is missing or empty`,
+      open: [],
+      last: [],
+    });
+
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(join(configDir, "intent.md"), "# Intent\n\nShip billing by Friday.\n");
+    writeFileSync(join(configDir, "notes.md"), "  \n");
+    await cli("say", "hi");
+    await tool(web, "ask", { question: "Close acme/api#7?", choices: ["yes", "no"] });
+    await tool(web, "ask", { question: "Start billing?" });
+    await cli("say", "--answer", "3", "yes");
+    await tool(web, "inbox");
+
+    // Nothing new, and the packet comes all the same.
+    const { entries, orient } = (await tool(web, "inbox")).content;
+    expect(entries).toEqual([]);
+    expect(orient.intent).toBe("# Intent\n\nShip billing by Friday.\n");
+    expect(orient.notes).toBe(`none yet: ${join(configDir, "notes.md")} is missing or empty`);
+    expect(orient.open).toEqual([{ id: 2, at: "2026-09-30T12:00:00.000Z", type: "ask", text: "Close acme/api#7?", choices: ["yes", "no"] }]);
+    expect(orient.last.map((e: { id: number; who: string }) => [e.id, e.who])).toEqual([[1, "user"], [2, "lead"], [3, "lead"], [4, "user"]]);
+  });
+
+  test("the orient packet's last exchanges are the last ten entries, the Lead's own included", async () => {
+    const { cli, web } = setup();
+    for (let i = 1; i <= 12; i++) await (i % 2 ? cli("say", `user ${i}`) : tool(web, "say", { text: `lead ${i}` }));
+    const { last } = (await tool(web, "inbox")).content.orient;
+    expect(last.map((e: { text: string }) => e.text)).toEqual(["user 3", "lead 4", "user 5", "lead 6", "user 7", "lead 8", "user 9", "lead 10", "user 11", "lead 12"]);
+  });
+
+  test("recall finds a word in an old entry, with its id and time; a time range narrows it; no match says so", async () => {
+    const { cli, web, world } = setup();
+    world.clock = new Date("2026-08-01T09:00:00.000Z");
+    await cli("say", "Billing waits until the Stripe contract is signed");
+    world.clock = new Date("2026-09-15T09:00:00.000Z");
+    await tool(web, "say", { text: "Noted: billing is on hold." });
+    world.clock = new Date("2026-09-30T12:00:00.000Z");
+    await tool(web, "ask", { question: "Start billing now?", choices: ["yes", "BILLING later"] });
+    await cli("say", "unrelated");
+
+    const all = (await tool(web, "recall", { query: "billing" })).content;
+    expect(all.recall).toBe("3 entries match \"billing\"");
+    expect(all.entries.map((e: { id: number; at: string; who: string }) => [e.id, e.at, e.who])).toEqual([
+      [1, "2026-08-01T09:00:00.000Z", "user"],
+      [2, "2026-09-15T09:00:00.000Z", "lead"],
+      [3, "2026-09-30T12:00:00.000Z", "lead"],
+    ]);
+
+    const range = (await tool(web, "recall", { query: "Billing", since: "2026-09-01", until: "2026-09-20T00:00:00Z" })).content;
+    expect(range.entries.map((e: { id: number }) => e.id)).toEqual([2]);
+    expect((await cli("lead", "recall", "billing", "--until", "2026-08-02", "--json")).json().entries.map((e: { id: number }) => e.id)).toEqual([1]);
+
+    const none = await tool(web, "recall", { query: "kubernetes" });
+    expect(none.isError).toBe(false);
+    expect(none.content).toMatchObject({ recall: "0 entries match \"kubernetes\"", entries: [] });
+    // Recall reads; the Inbox is untouched.
+    expect((await tool(web, "inbox")).content.entries).toHaveLength(2);
+  });
+
+  test("recall refuses a blank query or a time it cannot read", async () => {
+    const { cli, web } = setup();
+    expect(await cli("lead", "recall", " ")).toMatchObject({ exitCode: 2, stdout: expect.stringContaining("<query> is required") });
+    const bad = await cli("lead", "recall", "x", "--since", "last week", "--json");
+    expect(bad.exitCode).toBe(2);
+    expect(bad.json()).toEqual({ error: "--since must be a date or time such as 2026-09-01 or 2026-09-01T12:00:00Z (got `last week`)", help: ["Usage: `nico-agent lead recall <query> [--since <time>] [--until <time>]`"] });
+    for (const args of [{}, { query: "" }, { query: "x", since: 3 }, { query: "x", from: "2026" }]) {
+      await expect(tool(web, "recall", args)).rejects.toThrow("recall");
+    }
+    expect((await tool(web, "recall", { query: "x", since: "someday" })).isError).toBe(true);
   });
 });

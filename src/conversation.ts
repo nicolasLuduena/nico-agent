@@ -21,12 +21,35 @@ type Body = Entry extends infer E ? (E extends Entry ? Omit<E, "id" | "at"> : ne
 /** An Inbox entry; an answer carries the text of the question it answers. */
 export type InboxEntry = Entry | (Answer & { asked: string });
 
+/**
+ * What the Lead needs to know where it stands after a restart or a compacted
+ * context, handed over with every Inbox: the Intent and Notes, its open
+ * questions, and the last exchanges. Memory is nico-agent's, not the Harness's.
+ */
+export interface Orient {
+  /** The Intent's Markdown, or a line saying there is none yet. */
+  intent: string;
+  /** The Notes' Markdown, or a line saying there are none yet. */
+  notes: string;
+  /** The Lead's questions not answered yet, oldest first. */
+  open: Entry[];
+  /** The last entries, oldest first, with who wrote each. */
+  last: Authored[];
+}
+
+/** An entry with who wrote it, as the user and the Lead read the conversation. */
+export type Authored = Entry & { who: "user" | "lead" };
+
 const FILE = "conversation.jsonl";
+const INTENT_FILE = "intent.md";
+const NOTES_FILE = "notes.md";
+/** How many of the last entries the orient packet carries. */
+const LAST = 10;
 /** The id of the last entry the Lead read with `inbox`. */
 const CURSOR_FILE = "lead-cursor.json";
 
 /** Who wrote `entry`: the Lead's own entries never come back in its Inbox. */
-export function author(entry: Entry): "user" | "lead" {
+function author(entry: Entry): "user" | "lead" {
   switch (entry.type) {
     case "user":
     case "answer":
@@ -61,8 +84,30 @@ export function loadConversation(dir: string): Entry[] {
 
 /** Ids of the Lead's questions not answered yet, oldest first. */
 export function openQuestions(entries: Entry[]): number[] {
+  return openAsks(entries).map((e) => e.id);
+}
+
+function openAsks(entries: Entry[]): Entry[] {
   const answered = new Set(entries.flatMap((e) => (e.type === "answer" ? [e.question] : [])));
-  return entries.filter((e) => e.type === "ask" && !answered.has(e.id)).map((e) => e.id);
+  return entries.filter((e) => e.type === "ask" && !answered.has(e.id));
+}
+
+/**
+ * The entries whose text, or a question's choices, contain `query` ignoring
+ * case, written from `since` until `until` when given, oldest first.
+ */
+export function recall(entries: Entry[], query: string, range: { since?: Date; until?: Date } = {}): Authored[] {
+  const needle = query.toLowerCase();
+  return entries
+    .filter((e) => [e.text, ...(e.type === "ask" ? (e.choices ?? []) : [])].some((t) => t.toLowerCase().includes(needle)))
+    .filter((e) => (!range.since || new Date(e.at) >= range.since) && (!range.until || new Date(e.at) <= range.until))
+    .map(authored);
+}
+
+/** `entry` with who wrote it, right after its id. */
+export function authored(entry: Entry): Authored {
+  const { id, ...rest } = entry;
+  return { id, who: author(entry), ...rest } as Authored;
 }
 
 /** Append `body` as the next entry, at `at`. */
@@ -94,20 +139,39 @@ export function answerQuestion(dir: string, question: string, text: string, at: 
 
 /**
  * The entries the Lead has not read, leaving out the ones it wrote, and move
- * its cursor past them, so each is returned once.
+ * its cursor past them, so each is returned once; with the orient packet.
  */
-export function readInbox(dir: string): Promise<InboxEntry[]> {
+export function readInbox(dir: string): Promise<{ entries: InboxEntry[]; orient: Orient }> {
   return withFileLock(dir, FILE, () => {
     const entries = loadConversation(dir);
     const cursor = loadCursor(dir);
     const unread = entries.filter((e) => e.id > cursor);
     if (unread.length) writeJsonAtomic(join(dir, CURSOR_FILE), { cursor: unread.at(-1)!.id });
-    return unread.filter((e) => author(e) === "user").map((e) => {
+    const inbox = unread.filter((e) => author(e) === "user").map((e) => {
       if (e.type !== "answer") return e;
       const question = entries.find((q) => q.id === e.question);
       return { ...e, asked: question?.type === "ask" ? question.text : "" };
     });
+    const orient = {
+      intent: markdown(dir, INTENT_FILE),
+      notes: markdown(dir, NOTES_FILE),
+      open: openAsks(entries),
+      last: entries.slice(-LAST).map(authored),
+    };
+    return { entries: inbox, orient };
   });
+}
+
+/** The Markdown in `file`, or a line saying it is missing or empty. */
+function markdown(dir: string, file: string): string {
+  const path = join(dir, file);
+  let text = "";
+  try {
+    text = readFileSync(path, "utf8");
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
+  }
+  return text.trim() ? text : `none yet: ${path} is missing or empty`;
 }
 
 function loadCursor(dir: string): number {

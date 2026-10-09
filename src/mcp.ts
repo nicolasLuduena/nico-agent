@@ -18,8 +18,23 @@ const TOOLS = [
   {
     name: "inbox",
     title: "Inbox",
-    description: "Read your Inbox: the user's messages and answers to your questions you have not seen yet. Each entry is returned once.",
+    description: "Read your Inbox: the user's messages and answers to your questions you have not seen yet, each returned once. Every call also returns `orient`: the Intent, the Notes, your open questions and the last exchanges; read it before acting when you can't recall your last words.",
     inputSchema: { type: "object", additionalProperties: false },
+  },
+  {
+    name: "recall",
+    title: "Recall",
+    description: "Search the whole conversation with the user for text (ignoring case), optionally from `since` until `until`. Returns the matching entries with their ids and times.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Text to find" },
+        since: { type: "string", description: "Only entries from this date or time on, e.g. 2026-09-01" },
+        until: { type: "string", description: "Only entries up to this date or time, e.g. 2026-09-30T18:00:00Z" },
+      },
+      required: ["query"],
+      additionalProperties: false,
+    },
   },
   {
     name: "say",
@@ -141,7 +156,7 @@ function initialize(params: unknown) {
     protocolVersion: typeof asked === "string" && OLDER_VERSIONS.includes(asked) ? asked : PROTOCOL_VERSION,
     capabilities: { tools: {} },
     serverInfo: { name: "nico-agent", title: "nico-agent", version: VERSION },
-    instructions: "Read the Board with `board` and your Inbox with `inbox`; reply with `say`, ask the user with `ask`.",
+    instructions: "Read the Board with `board` and your Inbox with `inbox`; reply with `say`, ask the user with `ask`, and search the conversation with `recall`.",
   };
 }
 
@@ -162,6 +177,17 @@ function toolArgv(params: unknown): string[] {
     case "inbox":
       onlyArguments(name, args);
       return ["lead", "inbox", "--json"];
+    case "recall": {
+      onlyArguments(name, args, ["query", "since", "until"]);
+      const query = text(name, args, "query");
+      const range = (["since", "until"] as const).flatMap((key) => {
+        const value = args[key];
+        if (value === undefined) return [];
+        if (typeof value !== "string") throw new RpcError(-32602, `recall's ${key} must be a string`);
+        return [`--${key}`, value];
+      });
+      return ["lead", "recall", "--json", ...range, "--", query];
+    }
     case "say":
       onlyArguments(name, args, ["text"]);
       return ["lead", "say", "--json", "--", text(name, args, "text")];

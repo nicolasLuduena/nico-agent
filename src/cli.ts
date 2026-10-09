@@ -3,7 +3,7 @@ import { advance } from "./advance";
 import { answer, loadAsking } from "./answer";
 import { loadBoard } from "./board";
 import { ConfigError, findRepo, loadConfig, saveConfig } from "./config";
-import { AnswerRefused, answerQuestion, append, author, loadConversation, openQuestions, readInbox } from "./conversation";
+import { AnswerRefused, answerQuestion, append, authored, loadConversation, openQuestions, readInbox, recall } from "./conversation";
 import { StepFailed, baseBranch, closeDispatch, dispatch, eachIssue, resolveIssue, review } from "./dispatch";
 import { DispatchError } from "./dispatch-error";
 import { PANE_ARGS } from "./opencode";
@@ -41,6 +41,7 @@ const ANSWER_USAGE = "nico-agent answer <issue> <text>";
 const SAY_USAGE = "nico-agent say [--answer <id>] <text>";
 const LEAD_SAY_USAGE = "nico-agent lead say <text>";
 const LEAD_ASK_USAGE = "nico-agent lead ask <question> [<choice>...]";
+const RECALL_USAGE = "nico-agent lead recall <query> [--since <time>] [--until <time>]";
 const LOG_HELP = "Run `nico-agent lead log` to see the conversation with the Lead";
 const LAUNCH_FLAGS = {
   "--harness": { value: true, description: "Harness to launch, e.g. claude (see `nico-agent harness list`)" },
@@ -206,7 +207,7 @@ const commands: Command[] = [
   {
     name: "lead inbox",
     usage: "nico-agent lead inbox",
-    summary: "Read the Lead's Inbox: the entries it has not seen, each returned once (its MCP `inbox` tool)",
+    summary: "Read the Lead's Inbox: the entries it has not seen, each returned once, with the orient packet (its MCP `inbox` tool)",
     help: ["This moves the Lead's cursor, so the Lead will not see what it returns; run `nico-agent lead log` to read the conversation instead"],
     flags: {},
     positionals: [],
@@ -241,6 +242,18 @@ const commands: Command[] = [
     positionals: [],
     examples: ["nico-agent lead log", "nico-agent lead log --json"],
     run: leadLogCommand,
+  },
+  {
+    name: "lead recall",
+    usage: RECALL_USAGE,
+    summary: "Search the whole conversation with the Lead for text, optionally within a time range (its MCP `recall` tool)",
+    flags: {
+      "--since": { value: true, description: "only entries from this date or time on, e.g. 2026-09-01" },
+      "--until": { value: true, description: "only entries up to this date or time, e.g. 2026-09-30T18:00:00Z" },
+    },
+    positionals: ["query..."],
+    examples: ["nico-agent lead recall billing", "nico-agent lead recall \"Stripe contract\" --since 2026-09-01 --json"],
+    run: leadRecallCommand,
   },
   {
     name: "harness list",
@@ -536,9 +549,9 @@ async function sayCommand(args: Args, ctx: RunContext): Promise<Output> {
 }
 
 async function leadInboxCommand(_args: Args, ctx: RunContext): Promise<Output> {
-  const entries = await readInbox(ctx.configDir);
+  const { entries, orient } = await readInbox(ctx.configDir);
   const help = [`Run \`${LEAD_SAY_USAGE}\` to reply`, `Run \`${LEAD_ASK_USAGE}\` to ask the user`];
-  return { data: { inbox: plural(entries.length, "new entry", "new entries"), entries }, help };
+  return { data: { inbox: plural(entries.length, "new entry", "new entries"), entries, orient }, help };
 }
 
 async function leadSayCommand(args: Args, ctx: RunContext): Promise<Output> {
@@ -555,12 +568,29 @@ async function leadAskCommand(args: Args, ctx: RunContext): Promise<Output> {
   return { data: { asked: entry.id }, help: [`The answer arrives in the Inbox naming question ${entry.id}`, LOG_HELP] };
 }
 
+async function leadRecallCommand(args: Args, ctx: RunContext): Promise<Output> {
+  const query = args.positionals.join(" ");
+  if (!query.trim()) throw new CliError("<query> is required", [`Usage: \`${RECALL_USAGE}\``], 2);
+  const since = timeFlag(args, "--since");
+  const until = timeFlag(args, "--until");
+  const entries = recall(loadConversation(ctx.configDir), query, { ...(since && { since }), ...(until && { until }) });
+  const help = entries.length ? [LOG_HELP] : ["Try another word, or a wider time range", LOG_HELP];
+  return { data: { recall: `${plural(entries.length, "entry matches", "entries match")} ${JSON.stringify(query)}`, entries }, help };
+}
+
+function timeFlag(args: Args, flag: "--since" | "--until"): Date | undefined {
+  const value = args.flags[flag];
+  if (typeof value !== "string") return undefined;
+  const time = new Date(value);
+  if (Number.isNaN(time.getTime())) {
+    throw new CliError(`${flag} must be a date or time such as 2026-09-01 or 2026-09-01T12:00:00Z (got \`${value}\`)`, [`Usage: \`${RECALL_USAGE}\``], 2);
+  }
+  return time;
+}
+
 async function leadLogCommand(_args: Args, ctx: RunContext): Promise<Output> {
   const conversation = loadConversation(ctx.configDir);
-  const entries = conversation.map((entry) => {
-    const { id, ...rest } = entry;
-    return { id, who: author(entry), ...rest };
-  });
+  const entries = conversation.map(authored);
   const open = openQuestions(conversation);
   const help = [`Run \`${SAY_USAGE}\` to write to the Lead`];
   if (open.length) help.unshift(`Run \`nico-agent say --answer <id> <text>\` to answer the Lead's open questions (${open.join(", ")})`);
