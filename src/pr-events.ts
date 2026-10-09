@@ -40,8 +40,9 @@ interface Watched {
  * Watch each In-flight issue's open PR, and every PR watched before, until it
  * is merged or closed (a Dispatch Closed with its PR ready leaves the PR
  * watched). Each new review comment, check result, merge conflict, ready for
- * review, merge and close is written once as an `event` entry, reaching the Lead's Inbox.
- * A PR GitHub cannot be asked about is a warning, and asked again next time.
+ * review, merge and close is written once as an `event` entry, reaching the
+ * Lead's Inbox. A PR GitHub cannot be asked about is a warning, and asked
+ * again next time.
  */
 export async function watchPrs(world: World, configDir: string, prs: PrLookup): Promise<{ events: Entry[]; warnings: string[] }> {
   const dispatches = loadDispatches(configDir);
@@ -106,7 +107,7 @@ function changes(pr: Watched, activity: PullRequestActivity): { change: PrChange
   // Unknown leaves what was known: GitHub reports it while working mergeability out again.
   if (activity.state === "open" && activity.mergeable !== "unknown") {
     const conflicting = activity.mergeable === "conflicting";
-    if (conflicting && !pr.conflicting) found.push({ change: "conflict", text: `conflicts with ${activity.base}` });
+    if (conflicting && !pr.conflicting) found.push({ change: "conflict", text: `conflicts with ${activity.baseBranch}` });
     pr.conflicting = conflicting;
   }
   if (activity.state === "merged") found.push({ change: "merged", text: "merged" });

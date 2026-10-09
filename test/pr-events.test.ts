@@ -19,7 +19,7 @@ async function serving() {
   ctx.world.addIssue("acme/api", { number: 7 });
   expect((await ctx.cli("dispatch", "acme/api#7", ...FLAGS)).exitCode).toBe(0);
   ctx.world.linkPr("acme/api", 7, { number: 9 });
-  ctx.world.activity.set("acme/api#9", { state: "open", draft: true, base: "main", mergeable: "mergeable", comments: [], checks: [] });
+  ctx.world.activity.set("acme/api#9", { state: "open", draft: true, baseBranch: "main", mergeable: "mergeable", comments: [], checks: [] });
   expect((await ctx.cli("lead", "start")).exitCode).toBe(0);
   ctx.world.agentStates.set("lead", "idle");
   expect((await ctx.cli("serve")).exitCode).toBe(0);
@@ -47,7 +47,7 @@ describe("PR events", () => {
     world.activity.set("acme/api#9", {
       state: "open",
       draft: true,
-      base: "main",
+      baseBranch: "main",
       mergeable: "mergeable",
       comments: [
         { id: "c1", author: "alice", at: "2026-09-30T11:00:00Z", body: "Use a Map here.\nIt is faster.", path: "src/retry.ts" },

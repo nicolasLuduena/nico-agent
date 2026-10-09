@@ -94,7 +94,7 @@ test("a PR's activity is read as the user, even where the App is installed: the 
     ghbot: `#!/bin/sh\ncase "$*" in *installation/repositories*) echo acme/api;; *) echo ghbot >> "${bin}/calls"; exit 1;; esac\n`,
     gh: `#!/bin/sh\necho gh >> "${bin}/calls"\necho '${JSON.stringify(activity)}'\n`,
   }), async (bin) => {
-    expect(await new RealWorld().githubPullRequestActivity("acme/api", 18)).toEqual({ state: "open", draft: true, base: "main", mergeable: "mergeable", comments: [], checks: [] });
+    expect(await new RealWorld().githubPullRequestActivity("acme/api", 18)).toEqual({ state: "open", draft: true, baseBranch: "main", mergeable: "mergeable", comments: [], checks: [] });
     expect(await Bun.file(join(bin, "calls")).text()).toBe("gh\n");
   });
 });
@@ -104,7 +104,7 @@ test("a PR's merge conflict and base are read in the same one call as the rest o
   await withCommands((bin) => ({
     gh: `#!/bin/sh\necho gh >> "${bin}/calls"\necho "$*" >> "${bin}/args"\necho '${JSON.stringify(activity)}'\n`,
   }), async (bin) => {
-    expect(await new RealWorld().githubPullRequestActivity("acme/api", 18)).toMatchObject({ base: "agent/acme-api-6", mergeable: "conflicting" });
+    expect(await new RealWorld().githubPullRequestActivity("acme/api", 18)).toMatchObject({ baseBranch: "agent/acme-api-6", mergeable: "conflicting" });
     expect(await Bun.file(join(bin, "calls")).text()).toBe("gh\n");
     expect(await Bun.file(join(bin, "args")).text()).toContain("mergeable");
   });

@@ -498,7 +498,7 @@ export class RealWorld implements World {
     return {
       state: pr.state.toLowerCase() as PullRequest["state"],
       draft: pr.isDraft,
-      base: pr.baseRefName,
+      baseBranch: pr.baseRefName,
       mergeable: pr.mergeable.toLowerCase() as PullRequestActivity["mergeable"],
       comments: comments.filter((c) => !since || new Date(c.at) >= since).sort((a, b) => Date.parse(a.at) - Date.parse(b.at)),
       checks: contexts.map((c) => c.__typename === "CheckRun"
