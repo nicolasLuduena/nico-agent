@@ -87,6 +87,16 @@ the Board by its identifier and title. Whisper reads only the last ~224
 tokens of a prompt, so the Board comes last. The interim transcripts use the
 last hint built rather than wait for the Board.
 
+The final transcript is made before you finish, so it is ready almost as
+soon as you stop. Once the audio has been quieter than any speech for about
+a quarter of a second, `serve` transcribes everything you said, with this
+utterance's hint and silence to make up the pause that ends a hands-free
+utterance. When the utterance ends with nothing more said, that
+transcript is the final one; when you talk again, it is only an interim, and
+the whole utterance is transcribed at the end. An utterance's requests go one
+at a time, and while you are quiet no other interim is asked for, since
+requests to a local service on CPU at once only slow each other down.
+
 A failure (no `voice.transcribe`, the service down or answering an error, the
 microphone blocked) shows with the app's other warnings, above the
 conversation; typing still works.

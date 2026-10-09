@@ -132,6 +132,10 @@ export const ASK_MS = 200;
 export const TURN_PAUSE_MS = 500;
 /** This much quiet after speech ends the utterance, finished or not: the user thinking aloud has stopped. */
 export const LONGEST_PAUSE_MS = 2000;
+/** Below this level nothing counts as speech, however quiet the room: what `serve` hears speech with (see `level`). */
+export const MIN_LEVEL = 0.015;
+/** How much quiet makes up the end of an utterance's audio: `serve` pads an early transcript out to it, so it can be the final. */
+export const PAUSE_MS = 800;
 /** With no speech for this long, hands-free listening gives up. */
 const NOTHING_MS = 6000;
 /** The longest utterance sent. */
@@ -198,6 +202,14 @@ export function bargesIn(state: Listening): boolean {
 export function pcmSamples(pcm: ArrayBuffer): Float32Array<ArrayBuffer> {
   const view = new DataView(pcm);
   return Float32Array.from({ length: Math.floor(pcm.byteLength / 2) }, (_, i) => view.getInt16(i * 2, true) / 32768);
+}
+
+/** The loudness of a batch of samples, as their root mean square. */
+export function level(samples: Float32Array): number {
+  if (samples.length === 0) return 0;
+  let sum = 0;
+  for (const s of samples) sum += s * s;
+  return Math.sqrt(sum / samples.length);
 }
 
 /**
