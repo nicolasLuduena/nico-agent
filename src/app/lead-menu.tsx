@@ -7,7 +7,8 @@ import { Agent } from "./repos";
 /**
  * The Lead's controls, tucked into the header: a button naming where the Lead
  * stands opens its launch, the Harness, model and Effort pickers, and Start,
- * Restart and Stop on the picked launch. Escape or a click elsewhere closes it.
+ * Restart and Stop on the picked launch. Opening it moves focus into it;
+ * Escape, a click elsewhere or focus leaving it closes it.
  */
 export function LeadMenu({ harnesses, status }: { harnesses: HarnessesJson | null; status: LeadStatusJson | null }) {
   const [open, setOpen] = useState(false);
@@ -19,6 +20,7 @@ export function LeadMenu({ harnesses, status }: { harnesses: HarnessesJson | nul
       if (!menu.current?.contains(e.target as Node)) setOpen(false);
     };
     document.addEventListener("pointerdown", away);
+    menu.current?.querySelector<HTMLElement>("#lead-controls select, #lead-controls button")?.focus();
     return () => document.removeEventListener("pointerdown", away);
   }, [open]);
   const running = status?.lead === "running";
@@ -26,6 +28,9 @@ export function LeadMenu({ harnesses, status }: { harnesses: HarnessesJson | nul
     <div
       className="lead-menu"
       ref={menu}
+      onBlur={(e) => {
+        if (open && !menu.current?.contains(e.relatedTarget as Node | null)) setOpen(false);
+      }}
       onKeyDown={(e) => {
         if (e.key !== "Escape" || !open) return;
         setOpen(false);
@@ -33,9 +38,9 @@ export function LeadMenu({ harnesses, status }: { harnesses: HarnessesJson | nul
       }}
     >
       <button type="button" ref={button} className="lead-button" aria-expanded={open} aria-controls="lead-controls" onClick={() => setOpen(!open)}>
-        {running ? <Agent role="Lead" state={status.state ?? "unknown"} /> : <span className={`agent ${status?.failure ? "failed" : "unknown"}`}><i aria-hidden="true" />{`Lead ${status?.lead ?? "…"}`}</span>}
+        <Agent role="Lead" state={running ? status.state ?? "unknown" : status?.lead ?? "…"} />
       </button>
-      <div className="lead-controls" id="lead-controls" role="group" aria-label="The Lead's launch" hidden={!open}>
+      <div className="lead-controls" id="lead-controls" role="group" aria-label="The Lead's launch" tabIndex={-1} hidden={!open}>
         <LeadControls harnesses={harnesses} status={status} />
       </div>
     </div>
@@ -44,12 +49,12 @@ export function LeadMenu({ harnesses, status }: { harnesses: HarnessesJson | nul
 
 function LeadControls({ harnesses, status }: { harnesses: HarnessesJson | null; status: LeadStatusJson | null }) {
   const [chosen, setChosen] = useState<LeadPicks>({});
-  const { busy, outcome, act: post } = usePost();
+  const { busy, outcome, act: attempt } = usePost();
   const choice = harnesses && leadChoice(harnesses, status, chosen);
   const { start, stop } = leadControl(status, choice);
   // Once the Lead runs on the picks, they follow it again.
   const act = async (path: string, args: string[]) => {
-    if (await post(path, args)) setChosen({});
+    if (await attempt(path, args)) setChosen({});
   };
   const launch = status?.harness && `${status.harness} · ${status.model} · ${status.effort}`;
   return (

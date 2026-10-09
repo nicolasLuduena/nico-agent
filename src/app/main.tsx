@@ -39,7 +39,7 @@ function usePage(): Page {
 
 /**
  * The app: a header with the brand, the Lead and Stats pages and the Lead's
- * controls, then the chat with the Lead on the left and the page's own column
+ * controls, then the Lead panel on the left and the page's own column
  * on the right. The page never asks `/api/board` yet, so it costs GitHub
  * nothing; the Repos come to the right column on the Lead page.
  */
@@ -59,20 +59,20 @@ function App() {
       <main className="shell">
         <LeadPanel status={status} />
         {page === "stats"
-          ? (
-            <section className="side" aria-labelledby="side-title">
-              <h1 id="side-title">Stats</h1>
-              <p className="lede">Merged PRs and issues defined per day will show here, counted from what nico-agent has seen.</p>
-            </section>
-          )
-          : (
-            <section className="side" aria-labelledby="side-title">
-              <h1 id="side-title">Repos</h1>
-              <p className="lede">Your Repos and the work in them will show here.</p>
-            </section>
-          )}
+          ? <Side title="Stats" lede="Merged PRs and issues defined per day will show here, counted from what nico-agent has seen." />
+          : <Side title="Repos" lede="Your Repos and the work in them will show here." />}
       </main>
     </>
+  );
+}
+
+/** The page's own column, beside the Lead panel. */
+function Side({ title, lede }: { title: string; lede: string }) {
+  return (
+    <section className="side" aria-labelledby="side-title">
+      <h1 id="side-title">{title}</h1>
+      <p className="lede">{lede}</p>
+    </section>
   );
 }
 

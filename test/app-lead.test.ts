@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 import type { HarnessesJson } from "../src/app/actions";
 import {
-  type Conversation, type LeadStatusJson, type ProposalJson, cards, declineArgs, leadChoice, leadControl, leadStartArgs, follows, notices, proposalLines, reduce, sayArgs,
+  type Conversation, type LeadStatusJson, type ProposalJson, cards, declineArgs, leadChoice, leadControl, leadStartArgs, followsNewEntries, notices, proposalLines, reduce, sayArgs,
 } from "../src/app/lead";
 import { setup } from "./harness";
 
@@ -279,12 +279,12 @@ describe("the one quiet place for warnings", () => {
 });
 
 describe("following new entries", () => {
-  test("the chat follows new entries while the user is at its end, or within a line of it", () => {
-    expect(follows({ scrollHeight: 2000, scrollTop: 1400, clientHeight: 600 })).toBe(true);
-    expect(follows({ scrollHeight: 2000, scrollTop: 1370, clientHeight: 600 })).toBe(true);
+  test("the conversation follows new entries while the user is at its end, or within a line of it", () => {
+    expect(followsNewEntries({ scrollHeight: 2000, scrollTop: 1400, clientHeight: 600 })).toBe(true);
+    expect(followsNewEntries({ scrollHeight: 2000, scrollTop: 1370, clientHeight: 600 })).toBe(true);
   });
 
   test("scrolled up to read, it stays where the user is", () => {
-    expect(follows({ scrollHeight: 2000, scrollTop: 900, clientHeight: 600 })).toBe(false);
+    expect(followsNewEntries({ scrollHeight: 2000, scrollTop: 900, clientHeight: 600 })).toBe(false);
   });
 });

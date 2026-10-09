@@ -3,7 +3,7 @@ import type { Authored } from "../conversation";
 import { OutcomeNote, answerOf, post, usePost } from "./forms";
 import {
   type Card, type Conversation, type LeadStatusJson, type ProposalJson,
-  cards, declineArgs, follows, notices, proposalLines, reduce, sayArgs,
+  cards, declineArgs, followsNewEntries, notices, proposalLines, reduce, sayArgs,
 } from "./lead";
 import { LeadDrawer } from "./lead-drawer";
 import { useResource } from "./stream";
@@ -36,9 +36,9 @@ function useConversation() {
 }
 
 /**
- * The chat with the Lead: the Voice switch and the drawer's button, the one
- * quiet place for warnings, the conversation as cards, and the composer,
- * which stays put and keeps its draft while entries arrive.
+ * The Lead panel: the Voice switch and the drawer's button, the one quiet
+ * place for warnings, the conversation as cards, and the composer, which
+ * stays put and keeps its draft while entries arrive.
  */
 export function LeadPanel({ status }: { status: LeadStatusJson | null }) {
   const { state, send, dismiss, failure } = useConversation();
@@ -47,13 +47,14 @@ export function LeadPanel({ status }: { status: LeadStatusJson | null }) {
   const { busy, outcome, act } = usePost();
   const shown = cards(state);
   const scroller = useRef<HTMLOListElement>(null);
-  // A new card brings the conversation to its end, unless the user scrolled up to read.
+  // Whatever grows the conversation (a new card, an answer, the notices, the talk status) keeps it at its end,
+  // unless the user scrolled up to read.
   const atEnd = useRef(true);
   useLayoutEffect(() => {
     const list = scroller.current;
     if (list && atEnd.current) list.scrollTop = list.scrollHeight;
-  }, [shown.length, drawer]);
-  /** What the user sends brings the conversation to its end, wherever they had scrolled. */
+  });
+  /** A new message, written or spoken, brings the conversation to its end; answering a question where it is does not. */
   const sendAndFollow: SendText = (text, question, raw) => {
     atEnd.current = true;
     return send(text, question, raw);
@@ -61,8 +62,8 @@ export function LeadPanel({ status }: { status: LeadStatusJson | null }) {
   const talking = useTalk((text, heard, answers) => void sendAndFollow(text, answers, heard), voice);
   const warnings = notices({ failure, status, talk: talking.warning });
   return (
-    <section className="chat" aria-label="Conversation with the Lead">
-      <div className="chat-bar">
+    <section className="lead-panel" aria-label="Conversation with the Lead">
+      <div className="lead-bar">
         <h1>Lead</h1>
         <label className="switch" title={voice ? "The Lead's replies are spoken, and it talks for the ear" : "Speak the Lead's replies, and have it talk for the ear"}>
           <input type="checkbox" role="switch" checked={voice} disabled={busy} onChange={(e) => void act(e.target.checked ? "/api/voice/on" : "/api/voice/off", [])} />
@@ -88,10 +89,10 @@ export function LeadPanel({ status }: { status: LeadStatusJson | null }) {
         aria-live="polite"
         aria-label="Conversation"
         tabIndex={0}
-        onScroll={(e) => { atEnd.current = follows(e.currentTarget); }}
+        onScroll={(e) => { atEnd.current = followsNewEntries(e.currentTarget); }}
       >
         {shown.length
-          ? shown.map((card) => <CardView key={card.key} card={card} send={sendAndFollow} dismiss={dismiss} />)
+          ? shown.map((card) => <CardView key={card.key} card={card} send={send} dismiss={dismiss} />)
           : <li className="empty">No conversation yet. Write or talk to the Lead below; it reads your message when it next looks at its Inbox.</li>}
       </ol>
       <Composer send={sendAndFollow} talk={talking} working={status?.lead === "running" && status.state === "working"} />

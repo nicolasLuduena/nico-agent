@@ -247,7 +247,7 @@ export interface Notice {
 }
 
 /**
- * Everything wrong at once, in the one quiet place above the chat: `serve`
+ * Everything wrong at once, in the one quiet place above the conversation: `serve`
  * lost (`failure`), the Lead not running or failed and its launch's warnings,
  * and voice failing (`talk`). Nothing while the Lead's status is still loading.
  */
@@ -271,7 +271,7 @@ export function notices({ failure, status, talk }: {
 /** How close to its end, in pixels, the chat counts as at its end. */
 const END_SLACK = 40;
 
-/** Whether the chat, scrolled as it is, follows new entries: only while the user is at its end, never while reading back. */
-export function follows({ scrollHeight, scrollTop, clientHeight }: { scrollHeight: number; scrollTop: number; clientHeight: number }) {
+/** Whether the conversation, scrolled as it is, follows new entries: only while the user is at its end, never while reading back. */
+export function followsNewEntries({ scrollHeight, scrollTop, clientHeight }: { scrollHeight: number; scrollTop: number; clientHeight: number }) {
   return scrollHeight - scrollTop - clientHeight < END_SLACK;
 }

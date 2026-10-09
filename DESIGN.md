@@ -1,6 +1,6 @@
 ---
 name: nico-agent
-description: A localhost app, calm and clean in the spirit of Apple's website: the chat with the Lead on the left, the Repos on the right.
+description: A localhost app, calm and clean in the spirit of Apple's website: the Lead panel with the conversation on the left, the Repos on the right.
 colors:
   ground: "#f5f5f7"
   surface: "#ffffff"
@@ -15,7 +15,7 @@ colors:
   link: "#0066cc"
   implementing: "#b25000"
   pr-ready: "#1a7f37"
-  review: "#5856d6"
+  review-launched: "#5856d6"
   failed: "#bf0011"
   unknown: "#636366"
   blocked: "#b4009e"
@@ -30,7 +30,7 @@ colors:
   link-dark: "#2997ff"
   implementing-dark: "#ff9f0a"
   pr-ready-dark: "#30d158"
-  review-dark: "#8e8cff"
+  review-launched-dark: "#8e8cff"
   failed-dark: "#ff6961"
   unknown-dark: "#98989d"
   blocked-dark: "#ff6fd8"
@@ -119,7 +119,7 @@ components:
 
 The app is where the user talks to the Lead all day. It should feel finished and calm, in the spirit of Apple's website: light surfaces on a soft grey ground, generous whitespace, one accent, the system typeface, and motion so subtle it is felt more than seen. Nothing competes with the conversation; the work around it is a glance away.
 
-The page is a shell of two columns under a translucent header. The chat with the Lead takes the left and wider column; the right column belongs to the page: the Repos on the Lead page, the charts on the Stats page. Each column is one rounded panel on the ground.
+The page is a shell of two columns under a translucent header. The Lead panel, holding the conversation with the Lead, takes the left and wider column; the right column belongs to the page: the Repos on the Lead page, the charts on the Stats page. Each column is one rounded panel on the ground.
 
 **Key Characteristics:**
 - Soft grey ground, white panels with large (18px) corners, no borders around them.
@@ -142,7 +142,7 @@ A neutral grey palette, one blue accent, and five Stage hues. Light values are l
 One colour per Stage, so a Stage is recognisable wherever it appears. Each is used only for its Stage name and dot, never for anything else.
 - **Implementing** (implementing, implementing-dark): orange. The notices' dot and tint borrow it, being the hue of "in progress, look when you can".
 - **PR ready** (pr-ready, pr-ready-dark): green. Also the dot of a "done" agent.
-- **Review launched** (review, review-dark): indigo, kept apart from the accent's blue.
+- **Review launched** (review-launched, review-launched-dark): indigo, kept apart from the accent's blue.
 - **Failed** (failed, failed-dark): red. Also error text, and Close on hover.
 - **Unknown** (unknown, unknown-dark): grey, for a Stage nico-agent cannot read.
 
@@ -160,9 +160,9 @@ One colour per Stage, so a Stage is recognisable wherever it appears. Each is us
 Every text pair is checked against WCAG AA (4.5:1) in both schemes: ink, muted ink, link and each Stage hue on surface; muted ink and link on fill; white on the accent and its hover; failed on fill. The accent itself as a graphic (dots, focus ring, edges) needs 3:1 and has it.
 
 ### Named Rules
-**The One Accent Rule.** Blue is the only colour that asks to be pressed or looked at. A surface has at most one filled blue control.
+**The One Accent Rule.** Blue is the only colour that asks to be pressed or looked at. It fills only the primary action of its group: Send in the composer, Approve on a Proposal, Save in the drawer, Start in the Lead menu; never two in one group.
 
-**The Stage Owns Its Hue Rule.** Orange, green, indigo, red and grey mean Implementing, PR ready, Review launched, Failed and unknown, everywhere they appear, and nothing else.
+**The Stage Owns Its Hue Rule.** Orange, green, indigo, red and grey mean Implementing, PR ready, Review launched, Failed and unknown wherever a Stage is shown. Their only other uses are the ones listed above: orange for the notices, green for a done agent, red for errors and Close on hover.
 
 **The Magenta Means Waiting Rule.** Magenta marks an agent waiting on the user, and nothing else.
 
@@ -176,21 +176,21 @@ Every text pair is checked against WCAG AA (4.5:1) in both schemes: ink, muted i
 ### Hierarchy
 - **Brand** (600, 17px): the "nico-agent" wordmark in the header.
 - **Title** (600, 21px): the right column's heading (Repos, Stats).
-- **Heading** (600, 17px): the chat's "Lead".
+- **Heading** (600, 17px): the Lead panel's "Lead".
 - **Body** (400, 15px, 1.47): messages, questions, Proposals.
 - **Control** (500, 14px): buttons, page links, switches' labels.
-- **Small** (400, 13px): notices, help, outcomes, the drawer's ledes, raw transcripts.
+- **Small** (400, 13px; 14px for the right column's lede): notices, help, outcomes, the drawer's ledes, raw transcripts.
 - **Byline** (12px): who and when on a card, "You" or "Lead" at 600.
 - **Label** (600, 11px, uppercase, 0.04em): "Heard" and "You answered" over a transcript or answer.
 - **Mono** (13px; 12px in the Lead menu): issue keys, branches, the harness · model · effort launch, code.
 
 ## Layout
 
-- **Header:** 52px, sticky, translucent (the ground at 80% with a 20px blur and 180% saturation), a hairline under it. The brand, then the pages (**Lead**, **Stats**) as pill links, the current one on fill, then at the far end the Lead's button.
-- **Shell:** a grid of the chat (the rest of the width) and the right column (20 to 28rem), 1.5rem apart and 1.5rem from the edges, at most 88rem wide, filling the window under the header. Each column is a panel.
-- **Chat:** a column of the bar (Lead, the Voice switch, the drawer's button), the notices when there are any, the conversation (which scrolls) or the drawer, and the composer, which stays at the foot.
-- **Narrow window (900px and below):** one column, the chat first and as tall as the window, then the right column below it. Under 560px the brand hides, the talk button takes a full-width row under the text field, and fields use 16px text so a phone does not zoom.
-- **Pages:** `#/` is the Lead page, `#/stats` the Stats page; the chat stays on both.
+- **Header:** 52px, sticky, translucent (the ground at 80% in light, black at 72% in dark, with a 20px blur and 180% saturation), a hairline under it. The brand, then the pages (**Lead**, **Stats**) as pill links, the current one on fill, then at the far end the Lead's button.
+- **Shell:** a grid of the Lead panel (the rest of the width) and the right column (20 to 28rem), 1.5rem apart and 1.5rem from the edges, at most 88rem wide, filling the window under the header. Each column is a panel.
+- **Lead panel:** a column of the bar (Lead, the Voice switch, the drawer's button), the notices when there are any, the conversation (which scrolls) or the drawer, and the composer, which stays at the foot.
+- **Narrow window (900px and below):** one column, the Lead panel first and as tall as the window, then the right column below it. Under 560px the brand hides, the talk button narrows to 5.5rem beside the text field, and fields use 16px text so a phone does not zoom.
+- **Pages:** `#/` is the Lead page, `#/stats` the Stats page; the Lead panel stays on both.
 
 ## Elevation & Depth
 
@@ -198,7 +198,7 @@ Flat. Panels sit on the ground by tone alone. The only shadow is the Lead menu's
 
 ## Shapes
 
-Panels 18px; question and Proposal cards and the user's bubble 14 to 18px; fields 12px (the composer's 22px); selects 10px; chips 6px; buttons, page links, the talk button and Agent blocked are pills. Dots are 6 to 8px circles. Dividers are 1px hairlines.
+Panels 18px; the Lead menu 16px; question and Proposal cards and the user's bubble 14 to 18px; fields 12px (the composer's 22px); selects 10px; chips 6px; buttons, page links, the talk button (48px tall) and Agent blocked are pills. Dots are 6 to 8px circles. Dividers are 1px hairlines.
 
 ## Motion
 
@@ -213,23 +213,23 @@ Subtle and short. A new card arrives with a 240ms fade and a 6px lift; the Lead 
 - **Close / Stop:** a default pill whose text turns failed red on hover.
 
 ### Header and the Lead menu
-- The Lead's button at the header's end shows where the Lead stands as an Agent State ("Lead idle", "Lead working") or, not running, its status beside a dashed dot. It opens the Lead menu below it: the launch the Lead runs on, the Harness, Model and Effort selects with their labels, and Start (or Restart) in the accent and Stop. Escape or a click elsewhere closes it, Escape returning focus to the button.
+- The Lead's button at the header's end shows where the Lead stands as an Agent State ("Lead idle", "Lead working") or, not running, its status ("Lead not running", "Lead Failed at agent start") beside a dashed dot; why it failed shows in the notices. It opens the Lead menu below it: the launch the Lead runs on, the Harness, Model and Effort selects with their labels, and Start (or Restart) in the accent and Stop. Opening it moves focus into it; Escape, a click elsewhere or focus leaving it closes it, Escape returning focus to the button.
 
 ### Notices
-The one quiet place for warnings, under the chat's bar: serve unreachable, the Lead not running or failed (with where to start it), the Lead's launch warnings, and voice failing (the service down, the microphone blocked). A strip tinted 8% Implementing orange, each line a small orange dot, the warning in ink and its help in muted ink, 13px. It shows only while something is wrong.
+The one quiet place for warnings, under the Lead panel's bar: serve unreachable, the Lead not running or failed (with where to start it), the Lead's launch warnings, and voice failing (the service down, the microphone blocked). A strip tinted 8% Implementing orange, each line a small orange dot, the warning in ink and its help in muted ink, 13px. It shows only while something is wrong.
 
 ### Conversation
 - The Lead's messages sit on the surface, unboxed, left; the user's are a fill bubble (18px corners) on the right. Each leads with its byline: who, the time, then a muted note ("sending…", "spoke", "asks", "corrects", "corrected below").
 - A spoken message shows the Scribe's text beside what was heard, under a "Heard" label, side by side while two 11rem columns fit.
 - A superseded message keeps its card, its text muted and struck through.
-- The conversation follows new entries only while the user is at its end; reading back, it stays put. Sending brings it to its end.
+- The conversation follows new entries only while the user is at its end; reading back, it stays put. A message the user writes or speaks brings it to its end; answering a question where it is does not.
 
 ### Question and Proposal cards
 - **Open:** a card on the ground, 14px corners, with a 3px accent edge on its left (an inset shadow, so nothing moves when it goes). A question's choices are default pills, then a free-text field and Answer. A Proposal shows its action as code, or the Source write in a scrolling box at most 16rem tall, then the reason, then Approve (primary) and Decline, which opens an optional reason field.
 - **Decided:** the edge goes; the byline ends in Approved, Declined (muted) or Failed (red).
 
 ### Composer
-At the chat's foot, always. The text field (a 22px-cornered box on the ground, which takes the accent's border while focused, with Send inside it at its end) and the **Talk** button (a 48px fill pill with a drawn microphone, at least 8.5rem wide) sit side by side as equals. Enter sends, Shift+Enter breaks the line; the draft is the composer's own, so arriving entries never touch it. Talk is held or tapped (see `docs/voice.md`); while it records it fills with the accent. Above the row, the talk status shows only during a conversation by voice: a dot (filled while someone is heard, outlined while the Lead thinks), **Listening**, **Thinking** or **Speaking**, a muted note or what is heard in italic, and Stop or End.
+At the Lead panel's foot, always. The text field (a 22px-cornered box on the ground, which takes the accent's border while focused, with Send inside it at its end) and the **Talk** button (a 48px fill pill with a drawn microphone, at least 8.5rem wide) sit side by side as equals. Enter sends, Shift+Enter breaks the line; the draft is the composer's own, so arriving entries never touch it. Talk is held or tapped (see `docs/voice.md`); while it records it fills with the accent. Above the row, the talk status shows only during a conversation by voice: a dot (filled while someone is heard, outlined while the Lead thinks), **Listening**, **Thinking** or **Speaking**, a muted note or what is heard in italic, and Stop or End.
 
 ### Drawer
 "Intent & orders" swaps the conversation for the drawer; the composer stays. Tabs (Intent, Notes, Standing orders) are pills, the selected one on fill; one with an unsaved edit carries a 6px accent dot. The arrow keys, Home and End move between them. Intent and Notes are a Markdown textarea that fills the tab, with a foot of status, Revert and Save (primary). A change made meanwhile shows above the textarea as a waiting card with Keep my edit and Use this instead. Standing orders are rows of switches divided by hairlines, each with what it lets the Lead do in muted text.
@@ -247,9 +247,9 @@ Drawn inline as SVG with a currentColor stroke and round caps. No icon font, emo
 ## Do's and Don'ts
 
 ### Do:
-- **Do** keep one filled accent control per surface.
-- **Do** use a Stage's hue only to name that Stage.
-- **Do** keep the composer at the chat's foot and leave the user's scroll alone while they read back.
+- **Do** fill only each group's primary action with the accent.
+- **Do** use a Stage's hue to name that Stage, and otherwise only where Stage hues lists it.
+- **Do** keep the composer at the Lead panel's foot and leave the user's scroll alone while they read back.
 - **Do** put every warning in the notices, quiet and together.
 - **Do** check every new text colour against its background in both schemes (AA, 4.5:1).
 - **Do** gate every animation and transition behind `prefers-reduced-motion`.
