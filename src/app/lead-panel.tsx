@@ -106,12 +106,11 @@ function LeadHead({ harnesses, status, drawer, onDrawer, voice }: { harnesses: H
     if (await post(path, args)) setChosen({});
   };
   const running = status?.lead === "running";
+  const launch = status?.harness && `${status.harness} · ${status.model} · ${status.effort}`;
   return (
     <header className="lead-head">
       <div className="lead-line">
         <h2>Lead</h2>
-        {running ? <Agent role="lead" state={status.state ?? "unknown"} /> : <span className={`lead-state${status?.failure ? " error" : ""}`}>{status?.lead ?? "…"}</span>}
-        {status?.harness && <span className="chip">{`${status.harness} · ${status.model} · ${status.effort}`}</span>}
         <label className="voice-switch" title={voice ? "The Lead's replies are spoken, and it talks for the ear" : "Speak the Lead's replies, and have it talk for the ear"}>
           <input type="checkbox" role="switch" checked={voice} disabled={busy} onChange={(e) => void post(e.target.checked ? "/api/voice/on" : "/api/voice/off", [])} />
           Voice
@@ -119,6 +118,10 @@ function LeadHead({ harnesses, status, drawer, onDrawer, voice }: { harnesses: H
         <button type="button" className="drawer-toggle" aria-expanded={drawer} aria-controls="lead-drawer" onClick={() => onDrawer(!drawer)}>
           {drawer ? "Conversation" : "Intent & orders"}
         </button>
+      </div>
+      <div className="lead-status">
+        {running ? <Agent role="lead" state={status.state ?? "unknown"} /> : <span className={`lead-state${status?.failure ? " error" : ""}`}>{status?.lead ?? "…"}</span>}
+        {launch && <span className="chip" title={launch}>{launch}</span>}
       </div>
       {status?.failure && <p className="error">{status.failure.error}</p>}
       {status?.warnings?.map((w) => <p key={w} className="warning">{w}</p>)}

@@ -3,7 +3,8 @@
   color-scheme: light dark;
   --display-field: #0a0d12;
   --display-ink: #dfe4eb; --display-ink-bright: #f2f4f7; --display-ink-muted: #7d8796;
-  --display-geometry: #303b4a; --display-rule: #1a212b;
+  --display-ink-soft: #b9c1cc; --display-ink-dim: #5d6776; --display-vertex: #f4f6f9;
+  --display-geometry: #303b4a; --display-muon: #3a4655; --display-rule: #1a212b; --display-rule-strong: #222b37;
   --implementing-signal: #f5a524; --pr-ready-signal: #3bd47b; --review-signal: #52b5ff;
   --failed-signal: #ff5757; --blocked-signal: #ff4fd6; --unknown-signal: #6b7584;
   --ground: #f3f5f8; --panel: #ffffff; --panel-raised: #eef1f5;
@@ -42,6 +43,8 @@ body { margin: 0; font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, 
 a { color: var(--link); text-decoration: none; }
 a:hover { text-decoration: underline; text-underline-offset: 0.2em; text-decoration-thickness: 1px; }
 :focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
+:is(input, textarea) { caret-color: var(--implementing); }
+::placeholder { color: var(--ink-muted); opacity: 1; }
 code { font: 0.9em ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--panel-raised); padding: 0.1em 0.35em; border-radius: 3px; }
 
 header.top { display: flex; align-items: center; gap: 0.75rem; max-width: 104rem; margin: 0 auto; padding: 1.1rem 1.5rem 0.9rem; }
@@ -90,9 +93,9 @@ figure.event svg { display: block; width: 100%; height: auto; overflow: hidden; 
 .geometry circle { stroke: var(--display-geometry); stroke-width: 0.7; }
 .geometry .ecal { stroke: color-mix(in srgb, var(--pr-ready) 34%, var(--display-geometry)); }
 .geometry .hcal { stroke: color-mix(in srgb, var(--review) 28%, var(--display-geometry)); }
-.geometry .muon { stroke: #3a4655; }
+.geometry .muon { stroke: var(--display-muon); }
 .key text { font-size: 7.5px; font-weight: 500; fill: var(--display-ink-muted); paint-order: stroke; stroke: var(--display-field); stroke-width: 2.5px; stroke-linejoin: round; }
-.vertex { fill: #f4f6f9; }
+.vertex { fill: var(--display-vertex); }
 .track { --c: var(--unknown); color: var(--c); cursor: pointer; transition: opacity 160ms; }
 .track.implementing { --c: var(--implementing); }
 .track.pr-ready { --c: var(--pr-ready); }
@@ -113,10 +116,10 @@ svg:has(.track.lit) .track:not(.lit) { opacity: 0.22; }
 figure.event figcaption { display: grid; gap: 1rem; align-content: center; min-width: 0; max-width: 30rem; }
 figure.event .lede { margin: 0; max-width: 34ch; font-size: 15px; line-height: 1.4; color: var(--display-ink-bright); }
 figure.event dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.15rem 2rem; margin: 0; }
-figure.event dl.agents { padding-top: 0.6rem; border-top: 1px solid #222b37; }
+figure.event dl.agents { padding-top: 0.6rem; border-top: 1px solid var(--display-rule-strong); }
 figure.event dl > div { --c: var(--unknown); display: flex; align-items: baseline; justify-content: space-between; gap: 0.75rem; padding: 0.35rem 0; border-bottom: 1px solid var(--display-rule); }
 figure.event dl.agents > div { border-bottom: none; }
-figure.event dt { display: inline-flex; align-items: center; gap: 0.55rem; font-size: 13px; color: #b9c1cc; }
+figure.event dt { display: inline-flex; align-items: center; gap: 0.55rem; font-size: 13px; color: var(--display-ink-soft); }
 figure.event dd { margin: 0; font-size: 18px; font-weight: 600; color: var(--display-ink-bright); }
 figure.event dt i { width: 16px; height: 2px; border-radius: 1px; background: var(--c); }
 figure.event .implementing { --c: var(--implementing); }
@@ -126,7 +129,7 @@ figure.event .failed { --c: var(--failed); }
 figure.event .blocked { --c: var(--blocked); }
 figure.event .blocked dt i { width: 9px; height: 9px; border-radius: 50%; background: none; border: 1.5px solid var(--c); }
 figure.event .blocked:not(.none) :is(dt, dd) { color: var(--blocked); }
-figure.event .none :is(dt, dd) { color: #5d6776; }
+figure.event .none :is(dt, dd) { color: var(--display-ink-dim); }
 figure.event .sampled { margin: 0; font-size: 12px; color: var(--display-ink-muted); }
 
 section { background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; margin-bottom: 1rem; box-shadow: var(--shadow); overflow: hidden; }
@@ -278,7 +281,12 @@ aside.lead-panel { position: sticky; top: 1rem; display: flex; flex-direction: c
 aside.lead-panel > p.error { margin: 0; padding: 0.5rem 1rem; border-bottom: 1px solid var(--rule); }
 .lead-head { display: grid; gap: 0.45rem; background: var(--panel-raised); padding: 0.65rem 1rem; border-bottom: 1px solid var(--rule); }
 .lead-head p { margin: 0; font-size: 12px; }
-.lead-line { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; min-width: 0; }
+.lead-line { display: flex; align-items: center; gap: 0.5rem; }
+/* Where the Lead stands, and on what launch: a long launch triple gives way (its title keeps it whole) rather than wrap. */
+.lead-status { display: flex; align-items: center; gap: 0.5rem; min-width: 0; }
+.lead-status > :not(.chip) { flex: none; }
+.lead-status .chip { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.lead-status .agent:not(.blocked) { padding-left: 0; }
 .lead-line h2 { margin: 0; font-size: 14px; font-weight: 650; letter-spacing: -0.005em; }
 .lead-state { font-size: 12px; color: var(--ink-muted); }
 /* The Voice switch, the Standing orders' switch with its name beside it: muted while off, in ink at 650 while on. */
@@ -325,8 +333,9 @@ ol.conversation li > .outcome { margin-top: 0.3rem; padding-left: 0; }
 .card-proposal.approved .status { color: var(--ink); }
 .card-proposal.declined .status { color: var(--ink-muted); }
 .card-proposal.failed .status { color: var(--failed-ink); }
-button.approve { background: var(--ink); border-color: var(--ink); color: var(--panel); font-weight: 600; }
-button.approve:hover:not(:disabled) { background: color-mix(in srgb, var(--ink) 85%, var(--panel)); }
+/* Deciding is not starting a track: Approve, and the drawer's Save, fill with ink (DESIGN.md's Ink Decides rule). */
+:is(button.approve, .record-foot button.save) { background: var(--ink); border-color: var(--ink); color: var(--panel); font-weight: 600; }
+:is(button.approve, .record-foot button.save):hover:not(:disabled) { background: color-mix(in srgb, var(--ink) 85%, var(--panel)); }
 form.composer { display: flex; align-items: flex-end; gap: 0.4rem; padding: 0.6rem 1rem; border-top: 1px solid var(--rule); background: var(--panel-raised); }
 form.composer textarea { resize: vertical; min-height: 2.6rem; max-height: 12rem; line-height: 1.4; }
 /* The talk button: held or tapped, so a long press must not select text or open a menu on a phone. */
@@ -365,9 +374,6 @@ button.talk:is(.holding, .hands-free) svg { fill: currentColor; }
 .drawer-tab.record textarea:disabled { color: var(--ink-muted); background: var(--panel-raised); }
 .record-foot { display: flex; align-items: center; gap: 0.35rem; }
 .record-foot .status { margin-right: auto; font-size: 12px; color: var(--ink-muted); }
-/* Saving is deciding, not starting a track: filled ink, as Approve. */
-.record-foot button.save { background: var(--ink); border-color: var(--ink); color: var(--panel); font-weight: 600; }
-.record-foot button.save:hover:not(:disabled) { background: color-mix(in srgb, var(--ink) 85%, var(--panel)); }
 /* A change made while the user edited waits on them, as an open question does: a 2px ink rule. */
 .conflict { display: grid; gap: 0.4rem; padding: 0.6rem 0.75rem; background: var(--panel-raised); border-radius: 4px; box-shadow: inset 2px 0 0 var(--ink); font-size: 13px; }
 .conflict b { font-weight: 650; }
@@ -402,7 +408,7 @@ ul.orders p { margin-top: 0.1rem; padding-left: calc(28px + 0.5rem); font-size: 
   /* 16px keeps Safari from zooming in on focus. */
   aside.lead-panel form.composer textarea { flex-basis: 100%; font-size: 16px; }
   form.composer button { height: 44px; }
-  .drawer-tab.record textarea { font-size: 16px; }
+  .drawer-tab.record textarea, :is(form.free-answer, form.decline) input { font-size: 16px; }
   button.talk { flex: 1; }
   figure.event { grid-template-columns: 1fr; gap: 1rem; padding: 1rem; }
   figure.event svg { max-width: 300px; margin: 0 auto; }
@@ -418,7 +424,9 @@ ul.orders p { margin-top: 0.1rem; padding-left: calc(28px + 0.5rem); font-size: 
   .spec ul.issues { margin-left: 1rem; }
   ul.issues a.title { flex-basis: calc(100% - 2rem); }
   .flight .head { flex-wrap: wrap; row-gap: 0.25rem; }
-  .flight .head a.title { flex: 1 1 100%; white-space: normal; }
+  /* The title keeps its checkbox's line; the Stage key and PR wrap under it, indented to the title. */
+  .flight .head a.title { flex: 1 1 calc(100% - 15px - 0.6rem); white-space: normal; }
+  .flight .head a.title + .stage { margin-left: calc(15px + 0.6rem); }
   ul.flights li { grid-template-columns: minmax(0, 1fr); grid-template-areas: "head" "meta" "notes" "actions"; }
   .flight .row-actions { justify-content: flex-start; flex-wrap: wrap; padding-left: calc(15px + 0.6rem); }
   .flight .confirm { flex-wrap: wrap; }
@@ -426,6 +434,8 @@ ul.orders p { margin-top: 0.1rem; padding-left: calc(28px + 0.5rem); font-size: 
   form.launch select, select[name] { flex: 1 1 6rem; width: auto; max-width: none; }
   form.launch label { flex: 1 1 100%; }
   form.launch label select { flex: 1; }
+  /* The Lead's three picks and Stop share one line on a phone; Start, when shown, may wrap. */
+  .lead-controls select { flex: 1 1 4.5rem; }
   .queue { margin-left: 0; }
   header.top { flex-wrap: wrap; }
   header.top .top-actions { margin-left: 0; flex-basis: 100%; }

@@ -1,13 +1,18 @@
 ---
 name: nico-agent
-description: A localhost Board where every In-flight Dispatch is a track on a particle-detector event display.
+description: A localhost app: the Lead's conversation beside a Board where every In-flight Dispatch is a track on a particle-detector event display.
 colors:
   display-field: "#0a0d12"
   display-ink: "#dfe4eb"
   display-ink-bright: "#f2f4f7"
   display-ink-muted: "#7d8796"
+  display-ink-soft: "#b9c1cc"
+  display-ink-dim: "#5d6776"
+  display-vertex: "#f4f6f9"
   display-geometry: "#303b4a"
+  display-muon: "#3a4655"
   display-rule: "#1a212b"
+  display-rule-strong: "#222b37"
   implementing-signal: "#f5a524"
   pr-ready-signal: "#3bd47b"
   review-signal: "#52b5ff"
@@ -133,6 +138,13 @@ components:
     height: "28px"
   button-close-hover:
     textColor: "{colors.failed-ink}"
+  button-approve:
+    backgroundColor: "{colors.ink}"
+    textColor: "{colors.panel}"
+    typography: "{typography.control}"
+    rounded: "{rounded.md}"
+    padding: "0 0.6rem"
+    height: "28px"
   select:
     backgroundColor: "{colors.panel}"
     textColor: "{colors.ink}"
@@ -167,6 +179,33 @@ components:
     backgroundColor: "{colors.panel-raised}"
     typography: "{typography.title}"
     padding: "0.65rem 1rem"
+  lead-head:
+    backgroundColor: "{colors.panel-raised}"
+    typography: "{typography.title}"
+    padding: "0.65rem 1rem"
+  message-user:
+    backgroundColor: "{colors.panel-raised}"
+    textColor: "{colors.ink}"
+    typography: "{typography.body}"
+    padding: "0.6rem 1rem"
+  message-lead:
+    backgroundColor: "{colors.panel}"
+    textColor: "{colors.ink}"
+    typography: "{typography.body}"
+    padding: "0.6rem 1rem"
+  drawer-tab:
+    textColor: "{colors.ink-muted}"
+    typography: "{typography.control}"
+    height: "34px"
+  drawer-tab-selected:
+    textColor: "{colors.ink}"
+  switch:
+    backgroundColor: "{colors.panel-raised}"
+    rounded: "{rounded.md}"
+    width: "28px"
+    height: "16px"
+  switch-on:
+    backgroundColor: "{colors.ink}"
   event-display:
     backgroundColor: "{colors.display-field}"
     textColor: "{colors.display-ink}"
@@ -186,10 +225,12 @@ Everything outside the display is a quiet operational surface: system sans, hair
 
 The surface is dense, monitor-grade, and built for a tab left open all day. It must stay at least as scannable as a plain status table.
 
+Beside the Board, the Lead panel holds the Conversation with the Lead: its messages, its questions and Proposals as cards that wait on the user, and a drawer for the Intent, the Notes and the Standing orders. It is the same quiet surface. A card that waits carries a 2px ink rule, and a decision (Approve, Save, a switch turned on) is a filled ink control, never amber: deciding is not starting a track.
+
 **Key Characteristics:**
 - A fixed dark instrument canvas (the display field) in both colour schemes.
 - One hue per Stage, shared by track, legend key, and row.
-- Magenta reserved for Agent blocked; amber fill reserved for starting a track.
+- Magenta reserved for Agent blocked; amber fill reserved for starting a track; filled ink for a decision.
 - System sans for UI; monospace only for identifiers.
 - Hairline rules, small radii, flat surfaces, a single authored motion.
 
@@ -213,8 +254,8 @@ Stage hues. Each appears in three places for one Dispatch: its track, its legend
 
 ### Neutral
 - **Display Field** (display-field): the event display's canvas. Identical in light and dark.
-- **Display Inks** (display-ink, display-ink-bright, display-ink-muted): readout text, lede and counts, and the subdetector key and Sampled time.
-- **Detector Geometry** (display-geometry, display-rule): tracker rings and readout hairlines. The ECAL and HCAL bands are this grey mixed toward green (34%) and blue (28%); muon stations are a lighter slate.
+- **Display Inks** (display-ink, display-ink-bright, display-ink-muted, display-ink-soft, display-ink-dim): readout text, lede and counts (bright), the subdetector key and Sampled time (muted), the readout's Stage names (soft), and a zero count and its name (dim). The vertex is display-vertex.
+- **Detector Geometry** (display-geometry, display-muon, display-rule, display-rule-strong): tracker rings and readout hairlines, with the stronger rule above the Agent blocked line. The ECAL and HCAL bands are this grey mixed toward green (34%) and blue (28%); muon stations are the lighter display-muon slate.
 - **Ground / Panel / Raised** (ground, panel, panel-raised and their `-dark` counterparts): page, section body, and section headers, hovered rows, and default buttons.
 - **Rules** (rule, rule-strong and `-dark`): hairline dividers, and control and count borders.
 - **Ink** (ink, ink-muted and `-dark`): text and secondary text.
@@ -228,6 +269,8 @@ Stage hues. Each appears in three places for one Dispatch: its track, its legend
 **The Magenta Means Waiting Rule.** Magenta marks an agent waiting on the user, and nothing else.
 
 **The Amber Starts a Track Rule.** A filled amber button starts a track: Dispatch, or Retry of a failed Dispatch. Review actions, including a review's Retry, are outlined in Muon Blue. Close is muted and turns red on hover.
+
+**The Ink Decides Rule.** A filled ink control is a decision the user makes in the Lead panel: Approve a Proposal, Save the Intent or the Notes, a Standing order switched on. The talk button takes the same inverted ink while it records, a state the user holds. A card or change waiting on a decision carries a 2px ink rule on its left edge. None of them ever takes amber or a Stage hue.
 
 ## Typography
 
@@ -259,7 +302,7 @@ Each Repo section groups its rows by Spec: running Specs first, then Held, then 
 
 In-flight rows are a grid of head (checkbox, key and title, Stage key, PR link), meta (chips and agent states), and notes, with actions right-aligned. Ready rows are a single flex line ending in their launch form. Rows are at least 44px tall. Spacing is rem-based and tight: about 0.35rem between controls, 0.6 to 0.75rem between groups, and 1rem section padding and gaps.
 
-Below 760px, the display stacks: the SVG is capped at 300px, the subdetector key is hidden, and the readout sits under it. Row actions and launch forms wrap under the content, indented to the title's start.
+Below 760px, the display stacks: the SVG is capped at 300px, the subdetector key is hidden, and the readout sits under it. An In-flight row keeps its checkbox beside its title, with the Stage key and PR link wrapping under the title, indented to its start. Row actions and launch forms wrap under the content, indented to the title's start.
 
 ### Track Geometry
 Each track's angle starts at a home position derived from the issue's hash, so it holds steady across polls. It is then nudged apart from close neighbours (a minimum gap of up to 0.5 rad × 0.85) and kept clear of the ring key's reserved angle, which runs straight down. A Dispatch arriving or leaving moves only the tracks beside it. The bend (its "charge") also comes from the hash and is never straight, and it eases off beyond the tracker. A label that would run off the display edge turns back along its track.
@@ -286,6 +329,7 @@ Corners are small and functional: 3px for chips, counts, inline code, and the bl
 - **Fire (Dispatch, Retry of a failed Dispatch, Advance now):** amber fill and border, near-black ink, weight 600. Hover lightens to fire-hover.
 - **Review (Launch review, Retry of a failed review):** raised panel with a Muon Blue border and review-ink text. Hover tints the fill 14% blue.
 - **Close:** default shape with muted text. Hover turns the text and border red.
+- **Approve (Approve, Save):** ink fill and border, panel-coloured text, weight 600. Hover mixes 15% panel into the ink. It is the inverse of the page in either scheme: near-black in light, near-white in dark.
 - **Focus:** a 2px link-coloured outline with a 2px offset, on every interactive element.
 
 ### Chips
@@ -316,12 +360,26 @@ Corners are small and functional: 3px for chips, counts, inline code, and the bl
 - **Member line:** an In-flight issue of a Spec, read-only (its row to act on is In flight): muted title, Stage key and PR link. Hovering it lights its track, as an In-flight row does.
 
 ### Lead Panel
-- **Head:** a raised strip with "Lead" (14px/650), the Lead's Agent state as an Agent State dot (or where it stands, such as "not running", in 12px muted text; a failure in error text below), its launch triple chip, then at the line's end the **Voice** switch (the Standing orders' switch, "Voice" beside it in 12px, muted while off and in ink at 650 while on). Under it the Harness, model and Effort selects and Start (or Restart, once the picks differ from the running Lead's) in the default style, and Stop in the Close style.
-- **Conversation:** a scrolling list of cards divided by hairlines, oldest first, kept at its end as cards arrive unless the user scrolled up. Each card leads with a 12px byline: "You" or "Lead" at 650 in ink, then the time in muted text. The user's messages sit on the raised panel; text keeps its line breaks. A spoken message the Scribe changed shows what was heard beside it, under a 12px "Heard" label at 650, in muted 12px text, side by side while the panel fits two 11rem columns. A message corrected since ("No, I said …") keeps its card, its text muted and struck; the byline says "corrected below", and the correction's says "corrects".
-- **Waiting cards:** an open question or Proposal carries a 2px ink rule on its left edge, gone once decided. A question's choices are default buttons that wrap, then a free-text field and Answer; once answered, a muted 12px/650 "You answered" before the answer, and under it, for a spoken answer the Scribe matched to a choice, what was heard under "Heard" as on a message. A Proposal shows its action as code, or for a write Proposal the Repo as code and the whole Spec draft in sans in a raised, scrolling box (at most 16rem tall), then the reason, and Approve (filled ink, as the drawer's Save: deciding is not starting a track) beside Decline, which opens an optional reason field. Decided, its status sits at the byline's end in 12px/650 (Approved in ink, Declined muted, Failed in failed-ink) with what the action did below.
-- **Drawer:** an "Intent & orders" button at the end of the head's first line opens it in the conversation's place (the button then reads "Conversation"); the composer stays. Three tabs on a hairline, each 13px muted text, the selected one in ink at 650 over a 2px ink underline; a tab with an unsaved edit carries a 5px ink mark with 1px corners, like a key bar. The Intent and Notes tabs hold a muted 12px lede, a Markdown textarea in the body face (sans: Markdown is prose, not an identifier), and a foot with a muted status ("Saved", "Edited, not saved"), Revert, and Save in filled ink, as Approve: saving decides, it starts no track. A change made while the user edits shows above the textarea on the raised panel with the 2px ink rule of a waiting card: its text in a bordered box, then Keep my edit and Use this instead. The Standing orders tab lists each order with a switch (28×16, 4px corners, a 10px knob with 3px corners; on fills in ink, never amber), the order's name at 650, on or off in muted text, and what it lets the Lead do in 12px muted text below.
-- **Composer:** a raised strip at the panel's foot with a textarea and Send. Enter sends, Shift+Enter breaks the line. A message shows at once in muted ink until `serve` has it; one that failed keeps its error with Send again and Dismiss.
+- **Placement:** the left column on a wide screen, sticky and as tall as the window less the header; above the Board below 1100px, at most 75% of the window tall. One section panel: the head, then the Conversation or the drawer, then the composer, divided by hairlines. Nothing inside it has a border, corner or shadow of its own.
+- **Head:** a raised strip. Its first line is "Lead" (14px/650), then at its end the **Voice** switch (the Standing orders' switch, "Voice" beside it in 12px, muted while off and in ink at 650 while on) and the drawer button. Its second line is where the Lead stands: its Agent state as an Agent State dot ("lead working"), or, when it is not running, where it stands ("not running") in 12px muted text, then its launch triple chip. A launch triple too long for the panel is cut with an ellipsis rather than wrapping, and its title holds it whole. A failure follows in error text, warnings in Tracker Amber. Under them, the Harness, model and Effort selects, then Start (or Restart, once the picks differ from the running Lead's) in the default style and Stop in the Close style. The picks and Stop share one line even on a phone; Start, when shown there, may wrap.
+- **Conversation:** a scrolling list of cards divided by hairlines, oldest first, kept at its end as cards arrive unless the user scrolled up. Each card leads with a 12px byline: "You" or "Lead" at 650 in ink, the time in muted text, then a muted note ("sending…", "spoke", "asks", "corrects", "corrected below"). The user's messages sit on the raised panel and the Lead's on the panel; text keeps its line breaks. A spoken message the Scribe changed shows what was heard beside it, under a 12px "Heard" label at 650, in muted 12px text, side by side while the panel fits two 11rem columns. A message a Correction ("No, I said …") superseded keeps its card, its text muted and struck through in rule-strong.
+- **Composer:** a raised strip at the panel's foot with a textarea, the talk button and Send. Enter sends, Shift+Enter breaks the line. A message shows at once in muted ink until `serve` has it; one that failed keeps its error with Send again and Dismiss. The talk button is held or tapped to speak; while it records it is filled ink. Below 760px the textarea takes the full width at 16px and the talk button and Send take a 44px row.
 - **Talk status:** a raised strip above the composer, shown only while there is something to say: a voice warning with its help, a muted 12px note ("Heard nothing; try again."), and the indicator of a conversation by voice. The indicator is one line: a 7px dot in ink (filled while someone is heard, outlined while the Lead thinks; it never pulses), the state at 12px/650 (**Listening**, **Thinking**, **Speaking**), then a muted 12px note: what is being heard (in ink, italic, 13px) or "Talk when you are ready." while listening; "Transcribing…" or "The Lead is working on it." while thinking; "Talk over it or tap to stop." while the Lead speaks, with a 24px **Stop** at the line's end. In a hands-free session, a 24px **End** sits there while nobody talks, and the talk button reads "End".
+
+### Question Card
+- **Open:** a Lead card with the byline note "asks" and a 2px ink rule on its left edge (an inset shadow, so the text does not move when it goes). The question, then its choices as default buttons that wrap, each a full answer, then a free-text field ("Or answer in your words") and Answer, disabled while the field is empty.
+- **Answered:** the rule goes. A muted 12px/650 "You answered" (or "Answering" while it is sent) precedes the answer, which keeps its line breaks; under it, for a spoken answer the Scribe matched to a choice, what was heard under "Heard" as on a message. An answer that failed to send shows its error under the field, and the question stays open.
+
+### Proposal Card
+- **Open:** the byline ends in "Proposes" at 12px/650, and the card carries the waiting rule. The action is shown as code (`nico-agent advance`). A write Proposal says "Write a Spec and its tickets to `owner/name`'s Source" and shows the whole draft in sans (it is prose, not an identifier) in a raised, bordered, scrolling box at most 16rem tall that the keyboard can reach. Then the Lead's reason, then Approve (filled ink, The Ink Decides Rule) beside Decline. Decline opens an optional reason field with Decline and Cancel in its place.
+- **Decided:** the rule goes and the byline's end reads Approved in ink, Declined muted, or Failed in failed-ink. A decline's reason follows as a muted "You said: …", and what the action did as the CLI's outcome lines.
+
+### Drawer
+- **Opening:** the head's "Intent & orders" button opens it in the Conversation's place; the button then reads "Conversation". The composer stays. It is kept mounted while closed, so an unsaved draft survives. It sits flat in the panel, under the head's hairline, with no border, corner or shadow of its own.
+- **Tabs:** Intent, Notes and Standing orders on a hairline, each 13px muted text, 34px tall; the selected one in ink at 650 over a 2px ink underline. The arrow keys, Home and End move between them, and Tab goes from the selected one into its panel. A tab with an unsaved edit carries a 5px ink mark with 1px corners, like a key bar.
+- **Intent and Notes:** a muted 12px lede saying what the record is for, a Markdown textarea that fills the tab in the body face (sans: Markdown is prose, not an identifier), and a foot with a muted status ("Saved", "Edited, not saved", "Saving…"), Revert, and Save in filled ink: saving decides, it starts no track. Blank text is not saved.
+- **A change meanwhile:** when the record changes while the user edits it, the change shows above the textarea on the raised panel with the waiting rule: a bold "The Intent changed while you edited it." and its text in a bordered box, then Keep my edit and Use this instead. Save waits on that choice.
+- **Standing orders:** a muted lede, then one row per order divided by hairlines. Each has a switch (28×16, 4px corners, a 10px knob with 3px corners; on, it fills with ink, never amber), the order's name at 650, on or off in muted text, and what it lets the Lead do in 12px muted text below, indented to the name.
 
 ### Named Rules
 **The Drawn Icon Rule.** Every icon is drawn as inline SVG in the glyph's stroke language. Never use a Unicode glyph, an emoji, or an icon font in place of an icon.
@@ -335,6 +393,7 @@ Corners are small and functional: 3px for chips, counts, inline code, and the bl
 ### Inputs / Fields
 - **Selects:** panel fill, rule-strong border, 4px corners, 28px tall, fixed widths per field (Base 9.5rem, Harness 6.5rem, model 7.5rem, Effort 6rem). On a Ready row they rest with a lighter rule border until the row is hovered or the select is focused.
 - **Checkboxes:** 15px, accented in Implementing amber.
+- **Text fields and textareas:** panel fill, rule-strong border, 4px corners, 13px text (16px below 760px, so a phone does not zoom on focus). The caret is Implementing amber and placeholders are muted ink in both schemes.
 
 ### Navigation
 - A header line: the brand glyph (a detector end-on with one amber trail) and wordmark, a "/" separator in rule-strong, the page title in muted 18px, and Refresh harnesses pushed right.
@@ -353,6 +412,7 @@ Corners are small and functional: 3px for chips, counts, inline code, and the bl
 - **Do** keep corners between 3 and 6px and dividers at 1px.
 - **Do** derive a track's angle from its issue hash and nudge it clear of neighbours and the ring key, so tracks hold still across polls.
 - **Do** gate the track redraw and smooth scroll behind prefers-reduced-motion.
+- **Do** fill a decision in ink (Approve, Save, a switch on) and mark what waits on it with the 2px ink rule.
 
 ### Don't:
 - **Don't** use magenta for anything but Agent blocked.
@@ -362,3 +422,4 @@ Corners are small and functional: 3px for chips, counts, inline code, and the bl
 - **Don't** render Stage as a filled pill. The filled badge belongs to Agent blocked alone.
 - **Don't** load external fonts, images, or icon sets. Every mark is inline SVG or CSS.
 - **Don't** stand a Unicode glyph in for an icon. Draw it as inline SVG with a currentColor stroke and round caps.
+- **Don't** nest a boxed panel inside the Lead panel. The drawer, the cards and the composer sit flat in it, divided by hairlines.

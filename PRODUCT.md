@@ -13,10 +13,13 @@ their own GitHub and Linear identity on their own machine. Other developers
 will install it on their own machines later. Each install still serves one
 person on localhost. Shared, multi-user boards are not planned.
 
-The Board stays open all day in a tab or on a second screen. The user mostly
-glances at it to see which Dispatches changed Stage or Agent state and which
-issues have become Ready. They then dispatch, launch reviews, and Close
-finished work in short bursts before going back to herdr or the editor.
+The app stays open all day in a tab or on a second screen: the Lead panel on
+the left, the Board on the right. The user mostly glances at the Board to see
+which Dispatches changed Stage or Agent state and which issues have become
+Ready, and at the panel for what the Lead said, asked, or proposes. They then
+answer the Lead, approve or decline its Proposals, dispatch, launch reviews,
+and Close finished work in short bursts before going back to herdr or the
+editor.
 
 ## Product Purpose
 

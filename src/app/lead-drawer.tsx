@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useState } from "react";
+import { type KeyboardEvent, useEffect, useReducer, useState } from "react";
 import type { Order } from "../orders";
 import type { RecordName } from "../records";
 import type { Outcome } from "./actions";
@@ -46,9 +46,20 @@ export function LeadDrawer({ open }: { open: boolean }) {
   const [tab, setTab] = useState<Tab>("intent");
   const records = { intent: useRecord("intent"), notes: useRecord("notes") };
   const marked = (t: Tab) => t !== "orders" && editorView(records[t].state).dirty;
+  // As tabs do: the arrow keys, Home and End move between them, so Tab goes from the selected one into its panel.
+  const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
+    const at = TABS.findIndex((t) => t.tab === tab);
+    const to = { ArrowRight: at + 1, ArrowLeft: at - 1 + TABS.length, Home: 0, End: TABS.length - 1 }[e.key];
+    if (to === undefined) return;
+    e.preventDefault();
+    const next = TABS[to % TABS.length]!.tab;
+    setTab(next);
+    document.getElementById(`drawer-tab-${next}`)?.focus();
+  };
+  // A div, not a section: the Board's section is a card, and the drawer sits flat in the panel.
   return (
-    <section className="lead-drawer" id="lead-drawer" aria-label="Intent, Notes and Standing orders" hidden={!open}>
-      <div className="tabs" role="tablist">
+    <div className="lead-drawer" id="lead-drawer" role="region" aria-label="Intent, Notes and Standing orders" hidden={!open}>
+      <div className="tabs" role="tablist" aria-label="Drawer" onKeyDown={onKey}>
         {TABS.map(({ tab: t, label }) => (
           <button
             key={t}
@@ -57,6 +68,7 @@ export function LeadDrawer({ open }: { open: boolean }) {
             id={`drawer-tab-${t}`}
             aria-controls={`drawer-${t}`}
             aria-selected={tab === t}
+            tabIndex={tab === t ? 0 : -1}
             className={marked(t) ? "edited" : undefined}
             title={marked(t) ? "Edited, not saved" : undefined}
             onClick={() => setTab(t)}
@@ -69,7 +81,7 @@ export function LeadDrawer({ open }: { open: boolean }) {
         <RecordTab key={r} record={r} {...records[r]} hidden={tab !== r} />
       ))}
       <OrdersTab hidden={tab !== "orders"} />
-    </section>
+    </div>
   );
 }
 
