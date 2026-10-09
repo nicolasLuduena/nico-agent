@@ -1,9 +1,11 @@
-import { type IssueRow, type QueueStatus, type RepoSection, type RoomReadout, type SpecGroup, SPEC_STATES } from "./board";
+import { type IssueRow, type RepoSection, type RoomReadout, type SpecGroup, SPEC_STATES } from "./board";
+import { dispatchTarget } from "./actions";
 import { reachOf } from "./event";
+import { IssueOutcome, LaunchForm, Pick, QueueControl, useActions } from "./forms";
 
 /** A Repo's issues: Specs grouping theirs, then Specs of one, Stackable and PR-open issues. */
 export function Repo({ section: s, lit, onLight }: { section: RepoSection; lit: string | null; onLight: (issue: string | null) => void }) {
-  const list = (rows: IssueRow[]) => <ul className="issues">{rows.map((r) => <Row key={r.key} row={r} lit={lit} onLight={onLight} />)}</ul>;
+  const list = (rows: IssueRow[]) => <ul className="issues">{rows.map((r) => <Row key={r.key} repo={s.repo} row={r} lit={lit} onLight={onLight} />)}</ul>;
   return (
     <section className="repo">
       <header>
@@ -13,7 +15,7 @@ export function Repo({ section: s, lit, onLight }: { section: RepoSection; lit: 
       </header>
       {s.errors.map((e) => <p key={e} className="error">{e}</p>)}
       {s.empty && <p className="empty">No Ready issues.</p>}
-      {s.specs.map((g) => <Spec key={g.spec} group={g} list={list} />)}
+      {s.specs.map((g) => <Spec key={g.spec} repo={s.repo} group={g} list={list} />)}
       {s.specsOfOne.length > 0 && s.specs.length > 0 && <h3>Specs of one</h3>}
       {s.specsOfOne.length > 0 && list(s.specsOfOne)}
       {s.stackable.length > 0 && <><h3>Stackable</h3>{list(s.stackable)}</>}
@@ -33,14 +35,14 @@ function Room({ repo, readout }: { repo: string; readout: RoomReadout }) {
   );
 }
 
-function Spec({ group: g, list }: { group: SpecGroup; list: (rows: IssueRow[]) => React.ReactNode }) {
+function Spec({ repo, group: g, list }: { repo: string; group: SpecGroup; list: (rows: IssueRow[]) => React.ReactNode }) {
   return (
     <div className={`spec ${g.state}`}>
       <header>
         <span className="spec-state">{SPEC_STATES[g.state]}</span>
         {g.url ? <IssueLink label={g.label} title={g.title} url={g.url} /> : <span className="title"><span className="num">{g.label}</span> {g.title}</span>}
         {g.stage && <StageKey stage={g.stage} />}
-        {g.queue && <Queued status={g.queue} />}
+        {g.queue && <QueueControl repo={repo} spec={g.spec} status={g.queue} />}
       </header>
       {g.note && <p className={`spec-note${g.note.error ? " error" : ""}`}>{g.note.text}</p>}
       {g.rows.length > 0 && list(g.rows)}
@@ -48,15 +50,11 @@ function Spec({ group: g, list }: { group: SpecGroup; list: (rows: IssueRow[]) =
   );
 }
 
-/** A candidate's place in its Repo's Queue, once queued. */
-function Queued({ status }: { status: QueueStatus }) {
-  return status.place < 0 ? null : <span className="queued">Queued {status.place + 1} of {status.of}</span>;
-}
-
-function Row({ row: r, lit, onLight }: { row: IssueRow; lit: string | null; onLight: (issue: string | null) => void }) {
+function Row({ repo, row: r, lit, onLight }: { repo: string; row: IssueRow; lit: string | null; onLight: (issue: string | null) => void }) {
+  const { board } = useActions();
   const link = <IssueLink label={r.label} title={r.title} url={r.url} />;
   if (r.kind === "in-flight") {
-    // Read-only: its row to read is In flight, and hovering lights its track.
+    // Read-only: its row to act on is In flight, and hovering lights its track.
     return (
       <li className={`member${lit === r.key ? " lit" : ""}`} onMouseEnter={() => onLight(r.key)} onMouseLeave={() => onLight(null)}>
         {link}<StageKey stage={r.stage} />{r.pr && <PrLink {...r.pr} />}
@@ -64,11 +62,15 @@ function Row({ row: r, lit, onLight }: { row: IssueRow; lit: string | null; onLi
     );
   }
   if (r.kind === "pr-open") return <li className="member">{link}<PrLink {...r.pr} /></li>;
+  const target = dispatchTarget(board, r.key, repo);
   return (
     <li>
+      {/* No tick box for a Linear issue: a batch can't name the Repo of one several Repos claim. */}
+      {r.key.includes("#") && <Pick issue={r.key} />}
       {link}
-      {r.kind === "ready" && r.base && <BaseChip branch={r.base} />}
-      {r.kind === "ready" && r.queue && <Queued status={r.queue} />}
+      {r.kind === "ready" && r.queue && <QueueControl repo={repo} spec={r.key} status={r.queue} />}
+      {target && <LaunchForm action="dispatch" target={target} />}
+      <IssueOutcome issue={r.key} />
     </li>
   );
 }
