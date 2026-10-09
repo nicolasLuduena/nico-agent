@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import type { HarnessesJson } from "./actions";
 import { OutcomeNote, usePost } from "./forms";
 import { type LeadPicks, type LeadStatusJson, leadChoice, leadControl, leadStartArgs } from "./lead";
+import { usePopover } from "./popover";
 import { Agent } from "./repos";
 
 /**
@@ -11,36 +12,14 @@ import { Agent } from "./repos";
  * Escape, a click elsewhere or focus leaving it closes it.
  */
 export function LeadMenu({ harnesses, status }: { harnesses: HarnessesJson | null; status: LeadStatusJson | null }) {
-  const [open, setOpen] = useState(false);
-  const menu = useRef<HTMLDivElement>(null);
-  const button = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const away = (e: PointerEvent) => {
-      if (!menu.current?.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("pointerdown", away);
-    menu.current?.querySelector<HTMLElement>("#lead-controls select, #lead-controls button")?.focus();
-    return () => document.removeEventListener("pointerdown", away);
-  }, [open]);
+  const { open, toggle, wrapper, button } = usePopover((menu) => menu.querySelector<HTMLElement>("#lead-controls select, #lead-controls button"));
   const running = status?.lead === "running";
   return (
-    <div
-      className="lead-menu"
-      ref={menu}
-      onBlur={(e) => {
-        if (open && !menu.current?.contains(e.relatedTarget as Node | null)) setOpen(false);
-      }}
-      onKeyDown={(e) => {
-        if (e.key !== "Escape" || !open) return;
-        setOpen(false);
-        button.current?.focus();
-      }}
-    >
-      <button type="button" ref={button} className="lead-button" aria-expanded={open} aria-controls="lead-controls" onClick={() => setOpen(!open)}>
+    <div className="lead-menu" {...wrapper}>
+      <button type="button" ref={button} className="lead-button" aria-expanded={open} aria-controls="lead-controls" onClick={toggle}>
         <Agent role="Lead" state={running ? status.state ?? "unknown" : status?.lead ?? "…"} />
       </button>
-      <div className="lead-controls" id="lead-controls" role="group" aria-label="The Lead's launch" tabIndex={-1} hidden={!open}>
+      <div className="popover lead-controls" id="lead-controls" role="group" aria-label="The Lead's launch" tabIndex={-1} hidden={!open}>
         <LeadControls harnesses={harnesses} status={status} />
       </div>
     </div>

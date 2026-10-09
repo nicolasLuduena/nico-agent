@@ -6,6 +6,8 @@ import {
   cards, declineArgs, followsNewEntries, notices, proposalLines, reduce, sayArgs,
 } from "./lead";
 import { LeadDrawer } from "./lead-drawer";
+import { sendsOnEnter } from "./popover";
+import { ResearchBox } from "./research-box";
 import { useResource } from "./stream";
 import { TalkButton, TalkStatus, useTalk } from "./talk-button";
 
@@ -42,10 +44,10 @@ export type ConversationState = ReturnType<typeof useConversation>;
 const inConversation = (key: string) => `conversation-${key}`;
 
 /**
- * The Lead panel: the Voice switch and the drawer's button, the one quiet
- * place for warnings, the Questions list (`questions`, null while hidden),
- * the conversation as cards, and the composer, which stays put and keeps its
- * draft while entries arrive.
+ * The Lead panel: the Voice switch, the Research button and the drawer's
+ * button, the one quiet place for warnings, the Questions list (`questions`,
+ * null while hidden), the conversation as cards, and the composer, which stays
+ * put and keeps its draft while entries arrive.
  */
 export function LeadPanel({ status, conversation, questions }: {
   status: LeadStatusJson | null; conversation: ConversationState; questions: OpenItem[] | null;
@@ -98,6 +100,11 @@ export function LeadPanel({ status, conversation, questions }: {
           <input type="checkbox" role="switch" checked={voice} disabled={busy} onChange={(e) => void act(e.target.checked ? "/api/voice/on" : "/api/voice/off", [])} />
           Voice
         </label>
+        <ResearchBox send={(text) => {
+          // The request shows in the conversation, so it takes the drawer's place.
+          setDrawer(false);
+          void sendAndFollow(text);
+        }} />
         <button type="button" className="quiet" aria-expanded={drawer} aria-controls="lead-drawer" onClick={() => setDrawer(!drawer)}>
           {drawer ? "Conversation" : "Intent & orders"}
         </button>
@@ -351,7 +358,7 @@ function Composer({ send, talk, working }: { send: SendText; talk: ReturnType<ty
     setText("");
   };
   const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+    if (sendsOnEnter(e)) {
       e.preventDefault();
       submit();
     }
