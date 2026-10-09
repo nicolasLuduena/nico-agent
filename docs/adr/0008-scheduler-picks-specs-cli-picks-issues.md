@@ -1,5 +1,5 @@
 ---
-status: superseded by ADR-0009
+status: superseded by ADR-0009; its Stack per Spec by ADR-0012
 ---
 
 # nico-agent orders the issues of a Spec; the Scheduler only picks Specs

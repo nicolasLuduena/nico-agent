@@ -32,7 +32,10 @@ An issue whose sub-issues are the tickets that build it, as `/to-spec` and
 `/to-tickets` write them. A Spec is never dispatched itself; an issue outside
 any Spec counts as a Spec of its own. A Spec is running from the dispatch of
 its first issue until each of its issues has a PR, except while its remaining
-issues only wait on another Spec's PRs to merge.
+issues only wait on another Spec's PRs to merge. A Spec runs up to its Repo's
+`maxImplementersPerSpec` Implementers at once (5 unless set), one per
+startable issue, each stacked on its own Blockers' open PR (ADR-0012), so a
+Spec is a tree of PRs rather than one Stack.
 _Avoid_: Epic, feature, parent issue
 
 **Ready**:
@@ -73,8 +76,8 @@ _Avoid_: Job, run, task
 The branch a Dispatch's worktree starts from and its PR targets, chosen per
 Dispatch. A Stacked dispatch's Base is the head branch of the PR it stacks on.
 Otherwise it is `--base`, else the Repo's configured `base`, else the last one
-used in the Repo, else origin's default branch. A Spec's first issue started by
-`advance` uses the Repo's `base`, else origin's default branch.
+used in the Repo, else origin's default branch. An issue `advance` starts
+without an open Blocker PR uses the Repo's `base`, else origin's default branch.
 _Avoid_: Target branch, trunk
 
 **Stack**:
@@ -94,9 +97,12 @@ _Avoid_: Active, running, in progress
 
 **Scheduler**:
 `nico-agent advance` run every 10 minutes by `nico-agent serve`, which keeps
-Specs moving without the user or the Lead. It dispatches each
-running Spec's next issue, one Implementer per Spec at a time, and starts the
-head of each Repo's Queue while the Repo has room. It makes no judgment, and
+Specs moving without the user or the Lead. It dispatches every startable
+issue of each running Spec, up to the Spec's cap of Implementers less those In
+flight, each on its Blockers' one open PR or from the Base; an issue whose
+Blockers' open PRs sit on more than one branch waits. It starts the head of
+each Repo's Queue while the Repo has room, which counts Specs, not
+Implementers. It makes no judgment, and
 the launch comes from the Scheduler defaults in config. It notifies the user of
 what needs them, and Nudges the Lead.
 _Avoid_: Orchestrator, pilot, autopilot, agent (the Lead is the agent; the Scheduler is a loop in `serve`)

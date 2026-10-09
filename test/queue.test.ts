@@ -40,14 +40,14 @@ async function advanced(cli: ReturnType<typeof setup>["cli"]) {
 describe("the Queue fills a Repo's room", () => {
   test("advance starts the head of the Repo's Queue, saying it came from the Queue, and the started Spec leaves the Queue", async () => {
     const { cli, world, queue, queued } = await linearRepo();
-    world.addLinearSpec({ identifier: "BLE-20", title: "Parser" }, { identifier: "BLE-21" }, { identifier: "BLE-22" });
+    world.addLinearSpec({ identifier: "BLE-20", title: "Parser" }, { identifier: "BLE-21" }, { identifier: "BLE-22", blockers: [{ identifier: "BLE-21", state: "unstarted" }] });
     expect((await queue("BLE-20")).status).toBe(200);
 
     const { exitCode, json } = await cli("advance", "--json");
     expect(exitCode).toBe(0);
     expect(json().specs).toEqual([{
       spec: "BLE-20", repo: "bleentr/pdf-diff", result: "started", issue: "BLE-21",
-      reason: "BLE-20 is the head of the Queue; BLE-21 is the first unblocked issue of BLE-20; the Spec has no open PR, so it starts from main",
+      reason: "BLE-20 is the head of the Queue; BLE-21 has no open Blocker PR, so it starts from main",
     }]);
     expect(world.calls).toContain("herdr worktree create --cwd /src/pdf --branch nico/ble-21 --base origin/main --label pdf-diff:BLE-21 --no-focus");
     expect(await queued()).toEqual([]);

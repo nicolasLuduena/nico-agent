@@ -34,32 +34,35 @@ describe("Linear Specs", () => {
     const { specs } = (await cli("--json")).json();
     expect(specs).toEqual([
       { spec: "BLE-10", title: "PDF diffing", url: "https://linear.app/bleentr/issue/BLE-10/title", repo: "bleentr/pdf-diff", issues: ["BLE-13", "BLE-11", "BLE-12"], running: false,
-        next: { issue: "BLE-13", base: "main", reason: "BLE-13 is the first unblocked issue of BLE-10; the Spec has no open PR, so it starts from main" } },
+        next: [
+          { issue: "BLE-13", base: "main", reason: "BLE-13 has no open Blocker PR, so it starts from main" },
+          { issue: "BLE-12", base: "main", reason: "BLE-12 has no open Blocker PR, so it starts from main" },
+        ] },
       { spec: "BLE-20", title: "A bug from triage", url: "https://linear.app/bleentr/issue/BLE-20/title", repo: "bleentr/pdf-diff", issues: ["BLE-20"], running: false,
-        next: { issue: "BLE-20", base: "main", reason: "BLE-20 is the first unblocked issue of BLE-20; the Spec has no open PR, so it starts from main" } },
+        next: [{ issue: "BLE-20", base: "main", reason: "BLE-20 has no open Blocker PR, so it starts from main" }] },
     ]);
   });
 
-  test("a running Spec's next issue is its first unblocked one, stacked on the Spec's newest open PR", async () => {
+  test("a running Spec's next issues are its unblocked ones, each stacked on its own Blocker's open PR or started from the Base", async () => {
     const { cli, world } = await linearRepo();
     world.addLinearSpec({ identifier: "BLE-10", title: "PDF diffing" },
-      { identifier: "BLE-11" }, { identifier: "BLE-12", blockers: [{ identifier: "BLE-13", state: "unstarted" }] }, { identifier: "BLE-13" });
+      { identifier: "BLE-11" }, { identifier: "BLE-12", blockers: [{ identifier: "BLE-11", state: "unstarted" }] }, { identifier: "BLE-13" });
     expect((await cli("dispatch", "BLE-11", ...FLAGS)).exitCode).toBe(0);
 
     const implementing = (await cli("--json")).json().specs;
     expect(implementing).toEqual([{
       spec: "BLE-10", title: "PDF diffing", url: "https://linear.app/bleentr/issue/BLE-10/title", repo: "bleentr/pdf-diff", issues: ["BLE-11", "BLE-12", "BLE-13"], running: true,
-      reason: "BLE-11 is Implementing; a Spec has one Implementer at a time",
+      next: [{ issue: "BLE-13", base: "main", reason: "BLE-13 has no open Blocker PR, so it starts from main" }],
     }]);
 
     world.linearAttachments.set("BLE-11", ["https://github.com/bleentr/pdf-diff/pull/16"]);
     world.addPr({ repo: "bleentr/pdf-diff", number: 16, headBranch: "nico/ble-11" });
     const next = (await cli("--json")).json().specs[0];
     expect(next.running).toBe(true);
-    expect(next.next).toEqual({
-      issue: "BLE-13", stackOn: "https://github.com/bleentr/pdf-diff/pull/16", base: "nico/ble-11",
-      reason: "BLE-13 is the first unblocked issue of BLE-10; it stacks on the Spec's newest open PR",
-    });
+    expect(next.next).toEqual([
+      { issue: "BLE-12", stackOn: "https://github.com/bleentr/pdf-diff/pull/16", base: "nico/ble-11", reason: "BLE-12 stacks on its Blocker BLE-11's open PR" },
+      { issue: "BLE-13", base: "main", reason: "BLE-13 has no open Blocker PR, so it starts from main" },
+    ]);
     expect(next.reason).toBeUndefined();
   });
 
@@ -71,10 +74,10 @@ describe("Linear Specs", () => {
     world.addPr({ repo: "bleentr/pdf-diff", number: 16, state: "merged", headBranch: "nico/ble-11" });
 
     const [spec] = (await cli("--json")).json().specs;
-    expect(spec).toMatchObject({ spec: "BLE-10", running: true, next: {
-      issue: "BLE-12", base: "trunk", reason: "BLE-12 is the first unblocked issue of BLE-10; the Spec has no open PR, so it starts from trunk",
-    } });
-    expect(spec.next.stackOn).toBeUndefined();
+    expect(spec).toMatchObject({ spec: "BLE-10", running: true, next: [{
+      issue: "BLE-12", base: "trunk", reason: "BLE-12 has no open Blocker PR, so it starts from trunk",
+    }] });
+    expect(spec.next[0].stackOn).toBeUndefined();
   });
 
   test("an issue blocked by another Spec's issue waits for that Blocker to close, never stacking across Specs", async () => {
@@ -90,11 +93,11 @@ describe("Linear Specs", () => {
     const board = (await cli("--json")).json();
     expect(board.specs.find((s: { spec: string }) => s.spec === "BLE-10")).toEqual({
       spec: "BLE-10", title: "PDF diffing", url: "https://linear.app/bleentr/issue/BLE-10/title", repo: "bleentr/pdf-diff", issues: ["BLE-11", "BLE-12"], running: false,
-      waiting: { issue: "BLE-12", blocker: "BLE-21", reason: "BLE-12 waits for BLE-21, in another Spec, to close; a Stack never mixes Specs" },
+      waiting: [{ issue: "BLE-12", blockers: ["BLE-21"], reason: "BLE-12 waits for BLE-21, in another Spec, to close; a Stack never mixes Specs" }],
     });
     expect(board.stackable).toBeUndefined();
 
     world.linearIssueNamed("BLE-12").blockers = [{ identifier: "BLE-21", state: "completed" }];
-    expect((await cli("--json")).json().specs.find((s: { spec: string }) => s.spec === "BLE-10").next.issue).toBe("BLE-12");
+    expect((await cli("--json")).json().specs.find((s: { spec: string }) => s.spec === "BLE-10").next[0].issue).toBe("BLE-12");
   });
 });

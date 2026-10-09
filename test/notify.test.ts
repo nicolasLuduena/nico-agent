@@ -21,7 +21,8 @@ async function stackedSpec() {
   const ctx = await linearRepo();
   const { cli, world } = ctx;
   world.addLinearSpec({ identifier: "BLE-10" },
-    { identifier: "BLE-11", state: "started" }, { identifier: "BLE-12", state: "started" }, { identifier: "BLE-13" }, { identifier: "BLE-14" });
+    { identifier: "BLE-11", state: "started" }, { identifier: "BLE-12", state: "started" },
+    { identifier: "BLE-13", blockers: [{ identifier: "BLE-12", state: "started" }] }, { identifier: "BLE-14", blockers: [{ identifier: "BLE-13", state: "unstarted" }] });
   world.linearAttachments.set("BLE-11", ["https://github.com/bleentr/pdf-diff/pull/16"]);
   world.linearAttachments.set("BLE-12", ["https://github.com/bleentr/pdf-diff/pull/17"]);
   world.addPr({ repo: "bleentr/pdf-diff", number: 16, headBranch: "nico/ble-11" });

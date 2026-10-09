@@ -96,7 +96,7 @@ describe("Research issues", () => {
     await cli("repo", "add", "bleentr/pdf-diff", "--path", "/src/pdf-diff", "--linear-team", "BLE");
     editConfig(configDir, { scheduler: { harness: "claude", model: "opus", effort: "high" } });
     world.addLinearSpec({ identifier: "BLE-10" },
-      { identifier: "BLE-11", state: "started" }, { identifier: "BLE-12", labels: ["ready-for-agent", "research"] });
+      { identifier: "BLE-11", state: "started" }, { identifier: "BLE-12", labels: ["ready-for-agent", "research"], blockers: [{ identifier: "BLE-11", state: "started" }] });
     world.linearAttachments.set("BLE-11", ["https://github.com/bleentr/pdf-diff/pull/16"]);
     world.addPr({ repo: "bleentr/pdf-diff", number: 16, headBranch: "nico/ble-11" });
 

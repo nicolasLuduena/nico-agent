@@ -34,9 +34,12 @@ describe("GitHub Specs", () => {
     const { specs } = (await cli("--json")).json();
     expect(specs).toEqual([
       { spec: "acme/api#10", title: "Billing", url: "https://github.com/acme/api/issues/10", repo: "acme/api", issues: ["acme/api#13", "acme/api#11", "acme/api#12"], running: false,
-        next: { issue: "acme/api#13", base: "main", reason: "acme/api#13 is the first unblocked issue of acme/api#10; the Spec has no open PR, so it starts from main" } },
+        next: [
+          { issue: "acme/api#13", base: "main", reason: "acme/api#13 has no open Blocker PR, so it starts from main" },
+          { issue: "acme/api#12", base: "main", reason: "acme/api#12 has no open Blocker PR, so it starts from main" },
+        ] },
       { spec: "acme/api#20", title: "A bug from triage", url: "https://github.com/acme/api/issues/20", repo: "acme/api", issues: ["acme/api#20"], running: false,
-        next: { issue: "acme/api#20", base: "main", reason: "acme/api#20 is the first unblocked issue of acme/api#20; the Spec has no open PR, so it starts from main" } },
+        next: [{ issue: "acme/api#20", base: "main", reason: "acme/api#20 has no open Blocker PR, so it starts from main" }] },
     ]);
     // In TOON, the Spec of one would repeat the Ready list.
     const { stdout } = await cli();
@@ -44,24 +47,24 @@ describe("GitHub Specs", () => {
     expect(stdout).not.toContain("spec: acme/api#20");
   });
 
-  test("a running Spec's next issue is its first unblocked one, stacked on the Spec's newest open PR", async () => {
+  test("a running Spec's next issues are its unblocked ones, each stacked on its own Blocker's open PR or started from the Base", async () => {
     const { cli, world } = await githubRepo();
     world.addGitHubSpec("acme/api", { number: 10, title: "Billing" },
-      { number: 11 }, { number: 12, blockers: [{ slug: "acme/api", number: 13, state: "open" }] }, { number: 13 });
+      { number: 11 }, { number: 12, blockers: [{ slug: "acme/api", number: 11, state: "open" }] }, { number: 13 });
     expect((await cli("dispatch", "acme/api#11", ...FLAGS)).exitCode).toBe(0);
 
     const implementing = (await cli("--json")).json().specs;
     expect(implementing).toEqual([{
       spec: "acme/api#10", title: "Billing", url: "https://github.com/acme/api/issues/10", repo: "acme/api", issues: ["acme/api#11", "acme/api#12", "acme/api#13"], running: true,
-      reason: "acme/api#11 is Implementing; a Spec has one Implementer at a time",
+      next: [{ issue: "acme/api#13", base: "main", reason: "acme/api#13 has no open Blocker PR, so it starts from main" }],
     }]);
 
     world.linkPr("acme/api", 11, { number: 16, headBranch: "agent/api-11" });
     const next = (await cli("--json")).json().specs[0];
-    expect(next.next).toEqual({
-      issue: "acme/api#13", stackOn: "https://github.com/acme/api/pull/16", base: "agent/api-11",
-      reason: "acme/api#13 is the first unblocked issue of acme/api#10; it stacks on the Spec's newest open PR",
-    });
+    expect(next.next).toEqual([
+      { issue: "acme/api#12", stackOn: "https://github.com/acme/api/pull/16", base: "agent/api-11", reason: "acme/api#12 stacks on its Blocker acme/api#11's open PR" },
+      { issue: "acme/api#13", base: "main", reason: "acme/api#13 has no open Blocker PR, so it starts from main" },
+    ]);
     expect(next.reason).toBeUndefined();
   });
 
@@ -72,10 +75,10 @@ describe("GitHub Specs", () => {
     world.linkPr("acme/api", 11, { number: 16, state: "merged", headBranch: "agent/api-11" });
 
     const [spec] = (await cli("--json")).json().specs;
-    expect(spec).toMatchObject({ spec: "acme/api#10", running: true, next: {
-      issue: "acme/api#12", base: "trunk", reason: "acme/api#12 is the first unblocked issue of acme/api#10; the Spec has no open PR, so it starts from trunk",
-    } });
-    expect(spec.next.stackOn).toBeUndefined();
+    expect(spec).toMatchObject({ spec: "acme/api#10", running: true, next: [{
+      issue: "acme/api#12", base: "trunk", reason: "acme/api#12 has no open Blocker PR, so it starts from trunk",
+    }] });
+    expect(spec.next[0].stackOn).toBeUndefined();
   });
 
   test("an issue blocked by another Spec's issue waits for that Blocker to close, never stacking across Specs", async () => {
@@ -89,11 +92,11 @@ describe("GitHub Specs", () => {
     const board = (await cli("--json")).json();
     expect(board.specs.find((s: { spec: string }) => s.spec === "acme/api#10")).toEqual({
       spec: "acme/api#10", title: "Billing", url: "https://github.com/acme/api/issues/10", repo: "acme/api", issues: ["acme/api#11", "acme/api#12"], running: false,
-      waiting: { issue: "acme/api#12", blocker: "acme/api#21", reason: "acme/api#12 waits for acme/api#21, in another Spec, to close; a Stack never mixes Specs" },
+      waiting: [{ issue: "acme/api#12", blockers: ["acme/api#21"], reason: "acme/api#12 waits for acme/api#21, in another Spec, to close; a Stack never mixes Specs" }],
     });
     expect(board.stackable).toBeUndefined();
 
     world.githubIssueNamed("acme/api", 12).blockers = [{ slug: "acme/api", number: 21, state: "closed" }];
-    expect((await cli("--json")).json().specs.find((s: { spec: string }) => s.spec === "acme/api#10").next.issue).toBe("acme/api#12");
+    expect((await cli("--json")).json().specs.find((s: { spec: string }) => s.spec === "acme/api#10").next[0].issue).toBe("acme/api#12");
   });
 });

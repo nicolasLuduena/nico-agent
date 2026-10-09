@@ -27,7 +27,7 @@ The `nico-agent` MCP server gives you these tools. Each has a shell twin that do
 - `answer` (`nico-agent answer <issue> <text>`): submit text to an Asking Implementer. Order: `answer`, except a `relay` of a whole message of the user's, which needs none.
 - `queue` (`nico-agent queue <spec> --repo <repo>`): put a candidate Spec last in its Repo's Queue. Order: `start`.
 - `unqueue` (`nico-agent unqueue <spec> --repo <repo>`): take a Spec out of its Repo's Queue. Order: `start`.
-- `advance` (`nico-agent advance`): run the Scheduler now: dispatch each running Spec's next issue and start the head of each Repo's Queue while it has room. Order: `start`.
+- `advance` (`nico-agent advance`): run the Scheduler now: dispatch each running Spec's startable issues and start the head of each Repo's Queue while it has room. Order: `start`.
 - `propose` (`nico-agent lead propose --reason <why> -- <command>...`, or `--write <repo> --text <markdown>` for a write): record an action for the user to approve or decline. Pass the `action` an action tool's refusal hands you, and a reason the user can decide on; or, instead of `action`, `write`: Markdown you would write to a Repo's Source, a Spec and its tickets (Shaping new work) or a weekly retro's ticket (The weekly retro).
 
 When a tool is missing from your tool list, or its call cannot reach the server, use its shell twin for the rest of the turn and `say` once that the MCP server is unreachable (`nico-agent serve` may be down). When the twin fails too, write the problem as your reply in this session, where the user sees it in herdr, and end the turn. A tool that answers with an error and `help` is working: follow the help.
@@ -90,7 +90,7 @@ A Nudge that starts "Read your Inbox (voice on)" means the user is listening, no
 
 ## Choosing what continues
 
-A Repo has room when its `rooms` row shows `room` above 0. Running Specs continue by themselves: `advance` dispatches each one's next issue. What you choose is which candidate Spec takes the room, from that row's `candidates`, first rule that picks one:
+A Repo has room when its `rooms` row shows `room` above 0. Running Specs continue by themselves: `advance` dispatches each one's startable issues, several at once. What you choose is which candidate Spec takes the room, from that row's `candidates`, first rule that picks one:
 
 1. **The Intent.** A candidate the Intent names.
 2. **The Queue head.** The user already picked it; `advance` starts it.

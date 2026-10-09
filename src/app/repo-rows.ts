@@ -78,7 +78,7 @@ export function repoRows(board: BoardJson): RepoRow[] {
     });
     const held = specs.flatMap((s): HeldLine[] => (s.held ? [{ spec: s.spec, ...named(s.spec, s.title, s.url), reason: s.held.reason }] : []));
     const next = specs.flatMap((s): NextLine[] =>
-      s.running && !s.held && s.next ? [{ spec: s.spec, specLabel: repoKey(s.spec, repo), specTitle: s.title, issue: s.next.issue, ...named(s.next.issue) }] : []);
+      s.running && !s.held ? (s.next ?? []).map((n) => ({ spec: s.spec, specLabel: repoKey(s.spec, repo), specTitle: s.title, issue: n.issue, ...named(n.issue) })) : []);
     const room = board.rooms?.find((r) => sameSlug(r.repo, repo));
     const queue = (room?.queue ?? []).map((key): QueuedLine => {
       const spec = specs.find((s) => sameSpec(s.spec, key));
