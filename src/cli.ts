@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { ADVANCE_INTERVAL_MS, type AdvanceReport, advance } from "./advance";
 import { answer, loadAsking } from "./answer";
@@ -16,6 +17,7 @@ import { PROPOSALS_SCOPE, notifyOnce } from "./notify";
 import { type Output, plural, render } from "./output";
 import { type Proposal, ProposalRefused, addProposal, commandLine, decide, loadProposals, openProposals, settle } from "./proposals";
 import { dequeue, enqueue, loadQueues, move, pruneBoardQueues, queueOf } from "./queue";
+import { RECORDS, type RecordName, StaleRecord, readRecord, replaceRecord } from "./records";
 import { isCandidate, sameSpec } from "./spec";
 import { VERSION } from "./version";
 import { sameSlug, slugOfRemote } from "./slug";
@@ -37,6 +39,8 @@ export interface RunContext {
    * runs `board --json` for the app on each tick, and asks GitHub only every ~30s.
    */
   prs?: PrLookup;
+  /** Reads standard input to its end; absent when it is a terminal or there is none. */
+  stdin?: () => Promise<string>;
 }
 
 export interface RunResult {
@@ -261,6 +265,8 @@ const commands: Command[] = [
     help: [ORDERS_HELP],
     run: ordersSet,
   },
+  ...recordCommands("intent", "what you are working toward and why", "- Ship billing before the Stripe contract renews"),
+  ...recordCommands("notes", "your standing preferences, recurring decisions and names for things", "- audit-notes always runs on codex"),
   {
     name: "proposals",
     usage: "nico-agent proposals [--all]",
@@ -1118,6 +1124,75 @@ async function ordersSet(args: Args, ctx: RunContext): Promise<Output> {
   return { data: { order: `${order} ${state}` }, help };
 }
 
+/** `nico-agent <record>` shows the Intent or the Notes; `<record> set` replaces it whole. */
+function recordCommands(record: RecordName, holds: string, example: string): Command[] {
+  const { name } = RECORDS[record];
+  const setUsage = `nico-agent ${record} set [--file <path>] [--version <version>]`;
+  const showHelp = `Run \`nico-agent ${record} --json\` for its version, which \`${record} set --version\` carries`;
+  return [
+    {
+      name: record,
+      usage: `nico-agent ${record}`,
+      summary: `Show the ${name}: ${holds}, which you and the Lead both edit`,
+      flags: {},
+      positionals: [],
+      examples: [`nico-agent ${record}`, `nico-agent ${record} --json`],
+      run: async (args, ctx) => {
+        const { text, version, path } = readRecord(ctx.configDir, record);
+        const help = [`Run \`nico-agent ${record} set --file <path>\` to replace it, or edit ${path}`];
+        if (args.flags["--json"] === true) return { data: { [record]: text, version, path }, help };
+        if (!text.trim()) return { data: { [record]: `none yet: ${path} is missing or empty` }, help };
+        return { data: { [record]: text, version }, help };
+      },
+    },
+    {
+      name: `${record} set`,
+      usage: setUsage,
+      summary: `Replace the ${name} whole with a Markdown file or standard input (the Lead's \`${record}\` tool)`,
+      flags: {
+        "--file": { value: true, description: "Markdown file to replace it with (default: standard input)" },
+        "--text": { value: true, description: "Markdown to replace it with, instead of a file" },
+        "--version": { value: true, description: `the version you read (\`nico-agent ${record} --json\`): refused if the ${name} changed since` },
+      },
+      positionals: [],
+      examples: [
+        `nico-agent ${record} set --file ~/${record}.md`,
+        `nico-agent ${record} --json | jq -r .${record} > ${record}.md; $EDITOR ${record}.md; nico-agent ${record} set --file ${record}.md`,
+        `nico-agent ${record} set --text ${JSON.stringify(example)} --version 3f2a9c01d4e7`,
+      ],
+      help: [showHelp],
+      run: async (args, ctx) => {
+        const { "--file": file, "--text": inline, "--version": version } = args.flags;
+        if (typeof file === "string" && typeof inline === "string") throw new CliError("--file and --text replace it two ways; pass one", [`Usage: \`${setUsage}\``], 2);
+        const text = typeof inline === "string" ? inline : typeof file === "string" ? readMarkdown(file) : await readStdin(ctx, setUsage);
+        try {
+          const replaced = await replaceRecord(ctx.configDir, record, text, typeof version === "string" ? version : undefined);
+          return { data: { replaced: replaced.path, version: replaced.version }, help: [`Run \`nico-agent ${record}\` to see it`] };
+        } catch (e) {
+          if (!(e instanceof StaleRecord)) throw e;
+          const { text: current, version: now } = e.current;
+          throw new CliError(`the ${name} changed since version ${version} was read`, [
+            `Merge your change into the current ${name} returned here, then replace it again with --version ${now}`,
+          ], 1, { version: now, [record]: current });
+        }
+      },
+    },
+  ];
+}
+
+function readMarkdown(file: string) {
+  try {
+    return readFileSync(resolve(file), "utf8");
+  } catch (e) {
+    throw new CliError(`cannot read ${file}: ${(e as NodeJS.ErrnoException).code ?? String(e)}`, ["Pass --file a Markdown file you can read"]);
+  }
+}
+
+async function readStdin(ctx: RunContext, usage: string) {
+  if (!ctx.stdin) throw new CliError("nothing to replace it with: pass --file, or pipe the Markdown in", [`Usage: \`${usage}\``], 2);
+  return await ctx.stdin();
+}
+
 const HARNESS_LIST_HELP = "Run `nico-agent harness list` to see the models and Effort levels";
 
 async function harnessList(ctx: RunContext, json: boolean): Promise<Output> {
@@ -1183,7 +1258,9 @@ async function serve(args: Args, ctx: RunContext): Promise<Output> {
   const events = new Events();
   const look = lookAtLead(ctx, events);
   try {
-    const shared = { ...ctx, prs: ctx.prs ?? cachedPrs(ctx.world) };
+    // Its runs come from the app and the Lead's tools, never from serve's own standard input.
+    const { stdin: _, ...served } = ctx;
+    const shared = { ...served, prs: ctx.prs ?? cachedPrs(ctx.world) };
     await ctx.world.serve({ hostname: HOSTNAME, port }, webHandler({ ...ctx, events, look, runCli: (argv) => run(argv, shared) }), { "/": app });
   } catch (e) {
     if (!(e instanceof WorldError)) throw e;

@@ -1,6 +1,7 @@
 import { appendFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { type Proposal, type ProposalStatus, openProposals } from "./proposals";
+import { recordOrNone } from "./records";
 import { withFileLock, writeJsonAtomic } from "./state";
 
 /**
@@ -49,8 +50,6 @@ export interface Orient {
 export type Authored = Entry & { who: "user" | "lead" };
 
 const FILE = "conversation.jsonl";
-const INTENT_FILE = "intent.md";
-const NOTES_FILE = "notes.md";
 /** How many of the last entries the orient packet carries. */
 const LAST = 10;
 /** The id of the last entry the Lead read with `inbox`. */
@@ -159,26 +158,14 @@ export function readInbox(dir: string): Promise<{ entries: InboxEntry[]; orient:
       return { ...e, asked: question?.type === "ask" ? question.text : "" };
     });
     const orient = {
-      intent: markdown(dir, INTENT_FILE),
-      notes: markdown(dir, NOTES_FILE),
+      intent: recordOrNone(dir, "intent"),
+      notes: recordOrNone(dir, "notes"),
       open: openAsks(entries),
       proposals: openProposals(dir),
       last: entries.slice(-LAST).map(authored),
     };
     return { entries: inbox, orient };
   });
-}
-
-/** The Markdown in `file`, or a line saying it is missing or empty. */
-function markdown(dir: string, file: string): string {
-  const path = join(dir, file);
-  let text = "";
-  try {
-    text = readFileSync(path, "utf8");
-  } catch (e) {
-    if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
-  }
-  return text.trim() ? text : `none yet: ${path} is missing or empty`;
 }
 
 function loadCursor(dir: string): number {

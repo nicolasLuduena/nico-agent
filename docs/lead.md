@@ -194,6 +194,36 @@ you wrote with `nico-agent say`, or an answer to one of its questions), exactly
 as you wrote it. Anything else passed as `relay` is refused, with a `propose`
 call to send it once you approve.
 
+## The Intent and the Notes
+
+Two Markdown files in the config directory that you and the Lead both edit:
+
+- **The Intent**, `intent.md`: what you are working toward and why. The Lead
+  reads it every turn, names the item it follows when it picks what
+  continues, and asks you before changing it, for instance when a running
+  Spec or a new PR serves nothing in it.
+- **The Notes**, `notes.md`: your standing preferences, recurring decisions
+  with their reasons, and your names for things. The Lead writes them
+  without asking when it learns something durable, rewriting them so they
+  stay under a page.
+
+```sh
+nico-agent intent                      # show it (a hint when there is none)
+nico-agent intent --json               # {"intent": "...", "version": "...", "path": "..."}
+nico-agent intent set --file intent.md # replace it whole; or pipe it in on stdin
+nico-agent notes                       # the same for the Notes
+nico-agent notes set --file notes.md
+```
+
+Editing the files by hand works too. The Lead reads and replaces them with
+its `intent` and `notes` tools, and every `inbox` carries both in its orient
+packet.
+
+A replace may carry the version it read (`--version`, from `--json`); the
+Lead's always does. If the file changed since that version, by hand or by the
+other editor, the replace is refused with the current text and version, to
+merge into and replace again.
+
 ## Proposals
 
 When an order is off, the Lead calls `propose` with the command a refusal
