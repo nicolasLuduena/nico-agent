@@ -25,9 +25,10 @@ change a Dispatch already In flight.
 
 ## Changing the prompt
 
-Set `prompts.research` in `~/.config/nico-agent/config.json`. It takes the same
-placeholders as `implement` (`{sigil}`, `{issueUrl}`, `{baseBranch}`), and an
-unknown placeholder is a config error:
+Set `prompts.research` in `~/.config/nico-agent/config.json`. Like
+`implement`, it is filled with `{sigil}`, `{issueUrl}` and `{baseBranch}`;
+`{prUrl}` and `{prBaseBranch}` are only filled for `review`, so they are sent
+as written. An unknown placeholder is a config error:
 
 ```json
 {

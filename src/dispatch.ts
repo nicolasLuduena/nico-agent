@@ -17,7 +17,7 @@ import {
   removeDispatch,
   saveDispatch,
 } from "./state";
-import { type LinearIssue, RESEARCH_LABEL, type World, WorldError } from "./world";
+import { type LinearIssue, type World, WorldError, isResearch } from "./world";
 import { type BlockerPrs, baseChoice, blockerPrs, matchesSelector } from "./board";
 import { canStart, githubSource, isLinearClosed, linearSource } from "./source";
 import { type StackTarget, chooseStackTarget } from "./stack";
@@ -142,7 +142,7 @@ export async function dispatch(world: World, configDir: string, request: Dispatc
     () => new DispatchError(`${key} has open Blockers without same-Repo open PRs`, ["Run `nico-agent` to see the Board"]));
   const base = await chooseBase(world, configDir, ref, request, stackedOn);
   const url = `https://github.com/${repo.slug}/issues/${number}`;
-  return startDispatch(world, configDir, ref, harness, templates, request, { title: issue.title, url, labels: issue.labels, branch: githubBranch(repo.slug, number), base, stackedOn });
+  return startDispatch(world, configDir, ref, harness, templates, request, { title: issue.title, url, research: isResearch(issue), branch: githubBranch(repo.slug, number), base, stackedOn });
 }
 
 /**
@@ -167,7 +167,7 @@ async function newLinearDispatch(world: World, configDir: string, identifier: st
       "Run `nico-agent` to see the Board",
     ]));
   const base = await chooseBase(world, configDir, ref, request, stackedOn);
-  return startDispatch(world, configDir, ref, harness, templates, request, { title: issue.title, url: issue.url, labels: issue.labels, branch: issue.branchName, base, stackedOn });
+  return startDispatch(world, configDir, ref, harness, templates, request, { title: issue.title, url: issue.url, research: isResearch(issue), branch: issue.branchName, base, stackedOn });
 }
 
 /** The Repo a Linear issue is dispatched into: `choice`, which must claim it, else the only Repo that does. */
@@ -194,7 +194,7 @@ async function startDispatch(
   harness: Harness,
   templates: Prompts,
   request: DispatchRequest,
-  { title, url, labels, branch, base, stackedOn }: { title: string; url: string; labels: string[]; branch: string; base: string; stackedOn?: StackTarget },
+  { title, url, research, branch, base, stackedOn }: { title: string; url: string; research: boolean; branch: string; base: string; stackedOn?: StackTarget },
 ): Promise<DispatchResult> {
   const { repo, key } = ref;
   const now = world.now().toISOString();
@@ -207,7 +207,7 @@ async function startDispatch(
     branch,
     base: `origin/${base}`,
     implementer: { agent: agentName("impl", repoName(repo), ref), harness: harness.name, model: request.model, effort: request.effort },
-    ...(labels.includes(RESEARCH_LABEL) && { research: true }),
+    ...(research && { research }),
     completed: [],
     runner: world.processId(),
     createdAt: now,

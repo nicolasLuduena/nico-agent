@@ -197,8 +197,9 @@ export function harnessConfigs(config: Config): Record<string, HarnessConfig> {
 
 /**
  * The prompt templates a Dispatch sends. `implement` prompts the Implementer;
- * `research` prompts it instead for a Research issue. `botSuffix` is appended to either as is, with no separator, when the GitHub App
- * is installed on the Repo, so it carries its own leading punctuation.
+ * `research` prompts it instead for a Research issue. `botSuffix` is appended
+ * to either as is, with no separator, when the GitHub App is installed on the
+ * Repo, so it carries its own leading punctuation.
  * `{baseBranch}` is the Dispatch's Base. `review` prompts the Reviewer; only it has a PR to fill `{prUrl}` and
  * `{prBaseBranch}` with. `lead` starts the Lead on its skill.
  */

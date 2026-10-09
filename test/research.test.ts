@@ -30,8 +30,8 @@ function editConfig(configDir: string, extra: object) {
   writeFileSync(file, JSON.stringify({ ...JSON.parse(readFileSync(file, "utf8")), ...extra }));
 }
 
-describe("research issues", () => {
-  test("a research issue is sent the research prompt, an unlabelled one the implement prompt", async () => {
+describe("Research issues", () => {
+  test("a Research issue is sent the research prompt, an unlabelled one the implement prompt", async () => {
     const { cli, world } = await withRepo();
 
     expect((await cli("dispatch", "acme/api#7", ...FLAGS)).exitCode).toBe(0);
@@ -47,7 +47,7 @@ describe("research issues", () => {
     expect(prompts(world.calls)).toEqual([RESEARCH + BOT]);
   });
 
-  test("a research issue makes the same GitHub calls as any other, so no new GitHub request", async () => {
+  test("a Research issue makes the same GitHub calls as any other, so no new GitHub request", async () => {
     const { cli, world } = await withRepo();
     const callsOf = async (issue: number) => {
       world.calls.length = 0;
@@ -57,7 +57,7 @@ describe("research issues", () => {
     expect(await callsOf(7)).toEqual(await callsOf(8));
   });
 
-  test("a resumed research Dispatch is sent the research prompt again", async () => {
+  test("a resumed Research issue's Dispatch is sent the research prompt again", async () => {
     const { cli, world } = await withRepo();
     world.stallPrompts(3);
     expect((await cli("dispatch", "acme/api#7", ...FLAGS)).exitCode).toBe(1);
@@ -90,7 +90,7 @@ describe("research issues", () => {
     expect(json().error).toBe(`${join(configDir, "config.json")}: prompts.research has an unknown placeholder {topic}`);
   });
 
-  test("advance sends the research prompt to a research issue of a running Spec", async () => {
+  test("advance sends the research prompt to a Research issue of a running Spec", async () => {
     const { cli, world, configDir } = setup();
     world.addClone("/src/pdf-diff", "git@github.com:bleentr/pdf-diff.git");
     await cli("repo", "add", "bleentr/pdf-diff", "--path", "/src/pdf-diff", "--linear-team", "BLE");
@@ -108,7 +108,7 @@ describe("research issues", () => {
     ]);
   });
 
-  test("board --json marks research issues and research Dispatches, and only those", async () => {
+  test("board --json marks Research issues and their Dispatches, and only those", async () => {
     const { cli, world } = await withRepo();
     const research = ["ready-for-agent", "research"];
     world.addIssue("acme/api", { number: 2, title: "Blocker", labels: [] });

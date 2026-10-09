@@ -5,7 +5,7 @@ import type { RepoDecision } from "./spec";
 import { type SourceIssues, loadSpecs } from "./spec-facts";
 import { type InFlightRow, type PrLookup, loadInFlight } from "./stage";
 import type { Dispatch } from "./state";
-import { type GitHubIssue, type LinearIssue, type PullRequest, RESEARCH_LABEL, type World, worldErrorMessage } from "./world";
+import { type GitHubIssue, type LinearIssue, type PullRequest, type World, isResearch, worldErrorMessage } from "./world";
 
 export interface StackOption {
   blocker: string;
@@ -202,7 +202,7 @@ async function loadReady(world: World, repos: Repo[], inFlight: Dispatch[], last
 }
 
 function researchMark(issue: { labels: string[] }) {
-  return issue.labels.includes(RESEARCH_LABEL) ? { research: true } : {};
+  return isResearch(issue) ? { research: true } : {};
 }
 
 /** An issue of a Spec with an unresolved Blocker outside it would stack across Specs, so it waits for that Blocker instead. */
