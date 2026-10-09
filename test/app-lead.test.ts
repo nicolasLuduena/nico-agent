@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 import type { HarnessesJson } from "../src/app/actions";
 import {
-  type Conversation, type LeadStatusJson, type ProposalJson, cards, declineArgs, leadChoice, leadControl, leadStartArgs, proposalLines, reduce, sayArgs,
+  type Conversation, type LeadStatusJson, type ProposalJson, cards, declineArgs, leadChoice, leadControl, leadStartArgs, follows, notices, proposalLines, reduce, sayArgs,
 } from "../src/app/lead";
 import { setup } from "./harness";
 
@@ -241,5 +241,50 @@ describe("the Lead's controls", () => {
     expect(leadControl({ ...RUNNING, lead: "Failed at agent start" }, same)).toEqual({ start: "Start", stop: true });
     // One still starting is neither started again nor restarted until it is running.
     expect(leadControl({ lead: "starting", harness: "claude", model: "opus", effort: "high" }, other)).toEqual({ start: null, stop: true });
+  });
+});
+
+describe("the one quiet place for warnings", () => {
+  const RUNNING: LeadStatusJson = { lead: "running", harness: "claude", model: "opus", effort: "high", state: "idle" };
+
+  test("nothing while serve answers, the Lead runs and voice is fine", () => {
+    expect(notices({ failure: null, status: RUNNING, talk: null })).toEqual([]);
+    // Before the Lead's status loads, it is not said to be stopped.
+    expect(notices({ failure: null, status: null, talk: null })).toEqual([]);
+  });
+
+  test("a Lead not running says so and where to start it; one that failed says why instead", () => {
+    expect(notices({ failure: null, status: { lead: "not running" }, talk: null })).toEqual([
+      { key: "lead", text: "The Lead is not running", help: ["Start it from Lead in the header"] },
+    ]);
+    expect(notices({ failure: null, status: { lead: "Failed at agent start", failure: { step: "agent start", error: "herdr is not running" } }, talk: null })).toEqual([
+      { key: "lead", text: "The Lead failed at agent start: herdr is not running", help: ["Start it again from Lead in the header"] },
+    ]);
+    // One starting is on its way, not a problem.
+    expect(notices({ failure: null, status: { lead: "starting" }, talk: null })).toEqual([]);
+  });
+
+  test("losing serve, the Lead's launch warnings and voice failing all show together, serve first", () => {
+    const shown = notices({
+      failure: "Lost nico-agent serve; reconnecting.",
+      status: { ...RUNNING, warnings: ["the shaping skill x is left out"] },
+      talk: { error: "The voice service is down", help: ["Typing still works"] },
+    });
+    expect(shown).toEqual([
+      { key: "serve", text: "Lost nico-agent serve; reconnecting.", help: [] },
+      { key: "lead-warning-0", text: "the shaping skill x is left out", help: [] },
+      { key: "voice", text: "The voice service is down", help: ["Typing still works"] },
+    ]);
+  });
+});
+
+describe("following new entries", () => {
+  test("the chat follows new entries while the user is at its end, or within a line of it", () => {
+    expect(follows({ scrollHeight: 2000, scrollTop: 1400, clientHeight: 600 })).toBe(true);
+    expect(follows({ scrollHeight: 2000, scrollTop: 1370, clientHeight: 600 })).toBe(true);
+  });
+
+  test("scrolled up to read, it stays where the user is", () => {
+    expect(follows({ scrollHeight: 2000, scrollTop: 900, clientHeight: 600 })).toBe(false);
   });
 });

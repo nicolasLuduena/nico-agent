@@ -53,7 +53,7 @@ that service with what to fix, and the command exits 1.
 
 ## Talk in the app
 
-The Lead panel's **Talk** button records from the browser's microphone and
+The **Talk** button, beside the chat's text field, records from the browser's microphone and
 streams the audio to `serve` over a WebSocket (`/api/voice`, 16kHz 16-bit mono
 PCM). `serve` sends it to `voice.transcribe` and shows what it heard as you
 speak; the final transcript goes through the Scribe, and its text is sent to
@@ -74,7 +74,8 @@ tokens of a prompt, so the Board comes last. The interim transcripts use the
 last hint built rather than wait for the Board.
 
 A failure (no `voice.transcribe`, the service down or answering an error, the
-microphone blocked) shows as a warning above the composer; typing still works.
+microphone blocked) shows with the app's other warnings, above the
+conversation; typing still works.
 
 ### Hands-free
 
@@ -174,8 +175,8 @@ none clearly, or there is no Scribe, the answer is what you said.
 
 ### The Lead speaks
 
-With Voice on (`nico-agent voice on|off`, or the **Voice** switch in the Lead
-panel's head), every reply and question the Lead writes is read by
+With Voice on (`nico-agent voice on|off`, or the **Voice** switch in the chat's
+bar), every reply and question the Lead writes is read by
 `voice.speak` and streamed to the app over the same `/api/voice` socket as it
 is made, as 24kHz 16-bit mono PCM (`response_format: "pcm"`, OpenAI's format,
 which Kokoro-FastAPI shares). A question is read with its choices as a
@@ -204,7 +205,7 @@ A browser plays audio only after a gesture on the page: with Voice on from
 the start, the first click or key on the page lets the Lead be heard.
 
 When `voice.speak` is not configured, unreachable or answers an error, the
-reply shows in the panel as ever, with a warning above the composer.
+reply shows in the chat as ever, with a warning above the conversation.
 
 ### The fixture set
 

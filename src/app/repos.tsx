@@ -1,11 +1,10 @@
-import { type IssueRow, type RepoSection, type RoomReadout, type SpecGroup, SPEC_STATES, agentClass } from "./board";
+import { type IssueRow, type RepoSection, type RoomReadout, type SpecGroup, SPEC_STATES, agentClass, stageClass } from "./board";
 import { dispatchTarget, isLinear } from "./actions";
-import { reachOf } from "./event";
 import { IssueOutcome, LaunchForm, Pick, QueueControl, useActions } from "./forms";
 
 /** A Repo's issues: Specs grouping theirs, then Specs of one, Stackable and PR-open issues. */
-export function Repo({ section: s, lit, onLight }: { section: RepoSection; lit: string | null; onLight: (issue: string | null) => void }) {
-  const list = (rows: IssueRow[]) => <ul className="issues">{rows.map((r) => <Row key={r.key} repo={s.repo} row={r} lit={lit} onLight={onLight} />)}</ul>;
+export function Repo({ section: s }: { section: RepoSection }) {
+  const list = (rows: IssueRow[]) => <ul className="issues">{rows.map((r) => <Row key={r.key} repo={s.repo} row={r} />)}</ul>;
   return (
     <section className="repo">
       <header>
@@ -50,13 +49,13 @@ function Spec({ repo, group: g, list }: { repo: string; group: SpecGroup; list: 
   );
 }
 
-function Row({ repo, row: r, lit, onLight }: { repo: string; row: IssueRow; lit: string | null; onLight: (issue: string | null) => void }) {
+function Row({ repo, row: r }: { repo: string; row: IssueRow }) {
   const { board } = useActions();
   const link = <IssueLink label={r.label} title={r.title} url={r.url} />;
   if (r.kind === "in-flight") {
-    // Read-only: its row to act on is In flight, and hovering lights its track.
+    // Read-only: its row to act on is In flight.
     return (
-      <li className={`member${lit === r.key ? " lit" : ""}`} onMouseEnter={() => onLight(r.key)} onMouseLeave={() => onLight(null)}>
+      <li className="member">
         {link}<StageKey stage={r.stage} />{r.pr && <PrLink {...r.pr} />}
       </li>
     );
@@ -84,12 +83,12 @@ export function PrLink({ url, number }: { url: string; number: number }) {
   return <a className="pr" href={url}>{number ? `PR #${number}` : "PR"}</a>;
 }
 
-/** A Stage as its track's legend key. */
+/** A Stage, in its own colour. */
 export function StageKey({ stage }: { stage: string }) {
-  return <span className={`stage ${reachOf(stage)}`}>{stage}</span>;
+  return <span className={`stage ${stageClass(stage)}`}>{stage}</span>;
 }
 
-/** A Base, as a chip with the branch mark drawn in the brand glyph's stroke. */
+/** A Base, as a chip with a branch mark. */
 export function BaseChip({ branch }: { branch: string }) {
   return (
     <span className="chip" title="Base">

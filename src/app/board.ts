@@ -71,6 +71,17 @@ export interface BoardJson {
   error?: string;
 }
 
+/** A Stage's colour, one per Stage (DESIGN.md): every Failed Stage shares Failed's; one without its own reads as unknown. */
+export type StageClass = "implementing" | "pr-ready" | "review-launched" | "failed" | "unknown";
+
+export function stageClass(stage: string): StageClass {
+  if (stage.startsWith("Failed")) return "failed";
+  if (stage === "Implementing" || stage === "PR ready" || stage === "Review launched") {
+    return stage.toLowerCase().replace(/[^a-z]+/g, "-") as StageClass;
+  }
+  return "unknown";
+}
+
 /** The Agent states the Board draws apart; any other reads as unknown. */
 export function agentClass(state: string) {
   return ["working", "idle", "done", "blocked"].includes(state) ? state : "unknown";

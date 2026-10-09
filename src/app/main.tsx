@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import type { HarnessesJson } from "./actions";
+import type { LeadStatusJson } from "./lead";
+import { LeadMenu } from "./lead-menu";
 import { LeadPanel } from "./lead-panel";
+import { useResource } from "./stream";
 
 /** The Harnesses' models and the remembered launch, for the Lead's pickers, asked on load and again on `reload`. */
 function useHarnesses() {
@@ -15,32 +18,61 @@ function useHarnesses() {
   return { harnesses, reload: useCallback(() => setAsked((n) => n + 1), []) };
 }
 
+type Page = "lead" | "stats";
+
+const PAGES: { page: Page; label: string; href: string }[] = [
+  { page: "lead", label: "Lead", href: "#/" },
+  { page: "stats", label: "Stats", href: "#/stats" },
+];
+
+/** The page the address names: `#/stats` is Stats, anything else the Lead. */
+function usePage(): Page {
+  const read = (): Page => (location.hash === "#/stats" ? "stats" : "lead");
+  const [page, setPage] = useState(read);
+  useEffect(() => {
+    const changed = () => setPage(read());
+    addEventListener("hashchange", changed);
+    return () => removeEventListener("hashchange", changed);
+  }, []);
+  return page;
+}
+
 /**
- * The app is the conversation with the Lead alone: the Board view is off, so
- * the page never asks `/api/board` and polling it costs GitHub nothing. The
- * Board itself stays in the CLI and the Lead's `board` tool.
+ * The app: a header with the brand, the Lead and Stats pages and the Lead's
+ * controls, then the chat with the Lead on the left and the page's own column
+ * on the right. The page never asks `/api/board` yet, so it costs GitHub
+ * nothing; the Repos come to the right column on the Lead page.
  */
 function App() {
   const { harnesses } = useHarnesses();
+  const page = usePage();
+  const { data: status = null } = useResource<LeadStatusJson>("/api/lead/status", ["lead-state"]);
   return (
     <>
       <header className="top">
-        <a className="brand" href="/"><Glyph />nico-agent</a>
-        <h1>Lead</h1>
+        <a className="brand" href="#/">nico-agent</a>
+        <nav aria-label="Pages">
+          {PAGES.map((p) => <a key={p.page} href={p.href} aria-current={page === p.page ? "page" : undefined}>{p.label}</a>)}
+        </nav>
+        <LeadMenu harnesses={harnesses} status={status} />
       </header>
-      <div className="layout chat-only">
-        <LeadPanel harnesses={harnesses} />
-      </div>
+      <main className="shell">
+        <LeadPanel status={status} />
+        {page === "stats"
+          ? (
+            <section className="side" aria-labelledby="side-title">
+              <h1 id="side-title">Stats</h1>
+              <p className="lede">Merged PRs and issues defined per day will show here, counted from what nico-agent has seen.</p>
+            </section>
+          )
+          : (
+            <section className="side" aria-labelledby="side-title">
+              <h1 id="side-title">Repos</h1>
+              <p className="lede">Your Repos and the work in them will show here.</p>
+            </section>
+          )}
+      </main>
     </>
-  );
-}
-
-/** The brand glyph: a detector end-on with one amber trail. */
-function Glyph() {
-  return (
-    <svg className="glyph" viewBox="-12 -12 24 24" aria-hidden="true">
-      <circle r="4.5" /><circle r="8" /><circle r="11" /><path className="trail" d="M0 0 Q4 -1 8.5 -7" />
-    </svg>
   );
 }
 

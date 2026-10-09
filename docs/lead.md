@@ -49,9 +49,9 @@ directory, not in the agent, so the new Lead picks it up where the old one
 left off. The same happens when the Lead's agent is gone from herdr (its
 workspace was closed by hand, say).
 
-The app at `serve`'s URL does the same from its Lead panel, beside the
-Board: the Lead's Agent state and launch, Start, Restart on another Harness,
-model or Effort, and Stop; the conversation, live, with a composer that posts
+The app at `serve`'s URL does the same: the header's Lead button shows the
+Lead's Agent state and opens its launch, Start, Restart on another Harness,
+model or Effort, and Stop; the chat beside the Repos holds the conversation, live, with a composer that posts
 `nico-agent say`; the Lead's questions as cards with their choices as buttons
 and a free-text answer (`say --answer`); and its Proposals as cards with
 Approve and Decline (`proposals approve|decline`), showing what approving did.
@@ -166,7 +166,7 @@ the ones you set; the rest keep their default:
 }
 ```
 
-The app's Lead panel shows them as switches in its drawer (**Intent &
+The app's chat shows them as switches in its drawer (**Intent &
 orders**, then **Standing orders**); each switch runs `orders set`.
 
 Orders are read from config every time they are used, never cached. A change,
@@ -262,7 +262,7 @@ one-line summary), and the Lead is Nudged to read it in its Inbox. A PR stays
 watched after its Dispatch is Closed, until it is merged or closed; what was
 last seen of each is kept in `pr-watch.json` in the config directory.
 `nico-agent lead log` shows the events with the rest of the conversation;
-the web Board's Lead panel leaves them out and shows what the Lead says about
+the app's chat leaves them out and shows what the Lead says about
 them.
 
 ## The Intent and the Notes
@@ -295,7 +295,7 @@ Lead's always does. If the file changed since that version, by hand or by the
 other editor, the replace is refused with the current text and version, to
 merge into and replace again.
 
-The app's Lead panel edits both in its drawer (**Intent & orders**), saving
+The app's chat edits both in its drawer (**Intent & orders**), saving
 with the version it read, as `set --version` does. While you are not editing,
 a tab follows the file, so the Lead's latest edit shows. If the file changes
 while you edit, the tab shows its text beside your edit, and saves nothing

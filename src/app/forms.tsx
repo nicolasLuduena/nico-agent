@@ -47,6 +47,22 @@ export async function post(path: string, args: string[] = []): Promise<Record<st
   }
 }
 
+/** An action of the Lead's: busy while it runs, and the CLI's message and help when it failed, until the next try. */
+export function usePost() {
+  const [busy, setBusy] = useState(false);
+  const [outcome, setOutcome] = useState<Outcome | null>(null);
+  /** Post `args` to `path`; true when it did what it was asked. */
+  const act = async (path: string, args: string[]) => {
+    setBusy(true);
+    setOutcome(null);
+    const answer = answerOf(await post(path, args));
+    setBusy(false);
+    if (answer.failed) setOutcome(answer);
+    return !answer.failed;
+  };
+  return { busy, outcome, act };
+}
+
 /**
  * An action whose failure is reported under `key` (an issue, or a Queue
  * control): the CLI's message and help, kept until the next try.
