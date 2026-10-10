@@ -5,7 +5,7 @@ import fixtures from "./fixtures/phantom/transcripts.json";
 /** A fixture's transcript, as `transcribe` reads speaches' verbose_json answer. */
 function heard(name: keyof typeof fixtures) {
   const { text, segments } = fixtures[name].answer;
-  return { text: text.trim(), segments: segments.map((s) => ({ start: s.start, end: s.end, noSpeech: s.no_speech_prob })) };
+  return { text: text.trim(), segments: segments.map((s) => ({ start: s.start, end: s.end, noSpeech: s.no_speech_prob, avgLogprob: s.avg_logprob })) };
 }
 
 describe("screen", () => {
@@ -32,6 +32,9 @@ describe("screen", () => {
     // Two seconds of speech and a phantom word in the second of quiet after it: mostly speech, it stays.
     const segments = [{ start: 0, end: 2, noSpeech: 0.02 }, { start: 2, end: 3, noSpeech: 0.95 }];
     expect(screen({ text: "Dispatch it. Okay.", segments })).toEqual({ text: "Dispatch it. Okay." });
+    // Likely not speech, but words Whisper was sure of: quiet speech, it stays.
+    expect(screen({ text: "Dispatch it.", segments: [{ start: 0, end: 2, noSpeech: 0.7, avgLogprob: -0.3 }] })).toEqual({ text: "Dispatch it." });
+    expect(screen({ text: "Dispatch it.", segments: [{ start: 0, end: 2, noSpeech: 0.7, avgLogprob: -1.4 }] })).toEqual({ dropped: "no speech" });
   });
 
   describe("heard while the app speaks", () => {

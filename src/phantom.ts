@@ -5,24 +5,35 @@
  * Lead hears them (see docs/voice.md, "Phantom transcripts").
  */
 
-/** A stretch of a transcript, as speaches tells of it (`verbose_json`): where it lies, in seconds, and how likely it is not speech. */
+/**
+ * A stretch of a transcript, as speaches tells of it (`verbose_json`): where
+ * it lies, in seconds; how likely it is not speech (`no_speech_prob`); and
+ * how sure Whisper was of its words (`avg_logprob`), where told.
+ */
 export interface Segment {
   start: number;
   end: number;
   noSpeech: number;
+  avgLogprob?: number;
 }
 
-/** What a transcript was, as heard: its text and, where the service tells of them, its segments. */
-export interface Heard {
+/** A final transcript: its text and, where the service tells of them, its segments. */
+export interface FinalTranscript {
   text: string;
   segments?: Segment[];
 }
 
 /** Why a transcript was dropped. */
-export type Phantom = "phantom phrase" | "no speech" | "echo";
+export type DropReason = "phantom phrase" | "no speech" | "echo";
 
-/** How likely, over the whole transcript, it is not speech when dropped: Whisper's own no_speech_threshold. */
+/**
+ * A segment is not speech, as Whisper itself judges it, when it is likelier
+ * than NO_SPEECH not speech and Whisper was unsure of its words
+ * (`avg_logprob` under UNSURE); or, however sure, likelier than SILENT.
+ */
 const NO_SPEECH = 0.6;
+const UNSURE = -1;
+const SILENT = 0.8;
 
 /** How many times in a row a phrase is said before it is taken for Whisper looping. */
 const REPEATS = 3;
@@ -36,6 +47,9 @@ const SHORT_PHRASE = 12;
 /** How alike two clauses are, as words in order, to be the same phrase looped ("This is not …", "it is not …"). */
 const ALIKE = 0.7;
 
+/** How much of a clause cut off at the end of a loop is in the looped phrase, in order, to be its last, partial turn. */
+const CUT_OFF = 0.75;
+
 /** The fewest words heard taken for an echo: a shorter answer ("yes", "the second one") is the user's. */
 const ECHO_WORDS = 3;
 
@@ -48,8 +62,8 @@ const ECHOED = 0.8;
  * speech, only one of Whisper's silence phrases, or an echo of `playing`,
  * what the app was saying aloud when the utterance began.
  */
-export function screen(heard: Heard, playing: string[] = []): { text: string } | { dropped: Phantom } {
-  if (noSpeech(heard.segments ?? []) > NO_SPEECH) return { dropped: "no speech" };
+export function screen(heard: FinalTranscript, playing: string[] = []): { text: string } | { dropped: DropReason } {
+  if (mostlyNoSpeech(heard.segments ?? [])) return { dropped: "no speech" };
   const text = unlooped(heard.text);
   if (heard.text.trim() && isPhantomPhrase(text)) return { dropped: "phantom phrase" };
   if (isEcho(text, playing)) return { dropped: "echo" };
@@ -72,7 +86,7 @@ const PHANTOM_PHRASES: RegExp[] = [
   /^(thanks|thank you)( (so|very) much)?( for watching| for listening)?$/,
   /^(please )?(like and )?subscribe( to (my|the|our) channel)?$/,
   /^(subtitles|captions|transcription|transcribed|translated|translation|subtitled) by\b/,
-  /^(you|bye|bye bye)$/,
+  /^you$/,
 ];
 
 /** Whether `text` is only one of Whisper's silence phrases, or has no words. */
@@ -81,17 +95,18 @@ function isPhantomPhrase(text: string) {
   return !said || PHANTOM_PHRASES.some((phrase) => phrase.test(said));
 }
 
-/** How likely `segments` are not speech, on average over their length; 0 without any. */
-function noSpeech(segments: Segment[]): number {
-  const length = segments.reduce((sum, s) => sum + Math.max(0, s.end - s.start), 0);
-  if (!length) return 0;
-  return segments.reduce((sum, s) => sum + Math.max(0, s.end - s.start) * s.noSpeech, 0) / length;
+/** Whether more than half of `segments`, by length, is not speech; false without any. */
+function mostlyNoSpeech(segments: Segment[]): boolean {
+  const length = (s: Segment) => Math.max(0, s.end - s.start);
+  const notSpeech = (s: Segment) => s.noSpeech > SILENT || (s.noSpeech > NO_SPEECH && (s.avgLogprob ?? 0) < UNSURE);
+  const all = segments.reduce((sum, s) => sum + length(s), 0);
+  return all > 0 && segments.filter(notSpeech).reduce((sum, s) => sum + length(s), 0) > all / 2;
 }
 
 /** `text` with each phrase repeated REPEATS times or more in a row said once, ended as a sentence. */
 function unlooped(text: string): string {
   const tokens = text.split(/\s+/).filter(Boolean);
-  const kept = collapse(tokens, LOOPED_WORDS);
+  const kept = collapse(tokens);
   // A clause ends at punctuation before a space, never at a decimal point ("0.5s").
   const clauses = kept.join(" ").match(/.+?(?:[.,!?;:]+(?=\s|$)|$)/g)?.map((c) => c.trim()).filter(Boolean) ?? [];
   let looped = kept.length < tokens.length;
@@ -106,7 +121,7 @@ function unlooped(text: string): string {
     }
     // Cut off mid-phrase at the end: the loop's last, partial turn.
     const last = j === clauses.length - 1 ? words(clauses[j]!) : null;
-    if (last && last.length && common(phrase, last) / last.length >= 0.75) j++;
+    if (last && last.length && common(phrase, last) / last.length >= CUT_OFF) j++;
     said.push(clauses[i]!);
     i = j;
     looped = true;
@@ -115,13 +130,13 @@ function unlooped(text: string): string {
   return said.join(" ").replace(/[,;:\s]*$/, "").replace(/[^.!?]$/, "$&.");
 }
 
-/** `tokens` with each run of up to `longest` tokens repeated REPEATS times or more in a row kept once. */
-function collapse(tokens: string[], longest: number): string[] {
+/** `tokens` with each run of up to LOOPED_WORDS tokens repeated REPEATS times or more in a row kept once. */
+function collapse(tokens: string[]): string[] {
   const plain = tokens.map((t) => words(t).join(" "));
   const out: string[] = [];
   for (let i = 0; i < tokens.length;) {
     let skip = 0;
-    for (let n = 1; n <= longest && !skip; n++) {
+    for (let n = 1; n <= LOOPED_WORDS && !skip; n++) {
       let k = 1;
       while (i + (k + 1) * n <= tokens.length && plain.slice(i + k * n, i + (k + 1) * n).join(" ") === plain.slice(i, i + n).join(" ")) k++;
       if (k >= REPEATS && plain[i]) skip = k * n;
@@ -134,7 +149,7 @@ function collapse(tokens: string[], longest: number): string[] {
 }
 
 /** The words of `text`, lower case, without punctuation. */
-export function words(text: string): string[] {
+function words(text: string): string[] {
   return text.toLowerCase().replace(/[^\p{L}\p{N}'\s]/gu, " ").split(/\s+/).filter(Boolean);
 }
 

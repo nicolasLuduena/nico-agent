@@ -118,10 +118,13 @@ transcript, `serve` (`src/phantom.ts`) screens it:
   short list in `PHANTOM_PHRASES`) is dropped. Said with more ("Thank you,
   dispatch it."), it stays.
 - **No speech.** Transcription is asked for `verbose_json`, whose segments
-  carry Whisper's `no_speech_prob`; a transcript whose segments, averaged
-  over their length, are more likely than 0.6 not speech is dropped. A
-  service that refuses `verbose_json` (400) is asked again for `json`, and
-  so from then on, without this check.
+  carry Whisper's `no_speech_prob` and `avg_logprob`. A segment is not
+  speech when it is likelier than 0.6 not speech and Whisper was unsure of
+  its words (`avg_logprob` under -1), as Whisper itself judges, or likelier
+  than 0.8 however sure; a transcript more than half of which, by length, is
+  not speech is dropped. A service that refuses `verbose_json` (400) is
+  asked again for `json`, and so from then on (unless that fails too),
+  without this check.
 - **Echo.** An utterance that begins while the page plays the Front voice's
   or the Lead's speech, or within a second of it stopping, is dropped when
   at least 80% of its words, in order, are words of what was being spoken

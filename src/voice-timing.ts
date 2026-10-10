@@ -2,7 +2,7 @@ import { appendFileSync } from "node:fs";
 import { join } from "node:path";
 import { type Entry, loadConversation } from "./conversation";
 import { nudgesSent } from "./nudge";
-import type { Phantom } from "./phantom";
+import type { DropReason } from "./phantom";
 import { voiceOn } from "./voice-on";
 import type { World } from "./world";
 
@@ -27,7 +27,7 @@ const TIMING_TIMEOUT_MS = 5 * 60_000;
  * not; how long each took after the last one that did; the whole wait, from
  * the end of speech to the Lead heard; and the step that took longest.
  */
-function timingLine(utterance: number, text: string, times: Partial<Record<VoiceStep, Date>>, dropped?: Phantom): string {
+function timingLine(utterance: number, text: string, times: Partial<Record<VoiceStep, Date>>, dropped?: DropReason): string {
   const took: Partial<Record<VoiceStep, number | null>> = {};
   let last = times.spoke;
   for (const step of VOICE_STEPS.slice(1)) {
@@ -59,7 +59,7 @@ export interface Timing {
    * it itself; or it was heard, as `heard`, and dropped for `reason`, a
    * phantom transcript (see `screen`).
    */
-  dropped(phantom?: { reason: Phantom; heard: string }): void;
+  dropped(phantom?: { reason: DropReason; heard: string }): void;
 }
 
 /** A message being timed: its steps so far, and the ids of its entry and of the Lead's first after it. */
@@ -69,7 +69,7 @@ interface Timed {
   raw: string | null;
   times: Partial<Record<VoiceStep, Date>>;
   /** Why it was dropped, a phantom transcript. */
-  dropped?: Phantom;
+  dropped?: DropReason;
   entry?: number;
   said?: number;
 }
