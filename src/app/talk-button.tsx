@@ -1,4 +1,5 @@
 import { type KeyboardEvent, useEffect, useRef, useState } from "react";
+import type { Tab } from "../partner-tabs";
 import type { Speech } from "../speech";
 import type { Transcript, VoiceCommand } from "../transcription";
 import { Ears, HEARING_FILES, Models } from "./hearing";
@@ -108,7 +109,11 @@ class Microphone {
   }
 }
 
-/** `/api/voice` on the server the page came from, opened when first needed, its sends queued until it opens. */
+/**
+ * `/api/voice` on the server the page came from, opened when first needed,
+ * its sends queued until it opens; each time it opens, it first tells
+ * `serve` the tab the page shows, as `shownTab` says it.
+ */
 class VoiceSocket {
   private socket: WebSocket | null = null;
   private queue: (string | ArrayBuffer)[] = [];
@@ -117,7 +122,13 @@ class VoiceSocket {
     private readonly heard: (message: Transcript | Speech) => void,
     private readonly audio: (pcm: ArrayBuffer) => void,
     private readonly lost: () => void,
+    private readonly shownTab: () => VoiceCommand,
   ) {}
+
+  /** Tell `serve` the tab the page shows, when open; one opening tells it anyway. */
+  tellTab() {
+    if (this.socket?.readyState === WebSocket.OPEN) this.socket.send(JSON.stringify(this.shownTab()));
+  }
 
   /** Tell `/api/voice` what the utterance does, or to hush the Lead. */
   command(command: VoiceCommand) {
@@ -141,6 +152,7 @@ class VoiceSocket {
     const socket = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/voice`);
     socket.binaryType = "arraybuffer";
     socket.onopen = () => {
+      socket.send(JSON.stringify(this.shownTab()));
       for (const message of this.queue.splice(0)) socket.send(message);
     };
     socket.onmessage = ({ data }) => {
@@ -265,9 +277,12 @@ const EARLY_BATCHES = 12;
  * answers the final one or hands it to the Lead, and its lines and the
  * Lead's show in the conversation. With `voice` on, both are spoken as they
  * come; a press, or the user talking over them (the microphone watches
- * while they speak, once the page may use it), stops them at once.
+ * while they speak, once the page may use it), stops them at once. One for
+ * the page, whichever `tab` it shows (ADR-0014): what is said goes to that
+ * tab's Front voice, and only that tab's replies are spoken; leaving a tab
+ * stops its speech.
  */
-export function useTalk(voice: boolean) {
+export function useTalk(voice: boolean, tab: Tab) {
   const [state, setState] = useState<Talk>({ mode: "idle" });
   const [interim, setInterim] = useState("");
   const [warning, setWarning] = useState<Warning | null>(null);
@@ -279,6 +294,8 @@ export function useTalk(voice: boolean) {
   const pauseBegan = useRef(0);
   const voiceRef = useRef(voice);
   voiceRef.current = voice;
+  const tabRef = useRef(tab);
+  tabRef.current = tab;
   const socket = useRef<VoiceSocket | null>(null);
   /** The number of the utterance last started; answers about an older one never change the button. */
   const utterance = useRef(0);
@@ -358,7 +375,14 @@ export function useTalk(voice: boolean) {
       setWarning(LOST);
       dispatch({ type: "failed" });
     },
+    () => ({ type: "tab", tab: tabRef.current }),
   );
+
+  // Another tab: serve hears of it, and what this one was saying stops here at once.
+  useEffect(() => {
+    socket.current!.tellTab();
+    if (player.speaking) player.stop();
+  }, [tab]);
 
   /**
    * Each batch `mic` hears: while watching, kept, and heard for the user
@@ -506,7 +530,7 @@ export function TalkButton({ talk: { state, speaking, press, release } }: { talk
       type="button"
       className={`talk ${state.mode}`}
       aria-pressed={recording}
-      title={ends(state) ? (speaking ? "Stop the Lead speaking" : "End the hands-free session") : "Hold to talk, or tap to talk hands-free"}
+      title={ends(state) ? (speaking ? "Stop the speech" : "End the hands-free session") : "Hold to talk, or tap to talk hands-free"}
       onPointerDown={(e) => {
         if (e.button !== 0) return;
         e.currentTarget.setPointerCapture(e.pointerId);
@@ -528,26 +552,28 @@ export function TalkButton({ talk: { state, speaking, press, release } }: { talk
 
 const SAYS: Record<Indicator, string> = { listening: "Listening", thinking: "Thinking", speaking: "Speaking" };
 
-/** The indicator's note: what is heard, or what the user waits on. */
-function detailOf(kind: Indicator, state: Talk, interim: string) {
+/** The indicator's note: what is heard, or what the user waits on: `who`, the tab's agent. */
+function detailOf(kind: Indicator, state: Talk, interim: string, who: string) {
   if (kind === "listening") return interim || (state.mode === "watching" ? "Talk when you are ready." : "");
-  if (kind === "thinking") return state.mode === "transcribing" ? "Transcribing…" : "The Lead is working on it.";
+  if (kind === "thinking") return state.mode === "transcribing" ? "Transcribing…" : `${who} is working on it.`;
   return "Talk over it or tap to stop.";
 }
 
 /**
  * Where the conversation by voice stands, while there is one: listening
- * (with what is heard), thinking (transcribing, or the Lead `working`) or
- * the Lead speaking, with Stop; a session's End; or a note. Nothing while
+ * (with what is heard), thinking (transcribing, or the tab's agent, `who`,
+ * `working`) or speaking, with Stop; a session's End; or a note. Nothing while
  * idle. Why voice failed shows with the page's other warnings, not here.
  */
-export function TalkStatus({ talk: { state, interim, warning, note, speaking, press, hush }, working }: { talk: ReturnType<typeof useTalk>; working: boolean }) {
+export function TalkStatus({ talk: { state, interim, warning, note, speaking, press, hush }, working, who = "The Lead" }: {
+  talk: ReturnType<typeof useTalk>; working: boolean; who?: string;
+}) {
   const kind = indicator(state, { speaking, working });
   const line = kind && (
     <p className={`indicator ${kind}`}>
       <i aria-hidden="true" />
       <b>{SAYS[kind]}</b>
-      <span className={kind === "listening" && interim ? "interim" : undefined}>{detailOf(kind, state, interim)}</span>
+      <span className={kind === "listening" && interim ? "interim" : undefined}>{detailOf(kind, state, interim, who)}</span>
       {kind === "speaking" && <button type="button" onClick={hush}>Stop</button>}
       {ends(state) && kind !== "speaking" && <button type="button" onClick={press}>End</button>}
     </p>

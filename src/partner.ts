@@ -9,13 +9,13 @@ import { DispatchError } from "./dispatch-error";
 import { type DiffFile, parseDiff } from "./diff";
 import { type Harness, MCP_SERVER, rememberLaunch } from "./harness";
 import { nudgeLead } from "./nudge";
-import { PARTNER_NAMES, PARTNER_TABS, type PartnerTab, isPartnerTab } from "./partner-tabs";
+import { PARTNER_NAMES, PARTNER_TABS, type PartnerTab, type Tab, isPartnerTab, isTab } from "./partner-tabs";
 import type { Launch } from "./state";
 import { withFileLock, writeJsonAtomic } from "./state";
 import { type Draft, type ThreadEntry, appendAfter, appendThread, loadThread, openDraft, withThread } from "./thread";
 import { type PullRequestDescription, type World, WorldError, worldErrorMessage } from "./world";
 
-export { PARTNER_NAMES, PARTNER_TABS, type PartnerTab, isPartnerTab };
+export { PARTNER_NAMES, PARTNER_TABS, type PartnerTab, type Tab, isPartnerTab, isTab };
 
 /** The steps that start a Partner, in order: a Gardener's, after writing its home. */
 export const PARTNER_STEPS = ["home", "fetch", "worktree", "tab", "agent start", "agent ready", "prompt"] as const;
@@ -77,6 +77,7 @@ export interface PartnerStart {
 const FILE = "partners.json";
 const MCP_CONFIG = "mcp.json";
 const SKILL = "SKILL.md";
+/** What a Review partner is told of its PR, in its home: its title, branches and description. */
 const PR_BRIEF = "PR.md";
 const LIST_HELP = "Run `nico-agent partner list` to see the Partners";
 
@@ -304,13 +305,38 @@ export async function partnerDiff(world: World, configDir: string, tab: PartnerT
 }
 
 /**
- * The user's message to the tab's Partner: kept in its Thread, then typed
- * into its pane. A Partner that could not take it leaves the message in the
- * Thread, with a warning.
+ * What the Partner works on, as its tab's Front voice reads it (ADR-0014):
+ * for a Review partner, the brief of its PR (title and description) and its
+ * checkout's diff against the PR's base, read from the checkout so it costs
+ * GitHub nothing; nothing for an Idea partner. A part that can't be read is
+ * left out.
  */
-export async function sayToPartner(world: World, configDir: string, tab: PartnerTab, text: string) {
+export async function partnerWork(world: World, configDir: string, partner: Partner): Promise<{ brief?: string; diff?: string }> {
+  const { pr, worktree } = partner;
+  if (!pr) return {};
+  let brief: string;
+  try {
+    brief = readFileSync(join(partnerHome(configDir, partner.tab), PR_BRIEF), "utf8").trim();
+  } catch {
+    brief = `# ${partner.repo}#${pr.number}: ${pr.title}`;
+  }
+  if (!worktree) return { brief };
+  try {
+    return { brief, diff: await world.gitDiff(worktree, `origin/${pr.base}`) };
+  } catch (e) {
+    if (!(e instanceof WorldError)) throw e;
+    return { brief };
+  }
+}
+
+/**
+ * The user's message to the tab's Partner: kept in its Thread, with `raw`,
+ * what was heard when it was spoken, then typed into its pane. A Partner
+ * that could not take it leaves the message in the Thread, with a warning.
+ */
+export async function sayToPartner(world: World, configDir: string, tab: PartnerTab, text: string, raw?: string) {
   const partner = partnerOf(configDir, tab);
-  const entry = await appendThread(configDir, partner.thread, { type: "user", text }, world.now());
+  const entry = await appendThread(configDir, partner.thread, { type: "user", text, ...(raw !== undefined && { raw }) }, world.now());
   const warnings: string[] = [];
   const screen = `run \`herdr agent read ${partner.agent.agent}\` to see its screen`;
   try {

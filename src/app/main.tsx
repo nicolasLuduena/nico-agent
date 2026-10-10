@@ -9,10 +9,11 @@ import { Actions, useBoardActions } from "./forms";
 import { LeadPanel, useConversation } from "./lead-panel";
 import { PAGES, type Page, type PartnerJson, pageOf } from "./partner";
 import { PartnerPanel } from "./partner-panel";
-import { PARTNER_TABS } from "../partner-tabs";
+import { PARTNER_TABS, isPartnerTab } from "../partner-tabs";
 import { ReposPane } from "./repos";
 import { StatsPane } from "./stats-page";
 import { useResource } from "./stream";
+import { useTalk } from "./talk-button";
 import { ThemeToggle } from "./theme-toggle";
 import { type ToastItem, Toasts } from "./toasts";
 
@@ -87,7 +88,10 @@ function useAnswered(board: BoardJson | null) {
  * the Lead panel on the left and the page's own column on the right: the Repos on the Lead page, the
  * charts on the Stats page, and the toasts at the bottom right. A Partner's
  * page is its tab instead (ADR-0014); every page stays mounted while another
- * shows, so switching keeps each one's drafts and picks. The Board is
+ * shows, so switching keeps each one's drafts and picks. The page has one
+ * talk button's worth of voice, which follows the page: on a Partner's tab
+ * it talks to that tab's Front voice and speaks only its replies, elsewhere
+ * the Lead's. The Board is
  * asked of `serve` on load and on each `board-changed`, and `serve` answers
  * from its one-minute cache (ADR-0011), so the page never asks GitHub more
  * often than that.
@@ -104,6 +108,8 @@ function App() {
   const toasts = useToasts(questions);
   const partners = useResource<{ partners?: PartnerJson[] }>("/api/partners", ["partner-changed", "board-changed"]).data?.partners ?? [];
   const onPartner = page !== "lead" && page !== "stats";
+  const voice = useResource<{ voice?: string }>("/api/voice/state", ["voice-changed"]).data?.voice === "on";
+  const talking = useTalk(voice, isPartnerTab(page) ? page : "lead");
   return (
     <>
       <header className="top">
@@ -131,11 +137,11 @@ function App() {
         </div>
       </header>
       <main className={`shell ${page}`} hidden={onPartner}>
-        <LeadPanel status={status} conversation={conversation} summon={toasts.summon} board={board} />
+        <LeadPanel status={status} conversation={conversation} summon={toasts.summon} board={board} voice={voice} talking={talking} />
         {page === "stats" ? <StatsPane /> : <Actions.Provider value={actions}><ReposPane board={board} /></Actions.Provider>}
       </main>
       {PARTNER_TABS.map((tab) => (
-        <PartnerPanel key={tab} tab={tab} partner={partners.find((p) => p.tab === tab)} harnesses={harnesses} repos={board?.configured ?? []} hidden={page !== tab} />
+        <PartnerPanel key={tab} tab={tab} partner={partners.find((p) => p.tab === tab)} harnesses={harnesses} repos={board?.configured ?? []} hidden={page !== tab} talking={talking} />
       ))}
       <Toasts
         items={questions}

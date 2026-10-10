@@ -4,6 +4,7 @@ import { ConfigError, VOICE_DOC, type VoiceEndpoint, loadConfig } from "./config
 import type { FrontVoice } from "./front-voice";
 import { harnesses } from "./harness";
 import type { CliRunner } from "./mcp";
+import { type Tab, isTab, loadPartners } from "./partner";
 import { MIN_LEVEL, PAUSE_MS, SAMPLE_RATE, level, pcmSamples } from "./app/talk";
 import { type Answered, transcribe, wav } from "./voice";
 import type { Stopwatch, Timing } from "./voice-timing";
@@ -43,9 +44,12 @@ function bytesOf(ms: number) {
  * to be transcribed, the user having stopped talking at `spokeAt` (epoch
  * ms); or it is dropped. `hush` stops the Lead's speech (see `speaker`),
  * whatever the utterance does; `played` says the page began playing the
- * Lead's entry `entry` at `at` (epoch ms), for the timing log.
+ * Lead's entry `entry` at `at` (epoch ms), for the timing log. `tab` says
+ * which of the app's tabs the page shows: what is said from then on goes to
+ * that tab's Front voice, and only that tab's replies are spoken to it.
  */
 export type VoiceCommand =
+  | { type: "tab"; tab: Tab }
   | { type: "start"; utterance: number }
   | { type: "end"; spokeAt?: number }
   | { type: "cancel" }
@@ -95,16 +99,17 @@ interface TranscriptionContext {
  * transcript then goes to the Front voice, one after another in the order
  * they were said. From its start until the Front voice has answered it or
  * handed it off, an utterance holds the Lead's speech back, so the Lead
- * never talks over either.
+ * never talks over either. An utterance goes to the Front voice of the tab
+ * the page showed when it started (see `tab`), the Lead's until told.
  */
 export function transcriptionSession(ctx: TranscriptionContext) {
   /** The last vocabulary built, for any page, and which build it came from, so an older one never replaces it. */
   let known = { hint: "", build: 0 };
   let builds = 0;
-  const build = () => {
+  const build = (tab: Tab) => {
     const number = ++builds;
     // Without a vocabulary the service still transcribes, only unprimed.
-    const hint = vocabularyHint(ctx).catch(() => "");
+    const hint = vocabularyHint(ctx, tab).catch(() => "");
     void hint.then((h) => { if (number > known.build) known = { hint: h, build: number }; });
     return hint;
   };
@@ -116,6 +121,8 @@ export function transcriptionSession(ctx: TranscriptionContext) {
     const fail = (utterance: number, error: string, help: string) => send(failure(utterance, error, help));
     /** The finals heard so far: each waits on the one before, so the Front voice hears them in the order they were said. */
     let told = Promise.resolve();
+    /** The tab the page shows, whose Front voice the next utterance goes to. */
+    let tab: Tab = "lead";
 
     /**
      * Transcribe all of `utterance`'s audio so far, primed with `prompt`, and
@@ -155,7 +162,7 @@ export function transcriptionSession(ctx: TranscriptionContext) {
           timing?.handed(cleaned, message);
           utterance.release();
         },
-      });
+      }, utterance.tab);
       if (!handed) timing?.dropped();
     };
 
@@ -178,7 +185,7 @@ export function transcriptionSession(ctx: TranscriptionContext) {
       }
       const endpoint = voice?.transcribe;
       if (!endpoint) return fail(number, "no transcription service is configured", `Add voice.transcribe to config.json (see ${VOICE_DOC})`);
-      current = { number, endpoint, audio: [], bytes: 0, heardUpTo: 0, asking: false, prompt: build(), spokeUpTo: 0, last: null, release: ctx.hold?.() ?? (() => {}) };
+      current = { number, tab, endpoint, audio: [], bytes: 0, heardUpTo: 0, asking: false, prompt: build(tab), spokeUpTo: 0, last: null, release: ctx.hold?.() ?? (() => {}) };
     };
 
     const hear = (chunk: Uint8Array) => {
@@ -213,12 +220,14 @@ export function transcriptionSession(ctx: TranscriptionContext) {
       message(data) {
         if (typeof data !== "string") return hear(data);
         const command = parse(data);
+        if (command?.type === "tab") return void (tab = command.tab);
         if (command?.type === "start") return start(command.utterance);
         const utterance = current;
         current = null;
         if (command?.type !== "end") return utterance?.release();
         if (!utterance) return;
-        const timing = ctx.timing?.start(utterance.number, new Date(command.spokeAt ?? ctx.world.now().getTime()));
+        // Only what goes to the Lead is timed: the log measures the wait for the Lead's reply.
+        const timing = utterance.tab === "lead" ? ctx.timing?.start(utterance.number, new Date(command.spokeAt ?? ctx.world.now().getTime())) : undefined;
         // Transcribed at once, but told, and heard by the Front voice, after the finals before it.
         const final = ask(utterance, "final", finalAnswer(utterance), timing);
         told = told.then(() => final).then(async (message) => {
@@ -242,6 +251,8 @@ export function transcriptionSession(ctx: TranscriptionContext) {
 interface Utterance {
   /** The number the app gave it, which every answer about it carries. */
   number: number;
+  /** The tab whose Front voice hears it. */
+  tab: Tab;
   endpoint: VoiceEndpoint;
   audio: Uint8Array[];
   bytes: number;
@@ -274,6 +285,7 @@ interface Heard {
 function parse(data: string): VoiceCommand | null {
   try {
     const command = JSON.parse(data);
+    if (command?.type === "tab") return isTab(command.tab) ? command : null;
     if (command?.type === "start") return typeof command.utterance === "number" ? command : null;
     if (command?.type === "end") return typeof command.spokeAt === "number" ? command : { type: "end" };
     return command?.type === "cancel" ? command : null;
@@ -293,21 +305,25 @@ function concat(chunks: Uint8Array[]) {
 }
 
 /**
- * The words the transcription service is told to expect, built fresh: the
- * terms of each Repo's glossary, the Harness names, the Repos, and each issue
- * and Spec on the Board by its identifier and title. Whisper reads only the
- * end of a long prompt, so the Board, the likeliest to be said, comes last.
+ * The words the transcription service is told to expect in `tab`, built
+ * fresh: the terms of each Repo's glossary, the Harness names, the Repos, and
+ * each issue and Spec on the Board by its identifier and title. Whisper reads
+ * only the end of a long prompt, so the Board, the likeliest to be said, comes
+ * last. In a Partner's tab, which knows nothing of the Board or other Repos
+ * (ADR-0014), only its Repo's terms and name, and the Harness names.
  */
-async function vocabularyHint(ctx: TranscriptionContext): Promise<string> {
+async function vocabularyHint(ctx: TranscriptionContext, tab: Tab): Promise<string> {
   let config;
   try {
     config = loadConfig(ctx.configDir);
   } catch {
     return "";
   }
-  const terms = unique(config.repos.flatMap((repo) => glossaryTerms(repo.path)));
-  const names = unique([...harnesses(ctx.configDir).map((h) => h.name), ...config.repos.map((r) => r.slug)]);
-  const issues = await boardIssues(ctx.runCli);
+  const partner = tab === "lead" ? undefined : loadPartners(ctx.configDir)[tab];
+  const repos = partner ? config.repos.filter((r) => r.slug === partner.repo) : tab === "lead" ? config.repos : [];
+  const terms = unique(repos.flatMap((repo) => glossaryTerms(repo.path)));
+  const names = unique([...harnesses(ctx.configDir).map((h) => h.name), ...repos.map((r) => r.slug)]);
+  const issues = tab === "lead" ? await boardIssues(ctx.runCli) : [];
   return [
     terms.length ? `Glossary: ${terms.join(", ")}.` : "",
     names.length ? `Names: ${names.join(", ")}.` : "",

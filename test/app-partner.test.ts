@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { DRAFT_REQUESTS, type PartnerJson, type ThreadState, handOffArgs, pageOf, partnerSayArgs, partnerStanding, partnerStartArgs, quoteFile, quoteLines, reduceThread, threadCards, withQuote } from "../src/app/partner";
 import type { DiffFile } from "../src/diff";
+import { appendThread } from "../src/thread";
 import { setup } from "./harness";
 
 const FLAGS = ["--harness", "claude", "--model", "opus", "--effort", "high"];
@@ -57,6 +60,24 @@ describe("a Thread's cards", () => {
     state = reduceThread(state, { type: "send", key: "send-2", text: "Again", at: "2026-09-30T13:00:00.000Z" });
     state = reduceThread(state, { type: "failed", key: "send-2", error: "no Review partner runs" });
     expect(threadCards(state).at(-1)).toMatchObject({ text: "Again", error: "no Review partner runs" });
+  });
+
+  test("a spoken message shows what was heard when the Front voice cleaned it, and the Front voice's lines what it answered", async () => {
+    const { cli, configDir, loaded } = await withPartner();
+    await cli("partner", "say", "review", "--raw", "um what changed", "--", "What changed?");
+    await cli("partner", "say", "review", "--raw", "Why?", "--", "Why?");
+    const { thread } = JSON.parse(readFileSync(join(configDir, "partners.json"), "utf8")).review;
+    await appendThread(configDir, thread, { type: "front-voice", text: "Only retry.ts changed.", heard: "say that again" }, new Date());
+    await appendThread(configDir, thread, { type: "front-voice", text: "I'll ask the Review partner." }, new Date());
+    const cards = threadCards(await loaded());
+    expect(cards).toMatchObject([
+      { who: "user", text: "What changed?", raw: "um what changed" },
+      { who: "user", text: "Why?" },
+      { who: "front-voice", text: "Only retry.ts changed.", heard: "say that again" },
+      { who: "front-voice", text: "I'll ask the Review partner." },
+    ]);
+    expect(cards[1]).not.toHaveProperty("raw");
+    expect(cards[3]).not.toHaveProperty("heard");
   });
 
   test("only the last draft is open to hand; an earlier one shows as replaced, a handed one as handed with the text sent", async () => {

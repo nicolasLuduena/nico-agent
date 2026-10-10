@@ -6,7 +6,7 @@ import smartTurn from "./app/models/smart-turn-v3.2-cpu.onnx" with { type: "file
 import { HEARING_FILES } from "./app/hearing";
 import { type PreviewLookup, cachedPreviews } from "./preview";
 import { type CliRunner, isToolCall, mcpHandler, partnerServer, withJson } from "./mcp";
-import { PARTNER_TABS, loadPartners, partnerMcpPath } from "./partner";
+import { PARTNER_TABS, isTab, loadPartners, partnerMcpPath } from "./partner";
 import { type EventName, Events } from "./events";
 import { loadConfig, standingOrders } from "./config";
 import { leadStatus } from "./lead";
@@ -155,12 +155,14 @@ export function webHandler(context: WebContext) {
 export function webSockets(context: Pick<WebContext, "world" | "configDir" | "runCli" | "events">): Sockets {
   const timing = stopwatch(context);
   const speech = speaker(context);
-  const front = frontVoice({ ...context, say: (text) => speech.line(text) });
+  const front = frontVoice({ ...context, say: (text, tab) => speech.line(text, tab) });
   const transcription = transcriptionSession({ ...context, timing, front, hold: speech.hold });
   context.events?.on("conversation-entry", () => {
     speech.changed();
     timing.changed();
   });
+  // A Partner's reply is spoken to the pages on its tab.
+  context.events?.on("partner-changed", () => speech.changed());
   // serve's tick, every few seconds, logs the spoken messages the Lead never answered.
   context.events?.on("board-changed", () => timing.expire());
   return {
@@ -171,7 +173,9 @@ export function webSockets(context: Pick<WebContext, "world" | "configDir" | "ru
         speech.join(peer);
         return {
           message(data) {
-            const command = typeof data === "string" ? parseJson(data) as { type?: unknown; entry?: unknown; at?: unknown } | null : null;
+            const command = typeof data === "string" ? parseJson(data) as { type?: unknown; entry?: unknown; at?: unknown; tab?: unknown } | null : null;
+            // The tab the page shows: its Front voice hears what is said next, and only its speech is heard.
+            if (command?.type === "tab" && isTab(command.tab)) speech.tab(peer, command.tab);
             if (command?.type === "hush") {
               front.hush();
               return speech.hush();

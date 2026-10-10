@@ -90,7 +90,7 @@ const LEAD_STATUS_HELP = "Run `nico-agent lead status` to see the Lead";
 const LEAD_SCREEN_HELP = "Run `herdr agent read lead` to see its screen";
 const PARTNER_START_USAGE = "nico-agent partner start <tab> (--pr <url> | --repo <owner/name>) --harness <harness> --model <model> --effort <effort> [--port <port>]";
 const PARTNER_DIFF_USAGE = "nico-agent partner diff <tab>";
-const PARTNER_SAY_USAGE = "nico-agent partner say <tab> <text>";
+const PARTNER_SAY_USAGE = "nico-agent partner say <tab> [--raw <transcript>] <text>";
 const PARTNER_REPLY_USAGE = "nico-agent partner reply <tab> <text>";
 const PARTNER_DRAFT_USAGE = "nico-agent partner draft <tab> <text>";
 const PARTNER_HAND_OFF_USAGE = "nico-agent partner hand-off <tab> <draft> [--text <markdown>]";
@@ -595,7 +595,9 @@ const commands: Command[] = [
     name: "partner say",
     usage: PARTNER_SAY_USAGE,
     summary: "Write to a Partner: the message is kept in its Thread and typed into its pane",
-    flags: {},
+    flags: {
+      "--raw": { value: true, description: "what the transcription service heard, when the message was spoken; kept on the entry" },
+    },
     positionals: ["tab", "text..."],
     examples: ["nico-agent partner say review \"What does retry.ts do?\""],
     run: partnerSayCommand,
@@ -1906,7 +1908,8 @@ async function partnerDiffCommand(args: Args, ctx: RunContext): Promise<Output> 
 
 async function partnerSayCommand(args: Args, ctx: RunContext): Promise<Output> {
   const tab = tabArg(args, PARTNER_SAY_USAGE);
-  const { entry, warnings } = await sayToPartner(ctx.world, ctx.configDir, tab, textAfterTab(args, PARTNER_SAY_USAGE));
+  const raw = args.flags["--raw"];
+  const { entry, warnings } = await sayToPartner(ctx.world, ctx.configDir, tab, textAfterTab(args, PARTNER_SAY_USAGE), typeof raw === "string" ? raw : undefined);
   return { data: { said: entry.id, ...(warnings.length && { warnings }) }, help: [`Run \`nico-agent partner log ${tab}\` to read the Thread`] };
 }
 

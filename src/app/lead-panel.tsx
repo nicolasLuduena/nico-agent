@@ -53,12 +53,13 @@ export type ConversationState = ReturnType<typeof useConversation>;
  * one's line calls `summon` to bring its toast forward), and the composer,
  * which stays put and keeps its draft while entries arrive.
  */
-export function LeadPanel({ status, conversation, summon, board }: {
+export function LeadPanel({ status, conversation, summon, board, voice, talking }: {
   status: LeadStatusJson | null; conversation: ConversationState; summon: (key: string) => void; board: BoardJson | null;
+  /** Whether Voice is on, and the page's talk button (see `useTalk`). */
+  voice: boolean; talking: ReturnType<typeof useTalk>;
 }) {
   const { state, send, dismiss, failure } = conversation;
   const [drawer, setDrawer] = useState(false);
-  const voice = useResource<{ voice?: string }>("/api/voice/state", ["voice-changed"]).data?.voice === "on";
   const { busy, outcome, act } = usePost();
   const shown = cards(state);
   const scroller = useRef<HTMLOListElement>(null);
@@ -74,7 +75,6 @@ export function LeadPanel({ status, conversation, summon, board }: {
     atEnd.current = true;
     return send(text, question, raw);
   };
-  const talking = useTalk(voice);
   const warnings = notices({ failure, status, talk: talking.warning, board });
   return (
     <section className="lead-panel" aria-label="Conversation with the Lead">

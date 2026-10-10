@@ -7,10 +7,12 @@ import { withFileLock } from "./state";
  * shape: an id, a type, a time; kept append-only.
  */
 export type ThreadEntry = { id: number; at: string } & (
-  /** A message from the user, typed into the Partner's pane. */
-  | { type: "user"; text: string }
+  /** A message from the user, typed into the Partner's pane; `raw` is what the transcription service heard, when it was spoken. */
+  | { type: "user"; text: string; raw?: string }
   /** The Partner's reply, through its `say`. */
   | { type: "partner"; text: string }
+  /** A line of the tab's Front voice (ADR-0014), and what the user said to it when it answered that itself. */
+  | { type: "front-voice"; text: string; heard?: string }
   /** A Hand-off the Partner drafted, open until the user hands it or a later draft replaces it. */
   | { type: "draft"; text: string }
   /** The draft `draft` the user handed to the Lead, as approved; the Lead's Conversation holds it as the user's message. */

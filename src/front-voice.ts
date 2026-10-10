@@ -1,22 +1,34 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { sayArgs } from "./app/lead";
+import { partnerSayArgs } from "./app/partner";
 import { ConfigError, VOICE_DOC, frontVoiceEndpoint, loadConfig } from "./config";
 import { type Ask, type Authored, type Entry, append, isCorrection, loadConversation, orient } from "./conversation";
 import type { CliRunner } from "./mcp";
+import { PARTNER_NAMES, type PartnerTab, type Tab, loadPartners, partnerWork } from "./partner";
+import { PARTNER_IS } from "./partner-tabs";
 import { describeProposed } from "./proposals";
 import { withFileLock, writeJsonAtomic } from "./state";
-import { frontVoiceReply } from "./voice";
+import { appendThread, loadThread, type ThreadEntry } from "./thread";
+import { type HandOffTarget, THE_LEAD, frontVoiceReply } from "./voice";
 import type { World } from "./world";
 
-/** What the Front voice says the moment it hands a message to the Lead. */
-export const ASKING_THE_LEAD = "I'll ask the Lead.";
+/** What the Front voice says the moment it hands a message to `to`. */
+export function asking(to: HandOffTarget) {
+  return `I'll ask ${to.name}.`;
+}
+
+/** What the Front voice in the Lead's tab says the moment it hands a message to the Lead. */
+export const ASKING_THE_LEAD = asking(THE_LEAD);
 
 /** How much of the Board, as `board --json` prints it, the Front voice reads: enough for a busy Board, short of a slow request. */
 const BOARD_CHARS = 16_000;
 
 /** The id the Front voice's endpoint keeps its requests together by (`x-opencode-session`), beside the Conversation it belongs to. */
 const SESSION_FILE = "front-voice-session.json";
+
+/** How much of a PR's diff the Review tab's Front voice reads: as much as the Lead's tab reads of the Board. */
+const DIFF_CHARS = 16_000;
 
 /** A warning about the Front voice for the app to show: what went wrong and what to do. */
 export interface FrontVoiceWarning {
@@ -26,9 +38,9 @@ export interface FrontVoiceWarning {
 
 /** What the Front voice tells of one thing the user said, as it goes. */
 export interface Hearing {
-  /** It could not answer: the message went to the Lead as heard, and why. */
+  /** It could not answer: the message went to its tab's agent as heard, or nowhere, and why. */
   warn(warning: FrontVoiceWarning): void;
-  /** It is about to hand `message` to the Lead (`cleaned` false when sent as heard). */
+  /** It is about to hand `message` to its tab's agent (`cleaned` false when sent as heard). */
   handing(message: { text: string; raw: string }, cleaned: boolean): void;
 }
 
@@ -37,36 +49,55 @@ interface FrontVoiceContext {
   world: World;
   configDir: string;
   runCli: CliRunner;
-  /** Read a line aloud, after what waits to be spoken (see `speaker`). */
-  say(text: string): void;
+  /** Read a line aloud to the pages on `tab`, after what waits to be spoken (see `speaker`). */
+  say(text: string, tab: Tab): void;
+}
+
+/**
+ * The Front voice of one tab (ADR-0014): who it hands off to and the
+ * question being answered, if any; what it reads; how it hands a message off
+ * and where its own lines are recorded.
+ */
+interface TabVoice {
+  to: HandOffTarget;
+  question: Ask | null;
+  read(vocabulary: string): Promise<string>;
+  handOff(message: { text: string; raw: string }): Promise<void>;
+  record(said: string, heard?: string): Promise<void>;
 }
 
 /**
  * The Front voice (ADR-0013): it hears what the user said, as transcribed,
  * and either answers it from what it reads, sentence by sentence aloud, or
- * hands it to the Lead as the user's message, saying it will ask the Lead.
- * It reads the conversation, the Lead's orient packet and the Board; its
- * one tool is `hand_off`. Its lines go in the Conversation under its own
- * name. `hush` (the user talking over it) stops what it is saying and drops
- * the rest of its reply; a hand-off is still made.
+ * hands it to its tab's agent as the user's message, saying it will ask. In
+ * the Lead's tab it reads the conversation, the Lead's orient packet and the
+ * Board, and its lines go in the Conversation under its own name; in a
+ * Partner's tab (ADR-0014), that Partner's Thread, where its lines go too.
+ * Its one tool is `hand_off`. `hush` (the user talking over it) stops what
+ * it is saying and drops the rest of its reply; a hand-off is still made.
  */
 export function frontVoice(ctx: FrontVoiceContext) {
   /** The replies streaming now: a hush silences each, and stops the ones not yet handing off. */
   const replying = new Set<Reply>();
 
   /**
-   * Answer `raw`, what the user said, primed with `vocabulary`, the words to
-   * spell as written; resolves with whether it was handed to the Lead.
+   * Answer `raw`, what the user said in `tab`, primed with `vocabulary`, the
+   * words to spell as written; resolves with whether it was handed off.
    */
-  async function hear(raw: string, vocabulary: string, { warn, handing }: Hearing): Promise<boolean> {
-    const question = asked(loadConversation(ctx.configDir), raw);
+  async function hear(raw: string, vocabulary: string, { warn, handing }: Hearing, tab: Tab): Promise<boolean> {
+    const voice = tab === "lead" ? leadVoice(raw) : partnerVoice(tab);
+    if (!voice) {
+      const name = PARTNER_NAMES[tab as PartnerTab];
+      warn({ error: `no ${name} runs to hear it`, help: [`Start the ${name} in its tab, then talk again`] });
+      return false;
+    }
+    const { to, question } = voice;
     const handOff = async (message: { text: string; raw: string }, cleaned: boolean) => {
       handing(message, cleaned);
-      const { stdout, exitCode } = await ctx.runCli(["say", ...sayArgs(message.text, question?.id, message.raw)]);
-      if (exitCode !== 0) console.error(`the Front voice's hand-off failed: ${stdout.trim()}`);
+      await voice.handOff(message);
     };
     const asHeard = async (error: string, help: string) => {
-      warn({ error, help: [`Sent to the Lead as heard. ${help}`] });
+      warn({ error, help: [`Sent to ${to.name} as heard. ${help}`] });
       await handOff({ text: raw, raw }, false);
       return true;
     };
@@ -80,8 +111,8 @@ export function frontVoice(ctx: FrontVoiceContext) {
     const reply: Reply = { hushed: false, calling: false, stop: new AbortController() };
     replying.add(reply);
     try {
-      const context = await readContext(vocabulary, question);
-      const answer = await frontVoiceReply(ctx.world, endpoint, { heard: raw, context, sessionId: await sessionId(ctx.configDir) }, reply.stop.signal);
+      const context = await voice.read(vocabulary);
+      const answer = await frontVoiceReply(ctx.world, endpoint, { heard: raw, context, sessionId: await sessionId(ctx.configDir), to }, reply.stop.signal);
       // Talked over while it thought: nothing to say, and nothing it was handing off.
       if ("error" in answer && reply.stop.signal.aborted) return false;
       if ("error" in answer) return await asHeard(answer.error, answer.help);
@@ -90,7 +121,7 @@ export function frontVoice(ctx: FrontVoiceContext) {
       const line = (sentence: string) => {
         if (reply.hushed || !sentence) return;
         said.push(sentence);
-        ctx.say(sentence);
+        ctx.say(sentence, tab);
       };
       let words = "";
       let handedOff = false;
@@ -112,7 +143,7 @@ export function frontVoice(ctx: FrontVoiceContext) {
           if (!made) continue;
           line(words.trim());
           words = "";
-          line(ASKING_THE_LEAD);
+          line(asking(to));
           handedOff = true;
           await handOff(made, true);
         }
@@ -128,15 +159,62 @@ export function frontVoice(ctx: FrontVoiceContext) {
       line(words.trim());
       // Talked over before it said anything, it answered nothing the user would hear again.
       if (!said.length && !handedOff && !reply.hushed) return await asHeard("the Front voice answered nothing", "Check voice.front.model, or try another");
-      if (said.length) await append(ctx.configDir, { type: "front-voice", text: said.join(" "), ...(!handedOff && { heard: raw }) }, ctx.world.now());
+      if (said.length) await voice.record(said.join(" "), handedOff ? undefined : raw);
       return handedOff;
     } finally {
       replying.delete(reply);
     }
   }
 
-  /** What the Front voice reads besides what was said: the words to spell, the Lead's orient packet, the Board, and the question being answered. */
-  async function readContext(vocabulary: string, question: Ask | null): Promise<string> {
+  /** Hand a message off by running `argv`, the CLI command that writes it as the user's. */
+  async function handOffThrough(argv: string[]) {
+    const { stdout, exitCode } = await ctx.runCli(argv);
+    if (exitCode !== 0) console.error(`the Front voice's hand-off failed: ${stdout.trim()}`);
+  }
+
+  /** The Front voice of the Lead's tab, hearing `raw`: it hands off to the Lead, into the Conversation, where its lines go too. */
+  function leadVoice(raw: string): TabVoice {
+    const question = asked(loadConversation(ctx.configDir), raw);
+    return {
+      to: THE_LEAD,
+      question,
+      read: (vocabulary) => readLeadContext(vocabulary, question),
+      handOff: (message) => handOffThrough(["say", ...sayArgs(message.text, question?.id, message.raw)]),
+      async record(said, heard) {
+        await append(ctx.configDir, { type: "front-voice", text: said, ...(heard !== undefined && { heard }) }, ctx.world.now());
+      },
+    };
+  }
+
+  /**
+   * The Front voice of a Partner's tab, while it has a Partner: it reads
+   * that Partner's Thread, hands off into it as `partner say` does, and
+   * records its lines there. It never reads the Board or the Lead's
+   * Conversation, and never writes to them.
+   */
+  function partnerVoice(tab: PartnerTab): TabVoice | null {
+    const partner = loadPartners(ctx.configDir)[tab];
+    if (!partner) return null;
+    return {
+      to: { name: `the ${PARTNER_NAMES[tab]}`, is: PARTNER_IS[tab] },
+      question: null,
+      read: async (vocabulary) => [
+        vocabulary && `Terms: ${vocabulary}`,
+        ...await partnerWork(ctx.world, ctx.configDir, partner).then(({ brief, diff }) => [
+          brief && `The PR the user reviews:\n${brief}`,
+          diff && `Its diff against its base:\n${diff.length > DIFF_CHARS ? `${diff.slice(0, DIFF_CHARS)} …` : diff}`,
+        ]),
+        `The conversation so far, oldest first:\n${loadThread(ctx.configDir, partner.thread).slice(-LAST_ENTRIES).map((e) => threadLine(e, PARTNER_NAMES[tab])).join("\n") || "(nothing yet)"}`,
+      ].filter(Boolean).join("\n\n"),
+      handOff: (message) => handOffThrough(["partner", "say", ...partnerSayArgs(tab, message.text, message.raw)]),
+      async record(said, heard) {
+        await appendThread(ctx.configDir, partner.thread, { type: "front-voice", text: said, ...(heard !== undefined && { heard }) }, ctx.world.now());
+      },
+    };
+  }
+
+  /** What the Front voice reads in the Lead's tab besides what was said: the words to spell, the Lead's orient packet, the Board, and the question being answered. */
+  async function readLeadContext(vocabulary: string, question: Ask | null): Promise<string> {
     const packet = orient(ctx.configDir);
     const board = await ctx.runCli(["board", "--json"]).then(({ stdout }) => stdout.trim(), () => "");
     const proposals = packet.proposals.map((p) => `- ${describeProposed(p).line}: ${p.reason}`);
@@ -192,6 +270,25 @@ function sessionId(dir: string): Promise<string> {
     writeJsonAtomic(join(dir, SESSION_FILE), { id, firstEntryAt: first });
     return id;
   });
+}
+
+/** How many of a Thread's last entries a Partner's Front voice reads. */
+const LAST_ENTRIES = 20;
+
+/** An entry as a Partner's Front voice reads the Thread, a line each, by who wrote it. */
+function threadLine(entry: ThreadEntry, partner: string): string {
+  switch (entry.type) {
+    case "user":
+      return `User: ${entry.text}`;
+    case "partner":
+      return `${partner}: ${entry.text}`;
+    case "front-voice":
+      return `${entry.heard ? `User (to you): ${entry.heard}\n` : ""}You (the Front voice): ${entry.text}`;
+    case "draft":
+      return `${partner}, drafting a hand-off to the Lead: ${entry.text}`;
+    case "handoff":
+      return `User handed this to the Lead: ${entry.text}`;
+  }
 }
 
 /** A reply streaming: whether the user talked over it, whether it began a hand-off, and how to stop its request. */
