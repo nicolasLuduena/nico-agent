@@ -235,6 +235,16 @@ waiting on it. What it said stays recorded; a hand-off it had begun is read
 to its end, silently, and still reaches the Lead. "I'll ask the Lead." is
 said the moment the hand-off is whole, not at the end of the reply.
 
+Every voice request names itself `nico-agent/<version>` in its
+`User-Agent`, and each Front voice request carries the conversation's
+session id in `x-opencode-session`, as opencode go asks of its clients
+([Where can I use it?](https://opencode.ai/docs/go/#where-can-i-use-it));
+other endpoints ignore it. The id is kept in `front-voice-session.json`
+beside the Conversation, so it lasts across messages and a `serve` restart,
+and a new one is made once the Conversation is reset (`conversation.jsonl`
+removed). An endpoint that refuses a request for a missing header gets a
+warning naming the header.
+
 When it is unreachable, its key is not set, it answers an error, or it
 answers nothing, what you said goes to the Lead as heard, with a warning
 above the composer: the conversation never waits on it.

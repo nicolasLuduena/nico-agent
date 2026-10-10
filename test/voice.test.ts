@@ -1,6 +1,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
+import { VERSION } from "../src/version";
 import { setup } from "./harness";
 
 const LOCAL = {
@@ -49,7 +50,9 @@ describe("voice check", () => {
     writeVoice(configDir, { speak: LOCAL.speak });
     world.environment.set("OPENCODE_API_KEY", "sk-test");
     const bodies: Record<string, any> = {};
+    const agents: (string | null)[] = [];
     world.endpoint("http://127.0.0.1:8880/v1/audio/speech", async (request) => {
+      agents.push(request.headers.get("user-agent"));
       bodies.speak = await request.json();
       world.clock = new Date(world.clock.getTime() + 10);
       // Streamed: the headers come at once, the audio 300ms later.
@@ -63,8 +66,11 @@ describe("voice check", () => {
       return new Response(audio, { headers: { "content-type": "audio/wav" } });
     });
     let authorization: string | null | undefined;
+    let session: string | null | undefined;
     world.endpoint("https://opencode.ai/zen/go/v1/chat/completions", async (request) => {
       authorization = request.headers.get("authorization");
+      session = request.headers.get("x-opencode-session");
+      agents.push(request.headers.get("user-agent"));
       bodies.front = await request.json();
       world.clock = new Date(world.clock.getTime() + 1200);
       const call = { type: "function", function: { name: "hand_off", arguments: '{"message":"Dispatch the next issue on the Board."}' } };
@@ -97,6 +103,9 @@ describe("voice check", () => {
     expect(bodies.speak).toMatchObject({ model: "kokoro", voice: "af_heart", response_format: "wav" });
     expect(bodies.speak.input).toBeString();
     expect(authorization).toBe("Bearer sk-test");
+    // opencode go routes by session and asks each client to name itself.
+    expect(session).toMatch(/^\S{16,}$/);
+    expect(agents).toEqual([`nico-agent/${VERSION}`, `nico-agent/${VERSION}`]);
     expect(bodies.front).toMatchObject({ model: "deepseek-v4.1-flash", stream: false });
     expect(bodies.front.tools.map((t: { function: { name: string } }) => t.function.name)).toEqual(["hand_off"]);
     expect(bodies.front.messages.at(-1).content).toContain("um");
