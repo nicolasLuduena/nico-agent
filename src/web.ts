@@ -268,6 +268,8 @@ const API_READS: Record<string, string[]> = {
   "/api/peek": ["peek"],
   "/api/partners": ["partner", "list"],
   "/api/partner/log": ["partner", "log"],
+  "/api/partner/diff": ["partner", "diff"],
+  "/api/partner/prs": ["partner", "prs"],
 };
 
 /** The query parameters a read passes on as the CLI flags of the same names; others are ignored. */
@@ -279,6 +281,7 @@ const API_READ_PARAMS: Record<string, string[]> = {
 const API_READ_ARG: Record<string, string[]> = {
   "/api/peek": ["issue", "repo"],
   "/api/partner/log": ["tab"],
+  "/api/partner/diff": ["tab"],
 };
 
 /** `?days=7&repo=acme/api` on `/api/stats` as `--days 7 --repo acme/api`; `?issue=acme/api%237` on `/api/peek` as `-- acme/api#7`, `?repo=acme/api` as `-- acme/api`. */

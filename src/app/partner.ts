@@ -1,3 +1,5 @@
+import { DIFF_SIGNS, type DiffFile, type DiffLine } from "../diff";
+import type { PrToReview, ReviewedPr } from "../partner";
 import type { PartnerTab } from "../partner-tabs";
 import type { ThreadEntry } from "../thread";
 import type { LaunchChoice } from "./actions";
@@ -26,6 +28,8 @@ export interface PartnerJson {
   /** Its Agent state as herdr reports it. */
   state: string;
   repo: string;
+  /** The PR a Review partner reviews. */
+  pr?: ReviewedPr;
   agent: string;
   harness: string;
   model: string;
@@ -130,9 +134,43 @@ export function threadCards({ entries, sends }: ThreadState): ThreadCard[] {
   return cards;
 }
 
-/** `partner start`'s arguments: the tab, the Repo, the launch picked, and the page's port, so the Partner reaches this `serve`. */
-export function partnerStartArgs(tab: PartnerTab, repo: string, { harness, model, effort }: LaunchChoice, port: string): string[] {
-  return [tab, "--repo", repo, "--harness", harness, "--model", model, "--effort", effort, ...(port ? ["--port", port] : [])];
+/** A PR the Review tab offers, as `nico-agent partner prs --json` lists it. */
+export type PrJson = PrToReview;
+
+/**
+ * `partner start`'s arguments: the tab, the PR a Review partner reviews or
+ * the Repo an Idea partner works in, the launch picked, and the page's port,
+ * so the Partner reaches this `serve`.
+ */
+export function partnerStartArgs(tab: PartnerTab, target: { repo: string } | { pr: string }, { harness, model, effort }: LaunchChoice, port: string): string[] {
+  const where = "pr" in target ? ["--pr", target.pr] : ["--repo", target.repo];
+  return [tab, ...where, "--harness", harness, "--model", model, "--effort", effort, ...(port ? ["--port", port] : [])];
+}
+
+/** A file of the diff, quoted into the message: its path. */
+export function quoteFile(file: DiffFile) {
+  return `\`${file.path}\``;
+}
+
+/**
+ * Lines of the diff, quoted into the message: the path and their line
+ * numbers in the PR's version (the old ones, when only removed lines are
+ * picked), then the lines themselves as a diff.
+ */
+export function quoteLines(file: DiffFile, lines: DiffLine[]) {
+  const kept = lines.flatMap((l) => l.new ?? []);
+  const numbers = kept.length ? kept : lines.flatMap((l) => l.old ?? []);
+  const first = numbers[0];
+  const last = numbers.at(-1);
+  const range = first === last ? `${first}` : `${first}-${last}`;
+  const body = lines.map((l) => `${DIFF_SIGNS[l.kind]}${l.text}`);
+  return [`\`${file.path}:${range}\`${kept.length ? "" : " (removed)"}`, "```diff", ...body, "```"].join("\n");
+}
+
+/** The message with `quote` added after what the user already wrote, on its own lines. */
+export function withQuote(text: string, quote: string) {
+  const before = text.trimEnd();
+  return before ? `${before}\n\n${quote}\n` : `${quote}\n`;
 }
 
 /** `partner say`'s arguments: the text after `--`, so it is never read as a flag. */

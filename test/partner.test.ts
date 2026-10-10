@@ -7,16 +7,18 @@ async function withRepo(slug = "acme/api", path = "/src/api") {
   const ctx = setup();
   ctx.world.addClone(path, `git@github.com:${slug}.git`);
   await ctx.cli("repo", "add", slug, "--path", path);
+  ctx.world.addPr({ repo: slug, number: 12, title: "Retry with backoff", body: "Retries failed calls.\n\nCloses #7.", baseBranch: "main", headBranch: "agent/api-7" });
   ctx.world.calls.length = 0;
   return { ...ctx, home: join(ctx.configDir, "partners", "review") };
 }
 
 const FLAGS = ["--harness", "claude", "--model", "opus", "--effort", "high"];
+const PR = "https://github.com/acme/api/pull/12";
 
-/** A Review partner started on acme/api, its calls forgotten. */
+/** A Review partner started on acme/api#12, its calls forgotten. */
 async function started() {
   const ctx = await withRepo();
-  const { exitCode, stdout } = await ctx.cli("partner", "start", "review", "--repo", "acme/api", ...FLAGS);
+  const { exitCode, stdout } = await ctx.cli("partner", "start", "review", "--pr", PR, ...FLAGS);
   expect(stdout).not.toContain("error");
   expect(exitCode).toBe(0);
   ctx.world.calls.length = 0;
@@ -24,21 +26,22 @@ async function started() {
 }
 
 describe("partner start", () => {
-  test("a worktree of the Repo on its default branch, the agent in a partner tab, connected to its own MCP server and prompted with the Partner skill", async () => {
-    const { cli, world, home } = await withRepo();
-    const { stdout, exitCode } = await cli("partner", "start", "review", "--repo", "acme/api", ...FLAGS);
+  test("an Idea partner: a worktree of the Repo on its default branch, the agent in a partner tab, connected to its own MCP server and prompted with the Partner skill", async () => {
+    const { cli, world, configDir } = await withRepo();
+    const home = join(configDir, "partners", "idea");
+    const { stdout, exitCode } = await cli("partner", "start", "idea", "--repo", "acme/api", ...FLAGS);
     expect(stdout).not.toContain("error");
     expect(exitCode).toBe(0);
     expect(world.calls).toEqual([
       "git -C /src/api default-branch",
       "git -C /src/api fetch origin",
-      "herdr worktree create --cwd /src/api --branch partner/review-api-20260930120000 --base origin/main --label api:review --no-focus",
-      "herdr tab create --workspace w1 --cwd /worktrees/review-api-20260930120000 --label partner --no-focus",
-      `herdr agent start partner-review --kind claude --pane w1:p2 -- --model opus --effort high --mcp-config ${home}/mcp.json`,
-      `herdr agent prompt partner-review Read the Partner skill at ${home}/SKILL.md and follow it: you are the Review partner, in a worktree of acme/api.`,
+      "herdr worktree create --cwd /src/api --branch partner/idea-api-20260930120000 --base origin/main --label api:idea --no-focus",
+      "herdr tab create --workspace w1 --cwd /worktrees/idea-api-20260930120000 --label partner --no-focus",
+      `herdr agent start partner-idea --kind claude --pane w1:p2 -- --model opus --effort high --mcp-config ${home}/mcp.json`,
+      `herdr agent prompt partner-idea Read the Partner skill at ${home}/SKILL.md and follow it: you are the Idea partner, in a worktree of acme/api.`,
     ]);
     expect(JSON.parse(readFileSync(join(home, "mcp.json"), "utf8"))).toEqual({
-      mcpServers: { "nico-agent": { type: "http", url: "http://127.0.0.1:42069/mcp/partner/review" } },
+      mcpServers: { "nico-agent": { type: "http", url: "http://127.0.0.1:42069/mcp/partner/idea" } },
     });
     expect(readFileSync(join(home, "SKILL.md"), "utf8")).toStartWith("# A Partner\n");
   });
@@ -55,7 +58,7 @@ describe("partner start", () => {
     expect(skill).toContain("never edit, create or delete a file in the worktree, and never commit, push, or open an issue or a PR");
     for (const section of ["Problem", "Approach", "Ruled out", "Open questions"]) expect(skill).toContain(section);
     // The Review partner's skill holds no idea role.
-    await cli("partner", "start", "review", "--repo", "acme/api", ...FLAGS);
+    await cli("partner", "start", "review", "--pr", PR, ...FLAGS);
     expect(readFileSync(join(configDir, "partners", "review", "SKILL.md"), "utf8")).not.toContain("## The Idea partner");
   });
 
@@ -67,16 +70,15 @@ describe("partner start", () => {
 
   test("a second start while it runs is a no-op; another Repo is refused until it ends", async () => {
     const { cli, world } = await started();
-    const again = await cli("partner", "start", "review", "--repo", "acme/api", ...FLAGS, "--json");
+    const again = await cli("partner", "start", "review", "--pr", PR, ...FLAGS, "--json");
     expect(again.exitCode).toBe(0);
     expect(again.json().partner).toBe("already running (no-op)");
     expect(world.calls.filter((c) => c.startsWith("herdr") && c !== "herdr agent list")).toEqual([]);
-    world.addClone("/src/web", "git@github.com:acme/web.git");
-    await cli("repo", "add", "acme/web", "--path", "/src/web");
-    const other = await cli("partner", "start", "review", "--repo", "acme/web", ...FLAGS, "--json");
+    world.addPr({ repo: "acme/api", number: 13, headBranch: "agent/api-8" });
+    const other = await cli("partner", "start", "review", "--pr", "https://github.com/acme/api/pull/13", ...FLAGS, "--json");
     expect(other.exitCode).toBe(1);
-    expect(other.json().error).toBe("the Review partner already runs in acme/api");
-    const port = await cli("partner", "start", "review", "--repo", "acme/api", ...FLAGS, "--port", "8080", "--json");
+    expect(other.json().error).toBe("the Review partner already runs on acme/api#12");
+    const port = await cli("partner", "start", "review", "--pr", PR, ...FLAGS, "--port", "8080", "--json");
     expect(port.json().error).toBe("the Review partner already runs connected to http://127.0.0.1:42069/mcp/partner/review");
   });
 
@@ -85,6 +87,101 @@ describe("partner start", () => {
     expect((await cli("partner", "start", "lead", "--repo", "acme/api", ...FLAGS)).exitCode).toBe(2);
     expect((await cli("partner", "start", "idea", "--repo", "acme/nope", ...FLAGS)).exitCode).toBe(1);
     expect(world.calls.filter((c) => c.startsWith("herdr"))).toEqual([]);
+  });
+});
+
+describe("the Review partner", () => {
+  test("opening a PR starts it in a worktree at the tip of the PR's head branch, prompted with the review role and the PR's title, description and base", async () => {
+    const { cli, world, home } = await withRepo();
+    const { stdout, exitCode } = await cli("partner", "start", "review", "--pr", PR, ...FLAGS);
+    expect(stdout).not.toContain("error");
+    expect(exitCode).toBe(0);
+    expect(world.calls).toEqual([
+      "github pr description acme/api#12",
+      "git -C /src/api fetch origin +refs/heads/agent/api-7:refs/remotes/origin/agent/api-7",
+      "git -C /src/api fetch origin +refs/heads/main:refs/remotes/origin/main",
+      "herdr worktree create --cwd /src/api --branch partner/review-api-12-20260930120000 --base origin/agent/api-7 --label api#12:review --no-focus",
+      "herdr tab create --workspace w1 --cwd /worktrees/review-api-12-20260930120000 --label partner --no-focus",
+      `herdr agent start partner-review --kind claude --pane w1:p2 -- --model opus --effort high --mcp-config ${home}/mcp.json`,
+      `herdr agent prompt partner-review Read the Partner skill at ${home}/SKILL.md and follow it: you are the Review partner for acme/api#12, in a worktree of its head branch agent/api-7. Its title, description and base are in ${home}/PR.md.`,
+    ]);
+    expect(readFileSync(join(home, "PR.md"), "utf8")).toBe([
+      "# acme/api#12: Retry with backoff",
+      "",
+      PR,
+      "",
+      "- Head: `agent/api-7`, checked out in your worktree as it was when you started; later pushes to the PR are not in it",
+      "- Base: `main`; its diff is `git diff origin/main...HEAD`",
+      "",
+      "## Description",
+      "",
+      "Retries failed calls.",
+      "",
+      "Closes #7.",
+      "",
+    ].join("\n"));
+    const listed = (await cli("partner", "list", "--json")).json().partners[0];
+    expect(listed.pr).toEqual({ number: 12, url: PR, title: "Retry with backoff", base: "main", head: "agent/api-7" });
+  });
+
+  test("its PR may be named as owner/name#N; its Repo comes from the PR", async () => {
+    const { cli } = await withRepo();
+    const { exitCode } = await cli("partner", "start", "review", "--pr", "acme/api#12", ...FLAGS);
+    expect(exitCode).toBe(0);
+    expect((await cli("partner", "list", "--json")).json().partners[0].repo).toBe("acme/api");
+  });
+
+  test("a PR that is closed, from a fork, in no configured Repo, or not found is refused before anything starts", async () => {
+    const { cli, world } = await withRepo();
+    world.addPr({ repo: "acme/api", number: 20, state: "merged", headBranch: "agent/api-9" });
+    world.addPr({ repo: "acme/api", number: 21 });
+    const refused = async (pr: string) => (await cli("partner", "start", "review", "--pr", pr, ...FLAGS, "--json")).json().error;
+    expect(await refused("acme/api#20")).toBe("https://github.com/acme/api/pull/20 is merged; a Review partner reviews open PRs only");
+    expect(await refused("acme/api#21")).toBe("https://github.com/acme/api/pull/21 comes from a fork, so its head branch can't be checked out from acme/api's origin");
+    expect(await refused("acme/web#1")).toBe("acme/web is not a configured Repo");
+    expect(await refused("acme/api#99")).toBe("acme/api#99 is not a PR on GitHub");
+    expect(await refused("nonsense")).toBe("`nonsense` is not a PR");
+    expect(world.calls.filter((c) => c.startsWith("herdr"))).toEqual([]);
+  });
+
+  test("the review tab takes a PR, and the idea tab a Repo", async () => {
+    const { cli } = await withRepo();
+    expect((await cli("partner", "start", "review", "--repo", "acme/api", ...FLAGS, "--json")).json().error).toBe("missing required flag --pr");
+    expect((await cli("partner", "start", "idea", "--pr", PR, ...FLAGS, "--json")).json().error).toBe("missing required flag --repo");
+  });
+
+  test("its skill forbids pushing, commenting, approving and merging", async () => {
+    const { home } = await started();
+    const skill = readFileSync(join(home, "SKILL.md"), "utf8");
+    for (const act of ["push", "comment", "approve", "merge"]) expect(skill).toContain(act);
+    expect(skill).toContain("## The Review partner");
+  });
+});
+
+describe("partner prs", () => {
+  test("the Repos' open PRs a Review partner can check out, newest first: no closed PR and no fork's", async () => {
+    const { cli, world } = await withRepo();
+    world.addClone("/src/web", "git@github.com:acme/web.git");
+    await cli("repo", "add", "acme/web", "--path", "/src/web");
+    world.addPr({ repo: "acme/api", number: 13, title: "Drop the cache", author: "nico", draft: true, headBranch: "agent/api-8" });
+    world.addPr({ repo: "acme/api", number: 14, state: "closed", headBranch: "old" });
+    world.addPr({ repo: "acme/api", number: 15, title: "From a fork" });
+    world.addPr({ repo: "acme/web", number: 3, title: "Dark mode", author: "ana", baseBranch: "develop", headBranch: "dark" });
+    const listed = await cli("partner", "prs", "--json");
+    expect(listed.exitCode).toBe(0);
+    expect(listed.json().prs).toEqual([
+      { repo: "acme/api", number: 13, url: "https://github.com/acme/api/pull/13", title: "Drop the cache", author: "nico", draft: true, base: "main", head: "agent/api-8" },
+      { repo: "acme/api", number: 12, url: PR, title: "Retry with backoff", author: "someone", draft: false, base: "main", head: "agent/api-7" },
+      { repo: "acme/web", number: 3, url: "https://github.com/acme/web/pull/3", title: "Dark mode", author: "ana", draft: false, base: "develop", head: "dark" },
+    ]);
+  });
+
+  test("a Repo GitHub can't list is a warning; the others still list", async () => {
+    const { cli, world } = await withRepo();
+    world.callFailures.set("github open prs acme/api", "gh: rate limited");
+    const listed = (await cli("partner", "prs", "--json")).json();
+    expect(listed.prs).toEqual([]);
+    expect(listed.warnings).toEqual(["could not list acme/api's open PRs: gh: rate limited"]);
   });
 });
 
@@ -173,7 +270,9 @@ describe("partner list", () => {
   test("each Partner with its Repo, launch, where it stands and its Agent state", async () => {
     const { cli } = await started();
     expect((await cli("partner", "list", "--json")).json().partners).toEqual([
-      { tab: "review", partner: "running", state: "working", repo: "acme/api", agent: "partner-review", harness: "claude", model: "opus", effort: "high", workspace: "w1", startedAt: "2026-09-30T12:00:00.000Z" },
+      {
+        tab: "review", partner: "running", state: "working", repo: "acme/api",
+        pr: { number: 12, url: PR, title: "Retry with backoff", base: "main", head: "agent/api-7" }, agent: "partner-review", harness: "claude", model: "opus", effort: "high", workspace: "w1", startedAt: "2026-09-30T12:00:00.000Z" },
     ]);
   });
 });

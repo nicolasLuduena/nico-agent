@@ -3,7 +3,7 @@ import { RateLimited, type World, WorldError } from "./world";
 /** How long `serve` reuses a GitHub read, for every Board, the Lead's `board` tool and `advance` alike. */
 export const GITHUB_READ_CACHE_MS = 60_000;
 
-/** The GitHub reads the Board makes; writes (the Claim) and PR activity always go through. */
+/** The GitHub reads the Board makes, and the Review tab's PR reads; writes (the Claim) and PR activity always go through. */
 const CACHED_READS = new Set<keyof World>([
   "githubViewer",
   "githubIssues",
@@ -13,6 +13,8 @@ const CACHED_READS = new Set<keyof World>([
   "githubAppRepos",
   "githubLinkedPullRequests",
   "githubPullRequest",
+  "githubPullRequestDescription",
+  "githubOpenPullRequests",
   "githubBranchPullRequests",
 ]);
 

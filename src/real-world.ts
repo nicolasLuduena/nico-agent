@@ -1,7 +1,7 @@
 import { type GitHubCall, currentCaller, recordCall, splitHeaders } from "./github-calls";
 import { LinearSource } from "./linear";
 import { realpathSync } from "node:fs";
-import type { Address, CheckResult, GitHubIssue, IssueDescription, GitHubSubIssue, PullRequest, PullRequestActivity, PullRequestComment, Pages, RequestHandler, SocketPeer, SocketSession, Sockets, World } from "./world";
+import type { Address, CheckResult, GitHubIssue, IssueDescription, GitHubSubIssue, OpenPullRequest, PullRequest, PullRequestActivity, PullRequestDescription, PullRequestComment, Pages, RequestHandler, SocketPeer, SocketSession, Sockets, World } from "./world";
 import { RateLimited, READY_LABEL, WorldError } from "./world";
 
 interface Exec {
@@ -476,6 +476,24 @@ export class RealWorld implements World {
     return toListedPr(slug, JSON.parse(result.stdout));
   }
 
+  async githubPullRequestDescription(slug: string, number: number): Promise<PullRequestDescription | null> {
+    const args = ["pr", "view", String(number), "--repo", slug, "--json", `${LISTED_PR_FIELDS},title,body`];
+    const result = await this.readExec(slug, args);
+    if (result.exitCode !== 0) {
+      if (/Could not resolve to a PullRequest|no pull requests found/i.test(result.stderr)) return null;
+      throw await ghFailure(result.stderr, result.as);
+    }
+    const pr: ListedPr & { title: string; body: string } = JSON.parse(result.stdout);
+    return { ...toListedPr(slug, pr), title: pr.title, body: pr.body };
+  }
+
+  async githubOpenPullRequests(slug: string): Promise<OpenPullRequest[]> {
+    const fields = `${LISTED_PR_FIELDS},title,author,isDraft`;
+    const listed: (ListedPr & { title: string; author: { login: string } | null; isDraft: boolean })[] =
+      JSON.parse(await this.read(slug, ["pr", "list", "--repo", slug, "--state", "open", "--limit", "100", "--json", fields]));
+    return listed.map((pr) => ({ ...toListedPr(slug, pr), title: pr.title, author: pr.author?.login ?? "ghost", draft: pr.isDraft }));
+  }
+
   async githubPullRequestActivity(slug: string, number: number, since?: Date): Promise<PullRequestActivity> {
     const [owner, name] = slug.split("/") as [string, string];
     const args = ["api", "graphql", "-f", `query=${PR_ACTIVITY_QUERY}`, "-f", `owner=${owner}`, "-f", `name=${name}`, "-F", `number=${number}`];
@@ -545,6 +563,16 @@ export class RealWorld implements World {
       if (!branch) throw new WorldError(`could not find the default branch of origin in ${path}`);
       return branch;
     }
+  }
+
+  async gitDiff(path: string, base: string) {
+    // Not through `git`, which trims: a hunk's last line may be a blank context line.
+    const args = ["diff", "--no-color", "--no-ext-diff", "--find-renames", `${base}...HEAD`];
+    // Paths as they are, not C-quoted, so a non-ASCII one reads as it is named.
+    const result = await exec(["git", "-C", path, "-c", "core.quotePath=false", ...args], { GIT_TERMINAL_PROMPT: "0" });
+    if (result.exitCode === 0) return result.stdout;
+    const reason = result.stderr.trim().split("\n")[0] || `exit code ${result.exitCode}`;
+    throw new WorldError(`\`git ${args.join(" ")}\` failed in ${path}: ${reason}`);
   }
 
   async herdrWorktreeCreate({ cwd, branch, base, label }: { cwd: string; branch: string; base: string; label: string }) {

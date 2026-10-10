@@ -7,21 +7,50 @@ Standing orders, and reaches the Lead only when you hand it off.
 
 ## Starting one
 
-In its tab, pick the Repo and the Harness, model and Effort (the form starts on
-your last launch), and press Start. nico-agent fetches the Repo's clone,
-creates a herdr worktree workspace on its default branch, starts the agent in a
-`partner` tab as the herdr agent `partner-review` or `partner-idea`, and
-prompts it with the Partner skill, written to
+In its tab, pick what it works on and the Harness, model and Effort (the form
+starts on your last launch), and press Start: the Review tab takes an open PR,
+picked from the Repos' open PRs or pasted by its URL; the Ideas tab takes a
+Repo. nico-agent fetches the Repo's clone, creates a herdr worktree workspace,
+starts the agent in a `partner` tab as the herdr agent `partner-review` or
+`partner-idea`, and prompts it with the Partner skill, written to
 `~/.config/nico-agent/partners/<tab>/SKILL.md` beside its MCP config. The same
 from a shell:
 
 ```sh
+nico-agent partner prs
+nico-agent partner start review --pr https://github.com/acme/api/pull/12 --harness claude --model opus --effort high
 nico-agent partner start idea --repo acme/api --harness claude --model opus --effort high
 nico-agent partner list
 ```
 
 A start while it runs is a no-op, a failed one resumes from its step, and a
-start in another Repo or launch is refused until you end it.
+start on another PR, Repo or launch is refused until you end it.
+
+## Reviewing a PR
+
+The Review partner's worktree is a local `partner/review-…` branch at the tip
+of the PR's head branch: the head branch itself is usually checked out in its
+Implementer's worktree already, and git checks a branch out in one worktree
+only. The PR's title, description and base are read from GitHub once, when it
+starts, into `partners/review/PR.md`, which its prompt names. Both the
+checkout and the diff are the PR as it was then: end the Partner and start it
+again to review later pushes. A fork's PR
+can't be reviewed, since its head is not on the Repo's origin.
+
+The tab shows the PR's diff beside the Thread, read from the checkout with
+`git diff origin/<base>...HEAD`, so it costs no GitHub call. Click a file's
+path to quote it into your message, click a line to quote it, or drag over
+lines of a hunk to quote the range; a quote names the path and line numbers
+and carries the lines as a diff.
+
+```sh
+nico-agent partner diff review
+```
+
+The Review partner may read and run the code, but never pushes, comments,
+approves or merges: its MCP server offers no such tool, and its skill forbids
+doing it through its shell. Anything of that kind goes to the Lead in a
+Hand-off.
 
 ## The Thread
 

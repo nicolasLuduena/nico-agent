@@ -6,13 +6,14 @@ import { type LaunchDefaults, type Repo, findRepo, loadConfig, writeJson } from 
 import { sayToLead } from "./conversation";
 import { type Progress, agentSteps, chooseLaunch, prompt, repoName, runPhase } from "./dispatch";
 import { DispatchError } from "./dispatch-error";
+import { type DiffFile, parseDiff } from "./diff";
 import { type Harness, MCP_SERVER, rememberLaunch } from "./harness";
 import { nudgeLead } from "./nudge";
 import { PARTNER_NAMES, PARTNER_TABS, type PartnerTab, isPartnerTab } from "./partner-tabs";
 import type { Launch } from "./state";
 import { withFileLock, writeJsonAtomic } from "./state";
 import { type Draft, type ThreadEntry, appendAfter, appendThread, loadThread, openDraft, withThread } from "./thread";
-import { type World, WorldError } from "./world";
+import { type PullRequestDescription, type World, WorldError, worldErrorMessage } from "./world";
 
 export { PARTNER_NAMES, PARTNER_TABS, type PartnerTab, isPartnerTab };
 
@@ -28,6 +29,8 @@ export type PartnerStep = (typeof PARTNER_STEPS)[number];
 export interface Partner extends Progress<PartnerStep> {
   tab: PartnerTab;
   repo: string;
+  /** The PR a Review partner reviews; its worktree is on the PR's head branch. */
+  pr?: ReviewedPr;
   branch: string;
   base: string;
   worktree?: string;
@@ -43,9 +46,23 @@ export interface Partner extends Progress<PartnerStep> {
   updatedAt: string;
 }
 
+/** The PR a Review partner reviews, as it was when the Partner started. */
+export interface ReviewedPr {
+  number: number;
+  url: string;
+  title: string;
+  /** The branch it merges into, which its diff is taken against. */
+  base: string;
+  /** Its head branch, which the Partner's worktree checks out. */
+  head: string;
+}
+
 export interface PartnerRequest extends LaunchDefaults {
   tab: PartnerTab;
-  repo: string;
+  /** The Repo an Idea partner works in. */
+  repo?: string;
+  /** The PR a Review partner reviews, by URL or `owner/name#N`; its Repo comes with it. */
+  pr?: string;
   /** The MCP server scoped to this tab's Thread. */
   mcpUrl: string;
 }
@@ -60,6 +77,7 @@ export interface PartnerStart {
 const FILE = "partners.json";
 const MCP_CONFIG = "mcp.json";
 const SKILL = "SKILL.md";
+const PR_BRIEF = "PR.md";
 const LIST_HELP = "Run `nico-agent partner list` to see the Partners";
 
 /** Where `serve` answers a tab's Partner: its own MCP server, scoped to its Thread. */
@@ -102,8 +120,7 @@ function partnerHome(configDir: string, tab: PartnerTab) {
  */
 export async function startPartner(world: World, configDir: string, request: PartnerRequest): Promise<PartnerStart> {
   const { tab } = request;
-  const repo = findRepo(loadConfig(configDir), request.repo);
-  if (!repo) throw new DispatchError(`${request.repo} is not a configured Repo`, ["Run `nico-agent repo list` to see the Repos"]);
+  const { repo, pr } = await partnerTarget(world, configDir, request);
   const harness = await chooseLaunch(world, configDir, request);
   // opencode2 takes its MCP server in its config content, not in args.
   if (harness.launchMode === "herdr-kind" && !harness.mcpArgs?.length) {
@@ -112,7 +129,9 @@ export async function startPartner(world: World, configDir: string, request: Par
     ]);
   }
   const existing = loadPartners(configDir)[tab];
-  if (existing) refuseOther(existing, request);
+  const reviewed: ReviewedPr | undefined = pr && { number: pr.number, url: pr.url, title: pr.title, base: pr.baseBranch, head: pr.headBranch! };
+  const refuse = (record: Partner) => refuseOther(record, request, repo.slug, reviewed);
+  if (existing) refuse(existing);
   const fresh = async (): Promise<Partner> => {
     const now = world.now();
     const stamp = now.toISOString().replace(/\D/g, "").slice(0, 14);
@@ -120,8 +139,10 @@ export async function startPartner(world: World, configDir: string, request: Par
     return {
       tab,
       repo: repo.slug,
-      branch: `partner/${tab}-${name}-${stamp}`,
-      base: `origin/${await world.gitDefaultBranch(repo.path)}`,
+      ...(reviewed && { pr: reviewed }),
+      // The PR's head branch is likely checked out in its Implementer's worktree already, and git checks a branch out once.
+      branch: `partner/${tab}-${name}${reviewed ? `-${reviewed.number}` : ""}-${stamp}`,
+      base: `origin/${reviewed?.head ?? await world.gitDefaultBranch(repo.path)}`,
       agent: { agent: `partner-${tab}`, harness: request.harness, model: request.model, effort: request.effort },
       mcpUrl: request.mcpUrl,
       thread: `threads/${tab}-${stamp}.jsonl`,
@@ -131,11 +152,11 @@ export async function startPartner(world: World, configDir: string, request: Par
     };
   };
   // Checked again under the lease: another start may have made the tab's Partner since.
-  const leased = await lease(world, configDir, tab, existing ? undefined : await fresh(), (record) => refuseOther(record, request));
+  const leased = await lease(world, configDir, tab, existing ? undefined : await fresh(), refuse);
   const record = leased.record;
   if (leased.created) {
     rememberLaunch(configDir, request.harness, request.model, request.effort);
-    return { partner: await runPartner(world, configDir, repo, harness, record), outcome: "new" };
+    return { partner: await runPartner(world, configDir, repo, harness, record, pr?.body), outcome: "new" };
   }
   const done = record.completed.length === PARTNER_STEPS.length && !record.failure;
   if (done) {
@@ -143,15 +164,75 @@ export async function startPartner(world: World, configDir: string, request: Par
     return { partner: record, outcome: "existing" };
   }
   const resumedFrom = record.failure?.step ?? PARTNER_STEPS.find((s) => !record.completed.includes(s))!;
-  return { partner: await runPartner(world, configDir, repo, harness, record), outcome: "resumed", resumedFrom };
+  return { partner: await runPartner(world, configDir, repo, harness, record, pr?.body), outcome: "resumed", resumedFrom };
 }
 
-/** Refuse a start that is not the running Partner's own: another Repo, launch, or `serve`. */
-function refuseOther(existing: Partner, request: PartnerRequest) {
+/** Where the tab's Partner works: the PR a Review partner reviews, with its Repo, or the Repo an Idea partner works in. */
+async function partnerTarget(world: World, configDir: string, request: PartnerRequest): Promise<{ repo: Repo; pr?: PullRequestDescription }> {
+  const config = loadConfig(configDir);
+  const configured = (slug: string) => {
+    const repo = findRepo(config, slug);
+    if (!repo) throw new DispatchError(`${slug} is not a configured Repo`, ["Run `nico-agent repo list` to see the Repos"]);
+    return repo;
+  };
+  if (request.tab !== "review") return { repo: configured(request.repo ?? "") };
+  const ref = parsePrRef(request.pr ?? "");
+  if (!ref) throw new DispatchError(`\`${request.pr}\` is not a PR`, ["Pass --pr a PR URL, such as https://github.com/acme/api/pull/12, or acme/api#12"]);
+  const repo = configured(ref.slug);
+  const pr = await world.githubPullRequestDescription(repo.slug, ref.number);
+  if (!pr) throw new DispatchError(`${repo.slug}#${ref.number} is not a PR on GitHub`, [`Check the PR number on https://github.com/${repo.slug}/pulls`]);
+  const pick = "Run `nico-agent partner prs` to see the open PRs you can review";
+  if (pr.state !== "open") throw new DispatchError(`${pr.url} is ${pr.state}; a Review partner reviews open PRs only`, [pick]);
+  if (!pr.headBranch) throw new DispatchError(`${pr.url} comes from a fork, so its head branch can't be checked out from ${repo.slug}'s origin`, [pick]);
+  return { repo, pr };
+}
+
+/** A PR named by its URL or as `owner/name#N`. */
+export function parsePrRef(ref: string): { slug: string; number: number } | null {
+  const match = ref.trim().match(/^(?:https?:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/pull\/(\d+)\/?(?:[?#].*)?|([\w.-]+\/[\w.-]+)#(\d+))$/i);
+  if (!match) return null;
+  return { slug: (match[1] ?? match[3])!, number: Number(match[2] ?? match[4]) };
+}
+
+/** A PR the user may open in the Review tab. */
+export interface PrToReview {
+  repo: string;
+  number: number;
+  url: string;
+  title: string;
+  author: string;
+  draft: boolean;
+  base: string;
+  head: string;
+}
+
+/**
+ * Every Repo's open PRs a Review partner can check out, Repo by Repo and
+ * newest first: a fork's head is not on the Repo's origin, so its PRs are
+ * left out. A Repo GitHub can't list is a warning.
+ */
+export async function prsToReview(world: World, configDir: string): Promise<{ prs: PrToReview[]; warnings: string[] }> {
+  const warnings: string[] = [];
+  const listed = await Promise.all(loadConfig(configDir).repos.map(async (repo) => {
+    try {
+      return await world.githubOpenPullRequests(repo.slug);
+    } catch (e) {
+      warnings.push(`could not list ${repo.slug}'s open PRs: ${worldErrorMessage(e)}`);
+      return [];
+    }
+  }));
+  const prs = listed.flat().flatMap((pr) => pr.headBranch
+    ? [{ repo: pr.repo, number: pr.number, url: pr.url, title: pr.title, author: pr.author, draft: pr.draft, base: pr.baseBranch, head: pr.headBranch }]
+    : []);
+  return { prs, warnings };
+}
+
+/** Refuse a start that is not the running Partner's own: another Repo or PR, launch, or `serve`. */
+function refuseOther(existing: Partner, request: PartnerRequest, repo: string, pr: ReviewedPr | undefined) {
   const { tab } = request;
   const { harness, model, effort } = existing.agent;
-  const where = existing.repo !== request.repo
-    ? `in ${existing.repo}`
+  const where = (existing.pr && existing.pr.number !== pr?.number) || existing.repo !== repo
+    ? existing.pr ? `on ${existing.repo}#${existing.pr.number}` : `in ${existing.repo}`
     : harness !== request.harness || model !== request.model || effort !== request.effort
       ? `on ${harness} ${model} ${effort}`
       : existing.mcpUrl !== request.mcpUrl ? `connected to ${existing.mcpUrl}` : null;
@@ -177,7 +258,7 @@ export async function partnerRows(world: World, configDir: string) {
             : "gone from herdr";
     const { agent: name, harness, model, effort } = p.agent;
     return {
-      tab: p.tab, partner, state: agent?.state ?? "unknown", repo: p.repo, agent: name, harness, model, effort,
+      tab: p.tab, partner, state: agent?.state ?? "unknown", repo: p.repo, ...(p.pr && { pr: p.pr }), agent: name, harness, model, effort,
       ...(p.workspace && { workspace: p.workspace }),
       ...(p.failure && { failure: p.failure }),
       startedAt: p.createdAt,
@@ -208,6 +289,18 @@ export async function endPartner(world: World, configDir: string, tab: PartnerTa
 export function partnerThread(configDir: string, tab: PartnerTab): { partner: Partner; entries: ThreadEntry[] } {
   const partner = partnerOf(configDir, tab);
   return { partner, entries: loadThread(configDir, partner.thread) };
+}
+
+/**
+ * The diff of the PR the tab's Partner reviews, read from its checkout
+ * against the PR's base (`git diff origin/<base>...HEAD`), so it costs GitHub nothing.
+ */
+export async function partnerDiff(world: World, configDir: string, tab: PartnerTab): Promise<{ partner: Partner; pr: ReviewedPr; files: DiffFile[] }> {
+  const partner = partnerOf(configDir, tab);
+  const { pr, worktree } = partner;
+  if (!pr) throw new DispatchError(`the ${PARTNER_NAMES[tab]} reviews no PR, so it has no diff`, [`Run \`nico-agent partner log ${tab}\` to read its Thread`]);
+  if (!worktree) throw new DispatchError(`the ${PARTNER_NAMES[tab]} has no worktree yet`, [LIST_HELP, `Run the same \`nico-agent partner start ${tab}\` again to resume it`]);
+  return { partner, pr, files: parseDiff(await world.gitDiff(worktree, `origin/${pr.base}`)) };
 }
 
 /**
@@ -266,19 +359,25 @@ function openToHand(entries: ThreadEntry[], tab: PartnerTab, draft: number): Dra
   throw new DispatchError(why, [`Run \`nico-agent partner log ${tab}\` to see the Thread`]);
 }
 
-/** Run the steps `record` has not completed, as the runner holding its lease. */
-async function runPartner(world: World, configDir: string, repo: Repo, harness: Harness, record: Partner) {
+/** Run the steps `record` has not completed, as the runner holding its lease; `prBody` is a Review partner's PR description, as GitHub has it now. */
+async function runPartner(world: World, configDir: string, repo: Repo, harness: Harness, record: Partner, prBody = "") {
   const home = partnerHome(configDir, record.tab);
+  const reviewed = record.pr;
   const steps: Record<PartnerStep, () => Promise<void>> = {
     home: async () => {
       writeJson(home, MCP_CONFIG, { mcpServers: { [MCP_SERVER]: { type: "http", url: record.mcpUrl } } });
       writeFileSync(join(home, SKILL), partnerSkill + (ROLES[record.tab] ?? ""));
+      if (reviewed) writeFileSync(join(home, PR_BRIEF), prBrief(record.repo, reviewed, prBody));
     },
     fetch: async () => {
-      await world.gitFetch(repo.path);
+      if (!reviewed) return await world.gitFetch(repo.path);
+      // Both by name: the head for the worktree, the base for its diff.
+      await world.gitFetch(repo.path, reviewed.head);
+      await world.gitFetch(repo.path, reviewed.base);
     },
     worktree: async () => {
-      const worktree = await world.herdrWorktreeCreate({ cwd: repo.path, branch: record.branch, base: record.base, label: `${repoName(repo)}:${record.tab}` });
+      const label = `${repoName(repo)}${reviewed ? `#${reviewed.number}` : ""}:${record.tab}`;
+      const worktree = await world.herdrWorktreeCreate({ cwd: repo.path, branch: record.branch, base: record.base, label });
       record.worktree = worktree.path;
       record.workspace = worktree.workspace;
     },
@@ -287,7 +386,10 @@ async function runPartner(world: World, configDir: string, repo: Repo, harness: 
       mcp: { mcpUrl: record.mcpUrl, mcpConfig: join(home, MCP_CONFIG) },
     }), record.agent, "partner"),
     prompt: async () => {
-      const text = `Read the Partner skill at ${join(home, SKILL)} and follow it: you are the ${PARTNER_NAMES[record.tab]}, in a worktree of ${record.repo}.`;
+      const skill = `Read the Partner skill at ${join(home, SKILL)} and follow it: you are the ${PARTNER_NAMES[record.tab]}`;
+      const text = reviewed
+        ? `${skill} for ${record.repo}#${reviewed.number}, in a worktree of its head branch ${reviewed.head}. Its title, description and base are in ${join(home, PR_BRIEF)}.`
+        : `${skill}, in a worktree of ${record.repo}.`;
       await prompt(world, record.agent.agent, text);
     },
   };
@@ -303,6 +405,23 @@ async function runPartner(world: World, configDir: string, repo: Repo, harness: 
     await release(world, configDir, record);
   }
   return record;
+}
+
+/** What a Review partner is told of its PR: its title, branches, how to see its diff, and its description. */
+function prBrief(repo: string, pr: ReviewedPr, body: string) {
+  return [
+    `# ${repo}#${pr.number}: ${pr.title}`,
+    "",
+    pr.url,
+    "",
+    `- Head: \`${pr.head}\`, checked out in your worktree as it was when you started; later pushes to the PR are not in it`,
+    `- Base: \`${pr.base}\`; its diff is \`git diff origin/${pr.base}...HEAD\``,
+    "",
+    "## Description",
+    "",
+    body.trim() || "(none)",
+    "",
+  ].join("\n");
 }
 
 /**

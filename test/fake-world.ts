@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import type { Address, IssueDescription, LinearIssue, GitHubIssue, GitHubSubIssue, PullRequest, PullRequestActivity, Pages, RequestHandler, Sockets, World } from "../src/world";
+import type { Address, IssueDescription, LinearIssue, GitHubIssue, GitHubSubIssue, OpenPullRequest, PullRequest, PullRequestActivity, PullRequestDescription, Pages, RequestHandler, Sockets, World } from "../src/world";
 import { WorldError } from "../src/world";
 
 export class FakeWorld implements World {
@@ -59,7 +59,9 @@ export class FakeWorld implements World {
   /** Each issue's description, by `slug#N` or Linear identifier; empty when unset. */
   descriptions = new Map<string, string>();
   /** PRs `githubPullRequest` finds, by `slug#N`, besides linked ones. */
-  prs = new Map<string, PullRequest>();
+  prs = new Map<string, PullRequest & Partial<Omit<OpenPullRequest & PullRequestDescription, keyof PullRequest>>>();
+  /** What `git diff <base>...HEAD` prints in each checkout, by its path; empty when unset. */
+  diffs = new Map<string, string>();
 
   async linearIssue(identifier: string) {
     this.call(`linear issue ${identifier}`);
@@ -85,8 +87,8 @@ export class FakeWorld implements World {
     this.linearClaimed.push(identifier);
   }
 
-  /** Add a PR `githubPullRequest` can find. */
-  addPr(pr: Partial<PullRequest> & { repo: string; number: number }) {
+  /** Add a PR `githubPullRequest` can find, with its title, description, author and draft state when a test cares. */
+  addPr(pr: Partial<PullRequest & Omit<OpenPullRequest & PullRequestDescription, keyof PullRequest>> & { repo: string; number: number }) {
     this.prs.set(`${pr.repo}#${pr.number}`, {
       url: `https://github.com/${pr.repo}/pull/${pr.number}`, state: "open", baseBranch: "main", ...pr,
     });
@@ -95,6 +97,21 @@ export class FakeWorld implements World {
   async githubPullRequest(slug: string, number: number) {
     this.call(`github pr ${slug}#${number}`);
     return this.prs.get(`${slug}#${number}`) ?? this.knownPrs().find((pr) => pr.repo === slug && pr.number === number) ?? null;
+  }
+
+  async githubPullRequestDescription(slug: string, number: number): Promise<PullRequestDescription | null> {
+    this.call(`github pr description ${slug}#${number}`);
+    const found = this.prs.get(`${slug}#${number}`);
+    if (!found) return null;
+    const { title, body, author: _, draft: __, ...pr } = found;
+    return { ...pr, title: title ?? `PR ${number}`, body: body ?? "" };
+  }
+
+  async githubOpenPullRequests(slug: string): Promise<OpenPullRequest[]> {
+    this.call(`github open prs ${slug}`);
+    return [...this.prs.values()].filter((pr) => pr.repo === slug && pr.state === "open").reverse().map(({ body: _, ...pr }) => ({
+      ...pr, title: pr.title ?? `PR ${pr.number}`, author: pr.author ?? "someone", draft: pr.draft ?? false,
+    }));
   }
 
   /** What `githubPullRequestActivity` reports of each PR, by `slug#N`; an open draft with nothing on it when unset. */
@@ -316,6 +333,11 @@ export class FakeWorld implements World {
   async gitRemoteBranches(path: string) {
     this.call(`git -C ${path} ls-remote --heads origin`);
     return this.remoteBranches.get(path) ?? [this.defaultBranches.get(path) ?? "main"];
+  }
+
+  async gitDiff(path: string, base: string) {
+    this.call(`git -C ${path} diff ${base}...HEAD`);
+    return this.diffs.get(path) ?? "";
   }
 
   async gitDefaultBranch(path: string) {

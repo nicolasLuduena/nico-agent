@@ -16,7 +16,8 @@ import { describePrs, garden, gardenRepo, gardenerRows, startWaitingGardeners } 
 import { NUDGE_INTERVAL_MS, nudgeLead, sendPendingNudge } from "./nudge";
 import { linearIdentifier } from "./linear";
 import { peek } from "./peek";
-import { PARTNER_TABS, type PartnerTab, endPartner, handOff, isPartnerTab, partnerMcpPath, partnerRows, partnerThread, partnerWrites, sayToPartner, startPartner } from "./partner";
+import { diffSize } from "./diff";
+import { PARTNER_TABS, type PartnerTab, endPartner, handOff, isPartnerTab, partnerDiff, partnerMcpPath, partnerRows, prsToReview, partnerThread, partnerWrites, sayToPartner, startPartner } from "./partner";
 import { openDraft } from "./thread";
 import { PR_WATCH_INTERVAL_MS, watchPrs } from "./pr-events";
 import { PROPOSABLE, withJson } from "./mcp";
@@ -87,7 +88,8 @@ const GARDEN_USAGE = "nico-agent garden <repo> [--pr <url>...]";
 const LEAD_START_USAGE = "nico-agent lead start [--harness <harness>] [--model <model>] [--effort <effort>] [--port <port>]";
 const LEAD_STATUS_HELP = "Run `nico-agent lead status` to see the Lead";
 const LEAD_SCREEN_HELP = "Run `herdr agent read lead` to see its screen";
-const PARTNER_START_USAGE = "nico-agent partner start <tab> --repo <owner/name> --harness <harness> --model <model> --effort <effort> [--port <port>]";
+const PARTNER_START_USAGE = "nico-agent partner start <tab> (--pr <url> | --repo <owner/name>) --harness <harness> --model <model> --effort <effort> [--port <port>]";
+const PARTNER_DIFF_USAGE = "nico-agent partner diff <tab>";
 const PARTNER_SAY_USAGE = "nico-agent partner say <tab> <text>";
 const PARTNER_REPLY_USAGE = "nico-agent partner reply <tab> <text>";
 const PARTNER_DRAFT_USAGE = "nico-agent partner draft <tab> <text>";
@@ -538,16 +540,29 @@ const commands: Command[] = [
   {
     name: "partner start",
     usage: PARTNER_START_USAGE,
-    summary: "Start a tab's Partner in a worktree of the Repo on its default branch, connected to the MCP server scoped to its Thread (no-op while it runs)",
+    summary: "Start a tab's Partner, connected to the MCP server scoped to its Thread: the Review partner in a worktree on a PR's head branch, the Idea partner in one of a Repo's default branch (no-op while it runs)",
     flags: {
-      "--repo": { value: true, description: "the Repo whose worktree it runs in, e.g. acme/api (required)" },
+      "--pr": { value: true, description: "the open PR the Review partner reviews, as its URL or owner/name#N (required for review)" },
+      "--repo": { value: true, description: "the Repo the Idea partner works in, e.g. acme/api (required for idea)" },
       ...LAUNCH_FLAGS,
       "--port": { value: true, description: "port `nico-agent serve` listens on (default 42069)" },
     },
     positionals: ["tab"],
-    examples: ["nico-agent partner start idea --repo acme/api --harness claude --model opus --effort high"],
+    examples: [
+      "nico-agent partner start review --pr https://github.com/acme/api/pull/12 --harness claude --model opus --effort high",
+      "nico-agent partner start idea --repo acme/api --harness claude --model opus --effort high",
+    ],
     help: [PARTNER_TABS_HELP, "One Partner per tab: end it to start another"],
     run: partnerStartCommand,
+  },
+  {
+    name: "partner prs",
+    usage: "nico-agent partner prs",
+    summary: "List the Repos' open PRs a Review partner can be started on, newest first; a fork's PRs are left out (read-only)",
+    flags: {},
+    positionals: [],
+    examples: ["nico-agent partner prs", "nico-agent partner prs --json"],
+    run: (_args, ctx) => partnerPrsCommand(ctx),
   },
   {
     name: "partner list",
@@ -566,6 +581,15 @@ const commands: Command[] = [
     positionals: ["tab"],
     examples: ["nico-agent partner log review", "nico-agent partner log idea --json"],
     run: partnerLogCommand,
+  },
+  {
+    name: "partner diff",
+    usage: PARTNER_DIFF_USAGE,
+    summary: "Show the diff of the PR a Partner reviews, read from its checkout against the PR's base, file by file (read-only)",
+    flags: {},
+    positionals: ["tab"],
+    examples: ["nico-agent partner diff review", "nico-agent partner diff review --json"],
+    run: partnerDiffCommand,
   },
   {
     name: "partner say",
@@ -1837,16 +1861,24 @@ function textAfterTab(args: Args, usage: string) {
 
 async function partnerStartCommand(args: Args, ctx: RunContext): Promise<Output> {
   const tab = tabArg(args, PARTNER_START_USAGE);
-  const repo = required(args, "--repo", PARTNER_START_USAGE);
+  const target = tab === "review" ? { pr: required(args, "--pr", PARTNER_START_USAGE) } : { repo: required(args, "--repo", PARTNER_START_USAGE) };
   const port = portFlag(args, PARTNER_START_USAGE);
-  const request = { tab, repo, ...launchFlags(args, PARTNER_START_USAGE), mcpUrl: `http://${HOSTNAME}:${port}${partnerMcpPath(tab)}` };
+  const request = { tab, ...target, ...launchFlags(args, PARTNER_START_USAGE), mcpUrl: `http://${HOSTNAME}:${port}${partnerMcpPath(tab)}` };
   const { partner, outcome, resumedFrom } = await startPartner(ctx.world, ctx.configDir, request);
   const { agent, harness, model, effort } = partner.agent;
   const result = { new: "started", existing: "already running (no-op)", resumed: `resumed from ${resumedFrom}` }[outcome];
   return {
-    data: definedOnly({ partner: result, tab, repo: partner.repo, workspace: partner.workspace, agent, harness, model, effort, thread: partner.thread }),
+    data: definedOnly({ partner: result, tab, repo: partner.repo, pr: partner.pr?.url, workspace: partner.workspace, agent, harness, model, effort, thread: partner.thread }),
     help: [`Run \`${PARTNER_SAY_USAGE}\` to write to it`, `Run \`herdr agent read ${agent}\` to see its screen`, `Make sure \`nico-agent serve\` runs, so it reaches ${partner.mcpUrl}`],
   };
+}
+
+async function partnerPrsCommand(ctx: RunContext): Promise<Output> {
+  const { prs, warnings } = await prsToReview(ctx.world, ctx.configDir);
+  const help = prs.length
+    ? ["Run `nico-agent partner start review --pr <url> --harness <harness> --model <model> --effort <effort>` to review one"]
+    : [warnings.length ? "Run `nico-agent github usage` to see why GitHub failed" : "No configured Repo has an open PR from its own origin"];
+  return { data: { prs, ...(warnings.length && { warnings }) }, help };
 }
 
 async function partnerListCommand(ctx: RunContext): Promise<Output> {
@@ -1861,6 +1893,15 @@ async function partnerLogCommand(args: Args, ctx: RunContext): Promise<Output> {
   const help = [`Run \`${PARTNER_SAY_USAGE}\` to write to it`];
   if (draft) help.unshift(`Run \`nico-agent partner hand-off ${tab} ${draft.id}\` to send its Hand-off to the Lead`);
   return { data: { log: plural(entries.length, "entry", "entries"), repo: partner.repo, entries }, help };
+}
+
+async function partnerDiffCommand(args: Args, ctx: RunContext): Promise<Output> {
+  const tab = tabArg(args, PARTNER_DIFF_USAGE);
+  const { partner, pr, files } = await partnerDiff(ctx.world, ctx.configDir, tab);
+  return {
+    data: { diff: diffSize(files), repo: partner.repo, pr: pr.url, base: pr.base, head: pr.head, files },
+    help: [`Run \`${PARTNER_SAY_USAGE}\` to ask about it`],
+  };
 }
 
 async function partnerSayCommand(args: Args, ctx: RunContext): Promise<Output> {
