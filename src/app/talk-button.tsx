@@ -3,6 +3,9 @@ import type { Tab } from "../partner-tabs";
 import type { Speech } from "../speech";
 import type { Transcript, VoiceCommand } from "../transcription";
 import { Ears, HEARING_FILES, Models } from "./hearing";
+import { BARS, ORDER, bands, settle } from "./meter";
+import { MicrophonePicker, useMicrophones } from "./microphone-picker";
+import { type Microphone as Picked, SYSTEM_DEFAULT, audioConstraints, firstMicrophone, missingDevice } from "./microphones";
 import { usePageCommand } from "./stream";
 import { type Indicator, type Talk, type TalkEvent, bargesIn, ends, indicator, pcmSamples, resampler, talk, watches } from "./talk";
 
@@ -62,18 +65,72 @@ function hearingModels() {
   return models;
 }
 
-/** The microphone, recording one utterance: each batch resampled to 16kHz PCM, and heard by its Ears. */
+/** An analyser for the talk button's meter: its spectrum in dB from a whisper to a raised voice, a little smoothed. */
+function meterAnalyser(context: AudioContext) {
+  const analyser = context.createAnalyser();
+  analyser.fftSize = 2048;
+  analyser.smoothingTimeConstant = 0.6;
+  analyser.minDecibels = -85;
+  analyser.maxDecibels = -25;
+  return analyser;
+}
+
+/**
+ * The microphone, recording one utterance: each batch resampled to 16kHz
+ * PCM, and heard by its Ears. It records on `device`, the one picked; when
+ * that one is not there, on the default, and when the default is gone too
+ * (Chromium's preferred microphone unplugged), on the first the browser
+ * lists. Which it fell back to is its `notice`, told to `noticed` as well.
+ */
 class Microphone {
   private context: AudioContext;
   private stream: MediaStream | null = null;
   private stopped = false;
   private readonly models = hearingModels();
   readonly ears = new Ears(this.models);
+  /** What it hears, for the talk button's meter, once it records. */
+  analyser: AnalyserNode | null = null;
+  /** The one line saying which microphone records instead of the one picked, when it fell back. */
+  notice: string | null = null;
 
   /** Created in the press itself: Safari lets audio start only in a user gesture. */
-  constructor() {
+  constructor(private readonly device: Picked, private readonly noticed: (notice: string) => void) {
     this.context = new AudioContext();
     void this.context.resume();
+  }
+
+  /** The stream from the device picked, falling back to the default, then to the first microphone listed. */
+  private async record() {
+    const { id, label } = this.device;
+    const gone = id ? `${label} isn't connected` : "The system default microphone isn't connected";
+    try {
+      return await navigator.mediaDevices.getUserMedia({ audio: audioConstraints(id) });
+    } catch (e) {
+      if (!missingDevice(e)) throw e;
+      if (!id) return this.recordOnFirst(e, gone);
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints(SYSTEM_DEFAULT.id) });
+      this.tell(`${gone}, so the system default is recording.`);
+      return stream;
+    } catch (e) {
+      if (!missingDevice(e)) throw e;
+      return this.recordOnFirst(e, `${gone}, nor is the system default`);
+    }
+  }
+
+  /** The stream from the first microphone the browser lists, saying why (`gone`); without one, `failure` stands. */
+  private async recordOnFirst(failure: unknown, gone: string) {
+    const first = firstMicrophone(await navigator.mediaDevices.enumerateDevices());
+    if (!first) throw failure;
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints(first.id) });
+    this.tell(`${gone}, so ${first.label} is recording.`);
+    return stream;
+  }
+
+  private tell(notice: string) {
+    this.notice = notice;
+    this.noticed(notice);
   }
 
   async start(onBatch: (pcm: Int16Array) => void) {
@@ -83,7 +140,7 @@ class Microphone {
     await this.models.catch((e: unknown) => {
       throw new NoModels(e instanceof Error ? e.message : String(e));
     });
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+    const stream = await this.record();
     if (this.stopped) return stream.getTracks().forEach((t) => t.stop());
     this.stream = stream;
     const url = URL.createObjectURL(new Blob([TAP], { type: "text/javascript" }));
@@ -98,8 +155,11 @@ class Microphone {
     tap.port.onmessage = ({ data }: MessageEvent<Float32Array>) => {
       if (!this.stopped) onBatch(toPcm(data));
     };
+    const source = this.context.createMediaStreamSource(stream);
+    this.analyser = meterAnalyser(this.context);
+    source.connect(this.analyser);
     // Connected through to the output, which it leaves silent, so the browser runs it.
-    this.context.createMediaStreamSource(stream).connect(tap).connect(this.context.destination);
+    source.connect(tap).connect(this.context.destination);
   }
 
   stop() {
@@ -179,6 +239,8 @@ type Played = { entry: number } | { line: number };
 /** The Lead's voice: each chunk of its speech played right after the one before, all stopped at once by `stop`. */
 class Player {
   private context: AudioContext | null = null;
+  /** Where every chunk plays through on its way out, for the talk button's meter. */
+  analyser: AnalyserNode | null = null;
   private sources = new Set<AudioBufferSourceNode>();
   /** When the last chunk scheduled ends, in the context's time. */
   private until = 0;
@@ -197,7 +259,11 @@ class Player {
   /** Created and resumed in a user gesture, as browsers let audio start only then; a browser without audio stays silent. */
   wake() {
     try {
-      this.context ??= new AudioContext();
+      if (!this.context) {
+        this.context = new AudioContext();
+        this.analyser = meterAnalyser(this.context);
+        this.analyser.connect(this.context.destination);
+      }
     } catch {
       return;
     }
@@ -226,7 +292,7 @@ class Player {
     buffer.copyToChannel(samples, 0);
     const source = context.createBufferSource();
     source.buffer = buffer;
-    source.connect(context.destination);
+    source.connect(this.analyser ?? context.destination);
     const at = Math.max(this.until, context.currentTime + PLAY_AHEAD_S);
     source.start(at);
     if (this.first !== null) this.played(this.first, Date.now() + (at - context.currentTime) * 1000);
@@ -291,6 +357,9 @@ export function useTalk(voice: boolean, tab: Tab) {
   const [warning, setWarning] = useState<Warning | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [speaking, setSpeaking] = useState(false);
+  const microphones = useMicrophones();
+  const picked = useRef(microphones.picked);
+  picked.current = microphones.picked;
   const current = useRef(state);
   const microphone = useRef<Microphone | null>(null);
   /** When the user stopped talking, by the pause that ended the utterance. */
@@ -424,7 +493,7 @@ export function useTalk(voice: boolean, tab: Tab) {
       return;
     }
     if (!watches(current.current) || microphone.current) return;
-    const mic = new Microphone();
+    const mic = new Microphone(picked.current, setNote);
     microphone.current = mic;
     early.current = [];
     mic.start((pcm) => onBatch(mic, pcm)).catch(() => {
@@ -435,9 +504,10 @@ export function useTalk(voice: boolean, tab: Tab) {
   /** Start an utterance: on the microphone that was watching, if any, from the words that broke in when `barged`. */
   const start = (barged: boolean) => {
     setWarning(null);
-    setNote(null);
     setInterim("");
     const watched = microphone.current;
+    // A watching microphone that fell back still says so.
+    setNote(watched?.notice ?? null);
     if (watched) {
       socket.current!.command({ type: "start", utterance: ++utterance.current });
       const words = early.current.splice(0);
@@ -447,7 +517,7 @@ export function useTalk(voice: boolean, tab: Tab) {
     }
     let mic: Microphone;
     try {
-      mic = new Microphone();
+      mic = new Microphone(picked.current, setNote);
     } catch {
       setWarning({ error: "This browser cannot record audio here", help: ["Open the app over HTTPS (see docs/voice.md); typing still works"] });
       return dispatch({ type: "failed" });
@@ -455,7 +525,8 @@ export function useTalk(voice: boolean, tab: Tab) {
     microphone.current = mic;
     socket.current!.command({ type: "start", utterance: ++utterance.current });
     mic.ears.begin(false);
-    mic.start((pcm) => onBatch(mic, pcm)).catch((e: unknown) => {
+    // Recording lets the page use a microphone, and the browser then names them for the picker.
+    mic.start((pcm) => onBatch(mic, pcm)).then(() => void microphones.refresh(), (e: unknown) => {
       if (microphone.current !== mic) return;
       const denied = e instanceof DOMException && e.name === "NotAllowedError";
       setWarning(e instanceof NeedsGesture
@@ -508,7 +579,13 @@ export function useTalk(voice: boolean, tab: Tab) {
     if (!stopsLead()) dispatch({ type: "key" });
     hush();
   });
-  return { state, interim, warning, note, speaking, press, release, hush };
+  /** What the meter shows: the microphone while the user talks, the reply while it plays, else nothing. */
+  const analyser = () => {
+    const mode = current.current.mode;
+    if (mode === "holding" || mode === "hands-free") return microphone.current?.analyser ?? null;
+    return player.speaking ? player.analyser : null;
+  };
+  return { state, interim, warning, note, speaking, press, release, hush, microphones, analyser };
 }
 
 /** The button's label: in a session, a tap stops the Lead speaking, or else ends it while nobody talks. */
@@ -519,8 +596,57 @@ function label(state: Talk, speaking: boolean) {
   return speaking ? "Stop" : "End";
 }
 
-/** The button itself: pointer and keyboard both hold it, Space or Enter as the key. */
-export function TalkButton({ talk: { state, speaking, press, release } }: { talk: ReturnType<typeof useTalk> }) {
+/** The user asking the system for less motion: the meter then swells calmly, all its bars together. */
+const CALM = "(prefers-reduced-motion: reduce)";
+
+/**
+ * The meter in the talk button while someone talks: BARS bars dancing to
+ * what `analyser` hears, each a band of the voice's pitch, and the
+ * button's halo swelling with the loudest (`--level` on the button). Drawn
+ * each frame straight onto the bars, outside React. It keeps the first
+ * `analyser` it is given, so that must read refs, never state.
+ */
+function Meter({ analyser }: { analyser: () => AnalyserNode | null }) {
+  const root = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    const meter = root.current!;
+    const button = meter.closest("button");
+    const bars = [...meter.children] as HTMLElement[];
+    const calm = matchMedia(CALM);
+    let shown: number[] = Array(BARS).fill(0);
+    let data = new Uint8Array(0);
+    let last = performance.now();
+    let frame = 0;
+    const draw = (now: number) => {
+      const source = analyser();
+      let levels: number[] = Array(BARS).fill(0);
+      if (source) {
+        if (data.length !== source.frequencyBinCount) data = new Uint8Array(source.frequencyBinCount);
+        source.getByteFrequencyData(data);
+        levels = bands(data, source.context.sampleRate);
+      }
+      // A tab in the background gets no frames; back, the bars pick up from where they are.
+      shown = settle(shown, levels, Math.min(now - last, 100), calm.matches);
+      last = now;
+      ORDER.forEach((band, i) => bars[i]!.style.setProperty("--v", shown[band]!.toFixed(3)));
+      button?.style.setProperty("--level", calm.matches ? "0" : Math.max(...shown).toFixed(3));
+      frame = requestAnimationFrame(draw);
+    };
+    frame = requestAnimationFrame(draw);
+    return () => {
+      cancelAnimationFrame(frame);
+      button?.style.removeProperty("--level");
+    };
+  }, []);
+  return <span className="meter" ref={root} aria-hidden="true">{ORDER.map((band) => <i key={band} />)}</span>;
+}
+
+/**
+ * The button itself: pointer and keyboard both hold it, Space or Enter as
+ * the key; while the user talks, or a reply plays, its microphone gives way
+ * to the meter. Its microphone picker sits beside it.
+ */
+export function TalkButton({ talk: { state, speaking, press, release, microphones, analyser } }: { talk: ReturnType<typeof useTalk> }) {
   const key = (e: KeyboardEvent<HTMLButtonElement>, down: boolean) => {
     if (e.key !== " " && e.key !== "Enter") return;
     e.preventDefault();
@@ -528,28 +654,32 @@ export function TalkButton({ talk: { state, speaking, press, release } }: { talk
     if (!down) release();
   };
   const recording = state.mode === "holding" || state.mode === "hands-free";
+  const live = recording || speaking;
   return (
-    <button
-      type="button"
-      className={`talk ${state.mode}`}
-      aria-pressed={recording}
-      title={ends(state) ? (speaking ? "Stop the speech" : "End the hands-free session") : "Hold to talk, or tap to talk hands-free"}
-      onPointerDown={(e) => {
-        if (e.button !== 0) return;
-        e.currentTarget.setPointerCapture(e.pointerId);
-        press();
-      }}
-      onPointerUp={release}
-      onPointerCancel={release}
-      // A key held while focus leaves never comes up.
-      onBlur={() => { if (state.mode === "holding") release(); }}
-      onKeyDown={(e) => key(e, true)}
-      onKeyUp={(e) => key(e, false)}
-      onContextMenu={(e) => e.preventDefault()}
-    >
-      <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="5.5" y="1.5" width="5" height="8.5" rx="2.5" /><path d="M3 7.5a5 5 0 0 0 10 0M8 12.5v2.5" /></svg>
-      <span>{label(state, speaking)}</span>
-    </button>
+    <div className="talk-group">
+      <button
+        type="button"
+        className={`talk ${state.mode}${live ? " live" : ""}`}
+        aria-pressed={recording}
+        title={ends(state) ? (speaking ? "Stop the speech" : "End the hands-free session") : "Hold to talk, or tap to talk hands-free"}
+        onPointerDown={(e) => {
+          if (e.button !== 0) return;
+          e.currentTarget.setPointerCapture(e.pointerId);
+          press();
+        }}
+        onPointerUp={release}
+        onPointerCancel={release}
+        // A key held while focus leaves never comes up.
+        onBlur={() => { if (state.mode === "holding") release(); }}
+        onKeyDown={(e) => key(e, true)}
+        onKeyUp={(e) => key(e, false)}
+        onContextMenu={(e) => e.preventDefault()}
+      >
+        {live ? <Meter analyser={analyser} /> : <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="5.5" y="1.5" width="5" height="8.5" rx="2.5" /><path d="M3 7.5a5 5 0 0 0 10 0M8 12.5v2.5" /></svg>}
+        <span>{label(state, speaking)}</span>
+      </button>
+      <MicrophonePicker microphones={microphones} />
+    </div>
   );
 }
 
