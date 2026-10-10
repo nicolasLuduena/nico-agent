@@ -44,7 +44,7 @@ export interface Hearing {
   handing(message: { text: string; raw: string }, cleaned: boolean): void;
   /** It sends its request to its endpoint (for the timing log, as are the two below). */
   asked(): void;
-  /** Its first token came. */
+  /** Its first token came: the first text or tool call it streamed. */
   firstToken(): void;
   /** Its first sentence went to speech, as the speaker's `line`; none when it will not be played. */
   firstSentence(line: number | undefined): void;
@@ -118,9 +118,9 @@ export function frontVoice(ctx: FrontVoiceContext) {
     const reply: Reply = { hushed: false, calling: false, stop: new AbortController() };
     replying.add(reply);
     try {
-      const context = await voice.read(vocabulary);
+      const turn = { heard: raw, context: await voice.read(vocabulary), sessionId: await sessionId(ctx.configDir), to };
       hearing.asked();
-      const answer = await frontVoiceReply(ctx.world, endpoint, { heard: raw, context, sessionId: await sessionId(ctx.configDir), to }, reply.stop.signal);
+      const answer = await frontVoiceReply(ctx.world, endpoint, turn, reply.stop.signal);
       // Talked over while it thought: nothing to say, and nothing it was handing off.
       if ("error" in answer && reply.stop.signal.aborted) return false;
       if ("error" in answer) return await asHeard(answer.error, answer.help);
@@ -129,14 +129,16 @@ export function frontVoice(ctx: FrontVoiceContext) {
       const line = (sentence: string) => {
         if (reply.hushed || !sentence) return;
         said.push(sentence);
-        const line = ctx.say(sentence, tab);
-        if (said.length === 1) hearing.firstSentence(line);
+        const number = ctx.say(sentence, tab);
+        if (said.length === 1) hearing.firstSentence(number);
       };
       let words = "";
       let handedOff = false;
+      let streamed = false;
       try {
         for await (const part of answer.parts) {
-          hearing.firstToken();
+          if (!streamed) hearing.firstToken();
+          streamed = true;
           if ("text" in part) {
             words += part.text;
             const { whole, rest } = sentences(words);

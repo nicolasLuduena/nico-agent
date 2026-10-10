@@ -16,8 +16,8 @@ import type { SocketPeer, World } from "./world";
  */
 export type Speech =
   | { type: "speech"; entry?: number; line?: number; rate: number }
-  | { type: "speech-end"; entry?: number }
-  | { type: "speech-error"; entry?: number; error: string; help: string[] };
+  | { type: "speech-end"; entry?: number; line?: number }
+  | { type: "speech-error"; entry?: number; line?: number; error: string; help: string[] };
 
 /**
  * Something to read aloud to the pages on `tab`: a reply (a Lead's entry,
@@ -81,7 +81,7 @@ export function speaker({ world, configDir }: { world: World; configDir: string 
   let hushes = 0;
   /** What the pages played lately, oldest first, for `playing`. */
   let played: Played[] = [];
-  /** How many lines of the Front voice's were read; the last one's number. */
+  /** How many lines of the Front voice's were queued to be read; the last one's number. */
   let lines = 0;
 
   const lastId = () => loadConversation(configDir).at(-1)?.id ?? 0;
@@ -97,7 +97,7 @@ export function speaker({ world, configDir }: { world: World; configDir: string 
   const read = async ({ text, tab, entry, line }: Spoken) => {
     // Nobody shows its tab any more: nothing is made for no one.
     if (!listeners(tab).length) return;
-    const which = entry === undefined ? {} : { entry };
+    const which = { ...(entry !== undefined && { entry }), ...(line !== undefined && { line }) };
     const failed = (error: string, help: string) => tell({ type: "speech-error", ...which, error, help: [`${help}; ${STILL_SHOWN}`] }, tab);
     let endpoint;
     try {
@@ -114,7 +114,7 @@ export function speaker({ world, configDir }: { world: World; configDir: string 
     if (hushes !== asked) return void reader.cancel().catch(() => {});
     let stopped = false;
     streaming = { stop: () => { stopped = true; void reader.cancel().catch(() => {}); } };
-    tell({ type: "speech", ...which, ...(line !== undefined && { line }), rate: SPEECH_RATE }, tab);
+    tell({ type: "speech", ...which, rate: SPEECH_RATE }, tab);
     // The page plays it once what it was playing ends, as fast as it is spoken however fast it is made.
     const now = world.now().getTime();
     played = played.filter((p) => p.until + ECHO_TAIL_MS >= now);
@@ -172,7 +172,7 @@ export function speaker({ world, configDir }: { world: World; configDir: string 
       if (left === undefined || left === tab) return;
       peers.set(peer, tab);
       if (reading?.tab !== left) return;
-      peer.send(JSON.stringify({ type: "speech-end", ...(reading.entry !== undefined && { entry: reading.entry }) } satisfies Speech));
+      peer.send(JSON.stringify({ type: "speech-end", ...(reading.entry !== undefined && { entry: reading.entry }), ...(reading.line !== undefined && { line: reading.line }) } satisfies Speech));
       if (!listeners(left).length) streaming?.stop();
     },
     /** A page stopped listening; with none left, the Lead falls silent. */

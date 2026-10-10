@@ -127,9 +127,10 @@ export function stopwatch({ world, configDir }: { world: World; configDir: strin
           message.text = text;
         },
         asked: () => { message.times.asked = world.now(); },
-        firstToken: () => { message.times.firstToken ??= world.now(); },
+        firstToken: () => { message.times.firstToken = world.now(); },
         firstSentence: (line) => {
-          if (message.times.firstSentence || message.raw !== null) return;
+          // Once handed off, it is timed to the Lead's reply.
+          if (message.raw !== null) return;
           message.times.firstSentence = world.now();
           message.line = line;
         },
