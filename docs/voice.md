@@ -244,9 +244,16 @@ The Front voice (`voice.front`, ADR-0013) hears the final transcript, as
 heard, and reads, for context:
 
 - the words to spell as written: the vocabulary the transcription had;
-- the Lead's orient packet: its Intent and Notes, open questions and
-  Proposals, and the conversation's last ten entries;
-- the Board, as `board --json` prints it.
+- from the Lead's orient packet: its Intent, open questions and
+  Proposals, and the conversation's last ten entries (not its Notes);
+- the Board, summed up a line each: what is In flight with its Stage and
+  PR, what is Asking, what is Ready, Stackable or has a PR outside a
+  Dispatch, what is Held, and each Repo's Queue.
+
+It reads the files at once when you finish speaking. The Board, and in a
+Partner's tab the PR's diff, are built ahead of time instead: when you
+start talking or switch tabs, and again whenever `serve` sees them change
+for the next ten minutes, so no request waits on them.
 
 Its one tool is `hand_off`; it has no shell, no MCP and nothing that acts.
 It answers small talk, "say that again" and what it can read itself, a

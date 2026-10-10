@@ -10,8 +10,9 @@ the Lead.
 
 The Front voice has exactly two capabilities:
 
-- **Read**: the last Conversation entries, the Lead's orient packet, a Board
-  snapshot, and, while the user reviews a PR with it, that PR's title,
+- **Read**: the last Conversation entries, the Lead's orient packet (its
+  Notes aside), a Board snapshot summed up a line each and built before the
+  user stops talking (#214), and, while the user reviews a PR with it, that PR's title,
   description and diff.
 - **Hand off**: write the user's message into the Conversation through the
   path `say --raw` already uses, so the Lead gets it in its Inbox with a Nudge,
