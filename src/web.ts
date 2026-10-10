@@ -173,7 +173,7 @@ export function webSockets(context: Pick<WebContext, "world" | "configDir" | "ru
         speech.join(peer);
         return {
           message(data) {
-            const command = typeof data === "string" ? parseJson(data) as { type?: unknown; entry?: unknown; at?: unknown; tab?: unknown } | null : null;
+            const command = typeof data === "string" ? parseJson(data) as { type?: unknown; entry?: unknown; line?: unknown; at?: unknown; tab?: unknown } | null : null;
             // The tab the page shows: its Front voice hears what is said next, and only its speech is heard.
             if (command?.type === "tab" && isTab(command.tab)) speech.tab(peer, command.tab);
             if (command?.type === "hush") {
@@ -181,7 +181,9 @@ export function webSockets(context: Pick<WebContext, "world" | "configDir" | "ru
               return speech.hush();
             }
             if (command?.type === "played") {
-              if (typeof command.entry === "number" && typeof command.at === "number") timing.played(command.entry, new Date(command.at));
+              if (typeof command.at !== "number") return;
+              if (typeof command.entry === "number") timing.played(command.entry, new Date(command.at));
+              if (typeof command.line === "number") timing.playedLine(command.line, new Date(command.at));
               return;
             }
             talk.message(data);

@@ -372,27 +372,38 @@ reply shows in the Lead panel as ever, with a warning above the conversation.
 
 `serve` logs every spoken message to `voice-timing.jsonl` in the config
 directory (`~/.config/nico-agent/`), one JSON line each, to tell where the
-wait between talking and hearing the Lead goes. A line has eight times, in
-order:
+wait between talking and hearing the Front voice or the Lead goes. A line
+has eleven times, in order:
 
 | Field | When | Taken by |
 | --- | --- | --- |
 | `spoke` | you stopped talking: the release, the tap, or where the pause began | the page |
 | `ended` | the page ended the utterance: at once on a release or a tap, after the pause (see **Hearing speech**) hands-free | `serve`, on hearing it |
 | `transcribed` | `voice.transcribe` returned the final transcript | `serve` |
+| `asked` | the Front voice, having read the conversation and the Board, sent its request to `voice.front` (or failed to, for want of its key) | `serve` |
+| `firstToken` | the first text or tool call of its reply streamed in (`voice.front`'s time to first token, past any reasoning it does not stream) | `serve` |
+| `firstSentence` | the first sentence of its own answer was whole and went to speech | `serve` |
 | `handed` | the Front voice handed it to the Lead (cleaned, and its choice, answering a question) | `serve` |
 | `written` | the message's entry was written to the conversation | the entry's `at` |
 | `nudged` | herdr took the Nudge: the first one sent after the entry, whatever sent it | `nudges-sent.json` |
 | `said` | the Lead wrote its first `say` or `ask` after the entry, whatever it answers | that entry's `at` |
-| `played` | the page began playing that entry's audio: speech made, and any earlier speech played out | the page |
+| `played` | the page began playing the first audio of that sentence, or of the Lead's entry: speech made, and any earlier speech played out | the page |
 
-Each is an ISO time, or `null` for a step that did not happen: the Front
-voice failed and it was sent as heard (`handed`), the Lead not running
-(`nudged`), Voice off (`played`), or the transcription failing (all after
-`ended`). A step that did not happen leaves its time to the next: with the
-Front voice failing, its wait shows in `written`. A message the Front voice
-answers itself is logged at once, with no step after `transcribed`; lines
-logged before the Front voice name the step `scribed`. `took` is
+A line takes one of two paths after `firstToken`. A message the Front voice
+answers itself has `firstSentence` and `played`, and nothing between them.
+A message it hands off has `handed` to `played` as the Lead's reply, and no
+`firstSentence`, even when the Front voice said something before handing it
+off.
+
+Each is an ISO time, or `null` for a step that did not happen: the path not
+taken, the Front voice failing before its first token (`firstToken`) and
+the message sent as heard (`handed`), the Lead not running (`nudged`), Voice
+off (`played`), or the transcription failing (all after `ended`). A step
+that did not happen leaves its time to the next: with the Front voice
+failing, its wait shows in `written`. Older lines differ: before the Front
+voice's own steps were timed, a line has no `asked`, `firstToken` or
+`firstSentence`, and a message it answered itself stops at `transcribed`;
+before the Front voice existed, a line names the step `scribed`. `took` is
 how long each step took after the last one that happened, in ms; `total` is
 `spoke` to `played`; `slowest` names the step with the longest `took`. The
 page and `serve` share a clock, being on one machine (on the phone the
@@ -403,10 +414,15 @@ An utterance dropped as a phantom transcript (see **Phantom transcripts**)
 is logged at once, with `text` what was heard and `dropped` why: `phantom
 phrase`, `no speech` or `echo`; no other line has `dropped`.
 
-A line is written once the page plays the Lead's reply; with Voice off, once
-the Lead first says something; for a failed or empty transcript, at once;
-and otherwise after five minutes, with what happened by then. `utterance` is
-the page's number for it and `text` what was sent. A typed message is not
+A line is written once the page plays the Lead's reply, or once the Front
+voice has finished answering and the page has played its first sentence;
+with Voice off or no page open, once the Lead first says something, or once
+the Front voice has finished answering; for a failed or empty transcript, at once;
+and otherwise after five minutes, with what happened by then, as for a
+first sentence that never plays (talked over, or the speech service
+failing). `utterance` is
+the page's number for it and `text` what was sent to the Lead, or what was
+heard, for a message the Front voice answered itself. A typed message is not
 logged.
 
 ```bash
