@@ -481,6 +481,24 @@ describe("/api/voice", () => {
         expect(sent[0].messages[0].content).toContain("acme/api#8 Cache the Board");
       });
 
+      test("after a quiet spell, a Board that changed meanwhile is read afresh, not as it was", async () => {
+        const ctx = await withVoice();
+        hears(ctx.world, "what's ready");
+        const sent = talker(ctx.world, () => ({ say: ["Two issues."] }));
+        (await talking(ctx)).close();
+
+        ctx.world.clock = new Date(ctx.world.clock.getTime() + 60 * 60_000);
+        ctx.world.addIssue("acme/api", { number: 8, title: "Cache the Board" });
+        ctx.events.emit("board-changed");
+        const talk = await open(ctx);
+        talk.json({ type: "start", utterance: 2 });
+        talk.send(pcm(0.5));
+        talk.json({ type: "end" });
+        await until(() => sent.length === 1);
+
+        expect(sent[0].messages[0].content).toContain("acme/api#8 Cache the Board");
+      });
+
       test("the prompt carries a compact Board, not board --json", async () => {
         const ctx = await withVoice();
         const sent = talker(ctx.world, () => ({ say: ["Hello."] }));

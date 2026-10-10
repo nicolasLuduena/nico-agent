@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { ConfigError, VOICE_DOC, type VoiceEndpoint, loadConfig } from "./config";
+import type { BoardJson } from "./app/board";
 import type { FrontVoice } from "./front-voice";
 import { harnesses } from "./harness";
 import { type Tab, isTab, loadPartners } from "./partner";
@@ -364,12 +365,12 @@ export function glossaryTerms(repoPath: string): string[] {
 }
 
 /** Every issue and Spec the Board shows, by its identifier, with its title; none when the Board fails. */
-function boardIssues(board: Record<string, unknown> | null): { issue: string; title: string }[] {
+function boardIssues(board: BoardJson | null): { issue: string; title: string }[] {
   if (!board) return [];
-  const rows = (key: string, id: string) =>
-    (Array.isArray(board[key]) ? board[key] as Record<string, unknown>[] : []).flatMap((row) =>
-      typeof row[id] === "string" && typeof row.title === "string" ? [{ issue: row[id] as string, title: row.title as string }] : []);
-  const all = [...rows("issues", "issue"), ...rows("stackable", "issue"), ...rows("prOpen", "issue"), ...rows("dispatches", "issue"), ...rows("specs", "spec")];
+  const all = [
+    ...[...board.issues ?? [], ...board.stackable ?? [], ...board.prOpen ?? [], ...board.dispatches ?? []].map(({ issue, title }) => ({ issue, title })),
+    ...(board.specs ?? []).map(({ spec, title }) => ({ issue: spec, title })),
+  ];
   const seen = new Set<string>();
   return all.filter(({ issue }) => !seen.has(issue) && seen.add(issue));
 }

@@ -1,8 +1,9 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import type { BoardJson } from "./app/board";
 import { sayArgs } from "./app/lead";
-import { boardSummary } from "./board-summary";
 import { partnerSayArgs } from "./app/partner";
+import { boardSummary } from "./board-summary";
 import { ConfigError, VOICE_DOC, frontVoiceEndpoint, loadConfig } from "./config";
 import { type Ask, type Authored, type Entry, append, isCorrection, loadConversation, orient } from "./conversation";
 import type { Events } from "./events";
@@ -92,20 +93,24 @@ export function frontVoice(ctx: FrontVoiceContext) {
 
   /** Until when the Front voice is in use, so what it reads is rebuilt as soon as it changes. */
   let warmUntil = 0;
+  /** Whether the Front voice is in use, so a change to what it reads is rebuilt at once. */
   const warm = () => ctx.world.now().getTime() < warmUntil;
   /** The Board, as `board --json` prints it, parsed; null when it could not be read. Its run never waits on a request. */
-  const board = kept(warm, () => ctx.runCli(["board", "--json"]).then(({ stdout }) => JSON.parse(stdout) as Record<string, unknown>).catch(() => null));
+  const board = kept(warm, () => ctx.runCli(["board", "--json"]).then(({ stdout }) => JSON.parse(stdout) as BoardJson).catch(() => null));
   /** Each Partner's PR brief and diff, as it reads them: a git diff each, built ahead too. */
   const work = Object.fromEntries(PARTNER_TABS.map((tab) => [tab, kept(warm, async () => {
-    const partner = loadPartners(ctx.configDir)[tab];
-    return partner ? partnerWork(ctx.world, ctx.configDir, partner).catch(() => ({})) : {};
+    try {
+      const partner = loadPartners(ctx.configDir)[tab];
+      return partner ? await partnerWork(ctx.world, ctx.configDir, partner) : {};
+    } catch {
+      // Unread, the Front voice still answers from the Thread.
+      return {};
+    }
   })])) as Record<PartnerTab, Kept<{ brief?: string; diff?: string }>>;
   // The Conversation, Intent and Threads are read from their files on each request, which costs no wait;
-  // the Board and the diffs are rebuilt here, off the request path, whenever they may have changed.
-  ctx.events?.on("board-changed", () => {
-    board.changed();
-    for (const tab of PARTNER_TABS) work[tab].changed();
-  });
+  // the Board and the diffs are rebuilt here, off the request path, whenever they may have changed:
+  // the Board on serve's tick and after what changes it, a Partner's work as its Thread moves.
+  ctx.events?.on("board-changed", () => board.changed());
   ctx.events?.on("partner-changed", () => {
     for (const tab of PARTNER_TABS) work[tab].changed();
   });
@@ -265,7 +270,7 @@ export function frontVoice(ctx: FrontVoiceContext) {
    */
   async function readLeadContext(vocabulary: string, question: Ask | null): Promise<string> {
     const packet = orient(ctx.configDir);
-    const read = await board.get();
+    const snapshot = await board.get();
     const proposals = packet.proposals.map((p) => `- ${describeProposed(p).line}: ${p.reason}`);
     const asking = packet.open.map((q) => `- ${q.text}${q.type === "ask" && q.choices?.length ? ` (${q.choices.join("; ")})` : ""}`);
     return [
@@ -273,7 +278,7 @@ export function frontVoice(ctx: FrontVoiceContext) {
       `The Lead's Intent:\n${packet.intent}`,
       asking.length ? `The Lead's open questions:\n${asking.join("\n")}` : "",
       proposals.length ? `The Lead's Proposals waiting on the user:\n${proposals.join("\n")}` : "",
-      read && `The Board:\n${boardSummary(read)}`,
+      snapshot && `The Board:\n${boardSummary(snapshot)}`,
       `The conversation so far, oldest first:\n${packet.last.map(conversationLine).join("\n") || "(nothing yet)"}`,
       question && [
         `The Lead just asked the user: ${question.text}`,
@@ -344,7 +349,12 @@ function threadLine(entry: ThreadEntry, partner: string): string {
 
 /** A read built off the request path and kept (see `kept`). */
 interface Kept<T> {
-  /** The last one built, at once, rebuilding it in the background if stale; the first is waited on. */
+  /**
+   * The last one built, at once, rebuilding it in the background if stale;
+   * waited on when none is built yet, or when it changed while cold (an old
+   * read could be hours behind), as `prepare` at an utterance's start has it
+   * well on its way.
+   */
   get(): Promise<T>;
   /** Build it now, if it is stale. */
   prepare(): void;
@@ -361,21 +371,31 @@ function kept<T>(warm: () => boolean, build: () => Promise<T>): Kept<T> {
   let built: { value: T } | null = null;
   let building: Promise<T> | null = null;
   let stale = true;
+  /** Whether a change came while cold, and no build since began after it. */
+  let behind = false;
+  /** The build that began after such a change: the read to wait for, not the old one. */
+  let catchingUp: Promise<T> | null = null;
   const refresh = (): Promise<T> => {
     if (building) return building;
+    const wasBehind = behind;
     stale = false;
-    building = build().then((value) => {
+    behind = false;
+    const started: Promise<T> = build().then((value) => {
       built = { value };
       return value;
     }).finally(() => {
       building = null;
+      if (catchingUp === started) catchingUp = null;
       if (stale && warm()) void refresh();
     });
-    return building;
+    building = started;
+    if (wasBehind) catchingUp = started;
+    return started;
   };
   return {
     get() {
-      if (!built) return refresh();
+      if (!built || behind) return refresh();
+      if (catchingUp) return catchingUp;
       if (stale) void refresh();
       return Promise.resolve(built.value);
     },
@@ -385,6 +405,7 @@ function kept<T>(warm: () => boolean, build: () => Promise<T>): Kept<T> {
     changed() {
       stale = true;
       if (warm()) void refresh();
+      else behind = true;
     },
   };
 }
