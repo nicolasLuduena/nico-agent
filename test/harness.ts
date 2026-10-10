@@ -38,7 +38,7 @@ export function setup() {
   };
   /** A WebSocket to the web app, as a page on `origin` opens it: its refusal, or the session. */
   const socket = (path: string, headers: Record<string, string> = {}) => openSocket(sockets[path], new Request(`http://127.0.0.1:42069${path}`, { headers: { upgrade: "websocket", ...headers } }));
-  return { world, configDir, cli, web, handler, look, socket, restart };
+  return { world, configDir, cli, web, handler, look, socket, restart, events };
 }
 
 /**

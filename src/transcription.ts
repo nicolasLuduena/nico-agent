@@ -3,7 +3,6 @@ import { join } from "node:path";
 import { ConfigError, VOICE_DOC, type VoiceEndpoint, loadConfig } from "./config";
 import type { FrontVoice } from "./front-voice";
 import { harnesses } from "./harness";
-import type { CliRunner } from "./mcp";
 import { type Tab, isTab, loadPartners } from "./partner";
 import { MIN_LEVEL, PAUSE_MS, SAMPLE_RATE, level, pcmSamples } from "./app/talk";
 import { screen } from "./phantom";
@@ -76,7 +75,6 @@ const TYPING = "typing still works";
 interface TranscriptionContext {
   world: World;
   configDir: string;
-  runCli: CliRunner;
   /** Times each final transcript's steps, for the timing log. */
   timing?: Stopwatch;
   /** Answers each final transcript, or hands it to the Lead. */
@@ -190,6 +188,8 @@ export function transcriptionSession(ctx: TranscriptionContext) {
     };
 
     const start = (number: number) => {
+      // What its Front voice reads is built while the user talks, not after.
+      ctx.front.prepare(tab);
       current?.release();
       current = null;
       let voice;
@@ -236,7 +236,10 @@ export function transcriptionSession(ctx: TranscriptionContext) {
       message(data) {
         if (typeof data !== "string") return hear(data);
         const command = parse(data);
-        if (command?.type === "tab") return void (tab = command.tab);
+        if (command?.type === "tab") {
+          tab = command.tab;
+          return ctx.front.prepare(tab);
+        }
         if (command?.type === "start") return start(command.utterance);
         const utterance = current;
         current = null;
@@ -341,7 +344,7 @@ async function vocabularyHint(ctx: TranscriptionContext, tab: Tab): Promise<stri
   const repos = partner ? config.repos.filter((r) => r.slug === partner.repo) : tab === "lead" ? config.repos : [];
   const terms = unique(repos.flatMap((repo) => glossaryTerms(repo.path)));
   const names = unique([...harnesses(ctx.configDir).map((h) => h.name), ...repos.map((r) => r.slug)]);
-  const issues = tab === "lead" ? await boardIssues(ctx.runCli) : [];
+  const issues = tab === "lead" ? boardIssues(await ctx.front.board()) : [];
   return [
     terms.length ? `Glossary: ${terms.join(", ")}.` : "",
     names.length ? `Names: ${names.join(", ")}.` : "",
@@ -361,13 +364,8 @@ export function glossaryTerms(repoPath: string): string[] {
 }
 
 /** Every issue and Spec the Board shows, by its identifier, with its title; none when the Board fails. */
-async function boardIssues(runCli: CliRunner): Promise<{ issue: string; title: string }[]> {
-  let board: Record<string, unknown>;
-  try {
-    board = JSON.parse((await runCli(["board", "--json"])).stdout);
-  } catch {
-    return [];
-  }
+function boardIssues(board: Record<string, unknown> | null): { issue: string; title: string }[] {
+  if (!board) return [];
   const rows = (key: string, id: string) =>
     (Array.isArray(board[key]) ? board[key] as Record<string, unknown>[] : []).flatMap((row) =>
       typeof row[id] === "string" && typeof row.title === "string" ? [{ issue: row[id] as string, title: row.title as string }] : []);

@@ -438,6 +438,63 @@ describe("/api/voice", () => {
       }
     });
 
+    describe("its read context, built ahead of time", () => {
+      /** Start an utterance and wait for the Board it reads to be built, as it is while the user talks; the socket. */
+      async function talking(ctx: Awaited<ReturnType<typeof withVoice>>) {
+        const talk = await open(ctx);
+        talk.json({ type: "start", utterance: 1 });
+        talk.send(pcm(0.5));
+        await until(() => ctx.world.calls.includes("github issues acme/api"));
+        await Bun.sleep(20);
+        return talk;
+      }
+
+      test("nothing reads the Board between the final transcript and the request", async () => {
+        const ctx = await withVoice();
+        hears(ctx.world, "what's running");
+        let atRequest = -1;
+        const sent = talker(ctx.world, () => ({ say: ["Nothing is running."] }), () => { atRequest = ctx.world.calls.length; });
+        const talk = await talking(ctx);
+
+        const atEnd = ctx.world.calls.length;
+        talk.json({ type: "end" });
+        await until(() => sent.length === 1);
+
+        expect(ctx.world.calls.slice(atEnd, atRequest).filter((c) => c.startsWith("github") || c.startsWith("herdr"))).toEqual([]);
+        expect(sent[0].messages[0].content).toContain("acme/api#7 Add retries to the herdr client");
+      });
+
+      test("the Board it reads is rebuilt when the Board changes", async () => {
+        const ctx = await withVoice();
+        hears(ctx.world, "what's ready");
+        const sent = talker(ctx.world, () => ({ say: ["Two issues."] }));
+        const talk = await talking(ctx);
+
+        ctx.world.addIssue("acme/api", { number: 8, title: "Cache the Board" });
+        const before = ctx.world.calls.length;
+        ctx.events.emit("board-changed");
+        await until(() => ctx.world.calls.slice(before).includes("github issues acme/api"));
+        await Bun.sleep(20);
+        talk.json({ type: "end" });
+        await until(() => sent.length === 1);
+
+        expect(sent[0].messages[0].content).toContain("acme/api#8 Cache the Board");
+      });
+
+      test("the prompt carries a compact Board, not board --json", async () => {
+        const ctx = await withVoice();
+        const sent = talker(ctx.world, () => ({ say: ["Hello."] }));
+
+        await say(ctx, "hello");
+        await until(() => sent.length === 1);
+
+        const prompt: string = sent[0].messages[0].content;
+        expect(prompt).not.toContain("board --json");
+        expect(prompt).not.toContain('"ready"');
+        expect(prompt).toContain("Ready (1): acme/api#7 Add retries to the herdr client");
+      });
+    });
+
     test("the key is read from the environment variable voice.front.keyEnv names", async () => {
       const ctx = await withVoice({ transcribe: TRANSCRIBE, front: { ...FRONT, keyEnv: "ZEN_KEY" } });
       ctx.world.environment.set("ZEN_KEY", "sk-zen");
