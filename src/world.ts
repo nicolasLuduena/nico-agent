@@ -71,6 +71,14 @@ export interface World {
   gitRemoteBranches(path: string): Promise<string[]>;
   /** The default branch of the clone's `origin`, without the remote prefix. */
   gitDefaultBranch(path: string): Promise<string>;
+  /**
+   * The ref a worktree of the clone at `path` starts from, read from the
+   * clone alone with no call to its remote: origin's default branch as the
+   * clone last saw it (`origin/HEAD`), else the checked-out branch, else `main`.
+   */
+  gitLocalBase(path: string): Promise<string>;
+  /** The real path of the directory at `path`, symlinks resolved, or null when it is no directory. */
+  realDirectory(path: string): Promise<string | null>;
   /** The unified diff of the checkout at `path` since it forked from `base` (`git diff <base>...HEAD`). */
   gitDiff(path: string, base: string): Promise<string>;
   /** Create a git worktree and open it as a herdr workspace, without focusing it. */

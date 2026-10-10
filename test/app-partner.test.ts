@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { DRAFT_REQUESTS, type PartnerJson, type ThreadState, handOffArgs, pageOf, partnerSayArgs, partnerStanding, partnerStartArgs, quoteFile, quoteLines, reduceThread, threadCards, withQuote } from "../src/app/partner";
+import { DRAFT_REQUESTS, type PartnerJson, type ThreadState, configuredRepos, handOffArgs, pageOf, partnerSayArgs, partnerStanding, partnerStartArgs, quoteFile, quoteLines, reduceThread, threadCards, withQuote } from "../src/app/partner";
 import type { DiffFile } from "../src/diff";
 import { appendThread } from "../src/thread";
 import { setup } from "./harness";
@@ -102,6 +102,18 @@ describe("the tab's actions", () => {
     expect(partnerStartArgs("idea", { repo: "acme/api" }, choice, "8080")).toEqual(["idea", "--repo", "acme/api", ...FLAGS, "--port", "8080"]);
     expect(partnerStartArgs("idea", { repo: "acme/api" }, choice, "")).toEqual(["idea", "--repo", "acme/api", ...FLAGS]);
     expect(partnerStartArgs("review", { pr: "https://github.com/acme/api/pull/12" }, choice, "")).toEqual(["review", "--pr", "https://github.com/acme/api/pull/12", ...FLAGS]);
+    expect(partnerStartArgs("idea", { folder: "~/ideas/garden" }, choice, "")).toEqual(["idea", "--folder", "~/ideas/garden", ...FLAGS]);
+  });
+
+  test("the Ideas tab's Repos are the configured ones, as `/api/repos` serves them, none before any is added", async () => {
+    const { cli, web, world } = setup();
+    expect(configuredRepos(JSON.parse((await web("/api/repos")).body))).toEqual([]);
+    world.addClone("/src/web", "git@github.com:acme/web.git");
+    world.addClone("/src/api", "git@github.com:acme/api.git");
+    await cli("repo", "add", "acme/web", "--path", "/src/web");
+    await cli("repo", "add", "acme/api", "--path", "/src/api");
+    expect(configuredRepos(JSON.parse((await web("/api/repos")).body))).toEqual(["acme/web", "acme/api"]);
+    expect(configuredRepos(undefined)).toEqual([]);
   });
 
   test("a message goes after --, so it is never read as a flag", () => {

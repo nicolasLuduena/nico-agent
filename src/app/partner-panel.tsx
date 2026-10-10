@@ -17,7 +17,7 @@ import { TalkButton, TalkStatus, type useTalk } from "./talk-button";
 /** What each tab's Partner is for, under its name. */
 const LEDES: Record<PartnerTab, string> = {
   review: "Talk a PR through with an agent in its checkout, its diff beside you. Nothing reaches the Lead until you hand it a summary.",
-  idea: "Think a problem through with an agent reading the Repo's code. Nothing reaches the Lead until you hand it a summary.",
+  idea: "Think a problem through with an agent reading a Repo's code, or any folder of yours. Nothing reaches the Lead until you hand it a summary.",
 };
 
 /**
@@ -53,7 +53,7 @@ export function PartnerPanel({ tab, partner, harnesses, repos, hidden, talking }
           <div className="conversation">
             <div className="empty partner-empty">
               <h2>{`Start the ${title}`}</h2>
-              <p>{tab === "review" ? "Pick the PR and its launch; its diff shows beside the Thread." : "Pick the Repo it works in and its launch; its Thread shows here."}</p>
+              <p>{tab === "review" ? "Pick the PR and its launch; its diff shows beside the Thread." : "Pick the Repo or local folder it works in and its launch; its Thread shows here."}</p>
               <StartForm tab={tab} harnesses={harnesses} repos={repos} hidden={hidden} />
             </div>
           </div>
@@ -231,11 +231,11 @@ function PartnerFacts({ tab, partner, harnesses }: { tab: PartnerTab; partner: P
   const { busy, outcome, act } = usePost();
   const stopped = partnerStanding(partner) === "stopped";
   const choice = harnesses && launchChoice(harnesses, partner);
-  const target = partner.pr ? { pr: partner.pr.url } : { repo: partner.repo };
+  const target = partner.pr ? { pr: partner.pr.url } : partner.folder ? { folder: partner.folder } : { repo: partner.repo };
   return (
     <>
       <dl className="partner-facts">
-        {!partner.pr && (<><dt>Repo</dt><dd className="mono">{partner.repo}</dd></>)}
+        {!partner.pr && (<><dt>{partner.folder ? "Folder" : "Repo"}</dt><dd className="mono">{partner.repo}</dd></>)}
         <dt>Launch</dt><dd className="mono">{`${partner.harness} · ${partner.model} · ${partner.effort}`}</dd>
         <dt>Agent</dt><dd className="mono">{partner.agent}</dd>
         {partner.failure && (<><dt>Failed</dt><dd className="error">{`at ${partner.failure.step}: ${partner.failure.error}`}</dd></>)}
@@ -244,25 +244,31 @@ function PartnerFacts({ tab, partner, harnesses }: { tab: PartnerTab; partner: P
         {stopped && choice && (
           <button type="button" className="primary" disabled={busy} onClick={() => void act("/api/partner/start", partnerStartArgs(tab, target, choice, window.location.port))}>Start again</button>
         )}
-        <button type="button" className="close" disabled={busy} title="Stop its agent and remove its worktree; the Thread's file is kept" onClick={() => void act("/api/partner/end", [tab])}>End</button>
+        <button type="button" className="close" disabled={busy} title={partner.folder ? "Stop its agent; the folder and the Thread's file are kept" : "Stop its agent and remove its worktree; the Thread's file is kept"} onClick={() => void act("/api/partner/end", [tab])}>End</button>
       </div>
       {outcome && <OutcomeNote outcome={outcome} />}
     </>
   );
 }
 
+/** The Ideas tab's choice, after the Repos, of a local folder instead. */
+const LOCAL_FOLDER = "Local folder…";
+
 /**
  * The form that starts the tab's Partner: the PR for a Review partner (one of
- * the Repos' open PRs, or a pasted URL) or the Repo for an Idea partner, then
- * Harness, model and Effort, from the last launch. The open PRs are asked of `serve` only while the tab shows.
+ * the Repos' open PRs, or a pasted URL) or, for an Idea partner, a Repo or a
+ * local folder under the user's home, then Harness, model and Effort, from
+ * the last launch. The open PRs are asked of `serve` only while the tab shows.
  */
 function StartForm({ tab, harnesses, repos, hidden }: { tab: PartnerTab; harnesses: HarnessesJson | null; repos: string[]; hidden: boolean }) {
-  const [chosen, setChosen] = useState<Chosen & { repo?: string; pr?: string; pasted?: string }>({});
+  const [chosen, setChosen] = useState<Chosen & { repo?: string; pr?: string; pasted?: string; folder?: string }>({});
   const { busy, outcome, act } = usePost();
   const choice = harnesses && launchChoice(harnesses, chosen);
-  const repo = chosen.repo && repos.includes(chosen.repo) ? chosen.repo : repos[0];
+  const places = [...repos, LOCAL_FOLDER];
+  const repo = chosen.repo && places.includes(chosen.repo) ? chosen.repo : places[0]!;
+  const folder = chosen.folder?.trim();
   const pr = chosen.pasted?.trim() || chosen.pr;
-  const target = tab === "review" ? pr && { pr } : repo && { repo };
+  const target = tab === "review" ? pr && { pr } : repo === LOCAL_FOLDER ? folder && { folder } : { repo };
   const select = (name: string, label: string, value: string, options: string[], pick: (value: string) => void) => (
     <label>{label}
       <select name={name} value={value} onChange={(e) => pick(e.target.value)}>
@@ -274,7 +280,16 @@ function StartForm({ tab, harnesses, repos, hidden }: { tab: PartnerTab; harness
     <form className="partner-start" onSubmit={(e) => { e.preventDefault(); if (choice && target) void act("/api/partner/start", partnerStartArgs(tab, target, choice, window.location.port)); }}>
       {tab === "review"
         ? !hidden && <PrPick picked={chosen.pr} pasted={chosen.pasted ?? ""} pick={(p) => setChosen({ ...chosen, pr: p })} paste={(p) => setChosen({ ...chosen, pasted: p })} />
-        : repo ? select("repo", "Repo", repo, repos, (r) => setChosen({ ...chosen, repo: r })) : <p className="loading">No Repo yet: add one with `nico-agent repo add`</p>}
+        : (
+          <>
+            {select("repo", "Repo", repo, places, (r) => setChosen({ ...chosen, repo: r }))}
+            {repo === LOCAL_FOLDER && (
+              <label>Folder, under your home
+                <input name="folder" type="text" placeholder="~/ideas/new-thing" value={chosen.folder ?? ""} onChange={(e) => setChosen({ ...chosen, folder: e.target.value })} />
+              </label>
+            )}
+          </>
+        )}
       {choice
         ? (
           <>

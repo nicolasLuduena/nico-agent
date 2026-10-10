@@ -7,7 +7,7 @@ import { type LeadStatusJson, freshItems, openItems } from "./lead";
 import { LeadMenu } from "./lead-menu";
 import { Actions, useBoardActions } from "./forms";
 import { LeadPanel, useConversation } from "./lead-panel";
-import { PAGES, type Page, type PartnerJson, pageOf } from "./partner";
+import { PAGES, type Page, type PartnerJson, configuredRepos, pageOf } from "./partner";
 import { PartnerPanel } from "./partner-panel";
 import { PARTNER_TABS, isPartnerTab } from "../partner-tabs";
 import { ReposPane } from "./repos";
@@ -107,6 +107,8 @@ function App() {
   const questions: ToastItem[] = [...openItems(conversation.state), ...askingItems(board, answered.questions)];
   const toasts = useToasts(questions);
   const partners = useResource<{ partners?: PartnerJson[] }>("/api/partners", ["partner-changed", "board-changed"]).data?.partners ?? [];
+  // From the config, not the Board: the Ideas tab lists them at once, however slow GitHub is.
+  const repos = configuredRepos(useResource<{ repos?: unknown }>("/api/repos", ["board-changed"]).data);
   const onPartner = page !== "lead" && page !== "stats";
   const voice = useResource<{ voice?: string }>("/api/voice/state", ["voice-changed"]).data?.voice === "on";
   const talking = useTalk(voice, isPartnerTab(page) ? page : "lead");
@@ -141,7 +143,7 @@ function App() {
         {page === "stats" ? <StatsPane /> : <Actions.Provider value={actions}><ReposPane board={board} /></Actions.Provider>}
       </main>
       {PARTNER_TABS.map((tab) => (
-        <PartnerPanel key={tab} tab={tab} partner={partners.find((p) => p.tab === tab)} harnesses={harnesses} repos={board?.configured ?? []} hidden={page !== tab} talking={talking} />
+        <PartnerPanel key={tab} tab={tab} partner={partners.find((p) => p.tab === tab)} harnesses={harnesses} repos={repos} hidden={page !== tab} talking={talking} />
       ))}
       <Toasts
         items={questions}

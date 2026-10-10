@@ -27,7 +27,10 @@ export interface PartnerJson {
   partner: string;
   /** Its Agent state as herdr reports it. */
   state: string;
+  /** Its Repo's slug, or the path of an Idea partner's local folder. */
   repo: string;
+  /** The local folder an Idea partner reads, when it works in no Repo. */
+  folder?: string;
   /** The PR a Review partner reviews. */
   pr?: ReviewedPr;
   agent: string;
@@ -146,14 +149,24 @@ export function threadCards({ entries, sends }: ThreadState): ThreadCard[] {
 /** A PR the Review tab offers, as `nico-agent partner prs --json` lists it. */
 export type PrJson = PrToReview;
 
+/** Where a tab's Partner works: the PR a Review partner reviews, or the Repo or local folder an Idea partner works in. */
+export type PartnerTarget = { repo: string } | { pr: string } | { folder: string };
+
 /**
- * `partner start`'s arguments: the tab, the PR a Review partner reviews or
- * the Repo an Idea partner works in, the launch picked, and the page's port,
- * so the Partner reaches this `serve`.
+ * `partner start`'s arguments: the tab, where its Partner works, the launch
+ * picked, and the page's port, so the Partner reaches this `serve`.
  */
-export function partnerStartArgs(tab: PartnerTab, target: { repo: string } | { pr: string }, { harness, model, effort }: LaunchChoice, port: string): string[] {
-  const where = "pr" in target ? ["--pr", target.pr] : ["--repo", target.repo];
+export function partnerStartArgs(tab: PartnerTab, target: PartnerTarget, { harness, model, effort }: LaunchChoice, port: string): string[] {
+  const where = "pr" in target ? ["--pr", target.pr] : "folder" in target ? ["--folder", target.folder] : ["--repo", target.repo];
   return [tab, ...where, "--harness", harness, "--model", model, "--effort", effort, ...(port ? ["--port", port] : [])];
+}
+
+/**
+ * The configured Repos' slugs, from `/api/repos` (`repo list --json`), which
+ * reads the config alone, so the Ideas tab need not wait on the Board.
+ */
+export function configuredRepos(json: { repos?: unknown } | undefined): string[] {
+  return Array.isArray(json?.repos) ? json.repos.map((r: { slug: string }) => r.slug) : [];
 }
 
 /** A file of the diff, quoted into the message: its path. */

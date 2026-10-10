@@ -1,6 +1,7 @@
 import { type GitHubCall, currentCaller, recordCall, splitHeaders } from "./github-calls";
 import { LinearSource } from "./linear";
 import { realpathSync } from "node:fs";
+import { realpath, stat } from "node:fs/promises";
 import type { Address, CheckResult, GitHubIssue, IssueDescription, GitHubSubIssue, OpenPullRequest, PullRequest, PullRequestActivity, PullRequestDescription, PullRequestComment, Pages, RequestHandler, SocketPeer, SocketSession, Sockets, World } from "./world";
 import { RateLimited, READY_LABEL, WorldError } from "./world";
 
@@ -562,6 +563,26 @@ export class RealWorld implements World {
       const branch = listing.match(/^ref: refs\/heads\/(\S+)\s+HEAD$/m)?.[1];
       if (!branch) throw new WorldError(`could not find the default branch of origin in ${path}`);
       return branch;
+    }
+  }
+
+  async gitLocalBase(path: string) {
+    for (const ref of ["refs/remotes/origin/HEAD", "HEAD"]) {
+      try {
+        return await git(path, ["symbolic-ref", "--short", ref]);
+      } catch {
+        // Not set, or a detached HEAD: try the next.
+      }
+    }
+    return "main";
+  }
+
+  async realDirectory(path: string) {
+    try {
+      const real = await realpath(path);
+      return (await stat(real)).isDirectory() ? real : null;
+    } catch {
+      return null;
     }
   }
 

@@ -45,6 +45,22 @@ describe("/api/board", () => {
   });
 });
 
+describe("/api/repos", () => {
+  test("is the configured Repos as `repo list --json` prints them, Manual Repos included, read from config with no GitHub or git call", async () => {
+    const { cli, web, world } = await withIssue();
+    world.addClone("/src/web", "git@github.com:acme/web.git");
+    await cli("repo", "add", "acme/web", "--path", "/src/web");
+    await cli("repo", "set", "acme/web", "--manual", "on");
+    world.calls.length = 0;
+    world.failCall("github", "gh: network is unreachable");
+    const { status, body } = await web("/api/repos");
+    expect(status).toBe(200);
+    expect(JSON.parse(body)).toEqual((await cli("repo", "list", "--json")).json());
+    expect(JSON.parse(body).repos.map((r: { slug: string }) => r.slug)).toEqual(["acme/api", "acme/web"]);
+    expect(world.calls).toEqual([]);
+  });
+});
+
 describe("/api/peek", () => {
   test("is an In-flight issue's Implementer screen and its last meaningful line, read from herdr alone", async () => {
     const { cli, web, world } = await withIssue();

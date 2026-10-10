@@ -261,6 +261,8 @@ const API_ACTIONS: Record<string, string[]> = {
 /** What the app reads, with GET, by its `/api` path: each the CLI command of the same words. */
 const API_READS: Record<string, string[]> = {
   "/api/board": ["board"],
+  // The config alone, so a page that only needs the Repos never waits on the Board.
+  "/api/repos": ["repo", "list"],
   "/api/harnesses": ["harness", "list"],
   "/api/lead/log": ["lead", "log"],
   "/api/lead/status": ["lead", "status"],

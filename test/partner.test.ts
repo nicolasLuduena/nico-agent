@@ -33,8 +33,7 @@ describe("partner start", () => {
     expect(stdout).not.toContain("error");
     expect(exitCode).toBe(0);
     expect(world.calls).toEqual([
-      "git -C /src/api default-branch",
-      "git -C /src/api fetch origin",
+      "git -C /src/api local-base",
       "herdr worktree create --cwd /src/api --branch partner/idea-api-20260930120000 --base origin/main --label api:idea --no-focus",
       "herdr tab create --workspace w1 --cwd /worktrees/idea-api-20260930120000 --label partner --no-focus",
       `herdr agent start partner-idea --kind claude --pane w1:p2 -- --model opus --effort high --mcp-config ${home}/mcp.json`,
@@ -55,11 +54,68 @@ describe("partner start", () => {
     const skill = readFileSync(join(home, "SKILL.md"), "utf8");
     expect(skill).toStartWith("# A Partner\n");
     expect(skill).toContain("## The Idea partner");
-    expect(skill).toContain("never edit, create or delete a file in the worktree, and never commit, push, or open an issue or a PR");
+    expect(skill).toContain("never edit, create or delete a file in the worktree (or folder), and never commit, push, or open an issue or a PR");
     for (const section of ["Problem", "Approach", "Ruled out", "Open questions"]) expect(skill).toContain(section);
     // The Review partner's skill holds no idea role.
     await cli("partner", "start", "review", "--pr", PR, ...FLAGS);
     expect(readFileSync(join(configDir, "partners", "review", "SKILL.md"), "utf8")).not.toContain("## The Idea partner");
+  });
+
+  test("an Idea partner starts from the local clone with no network call, so it starts with the network down", async () => {
+    const { cli, world } = await withRepo();
+    world.failCall("git -C /src/api fetch", "ssh: connect to host github.com port 22: Network is unreachable");
+    world.failCall("git -C /src/api ls-remote", "ssh: connect to host github.com port 22: Network is unreachable");
+    world.failCall("github", "gh: network is unreachable");
+    const { stdout, exitCode } = await cli("partner", "start", "idea", "--repo", "acme/api", ...FLAGS);
+    expect(stdout).not.toContain("error");
+    expect(exitCode).toBe(0);
+    expect(world.calls.filter((c) => c.includes("fetch") || c.includes("ls-remote") || c.startsWith("github"))).toEqual([]);
+    expect((await cli("partner", "list", "--json")).json().partners[0].partner).toBe("running");
+  });
+
+  test("an Idea partner's worktree starts on the clone's current default branch: origin's HEAD, else the checked-out branch", async () => {
+    const { cli, world } = await withRepo();
+    // A Repo pushed from `git init` with one empty commit: no origin/HEAD in the clone.
+    world.localBases.set("/src/api", "trunk");
+    expect((await cli("partner", "start", "idea", "--repo", "acme/api", ...FLAGS)).exitCode).toBe(0);
+    expect(world.calls).toContain("herdr worktree create --cwd /src/api --branch partner/idea-api-20260930120000 --base trunk --label api:idea --no-focus");
+  });
+
+  test("an Idea partner may read a local folder that is no Repo: a plain workspace there, no worktree, and End closes it without removing anything", async () => {
+    const { cli, world, configDir } = await withRepo();
+    const home = join(configDir, "partners", "idea");
+    world.environment.set("HOME", "/home/u");
+    world.directories.add("/home/u").add("/home/u/ideas/garden");
+    const { stdout, exitCode } = await cli("partner", "start", "idea", "--folder", "~/ideas/garden", ...FLAGS);
+    expect(stdout).not.toContain("error");
+    expect(exitCode).toBe(0);
+    expect(world.calls.filter((c) => !c.startsWith("realpath"))).toEqual([
+      "herdr workspace create --cwd /home/u/ideas/garden --label garden:idea --no-focus",
+      "herdr tab create --workspace w1 --cwd /home/u/ideas/garden --label partner --no-focus",
+      `herdr agent start partner-idea --kind claude --pane w1:p2 -- --model opus --effort high --mcp-config ${home}/mcp.json`,
+      `herdr agent prompt partner-idea Read the Partner skill at ${home}/SKILL.md and follow it: you are the Idea partner, in the local folder /home/u/ideas/garden, which is no Repo and no worktree: read it, never change it.`,
+    ]);
+    const listed = (await cli("partner", "list", "--json")).json().partners[0];
+    expect(listed).toMatchObject({ partner: "running", repo: "/home/u/ideas/garden", folder: "/home/u/ideas/garden" });
+    world.calls.length = 0;
+    expect((await cli("partner", "end", "idea")).exitCode).toBe(0);
+    expect(world.calls).toEqual(["herdr workspace close w1"]);
+  });
+
+  test("a local folder must be a directory under the user's home, symlinks followed", async () => {
+    const { cli, world } = await withRepo();
+    world.environment.set("HOME", "/home/u");
+    world.directories.add("/home/u").add("/etc").add("/home/u/notes");
+    world.symlinks.set("/home/u/etc-link", "/etc");
+    const refused = async (folder: string) => (await cli("partner", "start", "idea", "--folder", folder, ...FLAGS, "--json")).json().error;
+    expect(await refused("/etc")).toBe("/etc is not under your home (/home/u)");
+    expect(await refused("~/etc-link")).toBe("~/etc-link is not under your home (/home/u)");
+    expect(await refused("~")).toBe("~ is not under your home (/home/u)");
+    expect(await refused("~/nope")).toBe("~/nope is not a folder");
+    expect(await refused("/home/u/notes/../../../etc")).toBe("/home/u/notes/../../../etc is not under your home (/home/u)");
+    expect(world.calls.filter((c) => c.startsWith("herdr"))).toEqual([]);
+    expect((await cli("partner", "start", "idea", "--folder", "notes", ...FLAGS)).exitCode).toBe(0);
+    expect((await cli("partner", "list", "--json")).json().partners[0].folder).toBe("/home/u/notes");
   });
 
   test("the launch is remembered, so the next form starts on it", async () => {
@@ -147,7 +203,8 @@ describe("the Review partner", () => {
   test("the review tab takes a PR, and the idea tab a Repo", async () => {
     const { cli } = await withRepo();
     expect((await cli("partner", "start", "review", "--repo", "acme/api", ...FLAGS, "--json")).json().error).toBe("missing required flag --pr");
-    expect((await cli("partner", "start", "idea", "--pr", PR, ...FLAGS, "--json")).json().error).toBe("missing required flag --repo");
+    expect((await cli("partner", "start", "idea", "--pr", PR, ...FLAGS, "--json")).json().error).toBe("the idea tab takes --repo or --folder");
+    expect((await cli("partner", "start", "idea", "--repo", "acme/api", "--folder", "~/x", ...FLAGS, "--json")).json().error).toBe("the idea tab takes --repo or --folder");
   });
 
   test("its skill forbids pushing, commenting, approving and merging", async () => {

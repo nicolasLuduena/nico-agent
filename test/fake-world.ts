@@ -141,6 +141,11 @@ export class FakeWorld implements World {
   serveFailure: string | null = null;
   /** Default branch of each clone's origin; `main` when unset. */
   defaultBranches = new Map<string, string>();
+  /** The base `gitLocalBase` reads from each clone; `origin/` and its default branch when unset. */
+  localBases = new Map<string, string>();
+  /** Directories on disk, by real path, and symlinks to them. */
+  directories = new Set<string>();
+  symlinks = new Map<string, string>();
   /** Branches on each clone's origin; just its default branch when unset. */
   remoteBranches = new Map<string, string[]>();
   /** Failures of outside-world calls, keyed by a prefix of the recorded call. */
@@ -343,6 +348,17 @@ export class FakeWorld implements World {
   async gitDefaultBranch(path: string) {
     this.calls.push(`git -C ${path} default-branch`);
     return this.defaultBranches.get(path) ?? "main";
+  }
+
+  async gitLocalBase(path: string) {
+    this.calls.push(`git -C ${path} local-base`);
+    return this.localBases.get(path) ?? `origin/${this.defaultBranches.get(path) ?? "main"}`;
+  }
+
+  async realDirectory(path: string) {
+    this.calls.push(`realpath ${path}`);
+    const real = this.symlinks.get(path) ?? path;
+    return this.directories.has(real) ? real : null;
   }
 
   async herdrWorktreeCreate({ cwd, branch, base, label }: { cwd: string; branch: string; base: string; label: string }) {

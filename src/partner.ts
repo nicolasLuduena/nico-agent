@@ -1,5 +1,5 @@
 import { readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join, relative, resolve, sep } from "node:path";
 import ideaRole from "./partner-idea.md" with { type: "text" };
 import partnerSkill from "./partner-skill.md" with { type: "text" };
 import { type LaunchDefaults, type Repo, findRepo, loadConfig, writeJson } from "./config";
@@ -17,22 +17,30 @@ import { type PullRequestDescription, type World, WorldError, worldErrorMessage 
 
 export { PARTNER_NAMES, PARTNER_TABS, type PartnerTab, type Tab, isPartnerTab, isTab };
 
-/** The steps that start a Partner, in order: a Gardener's, after writing its home. */
+/**
+ * The steps that start a Partner, in order: a Gardener's, after writing its
+ * home. Only a Review partner fetches: an Idea partner starts from the local
+ * clone (or folder) as it is, so it starts with the network down.
+ */
 export const PARTNER_STEPS = ["home", "fetch", "worktree", "tab", "agent start", "agent ready", "prompt"] as const;
 export type PartnerStep = (typeof PARTNER_STEPS)[number];
 
 /**
  * The local record of a tab's Partner (ADR-0014), like a Gardener's: the Repo
- * whose worktree it runs in, how it was launched, where its Thread is kept,
- * and how far its steps got.
+ * whose worktree it runs in (or the folder it reads), how it was launched,
+ * where its Thread is kept, and how far its steps got.
  */
 export interface Partner extends Progress<PartnerStep> {
   tab: PartnerTab;
+  /** The Repo's slug, or for an Idea partner in a local folder, that folder's path. */
   repo: string;
+  /** The local folder an Idea partner reads in place, with no worktree: no Repo's clone. */
+  folder?: string;
   /** The PR a Review partner reviews; its worktree is on the PR's head branch. */
   pr?: ReviewedPr;
-  branch: string;
-  base: string;
+  /** Its worktree's branch and the ref it starts from; none in a folder. */
+  branch?: string;
+  base?: string;
   worktree?: string;
   workspace?: string;
   agent: Launch;
@@ -61,6 +69,8 @@ export interface PartnerRequest extends LaunchDefaults {
   tab: PartnerTab;
   /** The Repo an Idea partner works in. */
   repo?: string;
+  /** Or the local folder, under the user's home, an Idea partner reads instead of a Repo. */
+  folder?: string;
   /** The PR a Review partner reviews, by URL or `owner/name#N`; its Repo comes with it. */
   pr?: string;
   /** The MCP server scoped to this tab's Thread. */
@@ -99,7 +109,7 @@ export function loadPartners(configDir: string): Partial<Record<PartnerTab, Part
 /** The tab's running Partner; refused when it has none. */
 export function partnerOf(configDir: string, tab: PartnerTab): Partner {
   const partner = loadPartners(configDir)[tab];
-  if (!partner) throw new DispatchError(`no ${PARTNER_NAMES[tab]} runs`, [`Run \`nico-agent partner start ${tab} --repo <owner/name>\` to start one`, LIST_HELP]);
+  if (!partner) throw new DispatchError(`no ${PARTNER_NAMES[tab]} runs`, [`Run \`nico-agent partner start ${tab} ${tab === "review" ? "--pr <url>" : "--repo <owner/name>"}\` to start one`, LIST_HELP]);
   return partner;
 }
 
@@ -112,16 +122,20 @@ function partnerHome(configDir: string, tab: PartnerTab) {
 }
 
 /**
- * Start the tab's Partner (ADR-0014): fetch the Repo's clone, create a
- * worktree workspace on its default branch, start the agent in a `partner`
+ * Start the tab's Partner (ADR-0014): create a worktree workspace (a Review
+ * partner's on the PR's head branch, fetched first; an Idea partner's on the
+ * clone's default branch as the clone has it, with no fetch), or a plain
+ * workspace in an Idea partner's local folder, start the agent in a `partner`
  * tab connected to the MCP server scoped to its Thread, and prompt it with the
  * Partner skill. One per tab, idempotent (ADR-0006): while it runs a second
  * start returns it, a failed start is resumed from its step, and a start in
- * another Repo or launch is refused until it ends.
+ * another Repo, folder or launch is refused until it ends.
  */
 export async function startPartner(world: World, configDir: string, request: PartnerRequest): Promise<PartnerStart> {
   const { tab } = request;
-  const { repo, pr } = await partnerTarget(world, configDir, request);
+  const target = await partnerTarget(world, configDir, request);
+  const { repo, pr } = target;
+  const where = repo?.slug ?? target.folder!;
   const harness = await chooseLaunch(world, configDir, request);
   // opencode2 takes its MCP server in its config content, not in args.
   if (harness.launchMode === "herdr-kind" && !harness.mcpArgs?.length) {
@@ -131,19 +145,21 @@ export async function startPartner(world: World, configDir: string, request: Par
   }
   const existing = loadPartners(configDir)[tab];
   const reviewed: ReviewedPr | undefined = pr && { number: pr.number, url: pr.url, title: pr.title, base: pr.baseBranch, head: pr.headBranch! };
-  const refuse = (record: Partner) => refuseOther(record, request, repo.slug, reviewed);
+  const refuse = (record: Partner) => refuseOther(record, request, where, reviewed);
   if (existing) refuse(existing);
   const fresh = async (): Promise<Partner> => {
     const now = world.now();
     const stamp = now.toISOString().replace(/\D/g, "").slice(0, 14);
-    const name = repoName(repo);
     return {
       tab,
-      repo: repo.slug,
+      repo: where,
+      ...(target.folder && { folder: target.folder }),
       ...(reviewed && { pr: reviewed }),
-      // The PR's head branch is likely checked out in its Implementer's worktree already, and git checks a branch out once.
-      branch: `partner/${tab}-${name}${reviewed ? `-${reviewed.number}` : ""}-${stamp}`,
-      base: `origin/${reviewed?.head ?? await world.gitDefaultBranch(repo.path)}`,
+      ...(repo && {
+        // The PR's head branch is likely checked out in its Implementer's worktree already, and git checks a branch out once.
+        branch: `partner/${tab}-${repoName(repo)}${reviewed ? `-${reviewed.number}` : ""}-${stamp}`,
+        base: reviewed ? `origin/${reviewed.head}` : await world.gitLocalBase(repo.path),
+      }),
       agent: { agent: `partner-${tab}`, harness: request.harness, model: request.model, effort: request.effort },
       mcpUrl: request.mcpUrl,
       thread: `threads/${tab}-${stamp}.jsonl`,
@@ -168,8 +184,9 @@ export async function startPartner(world: World, configDir: string, request: Par
   return { partner: await runPartner(world, configDir, repo, harness, record, pr?.body), outcome: "resumed", resumedFrom };
 }
 
-/** Where the tab's Partner works: the PR a Review partner reviews, with its Repo, or the Repo an Idea partner works in. */
-async function partnerTarget(world: World, configDir: string, request: PartnerRequest): Promise<{ repo: Repo; pr?: PullRequestDescription }> {
+/** Where the tab's Partner works: the PR a Review partner reviews, with its Repo, or the Repo or local folder an Idea partner works in. */
+async function partnerTarget(world: World, configDir: string, request: PartnerRequest): Promise<{ repo?: Repo; pr?: PullRequestDescription; folder?: string }> {
+  if (request.tab !== "review" && request.folder !== undefined) return { folder: await localFolder(world, request.folder) };
   const config = loadConfig(configDir);
   const configured = (slug: string) => {
     const repo = findRepo(config, slug);
@@ -186,6 +203,25 @@ async function partnerTarget(world: World, configDir: string, request: PartnerRe
   if (pr.state !== "open") throw new DispatchError(`${pr.url} is ${pr.state}; a Review partner reviews open PRs only`, [pick]);
   if (!pr.headBranch) throw new DispatchError(`${pr.url} comes from a fork, so its head branch can't be checked out from ${repo.slug}'s origin`, [pick]);
   return { repo, pr };
+}
+
+/**
+ * The real path of a local folder an Idea partner may read: a directory under
+ * the user's home, `~/` expanded, symlinks resolved so none leads out of it.
+ */
+async function localFolder(world: World, path: string): Promise<string> {
+  const home = world.env("HOME");
+  if (!home) throw new DispatchError("HOME is not set, so no local folder can be checked to be under it", ["Pass --repo <owner/name> instead"]);
+  const realHome = await world.realDirectory(home) ?? home;
+  const asked = path.trim().replace(/^~(?=$|\/)/, home);
+  const real = await world.realDirectory(resolve(home, asked));
+  const help = ["Pass --folder a directory under your home, such as ~/ideas/new-thing"];
+  if (!real) throw new DispatchError(`${path} is not a folder`, help);
+  const inside = relative(realHome, real);
+  if (!inside || inside === ".." || inside.startsWith(`..${sep}`) || resolve(realHome, inside) !== real) {
+    throw new DispatchError(`${path} is not under your home (${realHome})`, help);
+  }
+  return real;
 }
 
 /** A PR named by its URL or as `owner/name#N`. */
@@ -259,7 +295,7 @@ export async function partnerRows(world: World, configDir: string) {
             : "gone from herdr";
     const { agent: name, harness, model, effort } = p.agent;
     return {
-      tab: p.tab, partner, state: agent?.state ?? "unknown", repo: p.repo, ...(p.pr && { pr: p.pr }), agent: name, harness, model, effort,
+      tab: p.tab, partner, state: agent?.state ?? "unknown", repo: p.repo, ...(p.folder && { folder: p.folder }), ...(p.pr && { pr: p.pr }), agent: name, harness, model, effort,
       ...(p.workspace && { workspace: p.workspace }),
       ...(p.failure && { failure: p.failure }),
       startedAt: p.createdAt,
@@ -273,7 +309,8 @@ export async function endPartner(world: World, configDir: string, tab: PartnerTa
   const { record } = await lease(world, configDir, tab);
   const { workspace } = record;
   try {
-    if (workspace) await world.herdrWorktreeRemove(workspace);
+    // A folder is the user's own, not a worktree to remove.
+    if (workspace) await (record.folder ? world.herdrWorkspaceClose(workspace) : world.herdrWorktreeRemove(workspace));
   } catch (e) {
     await release(world, configDir, record);
     throw e;
@@ -386,7 +423,7 @@ function openToHand(entries: ThreadEntry[], tab: PartnerTab, draft: number): Dra
 }
 
 /** Run the steps `record` has not completed, as the runner holding its lease; `prBody` is a Review partner's PR description, as GitHub has it now. */
-async function runPartner(world: World, configDir: string, repo: Repo, harness: Harness, record: Partner, prBody = "") {
+async function runPartner(world: World, configDir: string, repo: Repo | undefined, harness: Harness, record: Partner, prBody = "") {
   const home = partnerHome(configDir, record.tab);
   const reviewed = record.pr;
   const steps: Record<PartnerStep, () => Promise<void>> = {
@@ -396,26 +433,33 @@ async function runPartner(world: World, configDir: string, repo: Repo, harness: 
       if (reviewed) writeFileSync(join(home, PR_BRIEF), prBrief(record.repo, reviewed, prBody));
     },
     fetch: async () => {
-      if (!reviewed) return await world.gitFetch(repo.path);
+      // A PR's head branch is remote by nature; an Idea partner's base is the clone's own.
+      if (!reviewed || !repo) return;
       // Both by name: the head for the worktree, the base for its diff.
       await world.gitFetch(repo.path, reviewed.head);
       await world.gitFetch(repo.path, reviewed.base);
     },
     worktree: async () => {
+      if (!repo) {
+        record.workspace = (await world.herdrWorkspaceCreate({ cwd: record.folder!, label: `${basename(record.folder!)}:${record.tab}` })).workspace;
+        return;
+      }
       const label = `${repoName(repo)}${reviewed ? `#${reviewed.number}` : ""}:${record.tab}`;
-      const worktree = await world.herdrWorktreeCreate({ cwd: repo.path, branch: record.branch, base: record.base, label });
+      const worktree = await world.herdrWorktreeCreate({ cwd: repo.path, branch: record.branch!, base: record.base!, label });
       record.worktree = worktree.path;
       record.workspace = worktree.workspace;
     },
     ...agentSteps(world, harness, () => ({
-      workspace: record.workspace!, cwd: record.worktree!, repoPath: repo.path,
+      workspace: record.workspace!, cwd: record.folder ?? record.worktree!, repoPath: repo?.path ?? record.folder!,
       mcp: { mcpUrl: record.mcpUrl, mcpConfig: join(home, MCP_CONFIG) },
     }), record.agent, "partner"),
     prompt: async () => {
       const skill = `Read the Partner skill at ${join(home, SKILL)} and follow it: you are the ${PARTNER_NAMES[record.tab]}`;
       const text = reviewed
         ? `${skill} for ${record.repo}#${reviewed.number}, in a worktree of its head branch ${reviewed.head}. Its title, description and base are in ${join(home, PR_BRIEF)}.`
-        : `${skill}, in a worktree of ${record.repo}.`;
+        : record.folder
+          ? `${skill}, in the local folder ${record.folder}, which is no Repo and no worktree: read it, never change it.`
+          : `${skill}, in a worktree of ${record.repo}.`;
       await prompt(world, record.agent.agent, text);
     },
   };

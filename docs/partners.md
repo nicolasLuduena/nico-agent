@@ -10,7 +10,9 @@ Standing orders, and reaches the Lead only when you hand it off.
 In its tab, pick what it works on and the Harness, model and Effort (the form
 starts on your last launch), and press Start: the Review tab takes an open PR,
 picked from the Repos' open PRs or pasted by its URL; the Ideas tab takes a
-Repo. nico-agent fetches the Repo's clone, creates a herdr worktree workspace,
+Repo, listed from the config (`/api/repos`, as `nico-agent repo list --json`
+prints it) so it shows at once however slow the Board is, or a local folder.
+For a PR, nico-agent fetches the Repo's clone; then it creates a herdr worktree workspace,
 starts the agent in a `partner` tab as the herdr agent `partner-review` or
 `partner-idea`, and prompts it with the Partner skill, written to
 `~/.config/nico-agent/partners/<tab>/SKILL.md` beside its MCP config. The same
@@ -20,6 +22,7 @@ from a shell:
 nico-agent partner prs
 nico-agent partner start review --pr https://github.com/acme/api/pull/12 --harness claude --model opus --effort high
 nico-agent partner start idea --repo acme/api --harness claude --model opus --effort high
+nico-agent partner start idea --folder ~/ideas/new-thing --harness claude --model opus --effort high
 nico-agent partner list
 ```
 
@@ -96,7 +99,16 @@ open an issue or PR: once the idea is handed off, the Lead does that. Its
 Ruled out and Open questions are lists, and read `None.` when empty. The
 Ideas tab's **Draft a hand-off** button asks for those parts.
 
+The Idea partner is local first: exploring an idea needs nothing from the
+remote, so it starts with the network down. Its worktree starts from the
+clone's current default branch as the clone has it, with no fetch:
+`origin/HEAD`, else the checked-out branch, else `main`. Run `git fetch` in the
+clone first if you want the latest. Pick **Local folder…** (or pass
+`--folder`) for an idea with no Repo yet: any directory under your home, read
+in place with no worktree; the Partner never changes it.
+
 ## Ending one
 
 **End** in the tab, or `nico-agent partner end <tab>`, removes the Partner's
-worktree and workspace, which stops its agent. Its Thread's file stays.
+worktree and workspace, which stops its agent. Its Thread's file stays, and so
+does a local folder: only its workspace is closed.

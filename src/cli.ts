@@ -88,7 +88,7 @@ const GARDEN_USAGE = "nico-agent garden <repo> [--pr <url>...]";
 const LEAD_START_USAGE = "nico-agent lead start [--harness <harness>] [--model <model>] [--effort <effort>] [--port <port>]";
 const LEAD_STATUS_HELP = "Run `nico-agent lead status` to see the Lead";
 const LEAD_SCREEN_HELP = "Run `herdr agent read lead` to see its screen";
-const PARTNER_START_USAGE = "nico-agent partner start <tab> (--pr <url> | --repo <owner/name>) --harness <harness> --model <model> --effort <effort> [--port <port>]";
+const PARTNER_START_USAGE = "nico-agent partner start <tab> (--pr <url> | --repo <owner/name> | --folder <path>) --harness <harness> --model <model> --effort <effort> [--port <port>]";
 const PARTNER_DIFF_USAGE = "nico-agent partner diff <tab>";
 const PARTNER_SAY_USAGE = "nico-agent partner say <tab> [--raw <transcript>] <text>";
 const PARTNER_REPLY_USAGE = "nico-agent partner reply <tab> <text>";
@@ -540,10 +540,11 @@ const commands: Command[] = [
   {
     name: "partner start",
     usage: PARTNER_START_USAGE,
-    summary: "Start a tab's Partner, connected to the MCP server scoped to its Thread: the Review partner in a worktree on a PR's head branch, the Idea partner in one of a Repo's default branch (no-op while it runs)",
+    summary: "Start a tab's Partner, connected to the MCP server scoped to its Thread: the Review partner in a worktree on a PR's head branch, the Idea partner in one of a Repo's default branch as its clone has it, with no fetch, or in a local folder (no-op while it runs)",
     flags: {
       "--pr": { value: true, description: "the open PR the Review partner reviews, as its URL or owner/name#N (required for review)" },
-      "--repo": { value: true, description: "the Repo the Idea partner works in, e.g. acme/api (required for idea)" },
+      "--repo": { value: true, description: "the Repo the Idea partner works in, e.g. acme/api (idea: this or --folder)" },
+      "--folder": { value: true, description: "a folder under your home the Idea partner reads in place, with no worktree, e.g. ~/ideas/new-thing (idea: this or --repo)" },
       ...LAUNCH_FLAGS,
       "--port": { value: true, description: "port `nico-agent serve` listens on (default 42069)" },
     },
@@ -551,6 +552,7 @@ const commands: Command[] = [
     examples: [
       "nico-agent partner start review --pr https://github.com/acme/api/pull/12 --harness claude --model opus --effort high",
       "nico-agent partner start idea --repo acme/api --harness claude --model opus --effort high",
+      "nico-agent partner start idea --folder ~/ideas/new-thing --harness claude --model opus --effort high",
     ],
     help: [PARTNER_TABS_HELP, "One Partner per tab: end it to start another"],
     run: partnerStartCommand,
@@ -1863,16 +1865,25 @@ function textAfterTab(args: Args, usage: string) {
 
 async function partnerStartCommand(args: Args, ctx: RunContext): Promise<Output> {
   const tab = tabArg(args, PARTNER_START_USAGE);
-  const target = tab === "review" ? { pr: required(args, "--pr", PARTNER_START_USAGE) } : { repo: required(args, "--repo", PARTNER_START_USAGE) };
+  const target = tab === "review" ? { pr: required(args, "--pr", PARTNER_START_USAGE) } : ideaTarget(args);
   const port = portFlag(args, PARTNER_START_USAGE);
   const request = { tab, ...target, ...launchFlags(args, PARTNER_START_USAGE), mcpUrl: `http://${HOSTNAME}:${port}${partnerMcpPath(tab)}` };
   const { partner, outcome, resumedFrom } = await startPartner(ctx.world, ctx.configDir, request);
   const { agent, harness, model, effort } = partner.agent;
   const result = { new: "started", existing: "already running (no-op)", resumed: `resumed from ${resumedFrom}` }[outcome];
   return {
-    data: definedOnly({ partner: result, tab, repo: partner.repo, pr: partner.pr?.url, workspace: partner.workspace, agent, harness, model, effort, thread: partner.thread }),
+    data: definedOnly({ partner: result, tab, repo: partner.repo, folder: partner.folder, pr: partner.pr?.url, workspace: partner.workspace, agent, harness, model, effort, thread: partner.thread }),
     help: [`Run \`${PARTNER_SAY_USAGE}\` to write to it`, `Run \`herdr agent read ${agent}\` to see its screen`, `Make sure \`nico-agent serve\` runs, so it reaches ${partner.mcpUrl}`],
   };
+}
+
+/** The Idea partner's Repo or local folder: one of them, never both. */
+function ideaTarget(args: Args): { repo: string } | { folder: string } {
+  const repo = args.flags["--repo"];
+  const folder = args.flags["--folder"];
+  if (typeof repo === "string" && folder === undefined) return { repo };
+  if (typeof folder === "string" && repo === undefined) return { folder };
+  throw new CliError("the idea tab takes --repo or --folder", [`Usage: \`${PARTNER_START_USAGE}\``], 2);
 }
 
 async function partnerPrsCommand(ctx: RunContext): Promise<Output> {
