@@ -5,6 +5,7 @@ import { describe, expect, test } from "bun:test";
 import { sayArgs } from "../src/app/lead";
 import { ASKING_THE_LEAD } from "../src/front-voice";
 import { VERSION } from "../src/version";
+import phantoms from "./fixtures/phantom/transcripts.json";
 import fixtures from "./fixtures/scribe/utterances.json";
 import { setup } from "./harness";
 
@@ -556,6 +557,88 @@ describe("/api/voice", () => {
       expect(await talk.next()).toEqual({ type: "final", utterance: 1, text: "" });
       expect(await talk.next(50)).toBeNull();
       expect(sent).toHaveLength(0);
+    });
+
+    describe("a phantom transcript", () => {
+      /** Transcription answering each request with speaches' verbose_json `answer`, keeping the forms sent. */
+      function answers(world: ReturnType<typeof setup>["world"], answer: unknown) {
+        const sent: FormData[] = [];
+        world.endpoint(ENDPOINT, async (request) => {
+          sent.push(await request.formData());
+          return Response.json(answer);
+        });
+        return sent;
+      }
+
+      /** Say one utterance on `talk`; its final transcript. */
+      async function utter(talk: Awaited<ReturnType<typeof open>>, utterance = 1) {
+        talk.json({ type: "start", utterance });
+        talk.send(pcm(0.5));
+        talk.json({ type: "end" });
+        return await talk.next();
+      }
+
+      test("a phrase Whisper looped reaches it once, and speaches is asked for its segments", async () => {
+        const ctx = await withVoice();
+        const sent = talker(ctx.world, (body) => ({ handOff: { message: body.messages.at(-1).content } }));
+        const forms = answers(ctx.world, phantoms["repeated-aiken"].answer);
+
+        expect(await utter(await open(ctx))).toEqual({ type: "final", utterance: 1, text: "This is not the case with Aiken." });
+
+        await until(async () => (await log(ctx)).length === 2);
+        expect(sent[0].messages.at(-1).content).toBe("This is not the case with Aiken.");
+        expect((await log(ctx))[0]).toMatchObject({ type: "user", text: "This is not the case with Aiken.", raw: "This is not the case with Aiken." });
+        expect(forms[0]!.get("response_format")).toBe("verbose_json");
+      });
+
+      test("one of Whisper's silence phrases, or what speaches marks as no speech, reaches no one", async () => {
+        for (const name of ["thanks-for-watching", "no-speech"] as const) {
+          const ctx = await withVoice();
+          const sent = talker(ctx.world, () => ({ say: ["You're welcome."] }));
+          answers(ctx.world, phantoms[name].answer);
+          const talk = await open(ctx);
+
+          expect(await utter(talk)).toEqual({ type: "final", utterance: 1, text: "" });
+          expect(await talk.next(50)).toBeNull();
+          expect(sent).toHaveLength(0);
+          expect(await log(ctx)).toEqual([]);
+        }
+      });
+
+      test("a service that refuses verbose_json is asked for plain json, once and from then on", async () => {
+        const ctx = await withVoice();
+        talker(ctx.world, (body) => ({ handOff: { message: body.messages.at(-1).content } }));
+        const formats: string[] = [];
+        ctx.world.endpoint(ENDPOINT, async (request) => {
+          const format = String((await request.formData()).get("response_format"));
+          formats.push(format);
+          if (format === "verbose_json") return Response.json({ error: { message: "response_format 'verbose_json' is not compatible with this model" } }, { status: 400 });
+          return Response.json({ text: "Dispatch it." });
+        });
+        const talk = await open(ctx);
+
+        expect(await utter(talk, 1)).toEqual({ type: "final", utterance: 1, text: "Dispatch it." });
+        expect(await utter(talk, 2)).toEqual({ type: "final", utterance: 2, text: "Dispatch it." });
+        expect(formats).toEqual(["verbose_json", "json", "json"]);
+      });
+
+      test("the app's own speech, heard back while it plays, reaches no one", async () => {
+        const ctx = await withVoice(VOICED);
+        const spoken = await speaking(ctx);
+        const sent = talker(ctx.world, () => ({ say: ["Great."] }));
+        const talk = await open(ctx);
+        await ctx.cli("lead", "say", "The retries PR is ready for review.");
+        await ctx.look();
+        await until(() => spoken.length === 1);
+        answers(ctx.world, { text: " The retries PR is ready for review." });
+        await until(() => talk.received.some((m) => m?.type === "speech-end"));
+        while (await talk.next(50)) {}
+
+        expect(await utter(talk)).toEqual({ type: "final", utterance: 1, text: "" });
+        await Bun.sleep(20);
+        expect(sent).toHaveLength(0);
+        expect((await log(ctx)).map((e) => e.who)).toEqual(["lead"]);
+      });
     });
 
     test("each recorded utterance is handed off cleaned, keeping the raw, in the order said", async () => {

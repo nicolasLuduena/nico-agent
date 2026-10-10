@@ -2,6 +2,7 @@ import { appendFileSync } from "node:fs";
 import { join } from "node:path";
 import { type Entry, loadConversation } from "./conversation";
 import { nudgesSent } from "./nudge";
+import type { Phantom } from "./phantom";
 import { voiceOn } from "./voice-on";
 import type { World } from "./world";
 
@@ -26,7 +27,7 @@ const TIMING_TIMEOUT_MS = 5 * 60_000;
  * not; how long each took after the last one that did; the whole wait, from
  * the end of speech to the Lead heard; and the step that took longest.
  */
-function timingLine(utterance: number, text: string, times: Partial<Record<VoiceStep, Date>>): string {
+function timingLine(utterance: number, text: string, times: Partial<Record<VoiceStep, Date>>, dropped?: Phantom): string {
   const took: Partial<Record<VoiceStep, number | null>> = {};
   let last = times.spoke;
   for (const step of VOICE_STEPS.slice(1)) {
@@ -43,6 +44,7 @@ function timingLine(utterance: number, text: string, times: Partial<Record<Voice
     took,
     total: spoke && played ? played.getTime() - spoke.getTime() : null,
     slowest,
+    ...(dropped && { dropped }),
   });
 }
 
@@ -52,8 +54,12 @@ export interface Timing {
   transcribed(): void;
   /** The Front voice hands it to the Lead (`cleaned` false when sent as heard) as `text`, heard as `raw`. */
   handed(cleaned: boolean, said: { text: string; raw: string }): void;
-  /** It ends here: it failed, nothing was heard, or the Front voice answered it itself. */
-  dropped(): void;
+  /**
+   * It ends here: it failed, nothing was heard, or the Front voice answered
+   * it itself; or it was heard, as `heard`, and dropped for `reason`, a
+   * phantom transcript (see `screen`).
+   */
+  dropped(phantom?: { reason: Phantom; heard: string }): void;
 }
 
 /** A message being timed: its steps so far, and the ids of its entry and of the Lead's first after it. */
@@ -62,6 +68,8 @@ interface Timed {
   text: string;
   raw: string | null;
   times: Partial<Record<VoiceStep, Date>>;
+  /** Why it was dropped, a phantom transcript. */
+  dropped?: Phantom;
   entry?: number;
   said?: number;
 }
@@ -87,7 +95,7 @@ export function stopwatch({ world, configDir }: { world: World; configDir: strin
     const written = times.written;
     const nudged = written && nudgesSent(configDir).find((at) => at >= written);
     if (nudged && (!times.said || nudged <= times.said)) times.nudged = nudged;
-    appendFileSync(join(configDir, TIMING_FILE), `${timingLine(message.utterance, message.text, times)}\n`);
+    appendFileSync(join(configDir, TIMING_FILE), `${timingLine(message.utterance, message.text, times, message.dropped)}\n`);
   };
 
   return {
@@ -103,7 +111,10 @@ export function stopwatch({ world, configDir }: { world: World; configDir: strin
           message.text = text;
           message.raw = raw;
         },
-        dropped: () => log(message),
+        dropped: (phantom) => {
+          if (phantom) Object.assign(message, { text: phantom.heard, dropped: phantom.reason });
+          log(message);
+        },
       };
     },
     /** The conversation changed: a spoken message's entry, or the Lead's first entry after one. */

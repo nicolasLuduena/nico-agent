@@ -23,6 +23,21 @@ export type Speech =
  */
 type Spoken = { text: string; tab: Tab; reply: boolean; entry?: number };
 
+/**
+ * How long after the app's speech stops playing an utterance that begins is
+ * still taken to have begun while it played: the page starts one a fifth of
+ * a second into speech, and a room echoes.
+ */
+const ECHO_TAIL_MS = 1000;
+
+/** What a tab's pages play, or played: its text, and from when until when it plays, in epoch ms. */
+interface Played {
+  text: string;
+  tab: Tab;
+  from: number;
+  until: number;
+}
+
 /** What is said still reaches the user in writing, so every warning says so. */
 const STILL_SHOWN = "replies still show in the panel";
 
@@ -62,6 +77,8 @@ export function speaker({ world, configDir }: { world: World; configDir: string 
   let reading: Spoken | null = null;
   /** How many times the Lead was hushed: a speech asked for before the last hush is never played. */
   let hushes = 0;
+  /** What the pages played lately, oldest first, for `playing`. */
+  let played: Played[] = [];
 
   const lastId = () => loadConversation(configDir).at(-1)?.id ?? 0;
   const threads = () => Object.values(loadPartners(configDir)).map((p) => ({ tab: p.tab, file: p.thread, entries: loadThread(configDir, p.thread) }));
@@ -94,6 +111,12 @@ export function speaker({ world, configDir }: { world: World; configDir: string 
     let stopped = false;
     streaming = { stop: () => { stopped = true; void reader.cancel().catch(() => {}); } };
     tell({ type: "speech", ...which, rate: SPEECH_RATE }, tab);
+    // The page plays it once what it was playing ends, as fast as it is spoken however fast it is made.
+    const now = world.now().getTime();
+    played = played.filter((p) => p.until + ECHO_TAIL_MS >= now);
+    const from = Math.max(now, ...played.filter((p) => p.tab === tab).map((p) => p.until));
+    const playing: Played = { text, tab, from, until: from };
+    played.push(playing);
     // A chunk may end inside a sample; its odd byte starts the next one.
     let carry = new Uint8Array(0);
     try {
@@ -106,6 +129,7 @@ export function speaker({ world, configDir }: { world: World; configDir: string 
         const whole = bytes.byteLength - (bytes.byteLength % 2);
         carry = bytes.slice(whole);
         if (whole) audio(bytes.slice(0, whole), tab);
+        playing.until += (whole / 2 / SPEECH_RATE) * 1000;
       }
     } catch (e) {
       if (!stopped) return failed(`stopped answering: ${e instanceof Error ? e.message : String(e)}`, "Check the speak service's log");
@@ -200,9 +224,20 @@ export function speaker({ world, configDir }: { world: World; configDir: string 
       waiting.push({ text: unmarked(text), tab, reply: false });
       say();
     },
+    /**
+     * What the pages on `tab` are playing now, or stopped playing a moment
+     * ago: an utterance beginning now may be the app heard back.
+     */
+    playing(tab: Tab): string[] {
+      const now = world.now().getTime();
+      return played.filter((p) => p.tab === tab && p.from <= now && p.until + ECHO_TAIL_MS >= now).map((p) => p.text);
+    },
     /** Stop speaking now, and drop what waits to be spoken; talking over the Front voice, the replies wait for the next pause. */
     hush() {
       hushes++;
+      // The pages stop playing it at once.
+      const now = world.now().getTime();
+      for (const p of played) p.until = Math.min(p.until, now);
       const frontVoiceTalkedOver = reading !== null && !reading.reply;
       held = [...(frontVoiceTalkedOver ? waiting.filter((s) => s.reply) : []), ...held];
       waiting = [];

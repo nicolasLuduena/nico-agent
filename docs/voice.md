@@ -103,6 +103,35 @@ A failure (no `voice.transcribe`, the service down or answering an error, the
 microphone blocked) shows with the app's other warnings, above the
 conversation; typing still works.
 
+### Phantom transcripts
+
+Whisper invents text from silence and noise, and can hear the app's own
+voice through the microphone. Before the Front voice hears a final
+transcript, `serve` (`src/phantom.ts`) screens it:
+
+- **Repetition.** A short phrase said three or more times in a row is kept
+  once: "No. No, no, no, …" reaches the Front voice as "No.", and "This is
+  not the case with Aiken, it is not the case with Aiken, …" as "This is
+  not the case with Aiken."
+- **Silence phrases.** A transcript that is only one of Whisper's silence
+  phrases ("Thanks for watching.", "Thank you.", "Subtitles by …", "you"; a
+  short list in `PHANTOM_PHRASES`) is dropped. Said with more ("Thank you,
+  dispatch it."), it stays.
+- **No speech.** Transcription is asked for `verbose_json`, whose segments
+  carry Whisper's `no_speech_prob`; a transcript whose segments, averaged
+  over their length, are more likely than 0.6 not speech is dropped. A
+  service that refuses `verbose_json` (400) is asked again for `json`, and
+  so from then on, without this check.
+- **Echo.** An utterance that begins while the page plays the Front voice's
+  or the Lead's speech, or within a second of it stopping, is dropped when
+  at least 80% of its words, in order, are words of what was being spoken
+  and it has three words or more: a short "yes" over the Lead is always
+  heard.
+
+A dropped utterance writes nothing to the Conversation and Nudges no one;
+the page shows "Heard nothing; try again." and the timing log's line for it
+names why (`dropped`, below).
+
 ### Hands-free
 
 A tap on **Talk**, or the key anywhere (below), starts a hands-free
@@ -366,6 +395,10 @@ how long each step took after the last one that happened, in ms; `total` is
 page and `serve` share a clock, being on one machine (on the phone the
 phone's clock takes `spoke` and `played`, so `ended` is off by the
 difference between the clocks).
+
+An utterance dropped as a phantom transcript (see **Phantom transcripts**)
+is logged at once, with `text` what was heard and `dropped` why: `phantom
+phrase`, `no speech` or `echo`; no other line has `dropped`.
 
 A line is written once the page plays the Lead's reply; with Voice off, once
 the Lead first says something; for a failed or empty transcript, at once;
