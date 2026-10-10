@@ -339,8 +339,9 @@ _Avoid_: Reviewer (that is the agent launched on a Dispatch's PR), review chat
 A Partner for working through a problem in a Repo the user picks, running in a
 worktree of that Repo on its default branch as the local clone has it (no
 fetch), so it can read the code, never change it; or, for an idea with no Repo
-yet, in a folder under the user's home, read in place with no worktree. Its Hand-off is what the Lead turns into a Spec: the problem, the
-approach chosen, what was ruled out, and the open questions.
+yet, in a folder under the user's home, read in place with no worktree. Its
+Hand-off is what the Lead turns into a Spec: the problem, the approach chosen,
+what was ruled out, and the open questions.
 _Avoid_: Brainstormer, idea chat, Spec writer (the Lead writes Specs)
 
 **Thread**:

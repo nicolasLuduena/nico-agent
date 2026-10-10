@@ -12,9 +12,10 @@ starts on your last launch), and press Start: the Review tab takes an open PR,
 picked from the Repos' open PRs or pasted by its URL; the Ideas tab takes a
 Repo, listed from the config (`/api/repos`, as `nico-agent repo list --json`
 prints it) so it shows at once however slow the Board is, or a local folder.
-For a PR, nico-agent fetches the Repo's clone; then it creates a herdr worktree workspace,
-starts the agent in a `partner` tab as the herdr agent `partner-review` or
-`partner-idea`, and prompts it with the Partner skill, written to
+For a PR, nico-agent fetches the Repo's clone; then it creates a herdr
+worktree workspace, starts the agent in a `partner` tab as the herdr agent
+`partner-review` or `partner-idea`, and prompts it with the Partner skill,
+written to
 `~/.config/nico-agent/partners/<tab>/SKILL.md` beside its MCP config. The same
 from a shell:
 
