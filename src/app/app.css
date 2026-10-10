@@ -501,7 +501,21 @@ button.talk {
 }
 button.talk:hover:not(:disabled) { background: color-mix(in srgb, var(--ink) 86%, var(--surface)); }
 button.talk svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; }
-button.talk[aria-pressed="true"], button.talk[aria-pressed="true"]:hover { background: var(--accent); color: var(--accent-ink); box-shadow: 0 0 0 5px color-mix(in srgb, var(--accent) 24%, transparent); }
+button.talk[aria-pressed="true"], button.talk[aria-pressed="true"]:hover { background: var(--accent); color: var(--accent-ink); box-shadow: 0 0 0 calc(4px + var(--level, 0) * 6px) color-mix(in srgb, var(--accent) 24%, transparent); }
+/* While someone talks, the halo follows the voice frame by frame, so it drops its easing; a reply playing wears it in ink. */
+button.talk.live { transition: background-color 160ms var(--ease), color 160ms var(--ease), transform 120ms var(--ease); }
+button.talk.live:not([aria-pressed="true"]) { box-shadow: 0 0 0 calc(var(--level, 0) * 6px) color-mix(in srgb, var(--ink) 12%, transparent); }
+/* The meter: five bars in the microphone's place, swelling up and down from the centre line with each band of the voice. */
+.meter { display: inline-flex; align-items: center; justify-content: center; gap: 2px; width: 23px; height: 22px; margin: 0 -2px; }
+.meter i { width: 3px; height: 100%; border-radius: 2px; background: currentColor; transform: scaleY(calc(0.14 + 0.86 * min(1, var(--v, 0) * 1.1))); will-change: transform; }
+.talk-group { display: inline-flex; align-items: stretch; gap: 0.75rem; }
+/* The microphone picker: a slim fill pill with a chevron beside Talk, over a native select so the list is the browser's own. */
+.mic-picker { position: relative; display: inline-grid; place-items: center; width: 2.5rem; min-height: 54px; border-radius: var(--r-pill); background: var(--fill); color: var(--ink-muted); transition: background-color 160ms var(--ease), color 160ms var(--ease); }
+.mic-picker:hover { background: var(--fill-hover); color: var(--ink); }
+.mic-picker:has(select:focus-visible) { outline: 2px solid var(--focus); outline-offset: 2px; }
+.mic-picker svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
+.mic-picker select { position: absolute; inset: 0; width: 100%; height: 100%; min-height: 0; padding: 0; border: 0; border-radius: inherit; opacity: 0; cursor: pointer; }
+.mic-picker select:focus { box-shadow: none; }
 .talk-status { font-size: 14px; }
 .talk-status .help { font-size: 13px; }
 .talk-status .indicator { display: flex; align-items: center; gap: 0.55rem; min-height: 30px; }
@@ -566,6 +580,10 @@ button:disabled, button:disabled:hover, .repo-group form.launch > button:disable
   .lead-bar button.quiet { padding: 0 0.55rem; }
   .card-message.lead .text { font-size: 16px; }
   button.talk { min-width: 5.5rem; }
+  .talk-group { gap: 0.4rem; }
+  /* While live, the meter stands for the words on a phone; they stay its name, and the talk status above says them. */
+  button.talk.live > span:not(.meter) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .mic-picker { width: 2rem; }
   .research-box { width: calc(100% - 2rem); }
   .toasts { padding: 1rem; max-height: min(28rem, 55dvh); mask-image: linear-gradient(transparent, #000 1rem); }
   .item-line button { grid-template-columns: auto auto minmax(0, 1fr); border-radius: var(--r-lg); }

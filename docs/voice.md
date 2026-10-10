@@ -73,6 +73,14 @@ itself or sends it to the Lead as your message, cleaned, with the raw
 transcript kept on the entry (`nico-agent say --raw <raw> -- <text>`). The
 card shows the two side by side.
 
+The chevron beside it picks the microphone: **System default**, or one by
+name, remembered in this browser. When the one picked is unplugged, the
+button records on the default instead and says so in one line, rather than
+failing; plug it back in and it is used again. Without the microphone
+allowed the browser hides the names, so opening the picker asks once. While
+you talk, or a reply plays, the button's microphone becomes a meter of the
+voice; with reduced motion asked for, it swells calmly instead.
+
 - **Hold** the button (or Space or Enter on it) to talk; release to send.
 - **Tap** it to start a hands-free session (below): a pause of half a
   second once you finished a sentence sends it (two seconds while you are

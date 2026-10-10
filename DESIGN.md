@@ -168,7 +168,7 @@ The page is a shell of two columns under a translucent header. The Lead panel, h
 - One colour per Stage, used only to name that Stage, as its text on a pill tinted with it.
 - Two designed themes, Light (the default) and Dark, chosen in the header (Light, Dark or System); both pass WCAG AA.
 - Pill-shaped controls with weight; disabled controls go flat grey, never pastel.
-- Motion that settles: arrivals ease out on an exponential curve; nothing loops.
+- Motion that settles: arrivals ease out on an exponential curve; nothing loops. The one thing that moves on its own is the talk button's meter, and only to a live voice.
 
 ## Themes
 
@@ -241,7 +241,7 @@ Every text pair is checked against WCAG AA (4.5:1) in both themes: ink, muted in
 - **Header:** 56px, sticky, translucent (the ground at 78% in Light, 72% in Dark, with a 20px blur and 180% saturation), a hairline under it. The brand (a 26px iris squircle with a drawn prompt, then the wordmark), then the pages (**Lead**, **Stats**) as pill links, the current one on the accent's soft tone in link iris, then at the far end the Questions count, the theme toggle, and the Lead's button.
 - **Shell:** a grid of the Lead panel (the rest of the width) and the right column (20 to 30rem; 20 to 36rem on the Stats page, for a bar a day), 1.5rem apart and from the edges, at most 150rem wide, under the header. On a 1920px window the Lead panel takes about 70% of it. The Lead panel fills the window's height; the right column's panel is as tall as its content and scrolls within the window's height.
 - **Lead panel:** a column of the bar (Lead and its context meter, the Voice switch, Research, the drawer's button), the notices when there are any, the conversation (which scrolls) or the drawer, and the composer, which stays at the foot.
-- **Narrow window (900px and below):** one column, the Lead panel first and as tall as the window, then the right column. Under 560px the wordmark, the Lead panel's "Lead" and the word "Questions" hide (each keeps its accessible name; the brand's mark stays, at 24px), the Lead's button truncates, the talk button narrows to 5.5rem, the Research box spans the panel less 1rem each side, and the context meter shows only its figure ("86%").
+- **Narrow window (900px and below):** one column, the Lead panel first and as tall as the window, then the right column. Under 560px the wordmark, the Lead panel's "Lead" and the word "Questions" hide (each keeps its accessible name; the brand's mark stays, at 24px), the Lead's button truncates, the talk button narrows to 5.5rem and shows only the meter while live (its words stay its accessible name), the microphone picker narrows to 2rem, the Research box spans the panel less 1rem each side, and the context meter shows only its figure ("86%").
 - **Pages:** `#/` is the Lead page, `#/stats` the Stats page; the Lead panel and the toasts stay on both.
 - **Toasts:** fixed at the bottom right of every page, over the right column, 26rem wide at most (the window less 1rem each side under 560px).
 
@@ -255,7 +255,7 @@ Panels 22px (xl); toasts, an unfolded line, the Repos totals and the popovers 16
 
 ## Motion
 
-Short and settling. A new card or an expanded Repo arrives in 280ms with an 8px lift, a toast in 320ms with a 12px lift and a 2% scale, on `cubic-bezier(0.16, 1, 0.3, 1)`; the Lead menu and the Research box drop in over 220ms with a 6px drop and a 2% scale; the switch's knob and a Repo's chevron ease out over 240ms; colours ease over 160 to 240ms. A pressed button sinks to 97%. Nothing loops or pulses. Under `prefers-reduced-motion` every animation and transition is off.
+Short and settling. A new card or an expanded Repo arrives in 280ms with an 8px lift, a toast in 320ms with a 12px lift and a 2% scale, on `cubic-bezier(0.16, 1, 0.3, 1)`; the Lead menu and the Research box drop in over 220ms with a 6px drop and a 2% scale; the switch's knob and a Repo's chevron ease out over 240ms; colours ease over 160 to 240ms. A pressed button sinks to 97%. Nothing loops or pulses, except the talk button's meter, which is a voice made visible rather than decoration: while the user talks, or a reply plays, five bars stand in for its microphone, each a band of the voice's pitch (the lowest in the middle), springing up in 30ms and falling back over 160ms, and the button's halo swells by up to 6px with the loudest. Silent, the bars rest as short dashes. Under `prefers-reduced-motion` every animation and transition is off, and the meter goes calm: its bars rise and fall together, slowly (600ms), and the halo stays still.
 
 ## Components
 
@@ -300,7 +300,7 @@ The one quiet place for warnings, under the Lead panel's bar: serve unreachable,
 - A toast's question is set at 17px/600; its choices are surface pills with an edge, then a free-text field and Answer. A Proposal's toast names its action as inline code, or the Source write as a mono box, then the reason, then Approve (primary) and Decline, which opens an optional reason field.
 
 ### Composer
-At the Lead panel's foot, always. The text field (a raised pill, 54px tall, edged, taking the focus colour and a soft focus halo while focused, with Send inside it at its end) and the **Talk** button (a 54px ink pill with surface text and a drawn microphone, at least 8.5rem wide) sit side by side, the same height. Enter sends, Shift+Enter breaks the line; the draft is the composer's own, so arriving entries never touch it. Talk is held or tapped (see `docs/voice.md`); while it records it fills with the accent and wears a soft accent halo. Above the row, the talk status shows only during a conversation by voice: a dot (filled while someone is heard, outlined while the Lead thinks), **Listening**, **Thinking** or **Speaking** at 700, a muted note or what is heard in italic, and Stop or End.
+At the Lead panel's foot, always. The text field (a raised pill, 54px tall, edged, taking the focus colour and a soft focus halo while focused, with Send inside it at its end) and the **Talk** button (a 54px ink pill with surface text and a drawn microphone, at least 8.5rem wide) sit side by side, the same height. Enter sends, Shift+Enter breaks the line; the draft is the composer's own, so arriving entries never touch it. Talk is held or tapped (see `docs/voice.md`); while it records it fills with the accent and wears a soft accent halo, and while someone talks (the user, or a reply playing, when the halo is ink at 12%) its microphone gives way to the meter (see Motion). Beside it, 0.75rem off, the microphone picker: a slim fill pill (2.5rem by 54px) with a muted chevron, over a native select of **System default** then each microphone by name; the pick is remembered in the browser, one unplugged stays listed as "(not connected)", and recording on it falls back to the default with a one-line note above the row. Above the row, the talk status shows only during a conversation by voice: a dot (filled while someone is heard, outlined while the Lead thinks), **Listening**, **Thinking** or **Speaking** at 700, a muted note or what is heard in italic, and Stop or End.
 
 ### Research box
 "Research" drops a box from the Lead bar over the conversation, as wide as the panel allows (26rem at most), raised like the Lead's controls: the question (Enter sends, Shift+Enter a new line), an optional Repo, a muted line saying the Lead writes the issue, and Send to the Lead (primary) and Cancel. Its labels are 13px/600 ink. Opening it focuses the question; Escape, Cancel, a click elsewhere or focus leaving it closes it with the draft kept; sending closes it, and the message shows in the conversation like any other.
@@ -338,6 +338,6 @@ Text selection is the accent at 28%; the caret is the accent; scrollbars are thi
 - **Don't** mark a card with a coloured stripe down one side; a toast is ringed all round.
 - **Don't** fade a disabled primary to a pastel of the accent.
 - **Don't** box things inside a panel with borders when space and a hairline will do.
-- **Don't** add looping or attention-seeking motion.
+- **Don't** add looping or attention-seeking motion; the talk button's meter moves only to a live voice.
 - **Don't** load external fonts, images or icon sets.
 - **Don't** use magenta for anything but an agent waiting on the user.
