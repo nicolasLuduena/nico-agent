@@ -10,10 +10,12 @@ import type { SocketPeer, World } from "./world";
  * What `/api/voice` tells the app of the speech it plays, besides the audio
  * itself as binary messages between `speech` and `speech-end`: 16-bit
  * little-endian mono PCM at `rate`, whole samples each. The Lead's speech
- * names its `entry`; a Partner's replies and the Front voice's lines have none.
+ * names its `entry`; a line of the Front voice's, the `line` `serve` numbered
+ * it, for the page to say when it played (see voice-timing.ts); a Partner's
+ * replies have neither.
  */
 export type Speech =
-  | { type: "speech"; entry?: number; rate: number }
+  | { type: "speech"; entry?: number; line?: number; rate: number }
   | { type: "speech-end"; entry?: number }
   | { type: "speech-error"; entry?: number; error: string; help: string[] };
 
@@ -21,7 +23,7 @@ export type Speech =
  * Something to read aloud to the pages on `tab`: a reply (a Lead's entry,
  * naming it, or a Partner's), or a line of the Front voice's.
  */
-type Spoken = { text: string; tab: Tab; reply: boolean; entry?: number };
+type Spoken = { text: string; tab: Tab; reply: boolean; entry?: number; line?: number };
 
 /**
  * How long after the app's speech stops playing an utterance that begins is
@@ -79,6 +81,8 @@ export function speaker({ world, configDir }: { world: World; configDir: string 
   let hushes = 0;
   /** What the pages played lately, oldest first, for `playing`. */
   let played: Played[] = [];
+  /** How many lines of the Front voice's were read; the last one's number. */
+  let lines = 0;
 
   const lastId = () => loadConversation(configDir).at(-1)?.id ?? 0;
   const threads = () => Object.values(loadPartners(configDir)).map((p) => ({ tab: p.tab, file: p.thread, entries: loadThread(configDir, p.thread) }));
@@ -90,7 +94,7 @@ export function speaker({ world, configDir }: { world: World; configDir: string 
     for (const peer of listeners(tab)) peer.send(chunk);
   };
 
-  const read = async ({ text, tab, entry }: Spoken) => {
+  const read = async ({ text, tab, entry, line }: Spoken) => {
     // Nobody shows its tab any more: nothing is made for no one.
     if (!listeners(tab).length) return;
     const which = entry === undefined ? {} : { entry };
@@ -110,7 +114,7 @@ export function speaker({ world, configDir }: { world: World; configDir: string 
     if (hushes !== asked) return void reader.cancel().catch(() => {});
     let stopped = false;
     streaming = { stop: () => { stopped = true; void reader.cancel().catch(() => {}); } };
-    tell({ type: "speech", ...which, rate: SPEECH_RATE }, tab);
+    tell({ type: "speech", ...which, ...(line !== undefined && { line }), rate: SPEECH_RATE }, tab);
     // The page plays it once what it was playing ends, as fast as it is spoken however fast it is made.
     const now = world.now().getTime();
     played = played.filter((p) => p.until + ECHO_TAIL_MS >= now);
@@ -218,11 +222,13 @@ export function speaker({ world, configDir }: { world: World; configDir: string 
         say();
       };
     },
-    /** Read a line of the Front voice's in `tab`, after what waits, with Voice on and a page on that tab. */
-    line(text: string, tab: Tab) {
+    /** Read a line of the Front voice's in `tab`, after what waits, with Voice on and a page on that tab; its number, as the speech names it. */
+    line(text: string, tab: Tab): number | undefined {
       if (!listeners(tab).length || !voiceOn(configDir)) return;
-      waiting.push({ text: unmarked(text), tab, reply: false });
+      const line = ++lines;
+      waiting.push({ text: unmarked(text), tab, reply: false, line });
       say();
+      return line;
     },
     /**
      * What the pages on `tab` are playing now, or stopped playing a moment

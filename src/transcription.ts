@@ -45,9 +45,10 @@ function bytesOf(ms: number) {
  * to be transcribed, the user having stopped talking at `spokeAt` (epoch
  * ms); or it is dropped. `hush` stops the Lead's speech (see `speaker`),
  * whatever the utterance does; `played` says the page began playing the
- * Lead's entry `entry` at `at` (epoch ms), for the timing log. `tab` says
- * which of the app's tabs the page shows: what is said from then on goes to
- * that tab's Front voice, and only that tab's replies are spoken to it.
+ * Lead's entry `entry`, or the Front voice's `line`, at `at` (epoch ms), for
+ * the timing log. `tab` says which of the app's tabs the page shows: what is
+ * said from then on goes to that tab's Front voice, and only that tab's
+ * replies are spoken to it.
  */
 export type VoiceCommand =
   | { type: "tab"; tab: Tab }
@@ -55,7 +56,7 @@ export type VoiceCommand =
   | { type: "end"; spokeAt?: number }
   | { type: "cancel" }
   | { type: "hush" }
-  | { type: "played"; entry: number; at: number };
+  | ({ type: "played"; at: number } & ({ entry: number } | { line: number }));
 
 /**
  * What `/api/voice` tells the app, each about the utterance it numbered: what
@@ -158,7 +159,7 @@ export function transcriptionSession(ctx: TranscriptionContext) {
         return failure(utterance.number, answer.error, answer.help);
       }
       if (kind === "interim") return { type: kind, utterance: utterance.number, text: answer.returned };
-      timing?.transcribed();
+      timing?.transcribed(answer.returned);
       const screened = screen({ text: answer.returned, segments: answer.segments }, utterance.echoes);
       if ("text" in screened) return { type: kind, utterance: utterance.number, text: screened.text };
       timing?.dropped({ reason: screened.dropped, heard: answer.returned });
@@ -174,6 +175,9 @@ export function transcriptionSession(ctx: TranscriptionContext) {
           timing?.handed(cleaned, message);
           utterance.release();
         },
+        asked: () => timing?.asked(),
+        firstToken: () => timing?.firstToken(),
+        firstSentence: (line) => timing?.firstSentence(line),
       }, utterance.tab);
       if (!handed) timing?.dropped();
     };

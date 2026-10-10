@@ -173,6 +173,9 @@ class VoiceSocket {
 /** How far ahead of now the first chunk of the Lead's speech is scheduled, so the next arrives before it ends. */
 const PLAY_AHEAD_S = 0.05;
 
+/** What a speech played was, for the timing log: the Lead's entry, or a line of the Front voice's. */
+type Played = { entry: number } | { line: number };
+
 /** The Lead's voice: each chunk of its speech played right after the one before, all stopped at once by `stop`. */
 class Player {
   private context: AudioContext | null = null;
@@ -182,13 +185,13 @@ class Player {
   private rate = 0;
   /** Whether the speech that began has ended (or none began), so once its chunks play out, the Lead is done. */
   private ended = true;
-  /** The Lead's entry whose speech began, until its first chunk is scheduled. */
-  private first: number | null = null;
+  /** The Lead's entry, or the Front voice's line, whose speech began, until its first chunk is scheduled. */
+  private first: Played | null = null;
 
-  /** `done` once the Lead is done speaking; `played` when an entry's first audio is due to play, in epoch ms. */
+  /** `done` once the Lead is done speaking; `played` when an entry's or a line's first audio is due to play, in epoch ms. */
   constructor(
     private readonly done: () => void,
-    private readonly played: (entry: number, at: number) => void,
+    private readonly played: (which: Played, at: number) => void,
   ) {}
 
   /** Created and resumed in a user gesture, as browsers let audio start only then; a browser without audio stays silent. */
@@ -206,12 +209,12 @@ class Player {
     return !this.ended || this.sources.size > 0;
   }
 
-  /** A speech begins, the Lead's `entry` or a line of the Front voice's, its chunks at `rate`. */
-  begin(entry: number | undefined, rate: number) {
+  /** A speech begins, the Lead's `entry` or the Front voice's `line`, its chunks at `rate`. */
+  begin({ entry, line }: { entry?: number; line?: number }, rate: number) {
     this.wake();
     this.rate = rate;
     this.ended = false;
-    this.first = entry ?? null;
+    this.first = entry !== undefined ? { entry } : line !== undefined ? { line } : null;
   }
 
   /** Play a chunk of the speech right after the last one, or as soon as it can when none is playing. */
@@ -324,7 +327,7 @@ export function useTalk(voice: boolean, tab: Tab) {
   playerRef.current ??= new Player(() => {
     setSpeaking(false);
     dispatch({ type: "lead-done" });
-  }, (entry, at) => socket.current?.command({ type: "played", entry, at }));
+  }, (which, at) => socket.current?.command({ type: "played", ...which, at }));
   const player = playerRef.current;
 
   /** Stop the Lead speaking, here and at `serve`, which drops what waits to be spoken. */
@@ -338,7 +341,7 @@ export function useTalk(voice: boolean, tab: Tab) {
     (message) => {
       if (message.type === "speech") {
         if (!voiceRef.current) return;
-        player.begin(message.entry, message.rate);
+        player.begin(message, message.rate);
         setSpeaking(true);
         dispatch({ type: "lead-speaks" });
         return;

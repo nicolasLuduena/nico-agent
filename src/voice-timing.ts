@@ -9,11 +9,13 @@ import type { World } from "./world";
 /**
  * The steps of a spoken message, in order: the user stops talking, the page
  * ends the utterance (the end of speech heard), the final transcript comes,
- * the Front voice hands it to the Lead, its entry is written, the Lead is
- * Nudged, the Lead first says something after it, and the page plays the
- * first audio of that.
+ * the request to the Front voice's endpoint is sent, its first token comes;
+ * then either its first sentence goes to speech, or it hands the message to
+ * the Lead, its entry is written, the Lead is Nudged and first says
+ * something after it; and the page plays the first audio of that sentence,
+ * or of what the Lead said.
  */
-const VOICE_STEPS = ["spoke", "ended", "transcribed", "handed", "written", "nudged", "said", "played"] as const;
+const VOICE_STEPS = ["spoke", "ended", "transcribed", "asked", "firstToken", "firstSentence", "handed", "written", "nudged", "said", "played"] as const;
 type VoiceStep = (typeof VOICE_STEPS)[number];
 
 /** Where `serve` logs each spoken message's steps, a line each, in the config directory (see docs/voice.md). */
@@ -48,21 +50,32 @@ function timingLine(utterance: number, text: string, times: Partial<Record<Voice
   });
 }
 
-/** One spoken message being timed, as `/api/voice` tells of its transcript. */
+/** One spoken message being timed, as `/api/voice` tells of its transcript and the Front voice's reply. */
 export interface Timing {
-  /** The final transcript came. */
-  transcribed(): void;
+  /** The final transcript came, heard as `text`. */
+  transcribed(text: string): void;
+  /** The request to the Front voice's endpoint is sent. */
+  asked(): void;
+  /** The Front voice's first token came. */
+  firstToken(): void;
+  /** The Front voice's first sentence went to speech, as the speaker's `line`; none when it will not be played. */
+  firstSentence(line: number | undefined): void;
   /** The Front voice hands it to the Lead (`cleaned` false when sent as heard) as `text`, heard as `raw`. */
   handed(cleaned: boolean, said: { text: string; raw: string }): void;
   /**
    * It ends here: it failed, nothing was heard, or the Front voice answered
-   * it itself; or it was heard, as `heard`, and dropped for `reason`, a
-   * phantom transcript (see `screen`).
+   * it itself, logged once its first sentence plays; or it was heard, as
+   * `heard`, and dropped for `reason`, a phantom transcript (see `screen`).
    */
   dropped(phantom?: { reason: DropReason; heard: string }): void;
 }
 
-/** A message being timed: its steps so far, and the ids of its entry and of the Lead's first after it. */
+/**
+ * A message being timed: its steps so far, and the ids of its entry and of
+ * the Lead's first after it; or, answered by the Front voice, the speaker's
+ * line its first sentence went to speech as, when the page played it, and
+ * whether the Front voice is done with it.
+ */
 interface Timed {
   utterance: number;
   text: string;
@@ -72,6 +85,9 @@ interface Timed {
   dropped?: DropReason;
   entry?: number;
   said?: number;
+  line?: number;
+  linePlayed?: Date;
+  done?: boolean;
 }
 
 /**
@@ -79,8 +95,10 @@ interface Timed {
  * TIMING_FILE. `/api/voice` starts it and tells of the transcript; the
  * conversation, of its entry and the Lead's first entry after it; the
  * Nudges sent, of the Nudge; and the page, of the first audio it played. A
- * message is logged once played, once the Lead speaks with Voice off, or
- * after TIMING_TIMEOUT_MS with what happened by then.
+ * message is logged once played, once the Lead speaks with Voice off, once
+ * the Front voice answered it itself and its first sentence played (at once
+ * when nothing will play), or after TIMING_TIMEOUT_MS with what happened by
+ * then.
  */
 export function stopwatch({ world, configDir }: { world: World; configDir: string }) {
   let timed: Timed[] = [];
@@ -104,16 +122,33 @@ export function stopwatch({ world, configDir }: { world: World; configDir: strin
       const message: Timed = { utterance, text: "", raw: null, times: { spoke, ended: world.now() } };
       timed.push(message);
       return {
-        transcribed: () => { message.times.transcribed = world.now(); },
+        transcribed: (text) => {
+          message.times.transcribed = world.now();
+          message.text = text;
+        },
+        asked: () => { message.times.asked = world.now(); },
+        firstToken: () => { message.times.firstToken ??= world.now(); },
+        firstSentence: (line) => {
+          if (message.times.firstSentence || message.raw !== null) return;
+          message.times.firstSentence = world.now();
+          message.line = line;
+        },
         handed: (cleaned, { text, raw }) => {
+          // Handed off, it is timed to the Lead's reply, whatever the Front voice said first.
+          delete message.times.firstSentence;
+          delete message.line;
           if (cleaned) message.times.handed = world.now();
           if (!text) return log(message);
           message.text = text;
           message.raw = raw;
         },
         dropped: (phantom) => {
-          if (phantom) Object.assign(message, { text: phantom.heard, dropped: phantom.reason });
-          log(message);
+          if (phantom) {
+            Object.assign(message, { text: phantom.heard, dropped: phantom.reason });
+            return log(message);
+          }
+          message.done = true;
+          if (message.line === undefined || message.linePlayed) answered(message);
         },
       };
     },
@@ -140,12 +175,25 @@ export function stopwatch({ world, configDir }: { world: World; configDir: strin
         log(message);
       }
     },
+    /** A page began playing the Front voice's line `line` at `at`. */
+    playedLine(line: number, at: Date) {
+      const message = timed.find((t) => t.line === line);
+      if (!message || message.linePlayed) return;
+      message.linePlayed = at;
+      if (message.done) answered(message);
+    },
     /** Log the messages the Lead has not been heard on in TIMING_TIMEOUT_MS. */
     expire() {
       const now = world.now().getTime();
       for (const message of timed.filter((t) => now - t.times.spoke!.getTime() >= TIMING_TIMEOUT_MS)) log(message);
     },
   };
+
+  /** Log `message`, the Front voice done with it: played from its first sentence, if that was. */
+  function answered(message: Timed) {
+    if (message.linePlayed) message.times.played = message.linePlayed;
+    log(message);
+  }
 
   /** The Lead's entry after each message written before it: with Voice off, nothing will be played. */
   function said(entry: Entry) {

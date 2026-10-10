@@ -390,8 +390,8 @@ describe("/api/voice", () => {
       expect(await log(ctx)).toMatchObject([{ id: 1, who: "front-voice", type: "front-voice", text: "Hi there. The Lead is busy with acme/api#7. Anything else?", heard: "hey how's it going" }]);
       await until(() => spoken.length === 3);
       expect(spoken).toEqual(["Hi there.", "The Lead is busy with acme/api#7.", "Anything else?"]);
-      // Its speech names no entry: the page never times it as the Lead's.
-      expect(talk.received).toContainEqual({ type: "speech", rate: 24_000 });
+      // Its speech names no entry, so the page never times it as the Lead's, but the line it is, numbered by serve.
+      expect(talk.received.filter((m) => !(m instanceof Uint8Array) && m.type === "speech")).toEqual([1, 2, 3].map((line) => ({ type: "speech", line, rate: 24_000 })));
       expect((await ctx.cli("lead", "inbox", "--json")).json().entries).toEqual([]);
     });
 

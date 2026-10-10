@@ -9,6 +9,7 @@ import { setup } from "./harness";
 const LAUNCH = { harness: "claude", model: "opus", effort: "high" };
 const TRANSCRIBE = { url: "http://127.0.0.1:8010/v1", model: "Systran/faster-whisper-small.en" };
 const FRONT = { url: "http://127.0.0.1:4100/v1", model: "glm-5.3-flash" };
+const SPEAK = { url: "http://127.0.0.1:8880/v1", model: "kokoro", voice: "af_heart" };
 
 /** When the user stops talking in each test. */
 const SPOKE = new Date("2026-09-30T12:00:00.000Z");
@@ -65,6 +66,35 @@ function handsOff(world: Voiced["world"], message: string, ms = 0) {
   });
 }
 
+/**
+ * A Front voice whose reply the test streams: `write` sends text as it comes,
+ * `end` finishes it. The request is answered after `ms` on the clock.
+ */
+function streams(world: Voiced["world"], ms = 0) {
+  let stream!: ReadableStreamDefaultController<Uint8Array>;
+  world.endpoint(`${FRONT.url}/chat/completions`, async () => {
+    later(world, ms);
+    return new Response(new ReadableStream<Uint8Array>({ start: (c) => { stream = c; } }), { headers: { "content-type": "text/event-stream" } });
+  });
+  const send = (data: unknown) => stream.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(data)}\n\n`));
+  return {
+    asked: () => world.calls.includes(`http POST ${FRONT.url}/chat/completions`),
+    write: (content: string) => send({ choices: [{ index: 0, delta: { content } }] }),
+    end() {
+      send({ choices: [{ index: 0, delta: {}, finish_reason: "stop" }] });
+      stream.enqueue(new TextEncoder().encode("data: [DONE]\n\n"));
+      stream.close();
+    },
+  };
+}
+
+/** Wait until `check` holds, as serve works in the background; fail after a second. */
+async function until(check: () => boolean) {
+  for (const end = Date.now() + 1000; !check(); await Bun.sleep(2)) {
+    if (Date.now() > end) throw new Error("timed out waiting");
+  }
+}
+
 /** Wait for the Front voice to hand the user's message to the Lead, and let serve see its entry. */
 async function handedOff(ctx: Voiced) {
   for (const end = Date.now() + 1000; !loadConversation(ctx.configDir).some((e) => e.type === "user"); await Bun.sleep(2)) {
@@ -108,12 +138,15 @@ describe("the voice timing log", () => {
       spoke: "2026-09-30T12:00:00.000Z",
       ended: "2026-09-30T12:00:00.500Z",
       transcribed: "2026-09-30T12:00:01.700Z",
+      asked: "2026-09-30T12:00:01.700Z",
+      firstToken: "2026-09-30T12:00:02.600Z",
+      firstSentence: null,
       handed: "2026-09-30T12:00:02.600Z",
       written: "2026-09-30T12:00:02.600Z",
       nudged: "2026-09-30T12:00:02.600Z",
       said: "2026-09-30T12:00:08.600Z",
       played: "2026-09-30T12:00:09.000Z",
-      took: { ended: 500, transcribed: 1200, handed: 900, written: 0, nudged: 0, said: 6000, played: 400 },
+      took: { ended: 500, transcribed: 1200, asked: 0, firstToken: 900, firstSentence: null, handed: 0, written: 0, nudged: 0, said: 6000, played: 400 },
       total: 9000,
       slowest: "said",
     }]);
@@ -123,8 +156,61 @@ describe("the voice timing log", () => {
     expect(timings(ctx.configDir)).toHaveLength(1);
   });
 
+  test("a message the Front voice answers itself is timed to its first sentence played", async () => {
+    const ctx = await withVoice({ voice: { transcribe: TRANSCRIBE, front: FRONT, speak: SPEAK } });
+    const { world, talk } = ctx;
+    await ctx.cli("voice", "on");
+    world.endpoint(`${SPEAK.url}/audio/speech`, async () => new Response(new Uint8Array([1, 0]), { headers: { "content-type": "audio/pcm" } }));
+    world.endpoint(`${TRANSCRIBE.url}/audio/transcriptions`, async () => {
+      later(world, 1200);
+      return Response.json({ text: "hey how's it going" });
+    });
+    // The Front voice's endpoint answers in 0.3s; its first token comes 0.4s later, and its first sentence ends 0.2s after that.
+    const reply = streams(world, 300);
+
+    expect(await speak(ctx, 5, 500)).toMatchObject({ type: "final", text: "hey how's it going" });
+    await until(reply.asked);
+    later(world, 400);
+    reply.write("Hi there");
+    await Bun.sleep(20);
+    later(world, 200);
+    reply.write(". Anything else?");
+
+    // The page plays the first sentence 0.25s after it went to speech.
+    let speech;
+    while ((speech = await talk.next()) instanceof Uint8Array || speech.type !== "speech");
+    expect(speech).toEqual({ type: "speech", line: expect.any(Number), rate: 24_000 });
+    talk.json({ type: "played", line: speech.line, at: world.clock.getTime() + 250 });
+    expect(timings(ctx.configDir)).toEqual([]);
+    reply.end();
+
+    await until(() => timings(ctx.configDir).length > 0);
+    expect(timings(ctx.configDir)).toEqual([{
+      utterance: 5,
+      text: "hey how's it going",
+      spoke: "2026-09-30T12:00:00.000Z",
+      ended: "2026-09-30T12:00:00.500Z",
+      transcribed: "2026-09-30T12:00:01.700Z",
+      asked: "2026-09-30T12:00:01.700Z",
+      firstToken: "2026-09-30T12:00:02.400Z",
+      firstSentence: "2026-09-30T12:00:02.600Z",
+      handed: null,
+      written: null,
+      nudged: null,
+      said: null,
+      played: "2026-09-30T12:00:02.850Z",
+      took: { ended: 500, transcribed: 1200, asked: 0, firstToken: 700, firstSentence: 200, handed: null, written: null, nudged: null, said: null, played: 250 },
+      total: 2850,
+      slowest: "transcribed",
+    }]);
+
+    // A second report of the same audio, from another page, writes nothing more.
+    talk.json({ type: "played", line: speech.line, at: world.clock.getTime() + 300 });
+    expect(timings(ctx.configDir)).toHaveLength(1);
+  });
+
   test("with Voice off the line is written when the Lead first says something, and the steps that did not happen are null", async () => {
-    // The Front voice's key not set: the transcript is sent as heard. No Lead running: nobody is Nudged.
+    // The Front voice's key not set: it fails before its first token, and the transcript is sent as heard. No Lead running: nobody is Nudged.
     const ctx = await withVoice({ voice: { transcribe: TRANSCRIBE }, lead: false });
     const { world } = ctx;
     world.endpoint(`${TRANSCRIBE.url}/audio/transcriptions`, async () => {
@@ -144,12 +230,15 @@ describe("the voice timing log", () => {
       spoke: "2026-09-30T12:00:00.000Z",
       ended: "2026-09-30T12:00:00.000Z",
       transcribed: "2026-09-30T12:00:01.000Z",
+      asked: "2026-09-30T12:00:01.000Z",
+      firstToken: null,
+      firstSentence: null,
       handed: null,
       written: "2026-09-30T12:00:01.000Z",
       nudged: null,
       said: "2026-09-30T12:00:04.000Z",
       played: null,
-      took: { ended: 0, transcribed: 1000, handed: null, written: 0, nudged: null, said: 3000, played: null },
+      took: { ended: 0, transcribed: 1000, asked: 0, firstToken: null, firstSentence: null, handed: null, written: 0, nudged: null, said: 3000, played: null },
       total: null,
       slowest: "said",
     }]);
@@ -168,12 +257,15 @@ describe("the voice timing log", () => {
       spoke: "2026-09-30T12:00:00.000Z",
       ended: "2026-09-30T12:00:00.000Z",
       transcribed: null,
+      asked: null,
+      firstToken: null,
+      firstSentence: null,
       handed: null,
       written: null,
       nudged: null,
       said: null,
       played: null,
-      took: { ended: 0, transcribed: null, handed: null, written: null, nudged: null, said: null, played: null },
+      took: { ended: 0, transcribed: null, asked: null, firstToken: null, firstSentence: null, handed: null, written: null, nudged: null, said: null, played: null },
       total: null,
       slowest: "ended",
     }]);

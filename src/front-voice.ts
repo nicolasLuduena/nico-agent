@@ -42,6 +42,12 @@ export interface Hearing {
   warn(warning: FrontVoiceWarning): void;
   /** It is about to hand `message` to its tab's agent (`cleaned` false when sent as heard). */
   handing(message: { text: string; raw: string }, cleaned: boolean): void;
+  /** It sends its request to its endpoint (for the timing log, as are the two below). */
+  asked(): void;
+  /** Its first token came. */
+  firstToken(): void;
+  /** Its first sentence went to speech, as the speaker's `line`; none when it will not be played. */
+  firstSentence(line: number | undefined): void;
 }
 
 /** What the Front voice runs with in `serve`: the world, the config directory, the CLI it writes and reads the Board through, and the speaker. */
@@ -49,8 +55,8 @@ interface FrontVoiceContext {
   world: World;
   configDir: string;
   runCli: CliRunner;
-  /** Read a line aloud to the pages on `tab`, after what waits to be spoken (see `speaker`). */
-  say(text: string, tab: Tab): void;
+  /** Read a line aloud to the pages on `tab`, after what waits to be spoken (see `speaker`); the speaker's number for it, none when it will not be. */
+  say(text: string, tab: Tab): number | undefined;
 }
 
 /**
@@ -84,7 +90,8 @@ export function frontVoice(ctx: FrontVoiceContext) {
    * Answer `raw`, what the user said in `tab`, primed with `vocabulary`, the
    * words to spell as written; resolves with whether it was handed off.
    */
-  async function hear(raw: string, vocabulary: string, { warn, handing }: Hearing, tab: Tab): Promise<boolean> {
+  async function hear(raw: string, vocabulary: string, hearing: Hearing, tab: Tab): Promise<boolean> {
+    const { warn, handing } = hearing;
     const voice = tab === "lead" ? leadVoice(raw) : partnerVoice(tab);
     if (!voice) {
       const name = PARTNER_NAMES[tab as PartnerTab];
@@ -112,6 +119,7 @@ export function frontVoice(ctx: FrontVoiceContext) {
     replying.add(reply);
     try {
       const context = await voice.read(vocabulary);
+      hearing.asked();
       const answer = await frontVoiceReply(ctx.world, endpoint, { heard: raw, context, sessionId: await sessionId(ctx.configDir), to }, reply.stop.signal);
       // Talked over while it thought: nothing to say, and nothing it was handing off.
       if ("error" in answer && reply.stop.signal.aborted) return false;
@@ -121,12 +129,14 @@ export function frontVoice(ctx: FrontVoiceContext) {
       const line = (sentence: string) => {
         if (reply.hushed || !sentence) return;
         said.push(sentence);
-        ctx.say(sentence, tab);
+        const line = ctx.say(sentence, tab);
+        if (said.length === 1) hearing.firstSentence(line);
       };
       let words = "";
       let handedOff = false;
       try {
         for await (const part of answer.parts) {
+          hearing.firstToken();
           if ("text" in part) {
             words += part.text;
             const { whole, rest } = sentences(words);
