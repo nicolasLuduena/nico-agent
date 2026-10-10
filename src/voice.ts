@@ -1,6 +1,7 @@
 // A 2.5s WAV, 16kHz mono, of "Dispatch the next issue on the Board."
 import sample from "./voice-sample.wav" with { type: "file" };
 import { VOICE_DOC, VOICE_SERVICES, frontVoiceEndpoint, type VoiceConfig, type VoiceEndpoint, type VoiceService } from "./config";
+import type { Segment } from "./phantom";
 import { VERSION } from "./version";
 import { type World, WorldError } from "./world";
 
@@ -26,9 +27,7 @@ const PROBES: Record<VoiceService, Probe> = {
       return transcriptionRequest(endpoint, headers, new File([await Bun.file(sample).arrayBuffer()], "sample.wav", { type: "audio/wav" }));
     },
     async read(response) {
-      const text = (await responseJson(response))?.text;
-      if (typeof text !== "string") throw new ProbeFailed("answered without a transcript");
-      return text.trim();
+      return transcriptOf(await responseJson(response));
     },
   },
   speak: {
@@ -202,15 +201,60 @@ function checkSettings(service: VoiceService) {
   return `Check voice.${service}.url and voice.${service}.model`;
 }
 
+/** A transcript, and its segments where the service tells of them (see `transcribe`). */
+export type Transcribed = Answered & { segments?: Segment[] };
+
 /**
  * What the transcription service hears in `audio`, a WAV, told to expect the
- * words of `prompt` (the vocabulary hint).
+ * words of `prompt` (the vocabulary hint). It is asked for `verbose_json`,
+ * whose segments tell how likely each stretch is not speech (speaches,
+ * whisper-1 and Groq answer it); a service that refuses it (400) is asked
+ * again for plain `json`, and is kept in `plainJson`, by url and model, to be
+ * asked for it from then on.
  */
-export function transcribe(world: World, endpoint: VoiceEndpoint, audio: Uint8Array<ArrayBuffer>, prompt: string): Promise<Answered> {
-  return ask(world, "transcribe", endpoint, {
-    request: async (endpoint, headers) => transcriptionRequest(endpoint, headers, new File([audio], "utterance.wav", { type: "audio/wav" }), prompt),
-    read: PROBES.transcribe.read,
+export async function transcribe(
+  world: World,
+  endpoint: VoiceEndpoint,
+  audio: Uint8Array<ArrayBuffer>,
+  prompt: string,
+  plainJson = new Set<string>(),
+): Promise<Transcribed> {
+  const service = `${endpoint.url} ${endpoint.model}`;
+  const verbose = !plainJson.has(service);
+  let segments: Segment[] | undefined;
+  const answer = await ask(world, "transcribe", endpoint, {
+    request: async (endpoint, headers) =>
+      transcriptionRequest(endpoint, headers, new File([audio], "utterance.wav", { type: "audio/wav" }), prompt, verbose ? "verbose_json" : "json"),
+    async read(response) {
+      const body = await responseJson(response);
+      segments = speechSegments(body?.segments);
+      return transcriptOf(body);
+    },
   });
+  if ("error" in answer && verbose && answer.error.startsWith("answered 400")) {
+    plainJson.add(service);
+    const plain = await transcribe(world, endpoint, audio, prompt, plainJson);
+    // Refused for something else: verbose_json is asked for again next time.
+    if ("error" in plain) plainJson.delete(service);
+    return plain;
+  }
+  return "error" in answer || !segments ? answer : { ...answer, segments };
+}
+
+/** The text of a transcription service's answer; throws a ProbeFailed when it has none. */
+function transcriptOf(body: Record<string, unknown> | null): string {
+  if (typeof body?.text !== "string") throw new ProbeFailed("answered without a transcript");
+  return body.text.trim();
+}
+
+/** The segments of a `verbose_json` transcript, as `screen` reads them; none when it has none. */
+function speechSegments(segments: unknown): Segment[] | undefined {
+  if (!Array.isArray(segments)) return undefined;
+  const read = segments.flatMap((s) =>
+    typeof s?.start === "number" && typeof s?.end === "number" && typeof s?.no_speech_prob === "number"
+      ? [{ start: s.start, end: s.end, noSpeech: s.no_speech_prob, ...(typeof s.avg_logprob === "number" && { avgLogprob: s.avg_logprob }) }]
+      : []);
+  return read.length ? read : undefined;
 }
 
 /**
@@ -352,12 +396,12 @@ async function* replyParts(body: ReadableStream<Uint8Array>): AsyncGenerator<Rep
   yield* whole();
 }
 
-/** A request to transcribe `file`, with `prompt` as the hint when given. */
-function transcriptionRequest(endpoint: VoiceEndpoint, headers: Headers, file: File, prompt?: string) {
+/** A request to transcribe `file`, answered in `format`, with `prompt` as the hint when given. */
+function transcriptionRequest(endpoint: VoiceEndpoint, headers: Headers, file: File, prompt?: string, format: "json" | "verbose_json" = "json") {
   const form = new FormData();
   form.set("file", file);
   form.set("model", endpoint.model);
-  form.set("response_format", "json");
+  form.set("response_format", format);
   if (prompt) form.set("prompt", prompt);
   return new Request(`${base(endpoint)}/audio/transcriptions`, { method: "POST", headers, body: form });
 }

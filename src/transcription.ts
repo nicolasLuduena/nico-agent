@@ -6,7 +6,8 @@ import { harnesses } from "./harness";
 import type { CliRunner } from "./mcp";
 import { type Tab, isTab, loadPartners } from "./partner";
 import { MIN_LEVEL, PAUSE_MS, SAMPLE_RATE, level, pcmSamples } from "./app/talk";
-import { type Answered, transcribe, wav } from "./voice";
+import { screen } from "./phantom";
+import { type Transcribed, transcribe, wav } from "./voice";
 import type { Stopwatch, Timing } from "./voice-timing";
 import type { SocketPeer, SocketSession, World } from "./world";
 
@@ -81,6 +82,8 @@ interface TranscriptionContext {
   front: FrontVoice;
   /** Holds the Lead's speech back until the returned release (see `speaker`). */
   hold?: () => () => void;
+  /** What the pages on a tab are playing now (see `speaker`), for an utterance that is only the app heard back. */
+  playing?: (tab: Tab) => string[];
 }
 
 /**
@@ -101,11 +104,16 @@ interface TranscriptionContext {
  * handed it off, an utterance holds the Lead's speech back, so the Lead
  * never talks over either. An utterance goes to the Front voice of the tab
  * the page showed when it started (see `tab`), the Lead's until told.
+ * A final transcript that is only Whisper's invention, or the app's own
+ * speech heard back, is dropped before then (see `screen`): the app is told
+ * it heard nothing, and only the timing log keeps it, with why.
  */
 export function transcriptionSession(ctx: TranscriptionContext) {
   /** The last vocabulary built, for any page, and which build it came from, so an older one never replaces it. */
   let known = { hint: "", build: 0 };
   let builds = 0;
+  /** The transcription services that refused verbose_json (see `transcribe`). */
+  const plainJson = new Set<string>();
   const build = (tab: Tab) => {
     const number = ++builds;
     // Without a vocabulary the service still transcribes, only unprimed.
@@ -133,13 +141,13 @@ export function transcriptionSession(ctx: TranscriptionContext) {
     const transcribeSoFar = (utterance: Utterance, prompt: Promise<string>, silenceMs = 0): Heard => {
       const audio = wav(concat([...utterance.audio, new Uint8Array(bytesOf(silenceMs))]), SAMPLE_RATE);
       const before = utterance.last?.answer.catch(() => {});
-      const heard = { upTo: utterance.bytes, prompt, answer: Promise.all([prompt, before]).then(([p]) => transcribe(ctx.world, utterance.endpoint, audio, p)) };
+      const heard = { upTo: utterance.bytes, prompt, answer: Promise.all([prompt, before]).then(([p]) => transcribe(ctx.world, utterance.endpoint, audio, p, plainJson)) };
       utterance.last = heard;
       return heard;
     };
 
     /** What to tell the app of `utterance` now, `answered` as transcribed, if anything. */
-    const ask = async (utterance: Utterance, kind: "interim" | "final", answered: Promise<Answered>, timing?: Timing): Promise<Transcript | null> => {
+    const ask = async (utterance: Utterance, kind: "interim" | "final", answered: Promise<Transcribed>, timing?: Timing): Promise<Transcript | null> => {
       const answer = await answered;
       // An interim that comes back after the end, or after another utterance began, is dropped.
       if (kind === "interim" && current !== utterance) return null;
@@ -149,8 +157,12 @@ export function transcriptionSession(ctx: TranscriptionContext) {
         timing?.dropped();
         return failure(utterance.number, answer.error, answer.help);
       }
-      if (kind === "final") timing?.transcribed();
-      return { type: kind, utterance: utterance.number, text: answer.returned };
+      if (kind === "interim") return { type: kind, utterance: utterance.number, text: answer.returned };
+      timing?.transcribed();
+      const screened = screen({ text: answer.returned, segments: answer.segments }, utterance.echoes);
+      if ("text" in screened) return { type: kind, utterance: utterance.number, text: screened.text };
+      timing?.dropped({ reason: screened.dropped, heard: answer.returned });
+      return { type: kind, utterance: utterance.number, text: "" };
     };
 
     /** Have the Front voice answer what was heard of `utterance`, or hand it to the Lead; nothing heard ends there. */
@@ -167,7 +179,7 @@ export function transcriptionSession(ctx: TranscriptionContext) {
     };
 
     /** The final transcript of `utterance`: the last one asked, when it heard all the speech primed with the final's vocabulary; else one of all the audio. */
-    const finalAnswer = async (utterance: Utterance): Promise<Answered> => {
+    const finalAnswer = async (utterance: Utterance): Promise<Transcribed> => {
       const { last } = utterance;
       if (last && heardAllSaid(utterance) && await last.prompt === await utterance.prompt) return last.answer;
       return transcribeSoFar(utterance, utterance.prompt).answer;
@@ -185,7 +197,7 @@ export function transcriptionSession(ctx: TranscriptionContext) {
       }
       const endpoint = voice?.transcribe;
       if (!endpoint) return fail(number, "no transcription service is configured", `Add voice.transcribe to config.json (see ${VOICE_DOC})`);
-      current = { number, tab, endpoint, audio: [], bytes: 0, heardUpTo: 0, asking: false, prompt: build(tab), spokeUpTo: 0, last: null, release: ctx.hold?.() ?? (() => {}) };
+      current = { number, tab, endpoint, audio: [], bytes: 0, heardUpTo: 0, asking: false, prompt: build(tab), spokeUpTo: 0, last: null, echoes: ctx.playing?.(tab) ?? [], release: ctx.hold?.() ?? (() => {}) };
     };
 
     const hear = (chunk: Uint8Array) => {
@@ -266,6 +278,8 @@ interface Utterance {
   spokeUpTo: number;
   /** The last transcription asked of it. */
   last: Heard | null;
+  /** What the app was saying aloud as it began: a final that is only this is the app heard back. */
+  echoes: string[];
   /** Lets the Lead speak again, once nothing else holds it back. */
   release(): void;
 }
@@ -279,7 +293,7 @@ function heardAllSaid(utterance: Utterance) {
 interface Heard {
   upTo: number;
   prompt: Promise<string>;
-  answer: Promise<Answered>;
+  answer: Promise<Transcribed>;
 }
 
 function parse(data: string): VoiceCommand | null {

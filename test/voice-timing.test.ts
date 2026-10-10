@@ -179,6 +179,30 @@ describe("the voice timing log", () => {
     }]);
   });
 
+  test("a phantom transcript is a line of its own, with what was heard and why it was dropped, and reaches no one", async () => {
+    const ctx = await withVoice();
+    const { world } = ctx;
+    world.endpoint(`${TRANSCRIBE.url}/audio/transcriptions`, async () => {
+      later(world, 800);
+      return Response.json({ text: " Thanks for watching." });
+    });
+    handsOff(world, "Thanks for watching.");
+
+    expect(await speak(ctx, 5)).toEqual({ type: "final", utterance: 5, text: "" });
+
+    expect(timings(ctx.configDir)).toEqual([expect.objectContaining({
+      utterance: 5,
+      text: "Thanks for watching.",
+      transcribed: "2026-09-30T12:00:00.800Z",
+      handed: null,
+      written: null,
+      dropped: "phantom phrase",
+    })]);
+    await Bun.sleep(20);
+    expect(loadConversation(ctx.configDir)).toEqual([]);
+    expect(world.calls.filter((c) => c.includes("chat/completions"))).toEqual([]);
+  });
+
   test("a line is written with what happened once the Lead has not answered in five minutes", async () => {
     const ctx = await withVoice();
     const { world } = ctx;
