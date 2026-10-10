@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { BARS, bands, settle } from "../src/app/meter";
+import { BARS, ORDER, bands, settle } from "../src/app/meter";
 
 const RATE = 48_000;
 /** An analyser's byte frequency data, 1024 bins of 23.4Hz at RATE: `at` Hz as loud as `value`, the rest silent. */
@@ -22,6 +22,10 @@ describe("the talk button's meter", () => {
     const high = bands(spectrum([4000, 4200, 4400]), RATE);
     expect(high[BARS - 1]).toBeGreaterThan(0);
     expect(high.slice(0, BARS - 2).every((b) => b === 0)).toBe(true);
+  });
+
+  test("on screen, the lowest band sits in the middle and higher ones spread outward on both sides", () => {
+    expect(ORDER).toEqual([3, 1, 0, 2, 4]);
   });
 
   test("a bar jumps up with a sound and falls back more slowly", () => {

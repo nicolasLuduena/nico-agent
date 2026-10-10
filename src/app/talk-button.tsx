@@ -3,8 +3,9 @@ import type { Tab } from "../partner-tabs";
 import type { Speech } from "../speech";
 import type { Transcript, VoiceCommand } from "../transcription";
 import { Ears, HEARING_FILES, Models } from "./hearing";
-import { BARS, bands, settle } from "./meter";
-import { MICROPHONE_KEY, type Microphone as Device, SYSTEM_DEFAULT, audioConstraints, microphoneOptions, missingDevice, needsPermission, rememberedMicrophone } from "./microphones";
+import { BARS, ORDER, bands, settle } from "./meter";
+import { MicrophonePicker, useMicrophones } from "./microphone-picker";
+import { type Microphone as Picked, SYSTEM_DEFAULT, audioConstraints, firstMicrophone, missingDevice } from "./microphones";
 import { usePageCommand } from "./stream";
 import { type Indicator, type Talk, type TalkEvent, bargesIn, ends, indicator, pcmSamples, resampler, talk, watches } from "./talk";
 
@@ -77,7 +78,9 @@ function meterAnalyser(context: AudioContext) {
 /**
  * The microphone, recording one utterance: each batch resampled to 16kHz
  * PCM, and heard by its Ears. It records on `device`, the one picked; when
- * that one is not there, on the default, telling `fellBack`.
+ * that one is not there, on the default, and when the default is gone too
+ * (Chromium's preferred microphone unplugged), on the first the browser
+ * lists. Which it fell back to is its `notice`, told to `noticed` as well.
  */
 class Microphone {
   private context: AudioContext;
@@ -87,22 +90,47 @@ class Microphone {
   readonly ears = new Ears(this.models);
   /** What it hears, for the talk button's meter, once it records. */
   analyser: AnalyserNode | null = null;
+  /** The one line saying which microphone records instead of the one picked, when it fell back. */
+  notice: string | null = null;
 
   /** Created in the press itself: Safari lets audio start only in a user gesture. */
-  constructor(private readonly device: Device, private readonly fellBack: (device: Device) => void) {
+  constructor(private readonly device: Picked, private readonly noticed: (notice: string) => void) {
     this.context = new AudioContext();
     void this.context.resume();
   }
 
-  /** The stream from the device picked, or from the default when that one is not there. */
+  /** The stream from the device picked, falling back to the default, then to the first microphone listed. */
   private async record() {
+    const { id, label } = this.device;
+    const gone = id ? `${label} isn't connected` : "The system default microphone isn't connected";
     try {
-      return await navigator.mediaDevices.getUserMedia({ audio: audioConstraints(this.device.id) });
+      return await navigator.mediaDevices.getUserMedia({ audio: audioConstraints(id) });
     } catch (e) {
-      if (!this.device.id || !missingDevice(e)) throw e;
-      this.fellBack(this.device);
-      return navigator.mediaDevices.getUserMedia({ audio: audioConstraints(SYSTEM_DEFAULT.id) });
+      if (!missingDevice(e)) throw e;
+      if (!id) return this.recordOnFirst(e, gone);
     }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints(SYSTEM_DEFAULT.id) });
+      this.tell(`${gone}, so the system default is recording.`);
+      return stream;
+    } catch (e) {
+      if (!missingDevice(e)) throw e;
+      return this.recordOnFirst(e, `${gone}, nor is the system default`);
+    }
+  }
+
+  /** The stream from the first microphone the browser lists, saying why (`gone`); without one, `failure` stands. */
+  private async recordOnFirst(failure: unknown, gone: string) {
+    const first = firstMicrophone(await navigator.mediaDevices.enumerateDevices());
+    if (!first) throw failure;
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints(first.id) });
+    this.tell(`${gone}, so ${first.label} is recording.`);
+    return stream;
+  }
+
+  private tell(notice: string) {
+    this.notice = notice;
+    this.noticed(notice);
   }
 
   async start(onBatch: (pcm: Int16Array) => void) {
@@ -306,54 +334,6 @@ class Player {
   }
 }
 
-/**
- * The microphones the browser has, and the one picked for the talk button,
- * remembered in this browser; the list follows devices plugged in and out.
- * The browser names them only once the page may use one, so the picker asks
- * once (`ask`) when it is first opened without names.
- */
-function useMicrophones() {
-  const [picked, setPicked] = useState<Device>(() => {
-    try {
-      return rememberedMicrophone(localStorage.getItem(MICROPHONE_KEY));
-    } catch {
-      return SYSTEM_DEFAULT;
-    }
-  });
-  const [devices, setDevices] = useState<MediaDeviceInfo[] | null>(null);
-  const asked = useRef(false);
-  const list = () => navigator.mediaDevices?.enumerateDevices().then(setDevices, () => {});
-  useEffect(() => {
-    const media = navigator.mediaDevices;
-    if (!media) return;
-    void list();
-    media.addEventListener("devicechange", list);
-    return () => media.removeEventListener("devicechange", list);
-  }, []);
-  const ask = async () => {
-    if (asked.current || !devices || !needsPermission(devices)) return;
-    asked.current = true;
-    try {
-      (await navigator.mediaDevices.getUserMedia({ audio: true })).getTracks().forEach((t) => t.stop());
-    } catch {
-      // Blocked: the picker keeps its unnamed list, and recording says why.
-      return;
-    }
-    await list();
-  };
-  const options = microphoneOptions(devices, picked.id, picked.label);
-  const pick = (id: string) => {
-    const next = id === picked.id ? picked : options.find((o) => o.id === id) ?? SYSTEM_DEFAULT;
-    setPicked(next);
-    try {
-      localStorage.setItem(MICROPHONE_KEY, JSON.stringify(next));
-    } catch {
-      // Kept for this visit only.
-    }
-  };
-  return { options, picked, pick, ask };
-}
-
 /** How many of the microphone's last batches a watch keeps, about half a second: the start of the words that broke in. */
 const EARLY_BATCHES = 12;
 
@@ -513,7 +493,7 @@ export function useTalk(voice: boolean, tab: Tab) {
       return;
     }
     if (!watches(current.current) || microphone.current) return;
-    const mic = new Microphone(picked.current, fellBack);
+    const mic = new Microphone(picked.current, setNote);
     microphone.current = mic;
     early.current = [];
     mic.start((pcm) => onBatch(mic, pcm)).catch(() => {
@@ -521,15 +501,13 @@ export function useTalk(voice: boolean, tab: Tab) {
     });
   };
 
-  /** The microphone picked is not there: the default records instead, and the user hears of it in one line. */
-  const fellBack = ({ label }: Device) => setNote(`${label} isn't connected, so the system default is recording.`);
-
   /** Start an utterance: on the microphone that was watching, if any, from the words that broke in when `barged`. */
   const start = (barged: boolean) => {
     setWarning(null);
-    setNote(null);
     setInterim("");
     const watched = microphone.current;
+    // A watching microphone that fell back still says so.
+    setNote(watched?.notice ?? null);
     if (watched) {
       socket.current!.command({ type: "start", utterance: ++utterance.current });
       const words = early.current.splice(0);
@@ -539,7 +517,7 @@ export function useTalk(voice: boolean, tab: Tab) {
     }
     let mic: Microphone;
     try {
-      mic = new Microphone(picked.current, fellBack);
+      mic = new Microphone(picked.current, setNote);
     } catch {
       setWarning({ error: "This browser cannot record audio here", help: ["Open the app over HTTPS (see docs/voice.md); typing still works"] });
       return dispatch({ type: "failed" });
@@ -547,7 +525,8 @@ export function useTalk(voice: boolean, tab: Tab) {
     microphone.current = mic;
     socket.current!.command({ type: "start", utterance: ++utterance.current });
     mic.ears.begin(false);
-    mic.start((pcm) => onBatch(mic, pcm)).catch((e: unknown) => {
+    // Recording lets the page use a microphone, and the browser then names them for the picker.
+    mic.start((pcm) => onBatch(mic, pcm)).then(() => void microphones.refresh(), (e: unknown) => {
       if (microphone.current !== mic) return;
       const denied = e instanceof DOMException && e.name === "NotAllowedError";
       setWarning(e instanceof NeedsGesture
@@ -617,17 +596,15 @@ function label(state: Talk, speaking: boolean) {
   return speaking ? "Stop" : "End";
 }
 
-/** The bars' order on screen: the lowest band in the middle and higher ones outward, so a voice swells from the centre. */
-const ORDER = [3, 1, 0, 2, 4];
-
 /** The user asking the system for less motion: the meter then swells calmly, all its bars together. */
 const CALM = "(prefers-reduced-motion: reduce)";
 
 /**
- * The meter in the talk button while someone talks: five bars dancing to
+ * The meter in the talk button while someone talks: BARS bars dancing to
  * what `analyser` hears, each a band of the voice's pitch, and the
  * button's halo swelling with the loudest (`--level` on the button). Drawn
- * each frame straight onto the bars, outside React.
+ * each frame straight onto the bars, outside React. It keeps the first
+ * `analyser` it is given, so that must read refs, never state.
  */
 function Meter({ analyser }: { analyser: () => AnalyserNode | null }) {
   const root = useRef<HTMLSpanElement>(null);
@@ -662,23 +639,6 @@ function Meter({ analyser }: { analyser: () => AnalyserNode | null }) {
     };
   }, []);
   return <span className="meter" ref={root} aria-hidden="true">{ORDER.map((band) => <i key={band} />)}</span>;
-}
-
-/**
- * Which microphone the talk button records on, beside it: System default,
- * then each one the browser has, by name. A native select, drawn as a small
- * pill with a chevron, so the list is the browser's own.
- */
-function MicrophonePicker({ microphones: { options, picked, pick, ask } }: { microphones: ReturnType<typeof useTalk>["microphones"] }) {
-  const shown = options.find((o) => o.id === picked.id) ?? SYSTEM_DEFAULT;
-  return (
-    <span className="mic-picker" title={`Microphone: ${shown.label}`}>
-      <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 6.5 8 10l3.5-3.5" /></svg>
-      <select aria-label="Microphone" value={picked.id} onChange={(e) => pick(e.target.value)} onPointerDown={() => void ask()} onFocus={() => void ask()}>
-        {options.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
-      </select>
-    </span>
-  );
 }
 
 /**

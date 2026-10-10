@@ -1,6 +1,17 @@
 /** How many bars the talk button's meter shows. */
 export const BARS = 5;
 
+/**
+ * The bands in the bars' order on screen: the lowest in the middle and
+ * higher ones outward on alternate sides, so a voice swells from the centre.
+ */
+export const ORDER: number[] = Array.from({ length: BARS }, (_, i) => i).sort((a, b) => order(a) - order(b));
+
+/** Where band `k` sits: even bands rightward of the centre, odd ones leftward. */
+function order(k: number) {
+  return k % 2 === 0 ? k : -k;
+}
+
 /** The part of the spectrum the bars cover, in Hz: a voice's fundamental up through its sibilants. */
 const LOWEST_HZ = 120;
 const HIGHEST_HZ = 5000;
@@ -45,4 +56,5 @@ export function settle(shown: number[], levels: number[], ms: number, calm: bool
   });
 }
 
+/** The mean of `values`, 0 for none. */
 const mean = (values: number[]) => (values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0);

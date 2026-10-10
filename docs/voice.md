@@ -76,7 +76,9 @@ card shows the two side by side.
 The chevron beside it picks the microphone: **System default**, or one by
 name, remembered in this browser. When the one picked is unplugged, the
 button records on the default instead and says so in one line, rather than
-failing; plug it back in and it is used again. Without the microphone
+failing; plug it back in and it is used again. When the system default is
+gone too (Chromium still preferring a microphone that was unplugged), the
+first microphone the browser lists records, said the same way. Without the microphone
 allowed the browser hides the names, so opening the picker asks once. While
 you talk, or a reply plays, the button's microphone becomes a meter of the
 voice; with reduced motion asked for, it swells calmly instead.

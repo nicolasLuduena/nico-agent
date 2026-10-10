@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { audioConstraints, microphoneOptions, missingDevice, needsPermission, rememberedMicrophone } from "../src/app/microphones";
+import { audioConstraints, firstMicrophone, microphoneOptions, missingDevice, named, needsPermission, rememberedMicrophone } from "../src/app/microphones";
 
 /** A device as `enumerateDevices` lists it. */
 const device = (kind: MediaDeviceKind, deviceId: string, label: string) => ({ kind, deviceId, label });
@@ -53,6 +53,21 @@ describe("the remembered microphone", () => {
     expect(rememberedMicrophone(null)).toEqual({ id: "", label: "System default" });
     expect(rememberedMicrophone("{nope")).toEqual({ id: "", label: "System default" });
     expect(rememberedMicrophone(JSON.stringify({ id: 4 }))).toEqual({ id: "", label: "System default" });
+    expect(rememberedMicrophone(JSON.stringify({ id: "a1", label: "" }))).toEqual({ id: "a1", label: "Microphone" });
+  });
+
+  test("picked before the browser gave names, it takes its real name once the browser gives it", () => {
+    expect(named({ id: "a1", label: "Microphone 1" }, DEVICES)).toEqual({ id: "a1", label: "HyperX SoloCast (0951:16f9)" });
+    expect(named({ id: "a1", label: "HyperX SoloCast" }, [BUILT_IN])).toEqual({ id: "a1", label: "HyperX SoloCast" });
+    expect(named({ id: "a1", label: "HyperX SoloCast" }, [device("audioinput", "a1", "")])).toEqual({ id: "a1", label: "HyperX SoloCast" });
+    expect(named({ id: "", label: "System default" }, DEVICES)).toEqual({ id: "", label: "System default" });
+  });
+
+  test("when the system default itself is gone, the first microphone the browser lists records instead", () => {
+    expect(firstMicrophone(DEVICES)).toEqual({ id: "a1", label: "HyperX SoloCast (0951:16f9)" });
+    expect(firstMicrophone([device("audiooutput", "c3", "Speakers")])).toBeNull();
+    // Without the permission the browser hides the ids, so there is none to ask for.
+    expect(firstMicrophone([device("audioinput", "", "")])).toBeNull();
   });
 
   test("records on the chosen microphone exactly, or on the default when none is chosen", () => {
