@@ -2,8 +2,8 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { ADVANCE_INTERVAL_MS, type AdvanceReport, advance } from "./advance";
 import { answer, loadAsking } from "./answer";
-import { type BoardIssue, loadBoard } from "./board";
-import { ConfigError, VOICE_DOC, VOICE_SERVICES, findRepo, loadConfig, saveConfig, standingOrders } from "./config";
+import { type Board, type BoardIssue, loadBoard } from "./board";
+import { ConfigError, type Repo, SYNC_INTERVAL_SECONDS, VOICE_DOC, VOICE_SERVICES, findRepo, loadConfig, saveConfig, standingOrders } from "./config";
 import { ORDERS, ORDERS_HELP, type Order, isOrder } from "./orders";
 import { AnswerRefused, type Ask, answerQuestion, append, authored, loadConversation, openAsks, openQuestions, readInbox, recall, sayToLead } from "./conversation";
 import { StepFailed, baseBranch, closeDispatch, dispatch, eachIssue, resolveIssue, review } from "./dispatch";
@@ -38,6 +38,7 @@ import { probeVoice } from "./voice";
 import { setVoiceOn, voiceOn } from "./voice-on";
 import { TALK_PATH, lookAtLead, webHandler, webSockets } from "./web";
 import { Events } from "./events";
+import { type LocalState, localState } from "./local-state";
 import app from "./app/index.html";
 import { RATE_LIMITED, type World, WorldError, worldErrorMessage } from "./world";
 
@@ -1674,20 +1675,35 @@ async function serve(args: Args, ctx: RunContext): Promise<Output> {
   const github = cachingGitHubReads(ctx.world);
   const { stdin: _, ...served } = { ...ctx, world: github.world };
   const shared = { ...served, prs: ctx.prs ?? freshPrs(served.world) };
+  const state = serveState(shared, events);
   try {
     const runCli = async (argv: string[]) => {
+      // The app's reads and the Lead's `board` answer from Local state, without git or GitHub (ADR-0015).
+      const local = state.answer(argv);
+      if (local) return await local;
       try {
         return await run(argv, shared);
       } finally {
-        // What nico-agent just did shows on the next Board, not a minute later.
-        if (changesBoard(argv)) github.forget();
+        // What nico-agent just did shows on the Board once a Sync reads GitHub afresh.
+        if (changesBoard(argv)) {
+          github.forget();
+          void syncLogged(state);
+        }
       }
     };
-    await ctx.world.serve({ hostname: HOSTNAME, port }, webHandler({ ...ctx, events, look, runCli }), { "/": app }, webSockets({ ...ctx, runCli, events }));
+    // The Sync button reads GitHub afresh: it is pressed when something just changed there.
+    const sync = () => {
+      github.forget();
+      return state.sync();
+    };
+    await ctx.world.serve({ hostname: HOSTNAME, port }, webHandler({ ...ctx, events, look, runCli, sync }), { "/": app }, webSockets({ ...ctx, runCli, events }));
   } catch (e) {
     if (!(e instanceof WorldError)) throw e;
     throw new CliError(e.message, ["Run `nico-agent serve --port <port>` with a free port"]);
   }
+  // Local state syncs now, then every `sync.intervalSeconds`; its reads answer from `state.json` meanwhile.
+  void syncLogged(state);
+  ctx.world.every(syncIntervalMs(ctx.configDir), () => syncLogged(state));
   // A Nudge recorded while the Lead worked waits for serve to see it idle.
   ctx.world.every(NUDGE_INTERVAL_MS, async () => {
     // Agent states change outside nico-agent, so the app refetches the Board on every tick,
@@ -1716,6 +1732,7 @@ async function serve(args: Args, ctx: RunContext): Promise<Output> {
       if (!written.length) return;
       // Something happened on a PR, so the Board may have moved with it.
       github.forget();
+      void syncLogged(state);
       for (const warning of await nudgeLead(ctx.world, ctx.configDir)) console.error(warning);
     } catch (e) {
       console.error(`PR events failed: ${e instanceof Error ? e.message : String(e)}`);
@@ -1733,6 +1750,7 @@ async function serve(args: Args, ctx: RunContext): Promise<Output> {
       console.error(`advance failed: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       github.forget();
+      await syncLogged(state);
       events.emit("board-changed");
     }
   });
@@ -1744,6 +1762,34 @@ async function serve(args: Args, ctx: RunContext): Promise<Output> {
       `Register the MCP server with Claude Code: \`claude mcp add --transport http nico-agent ${mcp}\``,
     ],
   };
+}
+
+/** `serve`'s Local state, synced through its commands run in-process, which read GitHub through its cache. */
+function serveState(ctx: RunContext, events: Events): LocalState {
+  const answerOf = (output: Output) => ({ value: JSON.parse(render(output, true)) as unknown, exitCode: output.exitCode ?? 0 });
+  return localState(ctx.configDir, {
+    repos: () => loadConfig(ctx.configDir).repos,
+    loadBoard: (repo) => withCaller("sync", () => loadReposBoard(ctx, [repo], false)),
+    renderBoard: async (loaded) => answerOf(await withCaller("sync", () => board(ctx, true, async () => loaded))),
+    read: async (argv) => {
+      const { stdout, exitCode } = await run(withJson(argv), ctx);
+      return { value: JSON.parse(stdout) as unknown, exitCode };
+    },
+  }, events, () => ctx.world.now());
+}
+
+/** A Sync, its failure only logged: the next one tries again. */
+async function syncLogged(state: LocalState) {
+  try {
+    await state.sync();
+  } catch (e) {
+    console.error(`sync failed: ${e instanceof Error ? e.message : String(e)}`);
+  }
+}
+
+/** How often `serve` syncs, from config. */
+function syncIntervalMs(configDir: string) {
+  return (loadConfig(configDir).sync?.intervalSeconds ?? SYNC_INTERVAL_SECONDS) * 1000;
 }
 
 async function gardenCommand(args: Args, ctx: RunContext): Promise<Output> {
@@ -1938,14 +1984,21 @@ async function partnerEndCommand(args: Args, ctx: RunContext): Promise<Output> {
   return { data: definedOnly({ partner: "ended", tab, workspace }), help: [`Run \`${PARTNER_START_USAGE}\` to start another`] };
 }
 
-async function board(ctx: RunContext, json: boolean): Promise<Output> {
+/** The Board of `repos`, with the Dispatches In flight in them, or every Dispatch when they are all the Repos. */
+function loadReposBoard(ctx: RunContext, repos: Repo[], every = true) {
+  const dispatches = loadDispatches(ctx.configDir).filter((d) => every || repos.some((r) => sameSlug(r.slug, d.repo)));
+  return loadBoard(ctx.world, repos, dispatches, ctx.prs ?? cachedPrs(ctx.world), rememberedLaunches(ctx.configDir).bases);
+}
+
+/** The Board, loaded now, or as `load` has it, such as `serve`'s Local state. */
+async function board(ctx: RunContext, json: boolean, load: (repos: Repo[]) => Promise<Board> = (repos) => loadReposBoard(ctx, repos)): Promise<Output> {
   const { repos } = loadConfig(ctx.configDir);
   // The app draws a section per Repo, so `--json` names them.
   const header = { bin: ctx.bin, description: DESCRIPTION, repos: `${repos.length} configured`, ...(json && { configured: repos.map((r) => r.slug) }) };
   if (repos.length === 0) {
     return { data: { ...header, ready: "0 issues (no Repos configured)" }, help: [ADD_REPO_HELP] };
   }
-  const loaded = await loadBoard(ctx.world, repos, loadDispatches(ctx.configDir), ctx.prs ?? cachedPrs(ctx.world), rememberedLaunches(ctx.configDir).bases);
+  const loaded = await load(repos);
   // Each read keeps when an issue was first seen, for `stats`' issues defined.
   await recordSighting(ctx.configDir, loaded.sighting, ctx.world.now());
   const { ready, stackable, withPr, specs, inFlight } = loaded;

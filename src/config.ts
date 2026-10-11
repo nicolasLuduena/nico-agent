@@ -46,7 +46,12 @@ export interface Config {
   orders?: Partial<Orders>;
   /** The voice services the user set; voice is off for one left out. */
   voice?: VoiceConfig;
+  /** How often `serve` syncs its Local state, in seconds (ADR-0015); SYNC_INTERVAL_SECONDS unless set. */
+  sync?: { intervalSeconds?: number };
 }
+
+/** How often `serve` syncs its Local state unless config sets `sync.intervalSeconds`. */
+export const SYNC_INTERVAL_SECONDS = 120;
 
 /** Transcription, speech and the Front voice: each an OpenAI-compatible endpoint nico-agent doesn't run (ADR-0001). */
 export const VOICE_SERVICES = ["transcribe", "speak", "front"] as const;
@@ -325,7 +330,17 @@ export function loadConfig(dir: string): Config {
   if (parsed.gardener !== undefined) config.gardener = checkLaunchDefaults(file, "gardener", "Gardener", parsed.gardener);
   if (parsed.orders !== undefined) config.orders = checkOrders(file, parsed.orders);
   if (parsed.voice !== undefined) config.voice = checkVoice(file, parsed.voice);
+  if (parsed.sync !== undefined) config.sync = checkSync(file, parsed.sync);
   return config;
+}
+
+function checkSync(file: string, sync: unknown): NonNullable<Config["sync"]> {
+  if (!isObject(sync)) throw new ConfigError(`${file}: sync is not an object`);
+  const { intervalSeconds } = sync;
+  if (intervalSeconds !== undefined && !(Number.isInteger(intervalSeconds) && (intervalSeconds as number) > 0)) {
+    throw new ConfigError(`${file}: sync.intervalSeconds is not a positive integer`);
+  }
+  return sync;
 }
 
 function checkPrompts(file: string, prompts: unknown): Partial<Prompts> {

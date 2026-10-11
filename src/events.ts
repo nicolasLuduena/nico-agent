@@ -1,19 +1,22 @@
 /**
  * What the app's SSE stream says changed; the app refetches the matching
  * resource: the Board, the conversation, the Proposals, the Lead's status,
- * the drawer's Intent, Notes or Standing orders, whether Voice is on, or
- * the Partners and their Threads.
+ * the drawer's Intent, Notes or Standing orders, whether Voice is on,
+ * the Partners and their Threads, or the parts of Local state a Sync changed
+ * (ADR-0015).
  */
 export type EventName =
   | "board-changed" | "conversation-entry" | "proposal-changed" | "lead-state"
-  | "intent-changed" | "notes-changed" | "orders-changed" | "voice-changed" | "partner-changed";
+  | "intent-changed" | "notes-changed" | "orders-changed" | "voice-changed" | "partner-changed"
+  | "state-changed";
 
 /** What the SSE stream asks one page to do rather than refetch: `listen` starts its talk button (`nico-agent voice talk`). */
 export type PageCommand = "listen";
 
 /**
  * The app's one SSE stream, `/api/events`, fanned out to every open page.
- * An event carries no payload to keep in sync: only which resource to refetch.
+ * An event carries no payload to keep in sync: only which resource to refetch,
+ * and for `state-changed` which parts of Local state.
  */
 export class Events {
   private readonly streams = new Set<ReadableStreamDefaultController<Uint8Array>>();
@@ -25,8 +28,8 @@ export class Events {
     this.listeners.push({ name, listener });
   }
 
-  /** Send `name` to every open stream. */
-  emit(name: EventName) {
+  /** Send `name` to every open stream, with `data` saying what to refetch where one resource has parts. */
+  emit(name: EventName, data: Record<string, unknown> = {}) {
     for (const l of this.listeners) {
       if (l.name !== name) continue;
       // A listener that fails is logged, never left to stop the streams hearing of it.
@@ -37,7 +40,7 @@ export class Events {
       }
     }
     // `data` must be present and not empty, or a browser drops the event.
-    const chunk = this.encoder.encode(`event: ${name}\ndata: {}\n\n`);
+    const chunk = this.encoder.encode(`event: ${name}\ndata: ${JSON.stringify(data)}\n\n`);
     for (const stream of this.streams) {
       try {
         stream.enqueue(chunk);

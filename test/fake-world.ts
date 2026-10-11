@@ -297,8 +297,22 @@ export class FakeWorld implements World {
     return this.viewer;
   }
 
+  /** Repos whose issue listing waits until its release is called, as on a slow network. */
+  private heldIssues = new Map<string, Promise<void>>();
+
+  /** Hold `githubIssues(slug)` until the returned release is called. */
+  holdGitHub(slug: string): () => void {
+    let release!: () => void;
+    this.heldIssues.set(slug, new Promise((resolve) => (release = resolve)));
+    return () => {
+      this.heldIssues.delete(slug);
+      release();
+    };
+  }
+
   async githubIssues(slug: string) {
     this.calls.push(`github issues ${slug}`);
+    await this.heldIssues.get(slug);
     const failure = this.failures.get(slug);
     if (failure) throw failure instanceof WorldError ? failure : new WorldError(failure);
     // Like the adapter, only open `ready-for-agent` issues: a Spec is found through its sub-issues.

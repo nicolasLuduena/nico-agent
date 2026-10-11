@@ -226,3 +226,24 @@ export function matchesSelector(issue: LinearIssue, selector: LinearSelector) {
     (!selector.label || issue.labels.includes(selector.label));
 }
 
+
+/** A Board with nothing on it, as a Repo has before it ever loads. */
+export function emptyBoard(): Board {
+  return { ready: [], specs: [], stackable: [], withPr: [], inFlight: [], bases: {}, errors: [], sighting: [] };
+}
+
+/** One Board of the Boards of several Repos, each loaded on its own, in the order given. */
+export function mergeBoards(boards: Board[]): Board {
+  const board = emptyBoard();
+  for (const b of boards) {
+    board.ready.push(...b.ready);
+    board.specs.push(...b.specs);
+    board.stackable.push(...b.stackable);
+    board.withPr.push(...b.withPr);
+    board.inFlight.push(...b.inFlight);
+    Object.assign(board.bases, b.bases);
+    board.errors.push(...b.errors);
+    board.sighting.push(...b.sighting);
+  }
+  return board;
+}

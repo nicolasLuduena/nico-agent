@@ -26,6 +26,8 @@ export interface WebContext {
   events?: Events;
   /** `lookAtLead` over `events`; `serve` shares it to look again on its ticks. */
   look?: () => Promise<void>;
+  /** Sync `serve`'s Local state now, joining a Sync that runs (ADR-0015); `POST /api/sync` asks for it. */
+  sync?: () => Promise<void>;
 }
 
 /**
@@ -114,6 +116,7 @@ export function webHandler(context: WebContext) {
     if (pathname === "/mcp") return await mcp(request);
     const partner = partnerMcp[pathname];
     if (partner) return await partner(request);
+    if (pathname === SYNC_PATH && request.method === "POST") return await syncNow(context, request);
     if (pathname.startsWith("/api/") && request.method === "POST") return await postApi(context, request, pathname);
     if (request.method !== "GET") return new Response("Method Not Allowed\n", { status: 405 });
     const read = API_READS[pathname];
@@ -214,6 +217,17 @@ function talk(events: Events, request: Request) {
   }), { headers: JSON_HEADERS });
 }
 
+/** Where the app's Sync button asks `serve` to sync its Local state now. */
+const SYNC_PATH = "/api/sync";
+
+/** Sync now, answering once the Sync ends; a Sync already running is joined, not run again. */
+async function syncNow(ctx: WebContext, request: Request) {
+  if (fromAnotherSite(request)) return apiError(403, "only the app itself can sync");
+  if (!ctx.sync) return apiError(404, "no Local state to sync here", ["Run `nico-agent serve`, which syncs it"]);
+  await ctx.sync();
+  return new Response(JSON.stringify({ sync: "done", help: ["Read /api/board, /api/stats, /api/partners or /api/repos for the synced state"] }), { headers: JSON_HEADERS });
+}
+
 /** Whether a browser says another site's page sent `request`: only the app's own page may act or listen. */
 function fromAnotherSite(request: Request) {
   const site = request.headers.get("sec-fetch-site");
@@ -226,7 +240,8 @@ function fromAnotherSite(request: Request) {
  */
 async function changesBoard(request: Request, pathname: string) {
   if (request.method !== "POST") return false;
-  if (pathname.startsWith("/mcp/partner/")) return false;
+  // A Sync tells what it changed itself, with `state-changed`.
+  if (pathname.startsWith("/mcp/partner/") || pathname === SYNC_PATH) return false;
   return pathname !== "/mcp" || await isToolCall(request);
 }
 
@@ -273,6 +288,7 @@ const API_READS: Record<string, string[]> = {
   "/api/stats": ["stats"],
   "/api/peek": ["peek"],
   "/api/partners": ["partner", "list"],
+  "/api/repos": ["repo", "list"],
   "/api/partner/log": ["partner", "log"],
   "/api/partner/diff": ["partner", "diff"],
   "/api/partner/prs": ["partner", "prs"],

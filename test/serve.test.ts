@@ -112,23 +112,24 @@ describe("serve ticks", () => {
     expect(log).toEqual(["advance: specs: []", "advance: specs: []"]);
   });
 
-  test("the app polling the Board asks GitHub for a Repo's issues once a minute", async () => {
+  test("the app polling the Board asks GitHub nothing; serve's Sync asks for a Repo's issues every 2 minutes", async () => {
     const { cli, world } = setup();
     world.addClone("/src/api", "git@github.com:acme/api.git");
     await cli("repo", "add", "acme/api", "--path", "/src/api");
     world.addIssue("acme/api", { number: 7, title: "Add retries" });
     expect((await cli("serve")).exitCode).toBe(0);
-    world.calls.length = 0;
     const board = () => world.server!.handler(new Request("http://127.0.0.1:42069/api/board"));
     const asked = () => world.calls.filter((c) => c === "github issues acme/api").length;
 
     expect((await board()).status).toBe(200);
-    await world.tick(10_000);
-    expect((await board()).status).toBe(200);
+    expect(asked()).toBe(1);
+    for (let tick = 0; tick < 11; tick++) {
+      await world.tick(10_000);
+      expect((await board()).status).toBe(200);
+    }
     expect(asked()).toBe(1);
 
-    await world.tick(50_000);
-    expect((await board()).status).toBe(200);
+    await world.tick(10_000);
     expect(asked()).toBe(2);
   });
 
@@ -201,7 +202,7 @@ describe("serve ticks", () => {
     expect(resumed.issues).toMatchObject([{ issue: "acme/api#7" }, { issue: "acme/web#7" }]);
   });
 
-  test("a dispatch through serve shows on the next Board at once, without waiting out the cache", async () => {
+  test("a dispatch through serve shows on the Board once the Sync it starts ends, without waiting out the cache", async () => {
     const { cli, world } = setup();
     world.addClone("/src/api", "git@github.com:acme/api.git");
     await cli("repo", "add", "acme/api", "--path", "/src/api");
@@ -213,8 +214,10 @@ describe("serve ticks", () => {
     world.calls.length = 0;
 
     const args = ["acme/api#7", "--harness", "claude", "--model", "opus", "--effort", "high"];
-    expect((await send("/api/dispatch", { method: "POST", body: JSON.stringify({ args }) })).status).toBe(200);
     world.linkPr("acme/api", 7, { number: 17 });
+    expect((await send("/api/dispatch", { method: "POST", body: JSON.stringify({ args }) })).status).toBe(200);
+    // The dispatch started a Sync, which the Board shows once it ends.
+    for (let i = 0; i < 20; i++) await new Promise((resolve) => setTimeout(resolve, 0));
     const after = await board();
     expect(after.dispatches).toMatchObject([{ issue: "acme/api#7", stage: "PR ready", pr: "https://github.com/acme/api/pull/17" }]);
     expect(world.calls.filter((c) => c === "github issues acme/api")).toHaveLength(1);
@@ -254,14 +257,17 @@ describe("serve ticks", () => {
     const good = readFileSync(config, "utf8");
     writeFileSync(config, "{ not json");
     await world.tick(TEN_MINUTES);
-    expect(log).toHaveLength(1);
-    expect(log[0]).toStartWith("advance failed: ");
+    // Each Sync of those ten minutes failed on the config too, and said so.
+    const advanced = () => log.filter((line) => line.startsWith("advance"));
+    expect(advanced()).toHaveLength(1);
+    expect(advanced()[0]).toStartWith("advance failed: ");
+    expect(log.filter((line) => line.startsWith("sync failed: "))).not.toHaveLength(0);
 
     writeFileSync(config, good);
     world.agentStates.set("lead", "idle");
     world.calls.length = 0;
     await world.tick(TEN_MINUTES);
     expect(nudges(world.calls)).toEqual([NUDGE]);
-    expect(log[1]).toBe("advance: specs: []");
+    expect(advanced()[1]).toBe("advance: specs: []");
   });
 });
