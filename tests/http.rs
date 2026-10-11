@@ -35,6 +35,18 @@ fn serve_listens_on_127_0_0_1_42069_before_its_first_tick_and_ticks_on_schedule(
 }
 
 #[test]
+fn serve_listens_on_the_port_config_toml_sets() {
+    let t = with_repo();
+    let config = std::fs::read_to_string(t.config_dir.join("config.toml")).unwrap();
+    std::fs::write(t.config_dir.join("config.toml"), format!("port = 4321\n{config}")).unwrap();
+
+    let ran = t.cli(&["serve"]);
+
+    assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
+    assert_eq!(t.world.calls()[0], "listen 127.0.0.1:4321");
+}
+
+#[test]
 fn status_is_the_status_command_s_plus_per_repo_its_times_switches_room_launches_and_harnesses() {
     let t = with_repo();
     t.tick();

@@ -24,6 +24,8 @@ const DEFAULTS: &str = r#"
 tick_minutes = 10
 stall_minutes = 20
 max_restarts_per_reason = 2
+# Where serve answers the app and the Bucket, on 127.0.0.1.
+port = 42069
 repos = {}
 
 # Where Evidence is kept, one commit per Verdict. With `url` unset, links to
@@ -99,6 +101,8 @@ pub struct Config {
     pub stall_minutes: u32,
     #[serde(deserialize_with = "positive")]
     pub max_restarts_per_reason: u32,
+    #[serde(deserialize_with = "positive_port")]
+    pub port: u16,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -420,4 +424,8 @@ fn invalid(file: &Path, line: Option<usize>, key: &str, problem: &str) -> Refusa
 
 fn positive<'de, D: Deserializer<'de>>(d: D) -> Result<u32, D::Error> {
     std::num::NonZeroU32::deserialize(d).map(u32::from)
+}
+
+fn positive_port<'de, D: Deserializer<'de>>(d: D) -> Result<u16, D::Error> {
+    std::num::NonZeroU16::deserialize(d).map(u16::from)
 }

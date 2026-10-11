@@ -283,10 +283,15 @@ fn implement_prompt(toml: &str) -> String {
 fn the_implement_prompt_names_the_evidence_folder_and_links_the_bucket_on_serve_or_bucket_url() {
     let on_serve = implement_prompt("");
     let on_tunnel = implement_prompt("[bucket]\nurl = \"https://nico.example.com/\"\n");
+    let on_port = implement_prompt("port = 4321\n");
 
     assert_eq!(
         on_serve,
         "/implement https://github.com/acme/api/issues/7 as draft PR against main, saving its Evidence under .evidence/7/ in the worktree and linking it to http://127.0.0.1:42069/bucket/acme/api/7/"
+    );
+    assert!(
+        on_port.ends_with(" linking it to http://127.0.0.1:4321/bucket/acme/api/7/"),
+        "{on_port}"
     );
     assert!(
         on_tunnel.ends_with(" linking it to https://nico.example.com/bucket/acme/api/7/"),

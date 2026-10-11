@@ -155,7 +155,7 @@ fn media_type(path: &str) -> &'static str {
 
 /// Where the app serves `d`'s folder: on `bucket.url`, else on serve's own port.
 pub fn url(config: &Config, d: &Dispatch) -> String {
-    let local = format!("http://127.0.0.1:{}", http::PORT);
+    let local = format!("http://127.0.0.1:{}", config.port);
     let base = config.bucket.url.as_deref().unwrap_or(&local);
     format!("{}/bucket/{}/", base.trim_end_matches('/'), folder(d))
 }
