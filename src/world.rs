@@ -289,9 +289,16 @@ pub trait World {
     /// Send a request to a service nico-agent doesn't run; any status is a response.
     fn http(&self, request: &HttpRequest) -> WorldResult<HttpResponse>;
 
+    // log
+    /// Write a line to `serve`'s log: stderr, which journald keeps for a service.
+    fn log(&self, line: &str);
+
     // clock, timers, process
     fn now(&self) -> SystemTime;
     fn sleep(&self, duration: Duration);
+    /// Run `task` every `interval`, each run `interval` after the last one
+    /// ended; the real World never returns.
+    fn every(&self, interval: Duration, task: &mut dyn FnMut());
     fn process_id(&self) -> u32;
     fn process_alive(&self, pid: u32) -> bool;
 }
@@ -1131,11 +1138,20 @@ impl World for RealWorld {
             body: body.into(),
         })
     }
+    fn log(&self, line: &str) {
+        eprintln!("{line}");
+    }
     fn now(&self) -> SystemTime {
         SystemTime::now()
     }
     fn sleep(&self, duration: Duration) {
         std::thread::sleep(duration)
+    }
+    fn every(&self, interval: Duration, task: &mut dyn FnMut()) {
+        loop {
+            std::thread::sleep(interval);
+            task();
+        }
     }
     fn process_id(&self) -> u32 {
         std::process::id()

@@ -19,7 +19,10 @@ recording the call as the command it stands for.
 
 Tests drive the library entry `run` as the CLI would, through `setup()` and
 `cli()` in `tests/common/mod.rs`, and assert on three things only: the
-command's JSON, `world.calls()`, and the files in the config directory.
+command's JSON, `world.calls()`, and the files in the config directory. The
+loop's tick is driven by `t.tick()`, which returns its lines; `serve` by
+`cli(&["serve"])` after setting `world.timer_runs`, its log read with
+`world.logged()`.
 
 CI (`.github/workflows/ci.yml`) runs `cargo test` and
 `cargo clippy --all-targets -- -D warnings` on every pull request; run both

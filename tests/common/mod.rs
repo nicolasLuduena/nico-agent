@@ -49,13 +49,18 @@ pub fn setup() -> Setup {
 }
 
 impl Setup {
-    /// What a command runs against, for the loop's steps that no command runs
-    /// alone (the tick's, until `serve` runs them).
+    /// What a command runs against, for one step of the tick on its own.
     pub fn ctx(&self) -> Context<'_> {
         Context {
             world: &self.world,
             config_dir: self.config_dir.clone(),
         }
+    }
+
+    /// Run one tick of the loop, as `serve` does: what it said, a line per action.
+    pub fn tick(&self) -> Vec<String> {
+        nico_agent::tick::tick(&self.ctx())
+            .unwrap_or_else(|no| panic!("the tick failed: {}", no.error))
     }
 
     /// Run `nico-agent <argv>` against the FakeWorld.

@@ -53,6 +53,10 @@ pub struct FakeWorld {
     /// What answers HTTP requests, by URL; any other URL is unreachable.
     pub endpoints: RefCell<HashMap<String, HttpResponse>>,
     pub clock: Cell<SystemTime>,
+    /// How many times `every` runs its task before it returns.
+    pub timer_runs: Cell<u32>,
+    /// Log lines, each after the time it was written at.
+    pub logged: RefCell<Vec<String>>,
     pub pid: Cell<u32>,
     pub dead_pids: RefCell<Vec<u32>>,
     workspaces: Cell<u32>,
@@ -87,6 +91,8 @@ impl Default for FakeWorld {
             endpoints: Default::default(),
             // 2026-09-30T12:00:00Z
             clock: Cell::new(SystemTime::UNIX_EPOCH + Duration::from_secs(1_790_769_600)),
+            timer_runs: Cell::new(0),
+            logged: Default::default(),
             pid: Cell::new(4242),
             dead_pids: Default::default(),
             workspaces: Cell::new(0),
@@ -193,6 +199,10 @@ impl FakeWorld {
             .or_default()
             .push(pr.url.clone());
         self.add_pr(pr);
+    }
+
+    pub fn logged(&self) -> Vec<String> {
+        self.logged.borrow().clone()
     }
 
     /// Move the clock on by `by`.
@@ -573,8 +583,22 @@ impl World for FakeWorld {
             })
     }
 
+    /// Stamped with the clock, as journald stamps the real one.
+    fn log(&self, line: &str) {
+        let at = nico_agent::state::iso(self.clock.get());
+        self.logged.borrow_mut().push(format!("{at} {line}"));
+    }
+
     fn now(&self) -> SystemTime {
         self.clock.get()
+    }
+
+    /// Runs `task` `timer_runs` times, moving the clock on by `interval` before each.
+    fn every(&self, interval: Duration, task: &mut dyn FnMut()) {
+        for _ in 0..self.timer_runs.get() {
+            self.advance(interval);
+            task();
+        }
     }
 
     /// Moves the clock on at once.

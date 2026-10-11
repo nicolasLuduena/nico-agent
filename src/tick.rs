@@ -1,0 +1,116 @@
+//! The tick: what the loop does each time, in #230's order, one function per
+//! step, each behind its own switch. Each step says what it did, a line per
+//! action, and a failure that only touches one Repo, Dispatch or PR is said
+//! and the tick goes on; one that touches the state files fails the tick.
+
+use std::collections::BTreeMap;
+use std::fs::{self, File, OpenOptions, TryLockError};
+use std::io::{self, Read as _, Write};
+
+use crate::cli::{Context, Refusal};
+use crate::config::{self, Config};
+use crate::dispatch::{self, Flags};
+use crate::source::{self, Read};
+use crate::stage;
+
+/// Held by the running tick, with its pid.
+pub const LOCK: &str = "tick.lock";
+
+/// Run one tick, unless another is running; says what it did, a line per action.
+pub fn tick(ctx: &Context) -> Result<Vec<String>, Refusal> {
+    let _held = match lock(ctx)? {
+        Ok(held) => held,
+        Err(pid) => {
+            return Ok(vec![format!(
+                "tick skipped: another tick is running (pid {pid})"
+            )]);
+        }
+    };
+    let config = config::load(&ctx.config_dir)?;
+    let (mut said, reads) = read_sources(ctx, &config)?;
+    said.extend(stage::watch(ctx)?);
+    said.extend(dispatch::close_finished(ctx)?);
+    // 4. Restart what broke: rebooted, stalled (#240); conflict, retarget (#244); verdict (#243).
+    // 5. Start Reviewers (#242).
+    // 6. Flip Verified PRs to ready (#243).
+    said.extend(fill_rooms(ctx, &config, &reads)?);
+    Ok(said)
+}
+
+/// Take the tick lock and write our pid in it, or say the pid of the tick
+/// holding it. An flock: the lock of a process that died is released with it.
+fn lock(ctx: &Context) -> io::Result<Result<File, String>> {
+    fs::create_dir_all(&ctx.config_dir)?;
+    let mut file = OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .open(ctx.config_dir.join(LOCK))?;
+    match file.try_lock() {
+        Ok(()) => {
+            file.set_len(0)?;
+            write!(file, "{}", ctx.world.process_id())?;
+            Ok(Ok(file))
+        }
+        Err(TryLockError::WouldBlock) => {
+            let mut pid = String::new();
+            file.read_to_string(&mut pid)?;
+            Ok(Err(pid.trim().into()))
+        }
+        Err(TryLockError::Error(e)) => Err(e),
+    }
+}
+
+/// (1) Each Repo's Source, read when its cache is older than a tick; a
+/// failed read is said, and its cache, if any, stands in for it.
+fn read_sources(
+    ctx: &Context,
+    config: &Config,
+) -> Result<(Vec<String>, BTreeMap<String, Read>), Refusal> {
+    let (mut said, mut reads) = (vec![], BTreeMap::new());
+    for (slug, repo) in &config.repos {
+        let (read, error) = source::issues(ctx.world, &ctx.config_dir, slug, repo, config.tick())?;
+        if let Some(e) = error {
+            said.push(format!("could not read the issues of {slug}: {e}"));
+        }
+        if let Some(read) = read {
+            reads.insert(slug.clone(), read);
+        }
+    }
+    Ok((said, reads))
+}
+
+/// (7) Dispatch each Repo's Ready issues, oldest first, while its live
+/// Dispatches are under its room; behind the `dispatch` switch.
+fn fill_rooms(
+    ctx: &Context,
+    config: &Config,
+    reads: &BTreeMap<String, Read>,
+) -> Result<Vec<String>, Refusal> {
+    let mut said = vec![];
+    let dispatches = dispatch::load(&ctx.config_dir)?;
+    let prs = stage::load(&ctx.config_dir)?;
+    for (slug, repo) in config.repos.iter().filter(|(_, r)| r.switches.dispatch) {
+        let Some(read) = reads.get(slug) else {
+            continue;
+        };
+        let live = (dispatches.iter())
+            .filter(|d| d.repo == *slug && d.closed_at.is_none())
+            .count();
+        let room = (repo.room as usize).saturating_sub(live);
+        let readiness = source::readiness(read, &dispatches, &prs);
+        for row in readiness.ready.into_iter().take(room) {
+            match dispatch::issue(ctx, config, &row.key, Flags::default()) {
+                Ok(answer) => {
+                    said.push(format!("{} dispatched", row.key));
+                    let warnings = answer["warnings"].as_array().into_iter().flatten();
+                    said.extend(warnings.filter_map(|w| w.as_str().map(String::from)));
+                }
+                // Failed at a step: it is live, so it holds its slot till resumed by hand.
+                Err(no) => said.push(no.error),
+            }
+        }
+    }
+    Ok(said)
+}

@@ -4,6 +4,7 @@ use serde_json::{Value, json};
 
 use crate::dispatch;
 use crate::repo;
+use crate::serve;
 use crate::status;
 use crate::world::{World, WorldError};
 
@@ -66,6 +67,10 @@ const COMMANDS: &[(&str, &str)] = &[
         "nico-agent status",
         "show per Repo the Ready and Stackable issues, and every Dispatch",
     ),
+    (
+        "nico-agent serve",
+        "run the loop: a tick now and every tick_minutes",
+    ),
 ];
 
 /// Run `nico-agent` with `argv` (without the program name).
@@ -83,6 +88,7 @@ pub fn run(argv: &[String], ctx: &Context) -> Output {
         ["repo", "list", args @ ..] => repo::list(args, ctx),
         ["dispatch", args @ ..] => dispatch::dispatch(args, ctx),
         ["status", args @ ..] => status::status(args, ctx),
+        ["serve", args @ ..] => serve::serve(args, ctx),
         ["repo", ..] => Err(bad_invocation(
             "`repo` needs a subcommand: add, rm or list".into(),
             "repo",
