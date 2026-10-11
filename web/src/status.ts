@@ -42,8 +42,10 @@ export interface Dispatch {
   repo: string;
   stage: Stage;
   implementer: Launch;
-  /** While its Implementer waits on the user, with the last meaningful line of its pane. */
+  /** While its Implementer waits on the user, with the last meaningful line of its pane, as the last tick read it. */
   asking: { since: string; question: string } | null;
+  /** Each agent's state as herdr says now (`blocked`: Asking); a Closed Dispatch has none. */
+  agent_state?: { implementer: string; reviewer: string | null };
   verdict: { result: "pass" | "fail"; sha: string; at: string } | null;
   updated_at: string;
   closed_at: string | null;

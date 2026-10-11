@@ -39,6 +39,14 @@ describe("the needs-you strip", () => {
     ]);
   });
 
+  it("lists an Implementer Asking as soon as herdr says it is blocked, by its title till a tick reads the question", () => {
+    const blocked = status([{ agent_state: { implementer: "blocked", reviewer: null } }]);
+
+    expect(needsYou(blocked)).toEqual([
+      { kind: "Asking", repo: "acme/api", issue: "acme/api#7", text: "Add the export endpoint", at: null },
+    ]);
+  });
+
   it("lists a Failed Dispatch with its title, as of its last change", () => {
     const failed = status([{ issue: "BLE-12", repo: "acme/web", title: "Retry the webhook", stage: "Failed", updated_at: "2026-09-30T03:40:00Z" }]);
 
