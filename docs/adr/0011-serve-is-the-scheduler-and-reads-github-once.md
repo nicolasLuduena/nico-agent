@@ -8,11 +8,12 @@ gone: `serve` runs `advance` every 10 minutes, and reads GitHub for the Board,
 the Lead's `board` tool and `advance` through one cache, kept a minute and
 dropped after anything nico-agent does through it. Where the bot's GitHub App
 is installed, it reads as the bot, whose rate limit is its own. (_Amended by
-ADR-0015: `serve` reads GitHub only in a Sync, and the app and the Lead's
-`board` tool read its Local state._)
+ADR-0015: the app and the Lead's `board` tool read `serve`'s Local state,
+which a Sync fills from this cache._)
 
 ## Consequences
 
 - No Spec moves while `serve` is down; `nico-agent advance` by hand still works.
 - A dispatch, Close or Queue change typed in a terminal runs in its own process,
-  so `serve`'s Board may show it up to a minute late.
+  so `serve`'s Board may show it up to a minute late. (_Amended by ADR-0015:
+  until the next Sync._)
