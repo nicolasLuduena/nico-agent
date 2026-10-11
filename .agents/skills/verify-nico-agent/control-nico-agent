@@ -178,12 +178,16 @@ EOF
   local port; port="$(free_port)"
   cat > "$CONFIG_DIR/config.toml" <<EOF
 # verify-nico-agent: this run's scratch config. serve answers on a free port, keeps the
-# Bucket in the run dir, and ticks once at launch: after that only refresh ticks.
+# Bucket in the run dir, and ticks once at launch: after that only refresh ticks. The
+# morning agent is off, so the hour a run happens at never changes what a tick does.
 port = $port
 tick_minutes = 600
 
 [bucket]
 path = "$RUN_DIR/bucket"
+
+[morning]
+enabled = false
 EOF
 
   # setsid: serve leads its own session, so it outlives this shell and cleanup can stop it whole.

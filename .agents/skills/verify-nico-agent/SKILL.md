@@ -89,8 +89,9 @@ when `web/node_modules` is older than its lockfile), copies the binary into the 
   that never ran `gh auth login` (exit 4), `herdr` fails with code `verify_stub`, `notify-send`
   succeeds without showing anything, `curl` fails as if offline.
 - `home/`: the scratch HOME, with a `.gitconfig` naming `Verify Nico <verify-nico@example.com>`.
-  Its `.config/nico-agent/config.toml` sets `port` to a free port, `tick_minutes = 600` and
-  `bucket.path` to `bucket/` in the run dir.
+  Its `.config/nico-agent/config.toml` sets `port` to a free port, `tick_minutes = 600`,
+  `bucket.path` to `bucket/` in the run dir and `morning.enabled = false` (the morning agent
+  would otherwise start in the hour after 07:00, so a run's ticks would depend on the clock).
 - `fixture/fixture` and `fixture/second`: clones of `verify/fixture` and `verify/second`, each with
   origin `https://github.com/<slug>.git`, which the scratch `.gitconfig` rewrites to a bare repo in
   `fixture/`; any other github.com URL is rewritten to a path that does not exist. `repo add` sees
