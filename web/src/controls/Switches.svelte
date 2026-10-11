@@ -7,7 +7,8 @@
   let { repo }: { repo: Repo } = $props();
 
   /** A switch's name as the Glossary says it, capitalised. */
-  const label = (name: string) => (name === "flip" ? "Flip to ready" : name[0].toUpperCase() + name.slice(1));
+  const said: Record<string, string> = { flip: "Flip to ready", answer: "Faux-nico answers", quality_scan: "Quality-scan" };
+  const label = (name: string) => said[name] ?? name[0].toUpperCase() + name.slice(1);
 
   // The PATCH's answer, until /api/status's next one.
   let switches = $derived(repo.switches);

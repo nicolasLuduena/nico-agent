@@ -270,6 +270,7 @@ fn a_failed_read_keeps_the_last_cache_and_says_why() {
                 "error": "GitHub request failed; check your network",
                 "ready": [{ "key": "acme/api#1", "title": "Issue 1", "url": "https://github.com/acme/api/issues/1", "kind": "code" }],
                 "stackable": [],
+                "gardening": [],
                 "waiting": [],
             },
             {
@@ -278,6 +279,7 @@ fn a_failed_read_keeps_the_last_cache_and_says_why() {
                 "error": "GitHub request failed; check your network",
                 "ready": [],
                 "stackable": [],
+                "gardening": [],
                 "waiting": [],
             },
         ])

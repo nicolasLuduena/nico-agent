@@ -409,6 +409,70 @@ fn with_stack_off_a_stackable_issue_is_listed_but_never_dispatched() {
     assert_eq!(stackable[0]["base"], "agent/api-1");
 }
 
+/// Label each of `acme/api`'s issues `numbers` a Gardening issue.
+fn garden(t: &Setup, numbers: &[u64]) {
+    let mut issues = t.world.issues.borrow_mut();
+    for issue in
+        (issues.get_mut("acme/api").unwrap().iter_mut()).filter(|i| numbers.contains(&i.number))
+    {
+        issue.labels.push("gardening".into());
+    }
+}
+
+#[test]
+fn with_gardening_off_a_gardening_issue_is_listed_apart_never_dispatched_but_dispatched_by_hand() {
+    let t = with_issues(&[1]);
+    garden(&t, &[1]);
+
+    let said = t.tick();
+    let status = t.cli(&["status", "--json"]).json();
+    let (_, map) = t.get("/api/map/acme/api");
+    let by_hand = t.cli(&["dispatch", "acme/api#1", "--json"]);
+
+    assert_eq!(said, Vec::<String>::new());
+    assert_eq!(status["repos"][0]["ready"], serde_json::json!([]));
+    assert_eq!(
+        status["repos"][0]["gardening"],
+        serde_json::json!([{ "key": "acme/api#1", "title": "Issue 1", "url": "https://github.com/acme/api/issues/1", "kind": "code" }])
+    );
+    assert_eq!(map["nodes"][0]["stage"], "Ready");
+    assert_eq!(by_hand.exit_code, 0, "{}", by_hand.stdout);
+    assert_eq!(prompted(&t), ["acme/api#1"]);
+}
+
+#[test]
+fn a_gardening_issue_waits_while_another_is_ready_then_fills_the_room_left() {
+    // #2, the older, is the Gardening issue.
+    let t = with_issues(&[2, 1]);
+    garden(&t, &[2]);
+    set_repo(&t, "switches = { gardening = true }");
+
+    let first = t.tick();
+    t.world.advance(TICK);
+    let second = t.tick();
+
+    assert_eq!(first, ["acme/api#1 dispatched"]);
+    assert_eq!(second, ["acme/api#2 dispatched"]);
+}
+
+#[test]
+fn gardening_issues_go_oldest_first() {
+    let t = with_issues(&[2, 1]);
+    garden(&t, &[1, 2]);
+    set_repo(&t, "room = 1\nswitches = { gardening = true }");
+
+    assert_eq!(t.tick(), ["acme/api#2 dispatched"]);
+}
+
+#[test]
+fn a_stackable_issue_keeps_gardening_waiting_even_with_stack_off() {
+    let t = with_stackable();
+    garden(&t, &[3]);
+    set_repo(&t, "switches = { stack = false, gardening = true }");
+
+    assert_eq!(t.tick(), Vec::<String>::new());
+}
+
 #[test]
 fn a_stacked_dispatch_finds_its_pr_on_its_branch_and_is_closed_when_it_merges() {
     let t = with_stackable();
