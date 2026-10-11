@@ -127,6 +127,7 @@
   }
   .bar {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 16px;
     margin: 0 var(--gutter);

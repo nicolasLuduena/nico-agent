@@ -13,6 +13,19 @@ export interface Repo {
   prs_checked_at: string | null;
   ready: Issue[];
   stackable: Issue[];
+  /** dispatch, stack, review, restart, flip. */
+  switches: Record<string, boolean>;
+  /** The launch the loop dispatches on. */
+  implementer: Launch;
+  /** Each configured Harness, with the models and Efforts it takes (null: any). */
+  harnesses: Record<string, { models: string[] | null; efforts: string[] | null }>;
+}
+
+/** A Harness, and its model and Effort; null is the default. */
+export interface Launch {
+  harness: string;
+  model: string | null;
+  effort: string | null;
 }
 
 export interface Issue {
@@ -28,6 +41,7 @@ export interface Dispatch {
   /** The Repo's slug. */
   repo: string;
   stage: Stage;
+  implementer: Launch;
   /** While its Implementer waits on the user, with the last meaningful line of its pane. */
   asking: { since: string; question: string } | null;
   verdict: { result: "pass" | "fail"; sha: string; at: string } | null;
