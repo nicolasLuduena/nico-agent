@@ -12,10 +12,9 @@ use serde::{Deserialize, Serialize};
 use crate::config::{Linear, Repo};
 use crate::state;
 use crate::world::{
-    GitHubIssue, IssueState, LinearIssue, PrState, PullRequest, World, WorldError, WorldResult,
+    GitHubIssue, IssueState, LinearIssue, PrState, PullRequest, READY_LABEL, World, WorldError,
+    WorldResult,
 };
-
-pub const READY_LABEL: &str = "ready-for-agent";
 
 /// What a Repo's Source last said, and when.
 #[derive(Debug, Serialize, Deserialize)]

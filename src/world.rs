@@ -3,11 +3,20 @@
 //! [`RealWorld`] reaches the outside; tests swap in a fake that records each
 //! call. Call shapes are ported from the TypeScript build on `main`.
 
+mod linear;
+
 use std::fmt;
 use std::fs;
-use std::path::Path;
-use std::process::Command;
+use std::io::Write;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 use std::time::{Duration, SystemTime};
+
+use serde::Deserialize;
+use serde_json::Value;
+
+/// The label that offers an issue to the loop.
+pub const READY_LABEL: &str = "ready-for-agent";
 
 /// A failure reported by the outside world, already stripped of tool noise.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -75,14 +84,14 @@ pub struct GitHubIssue {
     pub has_sub_issues: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct LinearTeam {
     pub id: String,
     pub key: String,
     pub name: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct LinearProject {
     pub id: String,
     pub name: String,
@@ -272,11 +281,243 @@ pub trait World {
 }
 
 /// The World of the running binary.
-pub struct RealWorld;
+pub struct RealWorld {
+    /// Where `secrets.env` may hold the Linear API key.
+    pub config_dir: PathBuf,
+}
 
 /// What every real call answers until the ticket that needs it fills it in.
 fn unbuilt<T>(name: &str) -> WorldResult<T> {
     Err(WorldError(format!("World::{name} is not built yet")))
+}
+
+/// Run `gh` with prompts and colors off: whether it succeeded, its stdout and stderr.
+fn gh_run(args: &[String]) -> WorldResult<(bool, String, String)> {
+    let ran = Command::new("gh")
+        .args(args)
+        .env("GH_PROMPT_DISABLED", "1")
+        .env("NO_COLOR", "1")
+        .stdin(Stdio::null())
+        .output()
+        .map_err(|_| WorldError("`gh` is not installed or not on PATH".into()))?;
+    let text = |bytes: &[u8]| String::from_utf8_lossy(bytes).into_owned();
+    Ok((ran.status.success(), text(&ran.stdout), text(&ran.stderr)))
+}
+
+/// Run `gh`: what it printed, or its failure in words the user can act on.
+fn gh(args: &[String]) -> WorldResult<String> {
+    match gh_run(args)? {
+        (true, stdout, _) => Ok(stdout),
+        (false, _, stderr) => Err(gh_failure(&stderr)),
+    }
+}
+
+fn gh_failure(stderr: &str) -> WorldError {
+    let stderr = stderr.to_lowercase();
+    let says = |words: &[&str]| words.iter().any(|w| stderr.contains(w));
+    let message = if says(&["auth login", "authentication", "http 401"]) {
+        "not authenticated with GitHub; run `gh auth login`"
+    } else if says(&["could not resolve to a repository", "http 404"]) {
+        return repo_not_found();
+    } else if says(&["rate limit"]) {
+        // shortcut: no reset time; #245 pauses GitHub reads until the reset.
+        "GitHub rate limit exceeded"
+    } else {
+        "GitHub request failed; check your network and `gh auth status`"
+    };
+    WorldError(message.into())
+}
+
+/// `gh api graphql` with `query`, `-f` string and `-F` typed variables, as JSON.
+fn gh_graphql(query: &str, strings: &[(&str, &str)], typed: &[(&str, &str)]) -> WorldResult<Value> {
+    let mut args: Vec<String> = ["api", "graphql", "-f"].map(String::from).into();
+    args.push(format!("query={query}"));
+    for (flag, vars) in [("-f", strings), ("-F", typed)] {
+        for (name, value) in vars {
+            args.extend([flag.to_string(), format!("{name}={value}")]);
+        }
+    }
+    serde_json::from_str(&gh(&args)?).map_err(|_| invalid("GitHub"))
+}
+
+fn invalid(source: &str) -> WorldError {
+    WorldError(format!("{source} returned an invalid response"))
+}
+
+fn repo_not_found() -> WorldError {
+    WorldError("repository not found on GitHub, or not visible to your account".into())
+}
+
+/// A page of a GraphQL connection.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Page<T> {
+    nodes: Vec<T>,
+    page_info: PageInfo,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PageInfo {
+    has_next_page: bool,
+    end_cursor: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct Nodes<T> {
+    nodes: Vec<T>,
+}
+
+#[derive(Deserialize)]
+struct Named {
+    name: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Repository {
+    name_with_owner: String,
+}
+
+const ISSUES_QUERY: &str = "query($owner: String!, $name: String!, $label: String!, $cursor: String) {
+  repository(owner: $owner, name: $name) {
+    issues(first: 100, after: $cursor, states: OPEN, labels: [$label], orderBy: {field: CREATED_AT, direction: ASC}) {
+      pageInfo { hasNextPage endCursor }
+      nodes {
+        number title url state createdAt
+        labels(first: 50) { nodes { name } }
+        assignees(first: 20) { nodes { login } }
+        blockedBy(first: 50) { nodes { number state repository { nameWithOwner } } }
+        parent { number repository { nameWithOwner } }
+        subIssuesSummary { total }
+      }
+    }
+  }
+}";
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct IssueNode {
+    number: u64,
+    title: String,
+    url: String,
+    state: String,
+    created_at: String,
+    labels: Nodes<Named>,
+    assignees: Nodes<Login>,
+    blocked_by: Nodes<NumberedNode>,
+    parent: Option<NumberedNode>,
+    sub_issues_summary: Total,
+}
+
+#[derive(Deserialize)]
+struct Login {
+    login: String,
+}
+
+#[derive(Deserialize)]
+struct NumberedNode {
+    number: u64,
+    #[serde(default)]
+    state: String,
+    repository: Repository,
+}
+
+#[derive(Deserialize)]
+struct Total {
+    total: u64,
+}
+
+fn issue_state(state: &str) -> IssueState {
+    if state == "OPEN" {
+        IssueState::Open
+    } else {
+        IssueState::Closed
+    }
+}
+
+impl From<IssueNode> for GitHubIssue {
+    fn from(node: IssueNode) -> Self {
+        GitHubIssue {
+            number: node.number,
+            title: node.title,
+            url: node.url,
+            created_at: node.created_at,
+            state: issue_state(&node.state),
+            labels: node.labels.nodes.into_iter().map(|l| l.name).collect(),
+            assignees: node.assignees.nodes.into_iter().map(|a| a.login).collect(),
+            blockers: (node.blocked_by.nodes.into_iter())
+                .map(|b| GitHubBlocker {
+                    slug: b.repository.name_with_owner,
+                    number: b.number,
+                    state: issue_state(&b.state),
+                })
+                .collect(),
+            parent: node.parent.map(|p| IssueRef {
+                slug: p.repository.name_with_owner,
+                number: p.number,
+            }),
+            has_sub_issues: node.sub_issues_summary.total > 0,
+        }
+    }
+}
+
+const LINKED_PRS_QUERY: &str = "query($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    issue(number: $number) {
+      closedByPullRequestsReferences(first: 20) {
+        nodes { number url state baseRefName headRefName headRepository { nameWithOwner } repository { nameWithOwner } }
+      }
+    }
+  }
+}";
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LinkedPrNode {
+    number: u64,
+    url: String,
+    state: String,
+    base_ref_name: String,
+    head_ref_name: String,
+    head_repository: Option<Repository>,
+    repository: Repository,
+}
+
+/// The fields `gh pr view` and `gh pr list` give a PR by.
+const LISTED_PR_FIELDS: &str = "number,url,state,baseRefName,headRefName,isCrossRepository";
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ListedPr {
+    number: u64,
+    url: String,
+    state: String,
+    base_ref_name: String,
+    head_ref_name: String,
+    is_cross_repository: bool,
+}
+
+fn pr_state(state: &str) -> PrState {
+    match state {
+        "OPEN" => PrState::Open,
+        "MERGED" => PrState::Merged,
+        _ => PrState::Closed,
+    }
+}
+
+impl ListedPr {
+    fn into_pr(self, repo: &str) -> PullRequest {
+        PullRequest {
+            repo: repo.into(),
+            number: self.number,
+            url: self.url,
+            state: pr_state(&self.state),
+            base_branch: self.base_ref_name,
+            // A fork's head is not fetchable as origin/<head branch> in this clone.
+            head_branch: (!self.is_cross_repository).then_some(self.head_ref_name),
+        }
+    }
 }
 
 /// Run `git -C <dir> <args>`: whether it succeeded, and what it printed.
@@ -325,22 +566,114 @@ impl World for RealWorld {
         unbuilt("git_diff")
     }
     fn github_viewer(&self) -> WorldResult<String> {
-        unbuilt("github_viewer")
+        let args = ["api", "user", "--jq", ".login"].map(String::from);
+        Ok(gh(&args)?.trim().to_string())
     }
-    fn github_issues(&self, _: &str) -> WorldResult<Vec<GitHubIssue>> {
-        unbuilt("github_issues")
+    fn github_issues(&self, slug: &str) -> WorldResult<Vec<GitHubIssue>> {
+        let (owner, name) = slug.split_once('/').ok_or_else(repo_not_found)?;
+        let mut issues = vec![];
+        let mut cursor = None;
+        loop {
+            let mut vars = vec![("owner", owner), ("name", name), ("label", READY_LABEL)];
+            vars.extend(cursor.as_deref().map(|c| ("cursor", c)));
+            let response = gh_graphql(ISSUES_QUERY, &vars, &[])?;
+            let page = &response["data"]["repository"]["issues"];
+            if page.is_null() {
+                return Err(repo_not_found());
+            }
+            let page: Page<IssueNode> =
+                serde_json::from_value(page.clone()).map_err(|_| invalid("GitHub"))?;
+            issues.extend(page.nodes.into_iter().map(GitHubIssue::from));
+            match page.page_info {
+                PageInfo {
+                    has_next_page: true,
+                    end_cursor: Some(next),
+                } => cursor = Some(next),
+                _ => return Ok(issues),
+            }
+        }
     }
     fn github_issue(&self, _: &str, _: u64) -> WorldResult<Option<GitHubIssue>> {
         unbuilt("github_issue")
     }
-    fn github_linked_pull_requests(&self, _: &str, _: u64) -> WorldResult<Vec<PullRequest>> {
-        unbuilt("github_linked_pull_requests")
+    fn github_linked_pull_requests(
+        &self,
+        slug: &str,
+        number: u64,
+    ) -> WorldResult<Vec<PullRequest>> {
+        let (owner, name) = slug.split_once('/').ok_or_else(repo_not_found)?;
+        let number = number.to_string();
+        let vars = [("owner", owner), ("name", name)];
+        let response = gh_graphql(LINKED_PRS_QUERY, &vars, &[("number", &number)])?;
+        let linked = &response["data"]["repository"]["issue"]["closedByPullRequestsReferences"];
+        if linked.is_null() {
+            return Err(WorldError(format!(
+                "{slug}#{number} was not found on GitHub"
+            )));
+        }
+        let linked: Nodes<LinkedPrNode> =
+            serde_json::from_value(linked.clone()).map_err(|_| invalid("GitHub"))?;
+        Ok(linked
+            .nodes
+            .into_iter()
+            .map(|pr| {
+                let repo = pr.repository.name_with_owner;
+                // A fork's head is not fetchable as origin/<head branch> in this clone.
+                let own_head = pr
+                    .head_repository
+                    .is_some_and(|head| head.name_with_owner.eq_ignore_ascii_case(&repo));
+                PullRequest {
+                    number: pr.number,
+                    url: pr.url,
+                    state: pr_state(&pr.state),
+                    base_branch: pr.base_ref_name,
+                    head_branch: own_head.then_some(pr.head_ref_name),
+                    repo,
+                }
+            })
+            .collect())
     }
-    fn github_pull_request(&self, _: &str, _: u64) -> WorldResult<Option<PullRequest>> {
-        unbuilt("github_pull_request")
+    fn github_pull_request(&self, slug: &str, number: u64) -> WorldResult<Option<PullRequest>> {
+        let args = ["pr", "view", &number.to_string(), "--repo", slug, "--json"];
+        let mut args: Vec<String> = args.map(String::from).into();
+        args.push(LISTED_PR_FIELDS.into());
+        match gh_run(&args)? {
+            (true, stdout, _) => serde_json::from_str::<ListedPr>(&stdout)
+                .map(|pr| Some(pr.into_pr(slug)))
+                .map_err(|_| invalid("GitHub")),
+            (false, _, stderr) => {
+                let lower = stderr.to_lowercase();
+                let gone = [
+                    "could not resolve to a pullrequest",
+                    "no pull requests found",
+                ];
+                if gone.iter().any(|g| lower.contains(g)) {
+                    Ok(None)
+                } else {
+                    Err(gh_failure(&stderr))
+                }
+            }
+        }
     }
-    fn github_branch_pull_requests(&self, _: &str, _: &str) -> WorldResult<Vec<PullRequest>> {
-        unbuilt("github_branch_pull_requests")
+    fn github_branch_pull_requests(
+        &self,
+        slug: &str,
+        branch: &str,
+    ) -> WorldResult<Vec<PullRequest>> {
+        let args = [
+            "pr", "list", "--repo", slug, "--head", branch, "--state", "all",
+        ];
+        let mut args: Vec<String> = args.map(String::from).into();
+        args.extend(["--limit", "100", "--json", LISTED_PR_FIELDS].map(String::from));
+        let listed: Vec<ListedPr> =
+            serde_json::from_str(&gh(&args)?).map_err(|_| invalid("GitHub"))?;
+        // gh lists newest first, and `--head` matches forks' branches of the same name too.
+        Ok(listed
+            .into_iter()
+            .rev()
+            .filter(|pr| pr.head_ref_name == branch)
+            .map(|pr| pr.into_pr(slug))
+            .collect())
     }
     fn github_pull_request_activity(&self, _: &str, _: u64) -> WorldResult<PullRequestActivity> {
         unbuilt("github_pull_request_activity")
@@ -352,16 +685,16 @@ impl World for RealWorld {
         unbuilt("github_assign_self")
     }
     fn linear_viewer(&self) -> WorldResult<String> {
-        unbuilt("linear_viewer")
+        linear::viewer(self)
     }
-    fn linear_issues(&self, _: &str) -> WorldResult<Vec<LinearIssue>> {
-        unbuilt("linear_issues")
+    fn linear_issues(&self, team: &str) -> WorldResult<Vec<LinearIssue>> {
+        linear::issues(self, team)
     }
     fn linear_issue(&self, _: &str) -> WorldResult<Option<LinearIssue>> {
         unbuilt("linear_issue")
     }
-    fn linear_attachment_urls(&self, _: &str) -> WorldResult<Vec<String>> {
-        unbuilt("linear_attachment_urls")
+    fn linear_attachment_urls(&self, identifier: &str) -> WorldResult<Vec<String>> {
+        linear::attachment_urls(self, identifier)
     }
     fn linear_assign_self(&self, _: &str) -> WorldResult<()> {
         unbuilt("linear_assign_self")
@@ -411,8 +744,44 @@ impl World for RealWorld {
     fn notify(&self, _: &str, _: &str) -> WorldResult<()> {
         unbuilt("notify")
     }
-    fn http(&self, _: &HttpRequest) -> WorldResult<HttpResponse> {
-        unbuilt("http")
+    /// Through `curl`, with the headers on its stdin: on its command line,
+    /// any user's `ps` would show an API key.
+    fn http(&self, request: &HttpRequest) -> WorldResult<HttpResponse> {
+        let unreachable =
+            |reason: &str| WorldError(format!("could not reach {}: {reason}", request.url));
+        let mut curl = Command::new("curl");
+        curl.args(["--silent", "--show-error", "--max-time", "30", "--request"])
+            .arg(&request.method)
+            .args(["--header", "@-", "--write-out", "\n%{http_code}"]);
+        if !request.body.is_empty() {
+            curl.arg("--data-binary").arg(&request.body);
+        }
+        let mut child = curl
+            .arg(&request.url)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|_| WorldError("`curl` is not installed or not on PATH".into()))?;
+        let headers: String = (request.headers.iter())
+            .map(|(name, value)| format!("{name}: {value}\n"))
+            .collect();
+        (child.stdin.take().expect("stdin is piped"))
+            .write_all(headers.as_bytes())
+            .map_err(|e| unreachable(&e.to_string()))?;
+        let ran = child
+            .wait_with_output()
+            .map_err(|e| unreachable(&e.to_string()))?;
+        if !ran.status.success() {
+            let stderr = String::from_utf8_lossy(&ran.stderr);
+            return Err(unreachable(stderr.lines().next().unwrap_or("curl failed")));
+        }
+        let out = String::from_utf8_lossy(&ran.stdout);
+        let (body, status) = out.rsplit_once('\n').unwrap_or(("", &out));
+        Ok(HttpResponse {
+            status: status.trim().parse().map_err(|_| invalid(&request.url))?,
+            body: body.into(),
+        })
     }
     fn now(&self) -> SystemTime {
         SystemTime::now()

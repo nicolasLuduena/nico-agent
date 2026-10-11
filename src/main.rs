@@ -6,10 +6,13 @@ fn main() {
     let config_dir = std::env::home_dir()
         .unwrap_or_default()
         .join(".config/nico-agent");
+    let world = RealWorld {
+        config_dir: config_dir.clone(),
+    };
     let output = run(
         &argv,
         &Context {
-            world: &RealWorld,
+            world: &world,
             config_dir,
         },
     );
