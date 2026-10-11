@@ -314,4 +314,10 @@ fn closed_dispatches_are_pruned_30_days_after_closing() {
         .map(|d| d["issue"].clone())
         .collect();
     assert_eq!(left, ["acme/api#8"]);
+    // What GitHub said of 9 goes with the last record of it, at the next watch.
+    t.tick();
+    let file = std::fs::read_to_string(t.config_dir.join("prs.json")).unwrap();
+    let prs: Value = serde_json::from_str(&file).unwrap();
+    let urls: Vec<&String> = prs.as_object().unwrap().keys().collect();
+    assert_eq!(urls, ["https://github.com/acme/api/pull/10"]);
 }

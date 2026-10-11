@@ -71,25 +71,37 @@ pub fn load(config_dir: &Path) -> io::Result<Prs> {
 }
 
 /// Look for each live Dispatch's PR on its branch until one is found, and
-/// ask GitHub about every watched PR that is not final. A failed read is
-/// said and asked again next time; it never stops the others, but a rate
-/// limit pauses them all. Says what it found and what failed, and which
-/// live Dispatches it looked for a PR for and found none: only of those is
-/// no PR known.
-pub fn watch(ctx: &Context) -> io::Result<(Vec<String>, Vec<String>)> {
+/// ask GitHub about each PR a live Dispatch refers to (its own, or the one it
+/// is stacked on) that is not final; with `every`, about every watched PR,
+/// final ones included. What no Dispatch refers to any more is no longer
+/// watched. A failed read is said and asked again next time; it never stops
+/// the others, but a rate limit pauses them all. Says what it found and
+/// what failed, and which live Dispatches it looked for a PR for and found
+/// none: only of those is no PR known.
+pub fn watch(ctx: &Context, every: bool) -> io::Result<(Vec<String>, Vec<String>)> {
     let (mut said, mut no_pr) = (vec![], vec![]);
+    let dispatches = dispatch::load(&ctx.config_dir)?;
+    let refers = |d: &Dispatch, url: &str| {
+        d.pr.as_deref() == Some(url) || d.stacked_on.as_ref().is_some_and(|b| b.url == url)
+    };
+    let file = ctx.config_dir.join(FILE);
+    let watched = state::update(&file, |text| {
+        let mut watched: Prs = state::parse(&file, text)?;
+        watched.retain(|url, _| dispatches.iter().any(|d| refers(d, url)));
+        let text = serde_json::to_string_pretty(&watched).expect("a Pr is plain data") + "\n";
+        Ok::<_, io::Error>((text, watched))
+    })?;
     if pause::of(ctx.world, &ctx.config_dir, "GitHub")?.is_some() {
         return Ok((said, no_pr));
     }
+    let live = || dispatches.iter().filter(|d| d.closed_at.is_none());
     // (url, repo, number, the Dispatch it was just found for)
-    let watched = load(&ctx.config_dir)?;
     let mut asks: Vec<(String, String, u64, Option<String>)> = (watched.iter())
-        .filter(|(_, pr)| !pr.r#final)
+        .filter(|(url, pr)| every || (!pr.r#final && live().any(|d| refers(d, url))))
         .map(|(url, pr)| (url.clone(), pr.repo.clone(), pr.number, None))
         .collect();
-    let dispatches = dispatch::load(&ctx.config_dir)?;
     // The PR a Stacked Dispatch sits on, watched from then on: its Blocker may be worked outside the loop.
-    for d in dispatches.iter().filter(|d| d.closed_at.is_none()) {
+    for d in live() {
         if let Some(below) = &d.stacked_on
             && !watched.contains_key(&below.url)
             && !asks.iter().any(|(url, ..)| *url == below.url)
@@ -97,15 +109,14 @@ pub fn watch(ctx: &Context) -> io::Result<(Vec<String>, Vec<String>)> {
             asks.push((below.url.clone(), d.repo.clone(), below.number, None));
         }
     }
-    let seeking = dispatches.into_iter();
-    for d in seeking.filter(|d| d.closed_at.is_none() && d.pr.is_none()) {
+    for d in live().filter(|d| d.pr.is_none()) {
         match ctx.world.github_branch_pull_requests(&d.repo, &d.branch) {
             // Only an open one: a closed PR on the branch is an earlier Dispatch's.
             Ok(prs) => match (prs.into_iter())
                 .find(|pr| pr.state == PrState::Open && pr.head_branch.as_ref() == Some(&d.branch))
             {
-                Some(pr) => asks.push((pr.url, d.repo, pr.number, Some(d.issue))),
-                None => no_pr.push(d.issue),
+                Some(pr) => asks.push((pr.url, d.repo.clone(), pr.number, Some(d.issue.clone()))),
+                None => no_pr.push(d.issue.clone()),
             },
             Err(e) => {
                 said.push(format!("could not look for the PR of {}: {e}", d.issue));

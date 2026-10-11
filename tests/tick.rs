@@ -588,16 +588,11 @@ fn refresh_rereads_every_source_and_every_watched_pr_final_ones_included_then_ti
             "github pr activity acme/api#9",
         ]
     );
-    // 9 can change again, so the next tick asks about it; 10 is final.
+    // 9 is open again, but its Dispatch is Closed: no work In flight asks
+    // about it again, nor about 10, final.
     t.world.advance(Duration::from_secs(60));
     let (_, next) = github_calls_after(&t, || t.tick());
-    assert_eq!(
-        next,
-        [
-            "github branch prs acme/api:agent/api-3",
-            "github pr activity acme/api#9",
-        ]
-    );
+    assert_eq!(next, ["github branch prs acme/api:agent/api-3"]);
 }
 
 #[test]

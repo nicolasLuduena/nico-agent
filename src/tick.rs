@@ -21,8 +21,10 @@ use crate::world::Agent;
 /// Held by the running tick, with its pid.
 pub const LOCK: &str = "tick.lock";
 
-/// Run one tick, unless another is running; says what it did, a line per action.
-pub fn tick(ctx: &Context) -> Result<Vec<String>, Refusal> {
+/// Run one tick, unless another is running; says what it did, a line per
+/// action. A `refresh` tick asks GitHub about every watched PR, final ones
+/// included.
+pub fn tick(ctx: &Context, refresh: bool) -> Result<Vec<String>, Refusal> {
     let _held = match lock(ctx)? {
         Ok(held) => held,
         Err(pid) => {
@@ -33,7 +35,7 @@ pub fn tick(ctx: &Context) -> Result<Vec<String>, Refusal> {
     };
     let config = config::load(&ctx.config_dir)?;
     let (mut said, reads) = read_sources(ctx, &config)?;
-    let (watched, no_pr) = stage::watch(ctx)?;
+    let (watched, no_pr) = stage::watch(ctx, refresh)?;
     said.extend(watched);
     said.extend(dispatch::close_finished(ctx)?);
     let agents = list_agents(ctx, &mut said)?;

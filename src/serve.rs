@@ -13,7 +13,7 @@ pub fn serve(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
     Args::parse("serve", args, &[])?.positionals(&[])?;
     // shortcut: tick_minutes is read once; a change to it needs a restart of serve.
     let interval = config::load(&ctx.config_dir)?.tick();
-    let mut run = || match tick::tick(ctx) {
+    let mut run = || match tick::tick(ctx, false) {
         Ok(said) => said.iter().for_each(|line| ctx.world.log(line)),
         Err(no) => ctx.world.log(&format!("tick failed: {}", no.error)),
     };
