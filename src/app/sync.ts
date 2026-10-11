@@ -1,7 +1,6 @@
 import type { Repo } from "../config";
 import type { PartName, SyncStatus } from "../local-state";
-
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+import { MONTHS } from "./stats-charts";
 
 /** The header's sync line: when the last Sync ended, whether one runs, and the Repos the last one failed for. */
 export interface SyncLine {

@@ -32,7 +32,8 @@ const METRICS: { metric: Metric; title: string; one: string; many: string }[] = 
   { metric: "defined", title: "Issues defined", one: "issue defined", many: "issues defined" },
 ];
 
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+/** The months as the app abbreviates them, the same in every locale. */
+export const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 /** A `YYYY-MM-DD` day as `Sep 29`, the same in every locale and time zone. */
 export function shortDay(day: string) {

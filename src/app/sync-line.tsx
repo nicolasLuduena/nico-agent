@@ -23,9 +23,12 @@ export function SyncLine() {
   const { data } = useResource<SyncStatus>("/api/sync", [], ["sync"]);
   const [posting, setPosting] = useState(false);
   const [refused, setRefused] = useState<string | null>(null);
+  // A refusal holds only until a later Sync ends, which says how things stand now.
+  useEffect(() => setRefused(null), [data?.at]);
   const now = useNow(15_000);
   const line = syncLine(data ?? null, now);
   const syncing = line.syncing || posting;
+  /** Sync now, saying why if `serve` refused or could not be reached; the line itself follows the Sync's `state-changed`. */
   const sync = async () => {
     setPosting(true);
     setRefused(null);

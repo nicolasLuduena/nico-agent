@@ -127,6 +127,7 @@ export function localState(configDir: string, sources: SyncSources, events: Even
     return rendering;
   };
 
+  /** How each of `repos` last synced, in their order. */
   const repoSyncs = (repos: Repo[]): RepoSync[] => repos.map((r) => {
     const part = saved.repoBoards[slugKey(r.slug)];
     return { repo: r.slug, ...(part?.syncedAt && { at: part.syncedAt }), ...(part?.error && { error: part.error.error, failedAt: part.error.at }) };
@@ -203,6 +204,7 @@ export function localState(configDir: string, sources: SyncSources, events: Even
     return running;
   };
 
+  /** Whether a Sync runs now, when the last ended, and how each configured Repo's went. */
   const status = (): SyncStatus => ({ syncing: running !== null, ...(saved.syncedAt && { at: saved.syncedAt }), repos: repoSyncs(sources.repos()) });
 
   let again: Promise<void> | null = null;
