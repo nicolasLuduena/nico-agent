@@ -1,5 +1,6 @@
 pub mod args;
 pub mod asking;
+pub mod away;
 pub mod bucket;
 pub mod cli;
 pub mod config;
