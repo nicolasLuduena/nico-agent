@@ -1,3 +1,5 @@
 target/
 .impeccable/questions/
 web/node_modules/
+# Verification Evidence (.agents/skills/verify-nico-agent); nico-agent copies it to the Bucket
+.evidence/

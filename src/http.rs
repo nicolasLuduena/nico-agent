@@ -22,8 +22,6 @@ use crate::stage;
 use crate::status;
 use crate::world::{AgentState, Answer, HttpRequest, HttpResponse, World};
 
-pub const PORT: u16 = 42069;
-
 /// The app, as `build.rs` built it from `web/`: each file's path, Content-Type and bytes.
 const APP: &[(&str, &str, &[u8])] = include!(concat!(env!("OUT_DIR"), "/app.rs"));
 

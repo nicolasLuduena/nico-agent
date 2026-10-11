@@ -205,7 +205,7 @@ TOTAL_STAGES=9
 
 NAME=nico-agent-tunnel
 TUNNEL=nico-agent
-PORT=42069 # serve's, http::PORT
+PORT=42069 # serve's default `port` in config.toml
 CF_DIR="$HOME/.cloudflared"
 ENV_FILE="$CF_DIR/nico-agent.env" # the hostname and email, offered again on a re-run
 creds="$CF_DIR/nico-agent.json"
