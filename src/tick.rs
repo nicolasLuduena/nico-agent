@@ -81,8 +81,9 @@ fn read_sources(
     Ok((said, reads))
 }
 
-/// (7) Dispatch each Repo's Ready issues, oldest first, while its live
-/// Dispatches are under its room; behind the `dispatch` switch.
+/// (7) Dispatch each Repo's Ready issues, then its Stackable ones behind
+/// the `stack` switch, oldest first, while its live Dispatches are under its
+/// room; behind the `dispatch` switch.
 fn fill_rooms(
     ctx: &Context,
     config: &Config,
@@ -100,7 +101,8 @@ fn fill_rooms(
             .count();
         let room = (repo.room as usize).saturating_sub(live);
         let readiness = source::readiness(read, &dispatches, &prs);
-        for row in readiness.ready.into_iter().take(room) {
+        let stackable = (readiness.stackable.into_iter()).filter(|_| repo.switches.stack);
+        for row in readiness.ready.into_iter().chain(stackable).take(room) {
             match dispatch::issue(ctx, config, &row.key, Flags::default()) {
                 Ok(answer) => {
                     said.push(format!("{} dispatched", row.key));

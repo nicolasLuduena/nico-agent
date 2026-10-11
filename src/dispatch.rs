@@ -14,7 +14,7 @@ use crate::args::Args;
 use crate::cli::{Context, Refusal};
 use crate::config::{self, Config, Harness, Launch, Repo, fill_in};
 use crate::launch::{self, AgentLaunch};
-use crate::source::{self, Read};
+use crate::source::{self, BlockerPr, Read, Start};
 use crate::stage;
 use crate::state;
 use crate::world::{PrState, READY_LABEL};
@@ -43,6 +43,9 @@ pub struct Dispatch {
     pub branch: String,
     /// The branch the worktree starts from and the PR targets, without `origin/`.
     pub base: String,
+    /// For a Stacked Dispatch, its Blocker's open PR, whose head branch was its Base.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stacked_on: Option<BlockerPr>,
     /// Set by the worktree step.
     pub worktree: Option<String>,
     pub workspace: Option<String>,
@@ -148,9 +151,14 @@ pub fn issue(ctx: &Context, config: &Config, key: &str, flags: Flags) -> Result<
         ));
     }
     let issue = read.issues.iter().find(|i| i.key == key).expect("Ready");
-    let base = match &repo.base {
-        Some(base) => base.clone(),
-        None => ctx.world.git_default_branch(&repo.path)?,
+    let stacked_on = match source::start(issue) {
+        Start::Stacked(pr) => Some(pr.clone()),
+        _ => None,
+    };
+    let base = match (&stacked_on, &repo.base) {
+        (Some(below), _) => below.head_branch.clone(),
+        (None, Some(base)) => base.clone(),
+        (None, None) => ctx.world.git_default_branch(&repo.path)?,
     };
     let now = state::iso(ctx.world.now());
     let record = Dispatch {
@@ -160,6 +168,7 @@ pub fn issue(ctx: &Context, config: &Config, key: &str, flags: Flags) -> Result<
         repo: slug.clone(),
         branch: issue.branch.clone(),
         base,
+        stacked_on,
         worktree: None,
         workspace: None,
         pr: None,
@@ -305,7 +314,10 @@ fn run_step(
     let made = "the worktree step made it";
     match step {
         "claim" => claim(ctx, record),
-        "fetch" => world.git_fetch(&repo.path, None)?,
+        "fetch" => {
+            let below = record.stacked_on.as_ref();
+            world.git_fetch(&repo.path, below.map(|pr| pr.head_branch.as_str()))?
+        }
         "worktree" => {
             let base = format!("origin/{}", record.base);
             let made =
