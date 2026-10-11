@@ -12,6 +12,7 @@ use crate::cli::{Context, Refusal};
 use crate::config::{self, Config};
 use crate::dispatch::{self, Flags};
 use crate::restart;
+use crate::review;
 use crate::source::{self, Read};
 use crate::stage;
 use crate::world::Agent;
@@ -37,6 +38,7 @@ pub fn tick(ctx: &Context) -> Result<Vec<String>, Refusal> {
     // 4. Restart what broke: rebooted, stalled (#240); conflict, retarget (#244); verdict (#243).
     said.extend(restart::step(ctx, &config, agents.as_deref())?);
     // 5. Start Reviewers (#242).
+    said.extend(review::start_reviewers(ctx, &config)?);
     // 6. Flip Verified PRs to ready (#243).
     said.extend(asking::step(ctx, agents.as_deref())?);
     said.extend(fill_rooms(ctx, &config, &reads)?);

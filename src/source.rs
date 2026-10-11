@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::config::{Linear, Repo};
 use crate::dispatch::Dispatch;
+use crate::pause;
 use crate::stage::Prs;
 use crate::state;
 use crate::world::{
@@ -91,7 +92,8 @@ pub fn github_branch(slug: &str, number: u64) -> String {
 }
 
 /// The Repo's issues: its cache while younger than `max_age`, else read from
-/// the Source and cached. A failed read keeps the cache, and says why.
+/// the Source and cached. A failed read, or one a rate limit pauses, keeps
+/// the cache, and says why.
 pub fn issues(
     world: &dyn World,
     config_dir: &Path,
@@ -108,8 +110,17 @@ pub fn issues(
     if cached.as_ref().is_some_and(|c| c.read_at > oldest) {
         return Ok((cached, None));
     }
+    let linear = repo.linear.as_ref().map(|_| "Linear");
+    for source in ["GitHub"].into_iter().chain(linear) {
+        if let Some(paused) = pause::of(world, config_dir, source)? {
+            return Ok((cached, Some(paused)));
+        }
+    }
     match read(world, slug, repo) {
-        Err(e) => Ok((cached, Some(e))),
+        Err(e) => {
+            pause::note(config_dir, &e)?;
+            Ok((cached, Some(e)))
+        }
         Ok(read) => {
             let text = serde_json::to_string_pretty(&read).expect("a Read is plain data") + "\n";
             state::update(&file, |_| Ok::<_, io::Error>((text, ())))?;

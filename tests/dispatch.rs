@@ -656,6 +656,7 @@ fn status_shows_the_dispatch_implementing_with_its_launch_and_steps() {
                 "agent": "impl-api-7", "harness": "claude", "model": "opus", "effort": "high",
                 "tab": "w1:t2", "pane": "w1:p2",
             },
+            "reviewer": null,
             "research": false,
             "asking": null,
             "completed": ["claim", "fetch", "worktree", "tab", "agent start", "agent ready", "prompt"],
@@ -667,6 +668,7 @@ fn status_shows_the_dispatch_implementing_with_its_launch_and_steps() {
             "updated_at": "2026-09-30T12:00:00Z",
             "closed_at": null,
             "stage": "Implementing",
+            "verdict": null,
         }])
     );
     let ready: Vec<&str> = (status["repos"][0]["ready"].as_array().unwrap().iter())

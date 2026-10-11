@@ -335,6 +335,7 @@ fn done_counts_as_idle_but_an_asking_implementer_or_one_with_a_pr_never_stalls()
         [
             vec![
                 "acme/api#2: PR https://github.com/acme/api/pull/12 found",
+                "acme/api#2: Reviewer started on codex for sha12",
                 "acme/api#1 is Asking: \"\"",
             ],
             vec![],
@@ -346,6 +347,32 @@ fn done_counts_as_idle_but_an_asking_implementer_or_one_with_a_pr_never_stalls()
     let asking = &status(&t)["dispatches"][0];
     assert_eq!(asking["asking"]["since"], "2026-09-30T12:10:00Z");
     assert_eq!(asking["restarts"], json!([]));
+}
+
+#[test]
+fn while_github_is_paused_none_is_restarted_as_stalled_but_one_whose_agent_is_gone_is() {
+    let t = dispatched(&[1, 2]);
+    agent_is(&t, "impl-api-1", "idle");
+    let limited = "GitHub rate limit exceeded; nico-agent asks it again at 2026-09-30T13:00:00Z";
+    t.world.fail_call("github issues", limited);
+    // Its PR appears while GitHub is paused, so the loop can't see it.
+    t.world.add_pr(PullRequest {
+        head_branch: Some("agent/api-1".into()),
+        ..pull_request("acme/api", 11)
+    });
+
+    let mut said: Vec<String> = (0..4).flat_map(|_| next_tick(&t).0).collect();
+    t.world.agents.borrow_mut().remove("impl-api-2");
+    said.extend(next_tick(&t).0);
+    t.world.clear_failures();
+    said.extend(next_tick(&t).0);
+
+    let restarted: Vec<&String> = (said.iter())
+        .filter(|line| line.contains(" restarted: "))
+        .collect();
+    assert_eq!(restarted, ["acme/api#2 restarted: rebooted"]);
+    let found = "acme/api#1: PR https://github.com/acme/api/pull/11 found";
+    assert!(said.iter().any(|line| line == found), "{said:#?}");
 }
 
 #[test]

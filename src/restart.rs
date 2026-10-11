@@ -13,6 +13,7 @@ use crate::cli::{Context, Refusal};
 use crate::config::{Config, fill_in};
 use crate::dispatch::{self, Dispatch, Failure, STEPS};
 use crate::launch;
+use crate::pause;
 use crate::state;
 use crate::world::Agent;
 
@@ -68,6 +69,8 @@ pub fn step(ctx: &Context, config: &Config, agents: Option<&[Agent]>) -> io::Res
         .filter(|d| d.completed.len() == STEPS.len());
     let stall = Duration::from_secs(u64::from(config.stall_minutes) * 60);
     let now = ctx.world.now();
+    // Paused, the PR watch can't see a PR that appeared: no PR is not known.
+    let paused = pause::until(ctx.world, &ctx.config_dir, "GitHub")?.is_some();
     let mut said = vec![];
     for mut d in watched {
         let state = agent_state(agents, &d);
@@ -79,7 +82,7 @@ pub fn step(ctx: &Context, config: &Config, agents: Option<&[Agent]>) -> io::Res
                 dispatch::save(ctx, &mut d)?;
             }
         } else if let Some(since) = &d.idle_since {
-            if *since <= state::iso(now - stall) {
+            if *since <= state::iso(now - stall) && !paused {
                 said.extend(restart(ctx, config, d, Reason::Stalled, &[])?);
             }
         } else {

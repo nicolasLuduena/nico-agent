@@ -16,9 +16,11 @@ use crate::cli::{Context, Refusal};
 use crate::config::{self, Config, Harness, Launch, Repo, fill_in};
 use crate::launch::{self, AgentLaunch};
 use crate::restart::{self, Reason, Restart};
+use crate::review::Reviewer;
 use crate::source::{self, BlockerPr, Read, Start};
 use crate::stage;
 use crate::state;
+use crate::verdict;
 use crate::world::{PrState, READY_LABEL};
 
 pub const FILE: &str = "dispatches.json";
@@ -54,6 +56,8 @@ pub struct Dispatch {
     /// The URL of its PR, once found on its branch; `prs.json` says what GitHub last said of it.
     pub pr: Option<String>,
     pub implementer: AgentLaunch,
+    /// Set once a Reviewer is started on its PR.
+    pub reviewer: Option<Reviewer>,
     pub research: bool,
     /// While its Implementer waits on the user.
     pub asking: Option<Asking>,
@@ -194,6 +198,7 @@ pub fn issue(ctx: &Context, config: &Config, key: &str, flags: Flags) -> Result<
             tab: None,
             pane: None,
         },
+        reviewer: None,
         research: issue.labels.iter().any(|l| l == "research"),
         asking: None,
         completed: vec![],
@@ -445,9 +450,10 @@ const SEE_STATUS: &str = "Run `nico-agent status` to see the Dispatch";
 fn answer(ctx: &Context, record: &Dispatch, said: String) -> Result<Value, Refusal> {
     let prs = stage::load(&ctx.config_dir)?;
     let pr = record.pr.as_ref().and_then(|url| prs.get(url));
+    let verdict = verdict::load(&ctx.config_dir, &record.issue)?;
     let mut answer = json!({
         "dispatched": said,
-        "stage": stage::of(record, pr),
+        "stage": stage::of(record, pr, verdict.as_ref()),
         "workspace": record.workspace,
         "agent": record.implementer.agent,
     });
@@ -459,7 +465,7 @@ fn answer(ctx: &Context, record: &Dispatch, said: String) -> Result<Value, Refus
 
 /// The Dispatch key of an issue reference: `owner/repo#N` of a configured
 /// Repo, in its casing, or a Linear identifier.
-fn key(config: &Config, text: &str) -> Result<String, Refusal> {
+pub fn key(config: &Config, text: &str) -> Result<String, Refusal> {
     let is_number = |n: &str| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit());
     if let Some((slug, number)) = text.rsplit_once('#')
         && slug.contains('/')

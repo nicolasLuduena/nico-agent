@@ -9,7 +9,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::cli::Context;
 use crate::dispatch::{self, Dispatch};
+use crate::pause;
 use crate::state;
+use crate::verdict::{Outcome, Verdict};
 use crate::world::{Mergeable, PrState};
 
 pub const FILE: &str = "prs.json";
@@ -38,9 +40,11 @@ pub type Prs = BTreeMap<String, Pr>;
 pub enum Stage {
     /// No PR yet.
     Implementing,
-    /// Its PR is open.
+    /// Its PR is open, with no passing Verdict on its head.
     #[serde(rename = "PR draft")]
     PrDraft,
+    /// Its PR is open, with a passing Verdict on its head.
+    Verified,
     Merged,
     /// Its PR closed unmerged.
     Closed,
@@ -48,13 +52,16 @@ pub enum Stage {
     Failed,
 }
 
-/// Where `dispatch` stands, given its PR as last seen.
-pub fn of(dispatch: &Dispatch, pr: Option<&Pr>) -> Stage {
-    match pr.map(|pr| pr.state) {
-        Some(PrState::Merged) => Stage::Merged,
-        Some(PrState::Closed) => Stage::Closed,
+/// Where `dispatch` stands, given its PR as last seen and its latest Verdict.
+pub fn of(dispatch: &Dispatch, pr: Option<&Pr>, verdict: Option<&Verdict>) -> Stage {
+    let passed =
+        |pr: &Pr| verdict.is_some_and(|v| v.result == Outcome::Pass && v.sha == pr.head_sha);
+    match pr {
+        Some(pr) if pr.state == PrState::Merged => Stage::Merged,
+        Some(pr) if pr.state == PrState::Closed => Stage::Closed,
         _ if dispatch.failure.is_some() => Stage::Failed,
-        Some(PrState::Open) => Stage::PrDraft,
+        Some(pr) if passed(pr) => Stage::Verified,
+        Some(_) => Stage::PrDraft,
         None => Stage::Implementing,
     }
 }
@@ -65,10 +72,13 @@ pub fn load(config_dir: &Path) -> io::Result<Prs> {
 
 /// Look for each live Dispatch's PR on its branch until one is found, and
 /// ask GitHub about every watched PR that is not final. A failed read is
-/// said and asked again next time; it never stops the others. Says what it
-/// found and what failed.
+/// said and asked again next time; it never stops the others, but a rate
+/// limit pauses them all. Says what it found and what failed.
 pub fn watch(ctx: &Context) -> io::Result<Vec<String>> {
     let mut said = vec![];
+    if pause::of(ctx.world, &ctx.config_dir, "GitHub")?.is_some() {
+        return Ok(said);
+    }
     // (url, repo, number, the Dispatch it was just found for)
     let mut asks: Vec<(String, String, u64, Option<String>)> = (load(&ctx.config_dir)?.into_iter())
         .filter(|(_, pr)| !pr.r#final)
@@ -85,7 +95,12 @@ pub fn watch(ctx: &Context) -> io::Result<Vec<String>> {
                     })
                     .map(|pr| (pr.url, d.repo, pr.number, Some(d.issue))),
             ),
-            Err(e) => said.push(format!("could not look for the PR of {}: {e}", d.issue)),
+            Err(e) => {
+                said.push(format!("could not look for the PR of {}: {e}", d.issue));
+                if pause::note(&ctx.config_dir, &e)? {
+                    return Ok(said);
+                }
+            }
         }
     }
     for (url, repo, number, found_for) in asks {
@@ -93,6 +108,9 @@ pub fn watch(ctx: &Context) -> io::Result<Vec<String>> {
             Ok(now) => now,
             Err(e) => {
                 said.push(format!("could not ask GitHub about {url}: {e}"));
+                if pause::note(&ctx.config_dir, &e)? {
+                    return Ok(said);
+                }
                 continue;
             }
         };
