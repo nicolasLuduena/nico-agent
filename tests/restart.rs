@@ -209,8 +209,11 @@ fn dispatch_by_hand_restarts_a_dispatch_whose_agent_is_gone_as_manual_with_resta
         .collect();
     assert_eq!(by, [(&json!("manual"), &json!("user")); 3]);
     assert_eq!(shown["failure"], Value::Null);
+    let calls = t.world.calls();
     assert_eq!(
-        t.world.calls().last().unwrap(),
+        (calls.iter().rev())
+            .find(|c| c.starts_with("herdr agent prompt "))
+            .unwrap(),
         &format!(
             "herdr agent prompt impl-api-1 {PREFIX_1} The machine restarted. Continue where the branch left off."
         )

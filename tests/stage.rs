@@ -99,6 +99,54 @@ fn a_pr_is_found_on_the_dispatch_branch_once_and_then_watched_by_number() {
     );
 }
 
+#[test]
+fn status_shows_each_live_dispatchs_agent_states_from_one_herdr_read_and_unknown_without_it() {
+    let t = dispatched_all(&[7, 8]);
+    t.world.add_pr(pr(9, "agent/api-7", PrState::Open));
+    // With restart off, impl-api-8 stays gone.
+    let file = t.config_dir.join("config.toml");
+    let config = std::fs::read_to_string(&file).unwrap();
+    std::fs::write(&file, format!("{config}switches = {{ restart = false }}\n")).unwrap();
+    t.tick();
+    t.world.agents.borrow_mut().remove("impl-api-8");
+    t.world
+        .agents
+        .borrow_mut()
+        .insert("rev-api-7".into(), "idle".into());
+
+    t.world.calls.borrow_mut().clear();
+    let read = status(&t);
+    let herdr: Vec<String> = (t.world.calls().into_iter())
+        .filter(|c| c.starts_with("herdr "))
+        .collect();
+    t.world
+        .fail_call("herdr agent list", "herdr is not running");
+    let unread = status(&t);
+
+    let states = |status: &Value| -> Vec<Value> {
+        (status["dispatches"].as_array().unwrap().iter())
+            .map(|d| d["agent_state"].clone())
+            .collect()
+    };
+    assert_eq!(herdr, ["herdr agent list"]);
+    assert_eq!(
+        states(&read),
+        [
+            json!({ "implementer": "working", "reviewer": "idle" }),
+            json!({ "implementer": "gone", "reviewer": null }),
+        ]
+    );
+    assert_eq!(
+        states(&unread),
+        [
+            json!({ "implementer": "unknown", "reviewer": "unknown" }),
+            json!({ "implementer": "unknown", "reviewer": null }),
+        ]
+    );
+    // Beside the Stage, never deriving it.
+    assert_eq!(unread["dispatches"][0]["stage"], "PR draft");
+}
+
 /// Set what GitHub says of PR `n` of `acme/api`.
 fn set_state(t: &Setup, n: u64, state: PrState) {
     let mut prs = t.world.prs.borrow_mut();

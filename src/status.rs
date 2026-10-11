@@ -46,6 +46,15 @@ pub fn status(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
         let until = pause::until(ctx.world, &ctx.config_dir, source)?;
         sources[source.to_lowercase()] = json!({ "paused_until": until });
     }
+    // As herdr says now, beside the Stage, never deriving it.
+    let live = dispatches.iter().any(|d| d.closed_at.is_none());
+    let agents = live.then(|| ctx.world.herdr_agents().ok()).flatten();
+    let agent_state = |name: &str| match &agents {
+        None => "unknown",
+        Some(agents) => (agents.iter())
+            .find(|a| a.name == name)
+            .map_or("gone", |a| a.state.as_str()),
+    };
     let mut shown_dispatches = vec![];
     for d in &dispatches {
         let pr = d.pr.as_ref().and_then(|url| Some((url, prs.get(url)?)));
@@ -70,6 +79,12 @@ pub fn status(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
         let mut shown = json!(d);
         shown["warnings"] = json!(warnings);
         shown["stage"] = json!(stage);
+        if d.closed_at.is_none() {
+            shown["agent_state"] = json!({
+                "implementer": agent_state(&d.implementer.agent),
+                "reviewer": d.reviewer.as_ref().map(|r| agent_state(&r.launch.agent)),
+            });
+        }
         shown["verdict"] = json!(verdict);
         shown["pr"] = pr.map_or(Value::Null, |(url, pr)| {
             let mut pr = json!(pr);

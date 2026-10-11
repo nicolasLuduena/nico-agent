@@ -673,6 +673,7 @@ fn status_shows_the_dispatch_implementing_with_its_launch_and_steps() {
             "updated_at": "2026-09-30T12:00:00Z",
             "closed_at": null,
             "stage": "Implementing",
+            "agent_state": { "implementer": "working", "reviewer": null },
             "verdict": null,
         }])
     );
