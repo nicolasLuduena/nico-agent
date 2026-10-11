@@ -6,6 +6,7 @@ use crate::args::Args;
 use crate::cli::{Context, Refusal};
 use crate::config;
 use crate::dispatch;
+use crate::pause;
 use crate::source;
 use crate::stage;
 use crate::verdict;
@@ -40,6 +41,11 @@ pub fn status(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
         }
         repos.push(shown);
     }
+    let mut sources = json!({});
+    for source in pause::SOURCES {
+        let until = pause::until(ctx.world, &ctx.config_dir, source)?;
+        sources[source.to_lowercase()] = json!({ "paused_until": until });
+    }
     let mut shown_dispatches = vec![];
     for d in &dispatches {
         let mut shown = json!(d);
@@ -54,5 +60,5 @@ pub fn status(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
         });
         shown_dispatches.push(shown);
     }
-    Ok(json!({ "repos": repos, "dispatches": shown_dispatches }))
+    Ok(json!({ "repos": repos, "sources": sources, "dispatches": shown_dispatches }))
 }

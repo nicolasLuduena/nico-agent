@@ -30,6 +30,21 @@ impl fmt::Display for WorldError {
 
 impl std::error::Error for WorldError {}
 
+const RATE_LIMITED: &str = " rate limit exceeded; nico-agent asks it again at ";
+
+impl WorldError {
+    /// `source` (GitHub or Linear) refused a call for its rate limit, until
+    /// `until` (ISO 8601).
+    pub fn rate_limited(source: &str, until: &str) -> Self {
+        WorldError(format!("{source}{RATE_LIMITED}{until}"))
+    }
+
+    /// The Source and the time (ISO 8601) of a rate limit, if this is one.
+    pub fn rate_limit(&self) -> Option<(&str, &str)> {
+        self.0.split_once(RATE_LIMITED)
+    }
+}
+
 pub type WorldResult<T> = Result<T, WorldError>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -178,6 +193,8 @@ pub struct HttpRequest {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HttpResponse {
     pub status: u16,
+    /// As received: look a name up ignoring case.
+    pub headers: Vec<(String, String)>,
     pub body: String,
 }
 
@@ -345,13 +362,34 @@ fn gh_failure(stderr: &str) -> WorldError {
         "not authenticated with GitHub; run `gh auth login`"
     } else if says(&["could not resolve to a repository", "http 404"]) {
         return repo_not_found();
-    } else if says(&["rate limit"]) {
-        // shortcut: no reset time; #245 pauses GitHub reads until the reset.
-        "GitHub rate limit exceeded"
+    } else if says(&["rate limit", "http 429"]) {
+        return WorldError::rate_limited("GitHub", &crate::state::iso(github_reset()));
     } else {
         "GitHub request failed; check your network and `gh auth status`"
     };
     WorldError(message.into())
+}
+
+/// When GitHub may be asked again: the latest reset of its spent limits, as
+/// `gh api rate_limit` (which costs none) says; else in a minute, as GitHub
+/// asks of a secondary limit.
+fn github_reset() -> SystemTime {
+    let args = ["api", "rate_limit"].map(String::from);
+    let limits = gh_run("gh", &args).ok().filter(|(ok, ..)| *ok);
+    let limits: Option<Value> =
+        limits.and_then(|(_, stdout, _)| serde_json::from_str(&stdout).ok());
+    let spent = (limits.as_ref())
+        .and_then(|limits| limits["resources"].as_object())
+        .and_then(|resources| {
+            (resources.values())
+                .filter(|limit| limit["remaining"] == 0)
+                .filter_map(|limit| limit["reset"].as_u64())
+                .max()
+        });
+    spent.map_or_else(
+        || SystemTime::now() + Duration::from_secs(60),
+        |reset| SystemTime::UNIX_EPOCH + Duration::from_secs(reset),
+    )
 }
 
 /// `gh api graphql` with `query`, `-f` string and `-F` typed variables, as JSON.
@@ -1115,7 +1153,8 @@ impl World for RealWorld {
         let mut curl = Command::new("curl");
         curl.args(["--silent", "--show-error", "--max-time", "30", "--request"])
             .arg(&request.method)
-            .args(["--header", "@-", "--write-out", "\n%{http_code}"]);
+            .args(["--header", "@-", "--dump-header", "-"])
+            .args(["--write-out", "\n%{http_code}"]);
         if !request.body.is_empty() {
             curl.arg("--data-binary").arg(&request.body);
         }
@@ -1140,9 +1179,21 @@ impl World for RealWorld {
             return Err(unreachable(stderr.lines().next().unwrap_or("curl failed")));
         }
         let out = String::from_utf8_lossy(&ran.stdout);
-        let (body, status) = out.rsplit_once('\n').unwrap_or(("", &out));
+        let (mut body, status) = out.rsplit_once('\n').unwrap_or(("", &out));
+        // `--dump-header -` puts each response's head before the body, a
+        // proxy's or a `100 Continue`'s before the last one's.
+        let mut headers = vec![];
+        while body.starts_with("HTTP/") {
+            let (head, rest) = body.split_once("\r\n\r\n").unwrap_or((body, ""));
+            headers = (head.lines().skip(1))
+                .filter_map(|line| line.split_once(':'))
+                .map(|(name, value)| (name.trim().into(), value.trim().into()))
+                .collect();
+            body = rest;
+        }
         Ok(HttpResponse {
             status: status.trim().parse().map_err(|_| invalid(&request.url))?,
+            headers,
             body: body.into(),
         })
     }
