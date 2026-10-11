@@ -8,7 +8,8 @@ use std::io;
 use serde::{Deserialize, Serialize};
 
 use crate::cli::Context;
-use crate::dispatch;
+use crate::config::Config;
+use crate::dispatch::{self, Dispatch};
 use crate::state;
 use crate::world::{self, Agent, AgentState};
 
@@ -21,9 +22,10 @@ pub struct Asking {
 }
 
 /// Record which live Dispatches are Asking and which no longer are, telling
-/// the user of each new Asking, from the tick's list of herdr's `agents`.
-/// Says what it did, a line per action.
-pub fn step(ctx: &Context, agents: Option<&[Agent]>) -> io::Result<Vec<String>> {
+/// the user of each new Asking, from the tick's list of herdr's `agents`;
+/// faux-nico tells them instead where `answer` is on. Says what it did, a
+/// line per action.
+pub fn step(ctx: &Context, config: &Config, agents: Option<&[Agent]>) -> io::Result<Vec<String>> {
     // Unknown is not answered: each Asking stays as it was.
     let Some(agents) = agents else {
         return Ok(vec![]);
@@ -46,11 +48,8 @@ pub fn step(ctx: &Context, agents: Option<&[Agent]>) -> io::Result<Vec<String>> 
                 let asking = Asking { since, question };
                 record(ctx, &d.issue, Some(asking.clone()))?;
                 said.push(format!("{} is Asking: \"{}\"", d.issue, asking.question));
-                let title = format!("{} is Asking", d.issue);
-                let body = format!("\"{}\"\nAnswer it in herdr: agent {name}.", asking.question);
-                // Once: a failed notification is said, not tried again.
-                if let Err(e) = ctx.world.notify(&title, &body) {
-                    said.push(format!("could not notify \"{title}\": {e}"));
+                if !config.repo_of(&d).switches.answer {
+                    said.extend(tell(ctx, &d, &asking));
                 }
             }
             (Some(AgentState::Blocked | AgentState::Unknown), _) | (_, None) => {}
@@ -58,6 +57,19 @@ pub fn step(ctx: &Context, agents: Option<&[Agent]>) -> io::Result<Vec<String>> 
         }
     }
     Ok(said)
+}
+
+/// Tell the user `d` is Asking with a desktop notification quoting the
+/// question; what failed, said. Once: a failed notification is not tried again.
+pub fn tell(ctx: &Context, d: &Dispatch, asking: &Asking) -> Option<String> {
+    let title = format!("{} is Asking", d.issue);
+    let body = format!(
+        "\"{}\"\nAnswer it in herdr: agent {}.",
+        asking.question, d.implementer.agent
+    );
+    (ctx.world.notify(&title, &body))
+        .err()
+        .map(|e| format!("could not notify \"{title}\": {e}"))
 }
 
 fn record(ctx: &Context, issue: &str, asking: Option<Asking>) -> io::Result<()> {

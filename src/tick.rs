@@ -8,9 +8,11 @@ use std::fs::{self, File, OpenOptions, TryLockError};
 use std::io::{self, Read as _, Write};
 
 use crate::asking;
+use crate::away;
 use crate::cli::{Context, Refusal};
 use crate::config::{self, Config};
 use crate::dispatch::{self, Flags};
+use crate::faux_nico;
 use crate::flip;
 use crate::restart;
 use crate::review;
@@ -46,8 +48,10 @@ pub fn tick(ctx: &Context, refresh: bool) -> Result<Vec<String>, Refusal> {
     said.extend(review::start_reviewers(ctx, &config, agents.as_deref())?);
     // 6. Flip Verified PRs to ready (#243).
     said.extend(flip::step(ctx, &config)?);
-    said.extend(asking::step(ctx, agents.as_deref())?);
+    said.extend(asking::step(ctx, &config, agents.as_deref())?);
     said.extend(fill_rooms(ctx, &config, &reads)?);
+    said.extend(away::step(ctx, &config, agents.as_deref())?);
+    said.extend(faux_nico::step(ctx, &config)?);
     Ok(said)
 }
 
@@ -111,7 +115,8 @@ fn read_sources(
 }
 
 /// (7) Dispatch each Repo's Ready issues, then its Stackable ones behind
-/// the `stack` switch, oldest first, while its live Dispatches are under its
+/// the `stack` switch, then, behind `gardening` and only when it has neither,
+/// its Gardening issues, oldest first, while its live Dispatches are under its
 /// room; behind the `dispatch` switch.
 fn fill_rooms(
     ctx: &Context,
@@ -130,8 +135,15 @@ fn fill_rooms(
             .count();
         let room = (repo.room as usize).saturating_sub(live);
         let readiness = source::readiness(read, &dispatches, &prs);
+        // Gardening only while nothing else is Ready or Stackable, `stack` on or off.
+        let idle = readiness.ready.is_empty() && readiness.stackable.is_empty();
         let stackable = (readiness.stackable.into_iter()).filter(|_| repo.switches.stack);
-        for row in readiness.ready.into_iter().chain(stackable).take(room) {
+        let gardening =
+            (readiness.gardening.into_iter()).filter(|_| idle && repo.switches.gardening);
+        let rows = (readiness.ready.into_iter())
+            .chain(stackable)
+            .chain(gardening);
+        for row in rows.take(room) {
             let line = |_: &str| format!("{} dispatched", row.key);
             said.extend(run_steps(ctx, config, &row.key, line)?);
         }

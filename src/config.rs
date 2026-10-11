@@ -33,10 +33,17 @@ repos = {}
 [bucket]
 path = "/mnt/agents-land/nico-agent-bucket"
 
+# When each Repo with its quality_scan switch on is scanned, weekly, local time.
+[quality_scan]
+weekday = "sunday"
+hour = 3
+
 [prompts]
 implement = "{sigil}implement {issueUrl} as draft PR against {baseBranch}, saving its Evidence under {evidenceFolder}/ in the worktree and linking it to {bucketUrl}"
 research = "{sigil}research {issueUrl}; write the findings with sources to one Markdown file under docs/research/ and open it as a draft PR against {baseBranch}"
+faux_nico = '{sigil}faux-nico {issueUrl}: the Implementer asks "{question}". Read PRODUCT.md, the issue and its parent. Answer with nico-agent answer {issue} --text "..." --by faux-nico only when they settle it; otherwise end your turn without answering.'
 review = "{sigil}verdict {prUrl} for {issueUrl}: re-run the repo's verification skill under .agents/skills/verify-*/ against the PR's head, saving its Evidence under {evidenceFolder}/, and record the result with nico-agent verdict {issue} pass|fail --sha {headSha} --findings <file>"
+quality_scan = "{sigil}quality-scan {repoSlug}"
 # Appended to implement and research, as is, when the GitHub App is installed on the Repo.
 bot_suffix = ", opened with `ghbot pr create` (not `gh`); end every commit message with the trailer `Co-authored-by: nicolasluduena-coding-agent[bot] <324920906+nicolasluduena-coding-agent[bot]@users.noreply.github.com>`"
 
@@ -94,6 +101,7 @@ pub struct Config {
     /// The built-in ones (claude, codex, opencode) under the config's settings.
     pub harnesses: BTreeMap<String, Harness>,
     pub bucket: Bucket,
+    pub quality_scan: QualityScan,
     pub prompts: Prompts,
     #[serde(deserialize_with = "positive")]
     pub tick_minutes: u32,
@@ -117,6 +125,12 @@ pub struct Repo {
     pub implementer: Launch,
     /// As set; [`Config::reviewer`] fills in the default.
     pub reviewer: Option<Launch>,
+    /// The quality-scan's launch; the implementer's when unset.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub quality_scan: Option<Launch>,
+    /// faux-nico's launch; the implementer's when unset.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub faux_nico: Option<Launch>,
     pub switches: Switches,
 }
 
@@ -128,6 +142,28 @@ pub struct Bucket {
     /// What serves the Bucket under `/bucket/`, e.g. the tunnel's
     /// `https://host`; serve's own when unset.
     pub url: Option<String>,
+}
+
+/// When a quality-scan runs: weekly, at `hour` on `weekday`, local time.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct QualityScan {
+    pub weekday: Weekday,
+    #[serde(deserialize_with = "hour")]
+    pub hour: u32,
+}
+
+/// In the order `as` numbers them: Sunday is 0.
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Weekday {
+    Sunday,
+    Monday,
+    Tuesday,
+    Wednesday,
+    Thursday,
+    Friday,
+    Saturday,
 }
 
 /// Which Linear issues a Repo claims.
@@ -211,7 +247,9 @@ pub struct TrustPrompt {
 pub struct Prompts {
     pub implement: String,
     pub research: String,
+    pub faux_nico: String,
     pub review: String,
+    pub quality_scan: String,
     pub bot_suffix: String,
     pub restart: RestartPrompts,
 }
@@ -348,6 +386,8 @@ fn parse(file: &Path, text: &str) -> Result<Config, Refusal> {
         for (role, launch) in [
             ("implementer", Some(&repo.implementer)),
             ("reviewer", repo.reviewer.as_ref()),
+            ("quality_scan", repo.quality_scan.as_ref()),
+            ("faux_nico", repo.faux_nico.as_ref()),
         ] {
             let Some(Launch { harness, .. }) = launch else {
                 continue;
@@ -428,4 +468,16 @@ fn positive<'de, D: Deserializer<'de>>(d: D) -> Result<u32, D::Error> {
 
 fn positive_port<'de, D: Deserializer<'de>>(d: D) -> Result<u16, D::Error> {
     std::num::NonZeroU16::deserialize(d).map(u16::from)
+}
+
+fn hour<'de, D: Deserializer<'de>>(d: D) -> Result<u32, D::Error> {
+    let hour = u32::deserialize(d)?;
+    if hour > 23 {
+        let got = serde::de::Unexpected::Unsigned(hour.into());
+        return Err(serde::de::Error::invalid_value(
+            got,
+            &"an hour from 0 to 23",
+        ));
+    }
+    Ok(hour)
 }

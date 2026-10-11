@@ -3,6 +3,7 @@
 use serde_json::{Value, json};
 
 use crate::args::Args;
+use crate::away;
 use crate::cli::{Context, Refusal};
 use crate::config::{self, Config};
 use crate::dispatch::{self, Dispatch};
@@ -32,6 +33,7 @@ pub fn shown(
     read: bool,
 ) -> Result<Value, Refusal> {
     let mut repos = vec![];
+    let runs = away::load(&ctx.config_dir)?;
     for (slug, repo) in &config.repos {
         let (read, error) = match read {
             true => source::issues(ctx.world, &ctx.config_dir, slug, repo, config.tick())?,
@@ -46,10 +48,14 @@ pub fn shown(
             "read_at": read.map(|read| read.read_at),
             "ready": readiness.ready,
             "stackable": readiness.stackable,
+            "gardening": readiness.gardening,
             "waiting": readiness.waiting,
         });
         if let Some(error) = error {
             shown["error"] = json!(error.0);
+        }
+        if let Some(scan) = away::last_scan(&runs, slug) {
+            shown["last_scan"] = json!(scan);
         }
         let harness = &repo.implementer.harness;
         if config.reviewer(repo, harness).harness == *harness {
@@ -101,6 +107,9 @@ pub fn shown(
                 "implementer": agent_state(&d.implementer.agent),
                 "reviewer": d.reviewer.as_ref().map(|r| agent_state(&r.launch.agent)),
             });
+            if let Some(run) = (runs.iter()).rfind(|r| r.issue.as_ref() == Some(&d.issue)) {
+                shown["faux_nico"] = json!(run);
+            }
         }
         shown["verdict"] = json!(verdict);
         shown["pr"] = pr.map_or(Value::Null, |(url, pr)| {
