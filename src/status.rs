@@ -107,6 +107,9 @@ pub fn shown(
                 "implementer": agent_state(&d.implementer.agent),
                 "reviewer": d.reviewer.as_ref().map(|r| agent_state(&r.launch.agent)),
             });
+            if let Some(run) = (runs.iter()).rfind(|r| r.issue.as_ref() == Some(&d.issue)) {
+                shown["faux_nico"] = json!(run);
+            }
         }
         shown["verdict"] = json!(verdict);
         shown["pr"] = pr.map_or(Value::Null, |(url, pr)| {
