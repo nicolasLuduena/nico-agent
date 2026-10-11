@@ -7,6 +7,7 @@ use std::collections::BTreeMap;
 use std::fs::{self, File, OpenOptions, TryLockError};
 use std::io::{self, Read as _, Write};
 
+use crate::asking;
 use crate::cli::{Context, Refusal};
 use crate::config::{self, Config};
 use crate::dispatch::{self, Flags};
@@ -33,6 +34,7 @@ pub fn tick(ctx: &Context) -> Result<Vec<String>, Refusal> {
     // 4. Restart what broke: rebooted, stalled (#240); conflict, retarget (#244); verdict (#243).
     // 5. Start Reviewers (#242).
     // 6. Flip Verified PRs to ready (#243).
+    said.extend(asking::step(ctx)?);
     said.extend(fill_rooms(ctx, &config, &reads)?);
     Ok(said)
 }

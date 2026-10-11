@@ -138,6 +138,7 @@ fn a_source_that_fails_is_said_and_the_tick_goes_on() {
             "github viewer",
             "github issues acme/api",
             "github branch prs acme/api:agent/api-1",
+            "herdr agent list",
         ]
     );
 }

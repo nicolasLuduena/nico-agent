@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::args::Args;
+use crate::asking::Asking;
 use crate::cli::{Context, Refusal};
 use crate::config::{self, Config, Harness, Launch, Repo, fill_in};
 use crate::launch::{self, AgentLaunch};
@@ -50,6 +51,8 @@ pub struct Dispatch {
     pub pr: Option<String>,
     pub implementer: AgentLaunch,
     pub research: bool,
+    /// While its Implementer waits on the user.
+    pub asking: Option<Asking>,
     /// The steps done, in order.
     pub completed: Vec<String>,
     /// The step that failed last, until it is done.
@@ -172,6 +175,7 @@ pub fn issue(ctx: &Context, config: &Config, key: &str, flags: Flags) -> Result<
             pane: None,
         },
         research: issue.labels.iter().any(|l| l == "research"),
+        asking: None,
         completed: vec![],
         failure: None,
         claimed: false,
@@ -553,7 +557,7 @@ fn label(record: &Dispatch) -> String {
     }
 }
 
-fn is_live(dispatch: &Dispatch, key: &str) -> bool {
+pub fn is_live(dispatch: &Dispatch, key: &str) -> bool {
     dispatch.issue == key && dispatch.closed_at.is_none()
 }
 
@@ -610,6 +614,7 @@ pub fn close_finished(ctx: &Context) -> io::Result<Vec<String>> {
         update(&ctx.config_dir, |all| {
             if let Some(live) = all.iter_mut().find(|live| is_live(live, &d.issue)) {
                 live.closed_at = Some(now.clone());
+                live.asking = None;
                 live.updated_at = now.clone();
             }
         })?;
@@ -639,7 +644,7 @@ pub fn link_pr(config_dir: &Path, issue: &str, url: &str) -> io::Result<()> {
 }
 
 /// Change the Dispatches under the file's lock.
-fn update<T>(config_dir: &Path, change: impl FnOnce(&mut Vec<Dispatch>) -> T) -> io::Result<T> {
+pub fn update<T>(config_dir: &Path, change: impl FnOnce(&mut Vec<Dispatch>) -> T) -> io::Result<T> {
     let file = config_dir.join(FILE);
     state::update(&file, |text| {
         let mut all = state::parse(&file, text)?;
