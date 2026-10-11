@@ -274,7 +274,8 @@ impl World for FakeWorld {
         let copies: Vec<(String, Vec<u8>)> = (files.iter())
             .filter_map(|(path, bytes)| {
                 let rest = path.strip_prefix(&format!("{from}/"))?;
-                Some((format!("{to}/{rest}"), bytes.clone()))
+                let git = rest.split('/').any(|part| part == ".git");
+                (!git).then(|| (format!("{to}/{rest}"), bytes.clone()))
             })
             .collect();
         files.extend(copies);
@@ -293,11 +294,12 @@ impl World for FakeWorld {
     }
 
     fn list_files(&self, path: &str) -> WorldResult<Vec<String>> {
-        self.call(format!("find {path} -type f"))?;
+        self.call(format!("find {path} -name .git -prune -o -type f -print"))?;
         let under = format!("{path}/");
         let files = self.files.borrow();
         Ok((files.keys())
             .filter_map(|file| Some(file.strip_prefix(&under)?.to_string()))
+            .filter(|file| !file.split('/').any(|part| part == ".git"))
             .collect())
     }
 

@@ -262,15 +262,15 @@ pub trait World {
     fn git_commit(&self, path: &str, add: &str, message: &str) -> WorldResult<()>;
 
     // files outside the config directory: worktrees, the Bucket
-    /// Copy what the folder `from` holds into the folder `to`, without its
-    /// symlinks; nothing when `from` is missing.
+    /// Copy the files [`World::list_files`] lists under the folder `from`
+    /// into the folder `to`; nothing when `from` is missing.
     fn copy_dir(&self, from: &str, to: &str) -> WorldResult<()>;
     /// Write a file, making its folders.
     fn write_file(&self, path: &str, contents: &[u8]) -> WorldResult<()>;
     /// What a file holds; `None` when there is no file at `path`.
     fn read_file(&self, path: &str) -> WorldResult<Option<Vec<u8>>>;
     /// Every file under the folder `path`, by its path from there, sorted,
-    /// without symlinks; none when there is no such folder.
+    /// without symlinks nor git's `.git`; none when there is no such folder.
     fn list_files(&self, path: &str) -> WorldResult<Vec<String>>;
 
     // gh
@@ -754,28 +754,22 @@ fn git_ok(path: &str, args: &[&str]) -> WorldResult<String> {
     )))
 }
 
-/// Copy the files and folders under `from` into `to`, skipping symlinks,
-/// which would point back into the worktree; nothing when `from` is missing.
+/// Copy the files under `from` into `to`, as [`list_tree`] finds them:
+/// symlinks, which would point back into the worktree, skipped.
 fn copy_tree(from: &Path, to: &Path) -> io::Result<()> {
-    let entries = match fs::read_dir(from) {
-        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(()),
-        entries => entries?,
-    };
-    fs::create_dir_all(to)?;
-    for entry in entries {
-        let entry = entry?;
-        let (kind, target) = (entry.file_type()?, to.join(entry.file_name()));
-        if kind.is_dir() {
-            copy_tree(&entry.path(), &target)?;
-        } else if kind.is_file() {
-            fs::copy(entry.path(), target)?;
-        }
+    let mut files = vec![];
+    list_tree(from, Path::new(""), &mut files)?;
+    for file in files {
+        let target = to.join(&file);
+        target.parent().map_or(Ok(()), fs::create_dir_all)?;
+        fs::copy(from.join(&file), target)?;
     }
     Ok(())
 }
 
-/// Push the files under `dir` onto `files`, each after `under`.
-fn list_tree(dir: &Path, under: &str, files: &mut Vec<String>) -> io::Result<()> {
+/// Push the files under `dir` onto `files`, each after `under`; none of git's
+/// (`.git`, a folder or a worktree's file), nor a symlink.
+fn list_tree(dir: &Path, under: &Path, files: &mut Vec<PathBuf>) -> io::Result<()> {
     use io::ErrorKind::{NotADirectory, NotFound};
     let entries = match fs::read_dir(dir) {
         Err(e) if matches!(e.kind(), NotFound | NotADirectory) => return Ok(()),
@@ -783,10 +777,11 @@ fn list_tree(dir: &Path, under: &str, files: &mut Vec<String>) -> io::Result<()>
     };
     for entry in entries {
         let entry = entry?;
-        let name = format!("{under}{}", entry.file_name().to_string_lossy());
-        let kind = entry.file_type()?;
-        if kind.is_dir() {
-            list_tree(&entry.path(), &format!("{name}/"), files)?;
+        let (name, kind) = (under.join(entry.file_name()), entry.file_type()?);
+        if entry.file_name() == ".git" {
+            continue;
+        } else if kind.is_dir() {
+            list_tree(&entry.path(), &name, files)?;
         } else if kind.is_file() {
             files.push(name);
         }
@@ -956,8 +951,11 @@ impl World for RealWorld {
     }
     fn list_files(&self, path: &str) -> WorldResult<Vec<String>> {
         let mut files = vec![];
-        list_tree(Path::new(path), "", &mut files)
+        list_tree(Path::new(path), Path::new(""), &mut files)
             .map_err(|e| WorldError(format!("could not list {path}: {e}")))?;
+        let mut files: Vec<String> = (files.iter())
+            .map(|f| f.to_string_lossy().into_owned())
+            .collect();
         files.sort();
         Ok(files)
     }

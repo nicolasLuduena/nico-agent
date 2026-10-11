@@ -219,11 +219,13 @@ fn get_bucket_of_a_folder_links_every_file_under_it_sandboxed_as_files_are() {
         .add_file(&format!("{BUCKET}/acme/api/7/abc/<b>&.txt"), b"odd");
     t.world
         .add_file(&format!("{BUCKET}/acme/api/70/abc/shot.png"), b"not 7's");
+    t.world.add_file(&format!("{BUCKET}/.git/HEAD"), b"ref");
     t.world.calls.borrow_mut().clear();
 
     let (status, headers, body) = get(&t, "/bucket/acme/api/7/");
     let (missing, _, _) = get(&t, "/bucket/acme/api/8/");
     let (git, _, _) = get(&t, "/bucket/.git/");
+    let (_, _, root) = get(&t, "/bucket/");
 
     assert_eq!(status, 200);
     assert_eq!(
@@ -244,11 +246,15 @@ fn get_bucket_of_a_folder_links_every_file_under_it_sandboxed_as_files_are() {
          </ul>\n"
     );
     assert_eq!((missing, git), (404, 403));
+    let root = String::from_utf8(root).unwrap();
+    assert!(root.contains("acme/api/70/abc/shot.png") && !root.contains(".git"), "{root}");
     assert_eq!(
         t.world.calls(),
         [
-            format!("find {BUCKET}/acme/api/7 -type f"),
-            format!("find {BUCKET}/acme/api/8 -type f"),
+            format!("find {BUCKET}/acme/api/7 -name .git -prune -o -type f -print"),
+            format!("find {BUCKET}/acme/api/8 -name .git -prune -o -type f -print"),
+            // The Bucket's git store is not walked.
+            format!("find {BUCKET} -name .git -prune -o -type f -print"),
         ]
     );
 }

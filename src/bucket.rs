@@ -134,12 +134,7 @@ fn sandboxed(media_type: &str, body: Vec<u8>) -> Answer {
 /// Every file under the Bucket's `folder`, by its path in it; none of its git store.
 pub fn files(world: &dyn World, config: &Config, folder: &str) -> Result<Vec<String>, Refusal> {
     let path = format!("{}/{folder}", config.bucket.path);
-    let files = world
-        .list_files(path.trim_end_matches('/'))
-        .map_err(refused)?;
-    Ok((files.into_iter())
-        .filter(|f| !f.split('/').any(|part| part == ".git"))
-        .collect())
+    world.list_files(path.trim_end_matches('/')).map_err(refused)
 }
 
 /// `path` as a URL's path: each byte but `/` and the unreserved ones `%XX`-escaped.
