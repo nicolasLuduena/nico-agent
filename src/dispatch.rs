@@ -75,6 +75,10 @@ pub struct Dispatch {
     /// no PR, until it says otherwise.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub idle_since: Option<String>,
+    /// Restarted to rebase (conflict or retarget) since its PR was last seen
+    /// mergeable: a conflict meanwhile is not restarted for again.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub rebasing: bool,
     /// The process running its steps, while one does.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub runner: Option<u32>,
@@ -207,6 +211,7 @@ pub fn issue(ctx: &Context, config: &Config, key: &str, flags: Flags) -> Result<
         warnings: vec![],
         restarts: vec![],
         idle_since: None,
+        rebasing: false,
         runner: Some(ctx.world.process_id()),
         created_at: now.clone(),
         updated_at: now,
