@@ -32,9 +32,9 @@ repos = {}
 path = "/mnt/agents-land/nico-agent-bucket"
 
 [prompts]
-implement = "{sigil}implement {issueUrl} as draft PR against {baseBranch}, linking its Evidence to {bucketUrl}"
+implement = "{sigil}implement {issueUrl} as draft PR against {baseBranch}, saving its Evidence under {evidenceFolder}/ in the worktree and linking it to {bucketUrl}"
 research = "{sigil}research {issueUrl}; write the findings with sources to one Markdown file under docs/research/ and open it as a draft PR against {baseBranch}"
-review = "{sigil}verdict {prUrl} for {issueUrl}: re-run the repo's verification skill under .agents/skills/verify-*/ against the PR's head, and record the result with nico-agent verdict {issue} pass|fail --sha {headSha} --findings <file>"
+review = "{sigil}verdict {prUrl} for {issueUrl}: re-run the repo's verification skill under .agents/skills/verify-*/ against the PR's head, saving its Evidence under {evidenceFolder}/, and record the result with nico-agent verdict {issue} pass|fail --sha {headSha} --findings <file>"
 # Appended to implement and research, as is, when the GitHub App is installed on the Repo.
 bot_suffix = ", opened with `ghbot pr create` (not `gh`); end every commit message with the trailer `Co-authored-by: nicolasluduena-coding-agent[bot] <324920906+nicolasluduena-coding-agent[bot]@users.noreply.github.com>`"
 

@@ -442,11 +442,12 @@ fn implement_prompt(
     } else {
         &prompts.implement
     };
-    let bucket_url = bucket::url(config, record);
+    let (bucket_url, evidence) = (bucket::url(config, record), bucket::evidence(record));
     let values = [
         ("sigil", harness.sigil.as_str()),
         ("issueUrl", &record.url),
         ("baseBranch", &record.base),
+        ("evidenceFolder", &evidence),
         ("bucketUrl", &bucket_url),
     ];
     let text = fill_in(template, &values);

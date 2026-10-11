@@ -39,7 +39,7 @@ pub fn keep(
     let bucket = &config.bucket.path;
     let to = format!("{bucket}/{}/{sha}", folder(d));
     if let Some(worktree) = &d.worktree {
-        let from = format!("{worktree}/.evidence/{}", id(&d.issue));
+        let from = format!("{worktree}/{}", evidence(d));
         world.copy_dir(&from, &to).map_err(refused)?;
     }
     if let Some(text) = findings {
@@ -172,6 +172,11 @@ pub fn url(config: &Config, d: &Dispatch) -> String {
     let local = format!("http://127.0.0.1:{}", http::PORT);
     let base = config.bucket.url.as_deref().unwrap_or(&local);
     format!("{}/bucket/{}/", base.trim_end_matches('/'), folder(d))
+}
+
+/// Where in its worktree `d`'s Evidence is saved for the Bucket to keep: `.evidence/<issue>`.
+pub fn evidence(d: &Dispatch) -> String {
+    format!(".evidence/{}", id(&d.issue))
 }
 
 /// The Bucket's folder for `d`'s issue: `<repo>/<issue>`.
