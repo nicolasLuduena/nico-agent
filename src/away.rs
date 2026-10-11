@@ -149,20 +149,24 @@ fn close_ended(ctx: &Context, agents: Option<&[Agent]>) -> io::Result<Vec<String
 }
 
 /// Start a quality-scan in each Repo with its switch on that has room, no
-/// scan running, and none since the latest weekly slot.
+/// scan running, and none since the latest weekly slot; a Repo never scanned
+/// only within its slot's hour, so turning the switch on scans nothing at once.
 fn scan(ctx: &Context, config: &Config) -> Result<Vec<String>, Refusal> {
     let runs = load(&ctx.config_dir)?;
     let dispatches = dispatch::load(&ctx.config_dir)?;
     let weekly = &config.quality_scan;
-    let slot = state::iso(last_slot(ctx, Some(weekly.weekday), weekly.hour));
+    let slot = last_slot(ctx, Some(weekly.weekday), weekly.hour);
+    // shortcut: a first slot with no room in its hour waits a week; remember the missed slot if that bites.
+    let first_due = ctx.world.now() < slot + HOUR;
+    let slot = state::iso(slot);
     let mut said = vec![];
     for (slug, repo) in (config.repos.iter()).filter(|(_, r)| r.switches.quality_scan) {
         let live = (dispatches.iter())
             .filter(|d| d.repo == *slug && d.closed_at.is_none())
             .count();
         let last = last_scan(&runs, slug);
-        if live >= repo.room as usize || last.is_some_and(|r| r.closed_at.is_none() || r.at >= slot)
-        {
+        let due = last.map_or(first_due, |r| r.closed_at.is_some() && r.at < slot);
+        if live >= repo.room as usize || !due {
             continue;
         }
         let chosen = (repo.quality_scan.clone()).unwrap_or_else(|| repo.implementer.clone());
@@ -325,14 +329,16 @@ fn morning(ctx: &Context, config: &Config) -> Result<Vec<String>, Refusal> {
     Ok(vec![said])
 }
 
-/// Send the user the first line of the Morning summary, once for each text
-/// it holds. Once: a failed notification is said, not tried again.
+/// Send the user the first line of the Morning summary under its headings,
+/// once for each text it holds. Once: a failed notification is said, not
+/// tried again.
 fn send_summary(ctx: &Context) -> io::Result<Vec<String>> {
     let text = match fs::read_to_string(ctx.config_dir.join(SUMMARY)) {
         Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(vec![]),
         read => read?,
     };
-    let Some(first) = text.lines().map(str::trim).find(|l| !l.is_empty()) else {
+    let first = (text.lines().map(str::trim)).find(|l| !l.is_empty() && !l.starts_with('#'));
+    let Some(first) = first else {
         return Ok(vec![]);
     };
     let file = ctx.config_dir.join(NOTIFIED);

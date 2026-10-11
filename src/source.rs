@@ -85,8 +85,9 @@ pub struct Readiness {
     pub stackable: Vec<Row>,
     /// Ready Gardening issues, kept out of `ready`.
     pub gardening: Vec<Row>,
-    /// Stackable but for its Blockers' open PRs sitting on several branches,
-    /// or still open though its last Dispatch's PR merged or was closed unmerged.
+    /// Stackable but for its Blockers' open PRs sitting on several branches
+    /// or its being a Gardening issue, or still open though its last
+    /// Dispatch's PR merged or was closed unmerged.
     pub waiting: Vec<Row>,
 }
 
@@ -261,7 +262,13 @@ pub fn readiness(read: &Read, dispatches: &[Dispatch], prs: &Prs) -> Readiness {
             Start::Ready if gardening => readiness.gardening.push(row),
             Start::Ready => readiness.ready.push(row),
             // Only a Ready Gardening issue is the loop's to start.
-            Start::Stacked(_) if gardening => {}
+            Start::Stacked(pr) if gardening => readiness.waiting.push(Row {
+                reason: Some(format!(
+                    "{key} waits for its Blockers' open PR {} to merge; a Gardening issue is never stacked",
+                    pr.url
+                )),
+                ..row
+            }),
             Start::Stacked(pr) => readiness.stackable.push(Row {
                 base: Some(pr.head_branch.clone()),
                 ..row
