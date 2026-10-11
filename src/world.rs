@@ -349,6 +349,8 @@ pub trait World {
     -> WorldResult<()>;
     /// Submit a prompt and wait until the agent starts working: `false` when it never reacted.
     fn herdr_agent_prompt(&self, name: &str, text: &str) -> WorldResult<bool>;
+    /// Open a workspace on the folder `cwd`, with no worktree, without focusing it.
+    fn herdr_workspace_create(&self, cwd: &str, label: &str) -> WorldResult<String>;
 
     // opencode
     /// Save `effort` as opencode's variant for `model` in its variant `file`
@@ -1328,6 +1330,19 @@ impl World for RealWorld {
             Err(failure) if failure.is(&["agent_prompt_stalled"]) => Ok(false),
             Err(failure) => Err(failure.into()),
         }
+    }
+    fn herdr_workspace_create(&self, cwd: &str, label: &str) -> WorldResult<String> {
+        let args = [
+            "workspace",
+            "create",
+            "--cwd",
+            cwd,
+            "--label",
+            label,
+            "--no-focus",
+        ];
+        let result = herdr(&args)?;
+        herdr_str(&result["workspace"]["workspace_id"])
     }
     fn opencode_save_variant(
         &self,
