@@ -922,13 +922,23 @@ impl World for RealWorld {
         fs::create_dir_all(path).map_err(|e| WorldError(format!("could not make {path}: {e}")))?;
         git_ok(path, &["init", "--quiet"]).map(drop)
     }
-    /// Unsigned: a service has no one to unlock a signing key.
+    /// Unsigned, as nico-agent: a service has no one to unlock a signing key, and the
+    /// machine may have no git identity at all.
     fn git_commit(&self, path: &str, add: &str, message: &str) -> WorldResult<()> {
         // git refuses to add a path that is not there: a Verdict with no Evidence nor findings.
         if Path::new(path).join(add).exists() {
             git_ok(path, &["add", "--", add])?;
         }
-        let commit = ["commit", "--quiet", "--allow-empty", "--no-gpg-sign"];
+        let commit = [
+            "-c",
+            "user.name=nico-agent",
+            "-c",
+            "user.email=nico-agent@localhost",
+            "commit",
+            "--quiet",
+            "--allow-empty",
+            "--no-gpg-sign",
+        ];
         git_ok(path, &[&commit[..], &["-m", message]].concat()).map(drop)
     }
     fn copy_dir(&self, from: &str, to: &str) -> WorldResult<()> {

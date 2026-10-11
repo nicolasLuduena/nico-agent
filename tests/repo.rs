@@ -32,7 +32,7 @@ fn add_reads_the_remotes_and_list_shows_the_repo_with_defaults_filled_in() {
             format!("git init {bucket}"),
             format!("write {bucket}/README.md"),
             format!(
-                "git -C {bucket} add -- README.md && git -C {bucket} commit --quiet --allow-empty --no-gpg-sign -m nico-agent's Bucket"
+                "git -C {bucket} add -- README.md && git -C {bucket} -c user.name=nico-agent -c user.email=nico-agent@localhost commit --quiet --allow-empty --no-gpg-sign -m nico-agent's Bucket"
             ),
         ]
     );

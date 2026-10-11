@@ -264,7 +264,7 @@ impl World for FakeWorld {
 
     fn git_commit(&self, path: &str, add: &str, message: &str) -> WorldResult<()> {
         self.call(format!(
-            "git -C {path} add -- {add} && git -C {path} commit --quiet --allow-empty --no-gpg-sign -m {message}"
+            "git -C {path} add -- {add} && git -C {path} -c user.name=nico-agent -c user.email=nico-agent@localhost commit --quiet --allow-empty --no-gpg-sign -m {message}"
         ))
     }
 
