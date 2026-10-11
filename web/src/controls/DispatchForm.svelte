@@ -1,5 +1,5 @@
 <script lang="ts">
-  // Dispatch by hand: one of the Repo's Ready or Stackable issues, on a
+  // Dispatch by hand: one of the Repo's Ready, Stackable or Gardening issues, on a
   // Harness, model and Effort that start on the last launch used.
   import { reload } from "../live";
   import { number, type Repo, type Status } from "../status";
@@ -14,8 +14,8 @@
   let running = $state(false);
   let sent = $state<{ issue: string; outcome: Sent } | null>(null);
 
-  const groups = $derived([["Ready", repo.ready], ["Stackable", repo.stackable]] as const);
-  const issues = $derived([...repo.ready, ...repo.stackable]);
+  const groups = $derived([["Ready", repo.ready], ["Stackable", repo.stackable], ["Gardening", repo.gardening]] as const);
+  const issues = $derived([...repo.ready, ...repo.stackable, ...repo.gardening]);
   const issue = $derived(issues.find((i) => i.key === pick.issue)?.key ?? issues[0]?.key);
   const launch = $derived(startingLaunch(repo, status.dispatches, pick.harness));
   const model = $derived(pick.model !== undefined ? pick.model : launch.model);
@@ -43,7 +43,7 @@
       <span class="label">Issue</span>
       <select value={issue ?? ""} disabled={!issue} onchange={(e) => (pick.issue = e.currentTarget.value)}>
         {#if !issue}
-          <option value="">Nothing Ready or Stackable</option>
+          <option value="">Nothing to dispatch</option>
         {/if}
         {#each groups as [group, listed] (group)}
           {#if listed.length}
