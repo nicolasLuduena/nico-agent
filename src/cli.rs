@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use serde_json::{Value, json};
 
+use crate::answer;
 use crate::dispatch;
 use crate::refresh;
 use crate::repo;
@@ -66,6 +67,10 @@ const COMMANDS: &[(&str, &str)] = &[
         "start an Implementer on each Ready issue, or continue its failed Dispatch from the step that failed",
     ),
     (
+        "nico-agent answer <issue> --text <text> [--by faux-nico]",
+        "type an answer into the issue's Asking Implementer and record it on its Dispatch",
+    ),
+    (
         "nico-agent verdict <issue> pass|fail --sha <sha> [--findings <file>]",
         "record the Reviewer's Verdict on the head of the issue's PR",
     ),
@@ -97,6 +102,7 @@ pub fn run(argv: &[String], ctx: &Context) -> Output {
         ["repo", "rm", args @ ..] => repo::rm(args, ctx),
         ["repo", "list", args @ ..] => repo::list(args, ctx),
         ["dispatch", args @ ..] => dispatch::dispatch(args, ctx),
+        ["answer", args @ ..] => answer::answer(args, ctx),
         ["verdict", args @ ..] => verdict::verdict(args, ctx),
         ["status", args @ ..] => status::status(args, ctx),
         ["serve", args @ ..] => serve::serve(args, ctx),
