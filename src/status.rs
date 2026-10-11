@@ -34,7 +34,7 @@ pub fn status(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
             shown["error"] = json!(error.0);
         }
         let harness = &repo.implementer.harness;
-        if config.reviewer(repo).harness == *harness {
+        if config.reviewer(repo, harness).harness == *harness {
             shown["warnings"] = json!([format!(
                 "{slug}'s Reviewer runs on {harness}, as its Implementer does, so it may share its blind spots; set another Harness in repos.\"{slug}\".reviewer"
             )]);
@@ -48,17 +48,27 @@ pub fn status(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
     }
     let mut shown_dispatches = vec![];
     for d in &dispatches {
-        let mut shown = json!(d);
         let pr = d.pr.as_ref().and_then(|url| Some((url, prs.get(url)?)));
         let verdict = verdict::load(&ctx.config_dir, &d.issue)?;
         let stage = stage::of(d, pr.map(|(_, pr)| pr), verdict.as_ref());
-        let flip_off = config.repos.get(&d.repo).is_some_and(|r| !r.switches.flip);
-        if flip_off && stage == Stage::Verified && pr.is_some_and(|(_, pr)| pr.draft) {
-            let slug = &d.repo;
-            shown["warnings"].as_array_mut().expect("a Dispatch's warnings are a list").push(json!(format!(
-                "flip is off for {slug}, so its Verified PR stays draft; mark it ready by hand, or turn on repos.\"{slug}\".switches.flip"
-            )));
+        let (slug, harness) = (&d.repo, &d.implementer.harness);
+        let mut warnings = d.warnings.clone();
+        if let Some(repo) = config.repos.get(slug).filter(|_| d.closed_at.is_none()) {
+            if config.reviewer(repo, harness).harness == *harness {
+                warnings.push(format!(
+                    "{}'s Reviewer runs on {harness}, as its Implementer does, so it may share its blind spots; set another Harness in repos.\"{slug}\".reviewer",
+                    d.issue
+                ));
+            }
+            if !repo.switches.flip && stage == Stage::Verified && pr.is_some_and(|(_, pr)| pr.draft)
+            {
+                warnings.push(format!(
+                    "flip is off for {slug}, so its Verified PR stays draft; mark it ready by hand, or turn on repos.\"{slug}\".switches.flip"
+                ));
+            }
         }
+        let mut shown = json!(d);
+        shown["warnings"] = json!(warnings);
         shown["stage"] = json!(stage);
         shown["verdict"] = json!(verdict);
         shown["pr"] = pr.map_or(Value::Null, |(url, pr)| {

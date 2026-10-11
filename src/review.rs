@@ -61,7 +61,7 @@ pub fn start_reviewers(
             ));
             continue;
         }
-        let chosen = config.reviewer(repo);
+        let chosen = config.reviewer(repo, &d.implementer.harness);
         let mut reviewer = Reviewer {
             launch: AgentLaunch {
                 agent: launch::agent_name("rev", &d.repo, &d.issue),

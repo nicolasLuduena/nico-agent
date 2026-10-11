@@ -222,19 +222,14 @@ impl Config {
         Duration::from_secs(u64::from(self.tick_minutes) * 60)
     }
 
-    /// The Repo's reviewer launch; unset, a Harness other than the implementer's.
-    pub fn reviewer(&self, repo: &Repo) -> Launch {
-        let other = self
-            .harnesses
-            .keys()
-            .find(|name| **name != repo.implementer.harness);
-        repo.reviewer.clone().unwrap_or_else(|| match other {
-            Some(harness) => Launch {
-                harness: harness.clone(),
-                model: None,
-                effort: None,
-            },
-            None => repo.implementer.clone(),
+    /// The Repo's reviewer launch for an Implementer on the Harness
+    /// `implementer`; unset, a Harness other than that one, if there is one.
+    pub fn reviewer(&self, repo: &Repo, implementer: &str) -> Launch {
+        let other = self.harnesses.keys().find(|name| *name != implementer);
+        repo.reviewer.clone().unwrap_or_else(|| Launch {
+            harness: other.map_or(implementer, String::as_str).into(),
+            model: None,
+            effort: None,
         })
     }
 }

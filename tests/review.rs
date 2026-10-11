@@ -455,6 +455,59 @@ fn a_reviewer_on_the_implementers_harness_starts_there_with_a_warning_in_status(
     assert_eq!(repo.get("warnings"), None);
 }
 
+/// Repo `acme/api`, as `toml` sets it, with issue 7 dispatched by hand on
+/// codex and its PR 9 opened since.
+fn dispatched_on_codex(toml: &str) -> Setup {
+    let t = setup();
+    t.world
+        .add_clone("/src/api", &["git@github.com:acme/api.git"]);
+    std::fs::create_dir_all(&t.config_dir).unwrap();
+    let config = format!("[repos.\"acme/api\"]\npath = \"/src/api\"\n{toml}\n");
+    std::fs::write(t.config_dir.join("config.toml"), config).unwrap();
+    t.world.add_issue("acme/api", github_issue("acme/api", 7));
+    let ran = t.cli(&["dispatch", "acme/api#7", "--harness", "codex"]);
+    assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
+    t.world.add_pr(PullRequest {
+        head_branch: Some("agent/api-7".into()),
+        ..pull_request("acme/api", 9)
+    });
+    t
+}
+
+#[test]
+fn the_reviewer_runs_on_a_harness_other_than_the_one_its_dispatchs_implementer_runs_on() {
+    let t = dispatched_on_codex("");
+
+    let said = t.tick();
+
+    assert_eq!(
+        said,
+        [
+            "acme/api#7: PR https://github.com/acme/api/pull/9 found",
+            "acme/api#7: Reviewer started on claude for sha9",
+        ]
+    );
+    let status = t.cli(&["status", "--json"]).json();
+    assert_eq!(status["dispatches"][0]["warnings"], json!([]));
+}
+
+#[test]
+fn a_dispatch_whose_reviewer_runs_on_its_own_implementers_harness_is_warned_of_in_status() {
+    let t = dispatched_on_codex("reviewer = { harness = \"codex\" }");
+
+    let said = t.tick();
+
+    assert_eq!(said[1], "acme/api#7: Reviewer started on codex for sha9");
+    let status = t.cli(&["status", "--json"]).json();
+    assert_eq!(status["repos"][0].get("warnings"), None);
+    assert_eq!(
+        status["dispatches"][0]["warnings"],
+        json!([
+            "acme/api#7's Reviewer runs on codex, as its Implementer does, so it may share its blind spots; set another Harness in repos.\"acme/api\".reviewer"
+        ])
+    );
+}
+
 const USAGE: &str = "Run `nico-agent verdict <issue> pass|fail --sha <sha> [--findings <file>]` to record the Reviewer's Verdict on the head of the issue's PR";
 
 #[test]

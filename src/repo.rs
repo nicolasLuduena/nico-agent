@@ -140,7 +140,7 @@ pub fn list(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
         .map(|(slug, repo)| {
             let mut shown = serde_json::to_value(repo).expect("a Repo is plain data");
             shown["slug"] = json!(slug);
-            shown["reviewer"] = json!(config.reviewer(repo));
+            shown["reviewer"] = json!(config.reviewer(repo, &repo.implementer.harness));
             shown
         })
         .collect();
