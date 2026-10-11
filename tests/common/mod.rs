@@ -49,24 +49,32 @@ pub fn setup() -> Setup {
 }
 
 impl Setup {
-    /// What a command runs against, for one step of the tick on its own.
-    pub fn ctx(&self) -> Context<'_> {
-        Context {
-            world: &self.world,
-            config_dir: self.config_dir.clone(),
-        }
-    }
-
-    /// Run one tick of the loop, as `serve` does: what it said, a line per action.
+    /// Run one tick of the loop: `serve` with its timer off, which ticks once.
+    /// What it logged, a line per action, taken out of the log unstamped.
     pub fn tick(&self) -> Vec<String> {
-        nico_agent::tick::tick(&self.ctx())
-            .unwrap_or_else(|no| panic!("the tick failed: {}", no.error))
+        let runs = self.world.timer_runs.replace(0);
+        let start = self.world.logged.borrow().len();
+        let ran = self.cli(&["serve"]);
+        self.world.timer_runs.set(runs);
+        assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
+        let said: Vec<String> = (self.world.logged.borrow_mut().drain(start..))
+            // Past the stamp: `2026-09-30T12:00:00Z `.
+            .map(|line| line[21..].to_string())
+            .collect();
+        if let Some(failed) = said.iter().find(|l| l.starts_with("tick failed: ")) {
+            panic!("{failed}");
+        }
+        said
     }
 
     /// Run `nico-agent <argv>` against the FakeWorld.
     pub fn cli(&self, argv: &[&str]) -> Ran {
         let argv: Vec<String> = argv.iter().map(|a| a.to_string()).collect();
-        let output = run(&argv, &self.ctx());
+        let ctx = Context {
+            world: &self.world,
+            config_dir: self.config_dir.clone(),
+        };
+        let output = run(&argv, &ctx);
         Ran {
             stdout: output.stdout,
             exit_code: output.exit_code,

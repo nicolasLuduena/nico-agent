@@ -3,8 +3,7 @@ mod common;
 use std::time::Duration;
 
 use common::{Setup, github_issue, pull_request, setup};
-use nico_agent::restart::{self, Reason};
-use nico_agent::{dispatch, world::PullRequest};
+use nico_agent::world::PullRequest;
 use serde_json::{Value, json};
 
 const TICK: Duration = Duration::from_secs(600);
@@ -262,58 +261,6 @@ fn a_dispatch_the_loop_starts_that_fails_at_a_step_notifies_once() {
             "acme/api#1 Failed".to_string(),
             "worktree: it broke".to_string()
         )]
-    );
-}
-
-#[test]
-fn each_reasons_prompt_is_the_prefix_then_its_own_text_with_the_values_given_filled_first() {
-    let t = dispatched(&[1]);
-    t.world.add_pr(PullRequest {
-        head_branch: Some("agent/api-1".into()),
-        ..pull_request("acme/api", 11)
-    });
-    next_tick(&t);
-    let Ok(config) = nico_agent::config::load(&t.config_dir) else {
-        panic!("the config loads")
-    };
-    let cases: [(Reason, &[(&str, &str)]); 3] = [
-        (Reason::Conflict, &[]),
-        (Reason::Retarget, &[("baseBranch", "develop")]),
-        (
-            Reason::Verdict,
-            &[("sha", "abc123"), ("findingsPath", "/cfg/verdicts/1.md")],
-        ),
-    ];
-    t.world.calls.borrow_mut().clear();
-
-    for (reason, values) in cases {
-        let record = dispatch::load(&t.config_dir).unwrap().remove(0);
-        let said = restart::restart(&t.ctx(), &config, record, reason, values).unwrap();
-        assert_eq!(said, [format!("acme/api#1 restarted: {reason}")]);
-    }
-
-    let prompts: Vec<String> = (t.world.calls().into_iter())
-        .filter_map(|c| {
-            Some(
-                c.strip_prefix("herdr agent prompt impl-api-1 ")?
-                    .to_string(),
-            )
-        })
-        .collect();
-    let prefix = "You are continuing https://github.com/acme/api/issues/1 on branch agent/api-1 in this worktree. Read git status, git log and the PR https://github.com/acme/api/pull/11 first.";
-    assert_eq!(
-        prompts,
-        [
-            format!(
-                "{prefix} The PR conflicts with main. Rebase onto it, resolve, run the tests and the verification, push."
-            ),
-            format!(
-                "{prefix} The PR below yours merged. Retarget the PR onto develop, rebase, push."
-            ),
-            format!(
-                "{prefix} The Reviewer failed the PR at abc123. Its findings are in /cfg/verdicts/1.md. Address each, run the verification, push."
-            ),
-        ]
     );
 }
 

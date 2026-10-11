@@ -184,7 +184,12 @@ fn an_issue_that_is_not_ready_is_refused_with_help_saying_why() {
         );
     }
     assert!(!t.world.calls().iter().any(|c| !c.starts_with("github ")));
-    assert!(t.world.claimed.borrow().is_empty());
+    assert!(
+        !t.world
+            .calls()
+            .iter()
+            .any(|c| c.starts_with("github assign"))
+    );
 }
 
 #[test]

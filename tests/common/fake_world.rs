@@ -33,8 +33,6 @@ pub struct FakeWorld {
     /// PRs marked ready, by `slug#N`: never reported draft again.
     pub readied: RefCell<Vec<String>>,
     pub app_repos: RefCell<Vec<String>>,
-    /// Issues the Claim assigned, as `slug#N` or Linear identifier.
-    pub claimed: RefCell<Vec<String>>,
     /// Agent state of each named agent, as `herdr agent list` reports it.
     pub agents: RefCell<BTreeMap<String, String>>,
     /// The pane each named agent runs in.
@@ -78,7 +76,6 @@ impl Default for FakeWorld {
             activity: Default::default(),
             readied: Default::default(),
             app_repos: Default::default(),
-            claimed: Default::default(),
             agents: Default::default(),
             agent_panes: Default::default(),
             screens: Default::default(),
@@ -337,9 +334,7 @@ impl World for FakeWorld {
     }
 
     fn github_assign_self(&self, slug: &str, number: u64) -> WorldResult<()> {
-        self.call(format!("github assign {slug}#{number} @me"))?;
-        self.claimed.borrow_mut().push(format!("{slug}#{number}"));
-        Ok(())
+        self.call(format!("github assign {slug}#{number} @me"))
     }
 
     fn github_pr_ready(&self, slug: &str, number: u64) -> WorldResult<()> {
@@ -379,9 +374,7 @@ impl World for FakeWorld {
     }
 
     fn linear_assign_self(&self, identifier: &str) -> WorldResult<()> {
-        self.call(format!("linear assign {identifier}"))?;
-        self.claimed.borrow_mut().push(identifier.into());
-        Ok(())
+        self.call(format!("linear assign {identifier}"))
     }
 
     fn herdr_worktree_create(

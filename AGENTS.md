@@ -19,10 +19,14 @@ recording the call as the command it stands for.
 
 Tests drive the library entry `run` as the CLI would, through `setup()` and
 `cli()` in `tests/common/mod.rs`, and assert on three things only: the
-command's JSON, `world.calls()`, and the files in the config directory. The
-loop's tick is driven by `t.tick()`, which returns its lines; `serve` by
-`cli(&["serve"])` after setting `world.timer_runs`, its log read with
-`world.logged()`.
+command's JSON, `world.calls()`, and the files in the config directory. No
+test calls a module's functions. The loop's tick is driven by `t.tick()`,
+which runs `serve` with `world.timer_runs` at 0 (one tick) and returns the
+lines it logged; `serve` itself by `cli(&["serve"])` after setting
+`world.timer_runs`, its log read with `world.logged()`. The one exception is
+`tests/state.rs`: #230's Testing Decisions name the file layer, and its
+append-only reader (a torn last line dropped) has no command reading through
+it yet, so it calls `state` directly.
 
 CI (`.github/workflows/ci.yml`) runs `cargo test` and
 `cargo clippy --all-targets -- -D warnings` on every pull request; run both

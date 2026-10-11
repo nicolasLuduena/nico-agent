@@ -1,8 +1,7 @@
 mod common;
 
 use common::{Setup, github_issue, pull_request, setup};
-use nico_agent::world::{Mergeable, PrState, PullRequest, PullRequestActivity};
-use nico_agent::{dispatch, stage};
+use nico_agent::world::{IssueState, Mergeable, PrState, PullRequest, PullRequestActivity};
 use serde_json::{Value, json};
 use std::time::Duration;
 
@@ -37,10 +36,11 @@ fn pr(n: u64, head: &str, state: PrState) -> PullRequest {
     }
 }
 
-/// The tick's PR watch, as `serve` will run it.
-fn watch(t: &Setup) {
-    stage::watch(&t.ctx()).unwrap();
-}
+/// The PR watch's calls.
+const WATCH: &[&str] = &["github branch prs", "github pr activity"];
+
+/// Close's calls.
+const CLOSE: &[&str] = &["herdr worktree", "herdr workspace"];
 
 fn status(t: &Setup) -> Value {
     let ran = t.cli(&["status", "--json"]);
@@ -48,10 +48,13 @@ fn status(t: &Setup) -> Value {
     ran.json()
 }
 
-fn calls_after(t: &Setup, run: impl FnOnce()) -> Vec<String> {
+/// Run a tick: the calls it made of the `kinds` given.
+fn tick_calls(t: &Setup, kinds: &[&str]) -> Vec<String> {
     t.world.calls.borrow_mut().clear();
-    run();
-    t.world.calls()
+    t.tick();
+    (t.world.calls().into_iter())
+        .filter(|c| kinds.iter().any(|kind| c.starts_with(kind)))
+        .collect()
 }
 
 #[test]
@@ -60,11 +63,11 @@ fn a_pr_is_found_on_the_dispatch_branch_once_and_then_watched_by_number() {
     // A closed PR left on the branch by an earlier Dispatch is not this one's.
     t.world.add_pr(pr(5, "agent/api-7", PrState::Closed));
 
-    let before = calls_after(&t, || watch(&t));
+    let before = tick_calls(&t, WATCH);
     let shown_before = status(&t)["dispatches"][0].clone();
     t.world.add_pr(pr(9, "agent/api-7", PrState::Open));
-    let found = calls_after(&t, || watch(&t));
-    let watched = calls_after(&t, || watch(&t));
+    let found = tick_calls(&t, WATCH);
+    let watched = tick_calls(&t, WATCH);
 
     assert_eq!(before, ["github branch prs acme/api:agent/api-7"]);
     assert_eq!(shown_before["stage"], "Implementing");
@@ -108,12 +111,12 @@ fn a_merged_or_closed_pr_is_final_and_never_asked_about_again() {
     t.world.add_pr(pr(9, "agent/api-7", PrState::Open));
     t.world.add_pr(pr(10, "agent/api-8", PrState::Open));
     t.world.add_pr(pr(11, "agent/api-6", PrState::Open));
-    watch(&t);
+    t.tick();
     set_state(&t, 10, PrState::Merged);
     set_state(&t, 11, PrState::Closed);
 
-    let mut first = calls_after(&t, || watch(&t));
-    let second = calls_after(&t, || watch(&t));
+    let mut first = tick_calls(&t, WATCH);
+    let second = tick_calls(&t, WATCH);
 
     first.sort();
     let asked = [10, 11, 9].map(|n| format!("github pr activity acme/api#{n}"));
@@ -150,10 +153,10 @@ fn the_stage_is_derived_from_the_pr_as_last_seen_and_a_failed_step() {
             updated_at: "2026-09-30T12:00:00Z".into(),
         },
     );
-    watch(&t);
+    t.tick();
     set_state(&t, 14, PrState::Merged);
     set_state(&t, 15, PrState::Closed);
-    watch(&t);
+    t.tick();
 
     let status = status(&t);
     let shown: Vec<(&str, &str, Value)> = (status["dispatches"].as_array().unwrap().iter())
@@ -175,23 +178,17 @@ fn the_stage_is_derived_from_the_pr_as_last_seen_and_a_failed_step() {
     );
 }
 
-/// The tick's Close, as `serve` will run it.
-fn close(t: &Setup) {
-    dispatch::close_finished(&t.ctx()).unwrap();
-}
-
 #[test]
 fn a_dispatch_whose_pr_is_final_is_closed_freeing_its_worktree_and_workspace_and_kept() {
     let t = dispatched_all(&[7, 8]);
     t.world.add_pr(pr(9, "agent/api-7", PrState::Open));
     t.world.add_pr(pr(10, "agent/api-8", PrState::Open));
-    watch(&t);
+    t.tick();
     set_state(&t, 9, PrState::Merged);
-    watch(&t);
     t.world.advance(Duration::from_secs(60));
 
-    let closed = calls_after(&t, || close(&t));
-    let again = calls_after(&t, || close(&t));
+    let closed = tick_calls(&t, CLOSE);
+    let again = tick_calls(&t, CLOSE);
 
     // The branch and the PR stay: nothing else is called.
     assert_eq!(
@@ -210,13 +207,12 @@ fn a_dispatch_whose_pr_is_final_is_closed_freeing_its_worktree_and_workspace_and
     assert_eq!(open["closed_at"], Value::Null);
 }
 
-/// Issue 7 dispatched with PR 9, merged and seen.
+/// Issue 7 dispatched with PR 9 seen, and merged since.
 fn merged() -> Setup {
     let t = dispatched();
     t.world.add_pr(pr(9, "agent/api-7", PrState::Open));
-    watch(&t);
+    t.tick();
     set_state(&t, 9, PrState::Merged);
-    watch(&t);
     t
 }
 
@@ -226,10 +222,10 @@ fn a_dispatch_whose_worktree_cannot_be_removed_stays_live_and_is_closed_next_tim
     t.world
         .fail_call("herdr worktree remove", "worktree has uncommitted changes");
 
-    let said = dispatch::close_finished(&t.ctx()).unwrap();
+    let said = t.tick();
     let during = status(&t)["dispatches"][0]["closed_at"].clone();
     t.world.clear_failures();
-    let retried = calls_after(&t, || close(&t));
+    let retried = tick_calls(&t, CLOSE);
 
     assert_eq!(
         said,
@@ -251,19 +247,19 @@ fn closed_dispatches_are_pruned_30_days_after_closing() {
     let t = dispatched_all(&[7, 8]);
     t.world.add_pr(pr(9, "agent/api-7", PrState::Open));
     t.world.add_pr(pr(10, "agent/api-8", PrState::Open));
-    watch(&t);
+    t.tick();
     set_state(&t, 9, PrState::Merged);
-    watch(&t);
-    close(&t);
+    // Its merge closes issue 7, so it is not Ready again once its Dispatch is pruned.
+    t.world.issues.borrow_mut().get_mut("acme/api").unwrap()[0].state = IssueState::Closed;
+    t.tick();
     let day = Duration::from_secs(86_400);
     t.world.advance(29 * day);
     set_state(&t, 10, PrState::Closed);
-    watch(&t);
-    close(&t);
+    t.tick();
     let after_29_days = status(&t)["dispatches"].as_array().unwrap().len();
 
     t.world.advance(2 * day);
-    close(&t);
+    t.tick();
 
     assert_eq!(after_29_days, 2);
     let left: Vec<Value> = (status(&t)["dispatches"].as_array().unwrap().iter())
