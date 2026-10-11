@@ -46,9 +46,9 @@ pub fn load(config_dir: &Path, issue: &str) -> io::Result<Option<Verdict>> {
 }
 
 /// (6) Flip to ready, behind each Repo's `flip` switch, the PR of every
-/// Verified Dispatch while it is draft, keeping it not draft so it is
-/// flipped once. Nothing while GitHub is paused; a failed flip is said and
-/// tried again next tick. Says what it did.
+/// Verified Dispatch while it is draft, once per passing Verdict: one put
+/// back to draft by hand stays so. Nothing while GitHub is paused; a failed
+/// flip is said and tried again next tick. Says what it did.
 pub fn flip(ctx: &Context, config: &Config) -> io::Result<Vec<String>> {
     let mut said = vec![];
     if pause::of(ctx.world, &ctx.config_dir, "GitHub")?.is_some() {
@@ -56,13 +56,17 @@ pub fn flip(ctx: &Context, config: &Config) -> io::Result<Vec<String>> {
     }
     let prs = stage::load(&ctx.config_dir)?;
     let live = dispatch::load(&ctx.config_dir)?.into_iter();
-    for d in live.filter(|d| d.closed_at.is_none()) {
+    for mut d in live.filter(|d| d.closed_at.is_none()) {
         let on = config.repo_of(&d).switches.flip;
-        let Some((url, pr)) = d.pr.as_ref().and_then(|url| Some((url, prs.get(url)?))) else {
+        let Some((url, pr)) = d.pr.as_ref().and_then(|url| prs.get_key_value(url)) else {
             continue;
         };
         let verdict = load(&ctx.config_dir, &d.issue)?;
-        if !on || !pr.draft || stage::of(&d, Some(pr), verdict.as_ref()) != Stage::Verified {
+        if !on
+            || !pr.draft
+            || d.flipped.as_ref() == Some(&pr.head_sha)
+            || stage::of(&d, Some(pr), verdict.as_ref()) != Stage::Verified
+        {
             continue;
         }
         match ctx.world.github_pr_ready(&pr.repo, pr.number) {
@@ -72,6 +76,8 @@ pub fn flip(ctx: &Context, config: &Config) -> io::Result<Vec<String>> {
                     ..pr.clone()
                 };
                 stage::save(&ctx.config_dir, url, ready)?;
+                d.flipped = Some(pr.head_sha.clone());
+                dispatch::save(ctx, &mut d)?;
                 said.push(format!("{}: PR {url} flipped to ready", d.issue));
             }
             Err(e) => {

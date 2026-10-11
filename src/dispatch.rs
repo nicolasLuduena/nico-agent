@@ -82,6 +82,9 @@ pub struct Dispatch {
     /// mergeable: a conflict meanwhile is not restarted for again.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub rebasing: bool,
+    /// The head its PR was flipped to ready at, by its passing Verdict.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub flipped: Option<String>,
     /// The process running its steps, while one does.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub runner: Option<u32>,
@@ -220,6 +223,7 @@ pub fn issue(ctx: &Context, config: &Config, key: &str, flags: Flags) -> Result<
         restarts: vec![],
         idle_since: None,
         rebasing: false,
+        flipped: None,
         runner: Some(ctx.world.process_id()),
         runner_boot: Some(ctx.world.boot_id()),
         created_at: now.clone(),

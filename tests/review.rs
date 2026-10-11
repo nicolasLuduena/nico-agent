@@ -268,6 +268,31 @@ fn a_passing_verdict_flips_the_draft_pr_to_ready_once_and_nothing_else_is_writte
 }
 
 #[test]
+fn a_pr_put_back_to_draft_by_hand_is_not_flipped_again_for_the_same_verdict() {
+    let t = reviewing();
+    verdict(&t, &["acme/api#7", "pass", "--sha", "sha9"]);
+    t.world.advance(TICK);
+    let flipped = t.tick();
+    // The user converts it back to draft.
+    t.world.readied.borrow_mut().clear();
+    t.world.advance(TICK);
+
+    let (again, calls) = calls_after(&t, || t.tick());
+    push(&t, "sha10");
+    t.world.advance(TICK);
+    t.tick();
+    verdict(&t, &["acme/api#7", "pass", "--sha", "sha10"]);
+    t.world.advance(TICK);
+    let new_verdict = t.tick();
+
+    let ready = ["acme/api#7: PR https://github.com/acme/api/pull/9 flipped to ready"];
+    assert_eq!(flipped, ready);
+    assert_eq!(again, Vec::<String>::new());
+    assert_eq!(pr_calls(&calls), ["github pr activity acme/api#9"]);
+    assert_eq!(new_verdict, ready);
+}
+
+#[test]
 fn with_flip_off_a_verified_pr_stays_draft_and_status_says_so() {
     let t = with_pr("switches = { flip = false }");
     t.tick();
