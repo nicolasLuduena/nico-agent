@@ -1,5 +1,7 @@
 # nico-agent
 
+<!-- impeccable:product-schema 1 -->
+
 A localhost loop that works through `ready-for-agent` issues overnight on
 herdr, on any Harness, and shows you in the morning what it did, what is
 ready to merge, and what needs you.
@@ -10,6 +12,17 @@ One developer, on their own machine, with their own GitHub and Linear
 identity. Other developers may install it later; each install still serves
 one person. The user is asleep or away for most of the loop's work and reads
 the result in the morning, from the desk or the phone.
+
+## Platform
+
+web
+
+## Operating Context
+
+Read desk first: a large monitor in the morning, GitHub open beside it,
+where the review and the merging happen. The phone is a check-in, not a
+lighter version of the page. Main's Board look is reference only; nothing of
+it binds the rebuild.
 
 ## What it is
 

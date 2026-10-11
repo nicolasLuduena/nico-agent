@@ -130,6 +130,9 @@ fn an_unknown_path_or_method_answers_404_with_the_routes_as_help() {
     let help = json!([
         "GET /api/status: the status of every Repo and Dispatch",
         "GET /api/events: a stream of `changed`, sent when state or an Agent state changes",
+        "POST /api/dispatch {issue, harness, model, effort}: `nico-agent dispatch` of the issue",
+        "POST /api/refresh: `nico-agent refresh`",
+        "PATCH /api/repo/<owner/name>/switches {name: bool}: set the Repo's switches",
         "GET /bucket/<path>: a file of the Bucket, where each Verdict's Evidence is kept",
     ]);
     assert_eq!(
@@ -220,4 +223,228 @@ fn serve_that_cannot_listen_logs_it_and_the_loop_runs_on() {
             .calls()
             .contains(&"github issues acme/api".to_string())
     );
+}
+
+/// Repo `acme/api` with Ready issue 7, which the loop leaves alone, and
+/// `serve` listening; no calls recorded yet.
+fn ready_7() -> Setup {
+    let t = with_repo();
+    let config = "[repos.\"acme/api\"]\npath = \"/src/api\"\nswitches = { dispatch = false }\n";
+    std::fs::write(t.config_dir.join("config.toml"), config).unwrap();
+    t.world.add_issue("acme/api", github_issue("acme/api", 7));
+    t.tick();
+    t.world.calls.borrow_mut().clear();
+    t
+}
+
+fn dispatches(t: &Setup) -> String {
+    std::fs::read_to_string(t.config_dir.join("dispatches.json")).unwrap_or_default()
+}
+
+#[test]
+fn post_dispatch_dispatches_a_ready_issue_as_the_dispatch_command_does() {
+    let (app, cli) = (ready_7(), ready_7());
+    let body = r#"{"issue": "acme/api#7", "harness": "claude", "model": "opus", "effort": "high"}"#;
+
+    let answered = app.send("POST", "/api/dispatch", body);
+    let ran = cli.cli(&[
+        "dispatch",
+        "acme/api#7",
+        "--harness",
+        "claude",
+        "--model",
+        "opus",
+        "--effort",
+        "high",
+        "--json",
+    ]);
+
+    assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
+    assert_eq!(answered, (200, ran.json()));
+    assert_eq!(answered.1["dispatched"], "acme/api#7");
+    assert_eq!(app.world.calls(), cli.world.calls());
+    let start =
+        "herdr agent start impl-api-7 --kind claude --pane w1:p2 -- --model opus --effort high";
+    assert!(app.world.calls().contains(&start.into()));
+    assert_eq!(dispatches(&app), dispatches(&cli));
+    assert_ne!(dispatches(&app), "");
+}
+
+#[test]
+fn post_dispatch_on_an_issue_not_ready_answers_409_with_the_command_s_refusal_and_records_nothing()
+{
+    let t = ready_7();
+    let mut triage = github_issue("acme/api", 5);
+    triage.labels = vec!["needs-triage".into()];
+    t.world.add_issue("acme/api", triage);
+
+    let answered = t.send("POST", "/api/dispatch", r#"{"issue": "acme/api#5"}"#);
+
+    let why = "acme/api#5 was not an open issue labelled ready-for-agent when its Source was read, at 2026-09-30T12:00:00Z";
+    assert_eq!(
+        answered,
+        (
+            409,
+            json!({
+                "error": "acme/api#5 is not Ready",
+                "help": [why, "Run `nico-agent status` to see the Ready issues"],
+            })
+        )
+    );
+    assert_eq!(dispatches(&t), "[]\n");
+    assert!(t.world.calls().iter().all(|c| !c.starts_with("herdr ")));
+    assert!(
+        !t.world
+            .calls()
+            .iter()
+            .any(|c| c.starts_with("github assign"))
+    );
+}
+
+#[test]
+fn post_dispatch_without_an_issue_or_with_a_body_not_json_answers_400() {
+    let t = ready_7();
+
+    let (no_issue, _) = t.send("POST", "/api/dispatch", r#"{"harness": "claude"}"#);
+    let (not_json, body) = t.send("POST", "/api/dispatch", "issue=acme/api#7");
+
+    assert_eq!((no_issue, not_json), (400, 400));
+    assert!(
+        body["error"]
+            .as_str()
+            .unwrap()
+            .starts_with("the body is not JSON")
+    );
+    assert_eq!(dispatches(&t), "[]\n");
+}
+
+/// `dispatched`, with its PR 9 open and seen by a tick; no calls recorded yet.
+fn with_pr() -> Setup {
+    let t = dispatched();
+    t.world.add_pr(PullRequest {
+        head_branch: Some("agent/api-7".into()),
+        ..pull_request("acme/api", 9)
+    });
+    t.tick();
+    t.world.calls.borrow_mut().clear();
+    t
+}
+
+#[test]
+fn post_refresh_rereads_every_source_and_every_watched_pr_as_the_refresh_command_does() {
+    let (app, cli) = (with_pr(), with_pr());
+
+    let answered = app.send("POST", "/api/refresh", "");
+    let ran = cli.cli(&["refresh", "--json"]);
+
+    assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
+    assert_eq!(answered, (200, ran.json()));
+    assert_eq!(app.world.calls(), cli.world.calls());
+    assert_eq!(
+        app.world.calls()[..3],
+        [
+            "github viewer",
+            "github issues acme/api",
+            "github pr activity acme/api#9"
+        ]
+    );
+}
+
+/// `serve` listening, on a config of two Repos as the user wrote it.
+const WRITTEN: &str = r#"# Mine.
+tick_minutes = 10
+
+[repos."acme/api"]
+path = "/src/api" # the clone
+switches = { dispatch = true, review = true } # trust it
+
+# Not yet.
+[repos."acme/web"]
+path = "/src/web"
+room = 1
+"#;
+
+fn written() -> Setup {
+    let t = with_repo();
+    std::fs::write(t.config_dir.join("config.toml"), WRITTEN).unwrap();
+    t.tick();
+    t
+}
+
+fn config(t: &Setup) -> String {
+    std::fs::read_to_string(t.config_dir.join("config.toml")).unwrap()
+}
+
+#[test]
+fn patch_switches_writes_only_the_named_switches_and_answers_the_repo_s_switches() {
+    let t = written();
+
+    let api = t.send(
+        "PATCH",
+        "/api/repo/acme/api/switches",
+        r#"{"review": false}"#,
+    );
+    let web = t.send(
+        "PATCH",
+        "/api/repo/acme/web/switches",
+        r#"{"stack": false, "flip": false}"#,
+    );
+
+    let all_on =
+        json!({ "dispatch": true, "stack": true, "review": true, "restart": true, "flip": true });
+    let mut no_review = all_on.clone();
+    no_review["review"] = json!(false);
+    let mut no_stack_no_flip = all_on;
+    no_stack_no_flip["stack"] = json!(false);
+    no_stack_no_flip["flip"] = json!(false);
+    assert_eq!(api, (200, json!({ "switches": no_review })));
+    assert_eq!(web, (200, json!({ "switches": no_stack_no_flip })));
+    let expected = WRITTEN
+        .replace("review = true }", "review = false }")
+        .replace(
+            "room = 1\n",
+            "room = 1\nswitches = { flip = false, stack = false }\n",
+        );
+    assert_eq!(config(&t), expected);
+    assert_eq!(t.get("/api/status").1["repos"][0]["switches"], no_review);
+}
+
+#[test]
+fn patch_switches_refuses_an_unknown_switch_slug_or_value_and_writes_nothing() {
+    let t = written();
+    let patch = |path: &str, body: &str| t.send("PATCH", path, body);
+    let help = json!(["Switches: dispatch, stack, review, restart, flip"]);
+
+    let unknown_switch = patch(
+        "/api/repo/acme/api/switches",
+        r#"{"review": false, "reveiw": false}"#,
+    );
+    let unknown_slug = patch("/api/repo/acme/www/switches", r#"{"review": false}"#);
+    let not_bool = patch("/api/repo/acme/api/switches", r#"{"review": "no"}"#);
+
+    assert_eq!(
+        unknown_switch,
+        (
+            400,
+            json!({ "error": "`reveiw` is not a switch", "help": help })
+        )
+    );
+    assert_eq!(
+        unknown_slug,
+        (
+            409,
+            json!({
+                "error": "acme/www is not a configured Repo",
+                "help": ["Run `nico-agent repo add acme/www --path <clone>` first"],
+            })
+        )
+    );
+    assert_eq!(
+        not_bool,
+        (
+            400,
+            json!({ "error": "review is true or false, not \"no\"", "help": help })
+        )
+    );
+    assert_eq!(config(&t), WRITTEN);
 }

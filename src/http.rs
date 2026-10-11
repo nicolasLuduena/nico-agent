@@ -10,10 +10,12 @@ use std::time::Duration;
 use serde_json::{Map, Value, json};
 
 use crate::bucket;
-use crate::cli::{Context, Refusal};
+use crate::cli::{Context, Refusal, bad_invocation};
 use crate::config;
 use crate::dispatch;
 use crate::pause;
+use crate::refresh;
+use crate::repo;
 use crate::stage;
 use crate::status;
 use crate::world::{AgentState, Answer, HttpRequest, HttpResponse, World};
@@ -28,6 +30,15 @@ const ROUTES: &[(&str, &str)] = &[
         "a stream of `changed`, sent when state or an Agent state changes",
     ),
     (
+        "POST /api/dispatch {issue, harness, model, effort}",
+        "`nico-agent dispatch` of the issue",
+    ),
+    ("POST /api/refresh", "`nico-agent refresh`"),
+    (
+        "PATCH /api/repo/<owner/name>/switches {name: bool}",
+        "set the Repo's switches",
+    ),
+    (
         "GET /bucket/<path>",
         "a file of the Bucket, where each Verdict's Evidence is kept",
     ),
@@ -39,7 +50,15 @@ pub fn answer(ctx: &Context, request: &HttpRequest) -> Answer {
     match (request.method.as_str(), path) {
         ("GET", "/api/status") => reply(status(ctx)),
         ("GET", "/api/events") => events(ctx),
-        ("GET", _) if path.starts_with("/bucket/") => bucket::file(ctx, &path["/bucket/".len()..]),
+        ("POST", "/api/dispatch") => ran(dispatch(ctx, request)),
+        ("POST", "/api/refresh") => ran(refresh::refresh(&[], ctx)),
+        ("PATCH", path)
+            if let Some(slug) = (path.strip_prefix("/api/repo/"))
+                .and_then(|path| path.strip_suffix("/switches")) =>
+        {
+            ran(body(request).and_then(|set| repo::switches(ctx, slug, &set)))
+        }
+        ("GET", path) if let Some(path) = path.strip_prefix("/bucket/") => bucket::file(ctx, path),
         (method, _) => {
             let help: Vec<String> = (ROUTES.iter())
                 .map(|(route, answers)| format!("{route}: {answers}"))
@@ -77,11 +96,10 @@ fn status(ctx: &Context) -> Result<Value, Refusal> {
             .filter(|pr| pr.repo == *slug)
             .filter_map(|pr| pr.checked_at.as_ref())
             .max();
-        let s = &repo.switches;
         let page = json!({
             "prs_checked_at": checked,
             "github_paused_until": paused,
-            "switches": { "dispatch": s.dispatch, "stack": s.stack, "review": s.review, "restart": s.restart, "flip": s.flip },
+            "switches": repo::shown(&repo.switches),
             "room": repo.room,
             "implementer": repo.implementer,
             "reviewer": config.reviewer(repo, &repo.implementer.harness),
@@ -161,6 +179,47 @@ fn reply(answer: Result<Value, Refusal>) -> Answer {
         Ok(answer) => json(200, answer),
         Err(no) => json(500, json!({ "error": no.error, "help": no.help })),
     }
+}
+
+/// A command the app ran, answered as [`reply`] does but with its refusal a
+/// 4xx: 400 for a bad request (exit 2), 409 for one the state refuses.
+fn ran(answer: Result<Value, Refusal>) -> Answer {
+    match answer {
+        Err(no) => {
+            let status = if no.exit_code == 2 { 400 } else { 409 };
+            json(status, json!({ "error": no.error, "help": no.help }))
+        }
+        ok => reply(ok),
+    }
+}
+
+/// `dispatch <issue> --harness --model --effort`, from the body's
+/// `{issue, harness, model, effort}`; a launch null or left out is unset.
+fn dispatch(ctx: &Context, request: &HttpRequest) -> Result<Value, Refusal> {
+    let body = body(request)?;
+    let mut args = vec![];
+    for name in ["issue", "harness", "model", "effort"] {
+        match &body[name] {
+            Value::Null => {}
+            Value::String(issue) if name == "issue" => args.push(issue.clone()),
+            Value::String(flag) => args.push(format!("--{name}={flag}")),
+            other => {
+                let error = format!("{name} is a string, not {other}");
+                return Err(bad_invocation(error, "dispatch"));
+            }
+        }
+    }
+    let args: Vec<&str> = args.iter().map(String::as_str).collect();
+    dispatch::dispatch(&args, ctx)
+}
+
+/// The request's body, which is JSON, or a bad request.
+fn body(request: &HttpRequest) -> Result<Value, Refusal> {
+    serde_json::from_str(&request.body).map_err(|e| Refusal {
+        error: format!("the body is not JSON: {e}"),
+        help: vec![],
+        exit_code: 2,
+    })
 }
 
 pub(crate) fn json(status: u16, body: Value) -> Answer {

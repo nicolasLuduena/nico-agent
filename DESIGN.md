@@ -1,0 +1,251 @@
+---
+name: nico-agent
+description: The Station Timetable. Each Repo reads like a printed railway timetable, Blocker chains running left to right like a train's stops, on an arrivals-sheet white (a night-board blue in Dark), with signal yellow kept for what needs you.
+colors:
+  ground: "#f4f5f2"
+  surface: "#ffffff"
+  ink: "#111214"
+  ink-muted: "#50545b"
+  rule: "#111214"
+  hairline: "#cfd2d6"
+  signal: "#ffd400"
+  signal-ink: "#111214"
+  live: "#1d4f91"
+  verified: "#00754a"
+  failed: "#c8102e"
+  reversed: "#111214"
+  reversed-ink: "#ffffff"
+  focus: "#1d4f91"
+  ground-dark: "#0b1220"
+  surface-dark: "#121a2b"
+  ink-dark: "#eef1f4"
+  ink-muted-dark: "#a9b1bd"
+  rule-dark: "#6b7689"
+  hairline-dark: "#2a3447"
+  signal-dark: "#f2c200"
+  signal-ink-dark: "#111214"
+  live-dark: "#7fb0ff"
+  verified-dark: "#3ccf8e"
+  failed-dark: "#ff6b6b"
+  reversed-dark: "#eef1f4"
+  reversed-ink-dark: "#0b1220"
+  focus-dark: "#7fb0ff"
+typography:
+  number:
+    fontFamily: "Barlow, system-ui, sans-serif"
+    fontSize: "22px"
+    fontWeight: 700
+    lineHeight: 1.1
+    letterSpacing: "-0.01em"
+  head:
+    fontFamily: "Barlow, system-ui, sans-serif"
+    fontSize: "22px"
+    fontWeight: 600
+    lineHeight: 1.2
+  body:
+    fontFamily: "Barlow, system-ui, sans-serif"
+    fontSize: "14px"
+    fontWeight: 400
+    lineHeight: 1.45
+  strong:
+    fontFamily: "Barlow, system-ui, sans-serif"
+    fontSize: "14px"
+    fontWeight: 600
+    lineHeight: 1.45
+  label:
+    fontFamily: "Barlow, system-ui, sans-serif"
+    fontSize: "14px"
+    fontWeight: 600
+    lineHeight: 1.2
+    letterSpacing: "0.06em"
+rounded:
+  none: "0px"
+  control: "2px"
+spacing:
+  hair: "4px"
+  xs: "8px"
+  sm: "12px"
+  md: "16px"
+  lg: "24px"
+  xl: "32px"
+components:
+  node:
+    backgroundColor: "{colors.surface}"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.none}"
+    padding: "8px 12px"
+    width: "248px"
+    height: "88px"
+  node-selected:
+    backgroundColor: "{colors.reversed}"
+    textColor: "{colors.reversed-ink}"
+    rounded: "{rounded.none}"
+  strip:
+    backgroundColor: "{colors.signal}"
+    textColor: "{colors.signal-ink}"
+    rounded: "{rounded.none}"
+    padding: "12px 24px"
+  strip-empty:
+    backgroundColor: "{colors.surface}"
+    textColor: "{colors.ink-muted}"
+    rounded: "{rounded.none}"
+    padding: "12px 24px"
+  tab:
+    textColor: "{colors.ink-muted}"
+    typography: "{typography.strong}"
+    padding: "12px 16px"
+  tab-active:
+    textColor: "{colors.ink}"
+    typography: "{typography.strong}"
+  panel:
+    backgroundColor: "{colors.surface}"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.none}"
+    padding: "24px"
+    width: "400px"
+  sheet:
+    backgroundColor: "{colors.surface}"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.none}"
+    padding: "16px"
+  button:
+    backgroundColor: "{colors.ink}"
+    textColor: "{colors.surface}"
+    rounded: "{rounded.control}"
+    padding: "8px 16px"
+    height: "36px"
+  button-quiet:
+    backgroundColor: "{colors.surface}"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.control}"
+    padding: "8px 16px"
+    height: "36px"
+---
+
+<!-- SEED: established with the user before implementation (#247); re-run /impeccable document once there's code to capture the actual tokens and components. -->
+
+# nico-agent: The Station Timetable
+
+## Overview
+
+The page is one working screen, read at the desk in the morning and checked on the phone. Its world is the printed railway timetable: the departures poster on the platform and the arrivals sheet beside it. That world contributes four things and nothing else: **type** (a grotesk with tabular figures, numbers set bold like departure times), **palette** (sheet white, full ink, a few working colours), **density** (a timetable fits a lot on one sheet without crowding), and **one signature move**: each Repo's map reads like a timetable, with Blocker chains running left to right like a train's stops. The navigation, tabs, switches, selects and buttons are standard web controls. The world never supplies them.
+
+**The Costume Rule.** If a part of the page reads as a station sign before it reads as a working control, it has gone too far. Take the world back out until it is type, colour, density and the map's move.
+
+Motion is short and functional. The panel and the sheet slide in 160ms ease-out. When a refetch changes a node's Stage, its Stage cell flashes once (200ms), like a board updating a single line. Under `prefers-reduced-motion` all motion is off and changes simply appear.
+
+## Colors
+
+Restrained strategy with working colours: tinted neutrals for the sheet, and four hues that each do one job.
+
+- **Sheet:** `ground` is the page; `surface` is the map field, the panel, the sheet and the form. `hairline` separates rows and frames nodes. `rule` (full ink) is for structural rules: the band edges, the active tab's underline, the panel's leading edge.
+- **Ink:** `ink` is for everything you read first. `ink-muted` is for labels, kinds and times. It is never used for an issue number, a title or a Stage word.
+- **Signal yellow (`signal`):** what needs you, and nothing else. It fills the needs-you band and the 4px flag on a node that needs you.
+- **Live blue (`live`):** an agent is at work (Implementing, PR draft), links, focus rings, and the `stack` edge.
+- **Verified green (`verified`):** a passing Verdict on the head commit.
+- **Failed red (`failed`):** Failed, a failing Verdict, refusals. It shows up as the errata rule and the strike, never as a fill.
+- **Reversed:** the selected node, full ink with the text reversed out.
+
+**The One Job Rule.** Yellow means needs you. A yellow pixel anywhere else is a bug.
+
+**The Reversal Rule.** The selected node is the only reversed element on the page.
+
+Dark is the station board at night: `ground-dark` night blue, `surface-dark` one step up, the ink reversed. Structural rules drop to `rule-dark` so lines don't glare in a dark room. Each working colour has a `-dark` twin tuned for AA on `surface-dark`. The signal yellow is dimmed slightly (`signal-dark`) and keeps black ink. Themes are Light, Dark and System. System follows `prefers-color-scheme` and is the default; the choice is remembered in `localStorage`.
+
+All text pairs meet WCAG AA: 4.5:1 for body and 3:1 for the 22px numbers and for non-text marks.
+
+## Typography
+
+Barlow is a grotesk drawn from transit and highway signage. It is served from the binary as woff2 (400, 600, 700, Latin subset), with no hosted font stylesheet. Tabular figures are on everywhere (`font-variant-numeric: tabular-nums`).
+
+**The Two Sizes Rule.** There are two sizes, 14px and 22px. Rank comes from weight (400, 600, 700), from case (all-caps `label` for kinds, column heads and strip kinds) and from reversal. A size step is not a way to rank.
+
+- `number` (22px bold): the issue number on a node, which is the "departure time" of the timetable.
+- `head` (22px semibold): the panel's title and the Repo name where it heads a section.
+- `body` and `strong` (14px): titles, Stage words, form text, history rows.
+- `label` (14px semibold caps, 0.06em): `CODE` / `RESEARCH`, `ASKING` / `FAILED` / `VERIFIED` / `PAUSED`, form field labels.
+
+**The Right Column Rule.** Every time on the page (Source read, PRs checked, restarted at, Verdict at, paused until) is set right-aligned in a tabular column, `HH:MM`, plus the date when it isn't today.
+
+## Layout
+
+A 4px base. Spacing steps are 4, 8, 12, 16, 24 and 32. On desktop the page gutter is 24px; on phone it is 16px.
+
+**Desktop (720px and wider), top to bottom:**
+
+1. **Header:** the `nico-agent` wordmark (14px caps label) on the left, the Light / Dark / System segmented control on the right.
+2. **Morning slot:** the page's first content section. It is reserved for the morning summary and renders nothing when `morning.md` is absent (until spec 3). It takes no space when empty.
+3. **Needs-you band:** full width, square, set at the top of the work.
+4. **Repo tabs:** one tab per Repo. The same row carries "Source read HH:MM · PRs checked HH:MM" and the Refresh button, right-aligned.
+5. **Work area:** the map fills the left; a 320px column on the right holds the five switches and the Dispatch form. Opening a node puts the 400px node panel in place of that column, and closing it brings the column back. The map keeps its pan and zoom throughout.
+
+**Phone (under 720px):**
+
+- 16px gutters and no horizontal scroll, anywhere, with the sheet open or closed.
+- The tabs become one native `<select>` named "Repo".
+- The band's items stack, one item per block (kind and Repo/#issue on the first line, the question or title on the second).
+- The map starts fitted to the viewport width at 60vh tall and still pans and zooms. The switches and the form follow below it.
+- The node panel becomes a bottom sheet: up to 85vh, scrolls inside, closed by a button or a swipe down.
+
+**The No Scroll Rule.** At 360px wide, nothing is wider than the viewport. Long titles ellipsize on nodes and wrap in the panel.
+
+## Elevation & Depth
+
+Flat, like the printed sheet. Depth is drawn with rules, never with blur. The only shadow is on the panel and the sheet, and it is one hard step: a 1px `rule` on their leading edge plus `0 0 0 1px` hairline, so they sit on the map like a slip laid on a sheet. Nothing uses glass, gradients or soft drop shadows.
+
+## Shapes
+
+Structure is square (`rounded.none`): nodes, the band, tabs, the panel, the sheet. Controls (buttons, inputs, selects, toggles) get `rounded.control` (2px) so they read as pressable.
+
+**Node** (248×88px, `hairline` frame, `surface` fill), three rows:
+
+1. The issue number (`number`) on the left; the kind (`label`, `ink-muted`) on the right.
+2. The title (`body`), one line, ellipsized.
+3. The Stage cell: a 14px mark in a fixed cell, then the Stage word (`strong`). On the right, the Agent state mark (an 8px dot: `live` filled = working, hollow = idle, `signal` = Asking, none = no agent) and the PR number with "draft" when it is one.
+
+**Stage marks** (shape carries the state; colour repeats it):
+
+| Stage | Mark | Colour |
+|---|---|---|
+| Waiting on a Blocker | dashed ring | `ink-muted` |
+| Ready | hollow ring | `ink` |
+| Stackable | ring with centre dot | `ink` |
+| Implementing | half-filled disc | `live` |
+| PR draft | filled disc | `live` |
+| Verified | double ring | `verified` |
+| Merged | filled disc, node at 45% opacity | `ink-muted` |
+| Closed | struck ring | `ink-muted` |
+| Failed | ✕ strike, plus a 4px `failed` errata rule down the node's left edge | `failed` |
+
+A node that needs you carries a 4px `signal` flag across its top edge.
+
+**Edges:** dagre lays them out left to right (Blockers left, blocked right) as polylines with a small open arrowhead at the blocked end.
+
+- `blocker`: one 1.5px `ink-muted` line.
+- `stack`: double rails, `live`, drawn as a 5px stroke with a 2px `surface` stroke over it, so it reads as two parallel lines (a through-coach connection) and never as a heavier blocker line.
+
+**Band (needs you):** one row per item: kind (`label`), `repo #issue` (`strong`, tabular), the question's first line or the title (`body`, ellipsized), and the time right-aligned. The whole row is the button that focuses the node. With items, it is `signal` with a 1px `rule` top and bottom. With none, it is `surface` with a hairline frame and reads "Nothing needs you" in `ink-muted`. GitHub paused is a row like the others: `PAUSED · GitHub · until HH:MM`.
+
+**Tabs:** text tabs on a hairline baseline. The active tab is `ink` with a 3px `rule` underline; the others are `ink-muted`.
+
+**Panel and sheet:** the `head` title with a `#number` link to the issue, then sections separated by hairlines, each with a `label` head: PR (link, draft flag), Restarts (rows of time, then reason), Verdict (the result word in its colour, the sha in tabular figures, the time, then the findings text wrapped at a 70-character measure), Evidence (one link per file, under `/bucket/`).
+
+## Components
+
+These are the shapes the UI tickets build. They are not implemented yet.
+
+- **Switches:** five rows (dispatch, stack, review, restart, flip), with the name as `strong` on the left and a standard toggle on the right (`live` when on, `hairline` track when off). A toggle that is saving is disabled until the PATCH answers.
+- **Dispatch form:** a native select for the issue (Ready and Stackable only, `#number title`), then Harness, model and Effort as native selects, then a `button` labelled "Dispatch". A refusal appears inline under the button as a `failed` 4px errata rule with the error in `strong` and the help lines in `body`.
+- **Refresh:** a `button-quiet`. It reads "Refreshing…" and is disabled while the POST runs. The read times update when it answers.
+- **Theme switch:** a three-segment control (Light / Dark / System), with the active segment reversed. This is the one sanctioned reversal outside the map, because a segmented control's selected state is a standard affordance.
+
+## Do's and Don'ts
+
+- **Do** let shape carry each state, so it reads without colour.
+- **Do** set every number with tabular figures and every time in the right column.
+- **Do** keep the morning slot first, even while it is empty.
+- **Don't** use yellow for anything except needs you.
+- **Don't** put nodes in rounded cards, gradient pills or KPI tiles. The user ruled out the SaaS dashboard look.
+- **Don't** add mascots, bounce or confetti (no toy look), and no green-on-black or monospace walls (no hacker terminal).
+- **Don't** pad toward airiness. The desk view should show a Repo's whole night without scrolling.
+- **Don't** draw station-sign chrome (pictograms, split-flap animation, platform numbers). That is the costume.
