@@ -56,12 +56,12 @@ impl fmt::Display for Reason {
 /// broke, once a tick, for the first of its reasons: its PR below became
 /// final or its PR conflicts (see [`rebase::reason`]); the Reviewer failed
 /// its PR's head; its agent is missing from herdr's `agents` (rebooted); its
-/// agent was idle or done for `stall_minutes` with no PR (stalled), known
-/// only of a Dispatch in `no_pr`, the watch's this tick. A rebase
-/// comes first, as it moves the head a Verdict is on, and any restart starts
-/// an agent that was gone; a reason passed over holds next tick if still
-/// true. Without `agents`, no agent reason: herdr down is not every agent
-/// gone. Says what it did.
+/// agent was idle or done for `stall_minutes` with no PR (stalled), which
+/// only a Dispatch the watch found no PR for this tick, in `no_pr`, can
+/// be. A rebase comes first, as it moves the head a Verdict is on, and any
+/// restart starts an agent that was gone; a reason passed over holds next
+/// tick if still true. Without `agents`, no agent reason: herdr down is not
+/// every agent gone. Says what it did.
 pub fn step(
     ctx: &Context,
     config: &Config,
