@@ -103,8 +103,10 @@ impl Setup {
         let Answer::Whole(response) = self.request("GET", path, "") else {
             panic!("GET {path} answered with a stream");
         };
-        let body = serde_json::from_str(&response.body)
-            .unwrap_or_else(|e| panic!("body is not JSON ({e}): {}", response.body));
+        let body = serde_json::from_slice(&response.body).unwrap_or_else(|e| {
+            let body = String::from_utf8_lossy(&response.body);
+            panic!("body is not JSON ({e}): {body}")
+        });
         (response.status, body)
     }
 

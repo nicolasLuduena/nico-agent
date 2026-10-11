@@ -16,7 +16,7 @@ const ALL: [&str; 10] = [
     "herdr tab create --workspace w1 --cwd /worktrees/api-7 --label implementer --no-focus",
     "herdr agent start impl-api-7 --kind claude --pane w1:p2 -- --model opus --effort high",
     "github app repos",
-    "herdr agent prompt impl-api-7 /implement https://github.com/acme/api/issues/7 as draft PR against main",
+    "herdr agent prompt impl-api-7 /implement https://github.com/acme/api/issues/7 as draft PR against main, linking its Evidence to http://127.0.0.1:42069/bucket/acme/api/7/",
 ];
 
 /// Repo `acme/api` with Ready issue 7, and no calls recorded yet.
@@ -85,7 +85,7 @@ fn without_flags_the_launch_and_base_come_from_the_repo() {
             "herdr tab create --workspace w1 --cwd /worktrees/api-7 --label implementer --no-focus",
             // codex asks to trust the clone even when herdr reports it ready.
             r#"herdr agent start impl-api-7 --kind codex --pane w1:p2 -- -m gpt-5 -c model_reasoning_effort=high -c projects={"/src/api"={trust_level="trusted"}}"#,
-            "herdr agent prompt impl-api-7 $implement https://github.com/acme/api/issues/7 as draft PR against develop",
+            "herdr agent prompt impl-api-7 $implement https://github.com/acme/api/issues/7 as draft PR against develop, linking its Evidence to http://127.0.0.1:42069/bucket/acme/api/7/",
         ]
     );
 }
@@ -406,7 +406,7 @@ fn claudes_trust_question_for_the_new_worktree_is_answered_before_the_prompt() {
             "herdr agent send-keys impl-api-7 down enter",
             "herdr agent wait impl-api-7 --until idle --until done --timeout 30000",
             "github app repos",
-            "herdr agent prompt impl-api-7 /implement https://github.com/acme/api/issues/7 as draft PR against main",
+            "herdr agent prompt impl-api-7 /implement https://github.com/acme/api/issues/7 as draft PR against main, linking its Evidence to http://127.0.0.1:42069/bucket/acme/api/7/",
         ]
     );
 }
@@ -473,7 +473,7 @@ fn the_prompt_has_the_bot_suffix_only_when_the_github_app_is_installed_on_the_re
     dispatch_7(&installed);
     let ran = dispatch_7(&unchecked);
 
-    let plain = "herdr agent prompt impl-api-7 /implement https://github.com/acme/api/issues/7 as draft PR against main";
+    let plain = "herdr agent prompt impl-api-7 /implement https://github.com/acme/api/issues/7 as draft PR against main, linking its Evidence to http://127.0.0.1:42069/bucket/acme/api/7/";
     assert_eq!(prompts(&installed), [format!("{plain}{BOT_SUFFIX}")]);
     assert_eq!(prompts(&unchecked), [plain]);
     assert_eq!(
@@ -534,7 +534,7 @@ fn opencode_runs_in_the_pane_with_its_model_and_effort_and_is_named_once_herdr_s
             "herdr agent read impl-api-7 --source visible".into(),
             "herdr agent wait impl-api-7 --until idle --until done --timeout 5000".into(),
             "github app repos".into(),
-            "herdr agent prompt impl-api-7 @implement https://github.com/acme/api/issues/7 as draft PR against main".into(),
+            "herdr agent prompt impl-api-7 @implement https://github.com/acme/api/issues/7 as draft PR against main, linking its Evidence to http://127.0.0.1:42069/bucket/acme/api/7/".into(),
         ]
     );
 }
@@ -574,7 +574,7 @@ fn a_linear_issue_is_dispatched_into_the_repo_that_claims_it_on_linears_branch()
             "herdr tab create --workspace w1 --cwd /worktrees/ble-1 --label implementer --no-focus",
             "herdr agent start impl-api-ble-1 --kind claude --pane w1:p2 -- --model opus --effort high",
             "github app repos",
-            "herdr agent prompt impl-api-ble-1 /implement https://linear.app/bleentr/issue/BLE-1/title as draft PR against main",
+            "herdr agent prompt impl-api-ble-1 /implement https://linear.app/bleentr/issue/BLE-1/title as draft PR against main, linking its Evidence to http://127.0.0.1:42069/bucket/acme/api/BLE-1/",
         ]
     );
     assert_eq!(status(&t)["dispatches"][0]["issue"], "BLE-1");
@@ -691,7 +691,7 @@ const FRESH_TAB: [&str; 5] = [
     "herdr tab create --workspace w1 --cwd /worktrees/api-7 --label implementer --no-focus",
     "herdr agent start impl-api-7 --kind claude --pane w1:p3 -- --model opus --effort high",
     "github app repos",
-    "herdr agent prompt impl-api-7 /implement https://github.com/acme/api/issues/7 as draft PR against main",
+    "herdr agent prompt impl-api-7 /implement https://github.com/acme/api/issues/7 as draft PR against main, linking its Evidence to http://127.0.0.1:42069/bucket/acme/api/7/",
 ];
 
 #[test]

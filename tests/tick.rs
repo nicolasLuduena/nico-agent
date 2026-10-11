@@ -313,7 +313,7 @@ fn a_tick_reads_the_source_asks_about_prs_closes_then_fills_the_room_it_freed() 
             "herdr tab create --workspace w2 --cwd /worktrees/api-2 --label implementer --no-focus",
             "herdr agent start impl-api-2 --kind claude --pane w2:p2 -- ",
             "github app repos",
-            "herdr agent prompt impl-api-2 /implement https://github.com/acme/api/issues/2 as draft PR against main",
+            "herdr agent prompt impl-api-2 /implement https://github.com/acme/api/issues/2 as draft PR against main, linking its Evidence to http://127.0.0.1:42069/bucket/acme/api/2/",
         ]
     );
 }
@@ -362,7 +362,7 @@ fn a_stackable_issue_is_dispatched_after_the_ready_ones_on_its_blockers_pr_branc
             "herdr tab create --workspace w2 --cwd /worktrees/api-2 --label implementer --no-focus",
             "herdr agent start impl-api-2 --kind claude --pane w2:p2 -- ",
             "github app repos",
-            "herdr agent prompt impl-api-2 /implement https://github.com/acme/api/issues/2 as draft PR against agent/api-1",
+            "herdr agent prompt impl-api-2 /implement https://github.com/acme/api/issues/2 as draft PR against agent/api-1, linking its Evidence to http://127.0.0.1:42069/bucket/acme/api/2/",
         ]
     );
     let status = t.cli(&["status", "--json"]).json();

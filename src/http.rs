@@ -9,6 +9,7 @@ use std::time::Duration;
 
 use serde_json::{Map, Value, json};
 
+use crate::bucket;
 use crate::cli::{Context, Refusal};
 use crate::config;
 use crate::dispatch;
@@ -26,6 +27,10 @@ const ROUTES: &[(&str, &str)] = &[
         "GET /api/events",
         "a stream of `changed`, sent when state or an Agent state changes",
     ),
+    (
+        "GET /bucket/<path>",
+        "a file of the Bucket, where each Verdict's Evidence is kept",
+    ),
 ];
 
 /// Answer `request`, as the app sent it.
@@ -34,6 +39,7 @@ pub fn answer(ctx: &Context, request: &HttpRequest) -> Answer {
     match (request.method.as_str(), path) {
         ("GET", "/api/status") => reply(status(ctx)),
         ("GET", "/api/events") => events(ctx),
+        ("GET", _) if path.starts_with("/bucket/") => bucket::file(ctx, &path["/bucket/".len()..]),
         (method, _) => {
             let help: Vec<String> = (ROUTES.iter())
                 .map(|(route, answers)| format!("{route}: {answers}"))
@@ -157,10 +163,10 @@ fn reply(answer: Result<Value, Refusal>) -> Answer {
     }
 }
 
-fn json(status: u16, body: Value) -> Answer {
+pub(crate) fn json(status: u16, body: Value) -> Answer {
     Answer::Whole(HttpResponse {
         status,
         headers: vec![("Content-Type".into(), "application/json".into())],
-        body: body.to_string(),
+        body: body.to_string().into(),
     })
 }

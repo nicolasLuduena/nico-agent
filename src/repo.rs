@@ -4,6 +4,7 @@ use serde_json::{Value, json};
 use toml_edit::{InlineTable, Item, Table, value};
 
 use crate::args::Args;
+use crate::bucket;
 use crate::cli::{Context, Refusal, bad_invocation};
 use crate::config::{self, Linear};
 use crate::dispatch;
@@ -66,6 +67,7 @@ pub fn add(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
             )],
         ));
     }
+    bucket::create(ctx.world, &config::load(&ctx.config_dir)?)?;
 
     config::edit(&ctx.config_dir, |config, doc| {
         let found = config

@@ -130,6 +130,7 @@ fn an_unknown_path_or_method_answers_404_with_the_routes_as_help() {
     let help = json!([
         "GET /api/status: the status of every Repo and Dispatch",
         "GET /api/events: a stream of `changed`, sent when state or an Agent state changes",
+        "GET /bucket/<path>: a file of the Bucket, where each Verdict's Evidence is kept",
     ]);
     assert_eq!(
         unknown,
@@ -140,7 +141,7 @@ fn an_unknown_path_or_method_answers_404_with_the_routes_as_help() {
     );
     assert_eq!(posted.status, 404);
     assert_eq!(
-        serde_json::from_str::<serde_json::Value>(&posted.body).unwrap()["error"],
+        serde_json::from_slice::<serde_json::Value>(&posted.body).unwrap()["error"],
         "no route POST /api/status"
     );
 }

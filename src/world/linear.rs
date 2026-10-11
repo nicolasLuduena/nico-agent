@@ -240,7 +240,7 @@ fn query<T: DeserializeOwned>(world: &RealWorld, text: &str, variables: Value) -
         }
         status => return Err(WorldError(format!("Linear request failed (HTTP {status})"))),
     }
-    let payload: Value = serde_json::from_str(&response.body).map_err(|_| invalid("Linear"))?;
+    let payload: Value = serde_json::from_slice(&response.body).map_err(|_| invalid("Linear"))?;
     if payload["errors"].as_array().is_some_and(|e| !e.is_empty()) || payload["data"].is_null() {
         return Err(WorldError(
             "Linear GraphQL request failed; check API key permissions and selectors".into(),
@@ -253,7 +253,7 @@ fn query<T: DeserializeOwned>(world: &RealWorld, text: &str, variables: Value) -
 /// with a `RATELIMITED` error, per linear.app/developers/rate-limiting; or
 /// 429): the latest reset (epoch ms) of its spent limits, else in a minute.
 fn rate_limit_reset(world: &RealWorld, response: &HttpResponse) -> Option<SystemTime> {
-    let payload: Value = serde_json::from_str(&response.body).unwrap_or_default();
+    let payload: Value = serde_json::from_slice(&response.body).unwrap_or_default();
     let limited = response.status == 429
         || (payload["errors"].as_array().into_iter().flatten())
             .any(|e| e["extensions"]["code"] == "RATELIMITED");
