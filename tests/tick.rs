@@ -433,7 +433,9 @@ fn a_stacked_dispatch_finds_its_pr_on_its_branch_and_is_closed_when_it_merges() 
         ["acme/api#2 Closed: its PR https://github.com/acme/api/pull/12 merged"]
     );
     // Only its own worktree and workspace are freed.
-    let herdr: Vec<&String> = calls.iter().filter(|c| c.starts_with("herdr ")).collect();
+    let herdr: Vec<&String> = (calls.iter())
+        .filter(|c| c.starts_with("herdr worktree") || c.starts_with("herdr workspace"))
+        .collect();
     assert_eq!(
         herdr,
         [
