@@ -3,6 +3,11 @@ let stream: EventSource | null = null;
 const watchers = new Set<{ load: () => void; lost: () => void }>();
 let down = false;
 
+/** Fetch everything watched again now, as a `changed` would: for a change the page itself just made. */
+export function reload() {
+  watchers.forEach((w) => w.load());
+}
+
 /**
  * Fetch `path`'s JSON now, again on every `changed` serve sends, and again
  * on getting serve back after losing it; hand each answer to `got`, and say
