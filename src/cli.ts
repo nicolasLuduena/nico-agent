@@ -1666,12 +1666,19 @@ function changesBoard(argv: string[]) {
   return BOARD_CHANGES.some((command) => command.split(" ").every((word, i) => argv[i] === word));
 }
 
+/** Commands besides those changing the Board that change Local state: the Partners, and the Repos. */
+const LOCAL_STATE_CHANGES = ["partner start", "partner end", "repo add", "repo rm", "repo set"];
+
+function changesLocalState(argv: string[]) {
+  return LOCAL_STATE_CHANGES.some((command) => command.split(" ").every((word, i) => argv[i] === word));
+}
+
 async function serve(args: Args, ctx: RunContext): Promise<Output> {
   const port = portFlag(args, "nico-agent serve [--port <port>]");
   const events = new Events();
   const look = lookAtLead(ctx, events);
   // Its runs come from the app and the Lead's tools, never from serve's own standard input.
-  // They read GitHub through a cache, so a Board costs GitHub a read a minute.
+  // They read GitHub through a cache, which Syncs, `advance` and the actions share (ADR-0011).
   const github = cachingGitHubReads(ctx.world);
   const { stdin: _, ...served } = { ...ctx, world: github.world };
   const shared = { ...served, prs: ctx.prs ?? freshPrs(served.world) };
@@ -1684,11 +1691,9 @@ async function serve(args: Args, ctx: RunContext): Promise<Output> {
       try {
         return await run(argv, shared);
       } finally {
-        // What nico-agent just did shows on the Board once a Sync reads GitHub afresh.
-        if (changesBoard(argv)) {
-          github.forget();
-          void syncLogged(state);
-        }
+        // What nico-agent just did shows once a Sync reads it, the Board's from GitHub afresh.
+        if (changesBoard(argv)) github.forget();
+        if (changesBoard(argv) || changesLocalState(argv)) void syncLogged(state, true);
       }
     };
     // The Sync button reads GitHub afresh: it is pressed when something just changed there.
@@ -1706,8 +1711,9 @@ async function serve(args: Args, ctx: RunContext): Promise<Output> {
   ctx.world.every(syncIntervalMs(ctx.configDir), () => syncLogged(state));
   // A Nudge recorded while the Lead worked waits for serve to see it idle.
   ctx.world.every(NUDGE_INTERVAL_MS, async () => {
-    // Agent states change outside nico-agent, so the app refetches the Board on every tick,
+    // Agent states change outside nico-agent, so each tick reads herdr into Local state, the app refetches the Board,
     // and hears of the Lead's, and of what the CLI wrote to the conversation and the Proposals.
+    await refreshLogged(state);
     events.emit("board-changed");
     await look();
     for (const warning of await sendPendingNudge(ctx.world, ctx.configDir)) console.error(warning);
@@ -1732,7 +1738,7 @@ async function serve(args: Args, ctx: RunContext): Promise<Output> {
       if (!written.length) return;
       // Something happened on a PR, so the Board may have moved with it.
       github.forget();
-      void syncLogged(state);
+      void syncLogged(state, true);
       for (const warning of await nudgeLead(ctx.world, ctx.configDir)) console.error(warning);
     } catch (e) {
       console.error(`PR events failed: ${e instanceof Error ? e.message : String(e)}`);
@@ -1750,7 +1756,7 @@ async function serve(args: Args, ctx: RunContext): Promise<Output> {
       console.error(`advance failed: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       github.forget();
-      await syncLogged(state);
+      await syncLogged(state, true);
       events.emit("board-changed");
     }
   });
@@ -1775,15 +1781,25 @@ function serveState(ctx: RunContext, events: Events): LocalState {
       const { stdout, exitCode } = await run(withJson(argv), ctx);
       return { value: JSON.parse(stdout) as unknown, exitCode };
     },
+    agentStates: async () => new Map((await ctx.world.herdrAgents()).map((a) => [a.name, a.state])),
   }, events, () => ctx.world.now());
 }
 
-/** A Sync, its failure only logged: the next one tries again. */
-async function syncLogged(state: LocalState) {
+/** A Sync, its failure only logged: the next one tries again. `again` waits out one that runs, which may have read too early. */
+async function syncLogged(state: LocalState, again = false) {
   try {
-    await state.sync();
+    await (again ? state.syncAgain() : state.sync());
   } catch (e) {
     console.error(`sync failed: ${e instanceof Error ? e.message : String(e)}`);
+  }
+}
+
+/** A refresh of Local state from herdr, its failure only logged. */
+async function refreshLogged(state: LocalState) {
+  try {
+    await state.refresh();
+  } catch (e) {
+    console.error(`refresh failed: ${e instanceof Error ? e.message : String(e)}`);
   }
 }
 

@@ -147,6 +147,50 @@ describe("Sync", () => {
   });
 });
 
-function post(ctx: ReturnType<typeof setup>, path: string) {
-  return ctx.world.server!.handler(new Request(`${URL}${path}`, { method: "POST" }));
+describe("Local state between Syncs", () => {
+  test("an action taken while a Sync runs shows once a Sync after it ends", async () => {
+    const ctx = await serving();
+    const release = ctx.world.holdGitHub("acme/api");
+    const sync = post(ctx, "/api/sync");
+    await settled();
+    const args = ["acme/api#7", "--harness", "claude", "--model", "opus", "--effort", "high"];
+    expect((await post(ctx, "/api/dispatch", { args })).status).toBe(200);
+
+    release();
+    await sync;
+    await settled();
+    const board = await (await get(ctx, "/api/board")).json();
+    expect(board.dispatches).toMatchObject([{ issue: "acme/api#7" }]);
+    expect(board.issues).toMatchObject([{ issue: "acme/web#7" }]);
+  });
+
+  test("each tick reads herdr again, so an agent's state shows without waiting for a Sync", async () => {
+    const ctx = await serving();
+    const args = ["acme/api#7", "--harness", "claude", "--model", "opus", "--effort", "high"];
+    expect((await post(ctx, "/api/dispatch", { args })).status).toBe(200);
+    await settled();
+    const implementer = async () => (await (await get(ctx, "/api/board")).json()).dispatches[0].implementer;
+    const agent = [...ctx.world.agentStates.keys()].find((name) => name !== "lead")!;
+    ctx.world.agentStates.set(agent, "blocked");
+    expect(await implementer()).not.toBe("blocked");
+
+    ctx.world.calls.length = 0;
+    await ctx.world.tick(10_000);
+    expect(await implementer()).toBe("blocked");
+    expect(ctx.world.calls.filter((c) => c.startsWith("git") || c.startsWith("github"))).toEqual([]);
+  });
+
+  test("the Repos are read from config as it is now", async () => {
+    const ctx = await serving();
+    ctx.world.addClone("/src/docs", "git@github.com:acme/docs.git");
+    await ctx.cli("repo", "add", "acme/docs", "--path", "/src/docs");
+    ctx.world.calls.length = 0;
+
+    expect((await (await get(ctx, "/api/repos")).json()).repos).toMatchObject([{ slug: "acme/api" }, { slug: "acme/web" }, { slug: "acme/docs" }]);
+    expect(ctx.world.calls).toEqual([]);
+  });
+});
+
+function post(ctx: ReturnType<typeof setup>, path: string, body?: unknown) {
+  return ctx.world.server!.handler(new Request(`${URL}${path}`, { method: "POST", ...(body !== undefined && { body: JSON.stringify(body) }) }));
 }

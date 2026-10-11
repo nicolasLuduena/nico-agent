@@ -8,6 +8,9 @@ import { writeJsonAtomic } from "./state";
 /** Where `serve` keeps its Local state between runs, in the config directory (ADR-0015). */
 export const STATE_FILE = "state.json";
 
+/** How long one Repo's share of a Sync may take before it counts as failed, so a hung Repo never stalls the Syncs after it. */
+export const REPO_SYNC_TIMEOUT_MS = 60_000;
+
 /** The parts of Local state, each read again by the page when a Sync changes it. */
 export type PartName = "board" | "repos" | "stats" | "partners";
 
@@ -51,6 +54,8 @@ export interface SyncSources {
   renderBoard(board: Board): Promise<Answer>;
   /** A read-only command's `--json` answer, such as `partner list`. */
   read(argv: string[]): Promise<Answer>;
+  /** Each herdr agent's state, by name. */
+  agentStates(): Promise<Map<string, string>>;
 }
 
 export interface LocalState {
@@ -61,6 +66,17 @@ export interface LocalState {
   answer(argv: string[]): Promise<{ stdout: string; exitCode: number }> | null;
   /** Sync now; a Sync asked for while one runs joins it. */
   sync(): Promise<void>;
+  /**
+   * Sync once more after any Sync that runs, for a change it may have read
+   * too early, such as an action's; several asked for meanwhile are one.
+   */
+  syncAgain(): Promise<void>;
+  /**
+   * Read herdr again, without git or GitHub: the agent states on the Board
+   * and the Partners, which change outside nico-agent between Syncs. While a
+   * Sync runs, it waits for that Sync instead.
+   */
+  refresh(): Promise<void>;
 }
 
 /**
@@ -78,7 +94,7 @@ export function localState(configDir: string, sources: SyncSources, events: Even
   const set = (name: Exclude<PartName, "stats">, answer: Answer) => {
     const before = saved[name];
     saved[name] = { ...answer, syncedAt: now().toISOString() };
-    if (!before || JSON.stringify(withoutSynced(before)) !== JSON.stringify(withoutSynced(answer))) events.emit("state-changed", { parts: [name] });
+    if (!before || changed(before, answer)) events.emit("state-changed", { parts: [name] });
   };
 
   // Renders run one at a time, so a Repo that finished late never overwrites a later render with an older one.
@@ -107,7 +123,7 @@ export function localState(configDir: string, sources: SyncSources, events: Even
       saved.repoBoards[key] = { ...last, board: last?.board ?? board ?? emptyBoard(), error: { error, at: now().toISOString() } };
     };
     try {
-      const board = await sources.loadBoard(repo);
+      const board = await withTimeout(sources.loadBoard(repo), REPO_SYNC_TIMEOUT_MS, `its Sync took over ${REPO_SYNC_TIMEOUT_MS / 1000}s`);
       const errors = specLoadErrors(board.errors);
       if (errors.length) failed(errors.map((e) => e.error).join("; "), board);
       else saved.repoBoards[key] = { board, syncedAt: now().toISOString() };
@@ -126,16 +142,17 @@ export function localState(configDir: string, sources: SyncSources, events: Even
   };
 
   const syncStats = async () => {
+    let any = false;
     for (const key of Object.keys(saved.stats)) {
       try {
         const answer = await sources.read(statsArgv(key));
-        const before = saved.stats[key];
+        any ||= changed(saved.stats[key]!, answer);
         saved.stats[key] = { ...answer, syncedAt: now().toISOString() };
-        if (before && JSON.stringify(withoutSynced(before)) !== JSON.stringify(withoutSynced(answer))) events.emit("state-changed", { parts: ["stats"] });
       } catch (e) {
         console.error(`sync: stats ${key} failed: ${errorMessage(e)}`);
       }
     }
+    if (any) events.emit("state-changed", { parts: ["stats"] });
   };
 
   const runSync = async () => {
@@ -166,6 +183,39 @@ export function localState(configDir: string, sources: SyncSources, events: Even
     return running;
   };
 
+  let again: Promise<void> | null = null;
+  const syncAgain = () => {
+    if (!running) return sync();
+    again ??= running.catch(() => {}).then(() => {
+      again = null;
+      return sync();
+    });
+    return again;
+  };
+
+  const refresh = async () => {
+    if (running) return running;
+    let states: Map<string, string>;
+    try {
+      states = await sources.agentStates();
+    } catch (e) {
+      console.error(`refresh: herdr failed: ${errorMessage(e)}`);
+      return;
+    }
+    const stateOf = (agent: string) => states.get(agent) ?? "unknown";
+    for (const part of Object.values(saved.repoBoards)) {
+      part.board = {
+        ...part.board,
+        inFlight: part.board.inFlight.map((row) => ({
+          ...row,
+          implementerState: stateOf(row.dispatch.implementer.agent),
+          ...(row.dispatch.reviewer && { reviewerState: stateOf(row.dispatch.reviewer.agent) }),
+        })),
+      };
+    }
+    await Promise.all([renderBoard(), syncPart("partners", ["partner", "list"])]);
+  };
+
   /** A part as its last Sync left it; before any Sync ever ran, once the first one ends. */
   const part = async (get: () => Part | undefined) => {
     if (!get()) await sync().catch((e) => console.error(`sync failed: ${errorMessage(e)}`));
@@ -177,10 +227,16 @@ export function localState(configDir: string, sources: SyncSources, events: Even
     const words = argv.filter((a) => a !== "--json");
     const [first, second] = words;
     if (words.length === 1 && first === "board") return reply(part(() => saved.board));
-    if (words.length === 2 && first === "repo" && second === "list") return reply(part(() => saved.repos));
+    // The Repos are config, read as it is now.
+    if (words.length === 2 && first === "repo" && second === "list") return reply(repos());
     if (words.length === 2 && first === "partner" && second === "list") return reply(part(() => saved.partners));
     if (first === "stats") return reply(statsPart(words.slice(1).join(" ")));
     return null;
+  };
+
+  const repos = async () => {
+    set("repos", await sources.read(["repo", "list"]));
+    return saved.repos;
   };
 
   /** A `stats` read: counted from local records only, so one not asked for before is counted now and kept for the next Syncs. */
@@ -193,7 +249,16 @@ export function localState(configDir: string, sources: SyncSources, events: Even
     return counted;
   };
 
-  return { answer, sync };
+  return { answer, sync, syncAgain, refresh };
+}
+
+/** `promise`, or a failure saying `why` once `ms` pass first. */
+function withTimeout<T>(promise: Promise<T>, ms: number, why: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(why)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
 /** `stats` with the arguments `key` keeps, as they were given. */
@@ -207,7 +272,12 @@ async function reply(part: Promise<Answer | undefined>) {
   return { stdout: `${JSON.stringify(answer.value, null, 2)}\n`, exitCode: answer.exitCode };
 }
 
-/** An answer without its Sync times, to tell whether a Sync changed it. */
+/** Whether `after` differs from `before`, their Sync times aside. */
+function changed(before: Answer, after: Answer) {
+  return JSON.stringify(withoutSynced(before)) !== JSON.stringify(withoutSynced(after));
+}
+
+/** An answer without its Sync times. */
 function withoutSynced({ value, exitCode }: Answer) {
   if (value === null || typeof value !== "object") return { value, exitCode };
   const { synced: _, ...rest } = value as Record<string, unknown>;
