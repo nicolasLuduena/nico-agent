@@ -60,9 +60,10 @@ fn calls_after<T>(t: &Setup, run: impl FnOnce() -> T) -> (T, Vec<String>) {
     (out, t.world.calls())
 }
 
+/// What herdr was told to do: its calls but the Asking step's read of every agent.
 fn herdr(calls: &[String]) -> Vec<&str> {
     (calls.iter())
-        .filter(|c| c.starts_with("herdr "))
+        .filter(|c| c.starts_with("herdr ") && *c != "herdr agent list")
         .map(String::as_str)
         .collect()
 }

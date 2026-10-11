@@ -11,11 +11,12 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::args::Args;
+use crate::asking::Asking;
 use crate::cli::{Context, Refusal};
 use crate::config::{self, Config, Harness, Launch, Repo, fill_in};
 use crate::launch::{self, AgentLaunch};
 use crate::review::Reviewer;
-use crate::source::{self, Read};
+use crate::source::{self, BlockerPr, Read, Start};
 use crate::stage;
 use crate::state;
 use crate::verdict;
@@ -45,6 +46,9 @@ pub struct Dispatch {
     pub branch: String,
     /// The branch the worktree starts from and the PR targets, without `origin/`.
     pub base: String,
+    /// For a Stacked Dispatch, its Blocker's open PR, whose head branch was its Base.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stacked_on: Option<BlockerPr>,
     /// Set by the worktree step.
     pub worktree: Option<String>,
     pub workspace: Option<String>,
@@ -54,6 +58,8 @@ pub struct Dispatch {
     /// Set once a Reviewer is started on its PR.
     pub reviewer: Option<Reviewer>,
     pub research: bool,
+    /// While its Implementer waits on the user.
+    pub asking: Option<Asking>,
     /// The steps done, in order.
     pub completed: Vec<String>,
     /// The step that failed last, until it is done.
@@ -152,9 +158,14 @@ pub fn issue(ctx: &Context, config: &Config, key: &str, flags: Flags) -> Result<
         ));
     }
     let issue = read.issues.iter().find(|i| i.key == key).expect("Ready");
-    let base = match &repo.base {
-        Some(base) => base.clone(),
-        None => ctx.world.git_default_branch(&repo.path)?,
+    let stacked_on = match source::start(issue) {
+        Start::Stacked(pr) => Some(pr.clone()),
+        _ => None,
+    };
+    let base = match (&stacked_on, &repo.base) {
+        (Some(below), _) => below.head_branch.clone(),
+        (None, Some(base)) => base.clone(),
+        (None, None) => ctx.world.git_default_branch(&repo.path)?,
     };
     let now = state::iso(ctx.world.now());
     let record = Dispatch {
@@ -164,6 +175,7 @@ pub fn issue(ctx: &Context, config: &Config, key: &str, flags: Flags) -> Result<
         repo: slug.clone(),
         branch: issue.branch.clone(),
         base,
+        stacked_on,
         worktree: None,
         workspace: None,
         pr: None,
@@ -177,6 +189,7 @@ pub fn issue(ctx: &Context, config: &Config, key: &str, flags: Flags) -> Result<
         },
         reviewer: None,
         research: issue.labels.iter().any(|l| l == "research"),
+        asking: None,
         completed: vec![],
         failure: None,
         claimed: false,
@@ -310,7 +323,10 @@ fn run_step(
     let made = "the worktree step made it";
     match step {
         "claim" => claim(ctx, record),
-        "fetch" => world.git_fetch(&repo.path, None)?,
+        "fetch" => {
+            let below = record.stacked_on.as_ref();
+            world.git_fetch(&repo.path, below.map(|pr| pr.head_branch.as_str()))?
+        }
         "worktree" => {
             let base = format!("origin/{}", record.base);
             let made =
@@ -616,6 +632,7 @@ pub fn close_finished(ctx: &Context) -> io::Result<Vec<String>> {
         update(&ctx.config_dir, |all| {
             if let Some(live) = all.iter_mut().find(|live| is_live(live, &d.issue)) {
                 live.closed_at = Some(now.clone());
+                live.asking = None;
                 live.updated_at = now.clone();
             }
         })?;
