@@ -5,6 +5,7 @@ pub mod config;
 pub mod dispatch;
 pub mod launch;
 pub mod pause;
+pub mod rebase;
 pub mod refresh;
 pub mod repo;
 pub mod restart;

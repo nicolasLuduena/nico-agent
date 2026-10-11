@@ -80,11 +80,22 @@ pub fn watch(ctx: &Context) -> io::Result<Vec<String>> {
         return Ok(said);
     }
     // (url, repo, number, the Dispatch it was just found for)
-    let mut asks: Vec<(String, String, u64, Option<String>)> = (load(&ctx.config_dir)?.into_iter())
+    let watched = load(&ctx.config_dir)?;
+    let mut asks: Vec<(String, String, u64, Option<String>)> = (watched.iter())
         .filter(|(_, pr)| !pr.r#final)
-        .map(|(url, pr)| (url, pr.repo, pr.number, None))
+        .map(|(url, pr)| (url.clone(), pr.repo.clone(), pr.number, None))
         .collect();
-    let seeking = dispatch::load(&ctx.config_dir)?.into_iter();
+    let dispatches = dispatch::load(&ctx.config_dir)?;
+    // The PR a Stacked Dispatch sits on, watched from then on: its Blocker may be worked outside the loop.
+    for d in dispatches.iter().filter(|d| d.closed_at.is_none()) {
+        if let Some(below) = &d.stacked_on
+            && !watched.contains_key(&below.url)
+            && !asks.iter().any(|(url, ..)| *url == below.url)
+        {
+            asks.push((below.url.clone(), d.repo.clone(), below.number, None));
+        }
+    }
+    let seeking = dispatches.into_iter();
     for d in seeking.filter(|d| d.closed_at.is_none() && d.pr.is_none()) {
         match ctx.world.github_branch_pull_requests(&d.repo, &d.branch) {
             // Only an open one: a closed PR on the branch is an earlier Dispatch's.
