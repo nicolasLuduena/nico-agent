@@ -134,7 +134,7 @@ pub fn watch(ctx: &Context) -> io::Result<Vec<String>> {
     Ok(said)
 }
 
-fn save(config_dir: &Path, url: &str, pr: Pr) -> io::Result<()> {
+pub fn save(config_dir: &Path, url: &str, pr: Pr) -> io::Result<()> {
     let file = config_dir.join(FILE);
     state::update(&file, |text| {
         let mut all: Prs = state::parse(&file, text)?;

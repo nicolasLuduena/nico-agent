@@ -236,6 +236,9 @@ pub trait World {
     fn github_app_repos(&self) -> WorldResult<Vec<String>>;
     /// Assign an issue to the user (the Claim).
     fn github_assign_self(&self, slug: &str, number: u64) -> WorldResult<()>;
+    /// Mark a draft PR ready for review (the flip): the one write to a PR,
+    /// which never merges, approves or comments.
+    fn github_pr_ready(&self, slug: &str, number: u64) -> WorldResult<()>;
 
     // Linear
     fn linear_viewer(&self) -> WorldResult<String>;
@@ -935,6 +938,11 @@ impl World for RealWorld {
             "--add-assignee",
             "@me",
         ];
+        gh(&args.map(String::from)).map(drop)
+    }
+    fn github_pr_ready(&self, slug: &str, number: u64) -> WorldResult<()> {
+        let number = number.to_string();
+        let args = ["pr", "ready", &number, "--repo", slug];
         gh(&args.map(String::from)).map(drop)
     }
     fn linear_viewer(&self) -> WorldResult<String> {

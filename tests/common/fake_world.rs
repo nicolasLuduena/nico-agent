@@ -34,6 +34,8 @@ pub struct FakeWorld {
     /// draft in the PR's state that merges cleanly, on its base, with head
     /// `sha<N>`, last active now.
     pub activity: RefCell<HashMap<String, PullRequestActivity>>,
+    /// PRs marked ready, by `slug#N`: never reported draft again.
+    pub readied: RefCell<Vec<String>>,
     pub app_repos: RefCell<Vec<String>>,
     /// Issues the Claim assigned, as `slug#N` or Linear identifier.
     pub claimed: RefCell<Vec<String>>,
@@ -80,6 +82,7 @@ impl Default for FakeWorld {
             prs: Default::default(),
             linked: Default::default(),
             activity: Default::default(),
+            readied: Default::default(),
             app_repos: Default::default(),
             claimed: Default::default(),
             agents: Default::default(),
@@ -337,15 +340,21 @@ impl World for FakeWorld {
         number: u64,
     ) -> WorldResult<PullRequestActivity> {
         self.call(format!("github pr activity {slug}#{number}"))?;
-        if let Some(activity) = self.activity.borrow().get(&format!("{slug}#{number}")) {
-            return Ok(activity.clone());
+        let key = format!("{slug}#{number}");
+        let ready = self.readied.borrow().contains(&key);
+        if let Some(activity) = self.activity.borrow().get(&key) {
+            let draft = activity.draft && !ready;
+            return Ok(PullRequestActivity {
+                draft,
+                ..activity.clone()
+            });
         }
         let pr = self
             .pr(slug, number)
             .ok_or_else(|| WorldError(format!("no PR {slug}#{number}")))?;
         Ok(PullRequestActivity {
             state: pr.state,
-            draft: true,
+            draft: !ready,
             head_sha: format!("sha{number}"),
             base_branch: pr.base_branch,
             mergeable: Mergeable::Mergeable,
@@ -361,6 +370,12 @@ impl World for FakeWorld {
     fn github_assign_self(&self, slug: &str, number: u64) -> WorldResult<()> {
         self.call(format!("github assign {slug}#{number} @me"))?;
         self.claimed.borrow_mut().push(format!("{slug}#{number}"));
+        Ok(())
+    }
+
+    fn github_pr_ready(&self, slug: &str, number: u64) -> WorldResult<()> {
+        self.call(format!("github pr ready {slug}#{number}"))?;
+        self.readied.borrow_mut().push(format!("{slug}#{number}"));
         Ok(())
     }
 

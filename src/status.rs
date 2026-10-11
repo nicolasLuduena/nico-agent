@@ -8,7 +8,7 @@ use crate::config;
 use crate::dispatch;
 use crate::pause;
 use crate::source;
-use crate::stage;
+use crate::stage::{self, Stage};
 use crate::verdict;
 
 pub fn status(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
@@ -51,7 +51,15 @@ pub fn status(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
         let mut shown = json!(d);
         let pr = d.pr.as_ref().and_then(|url| Some((url, prs.get(url)?)));
         let verdict = verdict::load(&ctx.config_dir, &d.issue)?;
-        shown["stage"] = json!(stage::of(d, pr.map(|(_, pr)| pr), verdict.as_ref()));
+        let stage = stage::of(d, pr.map(|(_, pr)| pr), verdict.as_ref());
+        let flip_off = config.repos.get(&d.repo).is_some_and(|r| !r.switches.flip);
+        if flip_off && stage == Stage::Verified && pr.is_some_and(|(_, pr)| pr.draft) {
+            let slug = &d.repo;
+            shown["warnings"].as_array_mut().expect("a Dispatch's warnings are a list").push(json!(format!(
+                "flip is off for {slug}, so its Verified PR stays draft; mark it ready by hand, or turn on repos.\"{slug}\".switches.flip"
+            )));
+        }
+        shown["stage"] = json!(stage);
         shown["verdict"] = json!(verdict);
         shown["pr"] = pr.map_or(Value::Null, |(url, pr)| {
             let mut pr = json!(pr);

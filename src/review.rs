@@ -10,6 +10,7 @@ use crate::dispatch::{self, Dispatch};
 use crate::launch::{self, AgentLaunch};
 use crate::stage::{self, Pr, Stage};
 use crate::verdict;
+use crate::world::Agent;
 
 /// A Dispatch's latest Reviewer.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -21,9 +22,14 @@ pub struct Reviewer {
 }
 
 /// (5) Start a Reviewer for each live Dispatch whose open PR has a head with
-/// no Verdict and no Reviewer prompted for it; behind the `review` switch.
-/// A launch that fails is said and tried again next tick, in a fresh tab.
-pub fn start_reviewers(ctx: &Context, config: &Config) -> Result<Vec<String>, Refusal> {
+/// no Verdict and no Reviewer prompted for it still in herdr's `agents`;
+/// behind the `review` switch. A launch that fails is said and tried again
+/// next tick, in a fresh tab. Without `agents`, a prompted Reviewer stands.
+pub fn start_reviewers(
+    ctx: &Context,
+    config: &Config,
+    agents: Option<&[Agent]>,
+) -> Result<Vec<String>, Refusal> {
     let prs = stage::load(&ctx.config_dir)?;
     let mut said = vec![];
     let live = dispatch::load(&ctx.config_dir)?.into_iter();
@@ -35,7 +41,11 @@ pub fn start_reviewers(ctx: &Context, config: &Config) -> Result<Vec<String>, Re
             continue;
         };
         let verdict = verdict::load(&ctx.config_dir, &d.issue)?;
-        let prompted = d.reviewer.as_ref().and_then(|r| r.sha.as_ref());
+        let gone =
+            |r: &&Reviewer| agents.is_some_and(|a| a.iter().all(|a| a.name != r.launch.agent));
+        let prompted = (d.reviewer.as_ref())
+            .filter(|r| !gone(r))
+            .and_then(|r| r.sha.as_ref());
         if stage::of(&d, Some(pr), verdict.as_ref()) != Stage::PrDraft
             || [prompted, verdict.as_ref().map(|v| &v.sha)].contains(&Some(&pr.head_sha))
         {

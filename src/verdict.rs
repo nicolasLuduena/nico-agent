@@ -1,6 +1,7 @@
 //! `verdict`: the Reviewer's pass or fail on one head of a Dispatch's open
 //! PR, kept in `verdicts/<issue>.json`, the latest only. A push after it
-//! leaves it on a head the PR no longer has, so it no longer counts.
+//! leaves it on a head the PR no longer has, so it no longer counts. The
+//! tick acts on it: a fail restarts the Implementer, a pass flips the PR.
 
 use std::io;
 use std::path::{Path, PathBuf};
@@ -10,9 +11,11 @@ use serde_json::{Value, json};
 
 use crate::args::Args;
 use crate::cli::{Context, Refusal, bad_invocation};
-use crate::config;
+use crate::config::{self, Config};
 use crate::dispatch;
-use crate::stage;
+use crate::pause;
+use crate::restart::{self, Reason};
+use crate::stage::{self, Pr, Stage};
 use crate::state;
 use crate::world::PrState;
 
@@ -41,6 +44,79 @@ pub fn file(config_dir: &Path, issue: &str) -> PathBuf {
 /// The latest Verdict on `issue`, if any.
 pub fn load(config_dir: &Path, issue: &str) -> io::Result<Option<Verdict>> {
     state::load(&file(config_dir, issue))
+}
+
+/// (4) Restart, behind each Repo's `restart` switch, the Implementer of
+/// every live Dispatch whose PR's head has a failing Verdict, once per
+/// Verdict: not when a `verdict` restart came at or after it. Says what it did.
+pub fn restart_failed(ctx: &Context, config: &Config) -> io::Result<Vec<String>> {
+    let prs = stage::load(&ctx.config_dir)?;
+    let mut said = vec![];
+    let live = dispatch::load(&ctx.config_dir)?.into_iter();
+    for d in live.filter(|d| d.closed_at.is_none()) {
+        let on = config
+            .repos
+            .get(&d.repo)
+            .is_some_and(|r| r.switches.restart);
+        let Some(pr) = (d.pr.as_ref())
+            .and_then(|url| prs.get(url))
+            .filter(|pr| on && !pr.r#final)
+        else {
+            continue;
+        };
+        let Some(v) = load(&ctx.config_dir, &d.issue)?
+            .filter(|v| v.result == Outcome::Fail && v.sha == pr.head_sha)
+        else {
+            continue;
+        };
+        let acted = (d.restarts.iter()).any(|r| r.reason == Reason::Verdict && r.at >= v.at);
+        if !acted {
+            let path = file(&ctx.config_dir, &d.issue).display().to_string();
+            let values = [("sha", v.sha.as_str()), ("findingsPath", &path)];
+            said.extend(restart::restart(ctx, config, d, Reason::Verdict, &values)?);
+        }
+    }
+    Ok(said)
+}
+
+/// (6) Flip to ready, behind each Repo's `flip` switch, the PR of every
+/// Verified Dispatch while it is draft, keeping it not draft so it is
+/// flipped once. Nothing while GitHub is paused; a failed flip is said and
+/// tried again next tick. Says what it did.
+pub fn flip(ctx: &Context, config: &Config) -> io::Result<Vec<String>> {
+    let mut said = vec![];
+    if pause::of(ctx.world, &ctx.config_dir, "GitHub")?.is_some() {
+        return Ok(said);
+    }
+    let prs = stage::load(&ctx.config_dir)?;
+    let live = dispatch::load(&ctx.config_dir)?.into_iter();
+    for d in live.filter(|d| d.closed_at.is_none()) {
+        let on = config.repos.get(&d.repo).is_some_and(|r| r.switches.flip);
+        let Some((url, pr)) = d.pr.as_ref().and_then(|url| Some((url, prs.get(url)?))) else {
+            continue;
+        };
+        let verdict = load(&ctx.config_dir, &d.issue)?;
+        if !on || !pr.draft || stage::of(&d, Some(pr), verdict.as_ref()) != Stage::Verified {
+            continue;
+        }
+        match ctx.world.github_pr_ready(&pr.repo, pr.number) {
+            Ok(()) => {
+                let ready = Pr {
+                    draft: false,
+                    ..pr.clone()
+                };
+                stage::save(&ctx.config_dir, url, ready)?;
+                said.push(format!("{}: PR {url} flipped to ready", d.issue));
+            }
+            Err(e) => {
+                said.push(format!("could not flip {url} to ready: {e}"));
+                if pause::note(&ctx.config_dir, &e)? {
+                    break;
+                }
+            }
+        }
+    }
+    Ok(said)
 }
 
 pub fn verdict(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {

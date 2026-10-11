@@ -148,6 +148,35 @@ fn a_reviewer_that_fails_to_start_is_said_and_started_again_next_tick_in_a_fresh
 }
 
 #[test]
+fn a_reviewer_gone_from_herdr_before_its_verdict_is_started_again_for_that_head_and_not_after_it() {
+    let t = with_pr("");
+    t.tick();
+    t.world.agents.borrow_mut().remove("rev-api-7");
+    t.world.advance(TICK);
+
+    let (said, calls) = calls_after(&t, || t.tick());
+    verdict(&t, &["acme/api#7", "pass", "--sha", "sha9"]);
+    t.world.agents.borrow_mut().remove("rev-api-7");
+    t.world.advance(TICK);
+    let (after, _) = calls_after(&t, || t.tick());
+
+    assert_eq!(said, ["acme/api#7: Reviewer started on codex for sha9"]);
+    assert_eq!(
+        herdr(&calls),
+        [
+            "herdr tab close w1:t3",
+            "herdr tab create --workspace w1 --cwd /worktrees/api-7 --label reviewer --no-focus",
+            r#"herdr agent start rev-api-7 --kind codex --pane w1:p4 -- -c projects={"/src/api"={trust_level="trusted"}}"#,
+            &review_prompt("sha9"),
+        ]
+    );
+    assert_eq!(
+        after,
+        ["acme/api#7: PR https://github.com/acme/api/pull/9 flipped to ready"]
+    );
+}
+
+#[test]
 fn with_review_off_no_reviewer_starts() {
     let t = with_pr("switches = { review = false }");
 
@@ -199,6 +228,69 @@ fn a_passing_verdict_on_the_head_makes_the_dispatch_verified_until_the_pr_moves(
     assert_eq!(stage(&t), "PR draft");
 }
 
+/// The calls among `calls` about a PR.
+fn pr_calls(calls: &[String]) -> Vec<&str> {
+    (calls.iter())
+        .filter(|c| c.starts_with("github pr "))
+        .map(String::as_str)
+        .collect()
+}
+
+#[test]
+fn a_passing_verdict_flips_the_draft_pr_to_ready_once_and_nothing_else_is_written_to_it() {
+    let t = reviewing();
+    verdict(&t, &["acme/api#7", "pass", "--sha", "sha9"]);
+    t.world.advance(TICK);
+
+    let (said, calls) = calls_after(&t, || t.tick());
+    t.world.advance(TICK);
+    let (again, later) = calls_after(&t, || t.tick());
+
+    assert_eq!(
+        said,
+        ["acme/api#7: PR https://github.com/acme/api/pull/9 flipped to ready"]
+    );
+    // No merge, approval or comment: the flip is the one write.
+    assert_eq!(
+        pr_calls(&calls),
+        [
+            "github pr activity acme/api#9",
+            "github pr ready acme/api#9"
+        ]
+    );
+    assert_eq!(again, Vec::<String>::new());
+    assert_eq!(pr_calls(&later), ["github pr activity acme/api#9"]);
+    let shown = &t.cli(&["status", "--json"]).json()["dispatches"][0];
+    assert_eq!(
+        (&shown["stage"], &shown["pr"]["draft"]),
+        (&json!("Verified"), &json!(false))
+    );
+}
+
+#[test]
+fn with_flip_off_a_verified_pr_stays_draft_and_status_says_so() {
+    let t = with_pr("switches = { flip = false }");
+    t.tick();
+    verdict(&t, &["acme/api#7", "pass", "--sha", "sha9"]);
+    t.world.advance(TICK);
+
+    let (said, calls) = calls_after(&t, || t.tick());
+
+    assert_eq!(said, Vec::<String>::new());
+    assert_eq!(pr_calls(&calls), ["github pr activity acme/api#9"]);
+    let shown = &t.cli(&["status", "--json"]).json()["dispatches"][0];
+    assert_eq!(
+        (&shown["stage"], &shown["pr"]["draft"]),
+        (&json!("Verified"), &json!(true))
+    );
+    assert_eq!(
+        shown["warnings"],
+        json!([
+            "flip is off for acme/api, so its Verified PR stays draft; mark it ready by hand, or turn on repos.\"acme/api\".switches.flip"
+        ])
+    );
+}
+
 /// A findings file the Reviewer wrote, outside the config directory.
 fn findings(t: &Setup, text: &str) -> String {
     let file = t.config_dir.with_file_name("findings.md");
@@ -212,7 +304,8 @@ fn verdict_file(t: &Setup) -> Value {
 }
 
 #[test]
-fn a_failing_verdict_keeps_its_findings_and_no_reviewer_starts_again_on_that_head() {
+fn a_failing_verdict_keeps_its_findings_restarts_the_implementer_once_and_no_reviewer_starts_on_that_head()
+ {
     let t = reviewing();
     let file = findings(&t, "Signing in shows a 500.\n");
 
@@ -222,6 +315,8 @@ fn a_failing_verdict_keeps_its_findings_and_no_reviewer_starts_again_on_that_hea
     );
     t.world.advance(TICK);
     let (said, calls) = calls_after(&t, || t.tick());
+    t.world.advance(TICK);
+    let (again, later) = calls_after(&t, || t.tick());
 
     assert_eq!(
         ran.json(),
@@ -231,8 +326,61 @@ fn a_failing_verdict_keeps_its_findings_and_no_reviewer_starts_again_on_that_hea
         verdict_file(&t),
         json!({ "result": "fail", "sha": "sha9", "at": "2026-09-30T12:10:00Z", "findings": "Signing in shows a 500.\n" })
     );
-    assert_eq!(said, Vec::<String>::new());
-    assert_eq!(herdr(&calls), Vec::<&str>::new());
+    assert_eq!(said, ["acme/api#7 restarted: verdict"]);
+    let findings_path = t.config_dir.join("verdicts/acme/api#7.json");
+    assert_eq!(
+        herdr(&calls),
+        [
+            "herdr tab close w1:t2",
+            "herdr tab create --workspace w1 --cwd /worktrees/api-7 --label implementer --no-focus",
+            "herdr agent start impl-api-7 --kind claude --pane w1:p4 -- ",
+            &format!(
+                "herdr agent prompt impl-api-7 You are continuing https://github.com/acme/api/issues/7 on branch agent/api-7 in this worktree. Read git status, git log and the PR https://github.com/acme/api/pull/9 first. The Reviewer failed the PR at sha9. Its findings are in {}. Address each, run the verification, push.",
+                findings_path.display()
+            ),
+        ]
+    );
+    assert_eq!(again, Vec::<String>::new());
+    assert_eq!(herdr(&later), Vec::<&str>::new());
+}
+
+#[test]
+fn a_third_failing_verdict_marks_the_dispatch_failed_notifies_once_and_starts_no_reviewer_after() {
+    let t = reviewing();
+    let file = findings(&t, "Signing in shows a 500.\n");
+
+    let mut said = vec![];
+    for (head, next) in [("sha9", "sha10"), ("sha10", "sha11"), ("sha11", "sha12")] {
+        verdict(
+            &t,
+            &["acme/api#7", "fail", "--sha", head, "--findings", &file],
+        );
+        t.world.advance(TICK);
+        said.extend(t.tick());
+        // The Implementer pushes a fix, and the next tick sees it.
+        push(&t, next);
+        t.world.advance(TICK);
+        said.extend(t.tick());
+    }
+
+    assert_eq!(
+        said,
+        [
+            "acme/api#7 restarted: verdict",
+            "acme/api#7: Reviewer started on codex for sha10",
+            "acme/api#7 restarted: verdict",
+            "acme/api#7: Reviewer started on codex for sha11",
+            "acme/api#7 Failed: verdict again after 2 restarts for it",
+        ]
+    );
+    assert_eq!(
+        *t.world.notifications.borrow(),
+        [(
+            "acme/api#7 Failed".to_string(),
+            "restart: verdict again after 2 restarts for it".to_string()
+        )]
+    );
+    assert_eq!(stage(&t), "Failed");
 }
 
 #[test]
@@ -270,7 +418,8 @@ fn with_review_off_a_verdict_still_records_and_once_on_its_head_gets_no_reviewer
         &t,
         &["acme/api#7", "fail", "--sha", "sha9", "--findings", &file],
     );
-    let config = "[repos.\"acme/api\"]\npath = \"/src/api\"\n";
+    // Restart off: the failing Verdict's own restart is not what this is about.
+    let config = "[repos.\"acme/api\"]\npath = \"/src/api\"\nswitches = { restart = false }\n";
     std::fs::write(t.config_dir.join("config.toml"), config).unwrap();
     t.world.advance(TICK);
     let (said, calls) = calls_after(&t, || t.tick());

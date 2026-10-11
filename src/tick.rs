@@ -15,6 +15,7 @@ use crate::restart;
 use crate::review;
 use crate::source::{self, Read};
 use crate::stage;
+use crate::verdict;
 use crate::world::Agent;
 
 /// Held by the running tick, with its pid.
@@ -37,9 +38,11 @@ pub fn tick(ctx: &Context) -> Result<Vec<String>, Refusal> {
     let agents = list_agents(ctx, &mut said)?;
     // 4. Restart what broke: rebooted, stalled (#240); conflict, retarget (#244); verdict (#243).
     said.extend(restart::step(ctx, &config, agents.as_deref())?);
+    said.extend(verdict::restart_failed(ctx, &config)?);
     // 5. Start Reviewers (#242).
-    said.extend(review::start_reviewers(ctx, &config)?);
+    said.extend(review::start_reviewers(ctx, &config, agents.as_deref())?);
     // 6. Flip Verified PRs to ready (#243).
+    said.extend(verdict::flip(ctx, &config)?);
     said.extend(asking::step(ctx, agents.as_deref())?);
     said.extend(fill_rooms(ctx, &config, &reads)?);
     Ok(said)
