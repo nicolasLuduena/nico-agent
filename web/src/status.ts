@@ -3,6 +3,8 @@ export interface Status {
   repos: Repo[];
   sources: { github: { paused_until: string | null }; linear: { paused_until: string | null } };
   dispatches: Dispatch[];
+  /** morning.md as the morning agent wrote it; null while there is none. */
+  morning_summary?: string | null;
 }
 
 export interface Repo {

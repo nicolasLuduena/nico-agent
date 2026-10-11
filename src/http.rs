@@ -10,6 +10,7 @@ use std::time::Duration;
 use serde::Serialize;
 use serde_json::{Map, Value, json};
 
+use crate::away;
 use crate::bucket;
 use crate::cli::{Context, Refusal, bad_invocation};
 use crate::config;
@@ -142,6 +143,8 @@ fn status(ctx: &Context) -> Result<Value, Refusal> {
             shown[key] = value.clone();
         }
     }
+    // shortcut: an unreadable morning.md shows as none, like a missing one; say why if one ever is.
+    shown["morning_summary"] = json!(fs::read_to_string(ctx.config_dir.join(away::SUMMARY)).ok());
     Ok(shown)
 }
 

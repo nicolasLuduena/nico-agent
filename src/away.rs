@@ -4,14 +4,15 @@
 //! What such an agent files is its own Source write; nico-agent writes
 //! nothing for it.
 
+use std::fs;
 use std::io;
 use std::path::Path;
-use std::time::{Duration, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
 use crate::cli::{Context, Refusal};
-use crate::config::{Config, Repo, fill_in};
+use crate::config::{Config, Repo, Weekday, fill_in};
 use crate::dispatch;
 use crate::faux_nico;
 use crate::launch::{self, AgentLaunch};
@@ -22,6 +23,15 @@ pub const FILE: &str = "runs.json";
 
 /// The trigger of a quality-scan Run.
 pub const QUALITY_SCAN: &str = "quality-scan";
+
+/// The trigger of a morning Run, and its agent's name.
+pub const MORNING: &str = "morning";
+
+/// The Morning summary, which the morning agent writes in the config directory.
+pub const SUMMARY: &str = "morning.md";
+
+/// The Morning summary as last notified.
+const NOTIFIED: &str = "morning.notified";
 
 /// One start of an agent of no issue.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -63,7 +73,13 @@ pub fn last_scan<'a>(runs: &'a [Run], slug: &str) -> Option<&'a Run> {
     (runs.iter()).rfind(|r| r.trigger == QUALITY_SCAN && r.repo.as_deref() == Some(slug))
 }
 
-/// Close the Runs whose agents ended, then start each quality-scan due;
+/// The last morning Run.
+pub fn last_morning(runs: &[Run]) -> Option<&Run> {
+    (runs.iter()).rfind(|r| r.trigger == MORNING)
+}
+
+/// Close the Runs whose agents ended, start each quality-scan due and the
+/// morning agent if due, and send the Morning summary if it changed;
 /// `agents` as the tick listed them, if it did.
 pub fn step(
     ctx: &Context,
@@ -72,6 +88,8 @@ pub fn step(
 ) -> Result<Vec<String>, Refusal> {
     let mut said = close_ended(ctx, agents)?;
     said.extend(scan(ctx, config)?);
+    said.extend(morning(ctx, config)?);
+    said.extend(send_summary(ctx)?);
     Ok(said)
 }
 
@@ -135,7 +153,8 @@ fn close_ended(ctx: &Context, agents: Option<&[Agent]>) -> io::Result<Vec<String
 fn scan(ctx: &Context, config: &Config) -> Result<Vec<String>, Refusal> {
     let runs = load(&ctx.config_dir)?;
     let dispatches = dispatch::load(&ctx.config_dir)?;
-    let slot = last_slot(ctx, config);
+    let weekly = &config.quality_scan;
+    let slot = state::iso(last_slot(ctx, Some(weekly.weekday), weekly.hour));
     let mut said = vec![];
     for (slug, repo) in (config.repos.iter()).filter(|(_, r)| r.switches.quality_scan) {
         let live = (dispatches.iter())
@@ -244,22 +263,107 @@ fn start(
     launch::prompt(ctx.world, &run.launch.agent, text)
 }
 
-/// When the latest quality-scan slot at or before now began, ISO 8601 UTC:
-/// the configured weekday and hour, local time.
-fn last_slot(ctx: &Context, config: &Config) -> String {
+/// Start the morning agent, while `morning` is enabled, within the hour of
+/// `morning.hour` local time, once that day: a missed hour is a missed
+/// morning. It runs in a workspace on the config directory, with no worktree.
+fn morning(ctx: &Context, config: &Config) -> Result<Vec<String>, Refusal> {
+    let now = ctx.world.now();
+    let slot = last_slot(ctx, None, config.morning.hour);
+    let chosen = (config.morning.launch.clone())
+        .or_else(|| config.repos.values().next().map(|r| r.implementer.clone()));
+    let Some(chosen) = chosen.filter(|_| config.morning.enabled && now < slot + HOUR) else {
+        return Ok(vec![]);
+    };
+    let runs = load(&ctx.config_dir)?;
+    let last = last_morning(&runs);
+    if last.is_some_and(|r| r.closed_at.is_none() || r.at >= state::iso(slot)) {
+        return Ok(vec![]);
+    }
+    // The first morning reads the day before.
+    let since = last.map_or_else(|| state::iso(now - 24 * HOUR), |r| r.at.clone());
+    let mut run = Run {
+        trigger: MORNING.into(),
+        repo: None,
+        at: state::iso(now),
+        launch: AgentLaunch {
+            agent: MORNING.into(),
+            harness: chosen.harness,
+            model: chosen.model,
+            effort: chosen.effort,
+            tab: None,
+            pane: None,
+        },
+        workspace: None,
+        worktree: None,
+        failure: None,
+        closed_at: None,
+        issue: None,
+        asking: None,
+        passed: false,
+    };
+    let dir = ctx.config_dir.display().to_string();
+    let sigil = &config.harnesses[&run.launch.harness].sigil;
+    let values = [
+        ("sigil", sigil.as_str()),
+        ("lastMorningAt", &since),
+        ("configDir", &dir),
+    ];
+    let text = fill_in(&config.prompts.morning, &values);
+    let started = (|| -> Result<(), Refusal> {
+        run.workspace = Some(ctx.world.herdr_workspace_create(&dir, MORNING)?);
+        start(ctx, config, &mut run, &dir, &dir, &text)
+    })();
+    let said = match started {
+        Ok(()) => format!("morning started on {}", run.launch.harness),
+        Err(no) => {
+            let said = format!("could not start the morning: {}", no.error);
+            run.failure = Some(no.error);
+            said
+        }
+    };
+    update(&ctx.config_dir, |all| all.push(run))?;
+    Ok(vec![said])
+}
+
+/// Send the user the first line of the Morning summary, once for each text
+/// it holds. Once: a failed notification is said, not tried again.
+fn send_summary(ctx: &Context) -> io::Result<Vec<String>> {
+    let text = match fs::read_to_string(ctx.config_dir.join(SUMMARY)) {
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(vec![]),
+        read => read?,
+    };
+    let Some(first) = text.lines().map(str::trim).find(|l| !l.is_empty()) else {
+        return Ok(vec![]);
+    };
+    let file = ctx.config_dir.join(NOTIFIED);
+    let new = state::update(&file, |old| Ok::<_, io::Error>((text.clone(), old != text)))?;
+    if !new {
+        return Ok(vec![]);
+    }
+    Ok(vec![match ctx.world.notify("Morning summary", first) {
+        Ok(()) => format!("Morning summary sent: {first}"),
+        Err(e) => format!("could not send the Morning summary: {e}"),
+    }])
+}
+
+const HOUR: Duration = Duration::from_secs(3600);
+
+/// When the latest slot at or before now began: `hour` local time, on
+/// `weekday` when one is given, else daily.
+fn last_slot(ctx: &Context, weekday: Option<Weekday>, hour: u32) -> SystemTime {
     const DAY: i64 = 86_400;
     let offset = ctx.world.utc_offset();
     let now = ctx.world.now().duration_since(UNIX_EPOCH);
     let local = now.map_or(0, |d| d.as_secs() as i64) + offset;
     let today = local.div_euclid(DAY);
     // 1970-01-01 was a Thursday, and a Sunday is 0.
-    let back = (today + 4 - config.quality_scan.weekday as i64).rem_euclid(7);
-    let mut slot = (today - back) * DAY + i64::from(config.quality_scan.hour) * 3600;
+    let back = weekday.map_or(0, |w| (today + 4 - w as i64).rem_euclid(7));
+    let mut slot = (today - back) * DAY + i64::from(hour) * 3600;
     if slot > local {
-        slot -= 7 * DAY;
+        slot -= weekday.map_or(1, |_| 7) * DAY;
     }
     // shortcut: now's offset stands for the slot's, so a DST change between them moves it an hour once.
-    state::iso(UNIX_EPOCH + Duration::from_secs((slot - offset).max(0) as u64))
+    UNIX_EPOCH + Duration::from_secs((slot - offset).max(0) as u64)
 }
 
 /// Change the Runs under the file's lock.
