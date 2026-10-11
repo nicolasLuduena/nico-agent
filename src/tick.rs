@@ -7,6 +7,7 @@ use std::collections::BTreeMap;
 use std::fs::{self, File, OpenOptions, TryLockError};
 use std::io::{self, Read as _, Write};
 
+use crate::asking;
 use crate::cli::{Context, Refusal};
 use crate::config::{self, Config};
 use crate::dispatch::{self, Flags};
@@ -33,6 +34,7 @@ pub fn tick(ctx: &Context) -> Result<Vec<String>, Refusal> {
     // 4. Restart what broke: rebooted, stalled (#240); conflict, retarget (#244); verdict (#243).
     // 5. Start Reviewers (#242).
     // 6. Flip Verified PRs to ready (#243).
+    said.extend(asking::step(ctx)?);
     said.extend(fill_rooms(ctx, &config, &reads)?);
     Ok(said)
 }
@@ -81,8 +83,9 @@ fn read_sources(
     Ok((said, reads))
 }
 
-/// (7) Dispatch each Repo's Ready issues, oldest first, while its live
-/// Dispatches are under its room; behind the `dispatch` switch.
+/// (7) Dispatch each Repo's Ready issues, then its Stackable ones behind
+/// the `stack` switch, oldest first, while its live Dispatches are under its
+/// room; behind the `dispatch` switch.
 fn fill_rooms(
     ctx: &Context,
     config: &Config,
@@ -100,7 +103,8 @@ fn fill_rooms(
             .count();
         let room = (repo.room as usize).saturating_sub(live);
         let readiness = source::readiness(read, &dispatches, &prs);
-        for row in readiness.ready.into_iter().take(room) {
+        let stackable = (readiness.stackable.into_iter()).filter(|_| repo.switches.stack);
+        for row in readiness.ready.into_iter().chain(stackable).take(room) {
             match dispatch::issue(ctx, config, &row.key, Flags::default()) {
                 Ok(answer) => {
                     said.push(format!("{} dispatched", row.key));

@@ -240,41 +240,57 @@ pub fn readiness(read: &Read, dispatches: &[Dispatch], prs: &Prs) -> Readiness {
             });
             continue;
         }
-        let unresolved: Vec<&Blocker> = issue.blockers.iter().filter(|b| !b.resolved).collect();
-        if unresolved.is_empty() {
-            readiness.ready.push(row);
-            continue;
-        }
-        if unresolved.iter().any(|b| b.prs.is_empty()) {
-            continue;
-        }
-        let (mut branches, mut urls) = (vec![], vec![]);
-        for pr in unresolved.iter().flat_map(|b| &b.prs) {
-            if !branches.contains(&&pr.head_branch) {
-                branches.push(&pr.head_branch);
-            }
-            if !urls.contains(&pr.url.as_str()) {
-                urls.push(&pr.url);
-            }
-        }
-        if let [base] = branches[..] {
-            readiness.stackable.push(Row {
-                base: Some(base.clone()),
+        match start(issue) {
+            Start::Ready => readiness.ready.push(row),
+            Start::Stacked(pr) => readiness.stackable.push(Row {
+                base: Some(pr.head_branch.clone()),
                 ..row
-            });
-        } else {
-            let reason = format!(
-                "{} waits for its Blockers' open PRs {} to merge down to one; they sit on different branches",
-                issue.key,
-                urls.join(", ")
-            );
-            readiness.waiting.push(Row {
+            }),
+            Start::Blocked => {}
+            Start::Split(reason) => readiness.waiting.push(Row {
                 reason: Some(reason),
                 ..row
-            });
+            }),
         }
     }
     readiness
+}
+
+/// Where an issue's work may start, by its unresolved Blockers.
+pub enum Start<'a> {
+    /// None unresolved: from the Repo's Base.
+    Ready,
+    /// On the one branch its unresolved Blockers' open PRs sit on: Stackable.
+    Stacked(&'a BlockerPr),
+    /// An unresolved Blocker has no open PR here.
+    Blocked,
+    /// Their open PRs sit on several branches: why it waits.
+    Split(String),
+}
+
+pub fn start(issue: &Issue) -> Start<'_> {
+    let unresolved: Vec<&Blocker> = issue.blockers.iter().filter(|b| !b.resolved).collect();
+    if unresolved.is_empty() {
+        return Start::Ready;
+    }
+    if unresolved.iter().any(|b| b.prs.is_empty()) {
+        return Start::Blocked;
+    }
+    let mut prs: Vec<&BlockerPr> = vec![];
+    for pr in unresolved.iter().flat_map(|b| &b.prs) {
+        if !prs.iter().any(|p| p.url == pr.url) {
+            prs.push(pr);
+        }
+    }
+    if prs.iter().all(|p| p.head_branch == prs[0].head_branch) {
+        return Start::Stacked(prs[0]);
+    }
+    let urls: Vec<&str> = prs.iter().map(|p| p.url.as_str()).collect();
+    Start::Split(format!(
+        "{} waits for its Blockers' open PRs {} to merge down to one; they sit on different branches",
+        issue.key,
+        urls.join(", ")
+    ))
 }
 
 /// Ready but for its Blockers.
@@ -304,7 +320,8 @@ fn why_not_startable(issue: &Issue, user: &[String]) -> Option<String> {
     }
 }
 
-/// Why the issue `key` of `read` is not Ready, In flight aside; `None` when it is.
+/// Why the issue `key` of `read` is neither Ready nor Stackable, In flight
+/// aside; `None` when it is.
 pub fn why_not_ready(read: &Read, key: &str) -> Option<String> {
     let Some(issue) = read.issues.iter().find(|i| i.key == key) else {
         return Some(format!(
@@ -312,13 +329,19 @@ pub fn why_not_ready(read: &Read, key: &str) -> Option<String> {
             read.read_at
         ));
     };
-    let unresolved: Vec<&str> = (issue.blockers.iter())
-        .filter(|b| !b.resolved)
-        .map(|b| b.key.as_str())
-        .collect();
-    why_not_startable(issue, &read.user).or_else(|| {
-        (!unresolved.is_empty())
-            .then(|| format!("{key} waits on its Blockers {}", unresolved.join(", ")))
+    why_not_startable(issue, &read.user).or_else(|| match start(issue) {
+        Start::Ready | Start::Stacked(_) => None,
+        Start::Blocked => {
+            let unresolved: Vec<&str> = (issue.blockers.iter())
+                .filter(|b| !b.resolved)
+                .map(|b| b.key.as_str())
+                .collect();
+            Some(format!(
+                "{key} waits on its Blockers {}",
+                unresolved.join(", ")
+            ))
+        }
+        Start::Split(reason) => Some(reason),
     })
 }
 
