@@ -18,3 +18,43 @@ fn the_binary_prints_the_answer_and_exits_with_its_code() {
 
     assert_eq!(nico_agent(&["frobnicate"]).status.code(), Some(2));
 }
+
+#[test]
+fn repo_add_reads_a_real_clone_s_remotes() {
+    let root = std::env::temp_dir().join(format!("nico-agent-binary-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let clone = root.join("api");
+    std::fs::create_dir_all(clone.join("src")).unwrap();
+    let git = |args: &[&str]| {
+        let ran = Command::new("git")
+            .arg("-C")
+            .arg(&clone)
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(ran.status.success(), "git {args:?}");
+    };
+    git(&["init", "-q"]);
+    git(&["remote", "add", "origin", "git@github.com:acme/api.git"]);
+    let repo_add = |path: &std::path::Path| {
+        let ran = Command::new(env!("CARGO_BIN_EXE_nico-agent"))
+            .args(["repo", "add", "acme/api", "--json", "--path"])
+            .arg(path)
+            .env("HOME", &root)
+            .output()
+            .unwrap();
+        (ran.status.code(), String::from_utf8(ran.stdout).unwrap())
+    };
+
+    let (code, stdout) = repo_add(&clone.join("src"));
+    assert_eq!(code, Some(1), "{stdout}");
+    assert!(stdout.contains("is not a git clone"), "{stdout}");
+
+    let (code, stdout) = repo_add(&clone);
+    assert_eq!(code, Some(0), "{stdout}");
+    let config = std::fs::read_to_string(root.join(".config/nico-agent/config.toml")).unwrap();
+    assert!(
+        config.contains(&format!("path = \"{}\"", clone.display())),
+        "{config}"
+    );
+}

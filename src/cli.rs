@@ -2,7 +2,8 @@ use std::path::PathBuf;
 
 use serde_json::{Value, json};
 
-use crate::world::World;
+use crate::repo;
+use crate::world::{World, WorldError};
 
 /// What a command runs against: the outside world and the config directory.
 pub struct Context<'a> {
@@ -23,11 +24,42 @@ pub struct Refusal {
     pub exit_code: i32,
 }
 
+impl Refusal {
+    /// A refusal the user can act on: exit 1.
+    pub fn new(error: String, help: Vec<String>) -> Self {
+        Refusal {
+            error,
+            help,
+            exit_code: 1,
+        }
+    }
+}
+
+impl From<std::io::Error> for Refusal {
+    fn from(e: std::io::Error) -> Self {
+        Refusal::new(e.to_string(), vec![])
+    }
+}
+
+impl From<WorldError> for Refusal {
+    fn from(e: WorldError) -> Self {
+        Refusal::new(e.0, vec![])
+    }
+}
+
 /// Every command, as its usage and what it does, for help lines.
-const COMMANDS: &[(&str, &str)] = &[("nico-agent --version", "print the version")];
+const COMMANDS: &[(&str, &str)] = &[
+    ("nico-agent --version", "print the version"),
+    (
+        "nico-agent repo add <owner/name> --path <clone> [--linear-team <team> --linear-project <project> --linear-label <label>]",
+        "add a Repo",
+    ),
+    ("nico-agent repo rm <owner/name>", "remove a Repo"),
+    ("nico-agent repo list", "list the Repos"),
+];
 
 /// Run `nico-agent` with `argv` (without the program name).
-pub fn run(argv: &[String], _ctx: &Context) -> Output {
+pub fn run(argv: &[String], ctx: &Context) -> Output {
     let json = argv.iter().any(|a| a == "--json");
     let words: Vec<&str> = argv
         .iter()
@@ -36,8 +68,15 @@ pub fn run(argv: &[String], _ctx: &Context) -> Output {
         .collect();
     let answer = match words.as_slice() {
         ["--version"] => Ok(json!({ "version": env!("CARGO_PKG_VERSION") })),
-        [] => Err(bad_invocation("no command given".into())),
-        [word, ..] => Err(bad_invocation(format!("unknown command `{word}`"))),
+        ["repo", "add", args @ ..] => repo::add(args, ctx),
+        ["repo", "rm", args @ ..] => repo::rm(args, ctx),
+        ["repo", "list", args @ ..] => repo::list(args, ctx),
+        ["repo", ..] => Err(bad_invocation(
+            "`repo` needs a subcommand: add, rm or list".into(),
+            "repo",
+        )),
+        [] => Err(bad_invocation("no command given".into(), "")),
+        [word, ..] => Err(bad_invocation(format!("unknown command `{word}`"), "")),
     };
     match answer {
         Ok(answer) => Output {
@@ -51,9 +90,11 @@ pub fn run(argv: &[String], _ctx: &Context) -> Output {
     }
 }
 
-fn bad_invocation(error: String) -> Refusal {
+/// Exit 2, with help on each command whose usage starts `nico-agent <command>`.
+pub fn bad_invocation(error: String, command: &str) -> Refusal {
     let help = COMMANDS
         .iter()
+        .filter(|(usage, _)| usage.starts_with(&format!("nico-agent {command}")))
         .map(|(usage, does)| format!("Run `{usage}` to {does}"))
         .collect();
     Refusal {

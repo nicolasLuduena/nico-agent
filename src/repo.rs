@@ -1,0 +1,179 @@
+//! `repo add|rm|list`: which Repos the loop works, kept in `config.toml`.
+
+use serde_json::{Value, json};
+use toml_edit::{InlineTable, Item, Table, value};
+
+use crate::args::Args;
+use crate::cli::{Context, Refusal, bad_invocation};
+use crate::config::{self, Linear};
+
+pub fn add(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
+    const ADD: &str = "repo add";
+    let flags = [
+        "--path",
+        "--linear-team",
+        "--linear-project",
+        "--linear-label",
+    ];
+    let args = Args::parse(ADD, args, &flags)?;
+    let slug = args.positionals(&["<owner/name>"])?[0];
+    if !is_slug(slug) {
+        return Err(bad_invocation(
+            format!("`{slug}` is not an owner/name slug"),
+            ADD,
+        ));
+    }
+    let path = args
+        .flag("--path")
+        .ok_or_else(|| bad_invocation("missing required flag --path".into(), ADD))?;
+    let path = std::path::absolute(path)?.display().to_string();
+    let linear = match (
+        args.flag("--linear-team"),
+        args.flag("--linear-project"),
+        args.flag("--linear-label"),
+    ) {
+        (None, None, None) => None,
+        (Some(team), project, label) => Some(Linear {
+            team: team.into(),
+            project: project.map(Into::into),
+            label: label.map(Into::into),
+        }),
+        _ => {
+            let error = "--linear-project and --linear-label need --linear-team".into();
+            return Err(bad_invocation(error, ADD));
+        }
+    };
+
+    let Some(remotes) = ctx.world.git_remotes(&path)? else {
+        return Err(Refusal::new(
+            format!("{path} is not a git clone"),
+            vec![format!(
+                "Run `git clone https://github.com/{slug} {path}` first, or pass the path of an existing clone"
+            )],
+        ));
+    };
+    let of_slug =
+        |remote: &String| remote_slug(remote).is_some_and(|s| s.eq_ignore_ascii_case(slug));
+    if !remotes.iter().any(of_slug) {
+        return Err(Refusal::new(
+            format!(
+                "{path} is not a clone of {slug} (its remotes: {})",
+                remotes.join(", ")
+            ),
+            vec![format!(
+                "Run `nico-agent repo add <owner/name> --path {path}` with the slug its remote points at"
+            )],
+        ));
+    }
+
+    config::edit(&ctx.config_dir, |config, doc| {
+        let found = config
+            .repos
+            .iter()
+            .find(|(s, _)| s.eq_ignore_ascii_case(slug));
+        let (slug, done) = match found {
+            Some((slug, repo))
+                if repo.path == path && (linear.is_none() || repo.linear == linear) =>
+            {
+                return json!({ "repo": format!("{slug} already added (no-op)"), "path": path });
+            }
+            Some((slug, _)) => (slug.clone(), "updated"),
+            None => (slug.to_string(), "added"),
+        };
+        let repos = doc
+            .entry("repos")
+            .or_insert_with(|| {
+                let mut repos = Table::new();
+                repos.set_implicit(true);
+                Item::Table(repos)
+            })
+            .as_table_like_mut()
+            .expect("load read repos as a table");
+        if repos.get(&slug).is_none() {
+            repos.insert(&slug, Item::Table(Table::new()));
+        }
+        let repo = repos
+            .get_mut(&slug)
+            .and_then(Item::as_table_like_mut)
+            .expect("load read each Repo as a table");
+        repo.insert("path", value(&path));
+        if let Some(linear) = &linear {
+            let mut selector = InlineTable::new();
+            selector.insert("team", linear.team.as_str().into());
+            for (key, set) in [("project", &linear.project), ("label", &linear.label)] {
+                if let Some(set) = set {
+                    selector.insert(key, set.as_str().into());
+                }
+            }
+            repo.insert("linear", value(selector));
+        }
+        json!({ "repo": format!("{slug} {done}"), "path": path })
+    })
+}
+
+pub fn rm(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
+    let args = Args::parse("repo rm", args, &[])?;
+    let slug = args.positionals(&["<owner/name>"])?[0];
+    config::edit(&ctx.config_dir, |config, doc| {
+        let Some((slug, repo)) = config
+            .repos
+            .iter()
+            .find(|(s, _)| s.eq_ignore_ascii_case(slug))
+        else {
+            return json!({ "repo": format!("{slug} not configured (no-op)") });
+        };
+        doc["repos"]
+            .as_table_like_mut()
+            .expect("load read repos as a table")
+            .remove(slug);
+        // shortcut: only the clone stays until Dispatches exist; list the In-flight ones here then.
+        json!({ "repo": format!("{slug} removed"), "stays": [format!("the clone at {}", repo.path)] })
+    })
+}
+
+pub fn list(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
+    Args::parse("repo list", args, &[])?.positionals(&[])?;
+    let config = config::load(&ctx.config_dir)?;
+    let repos: Vec<Value> = config
+        .repos
+        .iter()
+        .map(|(slug, repo)| {
+            let mut shown = serde_json::to_value(repo).expect("a Repo is plain data");
+            shown["slug"] = json!(slug);
+            shown["reviewer"] = json!(config.reviewer(repo));
+            shown
+        })
+        .collect();
+    Ok(json!({ "repos": repos }))
+}
+
+/// `owner/name`, each part letters, digits, `_`, `.` or `-`.
+fn is_slug(text: &str) -> bool {
+    let part = |p: &str| {
+        !p.is_empty()
+            && p.chars()
+                .all(|c| c.is_ascii_alphanumeric() || "_.-".contains(c))
+    };
+    text.split_once('/')
+        .is_some_and(|(owner, name)| part(owner) && part(name))
+}
+
+/// The `owner/name` a GitHub remote URL (https or ssh) points at, lowercased.
+fn remote_slug(url: &str) -> Option<String> {
+    let url = url.trim().to_ascii_lowercase();
+    let path = match url.strip_prefix("https://").or(url.strip_prefix("http://")) {
+        Some(rest) => {
+            let host = rest.split_once('@').filter(|(user, _)| !user.contains('/'));
+            host.map_or(rest, |(_, host)| host)
+                .strip_prefix("github.com/")?
+        }
+        None => {
+            let rest = url.strip_prefix("ssh://").unwrap_or(&url);
+            let rest = rest.strip_prefix("git@github.com")?;
+            rest.strip_prefix(':').or(rest.strip_prefix('/'))?
+        }
+    };
+    let path = path.strip_suffix('/').unwrap_or(path);
+    let path = path.strip_suffix(".git").unwrap_or(path);
+    is_slug(path).then(|| path.to_string())
+}

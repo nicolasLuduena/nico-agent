@@ -4,6 +4,9 @@
 //! call. Call shapes are ported from the TypeScript build on `main`.
 
 use std::fmt;
+use std::fs;
+use std::path::Path;
+use std::process::Command;
 use std::time::{Duration, SystemTime};
 
 /// A failure reported by the outside world, already stripped of tool noise.
@@ -272,9 +275,38 @@ fn unbuilt<T>(name: &str) -> WorldResult<T> {
     Err(WorldError(format!("World::{name} is not built yet")))
 }
 
+/// Run `git -C <dir> <args>`: whether it succeeded, and what it printed.
+fn git(dir: &Path, args: &[&str]) -> WorldResult<(bool, String)> {
+    let ran = Command::new("git")
+        .arg("-C")
+        .arg(dir)
+        .args(args)
+        .output()
+        .map_err(|e| WorldError(format!("could not run git: {e}")))?;
+    Ok((
+        ran.status.success(),
+        String::from_utf8_lossy(&ran.stdout).into_owned(),
+    ))
+}
+
 impl World for RealWorld {
-    fn git_remotes(&self, _: &str) -> WorldResult<Option<Vec<String>>> {
-        unbuilt("git_remotes")
+    /// Only a clone's top directory is a clone: not a directory inside one.
+    fn git_remotes(&self, path: &str) -> WorldResult<Option<Vec<String>>> {
+        let Ok(real) = fs::canonicalize(path) else {
+            return Ok(None);
+        };
+        let (ok, top) = git(&real, &["rev-parse", "--show-toplevel"])?;
+        if !ok || fs::canonicalize(top.trim()).ok() != Some(real.clone()) {
+            return Ok(None);
+        }
+        // Exits 1 when there is no remote: none.
+        let (_, remotes) = git(&real, &["config", "--get-regexp", r"^remote\..*\.url$"])?;
+        Ok(Some(
+            remotes
+                .lines()
+                .filter_map(|line| line.split_once(' ').map(|(_, url)| url.to_string()))
+                .collect(),
+        ))
     }
     fn git_fetch(&self, _: &str, _: Option<&str>) -> WorldResult<()> {
         unbuilt("git_fetch")
