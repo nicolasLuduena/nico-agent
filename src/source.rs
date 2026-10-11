@@ -53,7 +53,7 @@ pub struct Blocker {
     pub prs: Vec<BlockerPr>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BlockerPr {
     pub number: u64,
     pub url: String,

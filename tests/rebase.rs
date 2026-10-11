@@ -6,6 +6,7 @@ use common::{Setup, github_issue, pull_request, setup};
 use nico_agent::world::{
     GitHubBlocker, IssueState, Mergeable, PrState, PullRequest, PullRequestActivity,
 };
+use serde_json::Value;
 
 const TICK: Duration = Duration::from_secs(600);
 
@@ -199,4 +200,57 @@ fn a_retarget_restarts_once_when_the_pr_below_turns_final_naming_its_base() {
     assert_eq!(asked(&t), ["github pr activity acme/api#12"]);
     let status = t.cli(&["status", "--json"]).json();
     assert_eq!(status["dispatches"][0]["base"], "develop");
+}
+
+#[test]
+fn a_dispatch_is_restarted_once_a_tick_for_its_most_specific_reason_and_another_waits() {
+    let t = with_pr("");
+    // Its agent is gone, its PR conflicts, and the Reviewer failed its head.
+    t.world.agents.borrow_mut().remove("impl-api-1");
+    pr_11_is(&t, Mergeable::Conflicting);
+    let findings = t.config_dir.with_file_name("findings.md");
+    std::fs::write(&findings, "Signing in shows a 500.\n").unwrap();
+    let findings = findings.display().to_string();
+    let fail = [
+        "verdict",
+        "acme/api#1",
+        "fail",
+        "--sha",
+        "sha11",
+        "--findings",
+    ];
+    assert_eq!(t.cli(&[&fail[..], &[&findings]].concat()).exit_code, 0);
+
+    let first = next_tick(&t);
+    let tabs: Vec<String> = (t.world.calls().into_iter())
+        .filter(|c| c.starts_with("herdr tab "))
+        .collect();
+    let sent = prompts(&t, 1);
+    let second = next_tick(&t);
+    let third = next_tick(&t);
+
+    // A rebase first: it moves the head the Verdict is on, and any restart
+    // starts the agent that was gone.
+    assert_eq!(first, ["acme/api#1 restarted: conflict"]);
+    assert_eq!(
+        tabs,
+        [
+            "herdr tab close w1:t2",
+            "herdr tab create --workspace w1 --cwd /worktrees/api-1 --label implementer --no-focus",
+        ]
+    );
+    assert_eq!(
+        sent,
+        [
+            "You are continuing https://github.com/acme/api/issues/1 on branch agent/api-1 in this worktree. Read git status, git log and the PR https://github.com/acme/api/pull/11 first. The PR conflicts with main. Rebase onto it, resolve, run the tests and the verification, push."
+        ]
+    );
+    assert_eq!(second, ["acme/api#1 restarted: verdict"]);
+    assert_eq!(third, Vec::<String>::new());
+    let status = t.cli(&["status", "--json"]).json();
+    let reasons: Vec<&Value> = (status["dispatches"][0]["restarts"].as_array().unwrap())
+        .iter()
+        .map(|r| &r["reason"])
+        .collect();
+    assert_eq!(reasons, ["conflict", "verdict"]);
 }

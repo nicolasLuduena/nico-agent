@@ -13,7 +13,7 @@ use crate::verdict;
 use crate::world::Agent;
 
 /// A Dispatch's latest Reviewer.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Reviewer {
     #[serde(flatten)]
     pub launch: AgentLaunch,

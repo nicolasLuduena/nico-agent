@@ -14,7 +14,6 @@ use crate::cli::{Context, Refusal, bad_invocation};
 use crate::config::{self, Config};
 use crate::dispatch;
 use crate::pause;
-use crate::restart::{self, Reason};
 use crate::stage::{self, Pr, Stage};
 use crate::state;
 use crate::world::PrState;
@@ -44,39 +43,6 @@ pub fn file(config_dir: &Path, issue: &str) -> PathBuf {
 /// The latest Verdict on `issue`, if any.
 pub fn load(config_dir: &Path, issue: &str) -> io::Result<Option<Verdict>> {
     state::load(&file(config_dir, issue))
-}
-
-/// (4) Restart, behind each Repo's `restart` switch, the Implementer of
-/// every live Dispatch whose PR's head has a failing Verdict, once per
-/// Verdict: not when a `verdict` restart came at or after it. Says what it did.
-pub fn restart_failed(ctx: &Context, config: &Config) -> io::Result<Vec<String>> {
-    let prs = stage::load(&ctx.config_dir)?;
-    let mut said = vec![];
-    let live = dispatch::load(&ctx.config_dir)?.into_iter();
-    for d in live.filter(|d| d.closed_at.is_none()) {
-        let on = config
-            .repos
-            .get(&d.repo)
-            .is_some_and(|r| r.switches.restart);
-        let Some(pr) = (d.pr.as_ref())
-            .and_then(|url| prs.get(url))
-            .filter(|pr| on && !pr.r#final)
-        else {
-            continue;
-        };
-        let Some(v) = load(&ctx.config_dir, &d.issue)?
-            .filter(|v| v.result == Outcome::Fail && v.sha == pr.head_sha)
-        else {
-            continue;
-        };
-        let acted = (d.restarts.iter()).any(|r| r.reason == Reason::Verdict && r.at >= v.at);
-        if !acted {
-            let path = file(&ctx.config_dir, &d.issue).display().to_string();
-            let values = [("sha", v.sha.as_str()), ("findingsPath", &path)];
-            said.extend(restart::restart(ctx, config, d, Reason::Verdict, &values)?);
-        }
-    }
-    Ok(said)
 }
 
 /// (6) Flip to ready, behind each Repo's `flip` switch, the PR of every

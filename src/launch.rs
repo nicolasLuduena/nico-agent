@@ -25,7 +25,7 @@ const PROMPT_ATTEMPTS: usize = 3;
 const MAX_AGENT_NAME: usize = 32;
 
 /// An agent as its Dispatch keeps it: its herdr name and place, and what it runs on.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AgentLaunch {
     pub agent: String,
     pub harness: String,

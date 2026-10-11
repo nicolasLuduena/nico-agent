@@ -14,11 +14,14 @@ use crate::config::{Config, fill_in};
 use crate::dispatch::{self, Dispatch, Failure, STEPS};
 use crate::launch;
 use crate::pause;
+use crate::rebase;
+use crate::stage::{self, Prs};
 use crate::state;
+use crate::verdict::{self, Outcome};
 use crate::world::Agent;
 
 /// One restart of a Dispatch's Implementer.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Restart {
     pub at: String,
     pub reason: Reason,
@@ -50,15 +53,23 @@ impl fmt::Display for Reason {
     }
 }
 
-/// (4) Restart, behind each Repo's `restart` switch, every live Dispatch
-/// whose agent is missing from herdr's `agents` (rebooted), or whose agent
-/// has been idle or done for `stall_minutes` with no PR (stalled). Nothing
-/// without a list: herdr down is not every agent gone. Says what it did.
+/// (4) Restart, behind each Repo's `restart` switch, each live Dispatch that
+/// broke, once a tick, for the first of its reasons: its PR below became
+/// final or its PR conflicts (see [`rebase::reason`]); the Reviewer failed
+/// its PR's head; its agent is missing from herdr's `agents` (rebooted); its
+/// agent was idle or done for `stall_minutes` with no PR (stalled). A rebase
+/// comes first, as it moves the head a Verdict is on, and any restart starts
+/// an agent that was gone; a reason passed over holds next tick if still
+/// true. Without `agents`, no agent reason: herdr down is not every agent
+/// gone. Says what it did.
 pub fn step(ctx: &Context, config: &Config, agents: Option<&[Agent]>) -> io::Result<Vec<String>> {
-    let Some(agents) = agents else {
-        return Ok(vec![]);
-    };
-    let watched = (dispatch::load(&ctx.config_dir)?.into_iter())
+    let prs = stage::load(&ctx.config_dir)?;
+    let now = ctx.world.now();
+    let stalled = state::iso(now - Duration::from_secs(u64::from(config.stall_minutes) * 60));
+    let now = state::iso(now);
+    // Paused, the PR watch can't see a PR that appeared: no PR is not known.
+    let paused = pause::until(ctx.world, &ctx.config_dir, "GitHub")?.is_some();
+    let broke = (dispatch::load(&ctx.config_dir)?.into_iter())
         .filter(|d| {
             config
                 .repos
@@ -67,30 +78,61 @@ pub fn step(ctx: &Context, config: &Config, agents: Option<&[Agent]>) -> io::Res
         })
         .filter(|d| d.closed_at.is_none() && d.failure.is_none())
         .filter(|d| d.completed.len() == STEPS.len());
-    let stall = Duration::from_secs(u64::from(config.stall_minutes) * 60);
-    let now = ctx.world.now();
-    // Paused, the PR watch can't see a PR that appeared: no PR is not known.
-    let paused = pause::until(ctx.world, &ctx.config_dir, "GitHub")?.is_some();
     let mut said = vec![];
-    for mut d in watched {
-        let state = agent_state(agents, &d);
-        let idle = d.pr.is_none() && matches!(state, Some("idle" | "done"));
-        if state.is_none() {
-            said.extend(restart(ctx, config, d, Reason::Rebooted, &[])?);
-        } else if !idle {
-            if d.idle_since.take().is_some() {
-                dispatch::save(ctx, &mut d)?;
-            }
-        } else if let Some(since) = &d.idle_since {
-            if *since <= state::iso(now - stall) && !paused {
-                said.extend(restart(ctx, config, d, Reason::Stalled, &[])?);
-            }
-        } else {
-            d.idle_since = Some(state::iso(now));
-            dispatch::save(ctx, &mut d)?;
+    for mut d in broke {
+        let seen = d.clone();
+        let reason = match rebase::reason(&mut d, &prs) {
+            Some(reason) => Some(reason),
+            None if failed_verdict(ctx, &d, &prs)? => Some(Reason::Verdict),
+            None => agents.and_then(|agents| {
+                let stalled = Some(stalled.as_str()).filter(|_| !paused);
+                agent_reason(&mut d, agents, &now, stalled)
+            }),
+        };
+        match reason {
+            Some(reason) => said.extend(restart(ctx, config, d, reason)?),
+            None if d != seen => dispatch::save(ctx, &mut d)?,
+            None => {}
         }
     }
     Ok(said)
+}
+
+/// Whether the head of `d`'s open PR has a failing Verdict that no `verdict`
+/// restart came at or after: one restart per failing Verdict.
+fn failed_verdict(ctx: &Context, d: &Dispatch, prs: &Prs) -> io::Result<bool> {
+    let Some(pr) = (d.pr.as_ref())
+        .and_then(|url| prs.get(url))
+        .filter(|pr| !pr.r#final)
+    else {
+        return Ok(false);
+    };
+    let failed = verdict::load(&ctx.config_dir, &d.issue)?
+        .filter(|v| v.result == Outcome::Fail && v.sha == pr.head_sha);
+    Ok(failed
+        .is_some_and(|v| !(d.restarts.iter()).any(|r| r.reason == Reason::Verdict && r.at >= v.at)))
+}
+
+/// `rebooted` when `d`'s Implementer is missing from `agents`; `stalled` when
+/// it has been idle or done with no PR since `stalled` or before, noting on
+/// `d` since when it is; `None` for `stalled` when that is not known.
+fn agent_reason(
+    d: &mut Dispatch,
+    agents: &[Agent],
+    now: &str,
+    stalled: Option<&str>,
+) -> Option<Reason> {
+    let Some(state) = agent_state(agents, d) else {
+        return Some(Reason::Rebooted);
+    };
+    if d.pr.is_some() || !matches!(state, "idle" | "done") {
+        d.idle_since = None;
+        return None;
+    }
+    let since = d.idle_since.get_or_insert_with(|| now.into());
+    stalled
+        .is_some_and(|stalled| since.as_str() <= stalled)
+        .then_some(Reason::Stalled)
 }
 
 /// The Agent state herdr reports for the Dispatch's Implementer; `None` when it has no such agent.
@@ -100,21 +142,15 @@ fn agent_state<'a>(agents: &'a [Agent], d: &Dispatch) -> Option<&'a str> {
         .map(|a| a.state.as_str())
 }
 
-/// The loop's restart of `record`'s Implementer for `reason`, with `values`
-/// filling its prompt's placeholders before the Dispatch's own (`issueUrl`,
-/// `branch`, `prUrl`, `baseBranch`). A Failed Dispatch is never restarted;
-/// one whose reason is used up, or whose restart fails, is marked Failed
-/// with one notification. Says what it did.
-pub fn restart(
+/// The loop's restart of `record`'s Implementer for `reason`. One whose
+/// reason is used up, or whose restart fails, is marked Failed with one
+/// notification. Says what it did.
+fn restart(
     ctx: &Context,
     config: &Config,
     mut record: Dispatch,
     reason: Reason,
-    values: &[(&str, &str)],
 ) -> io::Result<Vec<String>> {
-    if record.failure.is_some() {
-        return Ok(vec![]);
-    }
     let times = (record.restarts.iter())
         .filter(|r| r.reason == reason)
         .count();
@@ -133,15 +169,13 @@ pub fn restart(
             .collect());
     }
     let issue = record.issue.clone();
-    Ok(
-        match run(ctx, config, &mut record, reason, "loop", values)? {
-            Ok(()) => vec![format!("{issue} restarted: {reason}")],
-            Err(no) => [no.error]
-                .into_iter()
-                .chain(announce_failed(ctx, &record))
-                .collect(),
-        },
-    )
+    Ok(match run(ctx, config, &mut record, reason, "loop")? {
+        Ok(()) => vec![format!("{issue} restarted: {reason}")],
+        Err(no) => [no.error]
+            .into_iter()
+            .chain(announce_failed(ctx, &record))
+            .collect(),
+    })
 }
 
 /// Restart `record`'s Implementer for `reason`, as `by`, recording it first:
@@ -152,7 +186,6 @@ pub fn run(
     record: &mut Dispatch,
     reason: Reason,
     by: &str,
-    values: &[(&str, &str)],
 ) -> io::Result<Result<(), Refusal>> {
     record.restarts.push(Restart {
         at: state::iso(ctx.world.now()),
@@ -161,7 +194,8 @@ pub fn run(
     });
     record.idle_since = None;
     dispatch::save(ctx, record)?;
-    let failed = relaunch(ctx, config, record, &prompt(config, record, reason, values)).err();
+    let text = prompt(ctx, config, record, reason)?;
+    let failed = relaunch(ctx, config, record, &text).err();
     record.failure = failed.as_ref().map(|(step, no)| Failure {
         step: step.to_string(),
         error: no.error.clone(),
@@ -217,7 +251,7 @@ fn relaunch(
 
 /// The restart prompt for `reason`: the prefix, then the reason's own text.
 /// `manual` is sent `rebooted`'s, the text for an agent gone from herdr.
-fn prompt(config: &Config, record: &Dispatch, reason: Reason, values: &[(&str, &str)]) -> String {
+fn prompt(ctx: &Context, config: &Config, record: &Dispatch, reason: Reason) -> io::Result<String> {
     let texts = &config.prompts.restart;
     let text = match reason {
         Reason::Rebooted | Reason::Manual => &texts.rebooted,
@@ -226,16 +260,17 @@ fn prompt(config: &Config, record: &Dispatch, reason: Reason, values: &[(&str, &
         Reason::Retarget => &texts.retarget,
         Reason::Verdict => &texts.verdict,
     };
-    let own = [
+    let verdict = verdict::load(&ctx.config_dir, &record.issue)?;
+    let findings = verdict::file(&ctx.config_dir, &record.issue);
+    let values = [
         ("issueUrl", record.url.as_str()),
         ("branch", &record.branch),
         ("prUrl", record.pr.as_deref().unwrap_or("(none yet)")),
         ("baseBranch", &record.base),
+        ("sha", verdict.as_ref().map_or("", |v| &v.sha)),
+        ("findingsPath", &findings.display().to_string()),
     ];
-    fill_in(
-        &format!("{} {text}", texts.prefix),
-        &[values, &own].concat(),
-    )
+    Ok(fill_in(&format!("{} {text}", texts.prefix), &values))
 }
 
 /// Tell the user that `record` is Failed, if it is; called once, as it

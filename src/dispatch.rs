@@ -36,7 +36,7 @@ pub const STEPS: [&str; 7] = [
     "prompt",
 ];
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Dispatch {
     /// `owner/repo#N` or a Linear identifier.
     pub issue: String,
@@ -87,7 +87,7 @@ pub struct Dispatch {
     pub closed_at: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Failure {
     pub step: String,
     pub error: String,
@@ -297,7 +297,7 @@ fn resume(
 /// toward the cap, and a Failed Dispatch is given another go.
 fn restart_by_hand(ctx: &Context, config: &Config, mut record: Dispatch) -> Result<Value, Refusal> {
     // shortcut: no lease, so a tick restarting the same agent meanwhile races this; lease restarts if that shows up.
-    restart::run(ctx, config, &mut record, Reason::Manual, "user", &[])?.map_err(|mut no| {
+    restart::run(ctx, config, &mut record, Reason::Manual, "user")?.map_err(|mut no| {
         no.help.push(SEE_STATUS.into());
         no
     })?;
