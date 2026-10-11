@@ -9,7 +9,7 @@ export interface MapData {
 export interface MapNode {
   /** `owner/repo#N` or a Linear id. */
   key: string;
-  /** Null for a Blocker outside the Source's cache: only its key is known. */
+  /** Null for a Blocker outside a Source cache read before Blockers had titles: only its key is known. */
   title: string | null;
   url: string | null;
   kind: "code" | "research";

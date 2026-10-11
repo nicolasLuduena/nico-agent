@@ -47,6 +47,9 @@ pub struct Issue {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Blocker {
     pub key: String,
+    /// Unknown in a cache read before Blockers had titles.
+    #[serde(default)]
+    pub title: Option<String>,
     pub resolved: bool,
     /// Its open PRs in this Repo with a head branch here, asked only while it
     /// is unresolved and blocks an issue the loop could start.
@@ -372,6 +375,7 @@ fn from_github(slug: &str, issue: &GitHubIssue) -> Issue {
             .iter()
             .map(|b| Blocker {
                 key: github_key(slug, &b.slug, b.number),
+                title: Some(b.title.clone()),
                 resolved: b.state == IssueState::Closed,
                 prs: vec![],
             })
@@ -417,6 +421,7 @@ fn from_linear(issue: &LinearIssue) -> Issue {
             .iter()
             .map(|b| Blocker {
                 key: b.identifier.clone(),
+                title: Some(b.title.clone()),
                 resolved: closed(&b.state),
                 prs: vec![],
             })

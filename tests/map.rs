@@ -25,7 +25,8 @@ fn with_issues(switches: &str, numbers: &[u64]) -> Setup {
     t
 }
 
-/// `issue` of `acme/api` blocked by the open issues `blockers` of `acme/api`.
+/// `issue` of `acme/api` blocked by the open issues `blockers` of `acme/api`,
+/// each titled `Blocker <N>` as GitHub gives a Blocker.
 fn block(t: &Setup, issue: u64, blockers: &[u64]) {
     let mut issues = t.world.issues.borrow_mut();
     let issues = issues.get_mut("acme/api").unwrap();
@@ -34,6 +35,7 @@ fn block(t: &Setup, issue: u64, blockers: &[u64]) {
         .map(|&number| GitHubBlocker {
             slug: "acme/api".into(),
             number,
+            title: format!("Blocker {number}"),
             state: IssueState::Open,
         })
         .collect();
@@ -51,7 +53,7 @@ fn keys(map: &Value) -> Vec<&str> {
 }
 
 #[test]
-fn a_blocked_ready_for_agent_issue_is_a_node_with_a_blocker_edge_from_each_open_blocker() {
+fn a_blocked_ready_for_agent_issue_is_a_node_with_a_blocker_edge_from_each_open_blocker_titled() {
     // #5 is open but not labelled: not the loop's, only a Blocker.
     let t = with_issues("dispatch = false", &[1, 2]);
     block(&t, 2, &[1, 5]);
@@ -82,7 +84,7 @@ fn a_blocked_ready_for_agent_issue_is_a_node_with_a_blocker_edge_from_each_open_
         node(&map, "acme/api#5"),
         &json!({
             "key": "acme/api#5",
-            "title": null,
+            "title": "Blocker 5",
             "url": "https://github.com/acme/api/issues/5",
             "kind": "code",
             "stage": null,

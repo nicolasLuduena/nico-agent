@@ -112,14 +112,20 @@ pub fn map(ctx: &Context, slug: &str) -> Result<Option<Value>, Refusal> {
                 let (slug, number) = source::github_ref(key)?;
                 Some(format!("https://github.com/{slug}/issues/{number}"))
             });
-        let research = (issue.is_some_and(|i| i.labels.iter().any(|l| l == "research")))
+        let title = (issue.map(|i| i.title.as_str()))
+            .or(d["title"].as_str())
+            .or_else(|| {
+                let mut blockers = issues.iter().flat_map(|i| &i.blockers);
+                blockers.find(|b| b.key == key)?.title.as_deref()
+            });
+        let research =(issue.is_some_and(|i| i.labels.iter().any(|l| l == "research")))
             || d["research"] == true;
         let verdict = &d["verdict"];
         nodes.insert(
             key,
             json!({
                 "key": key,
-                "title": issue.map_or_else(|| d["title"].clone(), |i| json!(i.title)),
+                "title": title,
                 "url": url,
                 "kind": if research { "research" } else { "code" },
                 "stage": stage,

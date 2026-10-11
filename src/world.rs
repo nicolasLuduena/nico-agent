@@ -84,6 +84,7 @@ pub struct IssueRef {
 pub struct GitHubBlocker {
     pub slug: String,
     pub number: u64,
+    pub title: String,
     pub state: IssueState,
 }
 
@@ -120,6 +121,7 @@ pub struct LinearProject {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LinearBlocker {
     pub identifier: String,
+    pub title: String,
     /// Linear's state type (`unstarted`, `completed`, ...).
     pub state: String,
 }
@@ -581,7 +583,7 @@ const ISSUES_QUERY: &str = "query($owner: String!, $name: String!, $label: Strin
         number title url state createdAt
         labels(first: 50) { nodes { name } }
         assignees(first: 20) { nodes { login } }
-        blockedBy(first: 50) { nodes { number state repository { nameWithOwner } } }
+        blockedBy(first: 50) { nodes { number title state repository { nameWithOwner } } }
         parent { number repository { nameWithOwner } }
         subIssuesSummary { total }
       }
@@ -612,6 +614,8 @@ struct Login {
 #[derive(Deserialize)]
 struct NumberedNode {
     number: u64,
+    #[serde(default)]
+    title: String,
     #[serde(default)]
     state: String,
     repository: Repository,
@@ -644,6 +648,7 @@ impl From<IssueNode> for GitHubIssue {
                 .map(|b| GitHubBlocker {
                     slug: b.repository.name_with_owner,
                     number: b.number,
+                    title: b.title,
                     state: issue_state(&b.state),
                 })
                 .collect(),

@@ -155,6 +155,7 @@ fn an_issue_that_is_not_ready_is_refused_with_help_saying_why() {
         i.blockers = vec![nico_agent::world::GitHubBlocker {
             slug: "acme/api".into(),
             number: 2,
+            title: "Issue 2".into(),
             state: nico_agent::world::IssueState::Open,
         }]
     });

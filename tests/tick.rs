@@ -327,6 +327,7 @@ fn block(t: &Setup, issue: u64, blockers: &[u64]) {
         .map(|&number| GitHubBlocker {
             slug: "acme/api".into(),
             number,
+            title: format!("Issue {number}"),
             state: IssueState::Open,
         })
         .collect();

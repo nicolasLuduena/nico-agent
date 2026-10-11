@@ -127,6 +127,7 @@ fn stacked() -> Setup {
     issues.get_mut("acme/api").unwrap()[0].blockers = vec![GitHubBlocker {
         slug: "acme/api".into(),
         number: 1,
+        title: "Issue 1".into(),
         state: IssueState::Open,
     }];
     drop(issues);
