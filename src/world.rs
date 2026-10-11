@@ -204,19 +204,14 @@ pub trait World {
     fn git_remotes(&self, path: &str) -> WorldResult<Option<Vec<String>>>;
     /// Fetch origin, or a head branch into its origin tracking ref.
     fn git_fetch(&self, path: &str, branch: Option<&str>) -> WorldResult<()>;
-    /// The branches on the clone's origin, without `refs/heads/`.
-    fn git_remote_branches(&self, path: &str) -> WorldResult<Vec<String>>;
     /// The default branch of the clone's origin, without the remote prefix.
     fn git_default_branch(&self, path: &str) -> WorldResult<String>;
-    /// `git diff <base>...HEAD` in the checkout at `path`.
-    fn git_diff(&self, path: &str, base: &str) -> WorldResult<String>;
 
     // gh
     /// Login of the user's own GitHub session.
     fn github_viewer(&self) -> WorldResult<String>;
     /// Open `ready-for-agent` issues of a repo; the core still applies the Ready rule.
     fn github_issues(&self, slug: &str) -> WorldResult<Vec<GitHubIssue>>;
-    fn github_issue(&self, slug: &str, number: u64) -> WorldResult<Option<GitHubIssue>>;
     /// Open or merged PRs that close an issue when merged.
     fn github_linked_pull_requests(&self, slug: &str, number: u64)
     -> WorldResult<Vec<PullRequest>>;
@@ -243,7 +238,6 @@ pub trait World {
     // Linear
     fn linear_viewer(&self) -> WorldResult<String>;
     fn linear_issues(&self, team: &str) -> WorldResult<Vec<LinearIssue>>;
-    fn linear_issue(&self, identifier: &str) -> WorldResult<Option<LinearIssue>>;
     /// URLs of a Linear issue's attachments, GitHub PRs among them.
     fn linear_attachment_urls(&self, identifier: &str) -> WorldResult<Vec<String>>;
     /// Assign a Linear issue to the API key's owner (the Claim).
@@ -260,8 +254,6 @@ pub trait World {
     ) -> WorldResult<Worktree>;
     /// Remove the workspace's worktree, keeping its branch; no-op if it is gone.
     fn herdr_worktree_remove(&self, workspace: &str) -> WorldResult<()>;
-    /// Open a plain workspace (no worktree) in `cwd`, without focusing it.
-    fn herdr_workspace_create(&self, cwd: &str, label: &str) -> WorldResult<String>;
     /// Close a workspace and the agents in it; no-op if it is gone.
     fn herdr_workspace_close(&self, workspace: &str) -> WorldResult<()>;
     fn herdr_tab_create(&self, workspace: &str, cwd: &str, label: &str) -> WorldResult<Tab>;
@@ -317,7 +309,6 @@ pub trait World {
 
     // clock, timers, process
     fn now(&self) -> SystemTime;
-    fn sleep(&self, duration: Duration);
     /// Run `task` every `interval`, each run `interval` after the last one
     /// ended; the real World never returns.
     fn every(&self, interval: Duration, task: &mut dyn FnMut());
@@ -329,11 +320,6 @@ pub trait World {
 pub struct RealWorld {
     /// Where `secrets.env` may hold the Linear API key.
     pub config_dir: PathBuf,
-}
-
-/// What every real call answers until the ticket that needs it fills it in.
-fn unbuilt<T>(name: &str) -> WorldResult<T> {
-    Err(WorldError(format!("World::{name} is not built yet")))
 }
 
 /// Run `gh` (or `ghbot`, its bot twin) with prompts and colors off: whether
@@ -729,9 +715,6 @@ impl World for RealWorld {
         args.extend(refspec.as_deref());
         git_ok(path, &args).map(drop)
     }
-    fn git_remote_branches(&self, _: &str) -> WorldResult<Vec<String>> {
-        unbuilt("git_remote_branches")
-    }
     fn git_default_branch(&self, path: &str) -> WorldResult<String> {
         if let Ok(head) = git_ok(
             path,
@@ -753,9 +736,6 @@ impl World for RealWorld {
                     "could not find the default branch of origin in {path}"
                 ))
             })
-    }
-    fn git_diff(&self, _: &str, _: &str) -> WorldResult<String> {
-        unbuilt("git_diff")
     }
     fn github_viewer(&self) -> WorldResult<String> {
         let args = ["api", "user", "--jq", ".login"].map(String::from);
@@ -784,9 +764,6 @@ impl World for RealWorld {
                 _ => return Ok(issues),
             }
         }
-    }
-    fn github_issue(&self, _: &str, _: u64) -> WorldResult<Option<GitHubIssue>> {
-        unbuilt("github_issue")
     }
     fn github_linked_pull_requests(
         &self,
@@ -951,9 +928,6 @@ impl World for RealWorld {
     fn linear_issues(&self, team: &str) -> WorldResult<Vec<LinearIssue>> {
         linear::issues(self, team)
     }
-    fn linear_issue(&self, _: &str) -> WorldResult<Option<LinearIssue>> {
-        unbuilt("linear_issue")
-    }
     fn linear_attachment_urls(&self, identifier: &str) -> WorldResult<Vec<String>> {
         linear::attachment_urls(self, identifier)
     }
@@ -990,9 +964,6 @@ impl World for RealWorld {
             Err(failure) if !failure.is(&["workspace_not_found"]) => Err(failure.into()),
             _ => Ok(()),
         }
-    }
-    fn herdr_workspace_create(&self, _: &str, _: &str) -> WorldResult<String> {
-        unbuilt("herdr_workspace_create")
     }
     fn herdr_workspace_close(&self, workspace: &str) -> WorldResult<()> {
         match herdr(&["workspace", "close", workspace]) {
@@ -1065,7 +1036,7 @@ impl World for RealWorld {
                     timeout.as_millis()
                 )));
             }
-            self.sleep(Duration::from_millis(250));
+            std::thread::sleep(Duration::from_millis(250));
         }
     }
     fn herdr_agent_rename(&self, pane: &str, name: &str) -> WorldResult<()> {
@@ -1231,9 +1202,6 @@ impl World for RealWorld {
     }
     fn now(&self) -> SystemTime {
         SystemTime::now()
-    }
-    fn sleep(&self, duration: Duration) {
-        std::thread::sleep(duration)
     }
     fn every(&self, interval: Duration, task: &mut dyn FnMut()) {
         loop {

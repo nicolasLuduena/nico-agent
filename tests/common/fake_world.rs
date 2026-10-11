@@ -18,10 +18,6 @@ pub struct FakeWorld {
     pub clones: RefCell<HashMap<String, Vec<String>>>,
     /// Default branch of each clone's origin; `main` when unset.
     pub default_branches: RefCell<HashMap<String, String>>,
-    /// Branches on each clone's origin; just its default branch when unset.
-    pub remote_branches: RefCell<HashMap<String, Vec<String>>>,
-    /// What `git diff <base>...HEAD` prints in each checkout, by path.
-    pub diffs: RefCell<HashMap<String, String>>,
     /// GitHub issues, by slug.
     pub issues: RefCell<HashMap<String, Vec<GitHubIssue>>>,
     pub linear: RefCell<Vec<LinearIssue>>,
@@ -74,8 +70,6 @@ impl Default for FakeWorld {
             linear_user: RefCell::new("linear-me".into()),
             clones: Default::default(),
             default_branches: Default::default(),
-            remote_branches: Default::default(),
-            diffs: Default::default(),
             issues: Default::default(),
             linear: Default::default(),
             linear_attachments: Default::default(),
@@ -246,25 +240,9 @@ impl World for FakeWorld {
         self.call(format!("git -C {path} fetch origin{refspec}"))
     }
 
-    fn git_remote_branches(&self, path: &str) -> WorldResult<Vec<String>> {
-        self.call(format!("git -C {path} ls-remote --heads origin"))?;
-        let default = self.git_default_branch_of(path);
-        Ok(self
-            .remote_branches
-            .borrow()
-            .get(path)
-            .cloned()
-            .unwrap_or_else(|| vec![default]))
-    }
-
     fn git_default_branch(&self, path: &str) -> WorldResult<String> {
         self.call(format!("git -C {path} default-branch"))?;
         Ok(self.git_default_branch_of(path))
-    }
-
-    fn git_diff(&self, path: &str, base: &str) -> WorldResult<String> {
-        self.call(format!("git -C {path} diff {base}...HEAD"))?;
-        Ok(self.diffs.borrow().get(path).cloned().unwrap_or_default())
     }
 
     fn github_viewer(&self) -> WorldResult<String> {
@@ -282,15 +260,6 @@ impl World for FakeWorld {
                 i.state == IssueState::Open && i.labels.iter().any(|l| l == "ready-for-agent")
             })
             .collect())
-    }
-
-    fn github_issue(&self, slug: &str, number: u64) -> WorldResult<Option<GitHubIssue>> {
-        self.call(format!("github issue {slug}#{number}"))?;
-        Ok(self
-            .issues
-            .borrow()
-            .get(slug)
-            .and_then(|issues| issues.iter().find(|i| i.number == number).cloned()))
     }
 
     fn github_linked_pull_requests(
@@ -399,16 +368,6 @@ impl World for FakeWorld {
             .collect())
     }
 
-    fn linear_issue(&self, identifier: &str) -> WorldResult<Option<LinearIssue>> {
-        self.call(format!("linear issue {identifier}"))?;
-        Ok(self
-            .linear
-            .borrow()
-            .iter()
-            .find(|i| i.identifier == identifier)
-            .cloned())
-    }
-
     fn linear_attachment_urls(&self, identifier: &str) -> WorldResult<Vec<String>> {
         self.call(format!("linear attachments {identifier}"))?;
         Ok(self
@@ -441,13 +400,6 @@ impl World for FakeWorld {
 
     fn herdr_worktree_remove(&self, workspace: &str) -> WorldResult<()> {
         self.call(format!("herdr worktree remove --workspace {workspace}"))
-    }
-
-    fn herdr_workspace_create(&self, cwd: &str, label: &str) -> WorldResult<String> {
-        self.call(format!(
-            "herdr workspace create --cwd {cwd} --label {label} --no-focus"
-        ))?;
-        Ok(self.next_workspace())
     }
 
     /// Closing a workspace ends the agents in it.
@@ -623,14 +575,6 @@ impl World for FakeWorld {
             self.advance(interval);
             task();
         }
-    }
-
-    /// Moves the clock on at once.
-    fn sleep(&self, duration: Duration) {
-        self.calls
-            .borrow_mut()
-            .push(format!("sleep {}s", duration.as_secs()));
-        self.advance(duration);
     }
 
     fn process_id(&self) -> u32 {
