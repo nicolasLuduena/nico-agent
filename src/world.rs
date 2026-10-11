@@ -164,6 +164,8 @@ pub struct PullRequestActivity {
     pub mergeable: Mergeable,
     /// When anything last happened on it, ISO 8601 as GitHub gives it.
     pub updated_at: String,
+    /// When it merged, if it did.
+    pub merged_at: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -265,6 +267,9 @@ pub trait World {
     fn write_file(&self, path: &str, contents: &[u8]) -> WorldResult<()>;
     /// What a file holds; `None` when there is no file at `path`.
     fn read_file(&self, path: &str) -> WorldResult<Option<Vec<u8>>>;
+    /// Every file under the folder `path`, by its path from there, sorted,
+    /// without symlinks; none when there is no such folder.
+    fn list_files(&self, path: &str) -> WorldResult<Vec<String>>;
 
     // gh
     /// Login of the user's own GitHub session.
@@ -764,6 +769,26 @@ fn copy_tree(from: &Path, to: &Path) -> io::Result<()> {
     Ok(())
 }
 
+/// Push the files under `dir` onto `files`, each after `under`.
+fn list_tree(dir: &Path, under: &str, files: &mut Vec<String>) -> io::Result<()> {
+    use io::ErrorKind::{NotADirectory, NotFound};
+    let entries = match fs::read_dir(dir) {
+        Err(e) if matches!(e.kind(), NotFound | NotADirectory) => return Ok(()),
+        entries => entries?,
+    };
+    for entry in entries {
+        let entry = entry?;
+        let name = format!("{under}{}", entry.file_name().to_string_lossy());
+        let kind = entry.file_type()?;
+        if kind.is_dir() {
+            list_tree(&entry.path(), &format!("{name}/"), files)?;
+        } else if kind.is_file() {
+            files.push(name);
+        }
+    }
+    Ok(())
+}
+
 /// A failed command's first line on stderr, else its exit status.
 fn first_line(stderr: &[u8], status: &std::process::ExitStatus) -> String {
     let stderr = String::from_utf8_lossy(stderr);
@@ -921,6 +946,13 @@ impl World for RealWorld {
             Err(e) => Err(WorldError(format!("could not read {path}: {e}"))),
         }
     }
+    fn list_files(&self, path: &str) -> WorldResult<Vec<String>> {
+        let mut files = vec![];
+        list_tree(Path::new(path), "", &mut files)
+            .map_err(|e| WorldError(format!("could not list {path}: {e}")))?;
+        files.sort();
+        Ok(files)
+    }
     fn github_viewer(&self) -> WorldResult<String> {
         let args = ["api", "user", "--jq", ".login"].map(String::from);
         Ok(gh(&args)?.trim().to_string())
@@ -1042,9 +1074,10 @@ impl World for RealWorld {
             base_ref_name: String,
             mergeable: String,
             updated_at: String,
+            merged_at: Option<String>,
         }
         let number = number.to_string();
-        let fields = "state,isDraft,headRefOid,baseRefName,mergeable,updatedAt";
+        let fields = "state,isDraft,headRefOid,baseRefName,mergeable,updatedAt,mergedAt";
         let args = ["pr", "view", &number, "--repo", slug, "--json", fields];
         let viewed: Viewed =
             serde_json::from_str(&gh(&args.map(String::from))?).map_err(|_| invalid("GitHub"))?;
@@ -1059,6 +1092,7 @@ impl World for RealWorld {
                 _ => Mergeable::Unknown,
             },
             updated_at: viewed.updated_at,
+            merged_at: viewed.merged_at,
         })
     }
     /// Through `ghbot`: only the App's installation token can list its repositories.

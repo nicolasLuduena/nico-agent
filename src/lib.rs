@@ -7,6 +7,7 @@ pub mod dispatch;
 pub mod flip;
 pub mod http;
 pub mod launch;
+pub mod map;
 pub mod pause;
 pub mod rebase;
 pub mod refresh;
