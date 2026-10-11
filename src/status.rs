@@ -3,6 +3,7 @@
 use serde_json::{Value, json};
 
 use crate::args::Args;
+use crate::away;
 use crate::cli::{Context, Refusal};
 use crate::config::{self, Config};
 use crate::dispatch::{self, Dispatch};
@@ -32,6 +33,7 @@ pub fn shown(
     read: bool,
 ) -> Result<Value, Refusal> {
     let mut repos = vec![];
+    let runs = away::load(&ctx.config_dir)?;
     for (slug, repo) in &config.repos {
         let (read, error) = match read {
             true => source::issues(ctx.world, &ctx.config_dir, slug, repo, config.tick())?,
@@ -51,6 +53,9 @@ pub fn shown(
         });
         if let Some(error) = error {
             shown["error"] = json!(error.0);
+        }
+        if let Some(scan) = away::last_scan(&runs, slug) {
+            shown["last_scan"] = json!(scan);
         }
         let harness = &repo.implementer.harness;
         if config.reviewer(repo, harness).harness == *harness {

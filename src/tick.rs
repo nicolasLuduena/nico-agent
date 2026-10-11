@@ -8,6 +8,7 @@ use std::fs::{self, File, OpenOptions, TryLockError};
 use std::io::{self, Read as _, Write};
 
 use crate::asking;
+use crate::away;
 use crate::cli::{Context, Refusal};
 use crate::config::{self, Config};
 use crate::dispatch::{self, Flags};
@@ -48,6 +49,7 @@ pub fn tick(ctx: &Context, refresh: bool) -> Result<Vec<String>, Refusal> {
     said.extend(flip::step(ctx, &config)?);
     said.extend(asking::step(ctx, agents.as_deref())?);
     said.extend(fill_rooms(ctx, &config, &reads)?);
+    said.extend(away::step(ctx, &config, agents.as_deref())?);
     Ok(said)
 }
 

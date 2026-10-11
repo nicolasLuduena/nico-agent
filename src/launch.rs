@@ -43,7 +43,15 @@ pub struct AgentLaunch {
 pub fn agent_name(role: &str, slug: &str, issue: &str) -> String {
     let issue =
         source::github_ref(issue).map_or_else(|| issue.to_lowercase(), |(_, n)| n.to_string());
-    let suffix = format!("-{issue}");
+    named(role, slug, &format!("-{issue}"))
+}
+
+/// `<role>-<repo name>`, cut as [`agent_name`] cuts it, for an agent of a whole Repo.
+pub fn repo_agent_name(role: &str, slug: &str) -> String {
+    named(role, slug, "")
+}
+
+fn named(role: &str, slug: &str, suffix: &str) -> String {
     let room = MAX_AGENT_NAME.saturating_sub(role.len() + 1 + suffix.len());
     let name = slug.split_once('/').map_or(slug, |(_, name)| name);
     let repo: String = (name.to_lowercase().chars())

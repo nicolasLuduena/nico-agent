@@ -61,6 +61,8 @@ pub struct FakeWorld {
     pub boot: RefCell<String>,
     /// Files outside the config directory (worktrees, the Bucket), by path.
     pub files: RefCell<BTreeMap<String, Vec<u8>>>,
+    /// How far local time is ahead of UTC, in seconds: 0, UTC, unless set.
+    pub utc_offset: Cell<i64>,
     workspaces: Cell<u32>,
     tabs: RefCell<HashMap<String, u32>>,
 }
@@ -98,6 +100,7 @@ impl Default for FakeWorld {
             dead_pids: Default::default(),
             boot: RefCell::new("boot-1".into()),
             files: Default::default(),
+            utc_offset: Cell::new(0),
             workspaces: Cell::new(0),
             tabs: Default::default(),
         }
@@ -650,6 +653,10 @@ impl World for FakeWorld {
 
     fn boot_id(&self) -> String {
         self.boot.borrow().clone()
+    }
+
+    fn utc_offset(&self) -> i64 {
+        self.utc_offset.get()
     }
 }
 
