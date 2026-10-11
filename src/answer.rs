@@ -18,8 +18,15 @@ pub struct Answer {
     pub at: String,
     pub question: String,
     pub text: String,
-    /// `user` or `faux-nico`.
-    pub by: String,
+    pub by: By,
+}
+
+/// Who typed an answer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum By {
+    User,
+    FauxNico,
 }
 
 pub fn answer(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
@@ -31,10 +38,14 @@ pub fn answer(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
         return Err(bad_invocation("--text is required".into(), "answer"));
     };
     let by = args.flag("--by").unwrap_or("user");
-    if !["user", "faux-nico"].contains(&by) {
-        let error = format!("`{by}` is not an author: user or faux-nico");
-        return Err(bad_invocation(error, "answer"));
-    }
+    let author = match by {
+        "user" => By::User,
+        "faux-nico" => By::FauxNico,
+        _ => {
+            let error = format!("`{by}` is not an author: user or faux-nico");
+            return Err(bad_invocation(error, "answer"));
+        }
+    };
     let config = config::load(&ctx.config_dir)?;
     let dispatches = dispatch::load(&ctx.config_dir)?;
     let issue = dispatch::key(&config, &dispatches, text_ref)?;
@@ -67,7 +78,7 @@ pub fn answer(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
         at: state::iso(ctx.world.now()),
         question: asking.question,
         text: text.into(),
-        by: by.into(),
+        by: author,
     };
     dispatch::update(&ctx.config_dir, |all| {
         if let Some(live) = all.iter_mut().find(|d| dispatch::is_live(d, &issue)) {

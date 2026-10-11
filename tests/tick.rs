@@ -474,6 +474,26 @@ fn a_stackable_issue_keeps_gardening_waiting_even_with_stack_off() {
 }
 
 #[test]
+fn a_stackable_gardening_issue_is_never_stacked_and_waits_with_the_reason_shown() {
+    let t = with_stackable();
+    garden(&t, &[2]);
+    set_repo(&t, "switches = { gardening = true }");
+
+    let said = t.tick();
+
+    assert_eq!(said, ["acme/api#3 dispatched"]);
+    let status = t.cli(&["status", "--json"]).json();
+    assert_eq!(status["repos"][0]["stackable"], serde_json::json!([]));
+    assert_eq!(
+        status["repos"][0]["waiting"],
+        serde_json::json!([{
+            "key": "acme/api#2", "title": "Issue 2", "url": "https://github.com/acme/api/issues/2", "kind": "code",
+            "reason": "acme/api#2 waits for its Blockers' open PR https://github.com/acme/api/pull/11 to merge; a Gardening issue is never stacked",
+        }])
+    );
+}
+
+#[test]
 fn a_stacked_dispatch_finds_its_pr_on_its_branch_and_is_closed_when_it_merges() {
     let t = with_stackable();
     t.tick();

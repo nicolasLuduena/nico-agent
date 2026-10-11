@@ -3,7 +3,7 @@
 use serde_json::{Value, json};
 
 use crate::args::Args;
-use crate::away;
+use crate::away::{self, Run, Trigger};
 use crate::cli::{Context, Refusal, bad_invocation};
 use crate::config::{self, Config};
 use crate::dispatch::{self, Dispatch};
@@ -29,15 +29,16 @@ pub fn status(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
         return Ok(shown);
     };
     // ISO 8601 UTC times compare as text in time order.
-    let after = |at: &Value| at.as_str().is_some_and(|at| at > since);
+    let after = |at: &str| at > since;
     let all = shown["dispatches"].as_array().cloned().unwrap_or_default();
-    let merged = (all.iter()).filter(|d| after(&d["pr"]["merged_at"]));
+    let merged = (all.iter()).filter(|d| d["pr"]["merged_at"].as_str().is_some_and(after));
     shown["merged"] = json!(merged.collect::<Vec<_>>());
-    let closed = (all.iter()).filter(|d| after(&d["closed_at"]) && d["stage"] != "Merged");
+    let closed = (all.iter())
+        .filter(|d| d["closed_at"].as_str().is_some_and(after) && d["stage"] != "Merged");
     shown["closed"] = json!(closed.collect::<Vec<_>>());
     let answers = (dispatches.iter())
         .flat_map(|d| d.answers.iter().map(move |a| (d, a)))
-        .filter(|(_, a)| *a.at > *since)
+        .filter(|(_, a)| after(&a.at))
         .map(|(d, a)| {
             json!({
                 "issue": d.issue, "since": a.since, "at": a.at,
@@ -46,7 +47,7 @@ pub fn status(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
         });
     shown["answers"] = json!(answers.collect::<Vec<_>>());
     let runs = away::load(&ctx.config_dir)?;
-    let scans = (runs.iter()).filter(|r| r.trigger == away::QUALITY_SCAN && *r.at > *since);
+    let scans = (runs.iter()).filter(|r| r.trigger == Trigger::QualityScan && after(&r.at));
     shown["scans"] = json!(scans.collect::<Vec<_>>());
     Ok(shown)
 }
@@ -145,7 +146,8 @@ pub fn shown(
                 "implementer": agent_state(&d.implementer.agent),
                 "reviewer": d.reviewer.as_ref().map(|r| agent_state(&r.launch.agent)),
             });
-            if let Some(run) = (runs.iter()).rfind(|r| r.issue.as_ref() == Some(&d.issue)) {
+            let faux_nico = |r: &&Run| matches!(&r.trigger, Trigger::FauxNico { issue, .. } if *issue == d.issue);
+            if let Some(run) = (runs.iter()).rfind(faux_nico) {
                 shown["faux_nico"] = json!(run);
             }
         }

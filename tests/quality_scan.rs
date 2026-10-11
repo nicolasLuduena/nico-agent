@@ -90,6 +90,41 @@ fn a_scan_runs_once_a_week_and_again_at_the_next_weeks_weekday_and_hour() {
 }
 
 #[test]
+fn a_repo_never_scanned_waits_for_its_weekly_slot_not_the_first_tick_after_the_switch_goes_on() {
+    // Wednesday noon, days after Sunday's slot.
+    let t = with_repo(ON);
+
+    let midweek = t.tick();
+    t.world.advance(TO_SUNDAY_3AM - TICK);
+    let before = t.tick();
+    t.world.advance(TICK);
+    let slot = t.tick();
+
+    assert_eq!(midweek, Vec::<String>::new());
+    assert_eq!(before, Vec::<String>::new());
+    assert_eq!(slot, ["acme/api: quality-scan started on claude"]);
+    assert_eq!(last_scan(&t)["at"], "2026-10-04T03:00:00Z");
+}
+
+#[test]
+fn a_first_scan_with_no_room_in_its_slot_hour_waits_for_the_next_weeks_slot() {
+    let t = with_repo(&format!("room = 1\n{ON}"));
+    t.world
+        .add_issue("acme/api", common::github_issue("acme/api", 7));
+    t.world.advance(TO_SUNDAY_3AM);
+    assert_eq!(t.tick(), ["acme/api#7 dispatched"]);
+    let config = t.config_dir.join("config.toml");
+    let text = std::fs::read_to_string(&config).unwrap();
+    std::fs::write(&config, text.replace("room = 1", "room = 2")).unwrap();
+    t.world.advance(Duration::from_secs(3600));
+
+    let past_the_hour = t.tick();
+
+    assert_eq!(past_the_hour, Vec::<String>::new());
+    assert_eq!(last_scan(&t), serde_json::Value::Null);
+}
+
+#[test]
 fn with_no_room_at_the_hour_the_scan_runs_at_the_first_later_tick_with_room() {
     let t = with_repo(&format!("room = 1\n{ON}"));
     t.world

@@ -288,7 +288,7 @@ fn the_hour_is_local_and_the_launch_morning_launch_when_set() {
 const SUMMARY: &str = "\n## Merge these\n- acme/api#7 https://github.com/acme/api/pull/9\n\n## Answer these\nNothing needs you\n";
 
 #[test]
-fn a_changed_morning_md_emits_changed_and_one_notification_with_its_first_line() {
+fn a_changed_morning_md_emits_changed_and_one_notification_with_its_first_item() {
     let t = with_repo("");
     t.tick();
     let mut events = t.events();
@@ -301,10 +301,16 @@ fn a_changed_morning_md_emits_changed_and_one_notification_with_its_first_line()
     let again = t.tick();
 
     assert_eq!(sent, "event: changed\ndata: {}\n\n");
-    assert_eq!(said, ["Morning summary sent: ## Merge these"]);
+    assert_eq!(
+        said,
+        ["Morning summary sent: - acme/api#7 https://github.com/acme/api/pull/9"]
+    );
     assert_eq!(
         *t.world.notifications.borrow(),
-        [("Morning summary".to_string(), "## Merge these".to_string())]
+        [(
+            "Morning summary".to_string(),
+            "- acme/api#7 https://github.com/acme/api/pull/9".to_string()
+        )]
     );
     assert_eq!(events.next(), "");
     assert_eq!(again, Vec::<String>::new());

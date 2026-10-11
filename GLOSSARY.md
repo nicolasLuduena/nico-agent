@@ -27,8 +27,10 @@ Its Implementer writes findings to one Markdown file and opens it as a PR.
 _Avoid_: spike.
 
 **Gardening issue**: an issue labelled `gardening` beside `ready-for-agent`,
-filed by quality-scan in a category the Repo pre-approved. The only work
-faux-nico starts. _Avoid_: chore, cleanup task.
+filed by quality-scan in a category the Repo pre-approved. The Loop starts a
+Ready one only while nothing else in its Repo is Ready or Stackable and the
+Repo's gardening Switch is on; it is never stacked. _Avoid_: chore, cleanup
+task.
 
 ## Running
 
@@ -110,17 +112,20 @@ _Avoid_: artifact store.
 
 ## Away
 
-**faux-nico**: the agent that stands in for the user: fresh per trigger,
-reads the Repo's `PRODUCT.md`, answers what is settled, starts gardening
-when the loop is dry. _Avoid_: Lead, proxy, assistant.
+**faux-nico**: the agent that stands in for the user on an Asking: fresh per
+Asking, in a worktree of the Repo, it answers only what the Repo's
+`PRODUCT.md`, the issue and its parent settle, and otherwise ends so the
+user is notified. It starts no work. _Avoid_: Lead, proxy, assistant.
 
 **quality-scan**: the weekly skill that audits a Repo for bloat and
 deepening opportunities and files issues. _Avoid_: linter, retro.
 
-**Morning summary**: `morning.md`, written once a day: what to merge in which
-order, what needs an answer, what failed, what gardening landed, what ideas
-were filed. Rendered first on the Board. _Avoid_: report, digest.
+**Morning summary**: `morning.md`, written once a day by the morning agent
+from what `status` shows since the last one: what to merge in which order,
+what needs an answer, what failed, what gardening landed, what ideas were
+filed. Rendered first on the Board. _Avoid_: report, digest.
 
-**Action log**: the file nico-agent appends to for every action the loop or
-faux-nico took, which the Morning summary reads. _Avoid_: history,
-conversation.
+**Run**: one start of a trigger's agent: a quality-scan, a faux-nico or the
+morning agent, recorded with when it started and when it ended, so a missed
+scan or morning shows in `status`. A Dispatch is never a Run, nor called
+one. _Avoid_: job, session.
