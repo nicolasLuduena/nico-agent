@@ -10,7 +10,7 @@ related_targets: []
 Scope: the one page `serve` embeds at `/` (spec #231). Mode: Operate.
 Audience and job: the user, at the desk in the morning with GitHub beside it, reads the shape of each Repo's night (what is Ready, in flight, Verified, merged) before acting; the phone is a check-in.
 Constraints: every number from `/api/status` or `/api/map`; readable with GitHub paused; standard web controls; Light, Dark, System.
-Memorable moment: a Repo's map read like a timetable, dependency chains running left to right, the one yellow band saying what needs you.
+Memorable moment: a Repo's map read like a timetable, Blocker chains running left to right, the one yellow band saying what needs you.
 Unresolved: exact node size once real titles are laid out; the morning slot's content (spec 3).
 
 ## Direction contract

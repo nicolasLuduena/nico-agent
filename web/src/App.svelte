@@ -96,7 +96,7 @@
       <p class="none">No Repo yet. Add one with <code>nico-agent repo add &lt;owner/name&gt; --path &lt;clone&gt;</code>.</p>
     {/if}
   {:else if !failure}
-    <p class="none">Reading the status…</p>
+    <p class="none">Reading nico-agent…</p>
   {/if}
 </main>
 
