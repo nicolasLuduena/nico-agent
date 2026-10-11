@@ -469,28 +469,53 @@ fn a_reviewer_that_keeps_leaving_herdr_is_started_again_up_to_the_cap_per_head_t
     let new_head = gone(&t);
 
     let started = vec!["acme/api#7: Reviewer started on codex for sha9"];
-    assert_eq!(
-        said,
-        [
-            started.clone(),
-            started,
-            vec![
-                "acme/api#7: its Reviewer left herdr 3 times without a Verdict on sha9; not started again for it"
-            ],
-            vec![],
-        ]
-    );
-    assert_eq!(
-        *t.world.notifications.borrow(),
-        [(
-            "acme/api#7 Reviewer stopped".to_string(),
-            "Its Reviewer left herdr 3 times without a Verdict on sha9. Review the PR by hand and record it with `nico-agent verdict acme/api#7 pass|fail --sha sha9`.".to_string()
-        )]
-    );
+    assert_eq!(said, [started.clone(), started, vec![STOPPED], vec![],]);
+    assert_eq!(*t.world.notifications.borrow(), [told()]);
     assert_eq!(
         new_head,
         ["acme/api#7: Reviewer started on codex for sha10"]
     );
+}
+
+const STOPPED: &str = "acme/api#7: its Reviewer for sha9 failed to start or left herdr before a Verdict 3 times; not started again for it";
+
+/// The one notification that acme/api#7's Reviewer is not started again for sha9.
+fn told() -> (String, String) {
+    (
+        "acme/api#7 Reviewer stopped".into(),
+        "Its Reviewer for sha9 failed to start or left herdr before a Verdict 3 times. Review the PR by hand and record it with `nico-agent verdict acme/api#7 pass|fail --sha sha9`.".into(),
+    )
+}
+
+#[test]
+fn a_reviewer_that_cannot_start_is_tried_up_to_the_cap_per_head_then_told_once() {
+    let t = with_pr("");
+    let broken = "agent_start_failed: codex is not installed";
+    t.world.fail_call("herdr agent start rev-api-7", broken);
+
+    let said: Vec<Vec<String>> = (0..5)
+        .map(|_| {
+            let said = t.tick();
+            t.world.advance(TICK);
+            said
+        })
+        .collect();
+
+    let failed = format!("could not start the Reviewer of acme/api#7: {broken}");
+    assert_eq!(
+        said,
+        [
+            vec![
+                "acme/api#7: PR https://github.com/acme/api/pull/9 found".to_string(),
+                failed.clone(),
+            ],
+            vec![failed.clone()],
+            vec![failed, STOPPED.into()],
+            vec![],
+            vec![],
+        ]
+    );
+    assert_eq!(*t.world.notifications.borrow(), [told()]);
 }
 
 #[test]
