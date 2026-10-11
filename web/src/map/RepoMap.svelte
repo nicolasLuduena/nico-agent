@@ -11,7 +11,7 @@
   import { tick, untrack } from "svelte";
   import { watch } from "../live";
   import { selection } from "../selection.svelte";
-  import type { Repo } from "../status";
+  import { number, type Repo } from "../status";
   import { layout, NODE, type Placed } from "./layout";
   import Mark from "./Mark.svelte";
 
@@ -157,8 +157,6 @@
     };
   }
 
-  /** `#7` for an issue of this Repo, else its whole key. */
-  const number = (key: string) => (key.startsWith(`${repo.slug}#`) ? key.slice(repo.slug.length) : key);
   const prNumber = (url: string) => url.split("/").pop();
 
   /** The Agent state mark: Asking, working, idle, or no agent. */
@@ -175,7 +173,7 @@
   function said(n: Placed) {
     const a = agent(n);
     return [
-      number(n.key),
+      number(n.key, repo.slug),
       n.title ?? "",
       n.stage ?? "Blocker",
       a && `agent ${a}`,
@@ -248,7 +246,7 @@
             <rect class="frame" x="0.5" y="0.5" width={NODE.width - 1} height={NODE.height - 1} />
             {#if n.needs}<rect class="flag" width={NODE.width} height="4" />{/if}
             {#if n.stage === "Failed"}<rect class="failed" width="4" height={NODE.height} />{/if}
-            <text class="number" x="12" y="30" use:fit_text={[number(n.key), 140]}></text>
+            <text class="number" x="12" y="30" use:fit_text={[number(n.key, repo.slug), 140]}></text>
             <text class="kind" x="236" y="27">{n.kind.toUpperCase()}</text>
             {#if n.title}
               <text class="title" x="12" y="53" use:fit_text={[n.title, 224]}></text>

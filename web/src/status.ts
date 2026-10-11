@@ -33,6 +33,9 @@ export interface Issue {
   title: string;
 }
 
+/** `#7` for an issue of the Repo `slug`, else its whole key: another Repo's issue, or a Linear id. */
+export const number = (key: string, slug: string) => (key.startsWith(`${slug}#`) ? key.slice(slug.length) : key);
+
 export type Stage = "Implementing" | "PR draft" | "Verified" | "Merged" | "Closed" | "Failed";
 
 export interface Dispatch {

@@ -6,6 +6,7 @@
   import { ticked } from "../controls/Refused.svelte";
   import { watch } from "../live";
   import { selection } from "../selection.svelte";
+  import { number, type Stage } from "../status";
   import { clock } from "../time";
   import Mark from "./Mark.svelte";
   import { shown } from "./RepoMap.svelte";
@@ -23,9 +24,9 @@
   let { issue }: { issue: string } = $props();
 
   /** The Stages only a Dispatch has: any other node has no /api/node (it answers 404). */
-  const DISPATCHED = ["Implementing", "PR draft", "Verified", "Merged", "Closed", "Failed"];
+  const DISPATCHED: Stage[] = ["Implementing", "PR draft", "Verified", "Merged", "Closed", "Failed"];
   const node = $derived(shown.map?.nodes.find((n) => n.key === issue) ?? null);
-  const dispatched = $derived(DISPATCHED.includes(node?.stage ?? ""));
+  const dispatched = $derived(DISPATCHED.some((stage) => stage === node?.stage));
   let full = $state<Node | null>(null);
   let failure = $state<string | null>(null);
 
@@ -44,7 +45,6 @@
   });
 
   const pr = $derived(full?.pr ?? node?.pr ?? null);
-  const number = $derived(issue.includes("#") ? `#${issue.split("#").pop()}` : issue);
 
   function close() {
     selection.issue = null;
@@ -93,7 +93,7 @@
     <div class="line">
       <h2 id="panel-title" tabindex="-1" bind:this={title}>
         {node?.title ?? issue}
-        {#if node?.url}<a href={node.url} target="_blank" rel="noreferrer">{number}</a>{/if}
+        {#if node?.url}<a href={node.url} target="_blank" rel="noreferrer">{number(issue, selection.repo ?? "")}</a>{/if}
       </h2>
       <button type="button" class="quiet" onclick={close}>Close</button>
     </div>

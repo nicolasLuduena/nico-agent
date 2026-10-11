@@ -1,18 +1,13 @@
 <script lang="ts">
-  // The Repo's five switches, each written to config.toml on toggle.
+  // The switches /api/status shows of the Repo, each written to config.toml on toggle.
   import type { Repo } from "../status";
   import Refused from "./Refused.svelte";
   import { send, type Sent } from "./send";
 
-  const SWITCHES = [
-    ["dispatch", "Dispatch"],
-    ["stack", "Stack"],
-    ["review", "Review"],
-    ["restart", "Restart"],
-    ["flip", "Flip to ready"],
-  ];
-
   let { repo }: { repo: Repo } = $props();
+
+  /** A switch's name as the Glossary says it, capitalised. */
+  const label = (name: string) => (name === "flip" ? "Flip to ready" : name[0].toUpperCase() + name.slice(1));
 
   // The PATCH's answer, until /api/status's next one.
   let switches = $derived(repo.switches);
@@ -35,10 +30,10 @@
 <section aria-labelledby="switches-head">
   <h2 class="label" id="switches-head">Switches</h2>
   <ul>
-    {#each SWITCHES as [name, label] (name)}
+    {#each Object.keys(switches) as name (name)}
       <li>
         <label>
-          <span>{label}</span>
+          <span>{label(name)}</span>
           <input
             type="checkbox"
             role="switch"

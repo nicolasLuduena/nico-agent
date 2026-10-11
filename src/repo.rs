@@ -70,11 +70,7 @@ pub fn add(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
     bucket::create(ctx, &config::load(&ctx.config_dir)?)?;
 
     config::edit(&ctx.config_dir, |config, doc| {
-        let found = config
-            .repos
-            .iter()
-            .find(|(s, _)| s.eq_ignore_ascii_case(slug));
-        let (slug, done) = match found {
+        let (slug, done) = match config.repo(slug) {
             Some((slug, repo))
                 if repo.path == path && (linear.is_none() || repo.linear == linear) =>
             {
@@ -119,11 +115,7 @@ pub fn rm(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
     let slug = args.positionals(&["<owner/name>"])?[0];
     let dispatches = dispatch::load(&ctx.config_dir)?;
     config::edit(&ctx.config_dir, |config, doc| {
-        let Some((slug, repo)) = config
-            .repos
-            .iter()
-            .find(|(s, _)| s.eq_ignore_ascii_case(slug))
-        else {
+        let Some((slug, repo)) = config.repo(slug) else {
             return json!({ "repo": format!("{slug} not configured (no-op)") });
         };
         doc["repos"]
@@ -179,8 +171,7 @@ pub fn switches(ctx: &Context, slug: &str, set: &Value) -> Result<Value, Refusal
         }
     }
     config::edit(&ctx.config_dir, |config, doc| {
-        let Some((slug, repo)) = (config.repos.iter()).find(|(s, _)| s.eq_ignore_ascii_case(slug))
-        else {
+        let Some((slug, repo)) = config.repo(slug) else {
             return Err(Refusal::new(
                 format!("{slug} is not a configured Repo"),
                 vec![format!(

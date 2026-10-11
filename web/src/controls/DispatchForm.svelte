@@ -2,7 +2,7 @@
   // Dispatch by hand: one of the Repo's Ready or Stackable issues, on a
   // Harness, model and Effort that start on the last launch used.
   import { reload } from "../live";
-  import type { Repo, Status } from "../status";
+  import { number, type Repo, type Status } from "../status";
   import { choices, startingLaunch } from "./launch";
   import Refused from "./Refused.svelte";
   import { send, type Sent } from "./send";
@@ -21,9 +21,6 @@
   const model = $derived(pick.model !== undefined ? pick.model : launch.model);
   const effort = $derived(pick.effort !== undefined ? pick.effort : launch.effort);
   const takes = $derived(repo.harnesses[launch.harness] ?? { models: null, efforts: null });
-
-  /** `#7` for `owner/repo#7`; a Linear id as it is. */
-  const number = (key: string) => (key.includes("#") ? `#${key.split("#").pop()}` : key);
 
   async function submit(event: SubmitEvent) {
     event.preventDefault();
@@ -52,7 +49,7 @@
           {#if listed.length}
             <optgroup label={group}>
               {#each listed as i (i.key)}
-                <option value={i.key}>{number(i.key)} {i.title}</option>
+                <option value={i.key}>{number(i.key, repo.slug)} {i.title}</option>
               {/each}
             </optgroup>
           {/if}
@@ -88,7 +85,7 @@
     </button>
   </form>
   {#if sent?.outcome.ok}
-    <p role="status">Dispatched {number(sent.issue)}.</p>
+    <p role="status">Dispatched {number(sent.issue, repo.slug)}.</p>
   {:else if sent && !sent.outcome.ok}
     <Refused error={sent.outcome.error} help={sent.outcome.help} />
   {/if}

@@ -494,7 +494,7 @@ pub fn key(config: &Config, dispatches: &[Dispatch], text: &str) -> Result<Strin
         && is_number(number)
     {
         let number: u64 = number.parse().map_err(|_| not_a_reference(text))?;
-        let configured = config.repos.keys().find(|s| s.eq_ignore_ascii_case(slug));
+        let configured = config.repo(slug).map(|(slug, _)| slug);
         // Its Repo removed, an issue In flight there is still worked till Closed.
         let in_flight = (dispatches.iter())
             .find(|d| {

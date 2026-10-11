@@ -239,6 +239,11 @@ impl Config {
         Duration::from_secs(u64::from(self.tick_minutes) * 60)
     }
 
+    /// The Repo `slug` names, in any casing, by its slug as configured.
+    pub fn repo(&self, slug: &str) -> Option<(&String, &Repo)> {
+        (self.repos.iter()).find(|(s, _)| s.eq_ignore_ascii_case(slug))
+    }
+
     /// The Repo `d` was dispatched into; once removed, the Repo's defaults on
     /// the clone `d` was dispatched from, so its work In flight goes on till Closed.
     pub fn repo_of(&self, d: &Dispatch) -> Repo {

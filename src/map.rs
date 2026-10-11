@@ -10,6 +10,7 @@ use crate::bucket;
 use crate::cli::{Context, Refusal};
 use crate::config;
 use crate::dispatch;
+use crate::http;
 use crate::source::{self, Issue};
 use crate::stage;
 use crate::state;
@@ -22,7 +23,7 @@ use crate::world::READY_LABEL;
 /// days, the open Blockers of these, and the PRs its Stacked dispatches sit on.
 pub fn map(ctx: &Context, slug: &str) -> Result<Option<Value>, Refusal> {
     let config = config::load(&ctx.config_dir)?;
-    let Some(slug) = config.repos.keys().find(|s| s.eq_ignore_ascii_case(slug)) else {
+    let Some((slug, _)) = config.repo(slug) else {
         return Ok(None);
     };
     let status = status::shown(ctx, false)?;
@@ -118,7 +119,7 @@ pub fn map(ctx: &Context, slug: &str) -> Result<Option<Value>, Refusal> {
                 let mut blockers = issues.iter().flat_map(|i| &i.blockers);
                 blockers.find(|b| b.key == key)?.title.as_deref()
             });
-        let research =(issue.is_some_and(|i| i.labels.iter().any(|l| l == "research")))
+        let research = (issue.is_some_and(|i| i.labels.iter().any(|l| l == "research")))
             || d["research"] == true;
         let verdict = &d["verdict"];
         nodes.insert(
@@ -162,11 +163,11 @@ pub fn node(ctx: &Context, issue: &str) -> Result<Option<Value>, Refusal> {
     let folder = bucket::folder(d);
     let evidence: Vec<Value> = (bucket::files(ctx.world, &config, &folder)?.iter())
         .map(|f| {
-            let url = format!("/bucket/{}", bucket::escaped(&format!("{folder}/{f}")));
+            let url = format!("/bucket/{}", http::escaped(&format!("{folder}/{f}")));
             json!({ "path": f, "url": url })
         })
         .collect();
-    node["evidence_folder"] = json!(format!("/bucket/{}/", bucket::escaped(&folder)));
+    node["evidence_folder"] = json!(format!("/bucket/{}/", http::escaped(&folder)));
     node["evidence"] = json!(evidence);
     Ok(Some(node))
 }

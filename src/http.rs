@@ -7,6 +7,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use serde::Serialize;
 use serde_json::{Map, Value, json};
 
 use crate::bucket;
@@ -64,13 +65,13 @@ pub fn answer(ctx: &Context, request: &HttpRequest) -> Answer {
         ("GET", "/api/status") => reply(status(ctx)),
         ("GET", "/api/events") => events(ctx),
         ("GET", path) if let Some(slug) = path.strip_prefix("/api/map/") => {
-            let slug = bucket::unescaped(slug);
+            let slug = unescaped(slug);
             let help = "Ask for a Repo /api/status lists";
             found(map::map(ctx, &slug), format!("{slug} is not a Repo"), help)
         }
         ("GET", path) if let Some(issue) = path.strip_prefix("/api/node/") => {
             // `owner/repo#N`, its `#` escaped.
-            let issue = bucket::unescaped(issue);
+            let issue = unescaped(issue);
             let help = "Ask for an issue /api/status lists among its dispatches";
             found(
                 map::node(ctx, &issue),
@@ -93,13 +94,15 @@ pub fn answer(ctx: &Context, request: &HttpRequest) -> Answer {
         {
             ran(body(request).and_then(|set| repo::switches(ctx, slug, &set)))
         }
-        ("GET", path) if let Some(path) = path.strip_prefix("/bucket/") => bucket::file(ctx, path),
+        ("GET", path) if let Some(path) = path.strip_prefix("/bucket/") => {
+            bucket::file(ctx, &unescaped(path))
+        }
         (method, _) => {
             let help: Vec<String> = (ROUTES.iter())
                 .map(|(route, answers)| format!("{route}: {answers}"))
                 .collect();
-            let error = format!("no route {method} {path}");
-            json(404, json!({ "error": error, "help": help }))
+            let no_route = format!("no route {method} {path}");
+            error(404, &no_route, &help)
         }
     }
 }
@@ -212,7 +215,7 @@ fn agents(world: &dyn World, dir: &Path) -> Option<BTreeMap<String, AgentState>>
 fn reply(answer: Result<Value, Refusal>) -> Answer {
     match answer {
         Ok(answer) => json(200, answer),
-        Err(no) => json(500, json!({ "error": no.error, "help": no.help })),
+        Err(no) => error(500, &no.error, &no.help),
     }
 }
 
@@ -220,7 +223,7 @@ fn reply(answer: Result<Value, Refusal>) -> Answer {
 /// `missing` and `help` when it names nothing.
 fn found(answer: Result<Option<Value>, Refusal>, missing: String, help: &str) -> Answer {
     match answer {
-        Ok(None) => json(404, json!({ "error": missing, "help": [help] })),
+        Ok(None) => error(404, &missing, &[help]),
         answer => reply(answer.map(Option::unwrap_or_default)),
     }
 }
@@ -231,7 +234,7 @@ fn ran(answer: Result<Value, Refusal>) -> Answer {
     match answer {
         Err(no) => {
             let status = if no.exit_code == 2 { 400 } else { 409 };
-            json(status, json!({ "error": no.error, "help": no.help }))
+            error(status, &no.error, &no.help)
         }
         ok => reply(ok),
     }
@@ -264,6 +267,37 @@ fn body(request: &HttpRequest) -> Result<Value, Refusal> {
         help: vec![],
         exit_code: 2,
     })
+}
+
+/// `path` as a URL's path: each byte but `/` and the unreserved ones `%XX`-escaped.
+pub fn escaped(path: &str) -> String {
+    (path.bytes())
+        .map(|b| match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' | b'/' => {
+                char::from(b).to_string()
+            }
+            _ => format!("%{b:02X}"),
+        })
+        .collect()
+}
+
+/// `text` with each `%XX` escape decoded; any other `%` kept as is.
+pub fn unescaped(text: &str) -> String {
+    let (bytes, mut out, mut i) = (text.as_bytes(), vec![], 0);
+    while i < bytes.len() {
+        let hex = (bytes.get(i + 1..i + 3))
+            .and_then(|hex| u8::from_str_radix(std::str::from_utf8(hex).ok()?, 16).ok());
+        match (bytes[i], hex) {
+            (b'%', Some(byte)) => (out.push(byte), i += 3),
+            (byte, _) => (out.push(byte), i += 1),
+        };
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+/// `{error, help}`, what every refusal answers, with `status`.
+pub(crate) fn error(status: u16, error: &str, help: &[impl Serialize]) -> Answer {
+    json(status, json!({ "error": error, "help": help }))
 }
 
 pub(crate) fn json(status: u16, body: Value) -> Answer {

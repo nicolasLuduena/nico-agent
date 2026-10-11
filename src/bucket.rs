@@ -6,8 +6,6 @@
 
 use std::fs::File;
 
-use serde_json::json;
-
 use crate::cli::{Context, Refusal};
 use crate::config::{self, Config};
 use crate::dispatch::Dispatch;
@@ -67,31 +65,30 @@ pub fn keep(
     world.git_commit(bucket, &kept, message).map_err(refused)
 }
 
-/// `GET /bucket/<path>`: the file at `path`, URL-escaped, in the Bucket's
+/// `GET /bucket/<path>`: the file at `path`, its escapes decoded, in the Bucket's
 /// working tree, or for a folder (`path` ending in `/`) a page of links to
 /// every file under it; never one outside it, nor its git store.
 pub fn file(ctx: &Context, path: &str) -> Answer {
-    let path = unescaped(path);
     if path.split('/').any(|part| part == ".." || part == ".git") {
         let error = format!("{path} is not in the Bucket's working tree");
         let help = ["Ask for a file under /bucket/<owner>/<repo>/<issue>/<sha>/"];
-        return http::json(403, json!({ "error": error, "help": help }));
+        return http::error(403, &error, &help);
     }
     if path.is_empty() || path.ends_with('/') {
-        return listing(ctx, &path);
+        return listing(ctx, path);
     }
     let read = config::load(&ctx.config_dir).and_then(|config| {
         let file = format!("{}/{path}", config.bucket.path);
         Ok(ctx.world.read_file(&file)?)
     });
     match read {
-        Ok(Some(body)) => sandboxed(media_type(&path), body),
+        Ok(Some(body)) => sandboxed(media_type(path), body),
         Ok(None) => {
             let error = format!("no file {path} in the Bucket");
             let help = ["Each Verdict's Evidence is under /bucket/<owner>/<repo>/<issue>/<sha>/"];
-            http::json(404, json!({ "error": error, "help": help }))
+            http::error(404, &error, &help)
         }
-        Err(no) => http::json(500, json!({ "error": no.error, "help": no.help })),
+        Err(no) => http::error(500, &no.error, &no.help),
     }
 }
 
@@ -103,7 +100,7 @@ fn listing(ctx: &Context, folder: &str) -> Answer {
         Ok(files) if !files.is_empty() => {
             let html = |text: &str| text.replace('&', "&amp;").replace('<', "&lt;");
             let links: String = (files.iter())
-                .map(|f| format!("<li><a href=\"{}\">{}</a>\n", escaped(f), html(f)))
+                .map(|f| format!("<li><a href=\"{}\">{}</a>\n", http::escaped(f), html(f)))
                 .collect();
             let title = html(&format!("/bucket/{folder}"));
             let page = format!("<!doctype html>\n<title>{title}</title>\n<ul>\n{links}</ul>\n");
@@ -112,9 +109,9 @@ fn listing(ctx: &Context, folder: &str) -> Answer {
         Ok(_) => {
             let error = format!("no folder {folder} in the Bucket");
             let help = ["Each Verdict's Evidence is under /bucket/<owner>/<repo>/<issue>/<sha>/"];
-            http::json(404, json!({ "error": error, "help": help }))
+            http::error(404, &error, &help)
         }
-        Err(no) => http::json(500, json!({ "error": no.error, "help": no.help })),
+        Err(no) => http::error(500, &no.error, &no.help),
     }
 }
 
@@ -134,33 +131,9 @@ fn sandboxed(media_type: &str, body: Vec<u8>) -> Answer {
 /// Every file under the Bucket's `folder`, by its path in it; none of its git store.
 pub fn files(world: &dyn World, config: &Config, folder: &str) -> Result<Vec<String>, Refusal> {
     let path = format!("{}/{folder}", config.bucket.path);
-    world.list_files(path.trim_end_matches('/')).map_err(refused)
-}
-
-/// `path` as a URL's path: each byte but `/` and the unreserved ones `%XX`-escaped.
-pub fn escaped(path: &str) -> String {
-    (path.bytes())
-        .map(|b| match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' | b'/' => {
-                char::from(b).to_string()
-            }
-            _ => format!("%{b:02X}"),
-        })
-        .collect()
-}
-
-/// `text` with each `%XX` escape decoded; any other `%` kept as is.
-pub fn unescaped(text: &str) -> String {
-    let (bytes, mut out, mut i) = (text.as_bytes(), vec![], 0);
-    while i < bytes.len() {
-        let hex = (bytes.get(i + 1..i + 3))
-            .and_then(|hex| u8::from_str_radix(std::str::from_utf8(hex).ok()?, 16).ok());
-        match (bytes[i], hex) {
-            (b'%', Some(byte)) => (out.push(byte), i += 3),
-            (byte, _) => (out.push(byte), i += 1),
-        };
-    }
-    String::from_utf8_lossy(&out).into_owned()
+    world
+        .list_files(path.trim_end_matches('/'))
+        .map_err(refused)
 }
 
 /// What a browser should take a file for, by its extension; bytes to save if none it shows.

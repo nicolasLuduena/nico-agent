@@ -247,7 +247,10 @@ fn get_bucket_of_a_folder_links_every_file_under_it_sandboxed_as_files_are() {
     );
     assert_eq!((missing, git), (404, 403));
     let root = String::from_utf8(root).unwrap();
-    assert!(root.contains("acme/api/70/abc/shot.png") && !root.contains(".git"), "{root}");
+    assert!(
+        root.contains("acme/api/70/abc/shot.png") && !root.contains(".git"),
+        "{root}"
+    );
     assert_eq!(
         t.world.calls(),
         [
@@ -277,7 +280,7 @@ fn implement_prompt(toml: &str) -> String {
 }
 
 #[test]
-fn the_implement_prompt_names_the_worktree_s_evidence_folder_and_links_the_bucket_s_on_serve_or_bucket_url() {
+fn the_implement_prompt_names_the_evidence_folder_and_links_the_bucket_on_serve_or_bucket_url() {
     let on_serve = implement_prompt("");
     let on_tunnel = implement_prompt("[bucket]\nurl = \"https://nico.example.com/\"\n");
 
