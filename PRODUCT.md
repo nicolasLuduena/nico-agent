@@ -26,7 +26,12 @@ the result in the morning, from the desk or the phone.
   state (Ready, Implementing, PR draft, Verified, Merged); edges for
   Blockers; a stacked PR drawn to the PR it targets. A needs-you strip across
   Repos on top: Asking, failed twice, Verified PRs to merge. The morning
-  summary renders first each day.
+  summary renders first each day. A Refresh button is the one way to ask
+  GitHub again.
+- **Local first.** What GitHub or Linear said is kept locally and shown from
+  there. A PR is asked about again only while it can still change; merged and
+  closed are kept forever. Refresh re-asks on purpose. Rate limits and
+  outages leave the Board readable and the loop running on what it knows.
 - **Switches per Repo**, editable from its tab: dispatch, stack, review,
   restart, flip to ready, faux-nico answers, gardening, quality-scan. All off
   is a Repo that only shows. Defaults: all on except faux-nico answers and
@@ -88,6 +93,20 @@ Findings, retries and Verdicts stay local.
 4. **Restart, never repair.** Every failure is a fresh agent with a note.
 5. **Evidence over reading.** A PR carries proof it works; the user reads
    for shape, not for bugs.
+6. **Necessary for the goal, or not here.** A command exists only when
+   someone outside the process must call it. A feature exists only when the
+   night or the morning needs it.
+
+## Built as
+
+One Rust binary, `nico-agent`, for speed, a small footprint, and types that
+hold: `serve` runs the loop and the web app; `repo`, `dispatch` and
+`verdict` are the commands outsiders call. Everything outside the process
+(herdr, git, `gh`, Linear, notifications, the clock) is reached through one
+boundary with a real and a fake implementation, so every test runs without
+herdr or the network. The web app is Svelte, built with Vite and embedded in
+the binary, designed and checked with the impeccable skill against
+`DESIGN.md`, light and dark, phone width first.
 
 ## Where this is going
 
@@ -99,7 +118,7 @@ Findings, retries and Verdicts stay local.
 
 ## History
 
-The previous build (branch `main`) had a Lead agent, a Queue, a Scheduler,
-voice, and Partner tabs. It is kept there for parts: the herdr adapter, the
-dispatch steps, stacking, Stage from PRs, the Linear and GitHub readers.
-Nothing else from it is assumed here.
+The previous build (branch `main`, TypeScript on Bun) had a Lead agent, a
+Queue, a Scheduler, voice, and Partner tabs. It is kept as reference: its
+herdr, `gh` and Linear call shapes, its dispatch steps and stacking rules
+were proven and are the ones to port. Nothing from it is reused as code.
