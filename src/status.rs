@@ -46,6 +46,7 @@ pub fn shown(
             "read_at": read.map(|read| read.read_at),
             "ready": readiness.ready,
             "stackable": readiness.stackable,
+            "gardening": readiness.gardening,
             "waiting": readiness.waiting,
         });
         if let Some(error) = error {

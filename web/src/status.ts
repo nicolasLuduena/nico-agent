@@ -13,7 +13,9 @@ export interface Repo {
   prs_checked_at: string | null;
   ready: Issue[];
   stackable: Issue[];
-  /** dispatch, stack, review, restart, flip. */
+  /** Ready Gardening issues, kept out of `ready`. */
+  gardening: Issue[];
+  /** dispatch, stack, review, restart, flip, answer, gardening, quality_scan. */
   switches: Record<string, boolean>;
   /** The launch the loop dispatches on. */
   implementer: Launch;

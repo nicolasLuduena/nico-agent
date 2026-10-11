@@ -150,7 +150,16 @@ pub fn list(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
 }
 
 /// The switches the app shows and sets.
-const SWITCHES: [&str; 5] = ["dispatch", "stack", "review", "restart", "flip"];
+const SWITCHES: [&str; 8] = [
+    "dispatch",
+    "stack",
+    "review",
+    "restart",
+    "flip",
+    "answer",
+    "gardening",
+    "quality_scan",
+];
 
 /// Write `set`, `{name: bool}`, to the switches of the Repo `slug` in the
 /// config, keeping the rest as written; the Repo's switches after.

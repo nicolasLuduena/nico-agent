@@ -92,7 +92,7 @@ pub fn map(ctx: &Context, slug: &str) -> Result<Option<Value>, Refusal> {
         let shown = shown.unwrap_or(&Value::Null);
         let stage = match issue {
             _ if d.is_some() => shown["stage"].clone(),
-            _ if listed("ready", key) => json!("Ready"),
+            _ if listed("ready", key) || listed("gardening", key) => json!("Ready"),
             _ if listed("stackable", key) => json!("Stackable"),
             Some(issue) if offered(issue) => json!("Waiting"),
             _ => Value::Null,
