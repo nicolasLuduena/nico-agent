@@ -240,6 +240,8 @@ fn a_night_of_independent_issues_is_dispatched_then_closed_as_each_pr_merges() {
             vec![
                 "acme/api#1: PR https://github.com/acme/api/pull/11 found",
                 "acme/api#2: PR https://github.com/acme/api/pull/12 found",
+                "acme/api#1: Reviewer started on codex for sha11",
+                "acme/api#2: Reviewer started on codex for sha12",
             ],
             vec![
                 "acme/api#1 Closed: its PR https://github.com/acme/api/pull/11 merged",
@@ -248,6 +250,7 @@ fn a_night_of_independent_issues_is_dispatched_then_closed_as_each_pr_merges() {
             vec![
                 "acme/api#3: PR https://github.com/acme/api/pull/13 found",
                 "acme/api#2 Closed: its PR https://github.com/acme/api/pull/12 merged",
+                "acme/api#3: Reviewer started on codex for sha13",
             ],
         ]
     );

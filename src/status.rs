@@ -8,6 +8,7 @@ use crate::config;
 use crate::dispatch;
 use crate::source;
 use crate::stage;
+use crate::verdict;
 
 pub fn status(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
     Args::parse("status", args, &[])?.positionals(&[])?;
@@ -31,20 +32,27 @@ pub fn status(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
         if let Some(error) = error {
             shown["error"] = json!(error.0);
         }
+        let harness = &repo.implementer.harness;
+        if config.reviewer(repo).harness == *harness {
+            shown["warnings"] = json!([format!(
+                "{slug}'s Reviewer runs on {harness}, as its Implementer does, so it may share its blind spots; set another Harness in repos.\"{slug}\".reviewer"
+            )]);
+        }
         repos.push(shown);
     }
-    let dispatches: Vec<Value> = (dispatches.iter())
-        .map(|d| {
-            let mut shown = json!(d);
-            let pr = d.pr.as_ref().and_then(|url| Some((url, prs.get(url)?)));
-            shown["stage"] = json!(stage::of(d, pr.map(|(_, pr)| pr)));
-            shown["pr"] = pr.map_or(Value::Null, |(url, pr)| {
-                let mut pr = json!(pr);
-                pr["url"] = json!(url);
-                pr
-            });
-            shown
-        })
-        .collect();
-    Ok(json!({ "repos": repos, "dispatches": dispatches }))
+    let mut shown_dispatches = vec![];
+    for d in &dispatches {
+        let mut shown = json!(d);
+        let pr = d.pr.as_ref().and_then(|url| Some((url, prs.get(url)?)));
+        let verdict = verdict::load(&ctx.config_dir, &d.issue)?;
+        shown["stage"] = json!(stage::of(d, pr.map(|(_, pr)| pr), verdict.as_ref()));
+        shown["verdict"] = json!(verdict);
+        shown["pr"] = pr.map_or(Value::Null, |(url, pr)| {
+            let mut pr = json!(pr);
+            pr["url"] = json!(url);
+            pr
+        });
+        shown_dispatches.push(shown);
+    }
+    Ok(json!({ "repos": repos, "dispatches": shown_dispatches }))
 }

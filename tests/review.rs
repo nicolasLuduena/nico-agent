@@ -1,0 +1,381 @@
+mod common;
+
+use std::time::Duration;
+
+use common::{Ran, Setup, github_issue, pull_request, setup};
+use nico_agent::world::{Mergeable, PrState, PullRequest, PullRequestActivity};
+use serde_json::{Value, json};
+
+const TICK: Duration = Duration::from_secs(600);
+
+/// The review prompt for PR 9 of issue 7 at `sha`, on codex.
+fn review_prompt(sha: &str) -> String {
+    format!(
+        "herdr agent prompt rev-api-7 $verdict https://github.com/acme/api/pull/9 for https://github.com/acme/api/issues/7: re-run the repo's verification skill under .agents/skills/verify-*/ against the PR's head, and record the result with nico-agent verdict acme/api#7 pass|fail --sha {sha} --findings <file>"
+    )
+}
+
+/// Repo `acme/api`, as `toml` sets it, with issue 7 dispatched by a tick.
+fn dispatched(toml: &str) -> Setup {
+    let t = setup();
+    t.world
+        .add_clone("/src/api", &["git@github.com:acme/api.git"]);
+    std::fs::create_dir_all(&t.config_dir).unwrap();
+    let config = format!("[repos.\"acme/api\"]\npath = \"/src/api\"\n{toml}\n");
+    std::fs::write(t.config_dir.join("config.toml"), config).unwrap();
+    t.world.add_issue("acme/api", github_issue("acme/api", 7));
+    assert_eq!(t.tick(), ["acme/api#7 dispatched"]);
+    t
+}
+
+/// `dispatched`, then PR 9 opened on its branch and seen by the next tick.
+fn with_pr(toml: &str) -> Setup {
+    let t = dispatched(toml);
+    t.world.add_pr(PullRequest {
+        head_branch: Some("agent/api-7".into()),
+        ..pull_request("acme/api", 9)
+    });
+    t.world.advance(TICK);
+    t
+}
+
+/// The Implementer pushes: PR 9's head is now `sha`.
+fn push(t: &Setup, sha: &str) {
+    t.world.activity.borrow_mut().insert(
+        "acme/api#9".into(),
+        PullRequestActivity {
+            state: PrState::Open,
+            draft: true,
+            head_sha: sha.into(),
+            base_branch: "main".into(),
+            mergeable: Mergeable::Mergeable,
+            updated_at: "2026-09-30T12:30:00Z".into(),
+        },
+    );
+}
+
+fn calls_after<T>(t: &Setup, run: impl FnOnce() -> T) -> (T, Vec<String>) {
+    t.world.calls.borrow_mut().clear();
+    let out = run();
+    (out, t.world.calls())
+}
+
+fn herdr(calls: &[String]) -> Vec<&str> {
+    (calls.iter())
+        .filter(|c| c.starts_with("herdr "))
+        .map(String::as_str)
+        .collect()
+}
+
+#[test]
+fn a_reviewer_starts_on_another_harness_when_the_pr_first_appears_and_only_then() {
+    let t = with_pr("");
+
+    let (said, calls) = calls_after(&t, || t.tick());
+    t.world.advance(TICK);
+    let (again, later) = calls_after(&t, || t.tick());
+
+    assert_eq!(
+        said,
+        [
+            "acme/api#7: PR https://github.com/acme/api/pull/9 found",
+            "acme/api#7: Reviewer started on codex for sha9",
+        ]
+    );
+    assert_eq!(
+        herdr(&calls),
+        [
+            "herdr tab create --workspace w1 --cwd /worktrees/api-7 --label reviewer --no-focus",
+            r#"herdr agent start rev-api-7 --kind codex --pane w1:p3 -- -c projects={"/src/api"={trust_level="trusted"}}"#,
+            &review_prompt("sha9"),
+        ]
+    );
+    assert_eq!(again, Vec::<String>::new());
+    assert_eq!(herdr(&later), Vec::<&str>::new());
+    let status = t.cli(&["status", "--json"]).json();
+    let reviewer = &status["dispatches"][0]["reviewer"];
+    assert_eq!(reviewer["agent"], "rev-api-7");
+    assert_eq!(reviewer["harness"], "codex");
+    assert_eq!(reviewer["tab"], "w1:t3");
+    assert_eq!(reviewer["sha"], "sha9");
+}
+
+#[test]
+fn a_new_head_closes_the_last_reviewers_tab_and_starts_it_again_for_that_head() {
+    let t = with_pr("");
+    t.tick();
+    push(&t, "sha10");
+    t.world.advance(TICK);
+
+    let (said, calls) = calls_after(&t, || t.tick());
+
+    assert_eq!(said, ["acme/api#7: Reviewer started on codex for sha10"]);
+    assert_eq!(
+        herdr(&calls),
+        [
+            "herdr tab close w1:t3",
+            "herdr tab create --workspace w1 --cwd /worktrees/api-7 --label reviewer --no-focus",
+            r#"herdr agent start rev-api-7 --kind codex --pane w1:p4 -- -c projects={"/src/api"={trust_level="trusted"}}"#,
+            &review_prompt("sha10"),
+        ]
+    );
+}
+
+#[test]
+fn a_reviewer_that_fails_to_start_is_said_and_started_again_next_tick_in_a_fresh_tab() {
+    let t = with_pr("");
+    t.world
+        .fail_call("herdr agent start rev-api-7", "agent_name_taken: rev-api-7");
+
+    let said = t.tick();
+    t.world.clear_failures();
+    t.world.advance(TICK);
+    let (again, calls) = calls_after(&t, || t.tick());
+
+    assert_eq!(
+        said[1..],
+        ["could not start the Reviewer of acme/api#7: agent_name_taken: rev-api-7"]
+    );
+    assert_eq!(again, ["acme/api#7: Reviewer started on codex for sha9"]);
+    assert_eq!(
+        herdr(&calls)[..2],
+        [
+            "herdr tab close w1:t3",
+            "herdr tab create --workspace w1 --cwd /worktrees/api-7 --label reviewer --no-focus",
+        ]
+    );
+}
+
+#[test]
+fn with_review_off_no_reviewer_starts() {
+    let t = with_pr("switches = { review = false }");
+
+    let (said, calls) = calls_after(&t, || t.tick());
+
+    assert_eq!(
+        said,
+        ["acme/api#7: PR https://github.com/acme/api/pull/9 found"]
+    );
+    assert_eq!(herdr(&calls), Vec::<&str>::new());
+}
+
+/// `with_pr`, its PR found and its Reviewer started.
+fn reviewing() -> Setup {
+    let t = with_pr("");
+    t.tick();
+    t
+}
+
+fn verdict(t: &Setup, args: &[&str]) -> Ran {
+    t.cli(&[&["verdict"], args, &["--json"]].concat())
+}
+
+fn stage(t: &Setup) -> Value {
+    t.cli(&["status", "--json"]).json()["dispatches"][0]["stage"].clone()
+}
+
+#[test]
+fn a_passing_verdict_on_the_head_makes_the_dispatch_verified_until_the_pr_moves() {
+    let t = reviewing();
+
+    let ran = verdict(&t, &["acme/api#7", "pass", "--sha", "sha9"]);
+    let verified = t.cli(&["status", "--json"]).json()["dispatches"][0].clone();
+    push(&t, "sha10");
+    t.world.advance(TICK);
+    let said = t.tick();
+
+    assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
+    assert_eq!(
+        ran.json(),
+        json!({ "verdict": "acme/api#7 pass at sha9", "stage": "Verified" })
+    );
+    assert_eq!(verified["stage"], "Verified");
+    assert_eq!(
+        verified["verdict"],
+        json!({ "result": "pass", "sha": "sha9", "at": "2026-09-30T12:10:00Z", "findings": null })
+    );
+    assert_eq!(said, ["acme/api#7: Reviewer started on codex for sha10"]);
+    assert_eq!(stage(&t), "PR draft");
+}
+
+/// A findings file the Reviewer wrote, outside the config directory.
+fn findings(t: &Setup, text: &str) -> String {
+    let file = t.config_dir.with_file_name("findings.md");
+    std::fs::write(&file, text).unwrap();
+    file.display().to_string()
+}
+
+fn verdict_file(t: &Setup) -> Value {
+    let file = t.config_dir.join("verdicts/acme/api#7.json");
+    serde_json::from_str(&std::fs::read_to_string(file).unwrap()).unwrap()
+}
+
+#[test]
+fn a_failing_verdict_keeps_its_findings_and_no_reviewer_starts_again_on_that_head() {
+    let t = reviewing();
+    let file = findings(&t, "Signing in shows a 500.\n");
+
+    let ran = verdict(
+        &t,
+        &["acme/api#7", "fail", "--sha", "sha9", "--findings", &file],
+    );
+    t.world.advance(TICK);
+    let (said, calls) = calls_after(&t, || t.tick());
+
+    assert_eq!(
+        ran.json(),
+        json!({ "verdict": "acme/api#7 fail at sha9", "stage": "PR draft" })
+    );
+    assert_eq!(
+        verdict_file(&t),
+        json!({ "result": "fail", "sha": "sha9", "at": "2026-09-30T12:10:00Z", "findings": "Signing in shows a 500.\n" })
+    );
+    assert_eq!(said, Vec::<String>::new());
+    assert_eq!(herdr(&calls), Vec::<&str>::new());
+}
+
+#[test]
+fn the_same_verdict_again_is_a_no_op_and_a_changed_one_replaces_it() {
+    let t = reviewing();
+    let file = findings(&t, "The search box is gone.\n");
+    verdict(&t, &["acme/api#7", "pass", "--sha", "sha9"]);
+    t.world.advance(Duration::from_secs(60));
+
+    let again = verdict(&t, &["acme/api#7", "pass", "--sha", "sha9"]);
+    let kept = verdict_file(&t);
+    let changed = verdict(
+        &t,
+        &["acme/api#7", "fail", "--sha", "sha9", "--findings", &file],
+    );
+
+    assert_eq!(again.exit_code, 0, "{}", again.stdout);
+    assert_eq!(
+        again.json(),
+        json!({ "verdict": "acme/api#7 pass at sha9 already recorded (no-op)", "stage": "Verified" })
+    );
+    assert_eq!(kept["at"], "2026-09-30T12:10:00Z");
+    assert_eq!(changed.json()["stage"], "PR draft");
+    assert_eq!(verdict_file(&t)["result"], "fail");
+    assert_eq!(verdict_file(&t)["at"], "2026-09-30T12:11:00Z");
+}
+
+#[test]
+fn with_review_off_a_verdict_still_records_and_once_on_its_head_gets_no_reviewer() {
+    let t = with_pr("switches = { review = false }");
+    t.tick();
+    let file = findings(&t, "The search box is gone.\n");
+
+    let ran = verdict(
+        &t,
+        &["acme/api#7", "fail", "--sha", "sha9", "--findings", &file],
+    );
+    let config = "[repos.\"acme/api\"]\npath = \"/src/api\"\n";
+    std::fs::write(t.config_dir.join("config.toml"), config).unwrap();
+    t.world.advance(TICK);
+    let (said, calls) = calls_after(&t, || t.tick());
+
+    assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
+    assert_eq!(verdict_file(&t)["result"], "fail");
+    assert_eq!(said, Vec::<String>::new());
+    assert_eq!(herdr(&calls), Vec::<&str>::new());
+}
+
+#[test]
+fn a_reviewer_on_the_implementers_harness_starts_there_with_a_warning_in_status() {
+    let t = with_pr("reviewer = { harness = \"claude\", model = \"opus\" }");
+    let other = with_pr("");
+
+    let said = t.tick();
+
+    assert_eq!(said[1], "acme/api#7: Reviewer started on claude for sha9");
+    assert!(
+        (t.world.calls().iter())
+            .any(|c| c == "herdr agent start rev-api-7 --kind claude --pane w1:p3 -- --model opus"),
+        "{:?}",
+        t.world.calls()
+    );
+    let repo = t.cli(&["status", "--json"]).json()["repos"][0].clone();
+    assert_eq!(
+        repo["warnings"],
+        json!([
+            "acme/api's Reviewer runs on claude, as its Implementer does, so it may share its blind spots; set another Harness in repos.\"acme/api\".reviewer"
+        ])
+    );
+    let repo = other.cli(&["status", "--json"]).json()["repos"][0].clone();
+    assert_eq!(repo.get("warnings"), None);
+}
+
+const USAGE: &str = "Run `nico-agent verdict <issue> pass|fail --sha <sha> [--findings <file>]` to record the Reviewer's Verdict on the head of the issue's PR";
+
+#[test]
+fn a_verdict_on_no_live_dispatch_no_open_pr_or_a_head_the_pr_moved_from_is_refused() {
+    let t = dispatched("");
+    t.world.add_issue("acme/api", github_issue("acme/api", 8));
+    let see = "Run `nico-agent status` to see the Dispatch";
+    let no_pr = verdict(&t, &["acme/api#7", "pass", "--sha", "sha9"]);
+    let t = reviewing();
+    let gone = findings(&t, "x").replace("findings.md", "nowhere.md");
+    let cases = [
+        (
+            vec!["acme/api#8", "pass", "--sha", "sha9"],
+            json!({
+                "error": "acme/api#8 has no live Dispatch",
+                "help": ["A Verdict is on the PR of an issue In flight", see],
+            }),
+        ),
+        (
+            vec!["acme/api#7", "pass", "--sha", "sha8"],
+            json!({
+                "error": "sha8 is not the head of https://github.com/acme/api/pull/9",
+                "help": ["The PR moved to sha9: verify that head and run `nico-agent verdict acme/api#7 pass|fail --sha sha9`"],
+            }),
+        ),
+        (
+            vec!["acme/api#7", "fail", "--sha", "sha9", "--findings", &gone],
+            json!({
+                "error": format!("could not read the findings in {gone}: No such file or directory (os error 2)"),
+                "help": ["Pass --findings the file the findings are written in"],
+            }),
+        ),
+    ];
+
+    assert_eq!(no_pr.exit_code, 1);
+    assert_eq!(
+        no_pr.json(),
+        json!({
+            "error": "acme/api#7 has no open PR",
+            "help": ["A Verdict is on the head of an open PR", see],
+        })
+    );
+    for (args, refused) in cases {
+        let ran = verdict(&t, &args);
+        assert_eq!((ran.exit_code, ran.json()), (1, refused), "{args:?}");
+    }
+    assert!(!t.config_dir.join("verdicts").exists());
+}
+
+#[test]
+fn a_fail_without_findings_or_a_verdict_not_pass_or_fail_or_without_sha_is_a_bad_invocation() {
+    let t = reviewing();
+    let cases = [
+        (
+            vec!["acme/api#7", "fail", "--sha", "sha9"],
+            "a failing Verdict needs --findings <file>",
+        ),
+        (
+            vec!["acme/api#7", "maybe", "--sha", "sha9"],
+            "`maybe` is not a Verdict: pass or fail",
+        ),
+        (vec!["acme/api#7", "pass"], "--sha is required"),
+        (vec!["acme/api#7", "--sha", "sha9"], "pass|fail is required"),
+    ];
+
+    for (args, error) in cases {
+        let ran = verdict(&t, &args);
+        assert_eq!(
+            (ran.exit_code, ran.json()),
+            (2, json!({ "error": error, "help": [USAGE] })),
+            "{args:?}"
+        );
+    }
+}

@@ -10,6 +10,7 @@ use std::io::{self, Read as _, Write};
 use crate::cli::{Context, Refusal};
 use crate::config::{self, Config};
 use crate::dispatch::{self, Flags};
+use crate::review;
 use crate::source::{self, Read};
 use crate::stage;
 
@@ -32,6 +33,7 @@ pub fn tick(ctx: &Context) -> Result<Vec<String>, Refusal> {
     said.extend(dispatch::close_finished(ctx)?);
     // 4. Restart what broke: rebooted, stalled (#240); conflict, retarget (#244); verdict (#243).
     // 5. Start Reviewers (#242).
+    said.extend(review::start_reviewers(ctx, &config)?);
     // 6. Flip Verified PRs to ready (#243).
     said.extend(fill_rooms(ctx, &config, &reads)?);
     Ok(said)

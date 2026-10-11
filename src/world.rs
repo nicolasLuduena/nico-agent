@@ -245,6 +245,8 @@ pub trait World {
     /// Close a workspace and the agents in it; no-op if it is gone.
     fn herdr_workspace_close(&self, workspace: &str) -> WorldResult<()>;
     fn herdr_tab_create(&self, workspace: &str, cwd: &str, label: &str) -> WorldResult<Tab>;
+    /// Close a tab and the agents in it; no-op if it is gone.
+    fn herdr_tab_close(&self, tab: &str) -> WorldResult<()>;
     /// Start an agent of a herdr kind in a pane: `true` once ready for input,
     /// `false` when it is blocked on a startup question.
     fn herdr_agent_start(
@@ -968,6 +970,12 @@ impl World for RealWorld {
             tab: herdr_str(&result["tab"]["tab_id"])?,
             pane: herdr_str(&result["root_pane"]["pane_id"])?,
         })
+    }
+    fn herdr_tab_close(&self, tab: &str) -> WorldResult<()> {
+        match herdr_text(&["tab", "close", tab]) {
+            Err(failure) if !failure.is(&["tab_not_found"]) => Err(failure.into()),
+            _ => Ok(()),
+        }
     }
     fn herdr_agent_start(
         &self,
