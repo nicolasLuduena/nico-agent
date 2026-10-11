@@ -171,7 +171,7 @@ fn herdr_not_answering_is_said_and_never_read_as_every_agent_gone() {
 }
 
 #[test]
-fn with_restart_off_no_agent_is_watched_or_restarted() {
+fn with_restart_off_no_agent_is_restarted() {
     let t = dispatched(&[1]);
     let file = t.config_dir.join("config.toml");
     let config = std::fs::read_to_string(&file).unwrap();
@@ -180,7 +180,8 @@ fn with_restart_off_no_agent_is_watched_or_restarted() {
 
     let (said, herdr) = next_tick(&t);
 
-    assert_eq!((said, herdr), (vec![], vec![]));
+    // The list is Asking's.
+    assert_eq!((said, herdr), (vec![], vec!["herdr agent list".into()]));
 }
 
 #[test]
@@ -231,7 +232,7 @@ fn a_restart_that_fails_at_a_step_leaves_the_dispatch_failed_with_one_notificati
         failed,
         ["acme/api#1 failed at tab of its rebooted restart: workspace_not_found: w1 not found"]
     );
-    assert_eq!(after, (vec![], vec![]));
+    assert_eq!(after, (vec![], vec!["herdr agent list".into()]));
     assert_eq!(
         *t.world.notifications.borrow(),
         [(
@@ -332,12 +333,19 @@ fn done_counts_as_idle_but_an_asking_implementer_or_one_with_a_pr_never_stalls()
     assert_eq!(
         said,
         [
-            vec!["acme/api#2: PR https://github.com/acme/api/pull/12 found"],
+            vec![
+                "acme/api#2: PR https://github.com/acme/api/pull/12 found",
+                "acme/api#1 is Asking: \"\"",
+            ],
             vec![],
             vec!["acme/api#3 restarted: stalled"],
             vec![],
         ]
     );
+    // Asking past stall_minutes, and still never restarted.
+    let asking = &status(&t)["dispatches"][0];
+    assert_eq!(asking["asking"]["since"], "2026-09-30T12:10:00Z");
+    assert_eq!(asking["restarts"], json!([]));
 }
 
 #[test]

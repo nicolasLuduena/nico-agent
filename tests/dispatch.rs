@@ -657,6 +657,7 @@ fn status_shows_the_dispatch_implementing_with_its_launch_and_steps() {
                 "tab": "w1:t2", "pane": "w1:p2",
             },
             "research": false,
+            "asking": null,
             "completed": ["claim", "fetch", "worktree", "tab", "agent start", "agent ready", "prompt"],
             "failure": null,
             "claimed": true,

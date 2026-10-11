@@ -7,12 +7,14 @@ use std::collections::BTreeMap;
 use std::fs::{self, File, OpenOptions, TryLockError};
 use std::io::{self, Read as _, Write};
 
+use crate::asking;
 use crate::cli::{Context, Refusal};
 use crate::config::{self, Config};
 use crate::dispatch::{self, Flags};
 use crate::restart;
 use crate::source::{self, Read};
 use crate::stage;
+use crate::world::Agent;
 
 /// Held by the running tick, with its pid.
 pub const LOCK: &str = "tick.lock";
@@ -31,12 +33,29 @@ pub fn tick(ctx: &Context) -> Result<Vec<String>, Refusal> {
     let (mut said, reads) = read_sources(ctx, &config)?;
     said.extend(stage::watch(ctx)?);
     said.extend(dispatch::close_finished(ctx)?);
+    let agents = list_agents(ctx, &mut said)?;
     // 4. Restart what broke: rebooted, stalled (#240); conflict, retarget (#244); verdict (#243).
-    said.extend(restart::step(ctx, &config)?);
+    said.extend(restart::step(ctx, &config, agents.as_deref())?);
     // 5. Start Reviewers (#242).
     // 6. Flip Verified PRs to ready (#243).
+    said.extend(asking::step(ctx, agents.as_deref())?);
     said.extend(fill_rooms(ctx, &config, &reads)?);
     Ok(said)
+}
+
+/// herdr's agents, listed once for the steps that read Agent states, while a
+/// Dispatch is live. `None` when none is, or when herdr did not answer, which
+/// is said: herdr down is never every agent gone.
+fn list_agents(ctx: &Context, said: &mut Vec<String>) -> io::Result<Option<Vec<Agent>>> {
+    let dispatches = dispatch::load(&ctx.config_dir)?;
+    if dispatches.iter().all(|d| d.closed_at.is_some()) {
+        return Ok(None);
+    }
+    Ok(ctx
+        .world
+        .herdr_agents()
+        .map_err(|e| said.push(format!("could not list herdr's agents: {e}")))
+        .ok())
 }
 
 /// Take the tick lock and write our pid in it, or say the pid of the tick
@@ -83,8 +102,9 @@ fn read_sources(
     Ok((said, reads))
 }
 
-/// (7) Dispatch each Repo's Ready issues, oldest first, while its live
-/// Dispatches are under its room; behind the `dispatch` switch.
+/// (7) Dispatch each Repo's Ready issues, then its Stackable ones behind
+/// the `stack` switch, oldest first, while its live Dispatches are under its
+/// room; behind the `dispatch` switch.
 fn fill_rooms(
     ctx: &Context,
     config: &Config,
@@ -102,7 +122,8 @@ fn fill_rooms(
             .count();
         let room = (repo.room as usize).saturating_sub(live);
         let readiness = source::readiness(read, &dispatches, &prs);
-        for row in readiness.ready.into_iter().take(room) {
+        let stackable = (readiness.stackable.into_iter()).filter(|_| repo.switches.stack);
+        for row in readiness.ready.into_iter().chain(stackable).take(room) {
             match dispatch::issue(ctx, config, &row.key, Flags::default()) {
                 Ok(answer) => {
                     said.push(format!("{} dispatched", row.key));

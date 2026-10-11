@@ -50,10 +50,14 @@ impl fmt::Display for Reason {
 }
 
 /// (4) Restart, behind each Repo's `restart` switch, every live Dispatch
-/// whose agent herdr no longer has (rebooted), or whose agent has been idle
-/// or done for `stall_minutes` with no PR (stalled). Says what it did.
-pub fn step(ctx: &Context, config: &Config) -> io::Result<Vec<String>> {
-    let watched: Vec<Dispatch> = (dispatch::load(&ctx.config_dir)?.into_iter())
+/// whose agent is missing from herdr's `agents` (rebooted), or whose agent
+/// has been idle or done for `stall_minutes` with no PR (stalled). Nothing
+/// without a list: herdr down is not every agent gone. Says what it did.
+pub fn step(ctx: &Context, config: &Config, agents: Option<&[Agent]>) -> io::Result<Vec<String>> {
+    let Some(agents) = agents else {
+        return Ok(vec![]);
+    };
+    let watched = (dispatch::load(&ctx.config_dir)?.into_iter())
         .filter(|d| {
             config
                 .repos
@@ -61,21 +65,12 @@ pub fn step(ctx: &Context, config: &Config) -> io::Result<Vec<String>> {
                 .is_some_and(|r| r.switches.restart)
         })
         .filter(|d| d.closed_at.is_none() && d.failure.is_none())
-        .filter(|d| d.completed.len() == STEPS.len())
-        .collect();
-    if watched.is_empty() {
-        return Ok(vec![]);
-    }
-    // A failed list is herdr down, not every agent gone.
-    let agents = match ctx.world.herdr_agents() {
-        Ok(agents) => agents,
-        Err(e) => return Ok(vec![format!("could not list herdr's agents: {e}")]),
-    };
+        .filter(|d| d.completed.len() == STEPS.len());
     let stall = Duration::from_secs(u64::from(config.stall_minutes) * 60);
     let now = ctx.world.now();
     let mut said = vec![];
     for mut d in watched {
-        let state = agent_state(&agents, &d);
+        let state = agent_state(agents, &d);
         let idle = d.pr.is_none() && matches!(state, Some("idle" | "done"));
         if state.is_none() {
             said.extend(restart(ctx, config, d, Reason::Rebooted, &[])?);
