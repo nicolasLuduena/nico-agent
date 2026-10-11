@@ -13,6 +13,8 @@ import { PARTNER_TABS, isPartnerTab } from "../partner-tabs";
 import { ReposPane } from "./repos";
 import { StatsPane } from "./stats-page";
 import { useResource } from "./stream";
+import { type ReposJson, repoSlugs } from "./sync";
+import { SyncLine } from "./sync-line";
 import { useTalk } from "./talk-button";
 import { ThemeToggle } from "./theme-toggle";
 import { type ToastItem, Toasts } from "./toasts";
@@ -91,22 +93,23 @@ function useAnswered(board: BoardJson | null) {
  * shows, so switching keeps each one's drafts and picks. The page has one
  * talk button's worth of voice, which follows the page: on a Partner's tab
  * it talks to that tab's Front voice and speaks only its replies, elsewhere
- * the Lead's. The Board is
- * asked of `serve` on load and on each `board-changed`, and `serve` answers
- * from its one-minute cache (ADR-0011), so the page never asks GitHub more
- * often than that.
+ * the Lead's. The Board, the Repos and the Partners are asked of `serve` on
+ * load and again only when a Sync's `state-changed` names them; `serve`
+ * answers from its Local state (ADR-0015), so the page never asks GitHub.
  */
 function App() {
   const { harnesses, reload } = useHarnesses();
   const page = usePage();
   const { data: status = null } = useResource<LeadStatusJson>("/api/lead/status", ["lead-state"]);
-  const { data: board = null } = useResource<BoardJson>("/api/board", ["board-changed"]);
+  const { data: board = null } = useResource<BoardJson>("/api/board", [], ["board"]);
+  // The Repos are config, read as it is, so the tabs and filters list them before any Sync ends.
+  const repos = repoSlugs(useResource<ReposJson>("/api/repos", [], ["repos"]).data);
   const actions = useBoardActions(board ?? {}, harnesses, reload);
   const conversation = useConversation();
   const answered = useAnswered(board);
   const questions: ToastItem[] = [...openItems(conversation.state), ...askingItems(board, answered.questions)];
   const toasts = useToasts(questions);
-  const partners = useResource<{ partners?: PartnerJson[] }>("/api/partners", ["partner-changed", "board-changed"]).data?.partners ?? [];
+  const partners = useResource<{ partners?: PartnerJson[] }>("/api/partners", ["partner-changed"], ["partners"]).data?.partners ?? [];
   const onPartner = page !== "lead" && page !== "stats";
   const voice = useResource<{ voice?: string }>("/api/voice/state", ["voice-changed"]).data?.voice === "on";
   const talking = useTalk(voice, isPartnerTab(page) ? page : "lead");
@@ -121,6 +124,7 @@ function App() {
           {PAGES.map((p) => <a key={p.page} href={p.href} aria-current={page === p.page ? "page" : undefined}>{p.label}</a>)}
         </nav>
         <div className="top-end">
+          <SyncLine />
           <button
             type="button"
             className={`questions-count${questions.length ? " waiting" : ""}`}
@@ -138,10 +142,10 @@ function App() {
       </header>
       <main className={`shell ${page}`} hidden={onPartner}>
         <LeadPanel status={status} conversation={conversation} summon={toasts.summon} board={board} voice={voice} talking={talking} />
-        {page === "stats" ? <StatsPane /> : <Actions.Provider value={actions}><ReposPane board={board} /></Actions.Provider>}
+        {page === "stats" ? <StatsPane repos={repos} /> : <Actions.Provider value={actions}><ReposPane board={board} /></Actions.Provider>}
       </main>
       {PARTNER_TABS.map((tab) => (
-        <PartnerPanel key={tab} tab={tab} partner={partners.find((p) => p.tab === tab)} harnesses={harnesses} repos={board?.configured ?? []} hidden={page !== tab} talking={talking} />
+        <PartnerPanel key={tab} tab={tab} partner={partners.find((p) => p.tab === tab)} harnesses={harnesses} repos={repos} hidden={page !== tab} talking={talking} />
       ))}
       <Toasts
         items={questions}

@@ -11,8 +11,23 @@ export const STATE_FILE = "state.json";
 /** How long one Repo's share of a Sync may take before it counts as failed, so a hung Repo never stalls the Syncs after it. */
 export const REPO_SYNC_TIMEOUT_MS = 60_000;
 
-/** The parts of Local state, each read again by the page when a Sync changes it. */
-export type PartName = "board" | "repos" | "stats" | "partners";
+/** The parts of Local state, each read again by the page when a Sync changes it; `sync` is the Sync itself, starting or ending. */
+export type PartName = "board" | "repos" | "stats" | "partners" | "sync";
+
+/** One Repo's latest Sync: when its Board last loaded, and why its latest Sync failed, if it did. */
+export interface RepoSync {
+  repo: string;
+  at?: string;
+  error?: string;
+  failedAt?: string;
+}
+
+/** What `GET /api/sync` answers: whether a Sync runs now, when the last one ended, and each Repo's. */
+export interface SyncStatus {
+  syncing: boolean;
+  at?: string;
+  repos: RepoSync[];
+}
 
 /** A CLI command's answer as `--json` gives it, and its exit code. */
 export interface Answer {
@@ -71,6 +86,8 @@ export interface LocalState {
    * too early, such as an action's; several asked for meanwhile are one.
    */
   syncAgain(): Promise<void>;
+  /** Whether a Sync runs now, when the last ended, and how each Repo's went. */
+  status(): SyncStatus;
   /**
    * Read herdr again, without git or GitHub: the agent states on the Board
    * and the Partners, which change outside nico-agent between Syncs. While a
@@ -91,7 +108,7 @@ export function localState(configDir: string, sources: SyncSources, events: Even
   let running: Promise<void> | null = null;
 
   /** Set `name` to `answer`, telling the page when it changed; the Board's own Sync times never count as a change. */
-  const set = (name: Exclude<PartName, "stats">, answer: Answer) => {
+  const set = (name: Exclude<PartName, "stats" | "sync">, answer: Answer) => {
     const before = saved[name];
     saved[name] = { ...answer, syncedAt: now().toISOString() };
     if (!before || changed(before, answer)) events.emit("state-changed", { parts: [name] });
@@ -104,17 +121,16 @@ export function localState(configDir: string, sources: SyncSources, events: Even
       const repos = sources.repos();
       const boards = repos.map((r) => saved.repoBoards[slugKey(r.slug)]?.board ?? emptyBoard());
       const answer = await sources.renderBoard(mergeBoards(boards));
-      const synced = {
-        at: now().toISOString(),
-        repos: repos.map((r) => {
-          const part = saved.repoBoards[slugKey(r.slug)];
-          return { repo: r.slug, ...(part?.syncedAt && { at: part.syncedAt }), ...(part?.error && { error: part.error.error, failedAt: part.error.at }) };
-        }),
-      };
+      const synced = { at: now().toISOString(), repos: repoSyncs(repos) };
       set("board", { ...answer, value: { ...(answer.value as object), synced } });
     }).catch((e) => console.error(`sync: the Board failed to render: ${errorMessage(e)}`));
     return rendering;
   };
+
+  const repoSyncs = (repos: Repo[]): RepoSync[] => repos.map((r) => {
+    const part = saved.repoBoards[slugKey(r.slug)];
+    return { repo: r.slug, ...(part?.syncedAt && { at: part.syncedAt }), ...(part?.error && { error: part.error.error, failedAt: part.error.at }) };
+  });
 
   const syncRepo = async (repo: Repo) => {
     const key = slugKey(repo.slug);
@@ -133,7 +149,7 @@ export function localState(configDir: string, sources: SyncSources, events: Even
     await renderBoard();
   };
 
-  const syncPart = async (name: Exclude<PartName, "board" | "stats">, argv: string[]) => {
+  const syncPart = async (name: Exclude<PartName, "board" | "stats" | "sync">, argv: string[]) => {
     try {
       set(name, await sources.read(argv));
     } catch (e) {
@@ -176,12 +192,18 @@ export function localState(configDir: string, sources: SyncSources, events: Even
     }
   };
 
+  // The page shows a Sync running, so it hears of each one starting and ending.
   const sync = () => {
-    running ??= runSync().finally(() => {
+    if (running) return running;
+    running = runSync().finally(() => {
       running = null;
+      events.emit("state-changed", { parts: ["sync"] });
     });
+    events.emit("state-changed", { parts: ["sync"] });
     return running;
   };
+
+  const status = (): SyncStatus => ({ syncing: running !== null, ...(saved.syncedAt && { at: saved.syncedAt }), repos: repoSyncs(sources.repos()) });
 
   let again: Promise<void> | null = null;
   const syncAgain = () => {
@@ -249,7 +271,7 @@ export function localState(configDir: string, sources: SyncSources, events: Even
     return counted;
   };
 
-  return { answer, sync, syncAgain, refresh };
+  return { answer, sync, syncAgain, status, refresh };
 }
 
 /** `promise`, or a failure saying `why` once `ms` pass first. */

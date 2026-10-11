@@ -8,25 +8,20 @@ const WINDOWS = [7, 30, 90];
 
 /**
  * The Stats page's column: PRs merged and issues defined per day, over a
- * window of days, for every Repo or the one picked, as `/api/stats` counts
- * them. Asked of `serve` again on each conversation entry (a merge is one)
- * and Board change (a new issue is one); `stats` reads only what nico-agent
- * keeps, so this costs no GitHub request.
+ * window of days, for every Repo or the one picked from `repos` (the
+ * configured Repos), as `/api/stats` counts them. Asked of `serve` again when
+ * a Sync's `state-changed` names the stats; `serve` answers from its Local
+ * state (ADR-0015), so this costs no GitHub request.
  */
-export function StatsPane() {
+export function StatsPane({ repos }: { repos: string[] }) {
   const [days, setDays] = useState(30);
   const [repo, setRepo] = useState<string | null>(null);
-  // The Repos to pick from, as the last count of every Repo held them.
-  const [repos, setRepos] = useState<string[]>([]);
   const path = `/api/stats?days=${days}${repo ? `&repo=${encodeURIComponent(repo)}` : ""}`;
-  const { data, failure } = useResource<StatsAnswer>(path, ["conversation-entry", "board-changed"]);
+  const { data, failure } = useResource<StatsAnswer>(path, [], ["stats"]);
   const refused = data && "error" in data ? data.error : null;
   // Until the answer for this window and Repo arrives, the last one is not shown as if it were it.
   const stats = data && !("error" in data) && data.days === days && (!repo || data.total.repos.every((r) => sameSlug(r.repo, repo))) ? data : null;
   const view = stats && statsCharts(stats);
-  useEffect(() => {
-    if (view && !repo) setRepos(view.repos);
-  }, [view?.repos.join(" "), repo]);
   // A Repo picked and since gone has nothing to count: back to every Repo.
   useEffect(() => {
     if (refused && repo) setRepo(null);

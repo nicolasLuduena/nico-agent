@@ -10,6 +10,7 @@ import { PARTNER_TABS, isTab, loadPartners, partnerMcpPath } from "./partner";
 import { type EventName, Events } from "./events";
 import { loadConfig, standingOrders } from "./config";
 import { leadStatus } from "./lead";
+import type { SyncStatus } from "./local-state";
 import { RECORDS } from "./records";
 import { frontVoice } from "./front-voice";
 import { speaker } from "./speech";
@@ -28,6 +29,8 @@ export interface WebContext {
   look?: () => Promise<void>;
   /** Sync `serve`'s Local state now, joining a Sync that runs (ADR-0015); `POST /api/sync` asks for it. */
   sync?: () => Promise<void>;
+  /** Whether a Sync runs, when the last ended, and each Repo's; `GET /api/sync` answers it for the app's sync line. */
+  syncStatus?: () => SyncStatus;
 }
 
 /**
@@ -117,6 +120,7 @@ export function webHandler(context: WebContext) {
     const partner = partnerMcp[pathname];
     if (partner) return await partner(request);
     if (pathname === SYNC_PATH && request.method === "POST") return await syncNow(context, request);
+    if (pathname === SYNC_PATH && request.method === "GET") return syncStatus(context);
     if (pathname.startsWith("/api/") && request.method === "POST") return await postApi(context, request, pathname);
     if (request.method !== "GET") return new Response("Method Not Allowed\n", { status: 405 });
     const read = API_READS[pathname];
@@ -226,6 +230,12 @@ async function syncNow(ctx: WebContext, request: Request) {
   if (!ctx.sync) return apiError(404, "no Local state to sync here", ["Run `nico-agent serve`, which syncs it"]);
   await ctx.sync();
   return new Response(JSON.stringify({ sync: "done", help: ["Read /api/board, /api/stats, /api/partners or /api/repos for the synced state"] }), { headers: JSON_HEADERS });
+}
+
+/** Whether a Sync runs now, when the last ended, and how each Repo's went. */
+function syncStatus(ctx: WebContext) {
+  if (!ctx.syncStatus) return apiError(404, "no Local state here", ["Run `nico-agent serve`, which syncs it"]);
+  return new Response(JSON.stringify(ctx.syncStatus()), { headers: JSON_HEADERS });
 }
 
 /** Whether a browser says another site's page sent `request`: only the app's own page may act or listen. */

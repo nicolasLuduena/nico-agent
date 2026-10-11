@@ -1701,7 +1701,7 @@ async function serve(args: Args, ctx: RunContext): Promise<Output> {
       github.forget();
       return state.sync();
     };
-    await ctx.world.serve({ hostname: HOSTNAME, port }, webHandler({ ...ctx, events, look, runCli, sync }), { "/": app }, webSockets({ ...ctx, runCli, events }));
+    await ctx.world.serve({ hostname: HOSTNAME, port }, webHandler({ ...ctx, events, look, runCli, sync, syncStatus: state.status }), { "/": app }, webSockets({ ...ctx, runCli, events }));
   } catch (e) {
     if (!(e instanceof WorldError)) throw e;
     throw new CliError(e.message, ["Run `nico-agent serve --port <port>` with a free port"]);

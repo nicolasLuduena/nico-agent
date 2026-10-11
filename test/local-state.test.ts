@@ -111,7 +111,7 @@ describe("Sync", () => {
     expect((await (await get(ctx, "/api/board")).json()).issues).toMatchObject([{ issue: "acme/api#7" }, { issue: "acme/api#8" }, { issue: "acme/web#7" }]);
   });
 
-  test("a Sync that changes Local state tells the page which parts changed", async () => {
+  test("a Sync tells the page it starts and ends, and which parts it changed", async () => {
     const ctx = await serving();
     const told: string[] = [];
     const reader = (await ctx.world.server!.handler(new Request(`${URL}/api/events`))).body!.getReader();
@@ -124,14 +124,42 @@ describe("Sync", () => {
       }
     })();
 
+    const sync = 'event: state-changed\ndata: {"parts":["sync"]}';
     expect((await post(ctx, "/api/sync")).status).toBe(200);
-    expect(told).toEqual([]);
+    expect(told).toEqual([sync, sync]);
 
+    told.length = 0;
     ctx.world.addIssue("acme/web", { number: 8, title: "Cache the index" });
     expect((await post(ctx, "/api/sync")).status).toBe(200);
-    expect(told).toEqual(['event: state-changed\ndata: {"parts":["board"]}']);
+    expect(told).toEqual([sync, 'event: state-changed\ndata: {"parts":["board"]}', sync]);
     void reader.cancel();
     await listen;
+  });
+
+  test("GET /api/sync tells the page whether a Sync runs, when the last ended, and which Repo failed", async () => {
+    const ctx = await serving();
+    expect(await (await get(ctx, "/api/sync")).json()).toEqual({
+      syncing: false,
+      at: "2026-09-30T12:00:00.000Z",
+      repos: [{ repo: "acme/api", at: "2026-09-30T12:00:00.000Z" }, { repo: "acme/web", at: "2026-09-30T12:00:00.000Z" }],
+    });
+
+    ctx.world.failGitHub("acme/api", "ssh: connect to host github.com port 22: Connection timed out");
+    const release = ctx.world.holdGitHub("acme/web");
+    const sync = post(ctx, "/api/sync");
+    await settled();
+    expect(await (await get(ctx, "/api/sync")).json()).toMatchObject({ syncing: true });
+    release();
+    await sync;
+
+    expect(await (await get(ctx, "/api/sync")).json()).toEqual({
+      syncing: false,
+      at: "2026-09-30T12:00:00.000Z",
+      repos: [
+        { repo: "acme/api", at: "2026-09-30T12:00:00.000Z", error: "ssh: connect to host github.com port 22: Connection timed out", failedAt: "2026-09-30T12:00:00.000Z" },
+        { repo: "acme/web", at: "2026-09-30T12:00:00.000Z" },
+      ],
+    });
   });
 
   test("serve syncs every sync.intervalSeconds, 120 unless config sets it", async () => {

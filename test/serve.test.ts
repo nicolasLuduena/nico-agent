@@ -226,15 +226,18 @@ describe("serve ticks", () => {
   test("each tick tells the app the Board may have changed", async () => {
     const { world } = await serving();
     const stream = await events(world.server!.handler);
+    // The Syncs meanwhile say they start and end with `state-changed`, which this leaves aside.
+    const sent = async () => {
+      const names = [];
+      for (let event = await stream.next(50); event; event = await stream.next(50)) if (event.event !== "state-changed") names.push(event);
+      return names;
+    };
     await world.tick(10_000);
-    expect(await stream.next()).toEqual({ event: "board-changed", data: "{}" });
-    expect(await stream.next(50)).toBeNull();
+    expect(await sent()).toEqual([{ event: "board-changed", data: "{}" }]);
 
     await world.tick(TEN_MINUTES - 10_000);
     // One per Nudge tick, and one more for the advance tick.
-    const sent = [];
-    for (let event = await stream.next(50); event; event = await stream.next(50)) sent.push(event.event);
-    expect(sent).toEqual(Array(TEN_MINUTES / 10_000).fill("board-changed"));
+    expect((await sent()).map((e) => e.event)).toEqual(Array(TEN_MINUTES / 10_000).fill("board-changed"));
     await stream.close();
   });
 
