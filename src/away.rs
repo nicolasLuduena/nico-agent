@@ -1,8 +1,8 @@
 //! The loop's agents that are no Implementer nor Reviewer: a quality-scan per
-//! Repo, weekly, and a faux-nico per Asking. Each start is kept as a Run in
-//! `runs.json`, and its workspace closed once herdr reports its agent ended.
-//! What such an agent files is its own Source write; nico-agent writes
-//! nothing for it.
+//! Repo, weekly, a faux-nico per Asking, and the morning agent, daily. Each
+//! start is kept as a Run in `runs.json`, and its workspace closed once herdr
+//! reports its agent ended. What such an agent files is its own Source write;
+//! nico-agent writes nothing for it.
 
 use std::fs;
 use std::io;
@@ -12,20 +12,13 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
 
 use crate::cli::{Context, Refusal};
-use crate::config::{Config, Repo, Weekday, fill_in};
+use crate::config::{Config, Launch, Repo, Weekday, fill_in};
 use crate::dispatch;
-use crate::faux_nico;
 use crate::launch::{self, AgentLaunch};
 use crate::state;
 use crate::world::{self, Agent, AgentState};
 
 pub const FILE: &str = "runs.json";
-
-/// The trigger of a quality-scan Run.
-pub const QUALITY_SCAN: &str = "quality-scan";
-
-/// The trigger of a morning Run, and its agent's name.
-pub const MORNING: &str = "morning";
 
 /// The Morning summary, which the morning agent writes in the config directory.
 pub const SUMMARY: &str = "morning.md";
@@ -33,11 +26,11 @@ pub const SUMMARY: &str = "morning.md";
 /// The Morning summary as last notified.
 const NOTIFIED: &str = "morning.notified";
 
-/// One start of an agent of no issue.
+/// One start of a trigger's agent.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Run {
-    /// What started it, e.g. `quality-scan`; the label of its tab.
-    pub trigger: String,
+    #[serde(flatten)]
+    pub trigger: Trigger,
     /// The Repo it ran for, if one.
     pub repo: Option<String>,
     /// When it started.
@@ -52,14 +45,33 @@ pub struct Run {
     pub failure: Option<String>,
     /// When its agent was seen ended and its workspace closed.
     pub closed_at: Option<String>,
-    /// For a faux-nico: the issue it was started for, and the `since` of its Asking.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub issue: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub asking: Option<String>,
-    /// For a faux-nico: it ended leaving that Asking unanswered, and the user was told.
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub passed: bool,
+}
+
+/// What started a Run, as `runs.json` writes it: `"trigger": "quality-scan"`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "trigger", rename_all = "kebab-case")]
+pub enum Trigger {
+    QualityScan,
+    Morning,
+    /// For `issue`, on its Asking since `asking`.
+    FauxNico {
+        issue: String,
+        asking: String,
+        /// It ended leaving that Asking unanswered, and the user was told.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        passed: bool,
+    },
+}
+
+impl Trigger {
+    /// The label of its Run's tab, and its agent's name or the start of it.
+    pub fn label(&self) -> &'static str {
+        match self {
+            Trigger::QualityScan => "quality-scan",
+            Trigger::Morning => "morning",
+            Trigger::FauxNico { .. } => "faux-nico",
+        }
+    }
 }
 
 /// Every Run, oldest first.
@@ -70,38 +82,39 @@ pub fn load(config_dir: &Path) -> io::Result<Vec<Run>> {
 
 /// The last quality-scan of the Repo `slug`.
 pub fn last_scan<'a>(runs: &'a [Run], slug: &str) -> Option<&'a Run> {
-    (runs.iter()).rfind(|r| r.trigger == QUALITY_SCAN && r.repo.as_deref() == Some(slug))
+    (runs.iter()).rfind(|r| r.trigger == Trigger::QualityScan && r.repo.as_deref() == Some(slug))
 }
 
 /// The last morning Run.
 pub fn last_morning(runs: &[Run]) -> Option<&Run> {
-    (runs.iter()).rfind(|r| r.trigger == MORNING)
+    (runs.iter()).rfind(|r| r.trigger == Trigger::Morning)
 }
 
 /// Close the Runs whose agents ended, start each quality-scan due and the
 /// morning agent if due, and send the Morning summary if it changed;
-/// `agents` as the tick listed them, if it did.
+/// `agents` as the tick listed them, if it did. What it said, and the Runs
+/// it closed.
 pub fn step(
     ctx: &Context,
     config: &Config,
     agents: Option<&[Agent]>,
-) -> Result<Vec<String>, Refusal> {
-    let mut said = close_ended(ctx, agents)?;
+) -> Result<(Vec<String>, Vec<Run>), Refusal> {
+    let (mut said, ended) = close_ended(ctx, agents)?;
     said.extend(scan(ctx, config)?);
     said.extend(morning(ctx, config)?);
     said.extend(send_summary(ctx)?);
-    Ok(said)
+    Ok((said, ended))
 }
 
 /// Close each open Run whose agent is idle, done or gone from herdr: remove
 /// its worktree and close its workspace. One that fails is said and tried
-/// again next tick.
-fn close_ended(ctx: &Context, agents: Option<&[Agent]>) -> io::Result<Vec<String>> {
+/// again next tick. What it said, and the Runs it closed.
+fn close_ended(ctx: &Context, agents: Option<&[Agent]>) -> io::Result<(Vec<String>, Vec<Run>)> {
     let open: Vec<Run> = (load(&ctx.config_dir)?.into_iter())
         .filter(|r| r.closed_at.is_none())
         .collect();
     if open.is_empty() {
-        return Ok(vec![]);
+        return Ok((vec![], vec![]));
     }
     let listed;
     let agents = match agents {
@@ -112,10 +125,10 @@ fn close_ended(ctx: &Context, agents: Option<&[Agent]>) -> io::Result<Vec<String
                 &listed
             }
             // herdr down is never every agent gone.
-            Err(e) => return Ok(vec![format!("could not list herdr's agents: {e}")]),
+            Err(e) => return Ok((vec![format!("could not list herdr's agents: {e}")], vec![])),
         },
     };
-    let mut said = vec![];
+    let (mut said, mut ended) = (vec![], vec![]);
     for run in open {
         let agent = &run.launch.agent;
         let state = world::agent_state(agents, agent);
@@ -131,21 +144,22 @@ fn close_ended(ctx: &Context, agents: Option<&[Agent]>) -> io::Result<Vec<String
             said.push(format!("could not close the workspace of {agent}: {e}"));
             continue;
         }
-        let passed = faux_nico::pass(ctx, &run)?;
         let now = state::iso(ctx.world.now());
         update(&ctx.config_dir, |all| {
             let open = all
                 .iter_mut()
                 .find(|r| r.closed_at.is_none() && r.launch == run.launch);
             if let Some(open) = open {
-                open.closed_at = Some(now);
-                open.passed = passed.is_some();
+                open.closed_at = Some(now.clone());
             }
         })?;
         said.push(format!("{agent} ended; its workspace closed"));
-        said.extend(passed.into_iter().flatten());
+        ended.push(Run {
+            closed_at: Some(now),
+            ..run
+        });
     }
-    Ok(said)
+    Ok((said, ended))
 }
 
 /// Start a quality-scan in each Repo with its switch on that has room, no
@@ -169,62 +183,79 @@ fn scan(ctx: &Context, config: &Config) -> Result<Vec<String>, Refusal> {
         if live >= repo.room as usize || !due {
             continue;
         }
-        let chosen = (repo.quality_scan.clone()).unwrap_or_else(|| repo.implementer.clone());
-        let mut run = Run {
-            trigger: QUALITY_SCAN.into(),
-            repo: Some(slug.clone()),
-            at: state::iso(ctx.world.now()),
-            launch: AgentLaunch {
-                agent: launch::repo_agent_name(QUALITY_SCAN, slug),
-                harness: chosen.harness,
-                model: chosen.model,
-                effort: chosen.effort,
-                tab: None,
-                pane: None,
-            },
-            workspace: None,
-            worktree: None,
-            failure: None,
-            closed_at: None,
-            issue: None,
-            asking: None,
-            passed: false,
+        let chosen = repo.or_implementer(&repo.quality_scan);
+        let sigil = &config.harnesses[&chosen.harness].sigil;
+        let values = [("sigil", sigil.as_str()), ("repoSlug", slug)];
+        let text = fill_in(&config.prompts.quality_scan, &values);
+        // On a worktree of the Repo at its Base.
+        let start = |run: &mut Run| {
+            let base = match &repo.base {
+                Some(base) => base.clone(),
+                None => ctx.world.git_default_branch(&repo.path)?,
+            };
+            start_on_worktree(ctx, config, repo, &base, run, &text)
         };
-        match start_scan(ctx, config, slug, repo, &mut run) {
-            Ok(()) => said.push(format!(
-                "{slug}: quality-scan started on {}",
-                run.launch.harness
-            )),
-            Err(no) => {
-                said.push(format!(
-                    "could not start the quality-scan of {slug}: {}",
-                    no.error
-                ));
-                run.failure = Some(no.error);
-            }
-        }
-        update(&ctx.config_dir, |all| all.push(run))?;
+        said.push(start_run(
+            ctx,
+            Trigger::QualityScan,
+            Some(slug),
+            chosen,
+            start,
+        )?);
     }
     Ok(said)
 }
 
-/// Open a worktree of the Repo at its Base and start the Run's agent there
-/// on the quality-scan prompt.
-fn start_scan(
+/// Start a Run of `trigger` now, for the Repo `repo` if one, launched as
+/// `chosen`, with `start`; keep it in `runs.json`, one whose start stopped
+/// short with why: it counts as run all the same. Says which, naming it by
+/// its issue, else its Repo.
+pub fn start_run(
     ctx: &Context,
-    config: &Config,
-    slug: &str,
-    repo: &Repo,
-    run: &mut Run,
-) -> Result<(), Refusal> {
-    let base = match &repo.base {
-        Some(base) => base.clone(),
-        None => ctx.world.git_default_branch(&repo.path)?,
+    trigger: Trigger,
+    repo: Option<&str>,
+    chosen: Launch,
+    start: impl FnOnce(&mut Run) -> Result<(), Refusal>,
+) -> io::Result<String> {
+    let label = trigger.label();
+    let (agent, who) = match (&trigger, repo) {
+        (Trigger::FauxNico { issue, .. }, Some(slug)) => {
+            (launch::agent_name(label, slug, issue), Some(issue.clone()))
+        }
+        (_, Some(slug)) => (launch::repo_agent_name(label, slug), Some(slug.into())),
+        (_, None) => (label.into(), None),
     };
-    let sigil = &config.harnesses[&run.launch.harness].sigil;
-    let values = [("sigil", sigil.as_str()), ("repoSlug", slug)];
-    let text = fill_in(&config.prompts.quality_scan, &values);
-    start_on_worktree(ctx, config, repo, &base, run, &text)
+    let mut run = Run {
+        trigger,
+        repo: repo.map(Into::into),
+        at: state::iso(ctx.world.now()),
+        launch: AgentLaunch {
+            agent,
+            harness: chosen.harness,
+            model: chosen.model,
+            effort: chosen.effort,
+            tab: None,
+            pane: None,
+        },
+        workspace: None,
+        worktree: None,
+        failure: None,
+        closed_at: None,
+    };
+    let said = match start(&mut run) {
+        Ok(()) => {
+            let who = who.map_or(String::new(), |who| format!("{who}: "));
+            format!("{who}{label} started on {}", run.launch.harness)
+        }
+        Err(no) => {
+            let of = who.map_or(String::new(), |who| format!(" of {who}"));
+            let said = format!("could not start the {label}{of}: {}", no.error);
+            run.failure = Some(no.error);
+            said
+        }
+    };
+    update(&ctx.config_dir, |all| all.push(run))?;
+    Ok(said)
 }
 
 /// Open a fresh worktree of the Repo at `base` and start the Run's agent
@@ -261,7 +292,13 @@ fn start(
 ) -> Result<(), Refusal> {
     let harness = &config.harnesses[&run.launch.harness];
     let workspace = run.workspace.clone().expect("its workspace is open");
-    launch::open_tab(ctx.world, &mut run.launch, &workspace, cwd, &run.trigger)?;
+    launch::open_tab(
+        ctx.world,
+        &mut run.launch,
+        &workspace,
+        cwd,
+        run.trigger.label(),
+    )?;
     let ready = launch::start(ctx.world, harness, &run.launch, repo_path)?;
     launch::get_ready(ctx.world, harness, &run.launch, cwd, ready)?;
     launch::prompt(ctx.world, &run.launch.agent, text)
@@ -285,47 +322,18 @@ fn morning(ctx: &Context, config: &Config) -> Result<Vec<String>, Refusal> {
     }
     // The first morning reads the day before.
     let since = last.map_or_else(|| state::iso(now - 24 * HOUR), |r| r.at.clone());
-    let mut run = Run {
-        trigger: MORNING.into(),
-        repo: None,
-        at: state::iso(now),
-        launch: AgentLaunch {
-            agent: MORNING.into(),
-            harness: chosen.harness,
-            model: chosen.model,
-            effort: chosen.effort,
-            tab: None,
-            pane: None,
-        },
-        workspace: None,
-        worktree: None,
-        failure: None,
-        closed_at: None,
-        issue: None,
-        asking: None,
-        passed: false,
-    };
     let dir = ctx.config_dir.display().to_string();
-    let sigil = &config.harnesses[&run.launch.harness].sigil;
+    let sigil = &config.harnesses[&chosen.harness].sigil;
     let values = [
         ("sigil", sigil.as_str()),
         ("lastMorningAt", &since),
         ("configDir", &dir),
     ];
     let text = fill_in(&config.prompts.morning, &values);
-    let started = (|| -> Result<(), Refusal> {
-        run.workspace = Some(ctx.world.herdr_workspace_create(&dir, MORNING)?);
-        start(ctx, config, &mut run, &dir, &dir, &text)
-    })();
-    let said = match started {
-        Ok(()) => format!("morning started on {}", run.launch.harness),
-        Err(no) => {
-            let said = format!("could not start the morning: {}", no.error);
-            run.failure = Some(no.error);
-            said
-        }
-    };
-    update(&ctx.config_dir, |all| all.push(run))?;
+    let said = start_run(ctx, Trigger::Morning, None, chosen, |run| {
+        run.workspace = Some(ctx.world.herdr_workspace_create(&dir, &run.launch.agent)?);
+        start(ctx, config, run, &dir, &dir, &text)
+    })?;
     Ok(vec![said])
 }
 
@@ -364,7 +372,7 @@ fn last_slot(ctx: &Context, weekday: Option<Weekday>, hour: u32) -> SystemTime {
     let today = local.div_euclid(DAY);
     // 1970-01-01 was a Thursday, and a Sunday is 0.
     let back = weekday.map_or(0, |w| (today + 4 - w as i64).rem_euclid(7));
-    let mut slot = (today - back) * DAY + i64::from(hour) * 3600;
+    let mut slot = (today - back) * DAY + (HOUR * hour).as_secs() as i64;
     if slot > local {
         slot -= weekday.map_or(1, |_| 7) * DAY;
     }

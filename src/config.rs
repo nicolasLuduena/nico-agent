@@ -142,6 +142,13 @@ pub struct Repo {
     pub switches: Switches,
 }
 
+impl Repo {
+    /// `launch`, one of this Repo's, as set; the implementer's when unset.
+    pub fn or_implementer(&self, launch: &Option<Launch>) -> Launch {
+        launch.clone().unwrap_or_else(|| self.implementer.clone())
+    }
+}
+
 /// Where Evidence is kept and what serves it.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]

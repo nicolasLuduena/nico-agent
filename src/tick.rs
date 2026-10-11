@@ -50,8 +50,9 @@ pub fn tick(ctx: &Context, refresh: bool) -> Result<Vec<String>, Refusal> {
     said.extend(flip::step(ctx, &config)?);
     said.extend(asking::step(ctx, &config, agents.as_deref())?);
     said.extend(fill_rooms(ctx, &config, &reads)?);
-    said.extend(away::step(ctx, &config, agents.as_deref())?);
-    said.extend(faux_nico::step(ctx, &config)?);
+    let (ran, ended) = away::step(ctx, &config, agents.as_deref())?;
+    said.extend(ran);
+    said.extend(faux_nico::step(ctx, &config, &ended)?);
     Ok(said)
 }
 
