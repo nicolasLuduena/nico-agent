@@ -132,8 +132,8 @@ fn fill_rooms(
         let readiness = source::readiness(read, &dispatches, &prs);
         let stackable = (readiness.stackable.into_iter()).filter(|_| repo.switches.stack);
         for row in readiness.ready.into_iter().chain(stackable).take(room) {
-            let done = format!("{} dispatched", row.key);
-            said.extend(run_steps(ctx, config, &row.key, done)?);
+            let line = |_: &str| format!("{} dispatched", row.key);
+            said.extend(run_steps(ctx, config, &row.key, line)?);
         }
     }
     Ok(said)
@@ -141,37 +141,34 @@ fn fill_rooms(
 
 /// (4) Take up, behind each Repo's `restart` switch, each live Dispatch
 /// whose steps stopped short with no live process running them (it died, or
-/// the machine restarted), from the step it stopped at, as `dispatch` does.
+/// the machine restarted), as `dispatch` does: saying what it says.
 fn take_up(ctx: &Context, config: &Config) -> Result<Vec<String>, Refusal> {
     let mut said = vec![];
     for d in dispatch::load(&ctx.config_dir)? {
-        let Some(step) = d.next_step() else {
-            continue;
-        };
-        if d.closed_at.is_none()
+        if d.next_step().is_some()
+            && d.closed_at.is_none()
             && d.failure.is_none()
             && !d.running(ctx.world)
             && config.repo_of(&d).switches.restart
         {
-            let done = format!("{} continued from {step}", d.issue);
-            said.extend(run_steps(ctx, config, &d.issue, done)?);
+            said.extend(run_steps(ctx, config, &d.issue, str::to_string)?);
         }
     }
     Ok(said)
 }
 
-/// Run the steps of `key`'s Dispatch as `dispatch` does: `done` and its
-/// warnings, or why it failed, said once to the user too.
+/// Run the steps of `key`'s Dispatch as `dispatch` does: `line` of what it
+/// said and its warnings, or why it failed, said once to the user too.
 fn run_steps(
     ctx: &Context,
     config: &Config,
     key: &str,
-    done: String,
+    line: impl FnOnce(&str) -> String,
 ) -> Result<Vec<String>, Refusal> {
     Ok(match dispatch::issue(ctx, config, key, Flags::default()) {
         Ok(answer) => {
             let warnings = answer["warnings"].as_array().into_iter().flatten();
-            [done]
+            [line(answer["dispatched"].as_str().unwrap_or_default())]
                 .into_iter()
                 .chain(warnings.filter_map(|w| w.as_str().map(String::from)))
                 .collect()

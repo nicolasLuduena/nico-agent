@@ -256,6 +256,7 @@ fn other_launch_flags_on_an_issue_in_flight_are_refused() {
 
 #[test]
 fn a_failed_step_leaves_the_dispatch_failed_there_and_the_same_command_continues_from_it() {
+    const LIST: [&str; 1] = ["herdr agent list"];
     let continued_ready = [
         "herdr agent read impl-api-7 --source visible",
         "herdr agent wait impl-api-7 --until idle --until done --timeout 5000",
@@ -283,23 +284,24 @@ fn a_failed_step_leaves_the_dispatch_failed_there_and_the_same_command_continues
             |w| w.clear_failures(),
             ALL[6..].to_vec(),
         ),
+        // Past its tab, whether its agent is still in herdr is asked first.
         (
             "agent start",
             |w| fail(w, "herdr agent start"),
             |w| w.clear_failures(),
-            ALL[7..].to_vec(),
+            [&LIST[..], &FRESH_TAB].concat(),
         ),
         (
             "agent ready",
             |w| *w.blocked_screen.borrow_mut() = Some("Do you want to enable telemetry?".into()),
             |w| *w.blocked_screen.borrow_mut() = None,
-            [&continued_ready[..], &ALL[8..]].concat(),
+            [&LIST[..], &continued_ready, &ALL[8..]].concat(),
         ),
         (
             "prompt",
             |w| w.stalled_prompts.set(3),
             |_| {},
-            ALL[8..].to_vec(),
+            [&LIST[..], &ALL[8..]].concat(),
         ),
     ];
     for (step, break_it, heal, continued) in cases {
@@ -335,9 +337,11 @@ fn a_failed_step_leaves_the_dispatch_failed_there_and_the_same_command_continues
         let again = dispatch_7(&t);
 
         assert_eq!(again.exit_code, 0, "{}", again.stdout);
+        // Its agent never started, so it is not in herdr: a fresh tab.
+        let from = if step == "agent start" { "tab" } else { step };
         assert_eq!(
             again.json()["dispatched"],
-            format!("acme/api#7 (continued from {step})")
+            format!("acme/api#7 (continued from {from})")
         );
         assert_eq!(t.world.calls(), continued, "{step}");
         let shown = &status(&t)["dispatches"][0];
@@ -638,7 +642,7 @@ fn a_dispatch_whose_process_died_mid_steps_is_taken_up_by_the_tick_where_it_stop
     let after = t.tick();
 
     assert_eq!(during, Vec::<String>::new());
-    assert_eq!(after, ["acme/api#7 continued from tab"]);
+    assert_eq!(after, ["acme/api#7 (continued from tab)"]);
     assert_eq!(
         herdr_calls(&t),
         ["herdr agent list", ALL[6], ALL[7], ALL[9]]
@@ -661,6 +665,76 @@ fn after_a_reboot_a_lease_whose_pid_is_alive_again_is_another_process_and_dispat
         "acme/api#7 (continued from tab)"
     );
     assert_eq!(t.world.calls(), ALL[6..]);
+}
+
+/// `with_issue`, with acme/api#7 dispatched by process 5000, which started
+/// its agent and died before prompting it; then the machine restarted, and
+/// herdr came back without the agent or its tab.
+fn rebooted_before_prompt() -> Setup {
+    let t = with_issue();
+    t.world.stalled_prompts.set(3);
+    dispatch_7(&t);
+    edit_dispatch(&t, |d| {
+        d["runner"] = json!(5000);
+        d["runner_boot"] = json!("boot-1");
+        d["failure"] = Value::Null;
+    });
+    *t.world.boot.borrow_mut() = "boot-2".into();
+    t.world.agents.borrow_mut().clear();
+    t.world.calls.borrow_mut().clear();
+    t
+}
+
+/// The calls of starting acme/api#7's Implementer again in a fresh tab.
+const FRESH_TAB: [&str; 5] = [
+    "herdr tab close w1:t2",
+    "herdr tab create --workspace w1 --cwd /worktrees/api-7 --label implementer --no-focus",
+    "herdr agent start impl-api-7 --kind claude --pane w1:p3 -- --model opus --effort high",
+    "github app repos",
+    "herdr agent prompt impl-api-7 /implement https://github.com/acme/api/issues/7 as draft PR against main",
+];
+
+#[test]
+fn a_dispatch_whose_agent_went_with_a_reboot_mid_steps_is_taken_up_from_a_fresh_tab() {
+    let t = rebooted_before_prompt();
+
+    let said = t.tick();
+
+    assert_eq!(said, ["acme/api#7 (continued from tab)"]);
+    let taken_up: Vec<String> = (t.world.calls().into_iter())
+        .filter(|c| c != "herdr agent list" && !c.starts_with("github branch prs"))
+        .collect();
+    assert_eq!(taken_up, FRESH_TAB);
+}
+
+#[test]
+fn dispatch_by_hand_starts_from_a_fresh_tab_when_herdr_says_the_agent_is_gone_and_not_when_it_cannot_say()
+ {
+    let gone = rebooted_before_prompt();
+    let unknown = rebooted_before_prompt();
+    unknown
+        .world
+        .fail_call("herdr agent list", "herdr is not running");
+
+    let fresh = dispatch_7(&gone);
+    let same = dispatch_7(&unknown);
+
+    assert_eq!(
+        fresh.json()["dispatched"],
+        "acme/api#7 (continued from tab)"
+    );
+    assert_eq!(
+        gone.world.calls(),
+        [&["herdr agent list"][..], &FRESH_TAB].concat()
+    );
+    assert_eq!(
+        same.json()["dispatched"],
+        "acme/api#7 (continued from prompt)"
+    );
+    assert_eq!(
+        unknown.world.calls(),
+        [&["herdr agent list"][..], &ALL[8..]].concat()
+    );
 }
 
 #[test]

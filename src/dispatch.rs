@@ -277,7 +277,7 @@ fn pick_up(
             vec![format!("Add harnesses.{} back to config.toml", had.harness)],
         ));
     }
-    let Some(leased) = lease(ctx, key)? else {
+    let Some(mut leased) = lease(ctx, key)? else {
         let started = existing.completed.len() == STEPS.len();
         let agent = &existing.implementer.agent;
         if started && world::agent_state(&ctx.world.herdr_agents()?, agent).is_none() {
@@ -285,6 +285,16 @@ fn pick_up(
         }
         return answer(ctx, &existing, format!("{key} already In flight (no-op)"));
     };
+    // Its agent gone from herdr, a reboot took its tab too: start again from a fresh one.
+    if matches!(
+        leased.next_step(),
+        Some("agent start" | "agent ready" | "prompt")
+    ) && (ctx.world.herdr_agents())
+        .is_ok_and(|agents| world::agent_state(&agents, &leased.implementer.agent).is_none())
+    {
+        // Claim, fetch and worktree stand.
+        leased.completed.truncate(3);
+    }
     let step = leased.next_step().expect("a lease leaves steps to do");
     run(
         ctx,
@@ -372,6 +382,10 @@ fn run_step(
             record.workspace = Some(made.workspace);
         }
         "tab" => {
+            // The tab an earlier start left, if any.
+            if let Some(tab) = record.implementer.tab.take() {
+                world.herdr_tab_close(&tab)?;
+            }
             let (workspace, worktree) = (
                 record.workspace.as_ref().expect(made),
                 record.worktree.as_ref().expect(made),
