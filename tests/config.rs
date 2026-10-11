@@ -44,7 +44,7 @@ fn a_bad_value_is_refused_naming_its_key_and_line() {
         ),
         (
             "[repos.\"acme/api\"]\npath = \"/src/api\"\nrom = 3\n",
-            "config.toml line 3: repos.acme/api.rom: unknown field `rom`, expected one of `path`, `linear`, `room`, `base`, `implementer`, `reviewer`, `quality_scan`, `switches`",
+            "config.toml line 3: repos.acme/api.rom: unknown field `rom`, expected one of `path`, `linear`, `room`, `base`, `implementer`, `reviewer`, `quality_scan`, `faux_nico`, `switches`",
         ),
         (
             "\n[repos.\"acme/api\"]\nroom = 2\n",

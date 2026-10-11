@@ -39,6 +39,7 @@ hour = 3
 [prompts]
 implement = "{sigil}implement {issueUrl} as draft PR against {baseBranch}, saving its Evidence under {evidenceFolder}/ in the worktree and linking it to {bucketUrl}"
 research = "{sigil}research {issueUrl}; write the findings with sources to one Markdown file under docs/research/ and open it as a draft PR against {baseBranch}"
+faux_nico = '{sigil}faux-nico {issueUrl}: the Implementer asks "{question}". Read PRODUCT.md, the issue and its parent. Answer with nico-agent answer {issue} --text "..." --by faux-nico only when they settle it; otherwise end your turn without answering.'
 review = "{sigil}verdict {prUrl} for {issueUrl}: re-run the repo's verification skill under .agents/skills/verify-*/ against the PR's head, saving its Evidence under {evidenceFolder}/, and record the result with nico-agent verdict {issue} pass|fail --sha {headSha} --findings <file>"
 quality_scan = "{sigil}quality-scan {repoSlug}"
 # Appended to implement and research, as is, when the GitHub App is installed on the Repo.
@@ -123,6 +124,9 @@ pub struct Repo {
     /// The quality-scan's launch; the implementer's when unset.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub quality_scan: Option<Launch>,
+    /// faux-nico's launch; the implementer's when unset.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub faux_nico: Option<Launch>,
     pub switches: Switches,
 }
 
@@ -239,6 +243,7 @@ pub struct TrustPrompt {
 pub struct Prompts {
     pub implement: String,
     pub research: String,
+    pub faux_nico: String,
     pub review: String,
     pub quality_scan: String,
     pub bot_suffix: String,
@@ -378,6 +383,7 @@ fn parse(file: &Path, text: &str) -> Result<Config, Refusal> {
             ("implementer", Some(&repo.implementer)),
             ("reviewer", repo.reviewer.as_ref()),
             ("quality_scan", repo.quality_scan.as_ref()),
+            ("faux_nico", repo.faux_nico.as_ref()),
         ] {
             let Some(Launch { harness, .. }) = launch else {
                 continue;

@@ -1,7 +1,8 @@
-//! The loop's agents of no issue: a quality-scan per Repo, weekly. Each start
-//! is kept as a Run in `runs.json`, and its workspace closed once herdr
-//! reports its agent ended. What such an agent files is its own Source
-//! write; nico-agent writes nothing for it.
+//! The loop's agents that are no Implementer nor Reviewer: a quality-scan per
+//! Repo, weekly, and a faux-nico per Asking. Each start is kept as a Run in
+//! `runs.json`, and its workspace closed once herdr reports its agent ended.
+//! What such an agent files is its own Source write; nico-agent writes
+//! nothing for it.
 
 use std::io;
 use std::path::Path;
@@ -12,6 +13,7 @@ use serde::{Deserialize, Serialize};
 use crate::cli::{Context, Refusal};
 use crate::config::{Config, Repo, fill_in};
 use crate::dispatch;
+use crate::faux_nico;
 use crate::launch::{self, AgentLaunch};
 use crate::state;
 use crate::world::{self, Agent, AgentState};
@@ -40,10 +42,18 @@ pub struct Run {
     pub failure: Option<String>,
     /// When its agent was seen ended and its workspace closed.
     pub closed_at: Option<String>,
+    /// For a faux-nico: the issue it was started for, and the `since` of its Asking.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub issue: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub asking: Option<String>,
+    /// For a faux-nico: it ended leaving that Asking unanswered, and the user was told.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub passed: bool,
 }
 
 /// Every Run, oldest first.
-// shortcut: kept forever (a few hundred bytes a week per Repo); prune like Dispatches if it grows.
+// shortcut: kept forever (a few hundred bytes per scan or Asking); prune like Dispatches if it grows.
 pub fn load(config_dir: &Path) -> io::Result<Vec<Run>> {
     state::load(&config_dir.join(FILE))
 }
@@ -103,6 +113,7 @@ fn close_ended(ctx: &Context, agents: Option<&[Agent]>) -> io::Result<Vec<String
             said.push(format!("could not close the workspace of {agent}: {e}"));
             continue;
         }
+        let passed = faux_nico::pass(ctx, &run)?;
         let now = state::iso(ctx.world.now());
         update(&ctx.config_dir, |all| {
             let open = all
@@ -110,9 +121,11 @@ fn close_ended(ctx: &Context, agents: Option<&[Agent]>) -> io::Result<Vec<String
                 .find(|r| r.closed_at.is_none() && r.launch == run.launch);
             if let Some(open) = open {
                 open.closed_at = Some(now);
+                open.passed = passed.is_some();
             }
         })?;
         said.push(format!("{agent} ended; its workspace closed"));
+        said.extend(passed.into_iter().flatten());
     }
     Ok(said)
 }
@@ -150,6 +163,9 @@ fn scan(ctx: &Context, config: &Config) -> Result<Vec<String>, Refusal> {
             worktree: None,
             failure: None,
             closed_at: None,
+            issue: None,
+            asking: None,
+            passed: false,
         };
         match start_scan(ctx, config, slug, repo, &mut run) {
             Ok(()) => said.push(format!(
@@ -178,11 +194,27 @@ fn start_scan(
     repo: &Repo,
     run: &mut Run,
 ) -> Result<(), Refusal> {
-    let world = ctx.world;
     let base = match &repo.base {
         Some(base) => base.clone(),
-        None => world.git_default_branch(&repo.path)?,
+        None => ctx.world.git_default_branch(&repo.path)?,
     };
+    let sigil = &config.harnesses[&run.launch.harness].sigil;
+    let values = [("sigil", sigil.as_str()), ("repoSlug", slug)];
+    let text = fill_in(&config.prompts.quality_scan, &values);
+    start_on_worktree(ctx, config, repo, &base, run, &text)
+}
+
+/// Open a fresh worktree of the Repo at `base` and start the Run's agent
+/// there on `text`.
+pub fn start_on_worktree(
+    ctx: &Context,
+    config: &Config,
+    repo: &Repo,
+    base: &str,
+    run: &mut Run,
+    text: &str,
+) -> Result<(), Refusal> {
+    let world = ctx.world;
     world.git_fetch(&repo.path, None)?;
     // A fresh branch each run: removing a worktree keeps its branch.
     let stamp = run.at.replace(['-', ':', 'T', 'Z'], "");
@@ -191,10 +223,7 @@ fn start_scan(
     let made = world.herdr_worktree_create(&repo.path, &branch, &base, &run.launch.agent)?;
     run.workspace = Some(made.workspace);
     run.worktree = Some(made.path.clone());
-    let sigil = &config.harnesses[&run.launch.harness].sigil;
-    let values = [("sigil", sigil.as_str()), ("repoSlug", slug)];
-    let text = fill_in(&config.prompts.quality_scan, &values);
-    start(ctx, config, run, &made.path, &repo.path, &text)
+    start(ctx, config, run, &made.path, &repo.path, text)
 }
 
 /// Start the Run's agent in a new tab of its workspace, working in `cwd` and
@@ -234,7 +263,7 @@ fn last_slot(ctx: &Context, config: &Config) -> String {
 }
 
 /// Change the Runs under the file's lock.
-fn update<T>(config_dir: &Path, change: impl FnOnce(&mut Vec<Run>) -> T) -> io::Result<T> {
+pub fn update<T>(config_dir: &Path, change: impl FnOnce(&mut Vec<Run>) -> T) -> io::Result<T> {
     let file = config_dir.join(FILE);
     state::update(&file, |text| {
         let mut all = state::parse(&file, text)?;

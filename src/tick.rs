@@ -12,6 +12,7 @@ use crate::away;
 use crate::cli::{Context, Refusal};
 use crate::config::{self, Config};
 use crate::dispatch::{self, Flags};
+use crate::faux_nico;
 use crate::flip;
 use crate::restart;
 use crate::review;
@@ -47,9 +48,10 @@ pub fn tick(ctx: &Context, refresh: bool) -> Result<Vec<String>, Refusal> {
     said.extend(review::start_reviewers(ctx, &config, agents.as_deref())?);
     // 6. Flip Verified PRs to ready (#243).
     said.extend(flip::step(ctx, &config)?);
-    said.extend(asking::step(ctx, agents.as_deref())?);
+    said.extend(asking::step(ctx, &config, agents.as_deref())?);
     said.extend(fill_rooms(ctx, &config, &reads)?);
     said.extend(away::step(ctx, &config, agents.as_deref())?);
+    said.extend(faux_nico::step(ctx, &config)?);
     Ok(said)
 }
 
