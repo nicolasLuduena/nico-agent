@@ -60,8 +60,8 @@ Preconditions:
 - **Signed out.** Run `$C page --tunnel --evidence "$E/05-signed-out" --mode signed-out --click
   "button=Refresh" --expect "Signed out; reload to sign in again." --wait 40 --expect "Signed out;
   reload to sign in again."`. `ok` for every step; under `Refresh` an alert says `Could not reach
-  nico-agent serve.` (its POST was answered with the login); `.requests.txt` has the refetches `GET
-  /api/status -> 302` and `GET /api/map/verify/fixture -> 302` and no `/api/events` after the first;
+  nico-agent serve.`; `.requests.txt` has `POST /api/refresh -> 302`, the refetches `GET
+  /api/status -> 302` and `GET /api/map/verify/fixture -> 302`, and no `/api/events` after the first;
   `$TUNNEL_LOG` has that stream `closed by the page`.
 - **Signed out on a reconnect.** Run `$C tunnel pass`, then `$C page --tunnel --evidence
   "$E/06-signed-out-on-reconnect" --mode 502 --expect "Lost nico-agent serve; reconnecting." --wait
