@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>nico-agent</title>
+<script>
+  // The remembered theme (src/ThemeSwitch.svelte), set before the first paint so the page never flashes the wrong one.
+  try {
+    var choice = localStorage.getItem("nico-agent.theme");
+  } catch (e) {}
+  var dark = choice === "dark" || (choice !== "light" && matchMedia("(prefers-color-scheme: dark)").matches);
+  document.documentElement.dataset.theme = dark ? "dark" : "light";
+</script>
+</head>
+<body>
+<div id="app"></div>
+<script type="module" src="/src/main.ts"></script>
+</body>
+</html>

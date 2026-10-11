@@ -128,6 +128,7 @@ fn an_unknown_path_or_method_answers_404_with_the_routes_as_help() {
     };
 
     let help = json!([
+        "GET /: the app",
         "GET /api/status: the status of every Repo and Dispatch",
         "GET /api/map/<owner/name>: the Repo's issues and how they block and stack on each other",
         "GET /api/node/<issue>: the issue's Dispatch, its restarts, its Verdict's findings and its Evidence",
@@ -149,6 +150,60 @@ fn an_unknown_path_or_method_answers_404_with_the_routes_as_help() {
         serde_json::from_slice::<serde_json::Value>(&posted.body).unwrap()["error"],
         "no route POST /api/status"
     );
+}
+
+/// `GET path` of `serve`: its status, Content-Type and body.
+fn fetch(t: &Setup, path: &str) -> (u16, String, Vec<u8>) {
+    let Answer::Whole(response) = t.request("GET", path, "") else {
+        panic!("GET {path} answered with a stream");
+    };
+    let header = response
+        .headers
+        .iter()
+        .find(|(name, _)| name == "Content-Type");
+    let kind = header.map(|(_, kind)| kind.clone()).unwrap_or_default();
+    (response.status, kind, response.body)
+}
+
+/// The paths of the built files `text` loads, as Vite writes them: `/assets/<name>`.
+fn assets(text: &[u8]) -> Vec<String> {
+    let text = String::from_utf8_lossy(text);
+    (text.split("/assets/").skip(1))
+        .map(|rest| rest.split(['"', '\'', ')']).next().unwrap())
+        .map(|name| format!("/assets/{name}"))
+        .collect()
+}
+
+#[test]
+fn the_app_is_served_at_slash_from_the_binary_with_every_file_it_loads() {
+    let t = with_repo();
+    t.tick();
+
+    let (status, kind, page) = fetch(&t, "/");
+
+    assert_eq!((status, kind.as_str()), (200, "text/html; charset=utf-8"));
+    assert!(String::from_utf8_lossy(&page).contains("<div id=\"app\">"));
+    let loaded = assets(&page);
+    let kinds: Vec<(u16, String)> = (loaded.iter())
+        .map(|path| fetch(&t, path))
+        .map(|(status, kind, _)| (status, kind))
+        .collect();
+    assert!(
+        kinds.contains(&(200, "text/javascript".into())),
+        "{loaded:?}"
+    );
+    assert!(kinds.contains(&(200, "text/css".into())), "{loaded:?}");
+    let css = loaded.iter().find(|path| path.ends_with(".css")).unwrap();
+    let fonts: Vec<String> = (assets(&fetch(&t, css).2).into_iter())
+        .filter(|path| path.ends_with(".woff2"))
+        .collect();
+    assert_eq!(fonts.len(), 3, "Barlow 400, 600 and 700");
+    let (status, kind, font) = fetch(&t, &fonts[0]);
+    assert_eq!(
+        (status, kind.as_str(), &font[..4]),
+        (200, "font/woff2", &b"wOF2"[..])
+    );
+    assert_eq!(fetch(&t, "/assets/nothing.js").0, 404);
 }
 
 const CHANGED: &str = "event: changed\ndata: {}\n\n";

@@ -23,8 +23,12 @@ use crate::world::{AgentState, Answer, HttpRequest, HttpResponse, World};
 
 pub const PORT: u16 = 42069;
 
+/// The app, as `build.rs` built it from `web/`: each file's path, Content-Type and bytes.
+const APP: &[(&str, &str, &[u8])] = include!(concat!(env!("OUT_DIR"), "/app.rs"));
+
 /// Every route and what it answers, for help lines.
 const ROUTES: &[(&str, &str)] = &[
+    ("GET /", "the app"),
     ("GET /api/status", "the status of every Repo and Dispatch"),
     (
         "GET /api/map/<owner/name>",
@@ -73,6 +77,13 @@ pub fn answer(ctx: &Context, request: &HttpRequest) -> Answer {
                 format!("{issue} has no Dispatch"),
                 help,
             )
+        }
+        ("GET", path) if let Some((_, kind, bytes)) = APP.iter().find(|(p, ..)| *p == path) => {
+            Answer::Whole(HttpResponse {
+                status: 200,
+                headers: vec![("Content-Type".into(), (*kind).into())],
+                body: bytes.to_vec(),
+            })
         }
         ("POST", "/api/dispatch") => ran(dispatch(ctx, request)),
         ("POST", "/api/refresh") => ran(refresh::refresh(&[], ctx)),
