@@ -3,6 +3,8 @@ pub mod cli;
 pub mod config;
 pub mod dispatch;
 pub mod launch;
+pub mod pause;
+pub mod refresh;
 pub mod repo;
 pub mod serve;
 pub mod source;

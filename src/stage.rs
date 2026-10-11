@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::cli::Context;
 use crate::dispatch::{self, Dispatch};
+use crate::pause;
 use crate::state;
 use crate::world::{Mergeable, PrState};
 
@@ -65,10 +66,13 @@ pub fn load(config_dir: &Path) -> io::Result<Prs> {
 
 /// Look for each live Dispatch's PR on its branch until one is found, and
 /// ask GitHub about every watched PR that is not final. A failed read is
-/// said and asked again next time; it never stops the others. Says what it
-/// found and what failed.
+/// said and asked again next time; it never stops the others, but a rate
+/// limit pauses them all. Says what it found and what failed.
 pub fn watch(ctx: &Context) -> io::Result<Vec<String>> {
     let mut said = vec![];
+    if pause::of(ctx.world, &ctx.config_dir, "GitHub")?.is_some() {
+        return Ok(said);
+    }
     // (url, repo, number, the Dispatch it was just found for)
     let mut asks: Vec<(String, String, u64, Option<String>)> = (load(&ctx.config_dir)?.into_iter())
         .filter(|(_, pr)| !pr.r#final)
@@ -85,7 +89,12 @@ pub fn watch(ctx: &Context) -> io::Result<Vec<String>> {
                     })
                     .map(|pr| (pr.url, d.repo, pr.number, Some(d.issue))),
             ),
-            Err(e) => said.push(format!("could not look for the PR of {}: {e}", d.issue)),
+            Err(e) => {
+                said.push(format!("could not look for the PR of {}: {e}", d.issue));
+                if pause::note(&ctx.config_dir, &e)? {
+                    return Ok(said);
+                }
+            }
         }
     }
     for (url, repo, number, found_for) in asks {
@@ -93,6 +102,9 @@ pub fn watch(ctx: &Context) -> io::Result<Vec<String>> {
             Ok(now) => now,
             Err(e) => {
                 said.push(format!("could not ask GitHub about {url}: {e}"));
+                if pause::note(&ctx.config_dir, &e)? {
+                    return Ok(said);
+                }
                 continue;
             }
         };

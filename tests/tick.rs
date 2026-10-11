@@ -313,3 +313,206 @@ fn a_tick_reads_the_source_asks_about_prs_closes_then_fills_the_room_it_freed() 
         ]
     );
 }
+
+#[test]
+fn a_github_rate_limit_pauses_github_reads_until_its_reset_and_status_shows_it() {
+    let t = with_issues(&[1, 2]);
+    set_repo(&t, "room = 1");
+    t.tick();
+    t.world.add_pr(pr_of(9, 1));
+    t.world.advance(TICK);
+    let limited = "GitHub rate limit exceeded; nico-agent asks it again at 2026-09-30T12:35:00Z";
+    let said = format!("could not read the issues of acme/api: {limited}");
+    t.world.fail_call("github", limited);
+
+    let (hit, at_hit) = calls_after(&t, || t.tick());
+    let paused = t.cli(&["status", "--json"]).json();
+    t.world.clear_failures();
+    let mut during = vec![];
+    for _ in 0..2 {
+        t.world.advance(TICK);
+        during.push(calls_after(&t, || t.tick()));
+    }
+    t.world.advance(TICK);
+    let (_, after) = calls_after(&t, || t.tick());
+
+    assert_eq!(hit, std::slice::from_ref(&said));
+    assert_eq!(at_hit, ["github viewer"]);
+    assert_eq!(
+        paused["sources"],
+        serde_json::json!({
+            "github": { "paused_until": "2026-09-30T12:35:00Z" },
+            "linear": { "paused_until": null },
+        })
+    );
+    // 12:20 and 12:30: no GitHub read, the pause said.
+    assert_eq!(during, [(vec![said.clone()], vec![]), (vec![said], vec![])]);
+    // 12:40: each read once.
+    assert_eq!(
+        after,
+        [
+            "github viewer",
+            "github issues acme/api",
+            "github branch prs acme/api:agent/api-1",
+            "github pr activity acme/api#9",
+        ]
+    );
+    let resumed = t.cli(&["status", "--json"]).json();
+    assert_eq!(
+        resumed["sources"]["github"]["paused_until"],
+        serde_json::Value::Null
+    );
+}
+
+#[test]
+fn during_a_github_pause_the_tick_closes_and_dispatches_from_what_it_knows() {
+    let t = with_issues(&[1, 2]);
+    set_repo(&t, "room = 1");
+    t.tick();
+    t.world.add_pr(pr_of(9, 1));
+    t.world.advance(TICK);
+    t.tick();
+    merge(&t, 9, 1);
+    t.world
+        .fail_call("herdr worktree remove", "herdr is not running");
+    t.world.advance(TICK);
+    t.tick();
+    t.world.clear_failures();
+    let limited = "GitHub rate limit exceeded; nico-agent asks it again at 2026-09-30T13:00:00Z";
+    t.world.fail_call("github viewer", limited);
+    t.world.advance(TICK);
+
+    let said = t.tick();
+
+    assert_eq!(
+        said,
+        [
+            format!("could not read the issues of acme/api: {limited}"),
+            "acme/api#1 Closed: its PR https://github.com/acme/api/pull/9 merged".into(),
+            "acme/api#2 dispatched".into(),
+        ]
+    );
+}
+
+#[test]
+fn refresh_rereads_every_source_and_every_watched_pr_final_ones_included_then_ticks() {
+    let t = with_issues(&[1, 2]);
+    t.tick();
+    t.world.add_pr(pr_of(9, 1));
+    t.world.add_pr(pr_of(10, 2));
+    t.world.advance(TICK);
+    t.tick();
+    merge(&t, 9, 1);
+    merge(&t, 10, 2);
+    t.world.advance(TICK);
+    t.tick();
+    // By hand: the merge of 9 undone, and issue 3 labelled ready-for-agent.
+    let mut prs = t.world.prs.borrow_mut();
+    prs.iter_mut().find(|pr| pr.number == 9).unwrap().state = PrState::Open;
+    drop(prs);
+    t.world.add_issue("acme/api", github_issue("acme/api", 3));
+    t.world.advance(Duration::from_secs(60));
+
+    let (quiet, none) = calls_after(&t, || t.tick());
+    let (refreshed, calls) = calls_after(&t, || t.cli(&["refresh", "--json"]));
+
+    assert_eq!(quiet, Vec::<String>::new());
+    assert_eq!(none, Vec::<String>::new());
+    assert_eq!(refreshed.exit_code, 0, "{}", refreshed.stdout);
+    assert_eq!(
+        refreshed.json(),
+        serde_json::json!({
+            "repos": [{ "slug": "acme/api", "read_at": "2026-09-30T12:21:00Z" }],
+            "prs": [
+                { "url": "https://github.com/acme/api/pull/10", "state": "merged", "final": true },
+                { "url": "https://github.com/acme/api/pull/9", "state": "open", "final": false },
+            ],
+            "actions": ["acme/api#3 dispatched"],
+        })
+    );
+    assert_eq!(
+        calls[..4],
+        [
+            "github viewer",
+            "github issues acme/api",
+            "github pr activity acme/api#10",
+            "github pr activity acme/api#9",
+        ]
+    );
+    // 9 can change again, so the next tick asks about it; 10 is final.
+    t.world.advance(Duration::from_secs(60));
+    let (_, next) = calls_after(&t, || t.tick());
+    assert_eq!(
+        next,
+        [
+            "github branch prs acme/api:agent/api-3",
+            "github pr activity acme/api#9",
+        ]
+    );
+}
+
+#[test]
+fn a_linear_rate_limit_pauses_the_repos_reading_linear_even_across_a_restart_of_serve() {
+    let t = with_issues(&[]);
+    t.world
+        .add_clone("/src/web", &["git@github.com:acme/web.git"]);
+    t.cli(&[
+        "repo",
+        "add",
+        "acme/web",
+        "--path",
+        "/src/web",
+        "--linear-team",
+        "BLE",
+    ]);
+    let limited = "Linear rate limit exceeded; nico-agent asks it again at 2026-09-30T12:15:00Z";
+    t.world.fail_call("linear issues", limited);
+    let serve = || {
+        let (_, calls) = calls_after(&t, || t.cli(&["serve"]));
+        let reads = calls.into_iter().filter(|c| c.contains(" issues "));
+        reads.collect::<Vec<_>>()
+    };
+
+    let hit = serve();
+    let paused = t.cli(&["status", "--json"]).json();
+    t.world.clear_failures();
+    t.world.advance(TICK);
+    let during = serve();
+    t.world.advance(TICK);
+    let after = serve();
+
+    assert_eq!(
+        hit,
+        [
+            "github issues acme/api",
+            "github issues acme/web",
+            "linear issues BLE"
+        ]
+    );
+    assert_eq!(
+        paused["sources"]["linear"]["paused_until"],
+        "2026-09-30T12:15:00Z"
+    );
+    assert_eq!(
+        paused["sources"]["github"]["paused_until"],
+        serde_json::Value::Null
+    );
+    assert_eq!(during, ["github issues acme/api"]);
+    assert_eq!(
+        after,
+        [
+            "github issues acme/api",
+            "github issues acme/web",
+            "linear issues BLE"
+        ]
+    );
+    let logged = t.world.logged();
+    let said = format!("could not read the issues of acme/web: {limited}");
+    assert_eq!(
+        logged,
+        [
+            format!("2026-09-30T12:00:00Z {said}"),
+            format!("2026-09-30T12:10:00Z {said}"),
+        ]
+    );
+}

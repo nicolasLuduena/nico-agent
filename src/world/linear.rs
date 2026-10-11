@@ -4,15 +4,17 @@ use std::fs;
 use std::io;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
+use std::time::{Duration, SystemTime};
 
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 
 use super::{
-    HttpRequest, LinearBlocker, LinearIssue, LinearProject, LinearTeam, Named, Nodes, Page,
-    PageInfo, READY_LABEL, RealWorld, World, WorldError, WorldResult, invalid,
+    HttpRequest, HttpResponse, LinearBlocker, LinearIssue, LinearProject, LinearTeam, Named, Nodes,
+    Page, PageInfo, READY_LABEL, RealWorld, World, WorldError, WorldResult, invalid,
 };
+use crate::state;
 
 const ENDPOINT: &str = "https://api.linear.app/graphql";
 
@@ -226,6 +228,9 @@ fn query<T: DeserializeOwned>(world: &RealWorld, text: &str, variables: Value) -
     let response = world
         .http(&request)
         .map_err(|_| WorldError("Linear request failed; check your network".into()))?;
+    if let Some(reset) = rate_limit_reset(world, &response) {
+        return Err(WorldError::rate_limited("Linear", &state::iso(reset)));
+    }
     match response.status {
         200..=299 => {}
         401 | 403 => {
@@ -242,6 +247,35 @@ fn query<T: DeserializeOwned>(world: &RealWorld, text: &str, variables: Value) -
         ));
     }
     from(&payload["data"])
+}
+
+/// When Linear may be asked again, if it refused for its rate limit (HTTP 400
+/// with a `RATELIMITED` error, per linear.app/developers/rate-limiting; or
+/// 429): the latest reset (epoch ms) of its spent limits, else in a minute.
+fn rate_limit_reset(world: &RealWorld, response: &HttpResponse) -> Option<SystemTime> {
+    let payload: Value = serde_json::from_str(&response.body).unwrap_or_default();
+    let limited = response.status == 429
+        || (payload["errors"].as_array().into_iter().flatten())
+            .any(|e| e["extensions"]["code"] == "RATELIMITED");
+    if !limited {
+        return None;
+    }
+    let header = |name: String| {
+        (response.headers.iter())
+            .find(|(n, _)| n.eq_ignore_ascii_case(&name))
+            .map(|(_, value)| value.as_str())
+    };
+    // shortcut: a complexity limit with some left, too little for the query, waits a minute, not
+    // till its reset; compare X-Complexity to what remains if that proves too short.
+    let spent = ["Requests", "Endpoint-Requests", "Complexity"]
+        .into_iter()
+        .filter(|limit| header(format!("X-RateLimit-{limit}-Remaining")) == Some("0"))
+        .filter_map(|limit| header(format!("X-RateLimit-{limit}-Reset"))?.parse().ok())
+        .max();
+    Some(spent.map_or_else(
+        || world.now() + Duration::from_secs(60),
+        |ms| SystemTime::UNIX_EPOCH + Duration::from_millis(ms),
+    ))
 }
 
 /// `LINEAR_API_KEY` from the environment, else from `secrets.env` in the

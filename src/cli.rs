@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use serde_json::{Value, json};
 
 use crate::dispatch;
+use crate::refresh;
 use crate::repo;
 use crate::serve;
 use crate::status;
@@ -71,6 +72,10 @@ const COMMANDS: &[(&str, &str)] = &[
         "nico-agent serve",
         "run the loop: a tick now and every tick_minutes",
     ),
+    (
+        "nico-agent refresh",
+        "re-read every Repo's issues and re-ask about every watched PR, then run a tick",
+    ),
 ];
 
 /// Run `nico-agent` with `argv` (without the program name).
@@ -89,6 +94,7 @@ pub fn run(argv: &[String], ctx: &Context) -> Output {
         ["dispatch", args @ ..] => dispatch::dispatch(args, ctx),
         ["status", args @ ..] => status::status(args, ctx),
         ["serve", args @ ..] => serve::serve(args, ctx),
+        ["refresh", args @ ..] => refresh::refresh(args, ctx),
         ["repo", ..] => Err(bad_invocation(
             "`repo` needs a subcommand: add, rm or list".into(),
             "repo",
