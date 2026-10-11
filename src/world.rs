@@ -182,6 +182,14 @@ pub struct Agent {
     pub state: String,
 }
 
+/// The Agent state herdr reports for the agent `name` among `agents`;
+/// `None` when it has no such agent.
+pub fn agent_state<'a>(agents: &'a [Agent], name: &str) -> Option<&'a str> {
+    (agents.iter())
+        .find(|a| a.name == name)
+        .map(|a| a.state.as_str())
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HttpRequest {
     pub method: String,

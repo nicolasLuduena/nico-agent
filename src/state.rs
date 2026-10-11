@@ -7,6 +7,7 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 /// Read `file` (empty when missing), let `change` compute its new text, and
@@ -76,6 +77,11 @@ pub fn read_json_lines<T: DeserializeOwned>(file: &Path) -> io::Result<Vec<T>> {
         }
     }
     Ok(records)
+}
+
+/// `value` as a JSON state file holds it.
+pub fn text(value: &impl Serialize) -> String {
+    serde_json::to_string_pretty(value).expect("state is plain data") + "\n"
 }
 
 /// What a JSON state file holds: nothing when missing or empty.

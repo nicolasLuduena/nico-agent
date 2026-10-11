@@ -38,8 +38,7 @@ pub fn note(config_dir: &Path, error: &WorldError) -> io::Result<bool> {
     state::update(&file, |text| {
         let mut pauses: BTreeMap<String, String> = state::parse(&file, text)?;
         pauses.insert(source.to_lowercase(), until.into());
-        let text = serde_json::to_string_pretty(&pauses).expect("pauses are plain data") + "\n";
-        Ok::<_, io::Error>((text, ()))
+        Ok::<_, io::Error>((state::text(&pauses), ()))
     })?;
     Ok(true)
 }

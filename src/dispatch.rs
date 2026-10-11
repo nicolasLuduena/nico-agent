@@ -21,7 +21,7 @@ use crate::source::{self, BlockerPr, Read, Start};
 use crate::stage;
 use crate::state;
 use crate::verdict;
-use crate::world::{PrState, READY_LABEL, World};
+use crate::world::{self, PrState, READY_LABEL, World};
 
 pub const FILE: &str = "dispatches.json";
 
@@ -280,7 +280,7 @@ fn pick_up(
     let Some(leased) = lease(ctx, key)? else {
         let started = existing.completed.len() == STEPS.len();
         let agent = &existing.implementer.agent;
-        if started && !ctx.world.herdr_agents()?.iter().any(|a| a.name == *agent) {
+        if started && world::agent_state(&ctx.world.herdr_agents()?, agent).is_none() {
             return restart_by_hand(ctx, config, existing);
         }
         return answer(ctx, &existing, format!("{key} already In flight (no-op)"));
@@ -400,11 +400,8 @@ fn run_step(
 
 /// Assign the issue to the user; a failure is only a warning.
 fn claim(ctx: &Context, record: &mut Dispatch) {
-    let claimed = match record.issue.rsplit_once('#') {
-        Some((slug, number)) => {
-            let number = number.parse().expect("a GitHub key ends in its number");
-            ctx.world.github_assign_self(slug, number)
-        }
+    let claimed = match source::github_ref(&record.issue) {
+        Some((slug, number)) => ctx.world.github_assign_self(slug, number),
         None => ctx.world.linear_assign_self(&record.issue),
     };
     match claimed {
@@ -456,7 +453,7 @@ const SEE_STATUS: &str = "Run `nico-agent status` to see the Dispatch";
 /// What `dispatch` says of one issue.
 fn answer(ctx: &Context, record: &Dispatch, said: String) -> Result<Value, Refusal> {
     let prs = stage::load(&ctx.config_dir)?;
-    let pr = record.pr.as_ref().and_then(|url| prs.get(url));
+    let pr = stage::pr_of(&prs, record).map(|(_, pr)| pr);
     let verdict = verdict::load(&ctx.config_dir, &record.issue)?;
     let mut answer = json!({
         "dispatched": said,
@@ -539,7 +536,7 @@ fn source_of<'c>(
             vec!["Run the same `nico-agent dispatch` again once the Source answers".into()],
         )),
     };
-    if let Some((slug, _)) = key.rsplit_once('#') {
+    if let Some((slug, _)) = source::github_ref(key) {
         let (slug, repo) = config
             .repos
             .get_key_value(slug)
@@ -614,7 +611,7 @@ fn label(record: &Dispatch) -> String {
         .repo
         .split_once('/')
         .map_or(&*record.repo, |(_, name)| name);
-    match record.issue.rsplit_once('#') {
+    match source::github_ref(&record.issue) {
         Some((_, number)) => format!("{name}#{number}"),
         None => format!("{name}:{}", record.issue),
     }
@@ -671,10 +668,7 @@ pub fn close_final(ctx: &Context) -> io::Result<Vec<String>> {
         .into_iter()
         .filter(|d| d.closed_at.is_none())
     {
-        let Some((url, pr)) = (d.pr.as_ref())
-            .and_then(|url| Some((url, prs.get(url)?)))
-            .filter(|(_, pr)| pr.r#final)
-        else {
+        let Some((url, pr)) = stage::pr_of(&prs, &d).filter(|(_, pr)| pr.r#final) else {
             continue;
         };
         let freed = d.workspace.as_ref().map_or(Ok(()), |workspace| {
@@ -724,7 +718,6 @@ pub fn update<T>(config_dir: &Path, change: impl FnOnce(&mut Vec<Dispatch>) -> T
     state::update(&file, |text| {
         let mut all = state::parse(&file, text)?;
         let out = change(&mut all);
-        let text = serde_json::to_string_pretty(&all).expect("a Dispatch is plain data") + "\n";
-        Ok((text, out))
+        Ok((state::text(&all), out))
     })
 }

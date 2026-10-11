@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use crate::cli::Context;
 use crate::dispatch;
 use crate::state;
-use crate::world::Agent;
+use crate::world::{self, Agent};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Asking {
@@ -32,7 +32,7 @@ pub fn step(ctx: &Context, agents: Option<&[Agent]>) -> io::Result<Vec<String>> 
     let mut said = vec![];
     for d in live {
         let name = &d.implementer.agent;
-        let state = (agents.iter().find(|a| a.name == *name)).map(|a| a.state.as_str());
+        let state = world::agent_state(agents, name);
         match (state, &d.asking) {
             (Some("blocked"), None) => {
                 let question = match ctx.world.herdr_agent_read(name) {

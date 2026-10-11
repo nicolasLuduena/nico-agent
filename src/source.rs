@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use crate::config::{Linear, Repo};
 use crate::dispatch::Dispatch;
 use crate::pause;
-use crate::stage::Prs;
+use crate::stage::{self, Prs};
 use crate::state;
 use crate::world::{
     GitHubIssue, IssueState, LinearIssue, PrState, PullRequest, READY_LABEL, World, WorldError,
@@ -122,8 +122,7 @@ pub fn issues(
             Ok((cached, Some(e)))
         }
         Ok(read) => {
-            let text = serde_json::to_string_pretty(&read).expect("a Read is plain data") + "\n";
-            state::update(&file, |_| Ok::<_, io::Error>((text, ())))?;
+            state::update(&file, |_| Ok::<_, io::Error>((state::text(&read), ())))?;
             Ok((Some(read), None))
         }
     }
@@ -163,8 +162,7 @@ fn read(world: &dyn World, slug: &str, repo: &Repo) -> WorldResult<Read> {
 /// PR attachments. A fork's head isn't here.
 fn open_prs(world: &dyn World, repo: &str, key: &str) -> WorldResult<Vec<BlockerPr>> {
     let mut prs = vec![];
-    if let Some((slug, number)) = key.rsplit_once('#') {
-        let number = number.parse().expect("a GitHub key ends in its number");
+    if let Some((slug, number)) = github_ref(key) {
         prs = world.github_linked_pull_requests(slug, number)?;
         prs.extend(world.github_branch_pull_requests(repo, &github_branch(slug, number))?);
     } else {
@@ -227,8 +225,8 @@ pub fn readiness(read: &Read, dispatches: &[Dispatch], prs: &Prs) -> Readiness {
             reason: None,
         };
         let ended = (last.get(issue.key.as_str()))
-            .and_then(|d| d.pr.as_ref())
-            .and_then(|url| Some((url, prs.get(url)?.state)));
+            .and_then(|d| stage::pr_of(prs, d))
+            .map(|(url, pr)| (url, pr.state));
         let key = &issue.key;
         let held = match ended {
             Some((url, PrState::Merged)) => Some(format!(
@@ -418,6 +416,15 @@ fn from_linear(issue: &LinearIssue) -> Issue {
             })
             .collect(),
     }
+}
+
+/// The slug and number of the GitHub issue `key`; `None` for a Linear identifier.
+pub fn github_ref(key: &str) -> Option<(&str, u64)> {
+    let (slug, number) = key.rsplit_once('#')?;
+    Some((
+        slug,
+        number.parse().expect("a GitHub key ends in its number"),
+    ))
 }
 
 /// `owner/repo#N`, in the Repo's own casing for its own issues.

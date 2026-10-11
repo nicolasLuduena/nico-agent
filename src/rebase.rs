@@ -4,7 +4,7 @@
 
 use crate::dispatch::Dispatch;
 use crate::restart::Reason;
-use crate::stage::Prs;
+use crate::stage::{self, Prs};
 use crate::world::Mergeable;
 
 /// Whether `d` must rebase: `retarget` when the PR below became final, once,
@@ -24,9 +24,7 @@ pub fn reason(d: &mut Dispatch, prs: &Prs) -> Option<Reason> {
         d.rebasing = d.pr.is_some();
         return Some(Reason::Retarget);
     }
-    let pr = (d.pr.as_ref())
-        .and_then(|url| prs.get(url))
-        .filter(|pr| !pr.r#final)?;
+    let (_, pr) = stage::pr_of(prs, d).filter(|(_, pr)| !pr.r#final)?;
     match pr.mergeable {
         Mergeable::Conflicting if !d.rebasing => {
             d.rebasing = true;

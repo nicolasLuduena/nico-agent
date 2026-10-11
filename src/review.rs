@@ -10,7 +10,7 @@ use crate::dispatch::{self, Dispatch};
 use crate::launch::{self, AgentLaunch};
 use crate::stage::{self, Pr, Stage};
 use crate::verdict;
-use crate::world::Agent;
+use crate::world::{self, Agent};
 
 /// A Dispatch's latest Reviewer.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -44,12 +44,13 @@ pub fn start_reviewers(
         if !repo.switches.review {
             continue;
         }
-        let Some((url, pr)) = d.pr.as_ref().and_then(|url| Some((url, prs.get(url)?))) else {
+        let Some((url, pr)) = stage::pr_of(&prs, &d) else {
             continue;
         };
         let verdict = verdict::load(&ctx.config_dir, &d.issue)?;
-        let gone =
-            |r: &&Reviewer| agents.is_some_and(|a| a.iter().all(|a| a.name != r.launch.agent));
+        let gone = |r: &&Reviewer| {
+            agents.is_some_and(|a| world::agent_state(a, &r.launch.agent).is_none())
+        };
         let prompted = (d.reviewer.as_ref())
             .filter(|r| !gone(r))
             .and_then(|r| r.sha.as_ref());

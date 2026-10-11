@@ -58,7 +58,7 @@ pub fn flip(ctx: &Context, config: &Config) -> io::Result<Vec<String>> {
     let live = dispatch::load(&ctx.config_dir)?.into_iter();
     for mut d in live.filter(|d| d.closed_at.is_none()) {
         let on = config.repo_of(&d).switches.flip;
-        let Some((url, pr)) = d.pr.as_ref().and_then(|url| prs.get_key_value(url)) else {
+        let Some((url, pr)) = stage::pr_of(&prs, &d) else {
             continue;
         };
         let verdict = load(&ctx.config_dir, &d.issue)?;
@@ -125,10 +125,7 @@ pub fn verdict(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
         ));
     };
     let prs = stage::load(&ctx.config_dir)?;
-    let Some((url, pr)) = (d.pr.as_ref())
-        .and_then(|url| Some((url, prs.get(url)?)))
-        .filter(|(_, pr)| pr.state == PrState::Open)
-    else {
+    let Some((url, pr)) = stage::pr_of(&prs, &d).filter(|(_, pr)| pr.state == PrState::Open) else {
         return Err(Refusal::new(
             format!("{issue} has no open PR"),
             vec![
@@ -172,8 +169,7 @@ pub fn verdict(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
         {
             return Ok::<_, io::Error>((text.to_string(), false));
         }
-        let text = serde_json::to_string_pretty(&new).expect("a Verdict is plain data") + "\n";
-        Ok((text, true))
+        Ok((state::text(&new), true))
     })?;
     Ok(json!({
         "verdict": if recorded { said } else { format!("{said} already recorded (no-op)") },

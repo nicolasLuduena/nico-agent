@@ -66,6 +66,11 @@ pub fn of(dispatch: &Dispatch, pr: Option<&Pr>, verdict: Option<&Verdict>) -> St
     }
 }
 
+/// The PR `d` found, by its URL, as GitHub last said of it.
+pub fn pr_of<'a>(prs: &'a Prs, d: &Dispatch) -> Option<(&'a String, &'a Pr)> {
+    prs.get_key_value(d.pr.as_ref()?)
+}
+
 pub fn load(config_dir: &Path) -> io::Result<Prs> {
     state::load(&config_dir.join(FILE))
 }
@@ -88,8 +93,7 @@ pub fn watch(ctx: &Context, every: bool) -> io::Result<(Vec<String>, Vec<String>
     let watched = state::update(&file, |text| {
         let mut watched: Prs = state::parse(&file, text)?;
         watched.retain(|url, _| dispatches.iter().any(|d| refers(d, url)));
-        let text = serde_json::to_string_pretty(&watched).expect("a Pr is plain data") + "\n";
-        Ok::<_, io::Error>((text, watched))
+        Ok::<_, io::Error>((state::text(&watched), watched))
     })?;
     if pause::of(ctx.world, &ctx.config_dir, "GitHub")?.is_some() {
         return Ok((said, no_pr));
@@ -162,7 +166,6 @@ pub fn save(config_dir: &Path, url: &str, pr: Pr) -> io::Result<()> {
     state::update(&file, |text| {
         let mut all: Prs = state::parse(&file, text)?;
         all.insert(url.into(), pr);
-        let text = serde_json::to_string_pretty(&all).expect("a Pr is plain data") + "\n";
-        Ok((text, ()))
+        Ok((state::text(&all), ()))
     })
 }

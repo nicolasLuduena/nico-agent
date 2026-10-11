@@ -9,6 +9,7 @@ use serde_json::json;
 
 use crate::cli::Refusal;
 use crate::config::{Harness, LaunchMode, fill_in};
+use crate::source;
 use crate::world::{World, WorldResult};
 
 /// How long herdr may take to see a pane-command agent, or an agent to settle
@@ -40,8 +41,9 @@ pub struct AgentLaunch {
 /// `<role>-<repo name>-<n>` for issue `owner/repo#n`, `-<ble-12>` for Linear's
 /// `BLE-12`: within herdr's limit, the Repo's name cut to keep the issue's part.
 pub fn agent_name(role: &str, slug: &str, issue: &str) -> String {
-    let issue = issue.rsplit_once('#').map_or(issue, |(_, number)| number);
-    let suffix = format!("-{}", issue.to_lowercase());
+    let issue =
+        source::github_ref(issue).map_or_else(|| issue.to_lowercase(), |(_, n)| n.to_string());
+    let suffix = format!("-{issue}");
     let room = MAX_AGENT_NAME.saturating_sub(role.len() + 1 + suffix.len());
     let name = slug.split_once('/').map_or(slug, |(_, name)| name);
     let repo: String = (name.to_lowercase().chars())

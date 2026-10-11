@@ -17,7 +17,7 @@ use crate::rebase;
 use crate::stage::{self, Prs};
 use crate::state;
 use crate::verdict::{self, Outcome};
-use crate::world::Agent;
+use crate::world::{self, Agent};
 
 /// One restart of a Dispatch's Implementer.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -99,10 +99,7 @@ pub fn step(
 /// Whether the head of `d`'s open PR has a failing Verdict that no `verdict`
 /// restart came at or after: one restart per failing Verdict.
 fn failed_verdict(ctx: &Context, d: &Dispatch, prs: &Prs) -> io::Result<bool> {
-    let Some(pr) = (d.pr.as_ref())
-        .and_then(|url| prs.get(url))
-        .filter(|pr| !pr.r#final)
-    else {
+    let Some((_, pr)) = stage::pr_of(prs, d).filter(|(_, pr)| !pr.r#final) else {
         return Ok(false);
     };
     let failed = verdict::load(&ctx.config_dir, &d.issue)?
@@ -120,7 +117,7 @@ fn agent_reason(
     now: &str,
     stalled: Option<&str>,
 ) -> Option<Reason> {
-    let Some(state) = agent_state(agents, d) else {
+    let Some(state) = world::agent_state(agents, &d.implementer.agent) else {
         return Some(Reason::Rebooted);
     };
     if d.pr.is_some() || !matches!(state, "idle" | "done") {
@@ -131,13 +128,6 @@ fn agent_reason(
     stalled
         .is_some_and(|stalled| since.as_str() <= stalled)
         .then_some(Reason::Stalled)
-}
-
-/// The Agent state herdr reports for the Dispatch's Implementer; `None` when it has no such agent.
-fn agent_state<'a>(agents: &'a [Agent], d: &Dispatch) -> Option<&'a str> {
-    (agents.iter())
-        .find(|a| a.name == d.implementer.agent)
-        .map(|a| a.state.as_str())
 }
 
 /// The loop's restart of `record`'s Implementer for `reason`. One whose
@@ -284,7 +274,6 @@ fn announce_failed(ctx: &Context, record: &Dispatch) -> Option<String> {
 /// Tell the user that the live Dispatch of `issue` is Failed, if it is: for
 /// the loop's dispatch that failed at a step, which it never tries again.
 pub fn announce(ctx: &Context, issue: &str) -> io::Result<Option<String>> {
-    let live = (dispatch::load(&ctx.config_dir)?.into_iter())
-        .find(|d| d.issue == issue && d.closed_at.is_none());
+    let live = (dispatch::load(&ctx.config_dir)?.into_iter()).find(|d| dispatch::is_live(d, issue));
     Ok(live.and_then(|d| announce_failed(ctx, &d)))
 }
