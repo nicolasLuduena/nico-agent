@@ -233,13 +233,8 @@ fn events_sends_a_keepalive_comment_on_every_quiet_poll_so_a_proxy_never_sees_it
     let t = dispatched();
     let mut events = t.events();
 
-    // Cloudflare closes a response that sends nothing for 100 seconds.
-    let sent: String = (0..10)
-        .map(|_| {
-            t.world.advance(Duration::from_secs(10));
-            events.next()
-        })
-        .collect();
+    // Cloudflare closes a response that sends nothing for 100 seconds: ten polls.
+    let sent: String = (0..10).map(|_| events.next()).collect();
 
     assert_eq!(sent, KEEPALIVE.repeat(10));
 }

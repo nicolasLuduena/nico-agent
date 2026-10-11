@@ -77,8 +77,9 @@ only); it prints `ok` or `FAIL` per step and exits 1 on the first failure, after
 `tunnel start` puts `tunnel.mjs` between the page and serve, where cloudflared and Access sit: it
 cuts a response that sends nothing for 100 seconds, as Cloudflare does; switched to `502` it answers
 every request with a 502, as while the tunnel comes back, and to `signed-out` with Access's redirect
-to its login on another origin, as once the session lapses; `pass` passes requests on again. Each
-switch cuts the open streams. It logs each answer, and each stream's end, to `$TUNNEL_LOG`.
+to its login on another origin, as once the session lapses; `pass` passes requests on again.
+Switching to `502` cuts the open streams, as a dropped tunnel does; a lapse leaves them open, as
+Access does. It logs each answer, and each stream's end, to `$TUNNEL_LOG`.
 
 `seed dispatch` prints `{ issue, kind, worktree, branch, head, pr, evidence }`; keep it, the verdict
 recipes need `head`.

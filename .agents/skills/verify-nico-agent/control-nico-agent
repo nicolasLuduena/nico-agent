@@ -535,7 +535,8 @@ cmd_tunnel() {
 
 # Stop what this run started, never by name: each process whose executable lives in the run dir
 # (serve, and any CLI run still going), each browser `page` left with its profile in the run's
-# tmp, and the tunnel stand-in logging into the run dir. serve leads its own session (setsid), so its whole group goes with it, git children included.
+# tmp, and the tunnel stand-in logging into the run dir. serve leads its own session (setsid), so
+# its whole group goes with it, git children included.
 stop_run() {
   local p pid exe stopped=() alive=()
   for p in /proc/[0-9]*; do

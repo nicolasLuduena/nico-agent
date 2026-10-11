@@ -5,6 +5,9 @@ let down = false;
 /** The new stream pending after the browser gave up on one, and how many in a row did not open. */
 let retry: ReturnType<typeof setTimeout> | undefined;
 let failures = 0;
+/** Access answered with its login: no retry gets past that, only a reload. */
+let signedOut = false;
+const SIGNED_OUT = "Signed out; reload to sign in again.";
 
 /** How long to wait before reconnect `attempt`, counted from 0: 1 s, doubling to 30 s. */
 export function backoff(attempt: number): number {
@@ -16,12 +19,27 @@ export function reload() {
   watchers.forEach((w) => w.load());
 }
 
+/** `fetch`, not following a redirect: serve never redirects, Access does once the session lapses. */
+async function ask(path: string): Promise<Response> {
+  const response = await fetch(path, { redirect: "manual" });
+  if (response.type === "opaqueredirect") signOut();
+  return response;
+}
+
+function signOut() {
+  signedOut = true;
+  stream?.close();
+  stream = null;
+  clearTimeout(retry);
+  watchers.forEach((w) => w.lost(SIGNED_OUT));
+}
+
 function connect() {
   retry = undefined;
   const mine = new EventSource("/api/events");
   stream = mine;
   mine.addEventListener("changed", reload);
-  mine.addEventListener("error", () => void lost(mine));
+  mine.addEventListener("error", () => void dropped(mine));
   mine.addEventListener("open", () => {
     if (down) reload();
     down = false;
@@ -31,23 +49,17 @@ function connect() {
 
 /**
  * `mine` failed. The browser reconnects by itself after a clean close; after
- * an answer that is no stream (a 502 while the tunnel comes back) it closes
- * it for good, so a new one is made later. Access's login redirect, once the
- * session lapses, is one no retry gets past.
+ * an answer that is no stream (a 502 while the tunnel comes back, Access's
+ * login) it closes it for good, so a new one is made later, unless it was
+ * Access's.
  */
-async function lost(mine: EventSource) {
+async function dropped(mine: EventSource) {
   down = true;
   watchers.forEach((w) => w.lost("Lost nico-agent serve; reconnecting."));
-  const answer = await fetch("/api/status", { redirect: "manual" }).catch(() => null);
-  if (stream !== mine) return;
-  if (answer?.type === "opaqueredirect") {
-    mine.close();
-    stream = null;
-    watchers.forEach((w) => w.lost("Signed out; reload to sign in again"));
-  } else if (mine.readyState === EventSource.CLOSED) {
-    stream = null;
-    retry = setTimeout(connect, backoff(failures++));
-  }
+  await ask("/api/status").catch(() => null);
+  if (stream !== mine || mine.readyState !== EventSource.CLOSED) return;
+  stream = null;
+  retry = setTimeout(connect, backoff(failures++));
 }
 
 /**
@@ -59,9 +71,11 @@ async function lost(mine: EventSource) {
 export function watch<T>(path: string, got: (data: T) => void, failed: (why: string) => void): () => void {
   let latest = 0;
   const load = async () => {
+    if (signedOut) return failed(SIGNED_OUT);
     const mine = ++latest;
     try {
-      const response = await fetch(path);
+      const response = await ask(path);
+      if (signedOut) return;
       const body = await response.json();
       if (mine !== latest) return;
       if (response.ok) got(body as T);
@@ -71,7 +85,7 @@ export function watch<T>(path: string, got: (data: T) => void, failed: (why: str
     }
   };
   const watcher = { load, lost: failed };
-  if (!stream && retry === undefined) connect();
+  if (!stream && retry === undefined && !signedOut) connect();
   watchers.add(watcher);
   void load();
   return () => {

@@ -5,8 +5,9 @@
 // It passes each request on to serve and, like Cloudflare, cuts a response that sends nothing for
 // 100 seconds. `PUT /__tunnel/mode` with `pass`, `502` or `signed-out` changes how it answers every
 // other request: passed to serve; a 502, as while the tunnel comes back; or Access's redirect to its
-// login on another origin, as once the session lapses. A switch cuts every open stream, as a tunnel
-// dropping does. Each answer is a line of the log; a stream's says how long it lived and what it carried.
+// login on another origin, as once the session lapses. Switching to `502` cuts every open stream, as a
+// tunnel dropping does; Access checks a request only as it starts, so a lapse leaves open streams be.
+// Each answer is a line of the log; a stream's says how long it lived and what it carried.
 import { appendFileSync } from "node:fs";
 import { createServer, request } from "node:http";
 
@@ -26,8 +27,8 @@ createServer((req, res) => {
     req.on("end", () => {
       if (!MODES.includes(body.trim())) return res.writeHead(400).end(`a mode is ${MODES.join(", ")}, not "${body}"\n`);
       mode = body.trim();
-      say(`mode ${mode}, cutting ${streams.size} open stream(s)`);
-      streams.forEach((cut) => cut(`cut by mode ${mode}`));
+      say(mode === "502" ? `mode 502, cutting ${streams.size} open stream(s)` : `mode ${mode}`);
+      if (mode === "502") streams.forEach((cut) => cut("cut by mode 502"));
       res.end(`${mode}\n`);
     });
     return;
@@ -46,7 +47,7 @@ createServer((req, res) => {
     say(`${asked} -> 302 ${login}`);
     return res.writeHead(302, { Location: login }).end();
   }
-  const to = request(upstream + req.url, { method: req.method, headers: req.headers }, (answer) => {
+  const forward = request(upstream + req.url, { method: req.method, headers: req.headers }, (answer) => {
     res.writeHead(answer.statusCode, answer.headers);
     if (answer.headers["content-type"] !== "text/event-stream") {
       say(`${asked} -> ${answer.statusCode}`);
@@ -64,30 +65,30 @@ createServer((req, res) => {
       why = because;
       res.destroy();
     };
-    const sent = () => {
+    const rearm = () => {
       clearTimeout(idle);
       idle = setTimeout(() => cut("cut: nothing sent for 100 s"), IDLE_MS);
     };
     streams.add(cut);
-    sent();
+    rearm();
     answer.on("data", (chunk) => {
       const text = chunk.toString();
       keepalives += text.split(": keepalive").length - 1;
       changed += text.split("event: changed").length - 1;
       res.write(chunk);
-      sent();
+      rearm();
     });
     res.on("close", () => {
       clearTimeout(idle);
       streams.delete(cut);
-      to.destroy();
+      forward.destroy();
       const lived = Math.round((Date.now() - opened) / 1000);
       say(`${asked} stream ${why} after ${lived} s: ${keepalives} keepalive(s), ${changed} changed`);
     });
   });
-  to.on("error", (e) => {
+  forward.on("error", (e) => {
     if (!res.headersSent) res.writeHead(502).end();
     say(`${asked} -> serve unreachable: ${e.message}`);
   });
-  req.pipe(to);
+  req.pipe(forward);
 }).listen(Number(port), "127.0.0.1", () => say(`tunnel on http://127.0.0.1:${port} to ${upstream}`));
