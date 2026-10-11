@@ -62,8 +62,9 @@ pub fn status(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
         let stage = stage::of(d, pr.map(|(_, pr)| pr), verdict.as_ref());
         let (slug, harness) = (&d.repo, &d.implementer.harness);
         let mut warnings = d.warnings.clone();
-        if let Some(repo) = config.repos.get(slug).filter(|_| d.closed_at.is_none()) {
-            if config.reviewer(repo, harness).harness == *harness {
+        if d.closed_at.is_none() {
+            let repo = config.repo_of(d);
+            if config.reviewer(&repo, harness).harness == *harness {
                 warnings.push(format!(
                     "{}'s Reviewer runs on {harness}, as its Implementer does, so it may share its blind spots; set another Harness in repos.\"{slug}\".reviewer",
                     d.issue

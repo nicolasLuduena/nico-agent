@@ -1,6 +1,9 @@
 mod common;
 
-use common::{Setup, setup};
+use std::time::Duration;
+
+use common::{Setup, github_issue, pull_request, setup};
+use nico_agent::world::{PrState, PullRequest};
 use serde_json::json;
 
 fn with_clone(path: &str, remote: &str) -> Setup {
@@ -147,6 +150,65 @@ fn rm_removes_the_entry_and_says_what_stays() {
     assert_eq!(
         again.json(),
         json!({ "repo": "acme/api not configured (no-op)" })
+    );
+}
+
+#[test]
+fn a_removed_repos_work_in_flight_is_still_watched_reviewed_flipped_restarted_and_closed() {
+    let t = with_clone("/src/api", "git@github.com:acme/api.git");
+    t.cli(&["repo", "add", "acme/api", "--path", "/src/api"]);
+    t.world.add_issue("acme/api", github_issue("acme/api", 7));
+    t.tick();
+    let tick = Duration::from_secs(600);
+
+    let removed = t.cli(&["repo", "rm", "acme/api", "--json"]);
+    // Ready now, but the Repo takes no new work.
+    t.world.add_issue("acme/api", github_issue("acme/api", 8));
+    t.world.add_pr(PullRequest {
+        head_branch: Some("agent/api-7".into()),
+        ..pull_request("acme/api", 9)
+    });
+    t.world.advance(tick);
+    t.world.calls.borrow_mut().clear();
+    let mut night = vec![t.tick()];
+    let reviewer_start =
+        (t.world.calls().into_iter()).find(|c| c.starts_with("herdr agent start rev-"));
+    let verdict = t.cli(&["verdict", "acme/api#7", "pass", "--sha", "sha9", "--json"]);
+    t.world.advance(tick);
+    night.push(t.tick());
+    t.world.agents.borrow_mut().remove("impl-api-7");
+    t.world.advance(tick);
+    night.push(t.tick());
+    t.world.prs.borrow_mut()[0].state = PrState::Merged;
+    t.world.advance(tick);
+    night.push(t.tick());
+
+    assert_eq!(
+        removed.json(),
+        json!({
+            "repo": "acme/api removed",
+            "stays": ["the clone at /src/api", "acme/api#7, In flight till it is Closed"],
+        })
+    );
+    assert_eq!(verdict.exit_code, 0, "{}", verdict.stdout);
+    assert_eq!(
+        night,
+        [
+            vec![
+                "acme/api#7: PR https://github.com/acme/api/pull/9 found",
+                "acme/api#7: Reviewer started on codex for sha9",
+            ],
+            vec!["acme/api#7: PR https://github.com/acme/api/pull/9 flipped to ready"],
+            vec!["acme/api#7 restarted: rebooted"],
+            vec!["acme/api#7 Closed: its PR https://github.com/acme/api/pull/9 merged"],
+        ]
+    );
+    // Trusting the clone it was dispatched from.
+    assert_eq!(
+        reviewer_start.as_deref(),
+        Some(
+            r#"herdr agent start rev-api-7 --kind codex --pane w1:p3 -- -c projects={"/src/api"={trust_level="trusted"}}"#
+        )
     );
 }
 

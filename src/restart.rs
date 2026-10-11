@@ -73,12 +73,7 @@ pub fn step(
     let stalled = state::iso(now - Duration::from_secs(u64::from(config.stall_minutes) * 60));
     let now = state::iso(now);
     let broke = (dispatch::load(&ctx.config_dir)?.into_iter())
-        .filter(|d| {
-            config
-                .repos
-                .get(&d.repo)
-                .is_some_and(|r| r.switches.restart)
-        })
+        .filter(|d| config.repo_of(d).switches.restart)
         .filter(|d| d.closed_at.is_none() && d.failure.is_none())
         .filter(|d| d.completed.len() == STEPS.len());
     let mut said = vec![];
@@ -228,13 +223,11 @@ fn relaunch(
     text: &str,
 ) -> Result<(), (&'static str, Refusal)> {
     let world = ctx.world;
-    let (Some(repo), Some(harness)) = (
-        config.repos.get(&record.repo),
-        config.harnesses.get(&record.implementer.harness),
-    ) else {
+    let repo = config.repo_of(record);
+    let Some(harness) = config.harnesses.get(&record.implementer.harness) else {
         let gone = format!(
-            "{} or its Harness {} is no longer configured",
-            record.repo, record.implementer.harness
+            "its Harness {} is no longer configured",
+            record.implementer.harness
         );
         return Err(("tab", Refusal::new(gone, vec![])));
     };

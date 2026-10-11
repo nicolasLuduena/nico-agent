@@ -6,6 +6,7 @@ use toml_edit::{InlineTable, Item, Table, value};
 use crate::args::Args;
 use crate::cli::{Context, Refusal, bad_invocation};
 use crate::config::{self, Linear};
+use crate::dispatch;
 
 pub fn add(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
     const ADD: &str = "repo add";
@@ -114,6 +115,7 @@ pub fn add(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
 pub fn rm(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
     let args = Args::parse("repo rm", args, &[])?;
     let slug = args.positionals(&["<owner/name>"])?[0];
+    let dispatches = dispatch::load(&ctx.config_dir)?;
     config::edit(&ctx.config_dir, |config, doc| {
         let Some((slug, repo)) = config
             .repos
@@ -126,8 +128,14 @@ pub fn rm(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
             .as_table_like_mut()
             .expect("load read repos as a table")
             .remove(slug);
-        // shortcut: only the clone stays until Dispatches exist; list the In-flight ones here then.
-        json!({ "repo": format!("{slug} removed"), "stays": [format!("the clone at {}", repo.path)] })
+        let in_flight = (dispatches.iter())
+            .filter(|d| d.repo == *slug && d.closed_at.is_none())
+            .map(|d| format!("{}, In flight till it is Closed", d.issue));
+        let stays: Vec<String> = [format!("the clone at {}", repo.path)]
+            .into_iter()
+            .chain(in_flight)
+            .collect();
+        json!({ "repo": format!("{slug} removed"), "stays": stays })
     })
 }
 

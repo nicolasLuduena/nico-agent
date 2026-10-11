@@ -14,6 +14,7 @@ use serde_path_to_error::Segment;
 use toml_edit::{Document, DocumentMut, Item, TableLike};
 
 use crate::cli::Refusal;
+use crate::dispatch::Dispatch;
 use crate::state;
 
 pub const FILE: &str = "config.toml";
@@ -220,6 +221,17 @@ impl Config {
     /// How long a tick lasts, and so how old a Source read may be.
     pub fn tick(&self) -> Duration {
         Duration::from_secs(u64::from(self.tick_minutes) * 60)
+    }
+
+    /// The Repo `d` was dispatched into; once removed, the Repo's defaults on
+    /// the clone `d` was dispatched from, so its work In flight finishes.
+    pub fn repo_of(&self, d: &Dispatch) -> Repo {
+        self.repos.get(&d.repo).cloned().unwrap_or_else(|| {
+            let mut repo = defaults(REPO_DEFAULTS);
+            repo["path"] = toml_edit::value(&d.repo_path);
+            Repo::deserialize(toml_edit::de::Deserializer::from(repo))
+                .expect("the Repo defaults are a Repo")
+        })
     }
 
     /// The Repo's reviewer launch for an Implementer on the Harness

@@ -57,7 +57,7 @@ pub fn flip(ctx: &Context, config: &Config) -> io::Result<Vec<String>> {
     let prs = stage::load(&ctx.config_dir)?;
     let live = dispatch::load(&ctx.config_dir)?.into_iter();
     for d in live.filter(|d| d.closed_at.is_none()) {
-        let on = config.repos.get(&d.repo).is_some_and(|r| r.switches.flip);
+        let on = config.repo_of(&d).switches.flip;
         let Some((url, pr)) = d.pr.as_ref().and_then(|url| Some((url, prs.get(url)?))) else {
             continue;
         };
@@ -106,11 +106,10 @@ pub fn verdict(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
         return Err(bad_invocation(error, "verdict"));
     }
     let config = config::load(&ctx.config_dir)?;
-    let issue = dispatch::key(&config, text)?;
+    let dispatches = dispatch::load(&ctx.config_dir)?;
+    let issue = dispatch::key(&config, &dispatches, text)?;
     let see_status = || "Run `nico-agent status` to see the Dispatch".to_string();
-    let Some(d) =
-        (dispatch::load(&ctx.config_dir)?.into_iter()).find(|d| dispatch::is_live(d, &issue))
-    else {
+    let Some(d) = (dispatches.into_iter()).find(|d| dispatch::is_live(d, &issue)) else {
         return Err(Refusal::new(
             format!("{issue} has no live Dispatch"),
             vec![

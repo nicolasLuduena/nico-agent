@@ -652,6 +652,7 @@ fn status_shows_the_dispatch_implementing_with_its_launch_and_steps() {
             "title": "Issue 7",
             "url": "https://github.com/acme/api/issues/7",
             "repo": "acme/api",
+            "repo_path": "/src/api",
             "branch": "agent/api-7",
             "base": "main",
             "worktree": "/worktrees/api-7",

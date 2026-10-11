@@ -34,9 +34,10 @@ pub fn start_reviewers(
     let mut said = vec![];
     let live = dispatch::load(&ctx.config_dir)?.into_iter();
     for d in live.filter(|d| d.closed_at.is_none()) {
-        let Some(repo) = config.repos.get(&d.repo).filter(|r| r.switches.review) else {
+        let repo = config.repo_of(&d);
+        if !repo.switches.review {
             continue;
-        };
+        }
         let Some((url, pr)) = d.pr.as_ref().and_then(|url| Some((url, prs.get(url)?))) else {
             continue;
         };
@@ -61,7 +62,7 @@ pub fn start_reviewers(
             ));
             continue;
         }
-        let chosen = config.reviewer(repo, &d.implementer.harness);
+        let chosen = config.reviewer(&repo, &d.implementer.harness);
         let mut reviewer = Reviewer {
             launch: AgentLaunch {
                 agent: launch::agent_name("rev", &d.repo, &d.issue),

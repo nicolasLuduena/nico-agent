@@ -44,6 +44,9 @@ pub struct Dispatch {
     pub url: String,
     /// The Repo's slug.
     pub repo: String,
+    /// The Repo's clone it was dispatched from, worked in after the Repo is removed.
+    #[serde(default)]
+    pub repo_path: String,
     pub branch: String,
     /// The branch the worktree starts from and the PR targets, without `origin/`.
     pub base: String,
@@ -118,8 +121,9 @@ pub fn dispatch(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
         effort: args.flag("--effort"),
     };
     let config = config::load(&ctx.config_dir)?;
+    let dispatches = load(&ctx.config_dir)?;
     let keys = (refs.iter())
-        .map(|text| key(&config, text))
+        .map(|text| key(&config, &dispatches, text))
         .collect::<Result<Vec<_>, _>>()?;
     // One at a time: issues of a Repo share its clone.
     let mut outcomes: Vec<_> = (keys.iter())
@@ -188,6 +192,7 @@ pub fn issue(ctx: &Context, config: &Config, key: &str, flags: Flags) -> Result<
         title: issue.title.clone(),
         url: issue.url.clone(),
         repo: slug.clone(),
+        repo_path: repo.path.clone(),
         branch: issue.branch.clone(),
         base,
         stacked_on,
@@ -254,18 +259,7 @@ fn resume(
             vec![SEE_STATUS.into()],
         ));
     }
-    let Some(repo) = config.repos.get(&existing.repo) else {
-        return Err(Refusal::new(
-            format!(
-                "{}, which {key} was dispatched into, is no longer a configured Repo",
-                existing.repo
-            ),
-            vec![format!(
-                "Run `nico-agent repo add {} --path <clone>` to add it back",
-                existing.repo
-            )],
-        ));
-    };
+    let repo = config.repo_of(&existing);
     if !config.harnesses.contains_key(&had.harness) {
         return Err(Refusal::new(
             format!(
@@ -290,7 +284,7 @@ fn resume(
         "{key} (resumed from {})",
         step.expect("a lease leaves steps to do")
     );
-    run(ctx, config, repo, leased, said)
+    run(ctx, config, &repo, leased, said)
 }
 
 /// Restart the Implementer whose agent is gone, as the user: never counted
@@ -469,17 +463,25 @@ fn answer(ctx: &Context, record: &Dispatch, said: String) -> Result<Value, Refus
 }
 
 /// The Dispatch key of an issue reference: `owner/repo#N` of a configured
-/// Repo, in its casing, or a Linear identifier.
-pub fn key(config: &Config, text: &str) -> Result<String, Refusal> {
+/// Repo, in its casing, or of one of `dispatches` In flight; or a Linear identifier.
+pub fn key(config: &Config, dispatches: &[Dispatch], text: &str) -> Result<String, Refusal> {
     let is_number = |n: &str| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit());
     if let Some((slug, number)) = text.rsplit_once('#')
         && slug.contains('/')
         && is_number(number)
     {
         let number: u64 = number.parse().map_err(|_| not_a_reference(text))?;
-        return match config.repos.keys().find(|s| s.eq_ignore_ascii_case(slug)) {
-            Some(slug) => Ok(format!("{slug}#{number}")),
-            None => Err(Refusal::new(
+        let configured = config.repos.keys().find(|s| s.eq_ignore_ascii_case(slug));
+        // Its Repo removed, an issue In flight there is still worked till Closed.
+        let in_flight = (dispatches.iter())
+            .find(|d| {
+                d.closed_at.is_none() && d.issue.eq_ignore_ascii_case(&format!("{slug}#{number}"))
+            })
+            .map(|d| &d.issue);
+        return match (configured, in_flight) {
+            (Some(slug), _) => Ok(format!("{slug}#{number}")),
+            (None, Some(issue)) => Ok(issue.clone()),
+            (None, None) => Err(Refusal::new(
                 format!("{slug} is not a configured Repo"),
                 vec![format!(
                     "Run `nico-agent repo add {slug} --path <clone>` first"
