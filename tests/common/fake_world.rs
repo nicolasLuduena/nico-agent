@@ -93,6 +93,7 @@ pub fn github_issue(slug: &str, number: u64) -> GitHubIssue {
         number,
         title: format!("Issue {number}"),
         url: format!("https://github.com/{slug}/issues/{number}"),
+        created_at: "2026-09-01T00:00:00Z".into(),
         state: IssueState::Open,
         labels: vec!["ready-for-agent".into()],
         assignees: vec![],
@@ -109,6 +110,7 @@ pub fn linear_issue(identifier: &str) -> LinearIssue {
         title: identifier.into(),
         url: format!("https://linear.app/bleentr/issue/{identifier}/title"),
         branch_name: format!("nico/{}", identifier.to_lowercase()),
+        created_at: "2026-09-01T00:00:00.000Z".into(),
         team: LinearTeam {
             id: "team-ble".into(),
             key: "BLE".into(),

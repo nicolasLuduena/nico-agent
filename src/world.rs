@@ -63,6 +63,8 @@ pub struct GitHubIssue {
     pub number: u64,
     pub title: String,
     pub url: String,
+    /// ISO 8601, as GitHub gives it.
+    pub created_at: String,
     pub state: IssueState,
     pub labels: Vec<String>,
     pub assignees: Vec<String>,
@@ -100,6 +102,8 @@ pub struct LinearIssue {
     pub url: String,
     /// The branch Linear suggests, which its GitHub integration links PRs by.
     pub branch_name: String,
+    /// ISO 8601, as Linear gives it.
+    pub created_at: String,
     pub team: LinearTeam,
     pub project: Option<LinearProject>,
     pub labels: Vec<String>,

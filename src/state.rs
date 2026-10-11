@@ -5,6 +5,7 @@
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::de::DeserializeOwned;
 
@@ -81,4 +82,26 @@ fn suffixed(file: &Path, suffix: &str) -> PathBuf {
     let mut name = file.as_os_str().to_owned();
     name.push(suffix);
     name.into()
+}
+
+/// `t` as ISO 8601 UTC to the second, the form GitHub gives; two of them
+/// compare as text in time order.
+pub fn iso(t: SystemTime) -> String {
+    let secs = t.duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs());
+    let (days, time) = (secs / 86_400, secs % 86_400);
+    // Howard Hinnant's `civil_from_days`, for days since 1970.
+    let z = days + 719_468;
+    let (era, doe) = (z / 146_097, z % 146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = yoe + era * 400 + u64::from(month <= 2);
+    format!(
+        "{year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}Z",
+        time / 3600,
+        time % 3600 / 60,
+        time % 60
+    )
 }

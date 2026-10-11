@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use serde_json::{Value, json};
 
 use crate::repo;
+use crate::status;
 use crate::world::{World, WorldError};
 
 /// What a command runs against: the outside world and the config directory.
@@ -56,6 +57,10 @@ const COMMANDS: &[(&str, &str)] = &[
     ),
     ("nico-agent repo rm <owner/name>", "remove a Repo"),
     ("nico-agent repo list", "list the Repos"),
+    (
+        "nico-agent status",
+        "show per Repo the Ready and Stackable issues",
+    ),
 ];
 
 /// Run `nico-agent` with `argv` (without the program name).
@@ -71,6 +76,7 @@ pub fn run(argv: &[String], ctx: &Context) -> Output {
         ["repo", "add", args @ ..] => repo::add(args, ctx),
         ["repo", "rm", args @ ..] => repo::rm(args, ctx),
         ["repo", "list", args @ ..] => repo::list(args, ctx),
+        ["status", args @ ..] => status::status(args, ctx),
         ["repo", ..] => Err(bad_invocation(
             "`repo` needs a subcommand: add, rm or list".into(),
             "repo",
