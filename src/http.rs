@@ -10,6 +10,7 @@ use std::time::Duration;
 use serde::Serialize;
 use serde_json::{Map, Value, json};
 
+use crate::away;
 use crate::bucket;
 use crate::cli::{Context, Refusal, bad_invocation};
 use crate::config;
@@ -20,8 +21,6 @@ use crate::repo;
 use crate::stage;
 use crate::status;
 use crate::world::{AgentState, Answer, HttpRequest, HttpResponse, World};
-
-pub const PORT: u16 = 42069;
 
 /// The app, as `build.rs` built it from `web/`: each file's path, Content-Type and bytes.
 const APP: &[(&str, &str, &[u8])] = include!(concat!(env!("OUT_DIR"), "/app.rs"));
@@ -142,6 +141,8 @@ fn status(ctx: &Context) -> Result<Value, Refusal> {
             shown[key] = value.clone();
         }
     }
+    // shortcut: an unreadable morning.md shows as none, like a missing one; say why if one ever is.
+    shown["morning_summary"] = json!(fs::read_to_string(ctx.config_dir.join(away::SUMMARY)).ok());
     Ok(shown)
 }
 

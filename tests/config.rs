@@ -44,7 +44,7 @@ fn a_bad_value_is_refused_naming_its_key_and_line() {
         ),
         (
             "[repos.\"acme/api\"]\npath = \"/src/api\"\nrom = 3\n",
-            "config.toml line 3: repos.acme/api.rom: unknown field `rom`, expected one of `path`, `linear`, `room`, `base`, `implementer`, `reviewer`, `switches`",
+            "config.toml line 3: repos.acme/api.rom: unknown field `rom`, expected one of `path`, `linear`, `room`, `base`, `implementer`, `reviewer`, `quality_scan`, `faux_nico`, `switches`",
         ),
         (
             "\n[repos.\"acme/api\"]\nroom = 2\n",
@@ -53,6 +53,10 @@ fn a_bad_value_is_refused_naming_its_key_and_line() {
         (
             "stall_minutes = 0\n",
             "config.toml line 1: stall_minutes: invalid value: integer `0`, expected a nonzero u32",
+        ),
+        (
+            "\nport = 0\n",
+            "config.toml line 2: port: invalid value: integer `0`, expected a nonzero u16",
         ),
         (
             "[repos.\"acme/api\"\npath = 1\n",
@@ -225,7 +229,7 @@ fn an_invalid_config_is_refused_not_rewritten() {
         added.json()["error"]
             .as_str()
             .unwrap()
-            .ends_with("line 1: room: unknown field `room`, expected one of `repos`, `harnesses`, `bucket`, `prompts`, `tick_minutes`, `stall_minutes`, `max_restarts_per_reason`")
+            .ends_with("line 1: room: unknown field `room`, expected one of `repos`, `harnesses`, `bucket`, `quality_scan`, `morning`, `prompts`, `tick_minutes`, `stall_minutes`, `max_restarts_per_reason`, `port`")
     );
     assert_eq!(
         fs::read_to_string(t.config_dir.join("config.toml")).unwrap(),

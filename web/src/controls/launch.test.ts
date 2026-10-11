@@ -8,6 +8,7 @@ const repo: Repo = {
   prs_checked_at: null,
   ready: [],
   stackable: [],
+  gardening: [],
   switches: {},
   implementer: { harness: "claude", model: "opus", effort: null },
   harnesses: {

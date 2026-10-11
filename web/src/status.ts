@@ -3,6 +3,8 @@ export interface Status {
   repos: Repo[];
   sources: { github: { paused_until: string | null }; linear: { paused_until: string | null } };
   dispatches: Dispatch[];
+  /** morning.md as the morning agent wrote it; null while there is none. */
+  morning_summary?: string | null;
 }
 
 export interface Repo {
@@ -13,7 +15,9 @@ export interface Repo {
   prs_checked_at: string | null;
   ready: Issue[];
   stackable: Issue[];
-  /** dispatch, stack, review, restart, flip. */
+  /** Ready Gardening issues, kept out of `ready`. */
+  gardening: Issue[];
+  /** dispatch, stack, review, restart, flip, answer, gardening, quality_scan. */
   switches: Record<string, boolean>;
   /** The launch the loop dispatches on. */
   implementer: Launch;

@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import Refresh from "./controls/Refresh.svelte";
   import { watch } from "./live";
+  import Morning from "./Morning.svelte";
   import NeedsYou from "./NeedsYou.svelte";
   import RepoTab from "./RepoTab.svelte";
   import { selection } from "./selection.svelte";
@@ -50,7 +51,10 @@
 </header>
 
 <main>
-  <!-- The morning summary's slot (spec 3): the page's first section, nothing until morning.md exists. -->
+  <!-- The Morning summary: the page's first section, nothing until morning.md exists. -->
+  {#if status?.morning_summary?.trim()}
+    <Morning text={status.morning_summary} />
+  {/if}
 
   {#if failure}
     <p class="errata" role="status"><strong>{failure}</strong></p>

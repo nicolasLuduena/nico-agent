@@ -349,6 +349,8 @@ pub trait World {
     -> WorldResult<()>;
     /// Submit a prompt and wait until the agent starts working: `false` when it never reacted.
     fn herdr_agent_prompt(&self, name: &str, text: &str) -> WorldResult<bool>;
+    /// Open a workspace on the folder `cwd`, with no worktree, without focusing it.
+    fn herdr_workspace_create(&self, cwd: &str, label: &str) -> WorldResult<String>;
 
     // opencode
     /// Save `effort` as opencode's variant for `model` in its variant `file`
@@ -385,6 +387,8 @@ pub trait World {
     fn process_alive(&self, pid: u32) -> bool;
     /// This boot of the machine: a pid from another boot is another process.
     fn boot_id(&self) -> String;
+    /// How far local time is ahead of UTC now, in seconds.
+    fn utc_offset(&self) -> i64;
 }
 
 /// Read one HTTP/1.1 request from `stream`, answer it with `handler`, close.
@@ -1327,6 +1331,19 @@ impl World for RealWorld {
             Err(failure) => Err(failure.into()),
         }
     }
+    fn herdr_workspace_create(&self, cwd: &str, label: &str) -> WorldResult<String> {
+        let args = [
+            "workspace",
+            "create",
+            "--cwd",
+            cwd,
+            "--label",
+            label,
+            "--no-focus",
+        ];
+        let result = herdr(&args)?;
+        herdr_str(&result["workspace"]["workspace_id"])
+    }
     fn opencode_save_variant(
         &self,
         file: &str,
@@ -1469,5 +1486,21 @@ impl World for RealWorld {
     fn boot_id(&self) -> String {
         let id = fs::read_to_string("/proc/sys/kernel/random/boot_id");
         id.unwrap_or_default().trim().into()
+    }
+    /// `date +%z`, e.g. `-0300`; UTC when it cannot say.
+    fn utc_offset(&self) -> i64 {
+        let ran = Command::new("date").arg("+%z").output();
+        let zone = ran.map_or_else(
+            |_| String::new(),
+            |r| String::from_utf8_lossy(&r.stdout).into(),
+        );
+        let zone = zone.trim();
+        let (sign, digits) = match zone.strip_prefix('-') {
+            Some(digits) => (-1, digits),
+            None => (1, zone.trim_start_matches('+')),
+        };
+        let (hours, minutes) = digits.split_at(digits.len().min(2));
+        let (hours, minutes) = (hours.parse().unwrap_or(0), minutes.parse().unwrap_or(0));
+        sign * (hours * 3600 + minutes * 60)
     }
 }

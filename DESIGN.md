@@ -174,10 +174,10 @@ A 4px base. Spacing steps are 4, 8, 12, 16, 24 and 32. On desktop the page gutte
 **Desktop (720px and wider), top to bottom:**
 
 1. **Header:** the `nico-agent` wordmark (14px caps label) on the left, the Light / Dark / System segmented control on the right.
-2. **Morning slot:** the page's first content section. It is reserved for the morning summary and renders nothing when `morning.md` is absent (until spec 3). It takes no space when empty.
+2. **Morning slot:** the page's first content section: the Morning summary, `morning.md` rendered as Markdown on `surface`, its section heads as `label`s in `ink-muted`, its lists flowing in columns at least 280px wide (one on a phone). It renders nothing when `morning.md` is absent, and takes no space then.
 3. **Needs-you band:** full width, square, set at the top of the work.
 4. **Repo tabs:** one tab per Repo. The same row carries "Source read HH:MM · PRs checked HH:MM" and the Refresh button, right-aligned.
-5. **Work area:** the map fills the left; a 320px column on the right holds the five switches and the Dispatch form. Opening a node puts the 400px node panel in place of that column, and closing it brings the column back. Beside a map taller than the window, the panel stays in view. The map keeps its pan and zoom throughout.
+5. **Work area:** the map fills the left; a 320px column on the right holds the switches and the Dispatch form. Opening a node puts the 400px node panel in place of that column, and closing it brings the column back. Beside a map taller than the window, the panel stays in view. The map keeps its pan and zoom throughout.
 
 **Phone (under 720px):**
 
@@ -234,8 +234,8 @@ A node that needs you carries a 4px `signal` flag across its top edge.
 
 These are the shapes the UI tickets build. They are not implemented yet.
 
-- **Switches:** five rows (dispatch, stack, review, restart, flip), with the name as `strong` on the left and a standard toggle on the right (`live` when on, `hairline` track when off). A toggle that is saving is disabled until the PATCH answers.
-- **Dispatch form:** a native select for the issue (Ready and Stackable only, `#number title`), then Harness, model and Effort as native selects, then a `button` labelled "Dispatch". A refusal appears inline under the button as a `failed` 4px errata rule with the error in `strong` and the help lines in `body`.
+- **Switches:** eight rows (dispatch, stack, review, restart, flip, answer, gardening, quality_scan), with the name as `strong` on the left and a standard toggle on the right (`live` when on, `hairline` track when off). A toggle that is saving is disabled until the PATCH answers.
+- **Dispatch form:** a native select for the issue (Ready, Stackable and Gardening only, `#number title`), then Harness, model and Effort as native selects, then a `button` labelled "Dispatch". A refusal appears inline under the button as a `failed` 4px errata rule with the error in `strong` and the help lines in `body`.
 - **Refresh:** a `button-quiet`. It reads "Refreshing…" and is disabled while the POST runs. The read times update when it answers.
 - **Theme switch:** a three-segment control (Light / Dark / System), with the active segment reversed. This is the one sanctioned reversal outside the map, because a segmented control's selected state is a standard affordance.
 

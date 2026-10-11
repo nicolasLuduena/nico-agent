@@ -35,6 +35,18 @@ fn serve_listens_on_127_0_0_1_42069_before_its_first_tick_and_ticks_on_schedule(
 }
 
 #[test]
+fn serve_listens_on_the_port_config_toml_sets() {
+    let t = with_repo();
+    let config = std::fs::read_to_string(t.config_dir.join("config.toml")).unwrap();
+    std::fs::write(t.config_dir.join("config.toml"), format!("port = 4321\n{config}")).unwrap();
+
+    let ran = t.cli(&["serve"]);
+
+    assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
+    assert_eq!(t.world.calls()[0], "listen 127.0.0.1:4321");
+}
+
+#[test]
 fn status_is_the_status_command_s_plus_per_repo_its_times_switches_room_launches_and_harnesses() {
     let t = with_repo();
     t.tick();
@@ -49,7 +61,10 @@ fn status_is_the_status_command_s_plus_per_repo_its_times_switches_room_launches
     let page = json!({
         "prs_checked_at": null,
         "github_paused_until": null,
-        "switches": { "dispatch": true, "stack": true, "review": true, "restart": true, "flip": true },
+        "switches": {
+            "dispatch": true, "stack": true, "review": true, "restart": true, "flip": true,
+            "answer": false, "gardening": false, "quality_scan": false,
+        },
         "room": 3,
         "implementer": { "harness": "claude", "model": null, "effort": null },
         "reviewer": { "harness": "codex", "model": null, "effort": null },
@@ -444,23 +459,25 @@ fn patch_switches_writes_only_the_named_switches_and_answers_the_repo_s_switches
     let web = t.send(
         "PATCH",
         "/api/repo/acme/web/switches",
-        r#"{"stack": false, "flip": false}"#,
+        r#"{"stack": false, "gardening": true}"#,
     );
 
-    let all_on =
-        json!({ "dispatch": true, "stack": true, "review": true, "restart": true, "flip": true });
-    let mut no_review = all_on.clone();
+    let defaults = json!({
+        "dispatch": true, "stack": true, "review": true, "restart": true, "flip": true,
+        "answer": false, "gardening": false, "quality_scan": false,
+    });
+    let mut no_review = defaults.clone();
     no_review["review"] = json!(false);
-    let mut no_stack_no_flip = all_on;
-    no_stack_no_flip["stack"] = json!(false);
-    no_stack_no_flip["flip"] = json!(false);
+    let mut no_stack_gardening = defaults;
+    no_stack_gardening["stack"] = json!(false);
+    no_stack_gardening["gardening"] = json!(true);
     assert_eq!(api, (200, json!({ "switches": no_review })));
-    assert_eq!(web, (200, json!({ "switches": no_stack_no_flip })));
+    assert_eq!(web, (200, json!({ "switches": no_stack_gardening })));
     let expected = WRITTEN
         .replace("review = true }", "review = false }")
         .replace(
             "room = 1\n",
-            "room = 1\nswitches = { flip = false, stack = false }\n",
+            "room = 1\nswitches = { gardening = true, stack = false }\n",
         );
     assert_eq!(config(&t), expected);
     assert_eq!(t.get("/api/status").1["repos"][0]["switches"], no_review);
@@ -470,7 +487,9 @@ fn patch_switches_writes_only_the_named_switches_and_answers_the_repo_s_switches
 fn patch_switches_refuses_an_unknown_switch_slug_or_value_and_writes_nothing() {
     let t = written();
     let patch = |path: &str, body: &str| t.send("PATCH", path, body);
-    let help = json!(["Switches: dispatch, stack, review, restart, flip"]);
+    let help = json!([
+        "Switches: dispatch, stack, review, restart, flip, answer, gardening, quality_scan"
+    ]);
 
     let unknown_switch = patch(
         "/api/repo/acme/api/switches",

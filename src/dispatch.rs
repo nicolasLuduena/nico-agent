@@ -10,6 +10,7 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+use crate::answer::Answer;
 use crate::args::Args;
 use crate::asking::Asking;
 use crate::bucket;
@@ -65,6 +66,9 @@ pub struct Dispatch {
     pub research: bool,
     /// While its Implementer waits on the user.
     pub asking: Option<Asking>,
+    /// Each answer typed into its Implementer, oldest first.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub answers: Vec<Answer>,
     /// The steps done, in order.
     pub completed: Vec<String>,
     /// The step that failed last, until it is done.
@@ -217,6 +221,7 @@ pub fn issue(ctx: &Context, config: &Config, key: &str, flags: Flags) -> Result<
         reviewer: None,
         research: issue.labels.iter().any(|l| l == "research"),
         asking: None,
+        answers: vec![],
         completed: vec![],
         failure: None,
         claimed: false,

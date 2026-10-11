@@ -1,0 +1,568 @@
+#!/usr/bin/env bash
+# control-nico-agent — drive nico-agent (its CLI and serve's page) in a scratch HOME.
+#
+# Every subcommand works inside one run directory, chosen by VERIFY_RUN_ID:
+#   $VERIFY_RUN_ROOT/$VERIFY_RUN_ID   (VERIFY_RUN_ROOT defaults to ${TMPDIR:-/tmp}/verify-nico-agent)
+# The run has its own HOME (so its own ~/.config/nico-agent), two fixture clones, a Bucket,
+# a free port for serve, and stubs for gh, ghbot, herdr, notify-send and curl first on PATH.
+#
+# Subcommands (see SKILL.md for when to use each):
+#   launch [--no-build]           build, make the scratch HOME and fixtures, start serve
+#   doctor                        read-only: is this run worth driving?
+#   env                           print the path of run.env, to source: . "$(control-nico-agent env)"
+#   seed issues                   a fresh Source read of verify/fixture (issues 1-6)
+#   seed dispatch <n> pr|asking   a Dispatch of verify/fixture#<n> as the loop records it
+#   drift push <n>|stale|pause    what GitHub would change: a new PR head, an old read, a rate limit
+#   state                         read-only fingerprint of the config dir, Bucket and outside calls
+#   run [--evidence PREFIX] -- <nico-agent args...>
+#                                 run the CLI in the scratch HOME; exit code is the CLI's
+#   http [--evidence PREFIX] <METHOD> <PATH> [BODY]
+#                                 ask this run's serve, as the page does
+#   page [--evidence PREFIX] [--width PX] [--click ROLE=NAME | --click ROLE~NAME | --press KEY | --expect TEXT]...
+#                                 open serve's page in headless Chromium, act, capture
+#   cleanup                       stop this run's serve, remove the run dir (never .evidence/)
+set -euo pipefail
+
+SKILL_DIR="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(CDPATH= cd -- "$SKILL_DIR/../../.." && pwd)"
+RUN_ROOT="${VERIFY_RUN_ROOT:-${TMPDIR:-/tmp}/verify-nico-agent}"
+REAL_HOME="$HOME"
+SLUG=verify/fixture
+SECOND=verify/second
+
+die() { printf 'control-nico-agent: %s\n' "$*" >&2; exit 1; }
+
+require_run_id() {
+  [ -n "${VERIFY_RUN_ID:-}" ] || die "VERIFY_RUN_ID is unset. Pick one per verification run, e.g. export VERIFY_RUN_ID=<issue>"
+  case "$VERIFY_RUN_ID" in
+    */*|.|..|"") die "VERIFY_RUN_ID must be a plain name, got '$VERIFY_RUN_ID'" ;;
+  esac
+  RUN_DIR="$RUN_ROOT/$VERIFY_RUN_ID"
+  FIXTURE_HOME="$RUN_DIR/home"
+  CONFIG_DIR="$FIXTURE_HOME/.config/nico-agent"
+  RUN_ENV="$RUN_DIR/run.env"
+}
+
+load_run() {
+  require_run_id
+  [ -f "$RUN_ENV" ] || die "no run at $RUN_DIR (missing run.env). Run: control-nico-agent launch"
+  # shellcheck disable=SC1090
+  . "$RUN_ENV"
+}
+
+# nico-agent, git and anything else that must see the scratch HOME run through this: a clean
+# environment (no GH_TOKEN, GIT_*, DBUS or XDG_RUNTIME_DIR of the real session), HOME and every
+# XDG dir in the run, the system git config ignored, the stubs first on PATH.
+in_fixture() {
+  local cwd="$1"; shift
+  (cd "$cwd" && exec env -i \
+    PATH="$RUN_DIR/stubs:$PATH" \
+    HOME="$FIXTURE_HOME" \
+    USER="${USER:-verify}" \
+    LANG=C.UTF-8 \
+    TMPDIR="$RUN_DIR/tmp" \
+    XDG_CONFIG_HOME="$FIXTURE_HOME/.config" \
+    XDG_CACHE_HOME="$FIXTURE_HOME/.cache" \
+    XDG_DATA_HOME="$FIXTURE_HOME/.local/share" \
+    XDG_STATE_HOME="$FIXTURE_HOME/.local/state" \
+    XDG_RUNTIME_DIR="$RUN_DIR/runtime" \
+    GIT_CONFIG_NOSYSTEM=1 \
+    "$@")
+}
+
+fgit() { # fgit <cwd> <git args...>
+  local cwd="$1"; shift
+  in_fixture "$cwd" git "$@"
+}
+
+now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
+
+cargo_version() { sed -n 's/^version = "\(.*\)"$/\1/p' "$REPO_ROOT/Cargo.toml" | head -1; }
+
+free_port() {
+  node -e 'const s=require("net").createServer();s.listen(0,"127.0.0.1",()=>{console.log(s.address().port);s.close()})'
+}
+
+# Where the playwright package is: beside the `playwright` CLI on PATH, as npm (and mise) install it.
+playwright_dir() {
+  if [ -n "${VERIFY_PLAYWRIGHT:-}" ]; then echo "$VERIFY_PLAYWRIGHT"; return 0; fi
+  local bin; bin="$(command -v playwright)" || return 1
+  local dir; dir="$(dirname -- "$(readlink -f -- "$bin")")/../playwright"
+  [ -f "$dir/package.json" ] && (cd "$dir" && pwd -P)
+}
+
+write_stubs() {
+  local stubs="$RUN_DIR/stubs" log="$RUN_DIR/outside.log"
+  mkdir -p "$stubs"
+  : > "$log"
+  cat > "$stubs/outside-stub" <<EOF
+#!/usr/bin/env bash
+# verify-nico-agent stub: records the call in $log and reaches nothing.
+name="\$(basename "\$0")"
+# One write per line: serve and a CLI run may call stubs at the same moment.
+line="\$name\$(printf ' %q' "\$@")"
+printf '%s\\n' "\$line" >> "$log"
+case "\$name" in
+  # What the real gh says in a HOME that never ran \`gh auth login\`.
+  gh|ghbot) echo "To get started with GitHub CLI, please run:  gh auth login" >&2; exit 4 ;;
+  herdr) echo '{"error":{"code":"verify_stub","message":"herdr is a stub in this verification run"}}' >&2; exit 1 ;;
+  # Recorded, never shown on the desktop.
+  notify-send) exit 0 ;;
+  curl) echo "curl: (6) verify-nico-agent: no network in this run" >&2; exit 6 ;;
+esac
+EOF
+  chmod +x "$stubs/outside-stub"
+  local name
+  for name in gh ghbot herdr notify-send curl; do ln -s outside-stub "$stubs/$name"; done
+}
+
+# A clone of <slug> whose origin is https://github.com/<slug>.git, which the scratch HOME's
+# git config rewrites to a bare repo in the run dir: `repo add` sees a GitHub clone, `fetch` stays local.
+make_clone() {
+  local slug="$1" name="${1#*/}"
+  local seed="$RUN_DIR/fixture/$name-seed" bare="$RUN_DIR/fixture/$name.git" clone="$RUN_DIR/fixture/$name"
+  mkdir -p "$seed"
+  printf '# %s\n\nA verify-nico-agent fixture.\n' "$slug" > "$seed/README.md"
+  fgit "$seed" init --quiet
+  fgit "$seed" add README.md
+  fgit "$seed" commit --quiet -m "fixture: initial"
+  fgit "$RUN_DIR/fixture" clone --quiet --bare "$seed" "$bare"
+  fgit "$RUN_DIR/fixture" clone --quiet "$bare" "$clone"
+  fgit "$clone" remote set-url origin "https://github.com/$slug.git"
+  rm -rf "$seed"
+  printf '[url "file://%s"]\n\tinsteadOf = https://github.com/%s.git\n' "$bare" "$slug" >> "$FIXTURE_HOME/.gitconfig"
+}
+
+cmd_launch() {
+  require_run_id
+  local build=1
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --no-build) build=0 ;;
+      *) die "launch: unknown argument $1" ;;
+    esac
+    shift
+  done
+  [ ! -e "$RUN_DIR" ] || die "$RUN_DIR already exists. Run cleanup first, or pick another VERIFY_RUN_ID"
+  local tool
+  for tool in cargo git jq curl node ss setsid; do
+    command -v "$tool" >/dev/null || die "launch needs $tool on PATH"
+  done
+
+  if [ "$build" -eq 1 ]; then
+    echo "launch: building nico-agent (cargo build --locked --bin nico-agent)" >&2
+    (cd "$REPO_ROOT" && cargo build --locked --bin nico-agent >&2)
+  fi
+  local built="$REPO_ROOT/target/debug/nico-agent"
+  [ -x "$built" ] || die "no build at $built (run without --no-build)"
+
+  mkdir -p "$RUN_DIR"/{bin,fixture,bucket,worktrees,work,tmp,runtime} "$CONFIG_DIR"
+  chmod 700 "$RUN_DIR/runtime"
+  cp "$built" "$RUN_DIR/bin/nico-agent"
+  write_stubs
+
+  # The identity fixture commits are made with; any other github.com URL fails locally, not on the network.
+  cat > "$FIXTURE_HOME/.gitconfig" <<EOF
+[user]
+	name = Verify Nico
+	email = verify-nico@example.com
+[init]
+	defaultBranch = main
+[url "file://$RUN_DIR/no-network/"]
+	insteadOf = https://github.com/
+	insteadOf = git@github.com:
+EOF
+  make_clone "$SLUG"
+  make_clone "$SECOND"
+
+  local port; port="$(free_port)"
+  cat > "$CONFIG_DIR/config.toml" <<EOF
+# verify-nico-agent: this run's scratch config. serve answers on a free port, keeps the
+# Bucket in the run dir, and ticks once at launch: after that only refresh ticks. The
+# morning agent is off, so the hour a run happens at never changes what a tick does.
+port = $port
+tick_minutes = 600
+
+[bucket]
+path = "$RUN_DIR/bucket"
+
+[morning]
+enabled = false
+EOF
+
+  # setsid: serve leads its own session, so it outlives this shell and cleanup can stop it whole.
+  in_fixture "$RUN_DIR/work" setsid "$RUN_DIR/bin/nico-agent" serve \
+    > "$RUN_DIR/serve.log" 2>&1 < /dev/null &
+  local started=$!
+
+  cat > "$RUN_ENV" <<EOF
+NICO_AGENT_BIN=$RUN_DIR/bin/nico-agent
+NICO_AGENT_VERSION=$(cargo_version)
+BUILD_SHA=$(git -C "$REPO_ROOT" rev-parse HEAD)
+BUILD_DIRTY=$( [ -z "$(git -C "$REPO_ROOT" status --porcelain --untracked-files=no)" ] && echo no || echo yes)
+PORT=$port
+URL=http://127.0.0.1:$port
+VERIFY_HOME=$FIXTURE_HOME
+CONFIG_DIR=$CONFIG_DIR
+BUCKET=$RUN_DIR/bucket
+FIXTURE_SLUG=$SLUG
+FIXTURE_CLONE=$RUN_DIR/fixture/${SLUG#*/}
+SECOND_SLUG=$SECOND
+SECOND_CLONE=$RUN_DIR/fixture/${SECOND#*/}
+OUTSIDE_LOG=$RUN_DIR/outside.log
+EOF
+
+  local i
+  for i in $(seq 1 100); do
+    kill -0 "$started" 2>/dev/null || die "serve exited at launch; see $RUN_DIR/serve.log (run cleanup)"
+    if grep -q "could not listen" "$RUN_DIR/serve.log"; then
+      die "serve could not listen on $port (taken meanwhile?); see $RUN_DIR/serve.log (run cleanup, launch again)"
+    fi
+    curl -fsS -o /dev/null "http://127.0.0.1:$port/api/status" 2>/dev/null && break
+    sleep 0.1
+  done
+  curl -fsS -o /dev/null "http://127.0.0.1:$port/api/status" || die "serve did not answer on $port in 10s; see $RUN_DIR/serve.log"
+  # The pid that owns the port, which must be this run's binary: the one doctor checks.
+  local pid; pid="$(ss -ltnpH "sport = :$port" | sed -n 's/.*pid=\([0-9]*\),.*/\1/p' | head -1)"
+  [ "$(readlink "/proc/$pid/exe" 2>/dev/null)" = "$RUN_DIR/bin/nico-agent" ] \
+    || die "port $port is answered by pid ${pid:-?}, not this run's serve (run cleanup, launch again)"
+  echo "SERVE_PID=$pid" >> "$RUN_ENV"
+  echo "launch: run dir   $RUN_DIR"
+  echo "launch: HOME      $FIXTURE_HOME (config $CONFIG_DIR/config.toml)"
+  echo "launch: serve     pid $pid on http://127.0.0.1:$port"
+  echo "launch: fixtures  $SLUG at $RUN_DIR/fixture/${SLUG#*/}, $SECOND at $RUN_DIR/fixture/${SECOND#*/}"
+  echo "launch: ready when doctor passes: control-nico-agent doctor"
+}
+
+cmd_doctor() {
+  load_run
+  local ok=1
+  check() { # check <label> <command...>
+    local label="$1"; shift
+    if "$@" >/dev/null 2>&1; then echo "ok    $label"; else echo "FAIL  $label"; ok=0; fi
+  }
+  local version expected
+  expected="$(cargo_version)"
+  version="$(in_fixture "$RUN_DIR/work" "$NICO_AGENT_BIN" --version --json 2>/dev/null | jq -r .version 2>/dev/null || true)"
+  check "nico-agent --version is $expected (Cargo.toml); got '${version:-<nothing>}'" test "$version" = "$expected"
+  check "the launched binary is the current build (target/debug/nico-agent; relaunch after a rebuild)" \
+    cmp -s "$NICO_AGENT_BIN" "$REPO_ROOT/target/debug/nico-agent"
+  check "serve (pid $SERVE_PID) is alive and runs this run's binary" \
+    test "$(readlink "/proc/$SERVE_PID/exe" 2>/dev/null)" = "$NICO_AGENT_BIN"
+  check "port $PORT is serve's (pid $SERVE_PID), not another process's" \
+    bash -c "ss -ltnpH 'sport = :$PORT' | grep -q 'pid=$SERVE_PID,'"
+  check "GET $URL/api/status answers 200 with JSON" bash -c "curl -fsS '$URL/api/status' | jq -e .repos"
+  check "scratch HOME is isolated: $FIXTURE_HOME is not $REAL_HOME" test "$FIXTURE_HOME" != "$REAL_HOME"
+  check "scratch HOME is under the run dir" test "${FIXTURE_HOME#"$RUN_DIR"/}" != "$FIXTURE_HOME"
+  check "config.toml sets port $PORT and the Bucket under the run dir" \
+    bash -c "grep -qx 'port = $PORT' '$CONFIG_DIR/config.toml' && grep -qx 'path = \"$BUCKET\"' '$CONFIG_DIR/config.toml'"
+  local name
+  for name in gh ghbot herdr notify-send curl; do
+    check "$name resolves to this run's stub" \
+      test "$(in_fixture "$RUN_DIR/work" bash -c "command -v $name")" = "$RUN_DIR/stubs/$name"
+  done
+  check "$FIXTURE_SLUG's clone has origin https://github.com/$FIXTURE_SLUG.git, fetched from the run dir" \
+    bash -c "[ \"\$(cd '$FIXTURE_CLONE' && git config remote.origin.url)\" = https://github.com/$FIXTURE_SLUG.git ]"
+  check "$FIXTURE_SLUG's origin answers locally (git ls-remote)" fgit "$FIXTURE_CLONE" ls-remote origin HEAD
+  echo "info  build $BUILD_SHA (uncommitted changes at launch: $BUILD_DIRTY)"
+  echo "info  Repos: $(jq -r '[.repos[].slug] | join(" ") | if . == "" then "none yet" else . end' <<<"$(curl -fsS "$URL/api/status" 2>/dev/null || echo '{"repos":[]}')")"
+  echo "info  outside calls so far: $(wc -l < "$OUTSIDE_LOG") (in $OUTSIDE_LOG)"
+  [ "$ok" -eq 1 ] || die "doctor failed: do not drive this run"
+}
+
+# Write a JSON state file of the config dir as nico-agent writes them: pretty, newline-ended.
+write_state() { # write_state <file> <json>
+  mkdir -p "$(dirname -- "$1")"
+  jq . <<<"$2" > "$1.tmp" && mv "$1.tmp" "$1"
+}
+
+cmd_seed() {
+  load_run
+  local what="${1:-}"; shift || true
+  case "$what" in
+    issues) seed_issues "$@" ;;
+    dispatch) seed_dispatch "$@" ;;
+    *) die "seed: usage: seed issues | seed dispatch <n> pr|asking" ;;
+  esac
+}
+
+# What a read of verify/fixture's GitHub issues would cache, read now: one Ready, one Research,
+# one Stackable on an open PR, and three that are not Ready, each for its own reason.
+seed_issues() {
+  local at; at="$(now)"
+  local u="https://github.com/$SLUG/issues"
+  write_state "$CONFIG_DIR/issues/$SLUG.json" "$(jq -n --arg at "$at" --arg u "$u" --arg s "$SLUG" '
+    def issue($n; $title; $labels): {
+      key: "\($s)#\($n)", title: $title, url: "\($u)/\($n)", branch: "agent/fixture-\($n)",
+      created_at: "2026-01-0\($n)T09:00:00Z", open: true, labels: $labels, assignees: [],
+      has_sub_issues: false, blockers: [] };
+    { read_at: $at, user: ["verify-nico"], issues: [
+      issue(1; "Verify: a Ready issue"; ["ready-for-agent"]),
+      issue(2; "Verify: not labelled"; []),
+      (issue(3; "Verify: waits on #1"; ["ready-for-agent"])
+        | .blockers = [{key: "\($s)#1", title: "Verify: a Ready issue", resolved: false, prs: []}]),
+      (issue(4; "Verify: assigned to someone else"; ["ready-for-agent"]) | .assignees = ["someone-else"]),
+      issue(5; "Verify: a Research issue"; ["ready-for-agent", "research"]),
+      (issue(6; "Verify: stacks on #9 PR"; ["ready-for-agent"])
+        | .blockers = [{key: "\($s)#9", title: "Verify: a Blocker in review", resolved: false,
+            prs: [{number: 109, url: "https://github.com/\($s)/pull/109", head_branch: "agent/fixture-9"}]}])
+    ] }')"
+  jq -c '{ file: input_filename, read_at, issues: [.issues[] | {key, title}] }' "$CONFIG_DIR/issues/$SLUG.json"
+}
+
+# A Dispatch of verify/fixture#<n> with every step done, as the loop records one, in a worktree of
+# the fixture on agent/fixture-<n> holding .evidence/<n>/proof.txt. `pr`: its draft PR #(100+n) open
+# on the worktree's head, as GitHub last said. `asking`: no PR, its Implementer Asking.
+seed_dispatch() {
+  local n="${1:-}" kind="${2:-}"
+  [[ "$n" =~ ^[0-9]+$ ]] && [[ "$kind" =~ ^(pr|asking)$ ]] || die "seed: usage: seed dispatch <n> pr|asking"
+  local issue="$SLUG#$n" branch="agent/fixture-$n" worktree="$RUN_DIR/worktrees/fixture-$n"
+  [ ! -e "$worktree" ] || die "seed: verify/fixture#$n is already seeded at $worktree"
+  if [ -f "$CONFIG_DIR/dispatches.json" ] && jq -e --arg i "$issue" 'any(.[]; .issue == $i and .closed_at == null)' "$CONFIG_DIR/dispatches.json" >/dev/null; then
+    die "seed: $issue already has a live Dispatch"
+  fi
+  fgit "$FIXTURE_CLONE" worktree add --quiet -b "$branch" "$worktree" origin/main
+  printf 'work on %s\n' "$issue" > "$worktree/work-$n.txt"
+  fgit "$worktree" add "work-$n.txt"
+  fgit "$worktree" commit --quiet -m "work on $issue"
+  local head; head="$(fgit "$worktree" rev-parse HEAD)"
+  mkdir -p "$worktree/.evidence/$n"
+  printf 'Evidence of %s at %s, seeded by verify-nico-agent\n' "$issue" "$head" > "$worktree/.evidence/$n/proof.txt"
+
+  local at pr=null asking=null; at="$(now)"
+  local url="https://github.com/$SLUG/pull/$((100 + n))"
+  if [ "$kind" = pr ]; then
+    pr="\"$url\""
+    local prs="{}"
+    [ -f "$CONFIG_DIR/prs.json" ] && prs="$(cat "$CONFIG_DIR/prs.json")"
+    write_state "$CONFIG_DIR/prs.json" "$(jq --arg url "$url" --arg s "$SLUG" --argjson num $((100 + n)) \
+      --arg head "$head" --arg at "$at" '.[$url] = { repo: $s, number: $num, state: "open", draft: true,
+        head_sha: $head, base: "main", mergeable: "mergeable", updated_at: $at, final: false,
+        checked_at: $at, merged_at: null }' <<<"$prs")"
+  else
+    asking="$(jq -nc --arg at "$at" '{ since: $at, question: "Should the fixture keep its README? (seeded by verify-nico-agent)" }')"
+  fi
+  local all="[]"
+  [ -f "$CONFIG_DIR/dispatches.json" ] && all="$(cat "$CONFIG_DIR/dispatches.json")"
+  write_state "$CONFIG_DIR/dispatches.json" "$(jq --arg issue "$issue" --arg n "$n" --arg s "$SLUG" \
+    --arg clone "$FIXTURE_CLONE" --arg branch "$branch" --arg worktree "$worktree" --arg at "$at" \
+    --argjson pr "$pr" --argjson asking "$asking" '. + [{
+      issue: $issue, title: "Verify: seeded Dispatch \($n)", url: "https://github.com/\($s)/issues/\($n)",
+      repo: $s, repo_path: $clone, branch: $branch, base: "main", worktree: $worktree,
+      workspace: "verify-workspace-\($n)", pr: $pr,
+      implementer: { agent: "impl-fixture-\($n)", harness: "claude", model: null, effort: null,
+        tab: "verify-tab-\($n)", pane: "verify-pane-\($n)" },
+      reviewer: null, research: false, asking: $asking,
+      completed: ["claim", "fetch", "worktree", "tab", "agent start", "agent ready", "prompt"],
+      failure: null, claimed: true, warnings: [], restarts: [],
+      created_at: $at, updated_at: $at, closed_at: null }]' <<<"$all")"
+  jq -n --arg issue "$issue" --arg worktree "$worktree" --arg branch "$branch" --arg head "$head" \
+    --argjson pr "$pr" --arg evidence "$worktree/.evidence/$n/proof.txt" --arg kind "$kind" \
+    '{ issue: $issue, kind: $kind, worktree: $worktree, branch: $branch, head: $head, pr: $pr, evidence: $evidence }'
+}
+
+cmd_drift() {
+  load_run
+  local kind="${1:-}"
+  case "$kind" in
+    # A push to the seeded PR: a new commit in its worktree, and GitHub saying so in prs.json.
+    push)
+      local n="${2:-}"; [[ "$n" =~ ^[0-9]+$ ]] || die "drift: usage: drift push <n>"
+      local worktree="$RUN_DIR/worktrees/fixture-$n" url="https://github.com/$SLUG/pull/$((100 + n))"
+      [ -d "$worktree" ] && jq -e --arg u "$url" 'has($u)' "$CONFIG_DIR/prs.json" >/dev/null 2>&1 \
+        || die "drift: no seeded PR for $SLUG#$n (seed dispatch $n pr first)"
+      local old; old="$(jq -r --arg u "$url" '.[$u].head_sha' "$CONFIG_DIR/prs.json")"
+      printf 'more work\n' >> "$worktree/work-$n.txt"
+      fgit "$worktree" commit --quiet --all -m "more work on $SLUG#$n"
+      local head; head="$(fgit "$worktree" rev-parse HEAD)"
+      write_state "$CONFIG_DIR/prs.json" "$(jq --arg u "$url" --arg h "$head" --arg at "$(now)" \
+        '.[$u].head_sha = $h | .[$u].updated_at = $at | .[$u].checked_at = $at' "$CONFIG_DIR/prs.json")"
+      jq -n --arg pr "$url" --arg old "$old" --arg head "$head" '{ pr: $pr, old: $old, head: $head }'
+      ;;
+    # The cached read older than a tick: the next status or dispatch asks the Source again.
+    stale)
+      local file="$CONFIG_DIR/issues/$SLUG.json"
+      [ -f "$file" ] || die "drift: no cached read of $SLUG (seed issues first)"
+      write_state "$file" "$(jq '.read_at = "2000-01-01T00:00:00Z"' "$file")"
+      jq -c '{ read_at }' "$file"
+      ;;
+    # GitHub rate-limited for an hour, as a 429 would leave it.
+    pause)
+      local until; until="$(date -u -d '+60 minutes' +%Y-%m-%dT%H:%M:%SZ)"
+      local pauses="{}"
+      [ -f "$CONFIG_DIR/pauses.json" ] && pauses="$(cat "$CONFIG_DIR/pauses.json")"
+      write_state "$CONFIG_DIR/pauses.json" "$(jq --arg u "$until" '.github = $u' <<<"$pauses")"
+      jq -c . "$CONFIG_DIR/pauses.json"
+      ;;
+    *) die "drift: usage: drift push <n> | drift stale | drift pause" ;;
+  esac
+}
+
+cmd_state() {
+  load_run
+  echo "# config dir: $CONFIG_DIR"
+  echo "## files (sha256; locks and temp files left out)"
+  (cd "$CONFIG_DIR" && find . -type f ! -name '*.lock' ! -name '*.tmp' | sort | xargs -r sha256sum)
+  echo "## config.toml"
+  cat "$CONFIG_DIR/config.toml"
+  echo "## dispatches.json (issue, steps done, failure, pr, asking, closed)"
+  if [ -f "$CONFIG_DIR/dispatches.json" ]; then
+    jq -c '.[] | { issue, completed: (.completed | length), failure, pr, asking: (.asking != null), closed_at }' "$CONFIG_DIR/dispatches.json"
+  fi
+  echo "## verdicts"
+  if [ -d "$CONFIG_DIR/verdicts" ]; then
+    (cd "$CONFIG_DIR/verdicts" && find . -name '*.json' | sort | while read -r f; do echo "$f $(jq -c '{result, sha}' "$f")"; done)
+  fi
+  echo "## Bucket: git log --stat"
+  if [ -d "$BUCKET/.git" ]; then
+    fgit "$BUCKET" log --format='%s' --stat
+  else
+    echo "(no Bucket yet)"
+  fi
+  echo "## outside calls (stubs)"
+  cat "$OUTSIDE_LOG"
+}
+
+# record <prefix> <cmd text> <stdout file> <stderr file> <exit code>
+record() {
+  mkdir -p "$(dirname -- "$1")"
+  printf '%s\n' "$2" > "$1.cmd"
+  # cat, not cp: mktemp files are 0600 and cp would carry that onto the evidence.
+  cat "$3" > "$1.stdout"
+  cat "$4" > "$1.stderr"
+  printf '%s\n' "$5" > "$1.exit"
+}
+
+cmd_run() {
+  load_run
+  local evidence=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --evidence) shift; evidence="${1:-}"; [ -n "$evidence" ] || die "run: --evidence needs a path prefix" ;;
+      --) shift; break ;;
+      *) break ;;
+    esac
+    shift
+  done
+  [ $# -gt 0 ] || die "run: usage: run [--evidence PREFIX] -- <nico-agent args...>"
+  local out err code=0
+  out="$(mktemp)"; err="$(mktemp)"
+  in_fixture "$RUN_DIR/work" "$NICO_AGENT_BIN" "$@" >"$out" 2>"$err" || code=$?
+  if [ -n "$evidence" ]; then
+    record "$evidence" "$(printf 'nico-agent'; printf ' %q' "$@")" "$out" "$err" "$code"
+  fi
+  cat "$out"
+  cat "$err" >&2
+  rm -f "$out" "$err"
+  exit "$code"
+}
+
+cmd_http() {
+  load_run
+  local evidence=""
+  if [ "${1:-}" = --evidence ]; then evidence="${2:-}"; shift 2 || die "http: --evidence needs a path prefix"; fi
+  local method="${1:-}" path="${2:-}" body="${3:-}"
+  [ -n "$method" ] && [ -n "$path" ] || die "http: usage: http [--evidence PREFIX] <METHOD> <PATH> [BODY]"
+  local out err headers status code=0
+  out="$(mktemp)"; err="$(mktemp)"; headers="$(mktemp)"
+  # --path-as-is: the path goes as given, `..` included, as a hand-made request would send it.
+  local -a args=(-sS --path-as-is -X "$method" -D "$headers" -o "$out" -w '%{http_code}')
+  [ -n "$body" ] && args+=(--data-raw "$body")
+  status="$(curl "${args[@]}" "$URL$path" 2>"$err")" || code=$?
+  [ "$code" -eq 0 ] || die "http: could not reach serve at $URL: $(cat "$err")"
+  if [ -n "$evidence" ]; then
+    local cmd="$method $path${body:+ $body}"
+    record "$evidence" "$cmd" "$out" "$err" "$status"
+    tr -d '\r' < "$headers" > "$evidence.headers"
+  fi
+  cat "$out"; echo
+  echo "HTTP $status" >&2
+  rm -f "$out" "$err" "$headers"
+  [ "$status" -lt 400 ]
+}
+
+cmd_page() {
+  load_run
+  local pw; pw="$(playwright_dir)" || die "page: no playwright package found beside the playwright CLI; set VERIFY_PLAYWRIGHT=<dir of the playwright package>"
+  # The real node, not a version manager's shim, which may not work under the browser's HOME.
+  local node_bin; node_bin="$(node -p process.execPath)"
+  mkdir -p "$RUN_DIR/browser-home"
+  # The browser is the user's, not the app's, but it too keeps its profile, caches and temp files in the run.
+  env -i PATH="$PATH" HOME="$RUN_DIR/browser-home" TMPDIR="$RUN_DIR/tmp" LANG=C.UTF-8 \
+    XDG_CONFIG_HOME="$RUN_DIR/browser-home/.config" XDG_CACHE_HOME="$RUN_DIR/browser-home/.cache" \
+    PLAYWRIGHT_BROWSERS_PATH="${PLAYWRIGHT_BROWSERS_PATH:-$REAL_HOME/.cache/ms-playwright}" \
+    VERIFY_PLAYWRIGHT="$pw" \
+    VERIFY_CHROMIUM="${VERIFY_CHROMIUM:-$(command -v chromium || command -v chromium-browser || command -v google-chrome || true)}" \
+    "$node_bin" "$SKILL_DIR/page.mjs" "$URL" "$@"
+}
+
+# Stop what this run started, never by name: each process whose executable lives in the run dir
+# (serve, and any CLI run still going) and each browser `page` left with its profile in the run's
+# tmp. serve leads its own session (setsid), so its whole group goes with it, git children included.
+stop_run() {
+  local p pid exe stopped=() alive=()
+  for p in /proc/[0-9]*; do
+    pid="${p#/proc/}"
+    exe="$(readlink "$p/exe" 2>/dev/null || true)"
+    if [ "${exe#"$RUN_DIR"/}" != "$exe" ]; then
+      if [ "$(ps -o pgid= -p "$pid" | tr -d ' ')" = "$pid" ]; then
+        kill -TERM -- "-$pid" 2>/dev/null || true
+      else
+        kill -TERM "$pid" 2>/dev/null || true
+      fi
+      stopped+=("$pid")
+    elif { tr '\0' ' ' < "$p/cmdline"; } 2>/dev/null | grep -qF -- "--user-data-dir=$RUN_DIR/tmp/"; then
+      kill -TERM "$pid" 2>/dev/null || true
+      stopped+=("$pid")
+    fi
+  done
+  [ ${#stopped[@]} -gt 0 ] || return 0
+  local i
+  for i in $(seq 1 50); do
+    alive=()
+    for pid in "${stopped[@]}"; do kill -0 "$pid" 2>/dev/null && alive+=("$pid"); done
+    [ ${#alive[@]} -eq 0 ] && break
+    sleep 0.1
+  done
+  for pid in "${alive[@]}"; do kill -KILL "$pid" 2>/dev/null || true; done
+  echo "cleanup: stopped pid ${stopped[*]} (this run's serve, CLI runs or browsers)"
+}
+
+cmd_cleanup() {
+  require_run_id
+  if [ ! -d "$RUN_DIR" ]; then
+    echo "cleanup: nothing at $RUN_DIR"
+    return 0
+  fi
+  case "$RUN_DIR" in
+    "$RUN_ROOT"/*) ;;
+    *) die "cleanup: refusing to remove $RUN_DIR (outside $RUN_ROOT)" ;;
+  esac
+  # shellcheck disable=SC1090
+  [ -f "$RUN_ENV" ] && . "$RUN_ENV"
+  stop_run
+  chmod -R u+rwX "$RUN_DIR" 2>/dev/null || true
+  rm -rf "$RUN_DIR"
+  rmdir "$RUN_ROOT" 2>/dev/null || true
+  echo "cleanup: removed $RUN_DIR (evidence under .evidence/ is untouched)"
+}
+
+main() {
+  local sub="${1:-}"; shift || true
+  case "$sub" in
+    launch) cmd_launch "$@" ;;
+    doctor) cmd_doctor "$@" ;;
+    env) load_run; echo "$RUN_ENV" ;;
+    seed) cmd_seed "$@" ;;
+    drift) cmd_drift "$@" ;;
+    state) cmd_state "$@" ;;
+    run) cmd_run "$@" ;;
+    http) cmd_http "$@" ;;
+    page) cmd_page "$@" ;;
+    cleanup) cmd_cleanup "$@" ;;
+    ""|-h|--help|help) sed -n '2,23p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' ;;
+    *) die "unknown subcommand '$sub' (launch|doctor|env|seed|drift|state|run|http|page|cleanup)" ;;
+  esac
+}
+
+main "$@"
