@@ -224,7 +224,8 @@ pub struct HttpResponse {
     pub status: u16,
     /// As received: look a name up ignoring case.
     pub headers: Vec<(String, String)>,
-    pub body: String,
+    /// Bytes: a file served from the Bucket may be an image.
+    pub body: Vec<u8>,
 }
 
 /// What `serve` answers a request with.
@@ -408,9 +409,10 @@ fn answer(world: &RealWorld, handler: &Handler, mut stream: TcpStream) -> io::Re
             let length = response.body.len();
             write!(
                 stream,
-                "HTTP/1.1 {} \r\n{head}Content-Length: {length}\r\nConnection: close\r\n\r\n{}",
-                response.status, response.body
-            )
+                "HTTP/1.1 {} \r\n{head}Content-Length: {length}\r\nConnection: close\r\n\r\n",
+                response.status
+            )?;
+            stream.write_all(&response.body)
         }
         Answer::Events { every, mut poll } => {
             stream.write_all(b"HTTP/1.1 200 \r\nContent-Type: text/event-stream\r\nCache-Control: no-cache\r\nConnection: close\r\n\r\n")?;
