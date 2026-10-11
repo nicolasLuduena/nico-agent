@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use serde_json::{Value, json};
 
+use crate::dispatch;
 use crate::repo;
 use crate::status;
 use crate::world::{World, WorldError};
@@ -58,8 +59,12 @@ const COMMANDS: &[(&str, &str)] = &[
     ("nico-agent repo rm <owner/name>", "remove a Repo"),
     ("nico-agent repo list", "list the Repos"),
     (
+        "nico-agent dispatch <issue>... [--harness <harness> --model <model> --effort <effort>]",
+        "start an Implementer on each Ready issue, or resume its failed Dispatch",
+    ),
+    (
         "nico-agent status",
-        "show per Repo the Ready and Stackable issues",
+        "show per Repo the Ready and Stackable issues, and every Dispatch",
     ),
 ];
 
@@ -76,6 +81,7 @@ pub fn run(argv: &[String], ctx: &Context) -> Output {
         ["repo", "add", args @ ..] => repo::add(args, ctx),
         ["repo", "rm", args @ ..] => repo::rm(args, ctx),
         ["repo", "list", args @ ..] => repo::list(args, ctx),
+        ["dispatch", args @ ..] => dispatch::dispatch(args, ctx),
         ["status", args @ ..] => status::status(args, ctx),
         ["repo", ..] => Err(bad_invocation(
             "`repo` needs a subcommand: add, rm or list".into(),

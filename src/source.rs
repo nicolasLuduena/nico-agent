@@ -31,6 +31,8 @@ pub struct Issue {
     pub key: String,
     pub title: String,
     pub url: String,
+    /// The branch its Dispatch works on.
+    pub branch: String,
     pub created_at: String,
     pub open: bool,
     pub labels: Vec<String>,
@@ -181,32 +183,6 @@ fn open_prs(world: &dyn World, repo: &str, key: &str) -> WorldResult<Vec<Blocker
     Ok(open)
 }
 
-/// The issues In flight: those with a Dispatch not Closed.
-pub fn in_flight(config_dir: &Path) -> io::Result<HashSet<String>> {
-    // shortcut: reads only `issue` and `closed_at` of `dispatches.json`; use #236's Dispatch record once it exists.
-    #[derive(Deserialize)]
-    struct Dispatch {
-        issue: String,
-        closed_at: Option<String>,
-    }
-    let file = config_dir.join("dispatches.json");
-    let text = match fs::read_to_string(&file) {
-        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(HashSet::new()),
-        read => read?,
-    };
-    let dispatches: Vec<Dispatch> = serde_json::from_str(&text).map_err(|e| {
-        io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!("{}: {e}", file.display()),
-        )
-    })?;
-    Ok(dispatches
-        .into_iter()
-        .filter(|d| d.closed_at.is_none())
-        .map(|d| d.issue)
-        .collect())
-}
-
 /// Which of `read`'s issues not `in_flight` the loop may start, oldest first.
 pub fn readiness(read: &Read, in_flight: &HashSet<String>) -> Readiness {
     let mut issues: Vec<&Issue> = read
@@ -269,13 +245,47 @@ pub fn readiness(read: &Read, in_flight: &HashSet<String>) -> Readiness {
 
 /// Ready but for its Blockers.
 fn can_start(issue: &Issue, user: &[String]) -> bool {
-    issue.open
-        && !issue.has_sub_issues
-        && issue.labels.iter().any(|l| l == READY_LABEL)
-        && issue
-            .assignees
-            .iter()
-            .all(|a| user.iter().any(|u| u.eq_ignore_ascii_case(a)))
+    why_not_startable(issue, user).is_none()
+}
+
+/// Why the issue may not start, its Blockers aside; `None` when it may.
+fn why_not_startable(issue: &Issue, user: &[String]) -> Option<String> {
+    let key = &issue.key;
+    let others: Vec<&str> = (issue.assignees.iter())
+        .filter(|a| !user.iter().any(|u| u.eq_ignore_ascii_case(a)))
+        .map(String::as_str)
+        .collect();
+    if !issue.open {
+        Some(format!("{key} is closed or already started"))
+    } else if !issue.labels.iter().any(|l| l == READY_LABEL) {
+        Some(format!("{key} is not labelled {READY_LABEL}"))
+    } else if issue.has_sub_issues {
+        Some(format!(
+            "{key} is a parent issue; dispatch its sub-issues instead"
+        ))
+    } else if !others.is_empty() {
+        Some(format!("{key} is assigned to {}", others.join(", ")))
+    } else {
+        None
+    }
+}
+
+/// Why the issue `key` of `read` is not Ready, In flight aside; `None` when it is.
+pub fn why_not_ready(read: &Read, key: &str) -> Option<String> {
+    let Some(issue) = read.issues.iter().find(|i| i.key == key) else {
+        return Some(format!(
+            "{key} was not an open issue labelled {READY_LABEL} when its Source was read, at {}",
+            read.read_at
+        ));
+    };
+    let unresolved: Vec<&str> = (issue.blockers.iter())
+        .filter(|b| !b.resolved)
+        .map(|b| b.key.as_str())
+        .collect();
+    why_not_startable(issue, &read.user).or_else(|| {
+        (!unresolved.is_empty())
+            .then(|| format!("{key} waits on its Blockers {}", unresolved.join(", ")))
+    })
 }
 
 fn from_github(slug: &str, issue: &GitHubIssue) -> Issue {
@@ -283,6 +293,7 @@ fn from_github(slug: &str, issue: &GitHubIssue) -> Issue {
         key: github_key(slug, slug, issue.number),
         title: issue.title.clone(),
         url: issue.url.clone(),
+        branch: github_branch(slug, issue.number),
         created_at: issue.created_at.clone(),
         open: issue.state == IssueState::Open,
         labels: issue.labels.clone(),
@@ -325,6 +336,8 @@ fn from_linear(issue: &LinearIssue) -> Issue {
         key: issue.identifier.clone(),
         title: issue.title.clone(),
         url: issue.url.clone(),
+        // Linear's own, which its GitHub integration links the PR by.
+        branch: issue.branch_name.clone(),
         created_at: issue.created_at.clone(),
         // A started issue is someone's work, not the loop's.
         open: ["backlog", "unstarted"].contains(&issue.state.as_str()),

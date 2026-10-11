@@ -7,6 +7,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::io;
 use std::path::Path;
+use std::time::Duration;
 
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_path_to_error::Segment;
@@ -206,7 +207,21 @@ pub struct RestartPrompts {
     pub verdict: String,
 }
 
+/// `template` with each `{name}` of `values` replaced; any other `{...}` is left as is.
+pub fn fill_in(template: &str, values: &[(&str, &str)]) -> String {
+    values
+        .iter()
+        .fold(template.to_string(), |text, (name, value)| {
+            text.replace(&format!("{{{name}}}"), value)
+        })
+}
+
 impl Config {
+    /// How long a tick lasts, and so how old a Source read may be.
+    pub fn tick(&self) -> Duration {
+        Duration::from_secs(u64::from(self.tick_minutes) * 60)
+    }
+
     /// The Repo's reviewer launch; unset, a Harness other than the implementer's.
     pub fn reviewer(&self, repo: &Repo) -> Launch {
         let other = self

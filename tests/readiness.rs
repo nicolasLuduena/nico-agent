@@ -186,15 +186,15 @@ fn an_issue_with_a_live_dispatch_is_not_ready_and_one_closed_is() {
     for n in [1, 2, 3] {
         t.world.add_issue("acme/api", github_issue("acme/api", n));
     }
-    std::fs::write(
-        t.config_dir.join("dispatches.json"),
-        json!([
-            { "issue": "acme/api#1" },
-            { "issue": "acme/api#2", "closed_at": "2026-09-29T08:00:00Z" },
-        ])
-        .to_string(),
-    )
-    .unwrap();
+    for n in ["acme/api#1", "acme/api#2"] {
+        assert_eq!(t.cli(&["dispatch", n]).exit_code, 0);
+    }
+    // Closed, as a merged PR's Dispatch is.
+    let file = t.config_dir.join("dispatches.json");
+    let mut dispatches: Value =
+        serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
+    dispatches[1]["closed_at"] = json!("2026-09-30T12:00:00Z");
+    std::fs::write(&file, dispatches.to_string()).unwrap();
 
     assert_eq!(
         keys(&status(&t)["repos"][0]["ready"]),

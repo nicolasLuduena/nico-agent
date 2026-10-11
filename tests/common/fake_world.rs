@@ -42,6 +42,11 @@ pub struct FakeWorld {
     pub agent_panes: RefCell<HashMap<String, String>>,
     /// What `herdr agent read` shows of each named agent.
     pub screens: RefCell<HashMap<String, String>>,
+    /// The startup question the next agents started are blocked on, shown as
+    /// their screen until keys are sent to one.
+    pub blocked_screen: RefCell<Option<String>>,
+    /// How many prompts from now on agents drop without starting work.
+    pub stalled_prompts: Cell<u32>,
     /// Desktop notifications shown, as (title, body).
     pub notifications: RefCell<Vec<(String, String)>>,
     /// What answers HTTP requests, by URL; any other URL is unreachable.
@@ -75,6 +80,8 @@ impl Default for FakeWorld {
             agents: Default::default(),
             agent_panes: Default::default(),
             screens: Default::default(),
+            blocked_screen: Default::default(),
+            stalled_prompts: Default::default(),
             notifications: Default::default(),
             endpoints: Default::default(),
             // 2026-09-30T12:00:00Z
@@ -149,6 +156,10 @@ impl FakeWorld {
         self.failures
             .borrow_mut()
             .push((prefix.into(), message.into()));
+    }
+
+    pub fn clear_failures(&self) {
+        self.failures.borrow_mut().clear();
     }
 
     pub fn add_clone(&self, path: &str, remotes: &[&str]) {
@@ -449,7 +460,7 @@ impl World for FakeWorld {
             args.join(" ")
         ))?;
         self.place_agent(pane, name);
-        Ok(true)
+        Ok(self.blocked_screen.borrow().is_none())
     }
 
     fn herdr_pane_run(&self, pane: &str, command: &str) -> WorldResult<()> {
@@ -484,11 +495,15 @@ impl World for FakeWorld {
 
     fn herdr_agent_read(&self, name: &str) -> WorldResult<String> {
         self.call(format!("herdr agent read {name} --source visible"))?;
-        Ok(self.screens.borrow().get(name).cloned().unwrap_or_default())
+        let blocked = self.blocked_screen.borrow().clone();
+        Ok(blocked.unwrap_or_else(|| self.screens.borrow().get(name).cloned().unwrap_or_default()))
     }
 
+    /// Answers the startup question the agent is blocked on.
     fn herdr_agent_send_keys(&self, name: &str, keys: &[String]) -> WorldResult<()> {
-        self.call(format!("herdr agent send-keys {name} {}", keys.join(" ")))
+        self.call(format!("herdr agent send-keys {name} {}", keys.join(" ")))?;
+        self.blocked_screen.take();
+        Ok(())
     }
 
     fn herdr_agent_wait(
@@ -501,15 +516,36 @@ impl World for FakeWorld {
         self.call(format!(
             "herdr agent wait {name}{until} --timeout {}",
             timeout.as_millis()
-        ))
+        ))?;
+        if self.blocked_screen.borrow().is_some() {
+            return Err(WorldError(format!(
+                "agent_wait_timeout: {name} did not reach {}",
+                states.join(" or ")
+            )));
+        }
+        Ok(())
     }
 
     fn herdr_agent_prompt(&self, name: &str, text: &str) -> WorldResult<bool> {
         self.call(format!("herdr agent prompt {name} {text}"))?;
+        if self.stalled_prompts.get() > 0 {
+            self.stalled_prompts.set(self.stalled_prompts.get() - 1);
+            return Ok(false);
+        }
         self.agents
             .borrow_mut()
             .insert(name.into(), "working".into());
         Ok(true)
+    }
+
+    fn opencode_save_variant(
+        &self,
+        file: &str,
+        model: &str,
+        effort: Option<&str>,
+    ) -> WorldResult<()> {
+        let effort = effort.map(|e| format!(" {e}")).unwrap_or_default();
+        self.call(format!("opencode variant {file} {model}{effort}"))
     }
 
     fn notify(&self, title: &str, body: &str) -> WorldResult<()> {

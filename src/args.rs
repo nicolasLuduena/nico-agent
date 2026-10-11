@@ -60,6 +60,14 @@ impl<'a> Args<'a> {
         Ok(&self.positionals)
     }
 
+    /// The positionals, when there is at least one `name`.
+    pub fn many(&self, name: &str) -> Result<&[&'a str], Refusal> {
+        if self.positionals.is_empty() {
+            return Err(bad_invocation(format!("{name} is required"), self.command));
+        }
+        Ok(&self.positionals)
+    }
+
     pub fn flag(&self, name: &str) -> Option<&'a str> {
         self.flags.get(name).copied()
     }

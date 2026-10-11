@@ -122,6 +122,21 @@ pub(super) fn attachment_urls(world: &RealWorld, identifier: &str) -> WorldResul
     Ok(attachments.into_iter().map(|a| a.url).collect())
 }
 
+/// Make the API key's owner the issue's assignee: Linear has one, so this replaces any other.
+pub(super) fn assign_self(world: &RealWorld, identifier: &str) -> WorldResult<()> {
+    let text = "query($id: String!) { viewer { id } issue(id: $id) { id } }";
+    let data: Value = query(world, text, json!({ "id": identifier }))?;
+    let (viewer, issue): (String, String) =
+        (from(&data["viewer"]["id"])?, from(&data["issue"]["id"])?);
+    let text = "mutation($id: String!, $assigneeId: String!) { issueUpdate(id: $id, input: { assigneeId: $assigneeId }) { success } }";
+    let data: Value = query(world, text, json!({ "id": issue, "assigneeId": viewer }))?;
+    if data["issueUpdate"]["success"] == true {
+        Ok(())
+    } else {
+        Err(WorldError(format!("Linear did not assign {identifier}")))
+    }
+}
+
 fn to_issue(world: &RealWorld, node: IssueNode) -> WorldResult<LinearIssue> {
     let labels = remaining(world, &node.id, "labels", node.labels, "name")?;
     let relations = remaining(

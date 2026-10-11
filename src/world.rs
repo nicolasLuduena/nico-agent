@@ -265,6 +265,17 @@ pub trait World {
     /// Submit a prompt and wait until the agent starts working: `false` when it never reacted.
     fn herdr_agent_prompt(&self, name: &str, text: &str) -> WorldResult<bool>;
 
+    // opencode
+    /// Save `effort` as opencode's variant for `model` in its variant `file`
+    /// (`~/` is the home directory), keeping the rest; `None` clears it. A
+    /// saved variant overrides the one opencode is started with.
+    fn opencode_save_variant(
+        &self,
+        file: &str,
+        model: &str,
+        effort: Option<&str>,
+    ) -> WorldResult<()>;
+
     // notify
     /// Show the user a desktop notification.
     fn notify(&self, title: &str, body: &str) -> WorldResult<()>;
@@ -291,22 +302,23 @@ fn unbuilt<T>(name: &str) -> WorldResult<T> {
     Err(WorldError(format!("World::{name} is not built yet")))
 }
 
-/// Run `gh` with prompts and colors off: whether it succeeded, its stdout and stderr.
-fn gh_run(args: &[String]) -> WorldResult<(bool, String, String)> {
-    let ran = Command::new("gh")
+/// Run `gh` (or `ghbot`, its bot twin) with prompts and colors off: whether
+/// it succeeded, its stdout and stderr.
+fn gh_run(bin: &str, args: &[String]) -> WorldResult<(bool, String, String)> {
+    let ran = Command::new(bin)
         .args(args)
         .env("GH_PROMPT_DISABLED", "1")
         .env("NO_COLOR", "1")
         .stdin(Stdio::null())
         .output()
-        .map_err(|_| WorldError("`gh` is not installed or not on PATH".into()))?;
+        .map_err(|_| WorldError(format!("`{bin}` is not installed or not on PATH")))?;
     let text = |bytes: &[u8]| String::from_utf8_lossy(bytes).into_owned();
     Ok((ran.status.success(), text(&ran.stdout), text(&ran.stderr)))
 }
 
 /// Run `gh`: what it printed, or its failure in words the user can act on.
 fn gh(args: &[String]) -> WorldResult<String> {
-    match gh_run(args)? {
+    match gh_run("gh", args)? {
         (true, stdout, _) => Ok(stdout),
         (false, _, stderr) => Err(gh_failure(&stderr)),
     }
@@ -534,6 +546,108 @@ fn git(dir: &Path, args: &[&str]) -> WorldResult<(bool, String)> {
     ))
 }
 
+/// Run `git -C <path> <args>`, never prompting: what it printed, trimmed, or
+/// its failure with git's first line about it.
+fn git_ok(path: &str, args: &[&str]) -> WorldResult<String> {
+    let ran = Command::new("git")
+        .arg("-C")
+        .arg(path)
+        .args(args)
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .stdin(Stdio::null())
+        .output()
+        .map_err(|e| WorldError(format!("could not run git: {e}")))?;
+    if ran.status.success() {
+        return Ok(String::from_utf8_lossy(&ran.stdout).trim().into());
+    }
+    let reason = first_line(&ran.stderr, &ran.status);
+    Err(WorldError(format!(
+        "`git {}` failed in {path}: {reason}",
+        args.join(" ")
+    )))
+}
+
+/// A failed command's first line on stderr, else its exit status.
+fn first_line(stderr: &[u8], status: &std::process::ExitStatus) -> String {
+    let stderr = String::from_utf8_lossy(stderr);
+    (stderr.lines().map(str::trim).find(|l| !l.is_empty()))
+        .map_or_else(|| status.to_string(), String::from)
+}
+
+/// A failed herdr command, with herdr's error code when it reported one.
+struct HerdrFailure {
+    code: Option<String>,
+    error: WorldError,
+}
+
+impl From<HerdrFailure> for WorldError {
+    fn from(failure: HerdrFailure) -> Self {
+        failure.error
+    }
+}
+
+impl HerdrFailure {
+    fn is(&self, codes: &[&str]) -> bool {
+        self.code.as_deref().is_some_and(|c| codes.contains(&c))
+    }
+}
+
+/// Run herdr: what it printed, or its failure, which herdr reports as
+/// `{"error": {"code", "message"}}` on stderr.
+fn herdr_text(args: &[&str]) -> Result<String, HerdrFailure> {
+    let ran = Command::new("herdr")
+        .args(args)
+        .stdin(Stdio::null())
+        .output()
+        .map_err(|_| HerdrFailure {
+            code: None,
+            error: WorldError("`herdr` is not installed or not on PATH".into()),
+        })?;
+    if ran.status.success() {
+        return Ok(String::from_utf8_lossy(&ran.stdout).into_owned());
+    }
+    let reported: Option<Value> = serde_json::from_slice::<Value>(&ran.stderr)
+        .ok()
+        .map(|v| v["error"].clone());
+    let code = reported
+        .as_ref()
+        .and_then(|e| e["code"].as_str())
+        .map(String::from);
+    let message = match &code {
+        Some(code) => format!(
+            "{code}: {}",
+            reported
+                .as_ref()
+                .and_then(|e| e["message"].as_str())
+                .unwrap_or_default()
+        ),
+        None => first_line(&ran.stderr, &ran.status),
+    };
+    let command = args[..args.len().min(2)].join(" ");
+    Err(HerdrFailure {
+        code,
+        error: WorldError(format!("`herdr {command}` failed: {message}")),
+    })
+}
+
+/// Run a herdr control command: the `result` of the JSON it prints.
+fn herdr(args: &[&str]) -> Result<Value, HerdrFailure> {
+    let text = herdr_text(args)?;
+    let printed: Value = serde_json::from_str(&text).map_err(|_| HerdrFailure {
+        code: None,
+        error: invalid("herdr"),
+    })?;
+    Ok(printed["result"].clone())
+}
+
+/// The text at `value`, or herdr answered something else.
+fn herdr_str(value: &Value) -> WorldResult<String> {
+    value
+        .as_str()
+        .map(String::from)
+        .ok_or_else(|| invalid("herdr"))
+}
+
 impl World for RealWorld {
     /// Only a clone's top directory is a clone: not a directory inside one.
     fn git_remotes(&self, path: &str) -> WorldResult<Option<Vec<String>>> {
@@ -553,14 +667,37 @@ impl World for RealWorld {
                 .collect(),
         ))
     }
-    fn git_fetch(&self, _: &str, _: Option<&str>) -> WorldResult<()> {
-        unbuilt("git_fetch")
+    /// A head branch by its explicit refspec: a narrow clone would not make `origin/<branch>`.
+    fn git_fetch(&self, path: &str, branch: Option<&str>) -> WorldResult<()> {
+        let refspec = branch.map(|b| format!("+refs/heads/{b}:refs/remotes/origin/{b}"));
+        let mut args = vec!["fetch", "origin"];
+        args.extend(refspec.as_deref());
+        git_ok(path, &args).map(drop)
     }
     fn git_remote_branches(&self, _: &str) -> WorldResult<Vec<String>> {
         unbuilt("git_remote_branches")
     }
-    fn git_default_branch(&self, _: &str) -> WorldResult<String> {
-        unbuilt("git_default_branch")
+    fn git_default_branch(&self, path: &str) -> WorldResult<String> {
+        if let Ok(head) = git_ok(
+            path,
+            &["symbolic-ref", "--short", "refs/remotes/origin/HEAD"],
+        ) {
+            return Ok(head.strip_prefix("origin/").unwrap_or(&head).into());
+        }
+        // Some clones lack origin/HEAD; ask the remote rather than write it into the clone.
+        let listing = git_ok(path, &["ls-remote", "--symref", "origin", "HEAD"])?;
+        (listing.lines())
+            .find_map(|line| {
+                let branch = line
+                    .strip_prefix("ref: refs/heads/")?
+                    .strip_suffix("HEAD")?;
+                Some(branch.trim().to_string())
+            })
+            .ok_or_else(|| {
+                WorldError(format!(
+                    "could not find the default branch of origin in {path}"
+                ))
+            })
     }
     fn git_diff(&self, _: &str, _: &str) -> WorldResult<String> {
         unbuilt("git_diff")
@@ -637,7 +774,7 @@ impl World for RealWorld {
         let args = ["pr", "view", &number.to_string(), "--repo", slug, "--json"];
         let mut args: Vec<String> = args.map(String::from).into();
         args.push(LISTED_PR_FIELDS.into());
-        match gh_run(&args)? {
+        match gh_run("gh", &args)? {
             (true, stdout, _) => serde_json::from_str::<ListedPr>(&stdout)
                 .map(|pr| Some(pr.into_pr(slug)))
                 .map_err(|_| invalid("GitHub")),
@@ -678,11 +815,45 @@ impl World for RealWorld {
     fn github_pull_request_activity(&self, _: &str, _: u64) -> WorldResult<PullRequestActivity> {
         unbuilt("github_pull_request_activity")
     }
+    /// Through `ghbot`: only the App's installation token can list its repositories.
     fn github_app_repos(&self) -> WorldResult<Vec<String>> {
-        unbuilt("github_app_repos")
+        let args = [
+            "api",
+            "/installation/repositories",
+            "--paginate",
+            "--jq",
+            ".repositories[].full_name",
+        ];
+        match gh_run("ghbot", &args.map(String::from))? {
+            (true, stdout, _) => Ok(stdout
+                .lines()
+                .filter(|l| !l.is_empty())
+                .map(String::from)
+                .collect()),
+            (false, _, stderr) => {
+                let reason = stderr
+                    .lines()
+                    .find(|l| !l.trim().is_empty())
+                    .unwrap_or("it failed");
+                Err(WorldError(format!(
+                    "`ghbot api /installation/repositories` failed: {}",
+                    reason.trim()
+                )))
+            }
+        }
     }
-    fn github_assign_self(&self, _: &str, _: u64) -> WorldResult<()> {
-        unbuilt("github_assign_self")
+    fn github_assign_self(&self, slug: &str, number: u64) -> WorldResult<()> {
+        let number = number.to_string();
+        let args = [
+            "issue",
+            "edit",
+            &number,
+            "--repo",
+            slug,
+            "--add-assignee",
+            "@me",
+        ];
+        gh(&args.map(String::from)).map(drop)
     }
     fn linear_viewer(&self) -> WorldResult<String> {
         linear::viewer(self)
@@ -696,11 +867,33 @@ impl World for RealWorld {
     fn linear_attachment_urls(&self, identifier: &str) -> WorldResult<Vec<String>> {
         linear::attachment_urls(self, identifier)
     }
-    fn linear_assign_self(&self, _: &str) -> WorldResult<()> {
-        unbuilt("linear_assign_self")
+    fn linear_assign_self(&self, identifier: &str) -> WorldResult<()> {
+        linear::assign_self(self, identifier)
     }
-    fn herdr_worktree_create(&self, _: &str, _: &str, _: &str, _: &str) -> WorldResult<Worktree> {
-        unbuilt("herdr_worktree_create")
+    fn herdr_worktree_create(
+        &self,
+        cwd: &str,
+        branch: &str,
+        base: &str,
+        label: &str,
+    ) -> WorldResult<Worktree> {
+        let result = herdr(&[
+            "worktree",
+            "create",
+            "--cwd",
+            cwd,
+            "--branch",
+            branch,
+            "--base",
+            base,
+            "--label",
+            label,
+            "--no-focus",
+        ])?;
+        Ok(Worktree {
+            workspace: herdr_str(&result["workspace"]["workspace_id"])?,
+            path: herdr_str(&result["worktree"]["path"])?,
+        })
     }
     fn herdr_worktree_remove(&self, _: &str) -> WorldResult<()> {
         unbuilt("herdr_worktree_remove")
@@ -711,35 +904,149 @@ impl World for RealWorld {
     fn herdr_workspace_close(&self, _: &str) -> WorldResult<()> {
         unbuilt("herdr_workspace_close")
     }
-    fn herdr_tab_create(&self, _: &str, _: &str, _: &str) -> WorldResult<Tab> {
-        unbuilt("herdr_tab_create")
+    fn herdr_tab_create(&self, workspace: &str, cwd: &str, label: &str) -> WorldResult<Tab> {
+        let result = herdr(&[
+            "tab",
+            "create",
+            "--workspace",
+            workspace,
+            "--cwd",
+            cwd,
+            "--label",
+            label,
+            "--no-focus",
+        ])?;
+        Ok(Tab {
+            tab: herdr_str(&result["tab"]["tab_id"])?,
+            pane: herdr_str(&result["root_pane"]["pane_id"])?,
+        })
     }
-    fn herdr_agent_start(&self, _: &str, _: &str, _: &str, _: &[String]) -> WorldResult<bool> {
-        unbuilt("herdr_agent_start")
+    fn herdr_agent_start(
+        &self,
+        name: &str,
+        kind: &str,
+        pane: &str,
+        args: &[String],
+    ) -> WorldResult<bool> {
+        let mut all = vec!["agent", "start", name, "--kind", kind, "--pane", pane, "--"];
+        all.extend(args.iter().map(String::as_str));
+        match herdr(&all) {
+            Ok(_) => Ok(true),
+            // Both leave the agent running, waiting on a startup question.
+            Err(failure) if failure.is(&["agent_not_ready", "agent_blocked"]) => Ok(false),
+            Err(failure) => Err(failure.into()),
+        }
     }
-    fn herdr_pane_run(&self, _: &str, _: &str) -> WorldResult<()> {
-        unbuilt("herdr_pane_run")
+    fn herdr_pane_run(&self, pane: &str, command: &str) -> WorldResult<()> {
+        // Prints nothing on success.
+        herdr_text(&["pane", "run", pane, command])?;
+        Ok(())
     }
-    fn herdr_agent_detect(&self, _: &str, _: Duration) -> WorldResult<()> {
-        unbuilt("herdr_agent_detect")
+    /// `agent wait` fails at once on a pane with no agent yet, so herdr is asked until it sees one.
+    fn herdr_agent_detect(&self, pane: &str, timeout: Duration) -> WorldResult<()> {
+        let deadline = self.now() + timeout;
+        loop {
+            match herdr(&["agent", "get", pane]) {
+                Ok(got) => {
+                    let agent = &got["agent"];
+                    let named = agent["agent"].as_str().is_some_and(|a| !a.is_empty());
+                    if named && agent["interactive_ready"] != Value::Bool(false) {
+                        return Ok(());
+                    }
+                }
+                Err(failure) if failure.is(&["agent_not_found"]) => {}
+                Err(failure) => return Err(failure.into()),
+            }
+            if self.now() >= deadline {
+                return Err(WorldError(format!(
+                    "agent_not_detected: herdr detected no agent ready in pane {pane} within {}ms",
+                    timeout.as_millis()
+                )));
+            }
+            self.sleep(Duration::from_millis(250));
+        }
     }
-    fn herdr_agent_rename(&self, _: &str, _: &str) -> WorldResult<()> {
-        unbuilt("herdr_agent_rename")
+    fn herdr_agent_rename(&self, pane: &str, name: &str) -> WorldResult<()> {
+        herdr(&["agent", "rename", pane, name])?;
+        Ok(())
     }
     fn herdr_agents(&self) -> WorldResult<Vec<Agent>> {
         unbuilt("herdr_agents")
     }
-    fn herdr_agent_read(&self, _: &str) -> WorldResult<String> {
-        unbuilt("herdr_agent_read")
+    fn herdr_agent_read(&self, name: &str) -> WorldResult<String> {
+        Ok(herdr_text(&["agent", "read", name, "--source", "visible"])?)
     }
-    fn herdr_agent_send_keys(&self, _: &str, _: &[String]) -> WorldResult<()> {
-        unbuilt("herdr_agent_send_keys")
+    fn herdr_agent_send_keys(&self, name: &str, keys: &[String]) -> WorldResult<()> {
+        let mut all = vec!["agent", "send-keys", name];
+        all.extend(keys.iter().map(String::as_str));
+        herdr(&all)?;
+        Ok(())
     }
-    fn herdr_agent_wait(&self, _: &str, _: &[String], _: Duration) -> WorldResult<()> {
-        unbuilt("herdr_agent_wait")
+    fn herdr_agent_wait(
+        &self,
+        name: &str,
+        states: &[String],
+        timeout: Duration,
+    ) -> WorldResult<()> {
+        let timeout = timeout.as_millis().to_string();
+        let mut all = vec!["agent", "wait", name];
+        for state in states {
+            all.extend(["--until", state]);
+        }
+        all.extend(["--timeout", &timeout]);
+        herdr(&all)?;
+        Ok(())
     }
-    fn herdr_agent_prompt(&self, _: &str, _: &str) -> WorldResult<bool> {
-        unbuilt("herdr_agent_prompt")
+    /// Returns once the agent starts working, not when it is done.
+    fn herdr_agent_prompt(&self, name: &str, text: &str) -> WorldResult<bool> {
+        let wait = ["--wait", "--until", "working", "--timeout", "30000"];
+        let mut all = vec!["agent", "prompt", name, text];
+        all.extend(wait);
+        match herdr(&all) {
+            Ok(_) => Ok(true),
+            Err(failure) if failure.is(&["agent_prompt_stalled"]) => Ok(false),
+            Err(failure) => Err(failure.into()),
+        }
+    }
+    fn opencode_save_variant(
+        &self,
+        file: &str,
+        model: &str,
+        effort: Option<&str>,
+    ) -> WorldResult<()> {
+        let file = match file.strip_prefix("~/") {
+            Some(rest) => std::env::home_dir().unwrap_or_default().join(rest),
+            None => PathBuf::from(file),
+        };
+        let shown = file.display();
+        let fix = |problem: &str| WorldError(format!("{shown} {problem}; fix or delete it"));
+        let mut saved: Value = match fs::read_to_string(&file) {
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                serde_json::json!({ "recent": [], "favorite": [] })
+            }
+            Err(e) => return Err(WorldError(format!("{shown}: {e}"))),
+            Ok(text) => serde_json::from_str(&text).map_err(|_| fix("is not valid JSON"))?,
+        };
+        let variants = (saved.as_object_mut())
+            .ok_or_else(|| fix("is not a JSON object"))?
+            .entry("variant")
+            .or_insert_with(|| serde_json::json!({}))
+            .as_object_mut()
+            .ok_or_else(|| fix("has a `variant` that is not a JSON object"))?;
+        match effort {
+            Some(effort) => variants.insert(model.into(), effort.into()),
+            None => variants.remove(model),
+        };
+        let written = || -> std::io::Result<()> {
+            if let Some(dir) = file.parent() {
+                fs::create_dir_all(dir)?;
+            }
+            // Per process, so concurrent dispatches don't write over each other's half-written file.
+            let tmp = file.with_extension(format!("{}.tmp", std::process::id()));
+            fs::write(&tmp, saved.to_string())?;
+            fs::rename(&tmp, &file)
+        };
+        written().map_err(|e| WorldError(format!("{shown}: {e}")))
     }
     fn notify(&self, _: &str, _: &str) -> WorldResult<()> {
         unbuilt("notify")
