@@ -1,0 +1,359 @@
+mod common;
+
+use std::time::Duration;
+
+use common::{Setup, github_issue, pull_request, setup};
+use nico_agent::restart::{self, Reason};
+use nico_agent::{dispatch, world::PullRequest};
+use serde_json::{Value, json};
+
+const TICK: Duration = Duration::from_secs(600);
+
+/// Repo `acme/api` with each of `issues` dispatched by a tick, its agents
+/// working, and no calls recorded yet.
+fn dispatched(issues: &[u64]) -> Setup {
+    let t = setup();
+    t.world
+        .add_clone("/src/api", &["git@github.com:acme/api.git"]);
+    t.cli(&["repo", "add", "acme/api", "--path", "/src/api"]);
+    for &n in issues {
+        t.world.add_issue("acme/api", github_issue("acme/api", n));
+    }
+    t.tick();
+    t.world.calls.borrow_mut().clear();
+    t
+}
+
+/// herdr reports `agent` in Agent `state`.
+fn agent_is(t: &Setup, agent: &str, state: &str) {
+    t.world
+        .agents
+        .borrow_mut()
+        .insert(agent.into(), state.into());
+}
+
+/// Run a tick a tick later: what it said, and the herdr calls it made.
+fn next_tick(t: &Setup) -> (Vec<String>, Vec<String>) {
+    t.world.advance(TICK);
+    t.world.calls.borrow_mut().clear();
+    let said = t.tick();
+    let herdr = (t.world.calls().into_iter())
+        .filter(|c| c.starts_with("herdr "))
+        .collect();
+    (said, herdr)
+}
+
+const PREFIX_1: &str = "You are continuing https://github.com/acme/api/issues/1 on branch agent/api-1 in this worktree. Read git status, git log and the PR (none yet) first.";
+
+#[test]
+fn an_implementer_idle_for_stall_minutes_with_no_pr_is_restarted_in_a_new_tab_with_the_stalled_prompt()
+ {
+    let t = dispatched(&[1]);
+    agent_is(&t, "impl-api-1", "idle");
+
+    let seen = next_tick(&t);
+    let ten_minutes = next_tick(&t);
+    let twenty_minutes = next_tick(&t);
+
+    assert_eq!(seen, (vec![], vec!["herdr agent list".into()]));
+    assert_eq!(ten_minutes, seen);
+    assert_eq!(twenty_minutes.0, ["acme/api#1 restarted: stalled"]);
+    assert_eq!(
+        twenty_minutes.1,
+        [
+            "herdr agent list".to_string(),
+            "herdr tab close w1:t2".into(),
+            "herdr tab create --workspace w1 --cwd /worktrees/api-1 --label implementer --no-focus"
+                .into(),
+            "herdr agent start impl-api-1 --kind claude --pane w1:p3 -- ".into(),
+            format!(
+                "herdr agent prompt impl-api-1 {PREFIX_1} You stopped with no PR open. Continue to a draft PR."
+            ),
+        ]
+    );
+}
+
+/// The Implementer of `issue` goes idle and three ticks pass: what they said.
+fn stall(t: &Setup, issue: u64) -> Vec<String> {
+    agent_is(t, &format!("impl-api-{issue}"), "idle");
+    (0..3).flat_map(|_| next_tick(t).0).collect()
+}
+
+fn status(t: &Setup) -> Value {
+    let ran = t.cli(&["status", "--json"]);
+    assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
+    ran.json()
+}
+
+#[test]
+fn the_third_stall_marks_the_dispatch_failed_notifies_once_and_it_is_never_restarted_again() {
+    let t = dispatched(&[1]);
+
+    let said: Vec<Vec<String>> = (0..4).map(|_| stall(&t, 1)).collect();
+
+    assert_eq!(
+        said,
+        [
+            vec!["acme/api#1 restarted: stalled"],
+            vec!["acme/api#1 restarted: stalled"],
+            vec!["acme/api#1 Failed: stalled again after 2 restarts for it"],
+            vec![],
+        ]
+    );
+    assert_eq!(
+        *t.world.notifications.borrow(),
+        [(
+            "acme/api#1 Failed".to_string(),
+            "restart: stalled again after 2 restarts for it".to_string()
+        )]
+    );
+    let shown = &status(&t)["dispatches"][0];
+    assert_eq!(shown["stage"], "Failed");
+    assert_eq!(
+        shown["failure"],
+        json!({ "step": "restart", "error": "stalled again after 2 restarts for it", "reason": "stalled" })
+    );
+    assert_eq!(
+        shown["restarts"],
+        json!([
+            { "at": "2026-09-30T12:30:00Z", "reason": "stalled", "by": "loop" },
+            { "at": "2026-09-30T13:00:00Z", "reason": "stalled", "by": "loop" },
+        ])
+    );
+}
+
+#[test]
+fn serve_on_start_restarts_exactly_the_dispatches_whose_agents_are_gone_as_rebooted() {
+    let t = dispatched(&[1, 2]);
+    // The machine restarted: herdr is back, impl-api-1 is not.
+    t.world.agents.borrow_mut().remove("impl-api-1");
+
+    let ran = t.cli(&["serve"]);
+
+    assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
+    assert_eq!(
+        t.world.logged(),
+        ["2026-09-30T12:00:00Z acme/api#1 restarted: rebooted"]
+    );
+    let herdr: Vec<String> = (t.world.calls().into_iter())
+        .filter(|c| c.starts_with("herdr "))
+        .collect();
+    assert_eq!(
+        herdr,
+        [
+            "herdr agent list".to_string(),
+            "herdr tab close w1:t2".into(),
+            "herdr tab create --workspace w1 --cwd /worktrees/api-1 --label implementer --no-focus"
+                .into(),
+            "herdr agent start impl-api-1 --kind claude --pane w1:p3 -- ".into(),
+            format!(
+                "herdr agent prompt impl-api-1 {PREFIX_1} The machine restarted. Continue where the branch left off."
+            ),
+        ]
+    );
+}
+
+#[test]
+fn herdr_not_answering_is_said_and_never_read_as_every_agent_gone() {
+    let t = dispatched(&[1]);
+    t.world.fail_call(
+        "herdr agent list",
+        "`herdr` is not installed or not on PATH",
+    );
+
+    let (said, herdr) = next_tick(&t);
+
+    assert_eq!(
+        said,
+        ["could not list herdr's agents: `herdr` is not installed or not on PATH"]
+    );
+    assert_eq!(herdr, ["herdr agent list"]);
+}
+
+#[test]
+fn with_restart_off_no_agent_is_watched_or_restarted() {
+    let t = dispatched(&[1]);
+    let file = t.config_dir.join("config.toml");
+    let config = std::fs::read_to_string(&file).unwrap();
+    std::fs::write(&file, format!("{config}switches = {{ restart = false }}\n")).unwrap();
+    t.world.agents.borrow_mut().clear();
+
+    let (said, herdr) = next_tick(&t);
+
+    assert_eq!((said, herdr), (vec![], vec![]));
+}
+
+#[test]
+fn dispatch_by_hand_restarts_a_dispatch_whose_agent_is_gone_as_manual_with_restart_off_and_never_counts()
+ {
+    let t = dispatched(&[1]);
+    let file = t.config_dir.join("config.toml");
+    let config = std::fs::read_to_string(&file).unwrap();
+    std::fs::write(&file, format!("{config}switches = {{ restart = false }}\n")).unwrap();
+
+    let answers: Vec<Value> = (0..3)
+        .map(|_| {
+            t.world.agents.borrow_mut().clear();
+            t.cli(&["dispatch", "acme/api#1", "--json"]).json()
+        })
+        .collect();
+
+    let restarted = json!({
+        "dispatched": "acme/api#1 (restarted)",
+        "stage": "Implementing", "workspace": "w1", "agent": "impl-api-1",
+    });
+    assert_eq!(answers, [restarted.clone(), restarted.clone(), restarted]);
+    let shown = &status(&t)["dispatches"][0];
+    let by: Vec<(&Value, &Value)> = (shown["restarts"].as_array().unwrap().iter())
+        .map(|r| (&r["reason"], &r["by"]))
+        .collect();
+    assert_eq!(by, [(&json!("manual"), &json!("user")); 3]);
+    assert_eq!(shown["failure"], Value::Null);
+    assert_eq!(
+        t.world.calls().last().unwrap(),
+        &format!(
+            "herdr agent prompt impl-api-1 {PREFIX_1} The machine restarted. Continue where the branch left off."
+        )
+    );
+}
+
+#[test]
+fn a_restart_that_fails_at_a_step_leaves_the_dispatch_failed_with_one_notification() {
+    let t = dispatched(&[1]);
+    t.world.agents.borrow_mut().clear();
+    t.world
+        .fail_call("herdr tab create", "workspace_not_found: w1 not found");
+
+    let failed = next_tick(&t).0;
+    let after = next_tick(&t);
+
+    assert_eq!(
+        failed,
+        ["acme/api#1 failed at tab of its rebooted restart: workspace_not_found: w1 not found"]
+    );
+    assert_eq!(after, (vec![], vec![]));
+    assert_eq!(
+        *t.world.notifications.borrow(),
+        [(
+            "acme/api#1 Failed".to_string(),
+            "tab: workspace_not_found: w1 not found".to_string()
+        )]
+    );
+    let shown = &status(&t)["dispatches"][0];
+    assert_eq!(shown["stage"], "Failed");
+    assert_eq!(shown["failure"]["reason"], "rebooted");
+}
+
+#[test]
+fn a_dispatch_the_loop_starts_that_fails_at_a_step_notifies_once() {
+    let t = dispatched(&[]);
+    t.world.add_issue("acme/api", github_issue("acme/api", 1));
+    t.world.fail_call("herdr worktree create", "it broke");
+
+    let failed = next_tick(&t).0;
+    let after = next_tick(&t).0;
+
+    assert_eq!(failed, ["acme/api#1 failed at worktree: it broke"]);
+    assert_eq!(after, Vec::<String>::new());
+    assert_eq!(
+        *t.world.notifications.borrow(),
+        [(
+            "acme/api#1 Failed".to_string(),
+            "worktree: it broke".to_string()
+        )]
+    );
+}
+
+#[test]
+fn each_reasons_prompt_is_the_prefix_then_its_own_text_with_the_values_given_filled_first() {
+    let t = dispatched(&[1]);
+    t.world.add_pr(PullRequest {
+        head_branch: Some("agent/api-1".into()),
+        ..pull_request("acme/api", 11)
+    });
+    next_tick(&t);
+    let Ok(config) = nico_agent::config::load(&t.config_dir) else {
+        panic!("the config loads")
+    };
+    let cases: [(Reason, &[(&str, &str)]); 3] = [
+        (Reason::Conflict, &[]),
+        (Reason::Retarget, &[("baseBranch", "develop")]),
+        (
+            Reason::Verdict,
+            &[("sha", "abc123"), ("findingsPath", "/cfg/verdicts/1.md")],
+        ),
+    ];
+    t.world.calls.borrow_mut().clear();
+
+    for (reason, values) in cases {
+        let record = dispatch::load(&t.config_dir).unwrap().remove(0);
+        let said = restart::restart(&t.ctx(), &config, record, reason, values).unwrap();
+        assert_eq!(said, [format!("acme/api#1 restarted: {reason}")]);
+    }
+
+    let prompts: Vec<String> = (t.world.calls().into_iter())
+        .filter_map(|c| {
+            Some(
+                c.strip_prefix("herdr agent prompt impl-api-1 ")?
+                    .to_string(),
+            )
+        })
+        .collect();
+    let prefix = "You are continuing https://github.com/acme/api/issues/1 on branch agent/api-1 in this worktree. Read git status, git log and the PR https://github.com/acme/api/pull/11 first.";
+    assert_eq!(
+        prompts,
+        [
+            format!(
+                "{prefix} The PR conflicts with main. Rebase onto it, resolve, run the tests and the verification, push."
+            ),
+            format!(
+                "{prefix} The PR below yours merged. Retarget the PR onto develop, rebase, push."
+            ),
+            format!(
+                "{prefix} The Reviewer failed the PR at abc123. Its findings are in /cfg/verdicts/1.md. Address each, run the verification, push."
+            ),
+        ]
+    );
+}
+
+#[test]
+fn done_counts_as_idle_but_an_asking_implementer_or_one_with_a_pr_never_stalls() {
+    let t = dispatched(&[1, 2, 3]);
+    t.world.add_pr(PullRequest {
+        head_branch: Some("agent/api-2".into()),
+        ..pull_request("acme/api", 12)
+    });
+    agent_is(&t, "impl-api-1", "blocked");
+    agent_is(&t, "impl-api-2", "idle");
+    agent_is(&t, "impl-api-3", "done");
+
+    let said: Vec<Vec<String>> = (0..4).map(|_| next_tick(&t).0).collect();
+
+    assert_eq!(
+        said,
+        [
+            vec!["acme/api#2: PR https://github.com/acme/api/pull/12 found"],
+            vec![],
+            vec!["acme/api#3 restarted: stalled"],
+            vec![],
+        ]
+    );
+}
+
+#[test]
+fn an_implementer_seen_working_again_starts_its_stall_over() {
+    let t = dispatched(&[1]);
+    agent_is(&t, "impl-api-1", "idle");
+    next_tick(&t);
+    next_tick(&t);
+    agent_is(&t, "impl-api-1", "working");
+    next_tick(&t);
+    agent_is(&t, "impl-api-1", "idle");
+
+    let said: Vec<Vec<String>> = (0..3).map(|_| next_tick(&t).0).collect();
+
+    assert_eq!(
+        said,
+        [vec![], vec![], vec!["acme/api#1 restarted: stalled"]]
+    );
+}

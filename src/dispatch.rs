@@ -14,6 +14,7 @@ use crate::args::Args;
 use crate::cli::{Context, Refusal};
 use crate::config::{self, Config, Harness, Launch, Repo, fill_in};
 use crate::launch::{self, AgentLaunch};
+use crate::restart::{self, Reason, Restart};
 use crate::source::{self, Read};
 use crate::stage;
 use crate::state;
@@ -57,6 +58,13 @@ pub struct Dispatch {
     /// Whether the Claim assigned the issue to the user.
     pub claimed: bool,
     pub warnings: Vec<String>,
+    /// Each restart of its Implementer, oldest first.
+    #[serde(default)]
+    pub restarts: Vec<Restart>,
+    /// When herdr was first seen saying its Implementer is idle or done, with
+    /// no PR, until it says otherwise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub idle_since: Option<String>,
     /// The process running its steps, while one does.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub runner: Option<u32>,
@@ -69,6 +77,9 @@ pub struct Dispatch {
 pub struct Failure {
     pub step: String,
     pub error: String,
+    /// The restart reason it failed on, when a restart failed or used it up.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<Reason>,
 }
 
 /// The launch flags given; each unset one comes from the Repo's implementer launch.
@@ -176,6 +187,8 @@ pub fn issue(ctx: &Context, config: &Config, key: &str, flags: Flags) -> Result<
         failure: None,
         claimed: false,
         warnings: vec![],
+        restarts: vec![],
+        idle_since: None,
         runner: Some(ctx.world.process_id()),
         created_at: now.clone(),
         updated_at: now,
@@ -240,6 +253,11 @@ fn resume(
         ));
     }
     let Some(leased) = lease(ctx, key)? else {
+        let started = existing.completed.len() == STEPS.len();
+        let agent = &existing.implementer.agent;
+        if started && !ctx.world.herdr_agents()?.iter().any(|a| a.name == *agent) {
+            return restart_by_hand(ctx, config, existing);
+        }
         return answer(ctx, &existing, format!("{key} already In flight (no-op)"));
     };
     let step = STEPS
@@ -250,6 +268,17 @@ fn resume(
         step.expect("a lease leaves steps to do")
     );
     run(ctx, config, repo, leased, said)
+}
+
+/// Restart the Implementer whose agent is gone, as the user: never counted
+/// toward the cap, and a Failed Dispatch is given another go.
+fn restart_by_hand(ctx: &Context, config: &Config, mut record: Dispatch) -> Result<Value, Refusal> {
+    // shortcut: no lease, so a tick restarting the same agent meanwhile races this; lease restarts if that shows up.
+    restart::run(ctx, config, &mut record, Reason::Manual, "user", &[])?.map_err(|mut no| {
+        no.help.push(SEE_STATUS.into());
+        no
+    })?;
+    answer(ctx, &record, format!("{} (restarted)", record.issue))
 }
 
 /// Run the steps `record` has not done, as the process holding its lease,
@@ -272,6 +301,7 @@ fn run(
             record.failure = Some(Failure {
                 step: step.into(),
                 error: no.error.clone(),
+                reason: None,
             });
             record.runner = None;
             save(ctx, &mut record)?;
@@ -573,7 +603,8 @@ fn lease(ctx: &Context, key: &str) -> io::Result<Option<Dispatch>> {
     })
 }
 
-fn save(ctx: &Context, record: &mut Dispatch) -> io::Result<()> {
+/// Save `record` over the live Dispatch of its issue, stamped now.
+pub fn save(ctx: &Context, record: &mut Dispatch) -> io::Result<()> {
     record.updated_at = state::iso(ctx.world.now());
     update(&ctx.config_dir, |all| {
         if let Some(saved) = all.iter_mut().find(|d| is_live(d, &record.issue)) {

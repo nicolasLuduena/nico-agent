@@ -10,6 +10,7 @@ use std::io::{self, Read as _, Write};
 use crate::cli::{Context, Refusal};
 use crate::config::{self, Config};
 use crate::dispatch::{self, Flags};
+use crate::restart;
 use crate::source::{self, Read};
 use crate::stage;
 
@@ -31,6 +32,7 @@ pub fn tick(ctx: &Context) -> Result<Vec<String>, Refusal> {
     said.extend(stage::watch(ctx)?);
     said.extend(dispatch::close_finished(ctx)?);
     // 4. Restart what broke: rebooted, stalled (#240); conflict, retarget (#244); verdict (#243).
+    said.extend(restart::step(ctx, &config)?);
     // 5. Start Reviewers (#242).
     // 6. Flip Verified PRs to ready (#243).
     said.extend(fill_rooms(ctx, &config, &reads)?);
@@ -108,7 +110,10 @@ fn fill_rooms(
                     said.extend(warnings.filter_map(|w| w.as_str().map(String::from)));
                 }
                 // Failed at a step: it is live, so it holds its slot till resumed by hand.
-                Err(no) => said.push(no.error),
+                Err(no) => {
+                    said.push(no.error);
+                    said.extend(restart::announce(ctx, &row.key)?);
+                }
             }
         }
     }

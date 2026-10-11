@@ -4,6 +4,7 @@ pub mod config;
 pub mod dispatch;
 pub mod launch;
 pub mod repo;
+pub mod restart;
 pub mod serve;
 pub mod source;
 pub mod stage;

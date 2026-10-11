@@ -245,6 +245,8 @@ pub trait World {
     /// Close a workspace and the agents in it; no-op if it is gone.
     fn herdr_workspace_close(&self, workspace: &str) -> WorldResult<()>;
     fn herdr_tab_create(&self, workspace: &str, cwd: &str, label: &str) -> WorldResult<Tab>;
+    /// Close a tab and the agent in it; no-op if it is gone.
+    fn herdr_tab_close(&self, tab: &str) -> WorldResult<()>;
     /// Start an agent of a herdr kind in a pane: `true` once ready for input,
     /// `false` when it is blocked on a startup question.
     fn herdr_agent_start(
@@ -969,6 +971,14 @@ impl World for RealWorld {
             pane: herdr_str(&result["root_pane"]["pane_id"])?,
         })
     }
+    fn herdr_tab_close(&self, tab: &str) -> WorldResult<()> {
+        match herdr(&["tab", "close", tab]) {
+            Err(failure) if !failure.is(&["tab_not_found", "workspace_not_found"]) => {
+                Err(failure.into())
+            }
+            _ => Ok(()),
+        }
+    }
     fn herdr_agent_start(
         &self,
         name: &str,
@@ -1018,8 +1028,20 @@ impl World for RealWorld {
         herdr(&["agent", "rename", pane, name])?;
         Ok(())
     }
+    /// Only named agents; one with no status reported is `unknown`.
     fn herdr_agents(&self) -> WorldResult<Vec<Agent>> {
-        unbuilt("herdr_agents")
+        let listed = herdr(&["agent", "list"])?;
+        let agents = listed["agents"]
+            .as_array()
+            .ok_or_else(|| invalid("herdr"))?;
+        Ok((agents.iter())
+            .filter_map(|a| {
+                Some(Agent {
+                    name: a["name"].as_str().filter(|n| !n.is_empty())?.into(),
+                    state: a["agent_status"].as_str().unwrap_or("unknown").into(),
+                })
+            })
+            .collect())
     }
     fn herdr_agent_read(&self, name: &str) -> WorldResult<String> {
         Ok(herdr_text(&["agent", "read", name, "--source", "visible"])?)
@@ -1096,8 +1118,17 @@ impl World for RealWorld {
         };
         written().map_err(|e| WorldError(format!("{shown}: {e}")))
     }
-    fn notify(&self, _: &str, _: &str) -> WorldResult<()> {
-        unbuilt("notify")
+    fn notify(&self, title: &str, body: &str) -> WorldResult<()> {
+        let ran = Command::new("notify-send")
+            .args(["--app-name", "nico-agent", "--", title, body])
+            .stdin(Stdio::null())
+            .output()
+            .map_err(|_| WorldError("`notify-send` is not installed or not on PATH".into()))?;
+        if ran.status.success() {
+            return Ok(());
+        }
+        let reason = first_line(&ran.stderr, &ran.status);
+        Err(WorldError(format!("`notify-send` failed: {reason}")))
     }
     /// Through `curl`, with the headers on its stdin: on its command line,
     /// any user's `ps` would show an API key.

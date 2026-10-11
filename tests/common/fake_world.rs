@@ -461,6 +461,16 @@ impl World for FakeWorld {
         })
     }
 
+    /// Closing a tab ends the agent in its pane.
+    fn herdr_tab_close(&self, tab: &str) -> WorldResult<()> {
+        self.call(format!("herdr tab close {tab}"))?;
+        // Tab `<ws>:t<n>` holds pane `<ws>:p<n>`, as herdr_tab_create makes them.
+        let pane = tab.replacen(":t", ":p", 1);
+        let panes = self.agent_panes.borrow();
+        (self.agents.borrow_mut()).retain(|name, _| panes.get(name) != Some(&pane));
+        Ok(())
+    }
+
     fn herdr_agent_start(
         &self,
         name: &str,

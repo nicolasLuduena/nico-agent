@@ -226,7 +226,8 @@ fn dispatching_an_issue_in_flight_again_is_a_no_op_that_says_so() {
             "stage": "Implementing", "workspace": "w1", "agent": "impl-api-7",
         })
     );
-    assert!(t.world.calls().is_empty());
+    // Only whether its agent is still there: one gone is restarted.
+    assert_eq!(t.world.calls(), ["herdr agent list"]);
 }
 
 #[test]
@@ -660,6 +661,7 @@ fn status_shows_the_dispatch_implementing_with_its_launch_and_steps() {
             "failure": null,
             "claimed": true,
             "warnings": [],
+            "restarts": [],
             "created_at": "2026-09-30T12:00:00Z",
             "updated_at": "2026-09-30T12:00:00Z",
             "closed_at": null,
