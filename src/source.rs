@@ -102,10 +102,7 @@ pub fn issues(
     max_age: Duration,
 ) -> io::Result<(Option<Read>, Option<WorldError>)> {
     let file = config_dir.join("issues").join(format!("{slug}.json"));
-    // A cache that doesn't parse is no cache: the Source is the truth.
-    let cached: Option<Read> = fs::read_to_string(&file)
-        .ok()
-        .and_then(|text| serde_json::from_str(&text).ok());
+    let cached = cached(config_dir, slug);
     let oldest = state::iso(world.now() - max_age);
     if cached.as_ref().is_some_and(|c| c.read_at > oldest) {
         return Ok((cached, None));
@@ -126,6 +123,15 @@ pub fn issues(
             Ok((Some(read), None))
         }
     }
+}
+
+/// What the Repo's Source last said, however old.
+pub fn cached(config_dir: &Path, slug: &str) -> Option<Read> {
+    let file = config_dir.join("issues").join(format!("{slug}.json"));
+    // A cache that doesn't parse is no cache: the Source is the truth.
+    fs::read_to_string(file)
+        .ok()
+        .and_then(|text| serde_json::from_str(&text).ok())
 }
 
 fn read(world: &dyn World, slug: &str, repo: &Repo) -> WorldResult<Read> {

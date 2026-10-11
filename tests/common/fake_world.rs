@@ -51,6 +51,8 @@ pub struct FakeWorld {
     pub clock: Cell<SystemTime>,
     /// How many times `every` runs its task before it returns.
     pub timer_runs: Cell<u32>,
+    /// What answers the requests `serve` listens for.
+    pub listening: RefCell<Option<Handler>>,
     /// Log lines, each after the time it was written at.
     pub logged: RefCell<Vec<String>>,
     pub pid: Cell<u32>,
@@ -88,6 +90,7 @@ impl Default for FakeWorld {
             // 2026-09-30T12:00:00Z
             clock: Cell::new(SystemTime::UNIX_EPOCH + Duration::from_secs(1_790_769_600)),
             timer_runs: Cell::new(0),
+            listening: Default::default(),
             logged: Default::default(),
             pid: Cell::new(4242),
             dead_pids: Default::default(),
@@ -553,6 +556,13 @@ impl World for FakeWorld {
                     request.url
                 ))
             })
+    }
+
+    /// Keeps `handler` for the tests to send requests to.
+    fn listen(&self, port: u16, handler: Handler) -> WorldResult<()> {
+        self.call(format!("listen 127.0.0.1:{port}"))?;
+        *self.listening.borrow_mut() = Some(handler);
+        Ok(())
     }
 
     /// Stamped with the clock, as journald stamps the real one.

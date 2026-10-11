@@ -7,9 +7,12 @@ mod linear;
 
 use std::fmt;
 use std::fs;
-use std::io::Write;
+use std::io::{self, BufRead, BufReader, Read, Write};
+use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::Arc;
+use std::thread;
 use std::time::{Duration, SystemTime};
 
 use serde::{Deserialize, Serialize};
@@ -224,6 +227,21 @@ pub struct HttpResponse {
     pub body: String,
 }
 
+/// What `serve` answers a request with.
+pub enum Answer {
+    /// One response, sent whole.
+    Whole(HttpResponse),
+    /// A server-sent-events stream, open till the client leaves: every
+    /// `every`, `poll` says what to send, if anything.
+    Events { every: Duration, poll: Poll },
+}
+
+/// What an event stream sends at a poll, given the World of its thread.
+pub type Poll = Box<dyn FnMut(&dyn World) -> String>;
+
+/// What answers each request `serve` takes, in the World of the thread taking it.
+pub type Handler = Box<dyn Fn(&dyn World, &HttpRequest) -> Answer + Send + Sync>;
+
 pub trait World {
     // git
     /// Remote URLs of the git clone at `path`, or `None` if it isn't one.
@@ -328,6 +346,9 @@ pub trait World {
     // http
     /// Send a request to a service nico-agent doesn't run; any status is a response.
     fn http(&self, request: &HttpRequest) -> WorldResult<HttpResponse>;
+    /// Answer HTTP on 127.0.0.1:`port` with `handler`, a thread per request,
+    /// while this thread goes on; fails when the port cannot be taken.
+    fn listen(&self, port: u16, handler: Handler) -> WorldResult<()>;
 
     // log
     /// Write a line to `serve`'s log: stderr, which journald keeps for a service.
@@ -342,6 +363,77 @@ pub trait World {
     fn process_alive(&self, pid: u32) -> bool;
     /// This boot of the machine: a pid from another boot is another process.
     fn boot_id(&self) -> String;
+}
+
+/// Read one HTTP/1.1 request from `stream`, answer it with `handler`, close.
+fn answer(world: &RealWorld, handler: &Handler, mut stream: TcpStream) -> io::Result<()> {
+    // A client that never finishes its request does not hold a thread.
+    stream.set_read_timeout(Some(Duration::from_secs(30)))?;
+    let request = {
+        let mut reader = BufReader::new(&stream);
+        let mut line = String::new();
+        reader.read_line(&mut line)?;
+        let mut words = line.split_whitespace().map(String::from);
+        let (method, url) = (
+            words.next().unwrap_or_default(),
+            words.next().unwrap_or_default(),
+        );
+        let mut headers = vec![];
+        loop {
+            line.clear();
+            reader.read_line(&mut line)?;
+            let Some((name, value)) = line.split_once(':') else {
+                break;
+            };
+            headers.push((name.trim().to_string(), value.trim().to_string()));
+        }
+        let length = (headers.iter())
+            .find(|(name, _)| name.eq_ignore_ascii_case("content-length"))
+            .and_then(|(_, value)| value.parse().ok())
+            .unwrap_or(0usize);
+        let mut body = vec![0; length.min(1 << 20)];
+        reader.read_exact(&mut body)?;
+        HttpRequest {
+            method,
+            url,
+            headers,
+            body: String::from_utf8_lossy(&body).into(),
+        }
+    };
+    match handler(world, &request) {
+        Answer::Whole(response) => {
+            let head: String = (response.headers.iter())
+                .map(|(name, value)| format!("{name}: {value}\r\n"))
+                .collect();
+            let length = response.body.len();
+            write!(
+                stream,
+                "HTTP/1.1 {} \r\n{head}Content-Length: {length}\r\nConnection: close\r\n\r\n{}",
+                response.status, response.body
+            )
+        }
+        Answer::Events { every, mut poll } => {
+            stream.write_all(b"HTTP/1.1 200 \r\nContent-Type: text/event-stream\r\nCache-Control: no-cache\r\nConnection: close\r\n\r\n")?;
+            // Waiting to read is the timer: a read that times out is the next
+            // poll, and an end of the stream is the client gone.
+            stream.set_read_timeout(Some(every))?;
+            loop {
+                match stream.read(&mut [0; 512]) {
+                    Ok(0) => return Ok(()),
+                    Ok(_) => {}
+                    Err(e)
+                        if matches!(
+                            e.kind(),
+                            io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut
+                        ) =>
+                    {
+                        stream.write_all(poll(world).as_bytes())?
+                    }
+                    Err(e) => return Err(e),
+                }
+            }
+        }
+    }
 }
 
 /// The World of the running binary.
@@ -1224,6 +1316,22 @@ impl World for RealWorld {
             headers,
             body: body.into(),
         })
+    }
+    fn listen(&self, port: u16, handler: Handler) -> WorldResult<()> {
+        let listener = TcpListener::bind(("127.0.0.1", port))
+            .map_err(|e| WorldError(format!("could not listen on 127.0.0.1:{port}: {e}")))?;
+        let (handler, config_dir) = (Arc::new(handler), self.config_dir.clone());
+        thread::spawn(move || {
+            for stream in listener.incoming().flatten() {
+                let handler = Arc::clone(&handler);
+                let world = RealWorld {
+                    config_dir: config_dir.clone(),
+                };
+                // A client that left mid-answer is no one to tell.
+                thread::spawn(move || answer(&world, &handler, stream).ok());
+            }
+        });
+        Ok(())
     }
     fn log(&self, line: &str) {
         eprintln!("{line}");

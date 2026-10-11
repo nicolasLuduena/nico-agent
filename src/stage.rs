@@ -31,6 +31,9 @@ pub struct Pr {
     pub updated_at: String,
     /// Merged or closed: never asked about again.
     pub r#final: bool,
+    /// When GitHub was last asked about it.
+    #[serde(default)]
+    pub checked_at: Option<String>,
 }
 
 /// Every watched PR, by URL.
@@ -151,6 +154,7 @@ pub fn watch(ctx: &Context, every: bool) -> io::Result<(Vec<String>, Vec<String>
             mergeable: now.mergeable,
             updated_at: now.updated_at,
             r#final: now.state != PrState::Open,
+            checked_at: Some(state::iso(ctx.world.now())),
         };
         save(&ctx.config_dir, &url, pr)?;
         if let Some(issue) = found_for {

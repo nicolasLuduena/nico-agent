@@ -4,6 +4,7 @@ pub mod cli;
 pub mod config;
 pub mod dispatch;
 pub mod flip;
+pub mod http;
 pub mod launch;
 pub mod pause;
 pub mod rebase;

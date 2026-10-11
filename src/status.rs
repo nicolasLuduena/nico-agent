@@ -14,12 +14,21 @@ use crate::world::{self, AgentState};
 
 pub fn status(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
     Args::parse("status", args, &[])?.positionals(&[])?;
+    shown(ctx, true)
+}
+
+/// What `status` shows; with `read`, each Source whose cache is older than
+/// a tick is read first, else only its cache is shown, however old.
+pub fn shown(ctx: &Context, read: bool) -> Result<Value, Refusal> {
     let config = config::load(&ctx.config_dir)?;
     let dispatches = dispatch::load(&ctx.config_dir)?;
     let prs = stage::load(&ctx.config_dir)?;
     let mut repos = vec![];
     for (slug, repo) in &config.repos {
-        let (read, error) = source::issues(ctx.world, &ctx.config_dir, slug, repo, config.tick())?;
+        let (read, error) = match read {
+            true => source::issues(ctx.world, &ctx.config_dir, slug, repo, config.tick())?,
+            false => (source::cached(&ctx.config_dir, slug), None),
+        };
         let readiness = read
             .as_ref()
             .map(|read| source::readiness(read, &dispatches, &prs))
