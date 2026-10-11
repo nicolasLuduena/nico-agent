@@ -88,7 +88,7 @@ fn a_verdict_commits_the_evidence_and_findings_to_the_bucket_under_repo_issue_an
             format!("cp -r /worktrees/api-7/.evidence/7/. {BUCKET}/acme/api/7/sha9"),
             format!("write {BUCKET}/acme/api/7/sha9/findings.md"),
             format!(
-                "git -C {BUCKET} add --all && git -C {BUCKET} commit -m verdict acme/api#7 pass sha9"
+                "git -C {BUCKET} add -- acme/api/7/sha9 && git -C {BUCKET} commit --quiet --allow-empty --no-gpg-sign -m verdict acme/api#7 pass sha9"
             ),
         ]
     );
@@ -133,7 +133,7 @@ fn a_verdict_with_no_evidence_still_commits_its_findings_and_one_on_another_sha_
     assert_eq!(
         t.world.calls().last().unwrap(),
         &format!(
-            "git -C {BUCKET} add --all && git -C {BUCKET} commit -m verdict acme/api#7 pass sha10"
+            "git -C {BUCKET} add -- acme/api/7/sha10 && git -C {BUCKET} commit --quiet --allow-empty --no-gpg-sign -m verdict acme/api#7 pass sha10"
         )
     );
 }
@@ -315,6 +315,9 @@ fn repo_add_makes_the_bucket_when_it_is_missing_and_leaves_one_that_is_there_unt
             format!("git remotes {BUCKET}"),
             format!("git init {BUCKET}"),
             format!("write {BUCKET}/README.md"),
+            format!(
+                "git -C {BUCKET} add -- README.md && git -C {BUCKET} commit --quiet --allow-empty --no-gpg-sign -m nico-agent's Bucket"
+            ),
         ]
     );
     assert!(t.world.files.borrow()[&format!("{BUCKET}/README.md")].starts_with(b"# "));

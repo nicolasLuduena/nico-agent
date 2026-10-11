@@ -4,40 +4,58 @@
 //! `acme/api/BLE-12/<sha>/` for a Linear issue: the files of the worktree's
 //! `.evidence/<issue>/`, and `findings.md`.
 
+use std::fs::File;
+
 use serde_json::json;
 
 use crate::cli::{Context, Refusal};
 use crate::config::{self, Config};
 use crate::dispatch::Dispatch;
 use crate::http;
+use crate::state;
 use crate::world::{Answer, HttpResponse, World, WorldError};
 
 const README: &str = "# nico-agent's Bucket\n\nEvidence, one commit per Verdict: `<owner>/<repo>/<issue>/<sha>/` holds what\nthe worktree's `.evidence/<issue>/` held when the Verdict on `<sha>` was\nrecorded, and the Reviewer's `findings.md`.\n";
 
-/// Make the Bucket, a git repo with a README, unless there is one.
-pub fn create(world: &dyn World, config: &Config) -> Result<(), Refusal> {
+/// Make the Bucket, a git repo with its README committed, unless there is one.
+pub fn create(ctx: &Context, config: &Config) -> Result<(), Refusal> {
+    let _lock = lock(ctx)?;
+    made(ctx.world, config)
+}
+
+/// The Bucket, made under its lock if it is missing.
+fn made(world: &dyn World, config: &Config) -> Result<(), Refusal> {
     let path = &config.bucket.path;
     if world.git_remotes(path).map_err(refused)?.is_some() {
         return Ok(());
     }
     (world.git_init(path))
         .and_then(|()| world.write_file(&format!("{path}/README.md"), README.as_bytes()))
+        .and_then(|()| world.git_commit(path, "README.md", "nico-agent's Bucket"))
         .map_err(refused)
+}
+
+/// The Bucket's lock, held while a command changes it: two at once would
+/// collide on git's index, or one commit the other's files.
+fn lock(ctx: &Context) -> Result<File, Refusal> {
+    Ok(state::lock(&ctx.config_dir.join("bucket"))?)
 }
 
 /// Commit `d`'s Evidence and `findings` to the Bucket with `message`, for
 /// the Verdict on `sha`; the Bucket made first if it is missing.
 pub fn keep(
-    world: &dyn World,
+    ctx: &Context,
     config: &Config,
     d: &Dispatch,
     sha: &str,
     findings: Option<&str>,
     message: &str,
 ) -> Result<(), Refusal> {
-    create(world, config)?;
+    let (world, _lock) = (ctx.world, lock(ctx)?);
+    made(world, config)?;
     let bucket = &config.bucket.path;
-    let to = format!("{bucket}/{}/{sha}", folder(d));
+    let kept = format!("{}/{sha}", folder(d));
+    let to = format!("{bucket}/{kept}");
     if let Some(worktree) = &d.worktree {
         let from = format!("{worktree}/{}", evidence(d));
         world.copy_dir(&from, &to).map_err(refused)?;
@@ -46,7 +64,7 @@ pub fn keep(
         let file = format!("{to}/findings.md");
         world.write_file(&file, text.as_bytes()).map_err(refused)?;
     }
-    world.git_commit_all(bucket, message).map_err(refused)
+    world.git_commit(bucket, &kept, message).map_err(refused)
 }
 
 /// `GET /bucket/<path>`: the file at `path`, URL-escaped, in the Bucket's

@@ -127,7 +127,7 @@ pub fn verdict(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
         // Kept before it is recorded: the tick acting on it may Close the worktree.
         let message = format!("verdict {issue} {word} {sha}");
         let findings = new.findings.as_deref();
-        bucket::keep(ctx.world, &config, &d, sha, findings, &message)?;
+        bucket::keep(ctx, &config, &d, sha, findings, &message)?;
         Ok((state::text(&new), true))
     })?;
     Ok(json!({

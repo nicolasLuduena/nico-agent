@@ -257,9 +257,9 @@ pub trait World {
     fn git_default_branch(&self, path: &str) -> WorldResult<String>;
     /// Make the folder `path`, and its parents, an empty git repo.
     fn git_init(&self, path: &str) -> WorldResult<()>;
-    /// Commit everything in the working tree at `path`, new files included,
-    /// even when nothing changed.
-    fn git_commit_all(&self, path: &str, message: &str) -> WorldResult<()>;
+    /// Commit what `add`, a path in the clone at `path`, holds, new files
+    /// included, if it is there; even when nothing changed.
+    fn git_commit(&self, path: &str, add: &str, message: &str) -> WorldResult<()>;
 
     // files outside the config directory: worktrees, the Bucket
     /// Copy what the folder `from` holds into the folder `to`, without its
@@ -928,8 +928,11 @@ impl World for RealWorld {
         git_ok(path, &["init", "--quiet"]).map(drop)
     }
     /// Unsigned: a service has no one to unlock a signing key.
-    fn git_commit_all(&self, path: &str, message: &str) -> WorldResult<()> {
-        git_ok(path, &["add", "--all"])?;
+    fn git_commit(&self, path: &str, add: &str, message: &str) -> WorldResult<()> {
+        // git refuses to add a path that is not there: a Verdict with no Evidence nor findings.
+        if Path::new(path).join(add).exists() {
+            git_ok(path, &["add", "--", add])?;
+        }
         let commit = ["commit", "--quiet", "--allow-empty", "--no-gpg-sign"];
         git_ok(path, &[&commit[..], &["-m", message]].concat()).map(drop)
     }

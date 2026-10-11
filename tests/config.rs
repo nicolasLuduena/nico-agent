@@ -208,7 +208,8 @@ fn concurrent_writers_leave_a_valid_file_with_every_change() {
         .map(|f| f.unwrap().file_name().into_string().unwrap())
         .collect();
     files.sort();
-    assert_eq!(files, ["config.toml", "config.toml.lock"]);
+    // Each add made the Bucket, if missing, under the Bucket's lock.
+    assert_eq!(files, ["bucket.lock", "config.toml", "config.toml.lock"]);
 }
 
 #[test]

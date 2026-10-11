@@ -25,7 +25,8 @@ pub fn update<T, E: From<io::Error>>(
     Ok(out)
 }
 
-fn lock_and_read(file: &Path) -> io::Result<(File, String)> {
+/// Hold `file`'s lock, the one [`update`] takes, until the handle drops.
+pub fn lock(file: &Path) -> io::Result<File> {
     if let Some(dir) = file.parent() {
         fs::create_dir_all(dir)?;
     }
@@ -36,6 +37,11 @@ fn lock_and_read(file: &Path) -> io::Result<(File, String)> {
         .write(true)
         .open(suffixed(file, ".lock"))?;
     lock.lock()?;
+    Ok(lock)
+}
+
+fn lock_and_read(file: &Path) -> io::Result<(File, String)> {
+    let lock = lock(file)?;
     match fs::read_to_string(file) {
         Err(e) if e.kind() == io::ErrorKind::NotFound => Ok((lock, String::new())),
         read => Ok((lock, read?)),

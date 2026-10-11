@@ -67,7 +67,7 @@ pub fn add(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
             )],
         ));
     }
-    bucket::create(ctx.world, &config::load(&ctx.config_dir)?)?;
+    bucket::create(ctx, &config::load(&ctx.config_dir)?)?;
 
     config::edit(&ctx.config_dir, |config, doc| {
         let found = config

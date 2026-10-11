@@ -262,9 +262,9 @@ impl World for FakeWorld {
         Ok(())
     }
 
-    fn git_commit_all(&self, path: &str, message: &str) -> WorldResult<()> {
+    fn git_commit(&self, path: &str, add: &str, message: &str) -> WorldResult<()> {
         self.call(format!(
-            "git -C {path} add --all && git -C {path} commit -m {message}"
+            "git -C {path} add -- {add} && git -C {path} commit --quiet --allow-empty --no-gpg-sign -m {message}"
         ))
     }
 

@@ -23,7 +23,19 @@ fn add_reads_the_remotes_and_list_shows_the_repo_with_defaults_filled_in() {
         added.json(),
         json!({ "repo": "acme/api added", "path": "/src/api" })
     );
-    assert_eq!(t.world.calls()[0], "git remotes /src/api");
+    let bucket = "/mnt/agents-land/nico-agent-bucket";
+    assert_eq!(
+        t.world.calls(),
+        [
+            "git remotes /src/api".to_string(),
+            format!("git remotes {bucket}"),
+            format!("git init {bucket}"),
+            format!("write {bucket}/README.md"),
+            format!(
+                "git -C {bucket} add -- README.md && git -C {bucket} commit --quiet --allow-empty --no-gpg-sign -m nico-agent's Bucket"
+            ),
+        ]
+    );
     assert_eq!(
         t.cli(&["repo", "list", "--json"]).json(),
         json!({ "repos": [{
