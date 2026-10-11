@@ -4,25 +4,33 @@ use serde_json::{Value, json};
 
 use crate::args::Args;
 use crate::cli::{Context, Refusal};
-use crate::config;
-use crate::dispatch;
+use crate::config::{self, Config};
+use crate::dispatch::{self, Dispatch};
 use crate::pause;
 use crate::source;
-use crate::stage::{self, Stage};
+use crate::stage::{self, Prs, Stage};
 use crate::verdict;
 use crate::world::{self, AgentState};
 
 pub fn status(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
     Args::parse("status", args, &[])?.positionals(&[])?;
-    shown(ctx, true)
-}
-
-/// What `status` shows; with `read`, each Source whose cache is older than
-/// a tick is read first, else only its cache is shown, however old.
-pub fn shown(ctx: &Context, read: bool) -> Result<Value, Refusal> {
     let config = config::load(&ctx.config_dir)?;
     let dispatches = dispatch::load(&ctx.config_dir)?;
     let prs = stage::load(&ctx.config_dir)?;
+    shown(ctx, &config, &dispatches, &prs, true)
+}
+
+/// What `status` shows of the `config`, `dispatches` and `prs` the caller
+/// loaded, its `dispatches[]` in their order; with `read`, each Source whose
+/// cache is older than a tick is read first, else only its cache is shown,
+/// however old.
+pub fn shown(
+    ctx: &Context,
+    config: &Config,
+    dispatches: &[Dispatch],
+    prs: &Prs,
+    read: bool,
+) -> Result<Value, Refusal> {
     let mut repos = vec![];
     for (slug, repo) in &config.repos {
         let (read, error) = match read {
@@ -31,7 +39,7 @@ pub fn shown(ctx: &Context, read: bool) -> Result<Value, Refusal> {
         };
         let readiness = read
             .as_ref()
-            .map(|read| source::readiness(read, &dispatches, &prs))
+            .map(|read| source::readiness(read, dispatches, prs))
             .unwrap_or_default();
         let mut shown = json!({
             "slug": slug,
@@ -64,8 +72,8 @@ pub fn shown(ctx: &Context, read: bool) -> Result<Value, Refusal> {
         Some(agents) => world::agent_state(agents, name).map_or(json!("gone"), |s| json!(s)),
     };
     let mut shown_dispatches = vec![];
-    for d in &dispatches {
-        let pr = stage::pr_of(&prs, d);
+    for d in dispatches {
+        let pr = stage::pr_of(prs, d);
         let verdict = verdict::load(&ctx.config_dir, &d.issue)?;
         let stage = stage::of(d, pr.map(|(_, pr)| pr), verdict.as_ref());
         let (slug, harness) = (&d.repo, &d.implementer.harness);

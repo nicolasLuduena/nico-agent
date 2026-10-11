@@ -9,7 +9,7 @@ use serde_json::{Value, json};
 use crate::bucket;
 use crate::cli::{Context, Refusal};
 use crate::config;
-use crate::dispatch;
+use crate::dispatch::{self, Dispatch};
 use crate::http;
 use crate::source::{self, Issue};
 use crate::stage;
@@ -26,33 +26,31 @@ pub fn map(ctx: &Context, slug: &str) -> Result<Option<Value>, Refusal> {
     let Some((slug, _)) = config.repo(slug) else {
         return Ok(None);
     };
-    let status = status::shown(ctx, false)?;
+    let dispatches = dispatch::load(&ctx.config_dir)?;
     let prs = stage::load(&ctx.config_dir)?;
+    let status = status::shown(ctx, &config, &dispatches, &prs, false)?;
     let repo = (status["repos"].as_array().into_iter().flatten()).find(|r| r["slug"] == *slug);
     let listed = |list: &str, key: &str| {
         (repo.and_then(|r| r[list].as_array()).into_iter().flatten()).any(|row| row["key"] == key)
     };
-    let dispatches: Vec<&Value> = status["dispatches"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .collect();
-    // Each issue's last Dispatch, while it is live or its PR merged in the last 7 days.
-    let mut last: BTreeMap<&str, &Value> = BTreeMap::new();
-    for d in &dispatches {
-        last.insert(d["issue"].as_str().unwrap_or_default(), d);
+    let merged_at =
+        |d: &Dispatch| stage::pr_of(&prs, d).and_then(|(_, pr)| pr.merged_at.as_deref());
+    // Each issue's last Dispatch, with what `status` shows of it, while it
+    // is live or its PR merged in the last 7 days.
+    let shown = status["dispatches"].as_array().into_iter().flatten();
+    let mut last: BTreeMap<&str, (&Dispatch, &Value)> = BTreeMap::new();
+    for (d, shown) in dispatches.iter().zip(shown) {
+        last.insert(&d.issue, (d, shown));
     }
     let week_ago = state::iso(ctx.world.now() - Duration::from_secs(7 * 86_400));
-    last.retain(|_, d| {
-        d["closed_at"].is_null() || d["pr"]["merged_at"].as_str() >= Some(&week_ago)
-    });
+    last.retain(|_, (d, _)| d.closed_at.is_none() || merged_at(d) >= Some(&week_ago));
     let issues = source::cached(&ctx.config_dir, slug).map_or(vec![], |read| read.issues);
     let offered = |i: &Issue| i.open && i.labels.iter().any(|l| l == READY_LABEL);
     let mut keys: Vec<&str> = (issues.iter().filter(|i| offered(i)))
         .map(|i| i.key.as_str())
         .chain(
             (last.iter())
-                .filter(|(_, d)| d["repo"] == *slug)
+                .filter(|(_, (d, _))| d.repo == *slug)
                 .map(|(k, _)| *k),
         )
         .collect();
@@ -68,16 +66,14 @@ pub fn map(ctx: &Context, slug: &str) -> Result<Option<Value>, Refusal> {
     }
     // The PR each Stacked dispatch still sits on, by the issue it is of.
     let mut targets: BTreeMap<&str, &str> = BTreeMap::new();
-    for (key, d) in last.iter().filter(|(_, d)| d["repo"] == *slug) {
-        let below = &d["stacked_on"];
-        let Some(url) = below["url"]
-            .as_str()
-            .filter(|_| below["head_branch"] == d["base"])
+    for (key, (d, _)) in last.iter().filter(|(_, (d, _))| d.repo == *slug) {
+        let Some(below) = (d.stacked_on.as_ref()).filter(|below| below.head_branch == d.base)
         else {
             continue;
         };
-        let of_dispatch = (dispatches.iter()).find(|d| d["pr"]["url"] == url);
-        let target = of_dispatch.and_then(|d| d["issue"].as_str()).or_else(|| {
+        let url = below.url.as_str();
+        let of_dispatch = (dispatches.iter()).find(|d| d.pr.as_deref() == Some(url));
+        let target = of_dispatch.map(|d| d.issue.as_str()).or_else(|| {
             let mut blockers = issues.iter().flat_map(|i| &i.blockers);
             let blocker = blockers.find(|b| b.prs.iter().any(|pr| pr.url == url))?;
             Some(blocker.key.as_str())
@@ -92,36 +88,35 @@ pub fn map(ctx: &Context, slug: &str) -> Result<Option<Value>, Refusal> {
     let mut nodes = BTreeMap::new();
     for key in keys {
         let issue = issues.iter().find(|i| i.key == key);
-        let d = last.get(key).copied().unwrap_or(&Value::Null);
+        let (d, shown) = last.get(key).copied().unzip();
+        let shown = shown.unwrap_or(&Value::Null);
         let stage = match issue {
-            _ if !d.is_null() => d["stage"].clone(),
+            _ if d.is_some() => shown["stage"].clone(),
             _ if listed("ready", key) => json!("Ready"),
             _ if listed("stackable", key) => json!("Stackable"),
             Some(issue) if offered(issue) => json!("Waiting"),
             _ => Value::Null,
         };
-        let pr = match (&d["pr"], targets.get(key)) {
-            (Value::Null, Some(&url)) => {
-                json!({ "url": url, "draft": prs.get(url).map(|pr| pr.draft) })
-            }
-            (Value::Null, None) => Value::Null,
-            (pr, _) => json!({ "url": pr["url"], "draft": pr["draft"] }),
+        let pr = match (d.and_then(|d| stage::pr_of(&prs, d)), targets.get(key)) {
+            (Some((url, pr)), _) => json!({ "url": url, "draft": pr.draft }),
+            (None, Some(&url)) => json!({ "url": url, "draft": prs.get(url).map(|pr| pr.draft) }),
+            (None, None) => Value::Null,
         };
         let url = (issue.map(|i| i.url.clone()))
-            .or_else(|| d["url"].as_str().map(String::from))
+            .or_else(|| d.map(|d| d.url.clone()))
             .or_else(|| {
                 let (slug, number) = source::github_ref(key)?;
                 Some(format!("https://github.com/{slug}/issues/{number}"))
             });
         let title = (issue.map(|i| i.title.as_str()))
-            .or(d["title"].as_str())
+            .or(d.map(|d| d.title.as_str()))
             .or_else(|| {
                 let mut blockers = issues.iter().flat_map(|i| &i.blockers);
                 blockers.find(|b| b.key == key)?.title.as_deref()
             });
         let research = (issue.is_some_and(|i| i.labels.iter().any(|l| l == "research")))
-            || d["research"] == true;
-        let verdict = &d["verdict"];
+            || d.is_some_and(|d| d.research);
+        let verdict = &shown["verdict"];
         nodes.insert(
             key,
             json!({
@@ -130,14 +125,14 @@ pub fn map(ctx: &Context, slug: &str) -> Result<Option<Value>, Refusal> {
                 "url": url,
                 "kind": if research { "research" } else { "code" },
                 "stage": stage,
-                "agent_state": d["agent_state"],
+                "agent_state": shown["agent_state"],
                 "pr": pr,
                 "verdict": if verdict.is_null() { Value::Null } else {
                     json!({ "result": verdict["result"], "sha": verdict["sha"], "at": verdict["at"] })
                 },
-                "restarts": d["restarts"].as_array().map_or(0, Vec::len),
+                "restarts": d.map_or(0, |d| d.restarts.len()),
                 "created_at": issue.map(|i| &i.created_at),
-                "merged_at": d["pr"]["merged_at"],
+                "merged_at": d.and_then(merged_at),
             }),
         );
     }
@@ -157,7 +152,8 @@ pub fn node(ctx: &Context, issue: &str) -> Result<Option<Value>, Refusal> {
     let Some(d) = dispatches.iter().rfind(|d| d.issue == key) else {
         return Ok(None);
     };
-    let status = status::shown(ctx, false)?;
+    let prs = stage::load(&ctx.config_dir)?;
+    let status = status::shown(ctx, &config, &dispatches, &prs, false)?;
     let mut shown = status["dispatches"].as_array().into_iter().flatten();
     let mut node = (shown.rfind(|s| s["issue"] == key).cloned()).unwrap_or_default();
     let folder = bucket::folder(d);

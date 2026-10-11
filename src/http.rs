@@ -15,7 +15,6 @@ use crate::cli::{Context, Refusal, bad_invocation};
 use crate::config;
 use crate::dispatch;
 use crate::map;
-use crate::pause;
 use crate::refresh;
 use crate::repo;
 use crate::stage;
@@ -110,10 +109,11 @@ pub fn answer(ctx: &Context, request: &HttpRequest) -> Answer {
 /// `status`'s answer from the Sources' caches alone, plus per Repo what the
 /// page shows of it beside the map and offers in its Dispatch form.
 fn status(ctx: &Context) -> Result<Value, Refusal> {
-    let mut shown = status::shown(ctx, false)?;
     let config = config::load(&ctx.config_dir)?;
-    let paused = pause::until(ctx.world, &ctx.config_dir, "GitHub")?;
     let prs = stage::load(&ctx.config_dir)?;
+    let dispatches = dispatch::load(&ctx.config_dir)?;
+    let mut shown = status::shown(ctx, &config, &dispatches, &prs, false)?;
+    let paused = shown["sources"]["github"]["paused_until"].clone();
     let harnesses: Map<String, Value> = (config.harnesses.iter())
         .map(|(name, h)| {
             (
@@ -122,14 +122,9 @@ fn status(ctx: &Context) -> Result<Value, Refusal> {
             )
         })
         .collect();
-    for shown in shown["repos"].as_array_mut().into_iter().flatten() {
-        // The config may have changed since `status` read it.
-        let Some((slug, repo)) = shown["slug"]
-            .as_str()
-            .and_then(|slug| config.repos.get_key_value(slug))
-        else {
-            continue;
-        };
+    // `status` shows a row per Repo of the config, in its order.
+    let rows = shown["repos"].as_array_mut().into_iter().flatten();
+    for (shown, (slug, repo)) in rows.zip(&config.repos) {
         let checked = (prs.values())
             .filter(|pr| pr.repo == *slug)
             .filter_map(|pr| pr.checked_at.as_ref())
