@@ -203,38 +203,47 @@ fn an_issue_with_a_live_dispatch_is_not_ready_and_one_closed_is() {
 }
 
 #[test]
-fn an_issue_whose_last_dispatch_merged_waits_and_one_closed_unmerged_is_ready_again() {
+fn an_issue_whose_last_dispatch_merged_or_closed_unmerged_waits_till_dispatched_by_hand() {
     let t = with_repo();
     for n in [1, 2] {
         t.world.add_issue("acme/api", github_issue("acme/api", n));
     }
-    for n in ["acme/api#1", "acme/api#2"] {
-        assert_eq!(t.cli(&["dispatch", n]).exit_code, 0);
-    }
+    t.tick();
     t.world.add_pr(pr("acme/api", 11, "agent/api-1"));
     t.world.add_pr(pr("acme/api", 12, "agent/api-2"));
-    let ctx = t.ctx();
-    nico_agent::stage::watch(&ctx).unwrap();
-    // Merged into a branch that is not the default, or without a closing keyword.
+    t.world.advance(Duration::from_secs(600));
+    t.tick();
+    // Merged into a branch that is not the default, or without a closing
+    // keyword; and closed by the user, rejected.
     t.world.prs.borrow_mut()[0].state = PrState::Merged;
     t.world.prs.borrow_mut()[1].state = PrState::Closed;
-    nico_agent::stage::watch(&ctx).unwrap();
-    nico_agent::dispatch::close_finished(&ctx).unwrap();
+    t.world.advance(Duration::from_secs(600));
 
+    let closed = t.tick();
     let status = status(&t);
+    let by_hand = t.cli(&["dispatch", "acme/api#2", "--json"]);
 
-    let repo = &status["repos"][0];
-    assert_eq!(keys(&repo["ready"]), ["acme/api#2"]);
     assert_eq!(
-        repo["waiting"],
-        json!([{
-            "key": "acme/api#1",
-            "title": "Issue 1",
-            "url": "https://github.com/acme/api/issues/1",
-            "kind": "code",
-            "reason": "acme/api#1 is still open though its PR https://github.com/acme/api/pull/11 merged; close it, or dispatch it by hand to work it again",
-        }])
+        closed,
+        [
+            "acme/api#1 Closed: its PR https://github.com/acme/api/pull/11 merged",
+            "acme/api#2 Closed: its PR https://github.com/acme/api/pull/12 closed",
+        ]
     );
+    let repo = &status["repos"][0];
+    assert_eq!(repo["ready"], json!([]));
+    let reasons: Vec<&Value> = (repo["waiting"].as_array().unwrap().iter())
+        .map(|row| &row["reason"])
+        .collect();
+    assert_eq!(
+        reasons,
+        [
+            "acme/api#1 is still open though its PR https://github.com/acme/api/pull/11 merged; close it, or dispatch it by hand to work it again",
+            "acme/api#2's PR https://github.com/acme/api/pull/12 was closed unmerged; dispatch it by hand to work it again",
+        ]
+    );
+    assert_eq!(by_hand.exit_code, 0, "{}", by_hand.stdout);
+    assert_eq!(by_hand.json()["dispatched"], "acme/api#2");
 }
 
 #[test]

@@ -81,7 +81,7 @@ pub struct Readiness {
     pub ready: Vec<Row>,
     pub stackable: Vec<Row>,
     /// Stackable but for its Blockers' open PRs sitting on several branches,
-    /// or still open though its last Dispatch's PR merged.
+    /// or still open though its last Dispatch's PR merged or was closed unmerged.
     pub waiting: Vec<Row>,
 }
 
@@ -226,14 +226,21 @@ pub fn readiness(read: &Read, dispatches: &[Dispatch], prs: &Prs) -> Readiness {
             base: None,
             reason: None,
         };
-        let merged = (last.get(issue.key.as_str()))
+        let ended = (last.get(issue.key.as_str()))
             .and_then(|d| d.pr.as_ref())
-            .filter(|url| prs.get(*url).is_some_and(|pr| pr.state == PrState::Merged));
-        if let Some(url) = merged {
-            let reason = format!(
-                "{} is still open though its PR {url} merged; close it, or dispatch it by hand to work it again",
-                issue.key
-            );
+            .and_then(|url| Some((url, prs.get(url)?.state)));
+        let key = &issue.key;
+        let held = match ended {
+            Some((url, PrState::Merged)) => Some(format!(
+                "{key} is still open though its PR {url} merged; close it, or dispatch it by hand to work it again"
+            )),
+            // Rejected by the user: not worked again overnight on the same branch.
+            Some((url, PrState::Closed)) => Some(format!(
+                "{key}'s PR {url} was closed unmerged; dispatch it by hand to work it again"
+            )),
+            _ => None,
+        };
+        if let Some(reason) = held {
             readiness.waiting.push(Row {
                 reason: Some(reason),
                 ..row
