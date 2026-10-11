@@ -17,7 +17,7 @@ use crate::rebase;
 use crate::stage::{self, Prs};
 use crate::state;
 use crate::verdict::{self, Outcome};
-use crate::world::{self, Agent};
+use crate::world::{self, Agent, AgentState};
 
 /// One restart of a Dispatch's Implementer.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -120,7 +120,7 @@ fn agent_reason(
     let Some(state) = world::agent_state(agents, &d.implementer.agent) else {
         return Some(Reason::Rebooted);
     };
-    if d.pr.is_some() || !matches!(state, "idle" | "done") {
+    if d.pr.is_some() || !matches!(state, AgentState::Idle | AgentState::Done) {
         d.idle_since = None;
         return None;
     }

@@ -473,7 +473,7 @@ impl World for FakeWorld {
             .iter()
             .map(|(name, state)| Agent {
                 name: name.clone(),
-                state: state.clone(),
+                state: state.as_str().into(),
             })
             .collect())
     }

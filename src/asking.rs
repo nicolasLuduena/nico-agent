@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use crate::cli::Context;
 use crate::dispatch;
 use crate::state;
-use crate::world::{self, Agent};
+use crate::world::{self, Agent, AgentState};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Asking {
@@ -34,7 +34,7 @@ pub fn step(ctx: &Context, agents: Option<&[Agent]>) -> io::Result<Vec<String>> 
         let name = &d.implementer.agent;
         let state = world::agent_state(agents, name);
         match (state, &d.asking) {
-            (Some("blocked"), None) => {
+            (Some(AgentState::Blocked), None) => {
                 let question = match ctx.world.herdr_agent_read(name) {
                     Ok(screen) => meaningful_line(&screen).unwrap_or_default().into(),
                     Err(e) => {
@@ -53,7 +53,7 @@ pub fn step(ctx: &Context, agents: Option<&[Agent]>) -> io::Result<Vec<String>> 
                     said.push(format!("could not notify \"{title}\": {e}"));
                 }
             }
-            (Some("blocked" | "unknown"), _) | (_, None) => {}
+            (Some(AgentState::Blocked | AgentState::Unknown), _) | (_, None) => {}
             (_, Some(_)) => record(ctx, &d.issue, None)?,
         }
     }

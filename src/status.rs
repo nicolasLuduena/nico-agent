@@ -10,7 +10,7 @@ use crate::pause;
 use crate::source;
 use crate::stage::{self, Stage};
 use crate::verdict;
-use crate::world;
+use crate::world::{self, AgentState};
 
 pub fn status(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
     Args::parse("status", args, &[])?.positionals(&[])?;
@@ -51,8 +51,8 @@ pub fn status(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
     let live = dispatches.iter().any(|d| d.closed_at.is_none());
     let agents = live.then(|| ctx.world.herdr_agents().ok()).flatten();
     let agent_state = |name: &str| match &agents {
-        None => "unknown",
-        Some(agents) => world::agent_state(agents, name).unwrap_or("gone"),
+        None => json!(AgentState::Unknown),
+        Some(agents) => world::agent_state(agents, name).map_or(json!("gone"), |s| json!(s)),
     };
     let mut shown_dispatches = vec![];
     for d in &dispatches {

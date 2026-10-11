@@ -175,19 +175,37 @@ pub struct Tab {
     pub pane: String,
 }
 
-/// A named herdr agent with its raw Agent state (idle, working, blocked, done, unknown).
+/// A named herdr agent with its Agent state.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Agent {
     pub name: String,
-    pub state: String,
+    pub state: AgentState,
+}
+
+/// An Agent state, as herdr names it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AgentState {
+    Idle,
+    Working,
+    /// Waiting on a human: for an Implementer, Asking.
+    Blocked,
+    Done,
+    /// None reported, or one this build does not know.
+    #[serde(other)]
+    Unknown,
+}
+
+impl From<&str> for AgentState {
+    fn from(name: &str) -> Self {
+        serde_json::from_value(Value::from(name)).unwrap_or(AgentState::Unknown)
+    }
 }
 
 /// The Agent state herdr reports for the agent `name` among `agents`;
 /// `None` when it has no such agent.
-pub fn agent_state<'a>(agents: &'a [Agent], name: &str) -> Option<&'a str> {
-    (agents.iter())
-        .find(|a| a.name == name)
-        .map(|a| a.state.as_str())
+pub fn agent_state(agents: &[Agent], name: &str) -> Option<AgentState> {
+    (agents.iter()).find(|a| a.name == name).map(|a| a.state)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1063,7 +1081,7 @@ impl World for RealWorld {
             .filter_map(|a| {
                 Some(Agent {
                     name: a["name"].as_str().filter(|n| !n.is_empty())?.into(),
-                    state: a["agent_status"].as_str().unwrap_or("unknown").into(),
+                    state: a["agent_status"].as_str().unwrap_or_default().into(),
                 })
             })
             .collect())
