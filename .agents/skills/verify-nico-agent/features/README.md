@@ -70,11 +70,13 @@ commands, and observable proof.
   written to `config.toml`, and the loop obeying a switch turned off.
 - [Refresh](./refresh.md) covers the page's Refresh button, `POST /api/refresh` and `nico-agent
   refresh`, and what the tick it runs does.
+- [Live updates](./live-updates.md) covers `GET /api/events` (`changed`, and a keepalive otherwise),
+  the page left open behind the tunnel, its reconnecting after the stream is lost, and the
+  signed-out line when Access's session lapses.
 
 Not yet mapped (drive by hand, then add a file): `nico-agent answer <issue> --text <text> [--by
 faux-nico]` (its refusals are drivable on a seeded `asking` Dispatch; typing into the pane needs
 herdr), the faux-nico, gardening and quality-scan triggers, `GET /api/map/<slug>` and the map's node layout
-beyond what the tabs file asserts, `GET /api/events` (`changed` every 10 seconds on a state change),
-the morning agent and `morning.md` on the page (off in a run: set `morning.enabled = true` and `hour` to the current one to drive it), the theme switch, `serve` restarting Dispatches after a reboot, and everything that needs a live
+beyond what the tabs file asserts, the morning agent and `morning.md` on the page (off in a run: set `morning.enabled = true` and `hour` to the current one to drive it), the theme switch, `serve` restarting Dispatches after a reboot, and everything that needs a live
 herdr or GitHub (an Implementer started, a Reviewer started, a PR flipped to ready): `cargo test`
 covers those through the fake World.

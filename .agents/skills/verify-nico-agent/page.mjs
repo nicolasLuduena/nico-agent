@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 // page.mjs — open serve's page in headless Chromium, act on it as a user does, capture what it shows.
 // Called by `control-nico-agent page`, which passes the run's URL first and sets VERIFY_PLAYWRIGHT:
-//   page.mjs <url> [--evidence PREFIX] [--width PX] [--click ROLE=NAME | --click ROLE~NAME | --press KEY | --expect TEXT]...
-// Steps run in the order given. With --evidence it writes PREFIX.aria.txt (the ARIA snapshot after the
-// last step), PREFIX.png, PREFIX.requests.txt (each /api request the page made, with its status) and
-// PREFIX.console.txt (console errors). It exits 1 when a step fails, after capturing.
+//   page.mjs <url> [--evidence PREFIX] [--width PX] [--click ROLE=NAME | --click ROLE~NAME | --press KEY | --expect TEXT
+//            | --gone TEXT | --wait SECONDS | --mode pass|502|signed-out]...
+// Steps run in the order given; `--mode` asks the tunnel stand-in at <url> (tunnel.mjs) to answer so.
+// With --evidence it writes PREFIX.aria.txt (the ARIA snapshot after the last step), PREFIX.png,
+// PREFIX.requests.txt (each /api request the page made, with its status; each /api/events stream as
+// it is answered) and PREFIX.console.txt (console errors). It exits 1 when a step fails, after capturing.
 import { createRequire } from "node:module";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
@@ -25,11 +27,14 @@ for (let i = 0; i < argv.length; i++) {
   else if (flag === "--click" && /^[a-z]+[=~]/.test(value)) steps.push({ click: value });
   else if (flag === "--press") steps.push({ press: value });
   else if (flag === "--expect") steps.push({ expect: value });
+  else if (flag === "--gone") steps.push({ gone: value });
+  else if (flag === "--wait" && Number(value) >= 0) steps.push({ wait: Number(value) });
+  else if (flag === "--mode") steps.push({ mode: value });
   else usage(`unknown argument ${flag} ${value}`);
 }
 
 function usage(why) {
-  console.error(`page: ${why}\nusage: page [--evidence PREFIX] [--width PX] [--click ROLE=NAME | --click ROLE~NAME | --press KEY | --expect TEXT]...`);
+  console.error(`page: ${why}\nusage: page [--evidence PREFIX] [--width PX] [--click ROLE=NAME | --click ROLE~NAME | --press KEY | --expect TEXT | --gone TEXT | --wait SECONDS | --mode pass|502|signed-out]...`);
   process.exit(2);
 }
 
@@ -53,6 +58,8 @@ try {
     inFlight--;
   });
   page.on("requestfailed", (r) => api(r) && (requests.push(`${r.method()} ${r.url()} -> failed`), inFlight--));
+  // A stream never finishes: it is listed as it is answered, a reconnect being another line.
+  page.on("response", (r) => r.url().endsWith("/api/events") && requests.push(`GET /api/events -> ${r.status()}`));
   page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
   page.on("pageerror", (e) => errors.push(String(e)));
   // Settled: no /api request in flight for half a second (the event stream stays open, so never "network idle").
@@ -74,6 +81,14 @@ try {
         await page.getByRole(role, { name, exact: how === "=" }).first().click({ timeout: 10000 });
       } else if (step.press) {
         await page.keyboard.press(step.press);
+      } else if (step.gone) {
+        // Long enough for a reconnect's backoff.
+        await page.getByText(step.gone, { exact: false }).first().waitFor({ state: "hidden", timeout: 60000 });
+      } else if (step.wait !== undefined) {
+        await page.waitForTimeout(step.wait * 1000);
+      } else if (step.mode) {
+        const set = await fetch(new URL("/__tunnel/mode", url), { method: "PUT", body: step.mode });
+        if (!set.ok) throw new Error(`the tunnel stand-in answered ${set.status}: ${await set.text()}`);
       } else {
         await page.getByText(step.expect, { exact: false }).first().waitFor({ timeout: 10000 });
       }

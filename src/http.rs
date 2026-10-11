@@ -39,7 +39,7 @@ const ROUTES: &[(&str, &str)] = &[
     ),
     (
         "GET /api/events",
-        "a stream of `changed`, sent when state or an Agent state changes",
+        "a stream of `changed`, sent when state or an Agent state changes, and a keepalive comment otherwise",
     ),
     (
         "POST /api/dispatch {issue, harness, model, effort}",
@@ -147,7 +147,8 @@ fn status(ctx: &Context) -> Result<Value, Refusal> {
 }
 
 /// `changed`, with no payload, whenever a look every 10 seconds sees other
-/// state than the last one did; nothing otherwise.
+/// state than the last one did; a comment otherwise, which browsers ignore,
+/// so a proxy never sees the stream idle (Cloudflare closes it at 100 seconds).
 fn events(ctx: &Context) -> Answer {
     let dir = ctx.config_dir.clone();
     let mut last = (files(&dir), agents(ctx.world, &dir));
@@ -156,7 +157,7 @@ fn events(ctx: &Context) -> Answer {
         poll: Box::new(move |world| {
             let now = (files(&dir), agents(world, &dir));
             if now == last {
-                return String::new();
+                return ": keepalive\n\n".into();
             }
             last = now;
             // A browser drops an event without data.
