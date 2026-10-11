@@ -33,11 +33,12 @@ pub fn tick(ctx: &Context) -> Result<Vec<String>, Refusal> {
     };
     let config = config::load(&ctx.config_dir)?;
     let (mut said, reads) = read_sources(ctx, &config)?;
-    said.extend(stage::watch(ctx)?);
+    let (watched, no_pr) = stage::watch(ctx)?;
+    said.extend(watched);
     said.extend(dispatch::close_finished(ctx)?);
     let agents = list_agents(ctx, &mut said)?;
     // 4. Restart what broke: rebooted, stalled (#240); conflict, retarget (#244); verdict (#243).
-    said.extend(restart::step(ctx, &config, agents.as_deref())?);
+    said.extend(restart::step(ctx, &config, agents.as_deref(), &no_pr)?);
     // 5. Start Reviewers (#242).
     said.extend(review::start_reviewers(ctx, &config, agents.as_deref())?);
     // 6. Flip Verified PRs to ready (#243).

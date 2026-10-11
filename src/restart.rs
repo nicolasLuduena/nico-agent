@@ -13,7 +13,6 @@ use crate::cli::{Context, Refusal};
 use crate::config::{Config, fill_in};
 use crate::dispatch::{self, Dispatch, Failure, STEPS};
 use crate::launch;
-use crate::pause;
 use crate::rebase;
 use crate::stage::{self, Prs};
 use crate::state;
@@ -57,18 +56,22 @@ impl fmt::Display for Reason {
 /// broke, once a tick, for the first of its reasons: its PR below became
 /// final or its PR conflicts (see [`rebase::reason`]); the Reviewer failed
 /// its PR's head; its agent is missing from herdr's `agents` (rebooted); its
-/// agent was idle or done for `stall_minutes` with no PR (stalled). A rebase
+/// agent was idle or done for `stall_minutes` with no PR (stalled), known
+/// only of a Dispatch in `no_pr`, the watch's this tick. A rebase
 /// comes first, as it moves the head a Verdict is on, and any restart starts
 /// an agent that was gone; a reason passed over holds next tick if still
 /// true. Without `agents`, no agent reason: herdr down is not every agent
 /// gone. Says what it did.
-pub fn step(ctx: &Context, config: &Config, agents: Option<&[Agent]>) -> io::Result<Vec<String>> {
+pub fn step(
+    ctx: &Context,
+    config: &Config,
+    agents: Option<&[Agent]>,
+    no_pr: &[String],
+) -> io::Result<Vec<String>> {
     let prs = stage::load(&ctx.config_dir)?;
     let now = ctx.world.now();
     let stalled = state::iso(now - Duration::from_secs(u64::from(config.stall_minutes) * 60));
     let now = state::iso(now);
-    // Paused, the PR watch can't see a PR that appeared: no PR is not known.
-    let paused = pause::until(ctx.world, &ctx.config_dir, "GitHub")?.is_some();
     let broke = (dispatch::load(&ctx.config_dir)?.into_iter())
         .filter(|d| {
             config
@@ -85,7 +88,7 @@ pub fn step(ctx: &Context, config: &Config, agents: Option<&[Agent]>) -> io::Res
             Some(reason) => Some(reason),
             None if failed_verdict(ctx, &d, &prs)? => Some(Reason::Verdict),
             None => agents.and_then(|agents| {
-                let stalled = Some(stalled.as_str()).filter(|_| !paused);
+                let stalled = Some(stalled.as_str()).filter(|_| no_pr.contains(&d.issue));
                 agent_reason(&mut d, agents, &now, stalled)
             }),
         };

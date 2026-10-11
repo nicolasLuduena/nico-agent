@@ -73,11 +73,13 @@ pub fn load(config_dir: &Path) -> io::Result<Prs> {
 /// Look for each live Dispatch's PR on its branch until one is found, and
 /// ask GitHub about every watched PR that is not final. A failed read is
 /// said and asked again next time; it never stops the others, but a rate
-/// limit pauses them all. Says what it found and what failed.
-pub fn watch(ctx: &Context) -> io::Result<Vec<String>> {
-    let mut said = vec![];
+/// limit pauses them all. Says what it found and what failed, and which
+/// live Dispatches it looked for a PR for and found none: only of those is
+/// no PR known.
+pub fn watch(ctx: &Context) -> io::Result<(Vec<String>, Vec<String>)> {
+    let (mut said, mut no_pr) = (vec![], vec![]);
     if pause::of(ctx.world, &ctx.config_dir, "GitHub")?.is_some() {
-        return Ok(said);
+        return Ok((said, no_pr));
     }
     // (url, repo, number, the Dispatch it was just found for)
     let watched = load(&ctx.config_dir)?;
@@ -99,17 +101,16 @@ pub fn watch(ctx: &Context) -> io::Result<Vec<String>> {
     for d in seeking.filter(|d| d.closed_at.is_none() && d.pr.is_none()) {
         match ctx.world.github_branch_pull_requests(&d.repo, &d.branch) {
             // Only an open one: a closed PR on the branch is an earlier Dispatch's.
-            Ok(prs) => asks.extend(
-                (prs.into_iter())
-                    .find(|pr| {
-                        pr.state == PrState::Open && pr.head_branch.as_ref() == Some(&d.branch)
-                    })
-                    .map(|pr| (pr.url, d.repo, pr.number, Some(d.issue))),
-            ),
+            Ok(prs) => match (prs.into_iter())
+                .find(|pr| pr.state == PrState::Open && pr.head_branch.as_ref() == Some(&d.branch))
+            {
+                Some(pr) => asks.push((pr.url, d.repo, pr.number, Some(d.issue))),
+                None => no_pr.push(d.issue),
+            },
             Err(e) => {
                 said.push(format!("could not look for the PR of {}: {e}", d.issue));
                 if pause::note(&ctx.config_dir, &e)? {
-                    return Ok(said);
+                    return Ok((said, no_pr));
                 }
             }
         }
@@ -120,7 +121,7 @@ pub fn watch(ctx: &Context) -> io::Result<Vec<String>> {
             Err(e) => {
                 said.push(format!("could not ask GitHub about {url}: {e}"));
                 if pause::note(&ctx.config_dir, &e)? {
-                    return Ok(said);
+                    return Ok((said, no_pr));
                 }
                 continue;
             }
@@ -142,7 +143,7 @@ pub fn watch(ctx: &Context) -> io::Result<Vec<String>> {
             said.push(format!("{issue}: PR {url} found"));
         }
     }
-    Ok(said)
+    Ok((said, no_pr))
 }
 
 pub fn save(config_dir: &Path, url: &str, pr: Pr) -> io::Result<()> {

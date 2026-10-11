@@ -323,6 +323,30 @@ fn while_github_is_paused_none_is_restarted_as_stalled_but_one_whose_agent_is_go
 }
 
 #[test]
+fn an_implementer_whose_pr_could_not_be_looked_for_is_never_restarted_as_stalled() {
+    let t = dispatched(&[1]);
+    agent_is(&t, "impl-api-1", "idle");
+    let down = "GitHub request failed; check your network and `gh auth status`";
+    t.world.fail_call("github branch prs", down);
+    // Its PR appears while GitHub can't be asked for it.
+    t.world.add_pr(PullRequest {
+        head_branch: Some("agent/api-1".into()),
+        ..pull_request("acme/api", 11)
+    });
+
+    let mut said: Vec<String> = (0..4).flat_map(|_| next_tick(&t).0).collect();
+    t.world.clear_failures();
+    said.extend(next_tick(&t).0);
+
+    let restarted: Vec<&String> = (said.iter())
+        .filter(|line| line.contains(" restarted: "))
+        .collect();
+    assert_eq!(restarted, Vec::<&String>::new());
+    let found = "acme/api#1: PR https://github.com/acme/api/pull/11 found";
+    assert!(said.iter().any(|line| line == found), "{said:#?}");
+}
+
+#[test]
 fn an_implementer_seen_working_again_starts_its_stall_over() {
     let t = dispatched(&[1]);
     agent_is(&t, "impl-api-1", "idle");
