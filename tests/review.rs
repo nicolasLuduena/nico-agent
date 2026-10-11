@@ -431,6 +431,44 @@ fn with_review_off_a_verdict_still_records_and_once_on_its_head_gets_no_reviewer
 }
 
 #[test]
+fn a_reviewer_that_keeps_leaving_herdr_is_started_again_up_to_the_cap_per_head_then_told_once() {
+    let t = reviewing();
+    let gone = |t: &Setup| {
+        t.world.agents.borrow_mut().remove("rev-api-7");
+        t.world.advance(TICK);
+        t.tick()
+    };
+
+    let said: Vec<Vec<String>> = (0..4).map(|_| gone(&t)).collect();
+    push(&t, "sha10");
+    let new_head = gone(&t);
+
+    let started = vec!["acme/api#7: Reviewer started on codex for sha9"];
+    assert_eq!(
+        said,
+        [
+            started.clone(),
+            started,
+            vec![
+                "acme/api#7: its Reviewer left herdr 3 times without a Verdict on sha9; not started again for it"
+            ],
+            vec![],
+        ]
+    );
+    assert_eq!(
+        *t.world.notifications.borrow(),
+        [(
+            "acme/api#7 Reviewer stopped".to_string(),
+            "Its Reviewer left herdr 3 times without a Verdict on sha9. Review the PR by hand and record it with `nico-agent verdict acme/api#7 pass|fail --sha sha9`.".to_string()
+        )]
+    );
+    assert_eq!(
+        new_head,
+        ["acme/api#7: Reviewer started on codex for sha10"]
+    );
+}
+
+#[test]
 fn a_reviewer_on_the_implementers_harness_starts_there_with_a_warning_in_status() {
     let t = with_pr("reviewer = { harness = \"claude\", model = \"opus\" }");
     let other = with_pr("");

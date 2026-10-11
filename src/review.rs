@@ -19,12 +19,18 @@ pub struct Reviewer {
     pub launch: AgentLaunch,
     /// The PR head it was prompted for; unset while its launch has not got that far.
     pub sha: Option<String>,
+    /// The head of each start of a Reviewer again, after one prompted for it
+    /// left herdr before its Verdict.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub relaunched: Vec<String>,
 }
 
 /// (5) Start a Reviewer for each live Dispatch whose open PR has a head with
 /// no Verdict and no Reviewer prompted for it still in herdr's `agents`;
 /// behind the `review` switch. A launch that fails is said and tried again
 /// next tick, in a fresh tab. Without `agents`, a prompted Reviewer stands.
+/// One that left herdr is started again `max_restarts_per_reason` times a
+/// head, then the user is told, once.
 pub fn start_reviewers(
     ctx: &Context,
     config: &Config,
@@ -52,6 +58,27 @@ pub fn start_reviewers(
         {
             continue;
         }
+        let head = &pr.head_sha;
+        let mut relaunched = (d.reviewer.as_ref()).map_or(vec![], |r| r.relaunched.clone());
+        if d.reviewer.as_ref().and_then(|r| r.sha.as_ref()) == Some(head) {
+            let times = relaunched.iter().filter(|sha| *sha == head).count();
+            let cap = config.max_restarts_per_reason as usize;
+            if times > cap {
+                continue;
+            }
+            relaunched.push(head.clone());
+            if times == cap {
+                said.extend(stop(ctx, &d.issue, head, times + 1));
+                // One past the cap: told once, and not started again for this head.
+                dispatch::update(&ctx.config_dir, |all| {
+                    let live = all.iter_mut().find(|l| dispatch::is_live(l, &d.issue));
+                    if let Some(reviewer) = live.and_then(|l| l.reviewer.as_mut()) {
+                        reviewer.relaunched = relaunched;
+                    }
+                })?;
+                continue;
+            }
+        }
         // Its agent name is taken until the last Reviewer's tab is closed.
         if let Some(tab) = d.reviewer.as_ref().and_then(|r| r.launch.tab.as_ref())
             && let Err(e) = ctx.world.herdr_tab_close(tab)
@@ -73,6 +100,7 @@ pub fn start_reviewers(
                 pane: None,
             },
             sha: None,
+            relaunched,
         };
         match start(ctx, config, &repo.path, &d, &mut reviewer.launch, url, pr) {
             Ok(()) => {
@@ -94,6 +122,23 @@ pub fn start_reviewers(
         })?;
     }
     Ok(said)
+}
+
+/// Say that the Reviewer of `issue` left herdr `times` times without a
+/// Verdict on `head`, and tell the user.
+fn stop(ctx: &Context, issue: &str, head: &str, times: usize) -> Vec<String> {
+    let title = format!("{issue} Reviewer stopped");
+    let body = format!(
+        "Its Reviewer left herdr {times} times without a Verdict on {head}. Review the PR by hand and record it with `nico-agent verdict {issue} pass|fail --sha {head}`."
+    );
+    let said = format!(
+        "{issue}: its Reviewer left herdr {times} times without a Verdict on {head}; not started again for it"
+    );
+    // Once: a failed notification is said, not tried again.
+    let failed = (ctx.world.notify(&title, &body))
+        .err()
+        .map(|e| format!("could not notify \"{title}\": {e}"));
+    [said].into_iter().chain(failed).collect()
 }
 
 /// Open the Reviewer's tab in the Dispatch's worktree, start its Harness
