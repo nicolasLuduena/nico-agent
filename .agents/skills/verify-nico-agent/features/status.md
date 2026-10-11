@@ -10,7 +10,7 @@ the cache alone, plus what the page shows beside each map.
 
 - `status-no-cache` with no read yet and GitHub refusing, the Repo shows `read_at` null, empty lists and the refusal as `error`.
 - `status-cached` a fresh cached read is shown without asking GitHub: Ready `#1` (code) and `#5` (research), Stackable `#6` with `base` `agent/fixture-9`.
-- `status-not-ready` issues not labelled, waiting on a Blocker without PR, or assigned to someone else are in no list.
+- `status-not-ready` issues not labelled, waiting on a Blocker without PR, or assigned to someone else are in no list (`gardening`, the Ready `gardening` issues, is empty: the fixture has none).
 - `status-stale` a read older than a tick asks GitHub again; refused, the cache is still shown, with `error`.
 - `status-paused` a paused GitHub is asked nothing: `sources.github.paused_until` is set, an uncached Repo's `error` says when it is asked again.
 - `status-dispatches` each Dispatch with `stage` (`Failed`, `PR draft`, `Implementing`, `Verified`), `agent_state` `unknown` while herdr does not answer, `verdict` and `pr`.
@@ -46,7 +46,7 @@ Preconditions:
   lists `#1`. `$OUTSIDE_LOG` gained `herdr agent list`.
 - **API.** Run `$C http --evidence "$E/04-api" GET /api/status`. HTTP `200`; `dispatches` and
   `sources` equal the command's; `repos[0]` adds `switches` (`dispatch`, `flip`, `restart`,
-  `review`, `stack`, all true), `room` `3`, `implementer` claude, `reviewer` codex, `harnesses`
+  `review`, `stack` true; `answer`, `gardening`, `quality_scan` false), `room` `3`, `implementer` claude, `reviewer` codex, `harnesses`
   (claude with its models and Efforts, codex and opencode null), `prs_checked_at` (the seeded PR's
   `checked_at`) and `github_paused_until` null.
 - **Stale read.** Run `$C drift stale`, then `$C run --evidence "$E/05-stale" -- status --json`.
