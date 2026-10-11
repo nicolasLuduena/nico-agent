@@ -11,11 +11,11 @@ use crate::asking;
 use crate::cli::{Context, Refusal};
 use crate::config::{self, Config};
 use crate::dispatch::{self, Flags};
+use crate::flip;
 use crate::restart;
 use crate::review;
 use crate::source::{self, Read};
 use crate::stage;
-use crate::verdict;
 use crate::world::Agent;
 
 /// Held by the running tick, with its pid.
@@ -45,7 +45,7 @@ pub fn tick(ctx: &Context, refresh: bool) -> Result<Vec<String>, Refusal> {
     // 5. Start Reviewers (#242).
     said.extend(review::start_reviewers(ctx, &config, agents.as_deref())?);
     // 6. Flip Verified PRs to ready (#243).
-    said.extend(verdict::flip(ctx, &config)?);
+    said.extend(flip::step(ctx, &config)?);
     said.extend(asking::step(ctx, agents.as_deref())?);
     said.extend(fill_rooms(ctx, &config, &reads)?);
     Ok(said)

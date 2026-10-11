@@ -1,7 +1,8 @@
 //! `verdict`: the Reviewer's pass or fail on one head of a Dispatch's open
 //! PR, kept in `verdicts/<issue>.json`, the latest only. A push after it
 //! leaves it on a head the PR no longer has, so it no longer counts. The
-//! tick acts on it: a fail restarts the Implementer, a pass flips the PR.
+//! tick acts on it: a fail restarts the Implementer (restart.rs), a pass
+//! flips the PR (flip.rs).
 
 use std::io;
 use std::path::{Path, PathBuf};
@@ -11,10 +12,9 @@ use serde_json::{Value, json};
 
 use crate::args::Args;
 use crate::cli::{Context, Refusal, bad_invocation};
-use crate::config::{self, Config};
+use crate::config;
 use crate::dispatch;
-use crate::pause;
-use crate::stage::{self, Pr, Stage};
+use crate::stage;
 use crate::state;
 use crate::world::PrState;
 
@@ -43,52 +43,6 @@ pub fn file(config_dir: &Path, issue: &str) -> PathBuf {
 /// The latest Verdict on `issue`, if any.
 pub fn load(config_dir: &Path, issue: &str) -> io::Result<Option<Verdict>> {
     state::load(&file(config_dir, issue))
-}
-
-/// (6) Flip to ready, behind each Repo's `flip` switch, the PR of every
-/// Verified Dispatch while it is draft, once per passing Verdict: one put
-/// back to draft by hand stays so. Nothing while GitHub is paused; a failed
-/// flip is said and tried again next tick. Says what it did.
-pub fn flip(ctx: &Context, config: &Config) -> io::Result<Vec<String>> {
-    let mut said = vec![];
-    if pause::of(ctx.world, &ctx.config_dir, "GitHub")?.is_some() {
-        return Ok(said);
-    }
-    let prs = stage::load(&ctx.config_dir)?;
-    let live = dispatch::load(&ctx.config_dir)?.into_iter();
-    for mut d in live.filter(|d| d.closed_at.is_none()) {
-        let on = config.repo_of(&d).switches.flip;
-        let Some((url, pr)) = stage::pr_of(&prs, &d) else {
-            continue;
-        };
-        let verdict = load(&ctx.config_dir, &d.issue)?;
-        if !on
-            || !pr.draft
-            || d.flipped.as_ref() == Some(&pr.head_sha)
-            || stage::of(&d, Some(pr), verdict.as_ref()) != Stage::Verified
-        {
-            continue;
-        }
-        match ctx.world.github_pr_ready(&pr.repo, pr.number) {
-            Ok(()) => {
-                let ready = Pr {
-                    draft: false,
-                    ..pr.clone()
-                };
-                stage::save(&ctx.config_dir, url, ready)?;
-                d.flipped = Some(pr.head_sha.clone());
-                dispatch::save(ctx, &mut d)?;
-                said.push(format!("{}: PR {url} flipped to ready", d.issue));
-            }
-            Err(e) => {
-                said.push(format!("could not flip {url} to ready: {e}"));
-                if pause::note(&ctx.config_dir, &e)? {
-                    break;
-                }
-            }
-        }
-    }
-    Ok(said)
 }
 
 pub fn verdict(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {

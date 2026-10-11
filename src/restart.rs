@@ -88,7 +88,7 @@ pub fn step(
             }),
         };
         match reason {
-            Some(reason) => said.extend(restart(ctx, config, d, reason)?),
+            Some(reason) => said.extend(by_loop(ctx, config, d, reason)?),
             None if d != seen => dispatch::save(ctx, &mut d)?,
             None => {}
         }
@@ -133,7 +133,7 @@ fn agent_reason(
 /// The loop's restart of `record`'s Implementer for `reason`. One whose
 /// reason is used up, or whose restart fails, is marked Failed with one
 /// notification. Says what it did.
-fn restart(
+fn by_loop(
     ctx: &Context,
     config: &Config,
     mut record: Dispatch,
@@ -157,7 +157,7 @@ fn restart(
             .collect());
     }
     let issue = record.issue.clone();
-    Ok(match run(ctx, config, &mut record, reason, "loop")? {
+    Ok(match restart(ctx, config, &mut record, reason, "loop")? {
         Ok(()) => vec![format!("{issue} restarted: {reason}")],
         Err(no) => [no.error]
             .into_iter()
@@ -168,7 +168,7 @@ fn restart(
 
 /// Restart `record`'s Implementer for `reason`, as `by`, recording it first:
 /// a failed step is kept on the record and said, with help.
-pub fn run(
+pub fn restart(
     ctx: &Context,
     config: &Config,
     record: &mut Dispatch,
