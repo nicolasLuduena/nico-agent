@@ -73,6 +73,23 @@ started Spec leaves the Queue, and one that is no longer a candidate drops off
 quietly. Local state in the config directory; nothing is written to a Source.
 _Avoid_: Backlog, wishlist, schedule
 
+### Local state
+
+**Local state**:
+What `serve` knows of the Board, the configured Repos, Stats and Partners,
+each with the time it was last synced, held in memory and in `state.json` in
+the config directory. The app's reads and the Lead's `board` tool answer from
+it at once, never from git or GitHub; an action taken through `serve` updates
+it as soon as its command succeeds (ADR-0015).
+_Avoid_: Cache (that is `serve`'s GitHub cache, ADR-0011), snapshot, store
+
+**Sync**:
+`serve` refreshing Local state from git and GitHub, each Repo on its own: when
+`serve` starts, every `sync.intervalSeconds` (120 unless set), and on the app's
+Sync button. One runs at a time, and one asked for meanwhile joins it. A Repo
+whose Sync fails keeps its last state and shows the error.
+_Avoid_: Refresh, poll, fetch, reload
+
 ### Dispatching
 
 **Dispatch**:

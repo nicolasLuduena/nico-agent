@@ -7,7 +7,9 @@ it within the hour, leaving the user's `gh` rate-limited too. So the timer is
 gone: `serve` runs `advance` every 10 minutes, and reads GitHub for the Board,
 the Lead's `board` tool and `advance` through one cache, kept a minute and
 dropped after anything nico-agent does through it. Where the bot's GitHub App
-is installed, it reads as the bot, whose rate limit is its own.
+is installed, it reads as the bot, whose rate limit is its own. (_Amended by
+ADR-0015: `serve` reads GitHub only in a Sync, and the app and the Lead's
+`board` tool read its Local state._)
 
 ## Consequences
 
