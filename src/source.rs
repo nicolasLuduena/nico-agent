@@ -253,7 +253,7 @@ pub fn readiness(read: &Read, dispatches: &[Dispatch], prs: &Prs) -> Readiness {
                 base: Some(pr.head_branch.clone()),
                 ..row
             }),
-            Start::Blocked => {}
+            Start::WaitsOnBlockers => {}
             Start::Split(reason) => readiness.waiting.push(Row {
                 reason: Some(reason),
                 ..row
@@ -270,7 +270,7 @@ pub enum Start<'a> {
     /// On the one branch its unresolved Blockers' open PRs sit on: Stackable.
     Stacked(&'a BlockerPr),
     /// An unresolved Blocker has no open PR here.
-    Blocked,
+    WaitsOnBlockers,
     /// Their open PRs sit on several branches: why it waits.
     Split(String),
 }
@@ -281,7 +281,7 @@ pub fn start(issue: &Issue) -> Start<'_> {
         return Start::Ready;
     }
     if unresolved.iter().any(|b| b.prs.is_empty()) {
-        return Start::Blocked;
+        return Start::WaitsOnBlockers;
     }
     let mut prs: Vec<&BlockerPr> = vec![];
     for pr in unresolved.iter().flat_map(|b| &b.prs) {
@@ -338,7 +338,7 @@ pub fn why_not_ready(read: &Read, key: &str) -> Option<String> {
     };
     why_not_startable(issue, &read.user).or_else(|| match start(issue) {
         Start::Ready | Start::Stacked(_) => None,
-        Start::Blocked => {
+        Start::WaitsOnBlockers => {
             let unresolved: Vec<&str> = (issue.blockers.iter())
                 .filter(|b| !b.resolved)
                 .map(|b| b.key.as_str())

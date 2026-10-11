@@ -37,7 +37,7 @@ pub fn tick(ctx: &Context, refresh: bool) -> Result<Vec<String>, Refusal> {
     let (mut said, reads) = read_sources(ctx, &config)?;
     let (watched, no_pr) = stage::watch(ctx, refresh)?;
     said.extend(watched);
-    said.extend(dispatch::close_finished(ctx)?);
+    said.extend(dispatch::close_final(ctx)?);
     let agents = list_agents(ctx, &mut said)?;
     // 4. Restart what broke: rebooted, stalled (#240); conflict, retarget (#244); verdict (#243).
     said.extend(restart::step(ctx, &config, agents.as_deref(), &no_pr)?);

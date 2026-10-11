@@ -255,8 +255,8 @@ fn other_launch_flags_on_an_issue_in_flight_are_refused() {
 }
 
 #[test]
-fn a_failed_step_leaves_the_dispatch_failed_there_and_the_same_command_resumes_from_it() {
-    let resumed_ready = [
+fn a_failed_step_leaves_the_dispatch_failed_there_and_the_same_command_continues_from_it() {
+    let continued_ready = [
         "herdr agent read impl-api-7 --source visible",
         "herdr agent wait impl-api-7 --until idle --until done --timeout 5000",
     ];
@@ -293,7 +293,7 @@ fn a_failed_step_leaves_the_dispatch_failed_there_and_the_same_command_resumes_f
             "agent ready",
             |w| *w.blocked_screen.borrow_mut() = Some("Do you want to enable telemetry?".into()),
             |w| *w.blocked_screen.borrow_mut() = None,
-            [&resumed_ready[..], &ALL[8..]].concat(),
+            [&continued_ready[..], &ALL[8..]].concat(),
         ),
         (
             "prompt",
@@ -302,7 +302,7 @@ fn a_failed_step_leaves_the_dispatch_failed_there_and_the_same_command_resumes_f
             ALL[8..].to_vec(),
         ),
     ];
-    for (step, break_it, heal, resumed) in cases {
+    for (step, break_it, heal, continued) in cases {
         let t = with_issue();
         break_it(&t.world);
 
@@ -321,7 +321,7 @@ fn a_failed_step_leaves_the_dispatch_failed_there_and_the_same_command_resumes_f
             [
                 json!("Run `nico-agent status` to see the Dispatch"),
                 json!(format!(
-                    "Run the same `nico-agent dispatch` again to resume from {step}"
+                    "Run the same `nico-agent dispatch` again to continue from {step}"
                 )),
             ]
         );
@@ -337,9 +337,9 @@ fn a_failed_step_leaves_the_dispatch_failed_there_and_the_same_command_resumes_f
         assert_eq!(again.exit_code, 0, "{}", again.stdout);
         assert_eq!(
             again.json()["dispatched"],
-            format!("acme/api#7 (resumed from {step})")
+            format!("acme/api#7 (continued from {step})")
         );
-        assert_eq!(t.world.calls(), resumed, "{step}");
+        assert_eq!(t.world.calls(), continued, "{step}");
         let shown = &status(&t)["dispatches"][0];
         assert_eq!(shown["stage"], "Implementing");
         assert_eq!(shown["failure"], Value::Null);
@@ -359,6 +359,10 @@ fn the_failure_of_a_step_says_what_to_do_about_it() {
     let stalled = dispatch(&t, &["acme/api#8"]);
 
     assert_eq!(
+        blocked.json()["error"],
+        "acme/api#7 failed at agent ready: impl-api-7 is asking a question during startup"
+    );
+    assert_eq!(
         blocked.json()["help"][0],
         "Run `herdr agent read impl-api-7` to see what it is asking, and answer it in herdr"
     );
@@ -369,7 +373,7 @@ fn the_failure_of_a_step_says_what_to_do_about_it() {
             "help": [
                 "Run `herdr agent read impl-api-8` to see its screen, and send the prompt by hand",
                 "Run `nico-agent status` to see the Dispatch",
-                "Run the same `nico-agent dispatch` again to resume from prompt",
+                "Run the same `nico-agent dispatch` again to continue from prompt",
             ],
         })
     );
@@ -602,7 +606,10 @@ fn a_dispatch_another_live_process_runs_is_left_to_it_until_that_process_is_gone
         during.json()["dispatched"],
         "acme/api#7 already In flight (no-op)"
     );
-    assert_eq!(after.json()["dispatched"], "acme/api#7 (resumed from tab)");
+    assert_eq!(
+        after.json()["dispatched"],
+        "acme/api#7 (continued from tab)"
+    );
     assert_eq!(t.world.calls(), ALL[6..]);
 }
 
@@ -649,7 +656,10 @@ fn after_a_reboot_a_lease_whose_pid_is_alive_again_is_another_process_and_dispat
 
     let after = dispatch_7(&t);
 
-    assert_eq!(after.json()["dispatched"], "acme/api#7 (resumed from tab)");
+    assert_eq!(
+        after.json()["dispatched"],
+        "acme/api#7 (continued from tab)"
+    );
     assert_eq!(t.world.calls(), ALL[6..]);
 }
 

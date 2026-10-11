@@ -224,7 +224,7 @@ impl Config {
     }
 
     /// The Repo `d` was dispatched into; once removed, the Repo's defaults on
-    /// the clone `d` was dispatched from, so its work In flight finishes.
+    /// the clone `d` was dispatched from, so its work In flight goes on till Closed.
     pub fn repo_of(&self, d: &Dispatch) -> Repo {
         self.repos.get(&d.repo).cloned().unwrap_or_else(|| {
             let mut repo = defaults(REPO_DEFAULTS);

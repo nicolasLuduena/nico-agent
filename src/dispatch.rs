@@ -1,7 +1,7 @@
 //! `dispatch`: start an Implementer on a Ready issue through the steps claim,
 //! fetch, worktree, tab, agent start, agent ready and prompt. Each is recorded
 //! on the issue's Dispatch in `dispatches.json` as it completes, so the same
-//! command resumes a Dispatch from the step that failed.
+//! command continues a Dispatch from the step that failed.
 
 use std::io;
 use std::path::Path;
@@ -164,12 +164,12 @@ pub fn dispatch(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
     })
 }
 
-/// Dispatch the issue `key` on the launch `flags` ask for, or resume its
+/// Dispatch the issue `key` on the launch `flags` ask for, or continue its
 /// failed Dispatch; one In flight with nothing left to do is a no-op.
 pub fn issue(ctx: &Context, config: &Config, key: &str, flags: Flags) -> Result<Value, Refusal> {
     let live = load(&ctx.config_dir)?.into_iter().find(|d| is_live(d, key));
     if let Some(existing) = live {
-        return resume(ctx, config, existing, flags);
+        return pick_up(ctx, config, existing, flags);
     }
     let (slug, repo, read) = source_of(ctx, config, key)?;
     let launch = launch_of(config, repo, flags)?;
@@ -244,9 +244,9 @@ pub fn issue(ctx: &Context, config: &Config, key: &str, flags: Flags) -> Result<
     run(ctx, config, repo, record, key.into())
 }
 
-/// Resume the Dispatch from its first step not done, unless another process
+/// Continue the Dispatch from its first step not done, unless another process
 /// runs it or nothing is left: then a no-op.
-fn resume(
+fn pick_up(
     ctx: &Context,
     config: &Config,
     existing: Dispatch,
@@ -291,7 +291,7 @@ fn resume(
         config,
         &repo,
         leased,
-        format!("{key} (resumed from {step})"),
+        format!("{key} (continued from {step})"),
     )
 }
 
@@ -333,7 +333,7 @@ fn run(
             let mut help = no.help;
             help.push(SEE_STATUS.into());
             help.push(format!(
-                "Run the same `nico-agent dispatch` again to resume from {step}"
+                "Run the same `nico-agent dispatch` again to continue from {step}"
             ));
             let error = format!("{} failed at {step}: {}", record.issue, no.error);
             return Err(Refusal::new(error, help));
@@ -664,7 +664,7 @@ pub fn save(ctx: &Context, record: &mut Dispatch) -> io::Result<()> {
 /// Close every live Dispatch whose PR is final: remove its worktree and
 /// close its workspace, keeping the record, the branch and the PR. One that
 /// fails stays live and is tried again next time. Says what it did.
-pub fn close_finished(ctx: &Context) -> io::Result<Vec<String>> {
+pub fn close_final(ctx: &Context) -> io::Result<Vec<String>> {
     let prs = stage::load(&ctx.config_dir)?;
     let mut said = vec![];
     for d in load(&ctx.config_dir)?

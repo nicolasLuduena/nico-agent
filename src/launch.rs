@@ -136,7 +136,7 @@ pub fn get_ready(
         .herdr_agent_wait(agent, &settled, SETTLE_TIMEOUT)
         .map_err(|_| {
             Refusal::new(
-                format!("{agent} is blocked during startup"),
+                format!("{agent} is asking a question during startup"),
                 vec![format!(
                     "Run `herdr agent read {agent}` to see what it is asking, and answer it in herdr"
                 )],

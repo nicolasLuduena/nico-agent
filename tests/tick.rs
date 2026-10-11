@@ -99,7 +99,7 @@ fn a_repo_with_dispatch_off_is_read_but_never_dispatched_into() {
 }
 
 #[test]
-fn a_dispatch_that_fails_is_said_holds_its_slot_and_the_fill_goes_on() {
+fn a_dispatch_that_fails_is_said_holds_its_room_and_the_fill_goes_on() {
     let t = with_issues(&[1, 2, 3, 4]);
     t.world.fail_call(
         "herdr worktree create --cwd /src/api --branch agent/api-1 ",

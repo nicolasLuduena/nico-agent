@@ -63,7 +63,7 @@ const COMMANDS: &[(&str, &str)] = &[
     ("nico-agent repo list", "list the Repos"),
     (
         "nico-agent dispatch <issue>... [--harness <harness> --model <model> --effort <effort>]",
-        "start an Implementer on each Ready issue, or resume its failed Dispatch",
+        "start an Implementer on each Ready issue, or continue its failed Dispatch from the step that failed",
     ),
     (
         "nico-agent verdict <issue> pass|fail --sha <sha> [--findings <file>]",
