@@ -75,8 +75,8 @@ const COMMANDS: &[(&str, &str)] = &[
         "record the Reviewer's Verdict on the head of the issue's PR",
     ),
     (
-        "nico-agent status",
-        "show per Repo the Ready and Stackable issues, and every Dispatch",
+        "nico-agent status [--since <time>]",
+        "show per Repo the Ready and Stackable issues, and every Dispatch; with --since, what merged, Closed, was answered and was scanned after it",
     ),
     (
         "nico-agent serve",

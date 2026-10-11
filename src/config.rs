@@ -38,12 +38,19 @@ path = "/mnt/agents-land/nico-agent-bucket"
 weekday = "sunday"
 hour = 3
 
+# When the morning agent writes morning.md, daily, local time; it runs on
+# `launch` when set, else on the first Repo's implementer.
+[morning]
+enabled = true
+hour = 7
+
 [prompts]
 implement = "{sigil}implement {issueUrl} as draft PR against {baseBranch}, saving its Evidence under {evidenceFolder}/ in the worktree and linking it to {bucketUrl}"
 research = "{sigil}research {issueUrl}; write the findings with sources to one Markdown file under docs/research/ and open it as a draft PR against {baseBranch}"
 faux_nico = '{sigil}faux-nico {issueUrl}: the Implementer asks "{question}". Read PRODUCT.md, the issue and its parent. Answer with nico-agent answer {issue} --text "..." --by faux-nico only when they settle it; otherwise end your turn without answering.'
 review = "{sigil}verdict {prUrl} for {issueUrl}: re-run the repo's verification skill under .agents/skills/verify-*/ against the PR's head, saving its Evidence under {evidenceFolder}/, and record the result with nico-agent verdict {issue} pass|fail --sha {headSha} --findings <file>"
 quality_scan = "{sigil}quality-scan {repoSlug}"
+morning = "{sigil}morning: the night is in nico-agent status --json --since {lastMorningAt}. Write the summary to {configDir}/morning.md."
 # Appended to implement and research, as is, when the GitHub App is installed on the Repo.
 bot_suffix = ", opened with `ghbot pr create` (not `gh`); end every commit message with the trailer `Co-authored-by: nicolasluduena-coding-agent[bot] <324920906+nicolasluduena-coding-agent[bot]@users.noreply.github.com>`"
 
@@ -102,6 +109,7 @@ pub struct Config {
     pub harnesses: BTreeMap<String, Harness>,
     pub bucket: Bucket,
     pub quality_scan: QualityScan,
+    pub morning: Morning,
     pub prompts: Prompts,
     #[serde(deserialize_with = "positive")]
     pub tick_minutes: u32,
@@ -151,6 +159,17 @@ pub struct QualityScan {
     pub weekday: Weekday,
     #[serde(deserialize_with = "hour")]
     pub hour: u32,
+}
+
+/// When the morning agent runs: daily at `hour`, local time, while `enabled`.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Morning {
+    pub enabled: bool,
+    #[serde(deserialize_with = "hour")]
+    pub hour: u32,
+    /// The first Repo's implementer when unset.
+    pub launch: Option<Launch>,
 }
 
 /// In the order `as` numbers them: Sunday is 0.
@@ -250,6 +269,7 @@ pub struct Prompts {
     pub faux_nico: String,
     pub review: String,
     pub quality_scan: String,
+    pub morning: String,
     pub bot_suffix: String,
     pub restart: RestartPrompts,
 }
@@ -382,6 +402,16 @@ fn parse(file: &Path, text: &str) -> Result<Config, Refusal> {
             ));
         }
     }
+    let not_a_harness = |keys: &[&str], harness: &str| {
+        let keys = [keys, &["harness"]].concat();
+        let problem = format!("`{harness}` is not a Harness");
+        let mut refusal = invalid(file, line_of(&keys), &keys.join("."), &problem);
+        let names: Vec<&str> = config.harnesses.keys().map(String::as_str).collect();
+        refusal
+            .help
+            .push(format!("Harnesses: {}", names.join(", ")));
+        refusal
+    };
     for (slug, repo) in &config.repos {
         for (role, launch) in [
             ("implementer", Some(&repo.implementer)),
@@ -393,20 +423,14 @@ fn parse(file: &Path, text: &str) -> Result<Config, Refusal> {
                 continue;
             };
             if !config.harnesses.contains_key(harness) {
-                let key = format!("repos.{slug}.{role}.harness");
-                let mut refusal = invalid(
-                    file,
-                    line_of(&["repos", slug, role, "harness"]),
-                    &key,
-                    &format!("`{harness}` is not a Harness"),
-                );
-                let names: Vec<&str> = config.harnesses.keys().map(String::as_str).collect();
-                refusal
-                    .help
-                    .push(format!("Harnesses: {}", names.join(", ")));
-                return Err(refusal);
+                return Err(not_a_harness(&["repos", slug, role], harness));
             }
         }
+    }
+    if let Some(Launch { harness, .. }) = &config.morning.launch
+        && !config.harnesses.contains_key(harness)
+    {
+        return Err(not_a_harness(&["morning", "launch"], harness));
     }
     Ok(config)
 }

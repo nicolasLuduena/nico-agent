@@ -586,6 +586,13 @@ impl World for FakeWorld {
         Ok(true)
     }
 
+    fn herdr_workspace_create(&self, cwd: &str, label: &str) -> WorldResult<String> {
+        self.call(format!(
+            "herdr workspace create --cwd {cwd} --label {label} --no-focus"
+        ))?;
+        Ok(self.next_workspace())
+    }
+
     fn opencode_save_variant(
         &self,
         file: &str,
