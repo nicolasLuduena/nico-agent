@@ -3,9 +3,9 @@
 //! on the issue's Dispatch in `dispatches.json` as it completes, so the same
 //! command resumes a Dispatch from the step that failed.
 
-use std::fs;
 use std::io;
 use std::path::Path;
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -15,8 +15,9 @@ use crate::cli::{Context, Refusal};
 use crate::config::{self, Config, Harness, Launch, Repo, fill_in};
 use crate::launch::{self, AgentLaunch};
 use crate::source::{self, Read};
+use crate::stage;
 use crate::state;
-use crate::world::READY_LABEL;
+use crate::world::{PrState, READY_LABEL};
 
 pub const FILE: &str = "dispatches.json";
 
@@ -45,6 +46,8 @@ pub struct Dispatch {
     /// Set by the worktree step.
     pub worktree: Option<String>,
     pub workspace: Option<String>,
+    /// The URL of its PR, once found on its branch; `prs.json` says what GitHub last said of it.
+    pub pr: Option<String>,
     pub implementer: AgentLaunch,
     pub research: bool,
     /// The steps done, in order.
@@ -76,22 +79,9 @@ pub struct Flags<'a> {
     pub effort: Option<&'a str>,
 }
 
-/// Its Stage, as far as the Dispatch itself tells.
-pub fn stage(dispatch: &Dispatch) -> &'static str {
-    if dispatch.failure.is_some() {
-        "Failed"
-    } else {
-        "Implementing"
-    }
-}
-
-/// Every Dispatch, live and Closed.
+/// Every Dispatch, live and Closed, oldest first.
 pub fn load(config_dir: &Path) -> io::Result<Vec<Dispatch>> {
-    let file = config_dir.join(FILE);
-    match fs::read_to_string(&file) {
-        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(vec![]),
-        read => parse(&file, &read?),
-    }
+    state::load(&config_dir.join(FILE))
 }
 
 pub fn dispatch(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
@@ -172,6 +162,7 @@ pub fn issue(ctx: &Context, config: &Config, key: &str, flags: Flags) -> Result<
         base,
         worktree: None,
         workspace: None,
+        pr: None,
         implementer: AgentLaunch {
             agent: launch::agent_name("impl", slug, key),
             harness: launch.harness,
@@ -249,10 +240,7 @@ fn resume(
         ));
     }
     let Some(leased) = lease(ctx, key)? else {
-        return Ok(answer(
-            &existing,
-            format!("{key} already In flight (no-op)"),
-        ));
+        return answer(ctx, &existing, format!("{key} already In flight (no-op)"));
     };
     let step = STEPS
         .iter()
@@ -301,7 +289,7 @@ fn run(
     }
     record.runner = None;
     save(ctx, &mut record)?;
-    Ok(answer(&record, said))
+    answer(ctx, &record, said)
 }
 
 fn run_step(
@@ -408,17 +396,19 @@ fn implement_prompt(
 const SEE_STATUS: &str = "Run `nico-agent status` to see the Dispatch";
 
 /// What `dispatch` says of one issue.
-fn answer(record: &Dispatch, said: String) -> Value {
+fn answer(ctx: &Context, record: &Dispatch, said: String) -> Result<Value, Refusal> {
+    let prs = stage::load(&ctx.config_dir)?;
+    let pr = record.pr.as_ref().and_then(|url| prs.get(url));
     let mut answer = json!({
         "dispatched": said,
-        "stage": stage(record),
+        "stage": stage::of(record, pr),
         "workspace": record.workspace,
         "agent": record.implementer.agent,
     });
     if !record.warnings.is_empty() {
         answer["warnings"] = json!(record.warnings);
     }
-    answer
+    Ok(answer)
 }
 
 /// The Dispatch key of an issue reference: `owner/repo#N` of a configured
@@ -592,25 +582,69 @@ fn save(ctx: &Context, record: &mut Dispatch) -> io::Result<()> {
     })
 }
 
+/// Close every live Dispatch whose PR is final: remove its worktree and
+/// close its workspace, keeping the record, the branch and the PR. One that
+/// fails stays live and is tried again next time. Says what it did.
+pub fn close_finished(ctx: &Context) -> io::Result<Vec<String>> {
+    let prs = stage::load(&ctx.config_dir)?;
+    let mut said = vec![];
+    for d in load(&ctx.config_dir)?
+        .into_iter()
+        .filter(|d| d.closed_at.is_none())
+    {
+        let Some((url, pr)) = (d.pr.as_ref())
+            .and_then(|url| Some((url, prs.get(url)?)))
+            .filter(|(_, pr)| pr.r#final)
+        else {
+            continue;
+        };
+        let freed = d.workspace.as_ref().map_or(Ok(()), |workspace| {
+            (ctx.world.herdr_worktree_remove(workspace))
+                .and_then(|()| ctx.world.herdr_workspace_close(workspace))
+        });
+        if let Err(e) = freed {
+            said.push(format!("could not Close {}: {e}", d.issue));
+            continue;
+        }
+        let now = state::iso(ctx.world.now());
+        update(&ctx.config_dir, |all| {
+            if let Some(live) = all.iter_mut().find(|live| is_live(live, &d.issue)) {
+                live.closed_at = Some(now.clone());
+                live.updated_at = now.clone();
+            }
+        })?;
+        let state = match pr.state {
+            PrState::Merged => "merged",
+            _ => "closed",
+        };
+        said.push(format!("{} Closed: its PR {url} {state}", d.issue));
+    }
+    let oldest = state::iso(ctx.world.now() - KEEP_CLOSED);
+    update(&ctx.config_dir, |all| {
+        all.retain(|d| d.closed_at.as_ref().is_none_or(|at| *at >= oldest))
+    })?;
+    Ok(said)
+}
+
+/// How long a Closed Dispatch is kept.
+const KEEP_CLOSED: Duration = Duration::from_secs(30 * 86_400);
+
+/// Make `url` the PR of the live Dispatch of `issue`.
+pub fn link_pr(config_dir: &Path, issue: &str, url: &str) -> io::Result<()> {
+    update(config_dir, |all| {
+        if let Some(live) = all.iter_mut().find(|d| is_live(d, issue)) {
+            live.pr = Some(url.into());
+        }
+    })
+}
+
 /// Change the Dispatches under the file's lock.
 fn update<T>(config_dir: &Path, change: impl FnOnce(&mut Vec<Dispatch>) -> T) -> io::Result<T> {
     let file = config_dir.join(FILE);
     state::update(&file, |text| {
-        let mut all = parse(&file, text)?;
+        let mut all = state::parse(&file, text)?;
         let out = change(&mut all);
         let text = serde_json::to_string_pretty(&all).expect("a Dispatch is plain data") + "\n";
         Ok((text, out))
-    })
-}
-
-fn parse(file: &Path, text: &str) -> io::Result<Vec<Dispatch>> {
-    if text.is_empty() {
-        return Ok(vec![]);
-    }
-    serde_json::from_str(text).map_err(|e| {
-        io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!("{}: {e}", file.display()),
-        )
     })
 }

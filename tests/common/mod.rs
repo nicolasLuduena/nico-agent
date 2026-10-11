@@ -49,16 +49,19 @@ pub fn setup() -> Setup {
 }
 
 impl Setup {
+    /// What a command runs against, for the loop's steps that no command runs
+    /// alone (the tick's, until `serve` runs them).
+    pub fn ctx(&self) -> Context<'_> {
+        Context {
+            world: &self.world,
+            config_dir: self.config_dir.clone(),
+        }
+    }
+
     /// Run `nico-agent <argv>` against the FakeWorld.
     pub fn cli(&self, argv: &[&str]) -> Ran {
         let argv: Vec<String> = argv.iter().map(|a| a.to_string()).collect();
-        let output = run(
-            &argv,
-            &Context {
-                world: &self.world,
-                config_dir: self.config_dir.clone(),
-            },
-        );
+        let output = run(&argv, &self.ctx());
         Ran {
             stdout: output.stdout,
             exit_code: output.exit_code,

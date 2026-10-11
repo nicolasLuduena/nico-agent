@@ -650,6 +650,7 @@ fn status_shows_the_dispatch_implementing_with_its_launch_and_steps() {
             "base": "main",
             "worktree": "/worktrees/api-7",
             "workspace": "w1",
+            "pr": null,
             "implementer": {
                 "agent": "impl-api-7", "harness": "claude", "model": "opus", "effort": "high",
                 "tab": "w1:t2", "pane": "w1:p2",

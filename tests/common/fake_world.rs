@@ -30,8 +30,9 @@ pub struct FakeWorld {
     pub prs: RefCell<Vec<PullRequest>>,
     /// URLs of the PRs that close each issue, by `slug#N`.
     pub linked: RefCell<HashMap<String, Vec<String>>>,
-    /// What `github_pull_request_activity` reports, by `slug#N`; an open draft
-    /// that merges cleanly, on the PR's base, when unset.
+    /// What `github_pull_request_activity` reports, by `slug#N`; when unset, a
+    /// draft in the PR's state that merges cleanly, on its base, with head
+    /// `sha<N>`, last active now.
     pub activity: RefCell<HashMap<String, PullRequestActivity>>,
     pub app_repos: RefCell<Vec<String>>,
     /// Issues the Claim assigned, as `slug#N` or Linear identifier.
@@ -335,8 +336,10 @@ impl World for FakeWorld {
         Ok(PullRequestActivity {
             state: pr.state,
             draft: true,
+            head_sha: format!("sha{number}"),
             base_branch: pr.base_branch,
             mergeable: Mergeable::Mergeable,
+            updated_at: nico_agent::state::iso(self.clock.get()),
         })
     }
 

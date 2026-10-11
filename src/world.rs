@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, SystemTime};
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 /// The label that offers an issue to the loop.
@@ -38,14 +38,16 @@ pub enum IssueState {
     Closed,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum PrState {
     Open,
     Closed,
     Merged,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Mergeable {
     Mergeable,
     Conflicting,
@@ -139,8 +141,11 @@ pub struct PullRequest {
 pub struct PullRequestActivity {
     pub state: PrState,
     pub draft: bool,
+    pub head_sha: String,
     pub base_branch: String,
     pub mergeable: Mergeable,
+    /// When anything last happened on it, ISO 8601 as GitHub gives it.
+    pub updated_at: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -812,8 +817,38 @@ impl World for RealWorld {
             .map(|pr| pr.into_pr(slug))
             .collect())
     }
-    fn github_pull_request_activity(&self, _: &str, _: u64) -> WorldResult<PullRequestActivity> {
-        unbuilt("github_pull_request_activity")
+    fn github_pull_request_activity(
+        &self,
+        slug: &str,
+        number: u64,
+    ) -> WorldResult<PullRequestActivity> {
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Viewed {
+            state: String,
+            is_draft: bool,
+            head_ref_oid: String,
+            base_ref_name: String,
+            mergeable: String,
+            updated_at: String,
+        }
+        let number = number.to_string();
+        let fields = "state,isDraft,headRefOid,baseRefName,mergeable,updatedAt";
+        let args = ["pr", "view", &number, "--repo", slug, "--json", fields];
+        let viewed: Viewed =
+            serde_json::from_str(&gh(&args.map(String::from))?).map_err(|_| invalid("GitHub"))?;
+        Ok(PullRequestActivity {
+            state: pr_state(&viewed.state),
+            draft: viewed.is_draft,
+            head_sha: viewed.head_ref_oid,
+            base_branch: viewed.base_ref_name,
+            mergeable: match viewed.mergeable.as_str() {
+                "MERGEABLE" => Mergeable::Mergeable,
+                "CONFLICTING" => Mergeable::Conflicting,
+                _ => Mergeable::Unknown,
+            },
+            updated_at: viewed.updated_at,
+        })
     }
     /// Through `ghbot`: only the App's installation token can list its repositories.
     fn github_app_repos(&self) -> WorldResult<Vec<String>> {
@@ -895,14 +930,20 @@ impl World for RealWorld {
             path: herdr_str(&result["worktree"]["path"])?,
         })
     }
-    fn herdr_worktree_remove(&self, _: &str) -> WorldResult<()> {
-        unbuilt("herdr_worktree_remove")
+    fn herdr_worktree_remove(&self, workspace: &str) -> WorldResult<()> {
+        match herdr(&["worktree", "remove", "--workspace", workspace]) {
+            Err(failure) if !failure.is(&["workspace_not_found"]) => Err(failure.into()),
+            _ => Ok(()),
+        }
     }
     fn herdr_workspace_create(&self, _: &str, _: &str) -> WorldResult<String> {
         unbuilt("herdr_workspace_create")
     }
-    fn herdr_workspace_close(&self, _: &str) -> WorldResult<()> {
-        unbuilt("herdr_workspace_close")
+    fn herdr_workspace_close(&self, workspace: &str) -> WorldResult<()> {
+        match herdr(&["workspace", "close", workspace]) {
+            Err(failure) if !failure.is(&["workspace_not_found"]) => Err(failure.into()),
+            _ => Ok(()),
+        }
     }
     fn herdr_tab_create(&self, workspace: &str, cwd: &str, label: &str) -> WorldResult<Tab> {
         let result = herdr(&[

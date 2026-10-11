@@ -1,7 +1,7 @@
 //! A Repo's Source read into `issues/<repo>.json`, one issue shape for GitHub
 //! and Linear, and what of it is Ready or Stackable.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fs;
 use std::io;
 use std::path::Path;
@@ -10,6 +10,8 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 
 use crate::config::{Linear, Repo};
+use crate::dispatch::Dispatch;
+use crate::stage::Prs;
 use crate::state;
 use crate::world::{
     GitHubIssue, IssueState, LinearIssue, PrState, PullRequest, READY_LABEL, World, WorldError,
@@ -77,7 +79,8 @@ pub struct Row {
 pub struct Readiness {
     pub ready: Vec<Row>,
     pub stackable: Vec<Row>,
-    /// Stackable but for its Blockers' open PRs sitting on several branches.
+    /// Stackable but for its Blockers' open PRs sitting on several branches,
+    /// or still open though its last Dispatch's PR merged.
     pub waiting: Vec<Row>,
 }
 
@@ -183,12 +186,18 @@ fn open_prs(world: &dyn World, repo: &str, key: &str) -> WorldResult<Vec<Blocker
     Ok(open)
 }
 
-/// Which of `read`'s issues not `in_flight` the loop may start, oldest first.
-pub fn readiness(read: &Read, in_flight: &HashSet<String>) -> Readiness {
+/// Which of `read`'s issues with no live Dispatch the loop may start, oldest first.
+pub fn readiness(read: &Read, dispatches: &[Dispatch], prs: &Prs) -> Readiness {
+    // Oldest first, so each issue's last Dispatch wins.
+    let last: HashMap<&str, &Dispatch> =
+        (dispatches.iter()).map(|d| (d.issue.as_str(), d)).collect();
     let mut issues: Vec<&Issue> = read
         .issues
         .iter()
-        .filter(|i| can_start(i, &read.user) && !in_flight.contains(&i.key))
+        .filter(|i| {
+            can_start(i, &read.user)
+                && (last.get(i.key.as_str())).is_none_or(|d| d.closed_at.is_some())
+        })
         .collect();
     issues.sort_by(|a, b| a.created_at.cmp(&b.created_at));
     let mut readiness = Readiness::default();
@@ -206,6 +215,20 @@ pub fn readiness(read: &Read, in_flight: &HashSet<String>) -> Readiness {
             base: None,
             reason: None,
         };
+        let merged = (last.get(issue.key.as_str()))
+            .and_then(|d| d.pr.as_ref())
+            .filter(|url| prs.get(*url).is_some_and(|pr| pr.state == PrState::Merged));
+        if let Some(url) = merged {
+            let reason = format!(
+                "{} is still open though its PR {url} merged; close it, or dispatch it by hand to work it again",
+                issue.key
+            );
+            readiness.waiting.push(Row {
+                reason: Some(reason),
+                ..row
+            });
+            continue;
+        }
         let unresolved: Vec<&Blocker> = issue.blockers.iter().filter(|b| !b.resolved).collect();
         if unresolved.is_empty() {
             readiness.ready.push(row);

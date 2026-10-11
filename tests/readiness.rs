@@ -203,6 +203,41 @@ fn an_issue_with_a_live_dispatch_is_not_ready_and_one_closed_is() {
 }
 
 #[test]
+fn an_issue_whose_last_dispatch_merged_waits_and_one_closed_unmerged_is_ready_again() {
+    let t = with_repo();
+    for n in [1, 2] {
+        t.world.add_issue("acme/api", github_issue("acme/api", n));
+    }
+    for n in ["acme/api#1", "acme/api#2"] {
+        assert_eq!(t.cli(&["dispatch", n]).exit_code, 0);
+    }
+    t.world.add_pr(pr("acme/api", 11, "agent/api-1"));
+    t.world.add_pr(pr("acme/api", 12, "agent/api-2"));
+    let ctx = t.ctx();
+    nico_agent::stage::watch(&ctx).unwrap();
+    // Merged into a branch that is not the default, or without a closing keyword.
+    t.world.prs.borrow_mut()[0].state = PrState::Merged;
+    t.world.prs.borrow_mut()[1].state = PrState::Closed;
+    nico_agent::stage::watch(&ctx).unwrap();
+    nico_agent::dispatch::close_finished(&ctx).unwrap();
+
+    let status = status(&t);
+
+    let repo = &status["repos"][0];
+    assert_eq!(keys(&repo["ready"]), ["acme/api#2"]);
+    assert_eq!(
+        repo["waiting"],
+        json!([{
+            "key": "acme/api#1",
+            "title": "Issue 1",
+            "url": "https://github.com/acme/api/issues/1",
+            "kind": "code",
+            "reason": "acme/api#1 is still open though its PR https://github.com/acme/api/pull/11 merged; close it, or dispatch it by hand to work it again",
+        }])
+    );
+}
+
+#[test]
 fn a_failed_read_keeps_the_last_cache_and_says_why() {
     let t = with_repo();
     t.world.add_issue("acme/api", github_issue("acme/api", 1));

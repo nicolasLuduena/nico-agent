@@ -78,6 +78,27 @@ pub fn read_json_lines<T: DeserializeOwned>(file: &Path) -> io::Result<Vec<T>> {
     Ok(records)
 }
 
+/// What a JSON state file holds: nothing when missing or empty.
+pub fn load<T: DeserializeOwned + Default>(file: &Path) -> io::Result<T> {
+    match fs::read_to_string(file) {
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(T::default()),
+        read => parse(file, &read?),
+    }
+}
+
+/// `text`, read from the JSON state file `file`: nothing when empty.
+pub fn parse<T: DeserializeOwned + Default>(file: &Path, text: &str) -> io::Result<T> {
+    if text.is_empty() {
+        return Ok(T::default());
+    }
+    serde_json::from_str(text).map_err(|e| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("{}: {e}", file.display()),
+        )
+    })
+}
+
 fn suffixed(file: &Path, suffix: &str) -> PathBuf {
     let mut name = file.as_os_str().to_owned();
     name.push(suffix);
