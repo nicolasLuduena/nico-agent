@@ -134,6 +134,7 @@ fn an_unknown_path_or_method_answers_404_with_the_routes_as_help() {
         "POST /api/dispatch {issue, harness, model, effort}: `nico-agent dispatch` of the issue",
         "POST /api/refresh: `nico-agent refresh`",
         "PATCH /api/repo/<owner/name>/switches {name: bool}: set the Repo's switches",
+        "GET /bucket/<path>: a file of the Bucket, where each Verdict's Evidence is kept",
     ]);
     assert_eq!(
         unknown,

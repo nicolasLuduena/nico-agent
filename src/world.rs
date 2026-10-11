@@ -251,6 +251,20 @@ pub trait World {
     fn git_fetch(&self, path: &str, branch: Option<&str>) -> WorldResult<()>;
     /// The default branch of the clone's origin, without the remote prefix.
     fn git_default_branch(&self, path: &str) -> WorldResult<String>;
+    /// Make the folder `path`, and its parents, an empty git repo.
+    fn git_init(&self, path: &str) -> WorldResult<()>;
+    /// Commit everything in the working tree at `path`, new files included,
+    /// even when nothing changed.
+    fn git_commit_all(&self, path: &str, message: &str) -> WorldResult<()>;
+
+    // files outside the config directory: worktrees, the Bucket
+    /// Copy what the folder `from` holds into the folder `to`, without its
+    /// symlinks; nothing when `from` is missing.
+    fn copy_dir(&self, from: &str, to: &str) -> WorldResult<()>;
+    /// Write a file, making its folders.
+    fn write_file(&self, path: &str, contents: &[u8]) -> WorldResult<()>;
+    /// What a file holds; `None` when there is no file at `path`.
+    fn read_file(&self, path: &str) -> WorldResult<Option<Vec<u8>>>;
 
     // gh
     /// Login of the user's own GitHub session.
@@ -730,6 +744,26 @@ fn git_ok(path: &str, args: &[&str]) -> WorldResult<String> {
     )))
 }
 
+/// Copy the files and folders under `from` into `to`, skipping symlinks,
+/// which would point back into the worktree; nothing when `from` is missing.
+fn copy_tree(from: &Path, to: &Path) -> io::Result<()> {
+    let entries = match fs::read_dir(from) {
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(()),
+        entries => entries?,
+    };
+    fs::create_dir_all(to)?;
+    for entry in entries {
+        let entry = entry?;
+        let (kind, target) = (entry.file_type()?, to.join(entry.file_name()));
+        if kind.is_dir() {
+            copy_tree(&entry.path(), &target)?;
+        } else if kind.is_file() {
+            fs::copy(entry.path(), target)?;
+        }
+    }
+    Ok(())
+}
+
 /// A failed command's first line on stderr, else its exit status.
 fn first_line(stderr: &[u8], status: &std::process::ExitStatus) -> String {
     let stderr = String::from_utf8_lossy(stderr);
@@ -858,6 +892,34 @@ impl World for RealWorld {
                     "could not find the default branch of origin in {path}"
                 ))
             })
+    }
+    fn git_init(&self, path: &str) -> WorldResult<()> {
+        fs::create_dir_all(path).map_err(|e| WorldError(format!("could not make {path}: {e}")))?;
+        git_ok(path, &["init", "--quiet"]).map(drop)
+    }
+    /// Unsigned: a service has no one to unlock a signing key.
+    fn git_commit_all(&self, path: &str, message: &str) -> WorldResult<()> {
+        git_ok(path, &["add", "--all"])?;
+        let commit = ["commit", "--quiet", "--allow-empty", "--no-gpg-sign"];
+        git_ok(path, &[&commit[..], &["-m", message]].concat()).map(drop)
+    }
+    fn copy_dir(&self, from: &str, to: &str) -> WorldResult<()> {
+        copy_tree(Path::new(from), Path::new(to))
+            .map_err(|e| WorldError(format!("could not copy {from} to {to}: {e}")))
+    }
+    fn write_file(&self, path: &str, contents: &[u8]) -> WorldResult<()> {
+        let path = Path::new(path);
+        (path.parent().map_or(Ok(()), fs::create_dir_all))
+            .and_then(|()| fs::write(path, contents))
+            .map_err(|e| WorldError(format!("could not write {}: {e}", path.display())))
+    }
+    fn read_file(&self, path: &str) -> WorldResult<Option<Vec<u8>>> {
+        use io::ErrorKind::{IsADirectory, NotADirectory, NotFound};
+        match fs::read(path) {
+            Ok(bytes) => Ok(Some(bytes)),
+            Err(e) if matches!(e.kind(), NotFound | IsADirectory | NotADirectory) => Ok(None),
+            Err(e) => Err(WorldError(format!("could not read {path}: {e}"))),
+        }
     }
     fn github_viewer(&self) -> WorldResult<String> {
         let args = ["api", "user", "--jq", ".login"].map(String::from);

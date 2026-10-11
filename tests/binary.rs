@@ -36,6 +36,10 @@ fn repo_add_reads_a_real_clone_s_remotes() {
     };
     git(&["init", "-q"]);
     git(&["remote", "add", "origin", "git@github.com:acme/api.git"]);
+    let (config_dir, bucket) = (root.join(".config/nico-agent"), root.join("bucket"));
+    std::fs::create_dir_all(&config_dir).unwrap();
+    let config = format!("[bucket]\npath = \"{}\"\n", bucket.display());
+    std::fs::write(config_dir.join("config.toml"), config).unwrap();
     let repo_add = |path: &std::path::Path| {
         let ran = Command::new(env!("CARGO_BIN_EXE_nico-agent"))
             .args(["repo", "add", "acme/api", "--json", "--path"])
@@ -52,9 +56,10 @@ fn repo_add_reads_a_real_clone_s_remotes() {
 
     let (code, stdout) = repo_add(&clone);
     assert_eq!(code, Some(0), "{stdout}");
-    let config = std::fs::read_to_string(root.join(".config/nico-agent/config.toml")).unwrap();
+    let config = std::fs::read_to_string(config_dir.join("config.toml")).unwrap();
     assert!(
         config.contains(&format!("path = \"{}\"", clone.display())),
         "{config}"
     );
+    assert!(bucket.join(".git").is_dir() && bucket.join("README.md").is_file());
 }

@@ -9,6 +9,7 @@ use std::time::Duration;
 
 use serde_json::{Map, Value, json};
 
+use crate::bucket;
 use crate::cli::{Context, Refusal, bad_invocation};
 use crate::config;
 use crate::dispatch;
@@ -41,6 +42,10 @@ const ROUTES: &[(&str, &str)] = &[
         "PATCH /api/repo/<owner/name>/switches {name: bool}",
         "set the Repo's switches",
     ),
+    (
+        "GET /bucket/<path>",
+        "a file of the Bucket, where each Verdict's Evidence is kept",
+    ),
 ];
 
 /// Answer `request`, as the app sent it.
@@ -64,6 +69,7 @@ pub fn answer(ctx: &Context, request: &HttpRequest) -> Answer {
         {
             ran(body(request).and_then(|set| repo::switches(ctx, slug, &set)))
         }
+        ("GET", path) if let Some(path) = path.strip_prefix("/bucket/") => bucket::file(ctx, path),
         (method, _) => {
             let help: Vec<String> = (ROUTES.iter())
                 .map(|(route, answers)| format!("{route}: {answers}"))
@@ -227,7 +233,7 @@ fn body(request: &HttpRequest) -> Result<Value, Refusal> {
     })
 }
 
-fn json(status: u16, body: Value) -> Answer {
+pub(crate) fn json(status: u16, body: Value) -> Answer {
     Answer::Whole(HttpResponse {
         status,
         headers: vec![("Content-Type".into(), "application/json".into())],

@@ -59,6 +59,8 @@ pub struct FakeWorld {
     pub dead_pids: RefCell<Vec<u32>>,
     /// This boot of the machine; a restart of it is a new one.
     pub boot: RefCell<String>,
+    /// Files outside the config directory (worktrees, the Bucket), by path.
+    pub files: RefCell<BTreeMap<String, Vec<u8>>>,
     workspaces: Cell<u32>,
     tabs: RefCell<HashMap<String, u32>>,
 }
@@ -95,6 +97,7 @@ impl Default for FakeWorld {
             pid: Cell::new(4242),
             dead_pids: Default::default(),
             boot: RefCell::new("boot-1".into()),
+            files: Default::default(),
             workspaces: Cell::new(0),
             tabs: Default::default(),
         }
@@ -201,6 +204,10 @@ impl FakeWorld {
         self.add_pr(pr);
     }
 
+    pub fn add_file(&self, path: &str, contents: &[u8]) {
+        self.files.borrow_mut().insert(path.into(), contents.into());
+    }
+
     pub fn logged(&self) -> Vec<String> {
         self.logged.borrow().clone()
     }
@@ -246,6 +253,43 @@ impl World for FakeWorld {
     fn git_default_branch(&self, path: &str) -> WorldResult<String> {
         self.call(format!("git -C {path} default-branch"))?;
         Ok(self.git_default_branch_of(path))
+    }
+
+    /// The repo is a clone with no remotes from now on.
+    fn git_init(&self, path: &str) -> WorldResult<()> {
+        self.call(format!("git init {path}"))?;
+        self.clones.borrow_mut().insert(path.into(), vec![]);
+        Ok(())
+    }
+
+    fn git_commit_all(&self, path: &str, message: &str) -> WorldResult<()> {
+        self.call(format!(
+            "git -C {path} add --all && git -C {path} commit -m {message}"
+        ))
+    }
+
+    fn copy_dir(&self, from: &str, to: &str) -> WorldResult<()> {
+        self.call(format!("cp -r {from}/. {to}"))?;
+        let mut files = self.files.borrow_mut();
+        let copies: Vec<(String, Vec<u8>)> = (files.iter())
+            .filter_map(|(path, bytes)| {
+                let rest = path.strip_prefix(&format!("{from}/"))?;
+                Some((format!("{to}/{rest}"), bytes.clone()))
+            })
+            .collect();
+        files.extend(copies);
+        Ok(())
+    }
+
+    fn write_file(&self, path: &str, contents: &[u8]) -> WorldResult<()> {
+        self.call(format!("write {path}"))?;
+        self.add_file(path, contents);
+        Ok(())
+    }
+
+    fn read_file(&self, path: &str) -> WorldResult<Option<Vec<u8>>> {
+        self.call(format!("read {path}"))?;
+        Ok(self.files.borrow().get(path).cloned())
     }
 
     fn github_viewer(&self) -> WorldResult<String> {

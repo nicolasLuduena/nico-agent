@@ -23,7 +23,7 @@ fn add_reads_the_remotes_and_list_shows_the_repo_with_defaults_filled_in() {
         added.json(),
         json!({ "repo": "acme/api added", "path": "/src/api" })
     );
-    assert_eq!(t.world.calls(), ["git remotes /src/api"]);
+    assert_eq!(t.world.calls()[0], "git remotes /src/api");
     assert_eq!(
         t.cli(&["repo", "list", "--json"]).json(),
         json!({ "repos": [{

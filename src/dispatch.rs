@@ -12,6 +12,7 @@ use serde_json::{Value, json};
 
 use crate::args::Args;
 use crate::asking::Asking;
+use crate::bucket;
 use crate::cli::{Context, Refusal};
 use crate::config::{self, Config, Harness, Launch, Repo, fill_in};
 use crate::launch::{self, AgentLaunch};
@@ -441,10 +442,12 @@ fn implement_prompt(
     } else {
         &prompts.implement
     };
+    let bucket_url = bucket::url(config, record);
     let values = [
         ("sigil", harness.sigil.as_str()),
         ("issueUrl", &record.url),
         ("baseBranch", &record.base),
+        ("bucketUrl", &bucket_url),
     ];
     let text = fill_in(template, &values);
     match ctx.world.github_app_repos() {
