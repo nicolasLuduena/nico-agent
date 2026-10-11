@@ -113,8 +113,8 @@ Findings, retries and Verdicts stay local.
 ## Built as
 
 One Rust binary, `nico-agent`, for speed, a small footprint, and types that
-hold: `serve` runs the loop and the web app; `repo`, `dispatch` and
-`verdict` are the commands outsiders call. Everything outside the process
+hold: `serve` runs the loop and the web app; `repo`, `dispatch`, `answer`
+and `verdict` are the commands outsiders call. Everything outside the process
 (herdr, git, `gh`, Linear, notifications, the clock) is reached through one
 boundary with a real and a fake implementation, so every test runs without
 herdr or the network. The web app is Svelte, built with Vite and embedded in
