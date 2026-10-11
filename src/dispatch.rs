@@ -12,6 +12,7 @@ use serde_json::{Value, json};
 
 use crate::args::Args;
 use crate::asking::Asking;
+use crate::bucket;
 use crate::cli::{Context, Refusal};
 use crate::config::{self, Config, Harness, Launch, Repo, fill_in};
 use crate::launch::{self, AgentLaunch};
@@ -441,10 +442,13 @@ fn implement_prompt(
     } else {
         &prompts.implement
     };
+    let (bucket_url, evidence) = (bucket::url(config, record), bucket::evidence(record));
     let values = [
         ("sigil", harness.sigil.as_str()),
         ("issueUrl", &record.url),
         ("baseBranch", &record.base),
+        ("evidenceFolder", &evidence),
+        ("bucketUrl", &bucket_url),
     ];
     let text = fill_in(template, &values);
     match ctx.world.github_app_repos() {
@@ -490,7 +494,7 @@ pub fn key(config: &Config, dispatches: &[Dispatch], text: &str) -> Result<Strin
         && is_number(number)
     {
         let number: u64 = number.parse().map_err(|_| not_a_reference(text))?;
-        let configured = config.repos.keys().find(|s| s.eq_ignore_ascii_case(slug));
+        let configured = config.repo(slug).map(|(slug, _)| slug);
         // Its Repo removed, an issue In flight there is still worked till Closed.
         let in_flight = (dispatches.iter())
             .find(|d| {

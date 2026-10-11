@@ -83,7 +83,7 @@ pub fn step(
             Some(reason) => Some(reason),
             None if failed_verdict(ctx, &d, &prs)? => Some(Reason::Verdict),
             None => agents.and_then(|agents| {
-                let stalled = Some(stalled.as_str()).filter(|_| no_pr.contains(&d.issue));
+                let stalled = no_pr.contains(&d.issue).then_some(stalled.as_str());
                 agent_reason(&mut d, agents, &now, stalled)
             }),
         };

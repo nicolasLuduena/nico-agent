@@ -9,8 +9,10 @@ mod fake_world;
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
+use std::time::Duration;
 
 pub use fake_world::*;
+use nico_agent::world::{Answer, HttpRequest, Poll};
 use nico_agent::{Context, run};
 use serde_json::Value;
 
@@ -33,6 +35,19 @@ impl Ran {
     }
 }
 
+/// An open event stream of `serve`.
+pub struct Events<'a> {
+    t: &'a Setup,
+    poll: Poll,
+}
+
+impl Events<'_> {
+    /// What the stream sends at its next poll: nothing, or its events.
+    pub fn next(&mut self) -> String {
+        (self.poll)(&self.t.world)
+    }
+}
+
 pub fn setup() -> Setup {
     static NEXT: AtomicU32 = AtomicU32::new(0);
     let root = std::env::temp_dir().join(format!(
@@ -51,10 +66,13 @@ pub fn setup() -> Setup {
 impl Setup {
     /// Run one tick of the loop: `serve` with its timer off, which ticks once.
     /// What it logged, a line per action, taken out of the log unstamped.
+    /// The call `serve` makes to listen is taken out too: only the tick's are left.
     pub fn tick(&self) -> Vec<String> {
         let runs = self.world.timer_runs.replace(0);
         let start = self.world.logged.borrow().len();
+        let listen = self.world.calls.borrow().len();
         let ran = self.cli(&["serve"]);
+        self.world.calls.borrow_mut().remove(listen);
         self.world.timer_runs.set(runs);
         assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
         let said: Vec<String> = (self.world.logged.borrow_mut().drain(start..))
@@ -65,6 +83,45 @@ impl Setup {
             panic!("{failed}");
         }
         said
+    }
+
+    /// Send `serve`, which must have run, a request as the app would.
+    pub fn request(&self, method: &str, path: &str, body: &str) -> Answer {
+        let listening = self.world.listening.borrow();
+        let handler = listening.as_ref().expect("serve has not listened");
+        let request = HttpRequest {
+            method: method.into(),
+            url: path.into(),
+            headers: vec![],
+            body: body.into(),
+        };
+        handler(&self.world, &request)
+    }
+
+    /// `GET path` of `serve`: its status and JSON body.
+    pub fn get(&self, path: &str) -> (u16, Value) {
+        self.send("GET", path, "")
+    }
+
+    /// `method path` of `serve` with `body`: its status and JSON body.
+    pub fn send(&self, method: &str, path: &str, body: &str) -> (u16, Value) {
+        let Answer::Whole(response) = self.request(method, path, body) else {
+            panic!("{method} {path} answered with a stream");
+        };
+        let body = serde_json::from_slice(&response.body).unwrap_or_else(|e| {
+            let body = String::from_utf8_lossy(&response.body);
+            panic!("body is not JSON ({e}): {body}")
+        });
+        (response.status, body)
+    }
+
+    /// Open `serve`'s event stream: what each 10-second poll of it sends.
+    pub fn events(&self) -> Events<'_> {
+        let Answer::Events { every, poll } = self.request("GET", "/api/events", "") else {
+            panic!("GET /api/events answered whole");
+        };
+        assert_eq!(every, Duration::from_secs(10));
+        Events { t: self, poll }
     }
 
     /// Run `nico-agent <argv>` against the FakeWorld.

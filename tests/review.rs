@@ -11,7 +11,7 @@ const TICK: Duration = Duration::from_secs(600);
 /// The review prompt for PR 9 of issue 7 at `sha`, on codex.
 fn review_prompt(sha: &str) -> String {
     format!(
-        "herdr agent prompt rev-api-7 $verdict https://github.com/acme/api/pull/9 for https://github.com/acme/api/issues/7: re-run the repo's verification skill under .agents/skills/verify-*/ against the PR's head, and record the result with nico-agent verdict acme/api#7 pass|fail --sha {sha} --findings <file>"
+        "herdr agent prompt rev-api-7 $verdict https://github.com/acme/api/pull/9 for https://github.com/acme/api/issues/7: re-run the repo's verification skill under .agents/skills/verify-*/ against the PR's head, saving its Evidence under .evidence/7/, and record the result with nico-agent verdict acme/api#7 pass|fail --sha {sha} --findings <file>"
     )
 }
 
@@ -50,6 +50,7 @@ fn push(t: &Setup, sha: &str) {
             base_branch: "main".into(),
             mergeable: Mergeable::Mergeable,
             updated_at: "2026-09-30T12:30:00Z".into(),
+            merged_at: None,
         },
     );
 }

@@ -45,6 +45,7 @@ fn pr_11_is(t: &Setup, mergeable: Mergeable) {
         base_branch: "main".into(),
         mergeable,
         updated_at: "2026-09-30T12:00:00Z".into(),
+        merged_at: None,
     };
     (t.world.activity.borrow_mut()).insert("acme/api#11".into(), activity);
 }
@@ -126,6 +127,7 @@ fn stacked() -> Setup {
     issues.get_mut("acme/api").unwrap()[0].blockers = vec![GitHubBlocker {
         slug: "acme/api".into(),
         number: 1,
+        title: "Issue 1".into(),
         state: IssueState::Open,
     }];
     drop(issues);
@@ -170,6 +172,7 @@ fn a_retarget_restarts_once_when_the_pr_below_turns_final_naming_its_base() {
         base_branch: "develop".into(),
         mergeable: Mergeable::Conflicting,
         updated_at: "2026-09-30T12:30:00Z".into(),
+        merged_at: None,
     };
     (t.world.activity.borrow_mut()).insert("acme/api#12".into(), activity);
     let after = next_tick(&t);

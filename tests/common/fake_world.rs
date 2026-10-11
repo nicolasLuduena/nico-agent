@@ -51,12 +51,16 @@ pub struct FakeWorld {
     pub clock: Cell<SystemTime>,
     /// How many times `every` runs its task before it returns.
     pub timer_runs: Cell<u32>,
+    /// What answers the requests `serve` listens for.
+    pub listening: RefCell<Option<Handler>>,
     /// Log lines, each after the time it was written at.
     pub logged: RefCell<Vec<String>>,
     pub pid: Cell<u32>,
     pub dead_pids: RefCell<Vec<u32>>,
     /// This boot of the machine; a restart of it is a new one.
     pub boot: RefCell<String>,
+    /// Files outside the config directory (worktrees, the Bucket), by path.
+    pub files: RefCell<BTreeMap<String, Vec<u8>>>,
     workspaces: Cell<u32>,
     tabs: RefCell<HashMap<String, u32>>,
 }
@@ -88,10 +92,12 @@ impl Default for FakeWorld {
             // 2026-09-30T12:00:00Z
             clock: Cell::new(SystemTime::UNIX_EPOCH + Duration::from_secs(1_790_769_600)),
             timer_runs: Cell::new(0),
+            listening: Default::default(),
             logged: Default::default(),
             pid: Cell::new(4242),
             dead_pids: Default::default(),
             boot: RefCell::new("boot-1".into()),
+            files: Default::default(),
             workspaces: Cell::new(0),
             tabs: Default::default(),
         }
@@ -198,6 +204,10 @@ impl FakeWorld {
         self.add_pr(pr);
     }
 
+    pub fn add_file(&self, path: &str, contents: &[u8]) {
+        self.files.borrow_mut().insert(path.into(), contents.into());
+    }
+
     pub fn logged(&self) -> Vec<String> {
         self.logged.borrow().clone()
     }
@@ -243,6 +253,54 @@ impl World for FakeWorld {
     fn git_default_branch(&self, path: &str) -> WorldResult<String> {
         self.call(format!("git -C {path} default-branch"))?;
         Ok(self.git_default_branch_of(path))
+    }
+
+    /// The repo is a clone with no remotes from now on.
+    fn git_init(&self, path: &str) -> WorldResult<()> {
+        self.call(format!("git init {path}"))?;
+        self.clones.borrow_mut().insert(path.into(), vec![]);
+        Ok(())
+    }
+
+    fn git_commit(&self, path: &str, add: &str, message: &str) -> WorldResult<()> {
+        self.call(format!(
+            "git -C {path} add -- {add} && git -C {path} -c user.name=nico-agent -c user.email=nico-agent@localhost commit --quiet --allow-empty --no-gpg-sign -m {message}"
+        ))
+    }
+
+    fn copy_dir(&self, from: &str, to: &str) -> WorldResult<()> {
+        self.call(format!("cp -r {from}/. {to}"))?;
+        let mut files = self.files.borrow_mut();
+        let copies: Vec<(String, Vec<u8>)> = (files.iter())
+            .filter_map(|(path, bytes)| {
+                let rest = path.strip_prefix(&format!("{from}/"))?;
+                let git = rest.split('/').any(|part| part == ".git");
+                (!git).then(|| (format!("{to}/{rest}"), bytes.clone()))
+            })
+            .collect();
+        files.extend(copies);
+        Ok(())
+    }
+
+    fn write_file(&self, path: &str, contents: &[u8]) -> WorldResult<()> {
+        self.call(format!("write {path}"))?;
+        self.add_file(path, contents);
+        Ok(())
+    }
+
+    fn read_file(&self, path: &str) -> WorldResult<Option<Vec<u8>>> {
+        self.call(format!("read {path}"))?;
+        Ok(self.files.borrow().get(path).cloned())
+    }
+
+    fn list_files(&self, path: &str) -> WorldResult<Vec<String>> {
+        self.call(format!("find {path} -name .git -prune -o -type f -print"))?;
+        let under = format!("{path}/");
+        let files = self.files.borrow();
+        Ok((files.keys())
+            .filter_map(|file| Some(file.strip_prefix(&under)?.to_string()))
+            .filter(|file| !file.split('/').any(|part| part == ".git"))
+            .collect())
     }
 
     fn github_viewer(&self) -> WorldResult<String> {
@@ -328,6 +386,8 @@ impl World for FakeWorld {
             base_branch: pr.base_branch,
             mergeable: Mergeable::Mergeable,
             updated_at: nico_agent::state::iso(self.clock.get()),
+            merged_at: (pr.state == PrState::Merged)
+                .then(|| nico_agent::state::iso(self.clock.get())),
         })
     }
 
@@ -553,6 +613,13 @@ impl World for FakeWorld {
                     request.url
                 ))
             })
+    }
+
+    /// Keeps `handler` for the tests to send requests to.
+    fn listen(&self, port: u16, handler: Handler) -> WorldResult<()> {
+        self.call(format!("listen 127.0.0.1:{port}"))?;
+        *self.listening.borrow_mut() = Some(handler);
+        Ok(())
     }
 
     /// Stamped with the clock, as journald stamps the real one.

@@ -7,12 +7,26 @@ use serde_json::{Value, json};
 use crate::args::Args;
 use crate::cli::{Context, Refusal};
 use crate::config;
+use crate::http;
 use crate::tick;
+use crate::world::{HttpRequest, World};
 
 pub fn serve(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
     Args::parse("serve", args, &[])?.positionals(&[])?;
     // shortcut: tick_minutes is read once; a change to it needs a restart of serve.
     let interval = config::load(&ctx.config_dir)?.tick();
+    let config_dir = ctx.config_dir.clone();
+    let handler = move |world: &dyn World, request: &HttpRequest| {
+        let ctx = Context {
+            world,
+            config_dir: config_dir.clone(),
+        };
+        http::answer(&ctx, request)
+    };
+    // Without the app the loop still works: a port taken is said, not fatal.
+    if let Err(e) = ctx.world.listen(http::PORT, Box::new(handler)) {
+        ctx.world.log(&e.0);
+    }
     let mut run = || match tick::tick(ctx, false) {
         Ok(said) => said.iter().for_each(|line| ctx.world.log(line)),
         Err(no) => ctx.world.log(&format!("tick failed: {}", no.error)),

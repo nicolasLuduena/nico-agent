@@ -1,0 +1,136 @@
+/* DESIGN.md's tokens and type, for every component; each component styles itself. */
+
+@font-face {
+  font-family: Barlow;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./fonts/barlow-400.woff2") format("woff2");
+}
+@font-face {
+  font-family: Barlow;
+  font-weight: 600;
+  font-display: swap;
+  src: url("./fonts/barlow-600.woff2") format("woff2");
+}
+@font-face {
+  font-family: Barlow;
+  font-weight: 700;
+  font-display: swap;
+  src: url("./fonts/barlow-700.woff2") format("woff2");
+}
+
+:root {
+  color-scheme: light;
+  --ground: #f4f5f2;
+  --surface: #ffffff;
+  --ink: #111214;
+  --ink-muted: #50545b;
+  --rule: #111214;
+  --hairline: #cfd2d6;
+  --signal: #ffd400;
+  --signal-ink: #111214;
+  --live: #1d4f91;
+  --verified: #00754a;
+  --failed: #c8102e;
+  --reversed: #111214;
+  --reversed-ink: #ffffff;
+  --focus: #1d4f91;
+  /* 24px on desktop, 16px on phone. */
+  --gutter: 24px;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --ground: #0b1220;
+  --surface: #121a2b;
+  --ink: #eef1f4;
+  --ink-muted: #a9b1bd;
+  --rule: #6b7689;
+  --hairline: #2a3447;
+  --signal: #f2c200;
+  --signal-ink: #111214;
+  --live: #7fb0ff;
+  --verified: #3ccf8e;
+  --failed: #ff6b6b;
+  --reversed: #eef1f4;
+  --reversed-ink: #0b1220;
+  --focus: #7fb0ff;
+}
+
+@media (width < 720px) {
+  :root {
+    --gutter: 16px;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  scrollbar-color: var(--rule) var(--ground);
+}
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font: 400 14px/1.45 Barlow, system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  -webkit-text-size-adjust: 100%;
+}
+
+::selection {
+  background: var(--live);
+  color: var(--surface);
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+a {
+  color: var(--live);
+  text-underline-offset: 3px;
+}
+
+button,
+input,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+h1,
+h2,
+p,
+ul {
+  margin: 0;
+}
+
+/* A command, set in the text's own face. */
+code {
+  font: inherit;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/* DESIGN.md's errata rule: a refusal, a Dispatch's failure, serve out of reach. */
+.errata {
+  display: grid;
+  gap: 4px;
+  padding: 8px 12px;
+  border-left: 4px solid var(--failed);
+  overflow-wrap: anywhere;
+}
+
+/* DESIGN.md's `label`: kinds, column heads, strip kinds, field labels. */
+.label {
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}

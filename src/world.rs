@@ -7,9 +7,12 @@ mod linear;
 
 use std::fmt;
 use std::fs;
-use std::io::Write;
+use std::io::{self, BufRead, BufReader, Read, Write};
+use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::Arc;
+use std::thread;
 use std::time::{Duration, SystemTime};
 
 use serde::{Deserialize, Serialize};
@@ -81,6 +84,7 @@ pub struct IssueRef {
 pub struct GitHubBlocker {
     pub slug: String,
     pub number: u64,
+    pub title: String,
     pub state: IssueState,
 }
 
@@ -117,6 +121,7 @@ pub struct LinearProject {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LinearBlocker {
     pub identifier: String,
+    pub title: String,
     /// Linear's state type (`unstarted`, `completed`, ...).
     pub state: String,
 }
@@ -161,6 +166,8 @@ pub struct PullRequestActivity {
     pub mergeable: Mergeable,
     /// When anything last happened on it, ISO 8601 as GitHub gives it.
     pub updated_at: String,
+    /// When it merged, if it did.
+    pub merged_at: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -221,8 +228,24 @@ pub struct HttpResponse {
     pub status: u16,
     /// As received: look a name up ignoring case.
     pub headers: Vec<(String, String)>,
-    pub body: String,
+    /// Bytes: a file served from the Bucket may be an image.
+    pub body: Vec<u8>,
 }
+
+/// What `serve` answers a request with.
+pub enum Answer {
+    /// One response, sent whole.
+    Whole(HttpResponse),
+    /// A server-sent-events stream, open till the client leaves: every
+    /// `every`, `poll` says what to send, if anything.
+    Events { every: Duration, poll: Poll },
+}
+
+/// What an event stream sends at a poll, given the World of its thread.
+pub type Poll = Box<dyn FnMut(&dyn World) -> String>;
+
+/// What answers each request `serve` takes, in the World of the thread taking it.
+pub type Handler = Box<dyn Fn(&dyn World, &HttpRequest) -> Answer + Send + Sync>;
 
 pub trait World {
     // git
@@ -232,6 +255,23 @@ pub trait World {
     fn git_fetch(&self, path: &str, branch: Option<&str>) -> WorldResult<()>;
     /// The default branch of the clone's origin, without the remote prefix.
     fn git_default_branch(&self, path: &str) -> WorldResult<String>;
+    /// Make the folder `path`, and its parents, an empty git repo.
+    fn git_init(&self, path: &str) -> WorldResult<()>;
+    /// Commit what `add`, a path in the clone at `path`, holds, new files
+    /// included, if it is there; even when nothing changed.
+    fn git_commit(&self, path: &str, add: &str, message: &str) -> WorldResult<()>;
+
+    // files outside the config directory: worktrees, the Bucket
+    /// Copy the files [`World::list_files`] lists under the folder `from`
+    /// into the folder `to`; nothing when `from` is missing.
+    fn copy_dir(&self, from: &str, to: &str) -> WorldResult<()>;
+    /// Write a file, making its folders.
+    fn write_file(&self, path: &str, contents: &[u8]) -> WorldResult<()>;
+    /// What a file holds; `None` when there is no file at `path`.
+    fn read_file(&self, path: &str) -> WorldResult<Option<Vec<u8>>>;
+    /// Every file under the folder `path`, by its path from there, sorted,
+    /// without symlinks nor git's `.git`; none when there is no such folder.
+    fn list_files(&self, path: &str) -> WorldResult<Vec<String>>;
 
     // gh
     /// Login of the user's own GitHub session.
@@ -328,6 +368,9 @@ pub trait World {
     // http
     /// Send a request to a service nico-agent doesn't run; any status is a response.
     fn http(&self, request: &HttpRequest) -> WorldResult<HttpResponse>;
+    /// Answer HTTP on 127.0.0.1:`port` with `handler`, a thread per request,
+    /// while this thread goes on; fails when the port cannot be taken.
+    fn listen(&self, port: u16, handler: Handler) -> WorldResult<()>;
 
     // log
     /// Write a line to `serve`'s log: stderr, which journald keeps for a service.
@@ -342,6 +385,78 @@ pub trait World {
     fn process_alive(&self, pid: u32) -> bool;
     /// This boot of the machine: a pid from another boot is another process.
     fn boot_id(&self) -> String;
+}
+
+/// Read one HTTP/1.1 request from `stream`, answer it with `handler`, close.
+fn answer(world: &RealWorld, handler: &Handler, mut stream: TcpStream) -> io::Result<()> {
+    // A client that never finishes its request does not hold a thread.
+    stream.set_read_timeout(Some(Duration::from_secs(30)))?;
+    let request = {
+        let mut reader = BufReader::new(&stream);
+        let mut line = String::new();
+        reader.read_line(&mut line)?;
+        let mut words = line.split_whitespace().map(String::from);
+        let (method, url) = (
+            words.next().unwrap_or_default(),
+            words.next().unwrap_or_default(),
+        );
+        let mut headers = vec![];
+        loop {
+            line.clear();
+            reader.read_line(&mut line)?;
+            let Some((name, value)) = line.split_once(':') else {
+                break;
+            };
+            headers.push((name.trim().to_string(), value.trim().to_string()));
+        }
+        let length = (headers.iter())
+            .find(|(name, _)| name.eq_ignore_ascii_case("content-length"))
+            .and_then(|(_, value)| value.parse().ok())
+            .unwrap_or(0usize);
+        let mut body = vec![0; length.min(1 << 20)];
+        reader.read_exact(&mut body)?;
+        HttpRequest {
+            method,
+            url,
+            headers,
+            body: String::from_utf8_lossy(&body).into(),
+        }
+    };
+    match handler(world, &request) {
+        Answer::Whole(response) => {
+            let head: String = (response.headers.iter())
+                .map(|(name, value)| format!("{name}: {value}\r\n"))
+                .collect();
+            let length = response.body.len();
+            write!(
+                stream,
+                "HTTP/1.1 {} \r\n{head}Content-Length: {length}\r\nConnection: close\r\n\r\n",
+                response.status
+            )?;
+            stream.write_all(&response.body)
+        }
+        Answer::Events { every, mut poll } => {
+            stream.write_all(b"HTTP/1.1 200 \r\nContent-Type: text/event-stream\r\nCache-Control: no-cache\r\nConnection: close\r\n\r\n")?;
+            // Waiting to read is the timer: a read that times out is the next
+            // poll, and an end of the stream is the client gone.
+            stream.set_read_timeout(Some(every))?;
+            loop {
+                match stream.read(&mut [0; 512]) {
+                    Ok(0) => return Ok(()),
+                    Ok(_) => {}
+                    Err(e)
+                        if matches!(
+                            e.kind(),
+                            io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut
+                        ) =>
+                    {
+                        stream.write_all(poll(world).as_bytes())?
+                    }
+                    Err(e) => return Err(e),
+                }
+            }
+        }
+    }
 }
 
 /// The World of the running binary.
@@ -468,7 +583,7 @@ const ISSUES_QUERY: &str = "query($owner: String!, $name: String!, $label: Strin
         number title url state createdAt
         labels(first: 50) { nodes { name } }
         assignees(first: 20) { nodes { login } }
-        blockedBy(first: 50) { nodes { number state repository { nameWithOwner } } }
+        blockedBy(first: 50) { nodes { number title state repository { nameWithOwner } } }
         parent { number repository { nameWithOwner } }
         subIssuesSummary { total }
       }
@@ -499,6 +614,8 @@ struct Login {
 #[derive(Deserialize)]
 struct NumberedNode {
     number: u64,
+    #[serde(default)]
+    title: String,
     #[serde(default)]
     state: String,
     repository: Repository,
@@ -531,6 +648,7 @@ impl From<IssueNode> for GitHubIssue {
                 .map(|b| GitHubBlocker {
                     slug: b.repository.name_with_owner,
                     number: b.number,
+                    title: b.title,
                     state: issue_state(&b.state),
                 })
                 .collect(),
@@ -634,6 +752,41 @@ fn git_ok(path: &str, args: &[&str]) -> WorldResult<String> {
         "`git {}` failed in {path}: {reason}",
         args.join(" ")
     )))
+}
+
+/// Copy the files under `from` into `to`, as [`list_tree`] finds them:
+/// symlinks, which would point back into the worktree, skipped.
+fn copy_tree(from: &Path, to: &Path) -> io::Result<()> {
+    let mut files = vec![];
+    list_tree(from, Path::new(""), &mut files)?;
+    for file in files {
+        let target = to.join(&file);
+        target.parent().map_or(Ok(()), fs::create_dir_all)?;
+        fs::copy(from.join(&file), target)?;
+    }
+    Ok(())
+}
+
+/// Push the files under `dir` onto `files`, each after `under`; none of git's
+/// (`.git`, a folder or a worktree's file), nor a symlink.
+fn list_tree(dir: &Path, under: &Path, files: &mut Vec<PathBuf>) -> io::Result<()> {
+    use io::ErrorKind::{NotADirectory, NotFound};
+    let entries = match fs::read_dir(dir) {
+        Err(e) if matches!(e.kind(), NotFound | NotADirectory) => return Ok(()),
+        entries => entries?,
+    };
+    for entry in entries {
+        let entry = entry?;
+        let (name, kind) = (under.join(entry.file_name()), entry.file_type()?);
+        if entry.file_name() == ".git" {
+            continue;
+        } else if kind.is_dir() {
+            list_tree(&entry.path(), &name, files)?;
+        } else if kind.is_file() {
+            files.push(name);
+        }
+    }
+    Ok(())
 }
 
 /// A failed command's first line on stderr, else its exit status.
@@ -765,6 +918,57 @@ impl World for RealWorld {
                 ))
             })
     }
+    fn git_init(&self, path: &str) -> WorldResult<()> {
+        fs::create_dir_all(path).map_err(|e| WorldError(format!("could not make {path}: {e}")))?;
+        git_ok(path, &["init", "--quiet"]).map(drop)
+    }
+    /// Unsigned, as nico-agent: a service has no one to unlock a signing key, and the
+    /// machine may have no git identity at all.
+    fn git_commit(&self, path: &str, add: &str, message: &str) -> WorldResult<()> {
+        // git refuses to add a path that is not there: a Verdict with no Evidence nor findings.
+        if Path::new(path).join(add).exists() {
+            git_ok(path, &["add", "--", add])?;
+        }
+        let commit = [
+            "-c",
+            "user.name=nico-agent",
+            "-c",
+            "user.email=nico-agent@localhost",
+            "commit",
+            "--quiet",
+            "--allow-empty",
+            "--no-gpg-sign",
+        ];
+        git_ok(path, &[&commit[..], &["-m", message]].concat()).map(drop)
+    }
+    fn copy_dir(&self, from: &str, to: &str) -> WorldResult<()> {
+        copy_tree(Path::new(from), Path::new(to))
+            .map_err(|e| WorldError(format!("could not copy {from} to {to}: {e}")))
+    }
+    fn write_file(&self, path: &str, contents: &[u8]) -> WorldResult<()> {
+        let path = Path::new(path);
+        (path.parent().map_or(Ok(()), fs::create_dir_all))
+            .and_then(|()| fs::write(path, contents))
+            .map_err(|e| WorldError(format!("could not write {}: {e}", path.display())))
+    }
+    fn read_file(&self, path: &str) -> WorldResult<Option<Vec<u8>>> {
+        use io::ErrorKind::{IsADirectory, NotADirectory, NotFound};
+        match fs::read(path) {
+            Ok(bytes) => Ok(Some(bytes)),
+            Err(e) if matches!(e.kind(), NotFound | IsADirectory | NotADirectory) => Ok(None),
+            Err(e) => Err(WorldError(format!("could not read {path}: {e}"))),
+        }
+    }
+    fn list_files(&self, path: &str) -> WorldResult<Vec<String>> {
+        let mut files = vec![];
+        list_tree(Path::new(path), Path::new(""), &mut files)
+            .map_err(|e| WorldError(format!("could not list {path}: {e}")))?;
+        let mut files: Vec<String> = (files.iter())
+            .map(|f| f.to_string_lossy().into_owned())
+            .collect();
+        files.sort();
+        Ok(files)
+    }
     fn github_viewer(&self) -> WorldResult<String> {
         let args = ["api", "user", "--jq", ".login"].map(String::from);
         Ok(gh(&args)?.trim().to_string())
@@ -886,9 +1090,10 @@ impl World for RealWorld {
             base_ref_name: String,
             mergeable: String,
             updated_at: String,
+            merged_at: Option<String>,
         }
         let number = number.to_string();
-        let fields = "state,isDraft,headRefOid,baseRefName,mergeable,updatedAt";
+        let fields = "state,isDraft,headRefOid,baseRefName,mergeable,updatedAt,mergedAt";
         let args = ["pr", "view", &number, "--repo", slug, "--json", fields];
         let viewed: Viewed =
             serde_json::from_str(&gh(&args.map(String::from))?).map_err(|_| invalid("GitHub"))?;
@@ -903,6 +1108,7 @@ impl World for RealWorld {
                 _ => Mergeable::Unknown,
             },
             updated_at: viewed.updated_at,
+            merged_at: viewed.merged_at,
         })
     }
     /// Through `ghbot`: only the App's installation token can list its repositories.
@@ -1224,6 +1430,22 @@ impl World for RealWorld {
             headers,
             body: body.into(),
         })
+    }
+    fn listen(&self, port: u16, handler: Handler) -> WorldResult<()> {
+        let listener = TcpListener::bind(("127.0.0.1", port))
+            .map_err(|e| WorldError(format!("could not listen on 127.0.0.1:{port}: {e}")))?;
+        let (handler, config_dir) = (Arc::new(handler), self.config_dir.clone());
+        thread::spawn(move || {
+            for stream in listener.incoming().flatten() {
+                let handler = Arc::clone(&handler);
+                let world = RealWorld {
+                    config_dir: config_dir.clone(),
+                };
+                // A client that left mid-answer is no one to tell.
+                thread::spawn(move || answer(&world, &handler, stream).ok());
+            }
+        });
+        Ok(())
     }
     fn log(&self, line: &str) {
         eprintln!("{line}");

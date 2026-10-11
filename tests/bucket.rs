@@ -1,0 +1,344 @@
+mod common;
+
+use std::time::Duration;
+
+use common::{Ran, Setup, github_issue, pull_request, setup};
+use nico_agent::world::{Answer, Mergeable, PrState, PullRequest, PullRequestActivity};
+use serde_json::{Value, json};
+
+const BUCKET: &str = "/mnt/agents-land/nico-agent-bucket";
+
+/// Repo `acme/api` added, its issue 7 dispatched into `/worktrees/api-7`,
+/// its PR 9 at `sha9` found, and no calls recorded yet.
+fn with_pr() -> Setup {
+    let t = setup();
+    t.world
+        .add_clone("/src/api", &["git@github.com:acme/api.git"]);
+    t.cli(&["repo", "add", "acme/api", "--path", "/src/api"]);
+    t.world.add_issue("acme/api", github_issue("acme/api", 7));
+    t.tick();
+    t.world.add_pr(PullRequest {
+        head_branch: Some("agent/api-7".into()),
+        ..pull_request("acme/api", 9)
+    });
+    t.world.advance(Duration::from_secs(600));
+    t.tick();
+    t.world.calls.borrow_mut().clear();
+    t
+}
+
+/// A findings file the Reviewer wrote, outside the config directory.
+fn findings(t: &Setup, text: &str) -> String {
+    let file = t.config_dir.with_file_name("f.md");
+    std::fs::write(&file, text).unwrap();
+    file.display().to_string()
+}
+
+fn verdict(t: &Setup, args: &[&str]) -> Ran {
+    let ran = t.cli(&[&["verdict", "acme/api#7"], args, &["--json"]].concat());
+    assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
+    ran
+}
+
+/// What the Bucket holds for acme/api, by path under `acme/api/`, as text.
+fn kept(t: &Setup) -> Vec<(String, String)> {
+    let under = format!("{BUCKET}/acme/api/");
+    (t.world.files.borrow().iter())
+        .filter_map(|(path, bytes)| {
+            let path = path.strip_prefix(&under)?.to_string();
+            Some((path, String::from_utf8_lossy(bytes).into_owned()))
+        })
+        .collect()
+}
+
+fn pairs(expected: &[(&str, &str)]) -> Vec<(String, String)> {
+    (expected.iter())
+        .map(|(a, b)| (a.to_string(), b.to_string()))
+        .collect()
+}
+
+#[test]
+fn a_verdict_commits_the_evidence_and_findings_to_the_bucket_under_repo_issue_and_sha_once() {
+    let t = with_pr();
+    t.world
+        .add_file("/worktrees/api-7/.evidence/7/shot.png", b"png");
+    t.world
+        .add_file("/worktrees/api-7/.evidence/7/run/log.txt", b"ok");
+    t.world
+        .add_file("/worktrees/api-7/.evidence/8/other.txt", b"not 7's");
+    let file = findings(&t, "Signing in works.\n");
+
+    verdict(&t, &["pass", "--sha", "sha9", "--findings", &file]);
+    let calls = t.world.calls();
+    t.world.calls.borrow_mut().clear();
+    verdict(&t, &["pass", "--sha", "sha9", "--findings", &file]);
+
+    assert_eq!(
+        kept(&t),
+        pairs(&[
+            ("7/sha9/findings.md", "Signing in works.\n"),
+            ("7/sha9/run/log.txt", "ok"),
+            ("7/sha9/shot.png", "png"),
+        ])
+    );
+    assert_eq!(
+        calls,
+        [
+            format!("git remotes {BUCKET}"),
+            format!("cp -r /worktrees/api-7/.evidence/7/. {BUCKET}/acme/api/7/sha9"),
+            format!("write {BUCKET}/acme/api/7/sha9/findings.md"),
+            format!(
+                "git -C {BUCKET} add -- acme/api/7/sha9 && git -C {BUCKET} -c user.name=nico-agent -c user.email=nico-agent@localhost commit --quiet --allow-empty --no-gpg-sign -m verdict acme/api#7 pass sha9"
+            ),
+        ]
+    );
+    // The same Verdict again is no new one: nothing is kept twice.
+    assert_eq!(t.world.calls(), Vec::<String>::new());
+}
+
+#[test]
+fn a_verdict_with_no_evidence_still_commits_its_findings_and_one_on_another_sha_is_another_folder()
+{
+    let t = with_pr();
+    let file = findings(&t, "The search box is gone.\n");
+    verdict(&t, &["fail", "--sha", "sha9", "--findings", &file]);
+    // The Implementer pushes a fix, with Evidence this time.
+    t.world.activity.borrow_mut().insert(
+        "acme/api#9".into(),
+        PullRequestActivity {
+            state: PrState::Open,
+            draft: true,
+            head_sha: "sha10".into(),
+            base_branch: "main".into(),
+            mergeable: Mergeable::Mergeable,
+            updated_at: "2026-09-30T12:30:00Z".into(),
+            merged_at: None,
+        },
+    );
+    t.world
+        .add_file("/worktrees/api-7/.evidence/7/shot.png", b"png");
+    t.world.advance(Duration::from_secs(600));
+    t.tick();
+    t.world.calls.borrow_mut().clear();
+
+    verdict(&t, &["pass", "--sha", "sha10"]);
+
+    assert_eq!(
+        kept(&t),
+        pairs(&[
+            ("7/sha10/shot.png", "png"),
+            ("7/sha9/findings.md", "The search box is gone.\n"),
+        ])
+    );
+    assert_eq!(
+        t.world.calls().last().unwrap(),
+        &format!(
+            "git -C {BUCKET} add -- acme/api/7/sha10 && git -C {BUCKET} -c user.name=nico-agent -c user.email=nico-agent@localhost commit --quiet --allow-empty --no-gpg-sign -m verdict acme/api#7 pass sha10"
+        )
+    );
+}
+
+/// `GET path` of serve: its status, headers and body.
+fn get(t: &Setup, path: &str) -> (u16, Vec<(String, String)>, Vec<u8>) {
+    let Answer::Whole(response) = t.request("GET", path, "") else {
+        panic!("GET {path} answered with a stream");
+    };
+    (response.status, response.headers, response.body)
+}
+
+#[test]
+fn get_bucket_serves_a_file_of_the_bucket_s_working_tree_and_refuses_any_path_outside_it() {
+    let t = setup();
+    t.tick();
+    let png = [0x89, b'P', b'N', b'G', 0xff];
+    t.world
+        .add_file(&format!("{BUCKET}/acme/api/7/abc/sign in.png"), &png);
+    t.world
+        .add_file("/mnt/agents-land/secret.txt", b"not the Bucket's");
+    t.world
+        .add_file(&format!("{BUCKET}/.git/config"), b"[core]");
+    t.world.calls.borrow_mut().clear();
+
+    let (status, headers, body) = get(&t, "/bucket/acme/api/7/abc/sign%20in.png");
+    let outside: Vec<(u16, Value)> = [
+        "/bucket/../secret.txt",
+        "/bucket/acme/%2e%2e/%2E%2E/../secret.txt",
+        "/bucket/.git/config",
+    ]
+    .iter()
+    .map(|path| {
+        let (status, _, body) = get(&t, path);
+        (status, serde_json::from_slice(&body).unwrap())
+    })
+    .collect();
+    let (missing, _, _) = get(&t, "/bucket/acme/api/7/abc/gone.png");
+
+    assert_eq!((status, body), (200, png.to_vec()));
+    assert_eq!(
+        headers,
+        [
+            ("Content-Type".to_string(), "image/png".to_string()),
+            // An HTML file kept as Evidence runs no script on the app's origin.
+            ("Content-Security-Policy".into(), "sandbox".into()),
+        ]
+    );
+    assert_eq!(
+        outside[0],
+        (
+            403,
+            json!({
+                "error": "../secret.txt is not in the Bucket's working tree",
+                "help": ["Ask for a file under /bucket/<owner>/<repo>/<issue>/<sha>/"],
+            })
+        )
+    );
+    assert_eq!(
+        outside
+            .iter()
+            .map(|(status, _)| *status)
+            .collect::<Vec<_>>(),
+        [403, 403, 403]
+    );
+    assert_eq!(missing, 404);
+    assert_eq!(
+        t.world.calls(),
+        [
+            format!("read {BUCKET}/acme/api/7/abc/sign in.png"),
+            format!("read {BUCKET}/acme/api/7/abc/gone.png"),
+        ]
+    );
+}
+
+#[test]
+fn get_bucket_of_a_folder_links_every_file_under_it_sandboxed_as_files_are() {
+    let t = setup();
+    t.tick();
+    t.world
+        .add_file(&format!("{BUCKET}/acme/api/7/abc/sign in.png"), b"png");
+    t.world
+        .add_file(&format!("{BUCKET}/acme/api/7/abc/<b>&.txt"), b"odd");
+    t.world
+        .add_file(&format!("{BUCKET}/acme/api/70/abc/shot.png"), b"not 7's");
+    t.world.add_file(&format!("{BUCKET}/.git/HEAD"), b"ref");
+    t.world.calls.borrow_mut().clear();
+
+    let (status, headers, body) = get(&t, "/bucket/acme/api/7/");
+    let (missing, _, _) = get(&t, "/bucket/acme/api/8/");
+    let (git, _, _) = get(&t, "/bucket/.git/");
+    let (_, _, root) = get(&t, "/bucket/");
+
+    assert_eq!(status, 200);
+    assert_eq!(
+        headers,
+        [
+            (
+                "Content-Type".to_string(),
+                "text/html; charset=utf-8".to_string()
+            ),
+            ("Content-Security-Policy".into(), "sandbox".into()),
+        ]
+    );
+    assert_eq!(
+        String::from_utf8(body).unwrap(),
+        "<!doctype html>\n<title>/bucket/acme/api/7/</title>\n<ul>\n\
+         <li><a href=\"abc/%3Cb%3E%26.txt\">abc/&lt;b>&amp;.txt</a>\n\
+         <li><a href=\"abc/sign%20in.png\">abc/sign in.png</a>\n\
+         </ul>\n"
+    );
+    assert_eq!((missing, git), (404, 403));
+    let root = String::from_utf8(root).unwrap();
+    assert!(
+        root.contains("acme/api/70/abc/shot.png") && !root.contains(".git"),
+        "{root}"
+    );
+    assert_eq!(
+        t.world.calls(),
+        [
+            format!("find {BUCKET}/acme/api/7 -name .git -prune -o -type f -print"),
+            format!("find {BUCKET}/acme/api/8 -name .git -prune -o -type f -print"),
+            // The Bucket's git store is not walked.
+            format!("find {BUCKET} -name .git -prune -o -type f -print"),
+        ]
+    );
+}
+
+/// The implement prompt a tick sends for issue 7 of `acme/api`, with `toml` in the config.
+fn implement_prompt(toml: &str) -> String {
+    let t = setup();
+    std::fs::create_dir_all(&t.config_dir).unwrap();
+    std::fs::write(t.config_dir.join("config.toml"), toml).unwrap();
+    t.world
+        .add_clone("/src/api", &["git@github.com:acme/api.git"]);
+    t.cli(&["repo", "add", "acme/api", "--path", "/src/api"]);
+    t.world.add_issue("acme/api", github_issue("acme/api", 7));
+    t.tick();
+    let calls = t.world.calls();
+    let prompt = calls
+        .iter()
+        .find_map(|c| c.strip_prefix("herdr agent prompt impl-api-7 "));
+    prompt.expect("an implement prompt").to_string()
+}
+
+#[test]
+fn the_implement_prompt_names_the_evidence_folder_and_links_the_bucket_on_serve_or_bucket_url() {
+    let on_serve = implement_prompt("");
+    let on_tunnel = implement_prompt("[bucket]\nurl = \"https://nico.example.com/\"\n");
+
+    assert_eq!(
+        on_serve,
+        "/implement https://github.com/acme/api/issues/7 as draft PR against main, saving its Evidence under .evidence/7/ in the worktree and linking it to http://127.0.0.1:42069/bucket/acme/api/7/"
+    );
+    assert!(
+        on_tunnel.ends_with(" linking it to https://nico.example.com/bucket/acme/api/7/"),
+        "{on_tunnel}"
+    );
+}
+
+#[test]
+fn repo_add_makes_the_bucket_when_it_is_missing_and_leaves_one_that_is_there_untouched() {
+    let t = setup();
+    t.world
+        .add_clone("/src/api", &["git@github.com:acme/api.git"]);
+    t.world
+        .add_clone("/src/web", &["git@github.com:acme/web.git"]);
+    let elsewhere = setup();
+    std::fs::create_dir_all(&elsewhere.config_dir).unwrap();
+    let config = "[bucket]\npath = \"/data/bucket\"\n";
+    std::fs::write(elsewhere.config_dir.join("config.toml"), config).unwrap();
+    elsewhere
+        .world
+        .add_clone("/src/api", &["git@github.com:acme/api.git"]);
+    elsewhere.world.add_clone("/data/bucket", &[]);
+
+    let first = t.cli(&["repo", "add", "acme/api", "--path", "/src/api"]);
+    let made = t.world.calls();
+    t.world.calls.borrow_mut().clear();
+    t.cli(&["repo", "add", "acme/web", "--path", "/src/web"]);
+    elsewhere.cli(&["repo", "add", "acme/api", "--path", "/src/api"]);
+
+    assert_eq!(first.exit_code, 0, "{}", first.stdout);
+    assert_eq!(
+        made,
+        [
+            "git remotes /src/api".to_string(),
+            format!("git remotes {BUCKET}"),
+            format!("git init {BUCKET}"),
+            format!("write {BUCKET}/README.md"),
+            format!(
+                "git -C {BUCKET} add -- README.md && git -C {BUCKET} -c user.name=nico-agent -c user.email=nico-agent@localhost commit --quiet --allow-empty --no-gpg-sign -m nico-agent's Bucket"
+            ),
+        ]
+    );
+    assert!(t.world.files.borrow()[&format!("{BUCKET}/README.md")].starts_with(b"# "));
+    assert_eq!(
+        t.world.calls(),
+        [
+            "git remotes /src/web".to_string(),
+            format!("git remotes {BUCKET}")
+        ]
+    );
+    assert_eq!(
+        elsewhere.world.calls(),
+        ["git remotes /src/api", "git remotes /data/bucket"]
+    );
+}

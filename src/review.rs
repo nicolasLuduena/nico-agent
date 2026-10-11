@@ -4,6 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::bucket;
 use crate::cli::{Context, Refusal};
 use crate::config::{Config, fill_in};
 use crate::dispatch::{self, Dispatch};
@@ -168,6 +169,7 @@ fn start(
         ("issueUrl", &d.url),
         ("issue", &d.issue),
         ("headSha", &pr.head_sha),
+        ("evidenceFolder", &bucket::evidence(d)),
     ];
     let text = fill_in(&config.prompts.review, &values);
     launch::prompt(ctx.world, &reviewer.agent, &text)

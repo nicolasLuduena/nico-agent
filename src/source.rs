@@ -47,6 +47,9 @@ pub struct Issue {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Blocker {
     pub key: String,
+    /// Unknown in a cache read before Blockers had titles.
+    #[serde(default)]
+    pub title: Option<String>,
     pub resolved: bool,
     /// Its open PRs in this Repo with a head branch here, asked only while it
     /// is unresolved and blocks an issue the loop could start.
@@ -102,10 +105,7 @@ pub fn issues(
     max_age: Duration,
 ) -> io::Result<(Option<Read>, Option<WorldError>)> {
     let file = config_dir.join("issues").join(format!("{slug}.json"));
-    // A cache that doesn't parse is no cache: the Source is the truth.
-    let cached: Option<Read> = fs::read_to_string(&file)
-        .ok()
-        .and_then(|text| serde_json::from_str(&text).ok());
+    let cached = cached(config_dir, slug);
     let oldest = state::iso(world.now() - max_age);
     if cached.as_ref().is_some_and(|c| c.read_at > oldest) {
         return Ok((cached, None));
@@ -126,6 +126,15 @@ pub fn issues(
             Ok((Some(read), None))
         }
     }
+}
+
+/// What the Repo's Source last said, however old.
+pub fn cached(config_dir: &Path, slug: &str) -> Option<Read> {
+    let file = config_dir.join("issues").join(format!("{slug}.json"));
+    // A cache that doesn't parse is no cache: the Source is the truth.
+    fs::read_to_string(file)
+        .ok()
+        .and_then(|text| serde_json::from_str(&text).ok())
 }
 
 fn read(world: &dyn World, slug: &str, repo: &Repo) -> WorldResult<Read> {
@@ -366,6 +375,7 @@ fn from_github(slug: &str, issue: &GitHubIssue) -> Issue {
             .iter()
             .map(|b| Blocker {
                 key: github_key(slug, &b.slug, b.number),
+                title: Some(b.title.clone()),
                 resolved: b.state == IssueState::Closed,
                 prs: vec![],
             })
@@ -411,6 +421,7 @@ fn from_linear(issue: &LinearIssue) -> Issue {
             .iter()
             .map(|b| Blocker {
                 key: b.identifier.clone(),
+                title: Some(b.title.clone()),
                 resolved: closed(&b.state),
                 prs: vec![],
             })

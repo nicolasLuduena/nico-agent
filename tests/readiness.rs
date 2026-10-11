@@ -20,6 +20,7 @@ fn blocker(slug: &str, number: u64, state: IssueState) -> GitHubBlocker {
     GitHubBlocker {
         slug: slug.into(),
         number,
+        title: format!("Issue {number}"),
         state,
     }
 }
@@ -343,6 +344,7 @@ fn linear_issues_the_selector_claims_are_ready_or_stackable_beside_github_ones()
     };
     let blocked_by = |id: &str, state: &str| LinearBlocker {
         identifier: id.into(),
+        title: id.into(),
         state: state.into(),
     };
     claimed("BLE-1", 1, &|_| {});

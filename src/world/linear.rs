@@ -24,7 +24,7 @@ const ISSUES_QUERY: &str = "query($filter: IssueFilter!, $cursor: String) {
       id identifier title url branchName createdAt team { id key name } project { id name }
       state { type } assignee { id }
       labels(first: 100) { nodes { name } pageInfo { hasNextPage endCursor } }
-      inverseRelations(first: 100) { nodes { type issue { identifier state { type } } } pageInfo { hasNextPage endCursor } }
+      inverseRelations(first: 100) { nodes { type issue { identifier title state { type } } } pageInfo { hasNextPage endCursor } }
       parent { identifier } children(first: 1) { nodes { id } }
     }
     pageInfo { hasNextPage endCursor }
@@ -71,6 +71,9 @@ struct RelationNode {
 #[derive(Deserialize)]
 struct RelatedNode {
     identifier: String,
+    /// Asked of a Blocker, not of a parent.
+    #[serde(default)]
+    title: String,
     state: Option<StateNode>,
 }
 
@@ -146,7 +149,7 @@ fn to_issue(world: &RealWorld, node: IssueNode) -> WorldResult<LinearIssue> {
         &node.id,
         "inverseRelations",
         node.inverse_relations,
-        "type issue { identifier state { type } }",
+        "type issue { identifier title state { type } }",
     )?;
     Ok(LinearIssue {
         identifier: node.identifier,
@@ -165,6 +168,7 @@ fn to_issue(world: &RealWorld, node: IssueNode) -> WorldResult<LinearIssue> {
             .filter(|r| r.kind == "blocks")
             .map(|r| LinearBlocker {
                 identifier: r.issue.identifier,
+                title: r.issue.title,
                 state: r.issue.state.map(|s| s.kind).unwrap_or_default(),
             })
             .collect(),
@@ -240,7 +244,7 @@ fn query<T: DeserializeOwned>(world: &RealWorld, text: &str, variables: Value) -
         }
         status => return Err(WorldError(format!("Linear request failed (HTTP {status})"))),
     }
-    let payload: Value = serde_json::from_str(&response.body).map_err(|_| invalid("Linear"))?;
+    let payload: Value = serde_json::from_slice(&response.body).map_err(|_| invalid("Linear"))?;
     if payload["errors"].as_array().is_some_and(|e| !e.is_empty()) || payload["data"].is_null() {
         return Err(WorldError(
             "Linear GraphQL request failed; check API key permissions and selectors".into(),
@@ -253,7 +257,7 @@ fn query<T: DeserializeOwned>(world: &RealWorld, text: &str, variables: Value) -
 /// with a `RATELIMITED` error, per linear.app/developers/rate-limiting; or
 /// 429): the latest reset (epoch ms) of its spent limits, else in a minute.
 fn rate_limit_reset(world: &RealWorld, response: &HttpResponse) -> Option<SystemTime> {
-    let payload: Value = serde_json::from_str(&response.body).unwrap_or_default();
+    let payload: Value = serde_json::from_slice(&response.body).unwrap_or_default();
     let limited = response.status == 429
         || (payload["errors"].as_array().into_iter().flatten())
             .any(|e| e["extensions"]["code"] == "RATELIMITED");

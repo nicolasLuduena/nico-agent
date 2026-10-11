@@ -26,10 +26,15 @@ stall_minutes = 20
 max_restarts_per_reason = 2
 repos = {}
 
+# Where Evidence is kept, one commit per Verdict. With `url` unset, links to
+# it are serve's own; set it to the tunnel's, which the PR bodies then link.
+[bucket]
+path = "/mnt/agents-land/nico-agent-bucket"
+
 [prompts]
-implement = "{sigil}implement {issueUrl} as draft PR against {baseBranch}"
+implement = "{sigil}implement {issueUrl} as draft PR against {baseBranch}, saving its Evidence under {evidenceFolder}/ in the worktree and linking it to {bucketUrl}"
 research = "{sigil}research {issueUrl}; write the findings with sources to one Markdown file under docs/research/ and open it as a draft PR against {baseBranch}"
-review = "{sigil}verdict {prUrl} for {issueUrl}: re-run the repo's verification skill under .agents/skills/verify-*/ against the PR's head, and record the result with nico-agent verdict {issue} pass|fail --sha {headSha} --findings <file>"
+review = "{sigil}verdict {prUrl} for {issueUrl}: re-run the repo's verification skill under .agents/skills/verify-*/ against the PR's head, saving its Evidence under {evidenceFolder}/, and record the result with nico-agent verdict {issue} pass|fail --sha {headSha} --findings <file>"
 # Appended to implement and research, as is, when the GitHub App is installed on the Repo.
 bot_suffix = ", opened with `ghbot pr create` (not `gh`); end every commit message with the trailer `Co-authored-by: nicolasluduena-coding-agent[bot] <324920906+nicolasluduena-coding-agent[bot]@users.noreply.github.com>`"
 
@@ -86,6 +91,7 @@ pub struct Config {
     pub repos: BTreeMap<String, Repo>,
     /// The built-in ones (claude, codex, opencode) under the config's settings.
     pub harnesses: BTreeMap<String, Harness>,
+    pub bucket: Bucket,
     pub prompts: Prompts,
     #[serde(deserialize_with = "positive")]
     pub tick_minutes: u32,
@@ -108,6 +114,16 @@ pub struct Repo {
     /// As set; [`Config::reviewer`] fills in the default.
     pub reviewer: Option<Launch>,
     pub switches: Switches,
+}
+
+/// Where Evidence is kept and what serves it.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Bucket {
+    pub path: String,
+    /// What serves the Bucket under `/bucket/`, e.g. the tunnel's
+    /// `https://host`; serve's own when unset.
+    pub url: Option<String>,
 }
 
 /// Which Linear issues a Repo claims.
@@ -221,6 +237,11 @@ impl Config {
     /// How long a tick lasts, and so how old a Source read may be.
     pub fn tick(&self) -> Duration {
         Duration::from_secs(u64::from(self.tick_minutes) * 60)
+    }
+
+    /// The Repo `slug` names, in any casing, by its slug as configured.
+    pub fn repo(&self, slug: &str) -> Option<(&String, &Repo)> {
+        (self.repos.iter()).find(|(s, _)| s.eq_ignore_ascii_case(slug))
     }
 
     /// The Repo `d` was dispatched into; once removed, the Repo's defaults on

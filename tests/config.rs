@@ -208,7 +208,8 @@ fn concurrent_writers_leave_a_valid_file_with_every_change() {
         .map(|f| f.unwrap().file_name().into_string().unwrap())
         .collect();
     files.sort();
-    assert_eq!(files, ["config.toml", "config.toml.lock"]);
+    // Each add made the Bucket, if missing, under the Bucket's lock.
+    assert_eq!(files, ["bucket.lock", "config.toml", "config.toml.lock"]);
 }
 
 #[test]
@@ -224,7 +225,7 @@ fn an_invalid_config_is_refused_not_rewritten() {
         added.json()["error"]
             .as_str()
             .unwrap()
-            .ends_with("line 1: room: unknown field `room`, expected one of `repos`, `harnesses`, `prompts`, `tick_minutes`, `stall_minutes`, `max_restarts_per_reason`")
+            .ends_with("line 1: room: unknown field `room`, expected one of `repos`, `harnesses`, `bucket`, `prompts`, `tick_minutes`, `stall_minutes`, `max_restarts_per_reason`")
     );
     assert_eq!(
         fs::read_to_string(t.config_dir.join("config.toml")).unwrap(),
