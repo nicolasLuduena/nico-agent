@@ -55,6 +55,9 @@
     view = { x: PAD, y: PAD, k: scale };
   }
 
+  /** Zoomed in past the fit, a finger's every drag pans the map; fitted, a vertical swipe scrolls the page past it. */
+  const closer = $derived(view.k > scale);
+
   $effect(() => {
     if (drawn && width && fitted !== repo.slug) {
       fitted = repo.slug;
@@ -110,11 +113,14 @@
         y: (now.y + other.y) / 2,
       });
     } else {
-      if (!field.hasPointerCapture(e.pointerId)) {
+      // Captured by the svg these handlers are on, so the rest of the drag, and its end, still reach them.
+      const svg = e.currentTarget as SVGSVGElement;
+      if (!svg.hasPointerCapture(e.pointerId)) {
         if (Math.hypot(now.x - was.x, now.y - was.y) < 4) return;
-        field.setPointerCapture(e.pointerId);
+        svg.setPointerCapture(e.pointerId);
       }
-      view = { ...view, x: view.x + now.x - was.x, y: view.y + now.y - was.y };
+      const dy = closer || e.pointerType !== "touch" ? now.y - was.y : 0;
+      view = { ...view, x: view.x + now.x - was.x, y: view.y + dy };
     }
     pointers.set(e.pointerId, now);
   }
@@ -192,6 +198,7 @@
   {#if drawn && drawn.nodes.length > 0}
     <svg
       role="presentation"
+      style:touch-action={closer ? "none" : "pan-y"}
       onpointerdown={down}
       onpointermove={move}
       onpointerup={up}
@@ -240,7 +247,7 @@
             <rect class="ring" x="-3.5" y="-3.5" width={NODE.width + 7} height={NODE.height + 7} />
             <rect class="frame" x="0.5" y="0.5" width={NODE.width - 1} height={NODE.height - 1} />
             {#if n.needs}<rect class="flag" width={NODE.width} height="4" />{/if}
-            {#if n.stage === "Failed"}<rect class="errata" width="4" height={NODE.height} />{/if}
+            {#if n.stage === "Failed"}<rect class="failed" width="4" height={NODE.height} />{/if}
             <text class="number" x="12" y="30" use:fit_text={[number(n.key), 140]}></text>
             <text class="kind" x="236" y="27">{n.kind.toUpperCase()}</text>
             {#if n.title}
@@ -292,7 +299,6 @@
     inset: 0;
     width: 100%;
     height: 100%;
-    touch-action: none;
     cursor: grab;
     user-select: none;
   }
@@ -300,11 +306,6 @@
     padding: 16px;
     color: var(--ink-muted);
     max-width: 70ch;
-  }
-  code {
-    font: inherit;
-    font-weight: 600;
-    color: var(--ink);
   }
   .fit {
     position: absolute;
@@ -369,7 +370,7 @@
   .flag {
     fill: var(--signal);
   }
-  .errata {
+  .failed {
     fill: var(--failed);
   }
   text {

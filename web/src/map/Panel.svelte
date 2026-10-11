@@ -2,6 +2,8 @@
   // The open node's panel (desktop) or bottom sheet (phone): what the map
   // node knows, and for an issue with a Dispatch, /api/node/<issue>: its PR,
   // restarts, Verdict with findings, and Evidence in the Bucket.
+  import { onMount } from "svelte";
+  import { ticked } from "../controls/Refused.svelte";
   import { watch } from "../live";
   import { selection } from "../selection.svelte";
   import { clock } from "../time";
@@ -48,6 +50,19 @@
     selection.issue = null;
   }
 
+  // Focus moves into the panel as it opens, so a keyboard needn't cross every node to
+  // reach it, and back to what opened it as it closes, unless focus has gone elsewhere.
+  let panel: HTMLElement;
+  let title: HTMLElement;
+  onMount(() => {
+    const opener = document.activeElement as HTMLElement | SVGElement | null;
+    title.focus();
+    return () => {
+      const at = document.activeElement;
+      if (!at || at === document.body || panel.contains(at)) opener?.focus();
+    };
+  });
+
   // On a phone the sheet closes on a swipe down its head; the swipe only takes
   // the pointer once it has moved, so the Close button still clicks.
   let pulled = $state(0);
@@ -70,13 +85,13 @@
 
 <svelte:window onkeydown={(e) => e.key === "Escape" && close()} />
 
-<section class="panel" aria-labelledby="panel-title" style:transform={pulled ? `translateY(${pulled}px)` : null}>
+<section class="panel" aria-labelledby="panel-title" bind:this={panel} style:transform={pulled ? `translateY(${pulled}px)` : null}>
   <!-- The swipe is a pointer's shortcut for Close, which keyboards and screen readers have. -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <header onpointerdown={grab} onpointermove={pull} onpointerup={release} onpointercancel={release}>
     <div class="grip" aria-hidden="true"></div>
     <div class="line">
-      <h2 id="panel-title">
+      <h2 id="panel-title" tabindex="-1" bind:this={title}>
         {node?.title ?? issue}
         {#if node?.url}<a href={node.url} target="_blank" rel="noreferrer">{number}</a>{/if}
       </h2>
@@ -94,7 +109,7 @@
   {#if !node}
     <p class="note">{shown.map ? `${issue} is not on this Repo's map.` : "Reading the map…"}</p>
   {:else}
-    {#if failure}<p class="errata">{failure}</p>{/if}
+    {#if failure}<p class="errata"><strong>{failure}</strong></p>{/if}
 
     <section>
       <h3 class="label">PR</h3>
@@ -119,8 +134,10 @@
       {#if full.failure}
         <section>
           <h3 class="label">Failure</h3>
-          <p><strong>{full.failure.error}</strong></p>
-          <p class="note">At the {full.failure.step} step.</p>
+          <div class="errata">
+            <p><strong>{@render ticked(full.failure.error)}</strong></p>
+            <p>At the {full.failure.step} step.</p>
+          </div>
         </section>
       {/if}
 
@@ -295,9 +312,8 @@
   .note {
     color: var(--ink-muted);
   }
-  .errata {
-    color: var(--failed);
-    font-weight: 600;
+  header + .errata {
+    margin-top: 16px;
   }
   .quiet {
     flex: none;
@@ -311,6 +327,16 @@
   }
   .quiet:hover {
     background: var(--ground);
+  }
+
+  /* Beside a map taller than the window, the panel stays in view. */
+  @media (width >= 720px) {
+    .panel {
+      position: sticky;
+      top: 0;
+      max-height: 100vh;
+      overflow-y: auto;
+    }
   }
 
   /* The bottom sheet: up to 85vh, scrolling inside, closed by Close or a swipe down. */
@@ -339,6 +365,18 @@
       padding-bottom: 8px;
       background: var(--surface);
       touch-action: none;
+    }
+    /* A thumb's target, not a line of text. */
+    .evidence a,
+    .evidence + p a {
+      display: block;
+      padding: 8px 0;
+    }
+    .evidence li {
+      padding: 0;
+    }
+    .evidence + p {
+      margin-top: 0;
     }
     .grip {
       display: block;

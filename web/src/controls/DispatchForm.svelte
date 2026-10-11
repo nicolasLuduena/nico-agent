@@ -89,7 +89,7 @@
   </form>
   {#if sent?.outcome.ok}
     <p role="status">Dispatched {number(sent.issue)}.</p>
-  {:else if sent}
+  {:else if sent && !sent.outcome.ok}
     <Refused error={sent.outcome.error} help={sent.outcome.help} />
   {/if}
 </section>

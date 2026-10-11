@@ -143,7 +143,7 @@ Restrained strategy with working colours: tinted neutrals for the sheet, and fou
 - **Signal yellow (`signal`):** what needs you, and nothing else. It fills the needs-you band and the 4px flag on a node that needs you.
 - **Live blue (`live`):** an agent is at work (Implementing, PR draft), links, focus rings, and the `stack` edge.
 - **Verified green (`verified`):** a passing Verdict on the head commit.
-- **Failed red (`failed`):** Failed, a failing Verdict, refusals. It shows up as the errata rule and the strike, never as a fill.
+- **Failed red (`failed`):** Failed (the node, and its Failure in the panel), a failing Verdict, refusals, and serve out of reach. It shows up as the errata rule and the strike, never as a fill.
 - **Reversed:** the selected node, full ink with the text reversed out.
 
 **The One Job Rule.** Yellow means needs you. A yellow pixel anywhere else is a bug.
@@ -177,14 +177,14 @@ A 4px base. Spacing steps are 4, 8, 12, 16, 24 and 32. On desktop the page gutte
 2. **Morning slot:** the page's first content section. It is reserved for the morning summary and renders nothing when `morning.md` is absent (until spec 3). It takes no space when empty.
 3. **Needs-you band:** full width, square, set at the top of the work.
 4. **Repo tabs:** one tab per Repo. The same row carries "Source read HH:MM · PRs checked HH:MM" and the Refresh button, right-aligned.
-5. **Work area:** the map fills the left; a 320px column on the right holds the five switches and the Dispatch form. Opening a node puts the 400px node panel in place of that column, and closing it brings the column back. The map keeps its pan and zoom throughout.
+5. **Work area:** the map fills the left; a 320px column on the right holds the five switches and the Dispatch form. Opening a node puts the 400px node panel in place of that column, and closing it brings the column back. Beside a map taller than the window, the panel stays in view. The map keeps its pan and zoom throughout.
 
 **Phone (under 720px):**
 
 - 16px gutters and no horizontal scroll, anywhere, with the sheet open or closed.
 - The tabs become one native `<select>` named "Repo".
 - The band's items stack, one item per block (kind and Repo/#issue on the first line, the question or title on the second).
-- The map starts fitted to the viewport width at 60vh tall and still pans and zooms. The switches and the form follow below it.
+- The map starts fitted to the viewport width at 60vh tall and still pans and zooms. Fitted, a vertical swipe on it scrolls the page past it and a sideways one pans it; pinched in, every drag pans it. The switches and the form follow below it.
 - The node panel becomes a bottom sheet: up to 85vh, scrolls inside, closed by a button or a swipe down.
 
 **The No Scroll Rule.** At 360px wide, nothing is wider than the viewport. Long titles ellipsize on nodes and wrap in the panel.
@@ -228,7 +228,7 @@ A node that needs you carries a 4px `signal` flag across its top edge.
 
 **Tabs:** text tabs on a hairline baseline. The active tab is `ink` with a 3px `rule` underline; the others are `ink-muted`.
 
-**Panel and sheet:** the `head` title with a `#number` link to the issue, then sections separated by hairlines, each with a `label` head: PR (link, draft flag), Restarts (rows of time, then reason), Verdict (the result word in its colour, the sha in tabular figures, the time, then the findings text wrapped at a 70-character measure), Evidence (one link per file, under `/bucket/`).
+**Panel and sheet:** the `head` title with a `#number` link to the issue, then sections separated by hairlines, each with a `label` head: PR (link, draft flag), Failure when the Dispatch Failed (the error in `strong` on the errata rule, then the step it stopped at), Restarts (rows of time, then reason), Verdict (the result word in its colour, the sha in tabular figures, the time, then the findings text wrapped at a 70-character measure), Evidence (one link per file, under `/bucket/`). Opening it moves focus to its title; closing it returns focus to the node or strip row that opened it.
 
 ## Components
 

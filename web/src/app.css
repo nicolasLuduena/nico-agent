@@ -111,6 +111,22 @@ ul {
   margin: 0;
 }
 
+/* A command, set in the text's own face. */
+code {
+  font: inherit;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/* DESIGN.md's errata rule: a refusal, a Dispatch's failure, serve out of reach. */
+.errata {
+  display: grid;
+  gap: 4px;
+  padding: 8px 12px;
+  border-left: 4px solid var(--failed);
+  overflow-wrap: anywhere;
+}
+
 /* DESIGN.md's `label`: kinds, column heads, strip kinds, field labels. */
 .label {
   font-weight: 600;

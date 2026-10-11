@@ -10,6 +10,7 @@ const status = (dispatches: Partial<Dispatch>[], githubPausedUntil: string | nul
     title: "Add the export endpoint",
     repo: "acme/api",
     stage: "Implementing",
+    implementer: { harness: "claude", model: null, effort: null },
     asking: null,
     verdict: null,
     updated_at: "2026-09-30T11:00:00Z",

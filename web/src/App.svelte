@@ -53,7 +53,7 @@
   <!-- The morning summary's slot (spec 3): the page's first section, nothing until morning.md exists. -->
 
   {#if failure}
-    <p class="errata" role="status">{failure}</p>
+    <p class="errata" role="status"><strong>{failure}</strong></p>
   {/if}
 
   {#if status}
@@ -112,18 +112,11 @@
     font-size: 14px;
   }
   .errata {
-    padding: 0 var(--gutter) 12px;
-    color: var(--failed);
-    font-weight: 600;
+    margin: 0 var(--gutter) 12px;
   }
   .none {
     padding: 16px var(--gutter);
     color: var(--ink-muted);
-  }
-  code {
-    font: inherit;
-    font-weight: 600;
-    color: var(--ink);
   }
   .bar {
     display: flex;
@@ -188,7 +181,7 @@
       min-width: 0;
       min-height: 36px;
       padding: 0 8px;
-      border: 1px solid var(--rule);
+      border: 1px solid var(--ink-muted);
       border-radius: 2px;
       background: var(--surface);
       font-weight: 600;

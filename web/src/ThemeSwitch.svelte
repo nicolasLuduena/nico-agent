@@ -55,7 +55,7 @@
     border-radius: 2px;
   }
   button {
-    min-height: 32px;
+    min-height: 36px;
     padding: 0 12px;
     border: 0;
     background: var(--surface);
