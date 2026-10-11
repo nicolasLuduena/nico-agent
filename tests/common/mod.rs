@@ -100,8 +100,13 @@ impl Setup {
 
     /// `GET path` of `serve`: its status and JSON body.
     pub fn get(&self, path: &str) -> (u16, Value) {
-        let Answer::Whole(response) = self.request("GET", path, "") else {
-            panic!("GET {path} answered with a stream");
+        self.send("GET", path, "")
+    }
+
+    /// `method path` of `serve` with `body`: its status and JSON body.
+    pub fn send(&self, method: &str, path: &str, body: &str) -> (u16, Value) {
+        let Answer::Whole(response) = self.request(method, path, body) else {
+            panic!("{method} {path} answered with a stream");
         };
         let body = serde_json::from_str(&response.body)
             .unwrap_or_else(|e| panic!("body is not JSON ({e}): {}", response.body));

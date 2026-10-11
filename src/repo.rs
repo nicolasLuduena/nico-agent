@@ -5,7 +5,7 @@ use toml_edit::{InlineTable, Item, Table, value};
 
 use crate::args::Args;
 use crate::cli::{Context, Refusal, bad_invocation};
-use crate::config::{self, Linear};
+use crate::config::{self, Linear, Switches};
 use crate::dispatch;
 
 pub fn add(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
@@ -153,6 +153,71 @@ pub fn list(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
         })
         .collect();
     Ok(json!({ "repos": repos }))
+}
+
+/// The switches the app shows and sets.
+const SWITCHES: [&str; 5] = ["dispatch", "stack", "review", "restart", "flip"];
+
+/// Write `set`, `{name: bool}`, to the switches of the Repo `slug` in the
+/// config, keeping the rest as written; the Repo's switches after.
+pub fn switches(ctx: &Context, slug: &str, set: &Value) -> Result<Value, Refusal> {
+    let bad = |error: String| Refusal {
+        error,
+        help: vec![format!("Switches: {}", SWITCHES.join(", "))],
+        exit_code: 2,
+    };
+    let set =
+        (set.as_object()).ok_or_else(|| bad(format!("{set} is not an object of switches")))?;
+    for (name, on) in set {
+        if !SWITCHES.contains(&name.as_str()) {
+            return Err(bad(format!("`{name}` is not a switch")));
+        }
+        if !on.is_boolean() {
+            return Err(bad(format!("{name} is true or false, not {on}")));
+        }
+    }
+    config::edit(&ctx.config_dir, |config, doc| {
+        let Some((slug, repo)) = (config.repos.iter()).find(|(s, _)| s.eq_ignore_ascii_case(slug))
+        else {
+            return Err(Refusal::new(
+                format!("{slug} is not a configured Repo"),
+                vec![format!(
+                    "Run `nico-agent repo add {slug} --path <clone>` first"
+                )],
+            ));
+        };
+        let switches = doc["repos"][slug.as_str()]
+            .as_table_like_mut()
+            .expect("load read each Repo as a table")
+            .entry("switches")
+            .or_insert(value(InlineTable::new()))
+            .as_table_like_mut()
+            .expect("load read switches as a table");
+        let mut shown = shown(&repo.switches);
+        for (name, on) in set {
+            shown[name] = on.clone();
+            let mut on = toml_edit::Value::from(on.as_bool().expect("checked above"));
+            match switches.get_mut(name).and_then(Item::as_value_mut) {
+                // With the spacing and comment it was written with.
+                Some(was) => {
+                    *on.decor_mut() = was.decor().clone();
+                    *was = on;
+                }
+                None => {
+                    switches.insert(name, Item::Value(on));
+                }
+            }
+        }
+        Ok(json!({ "switches": shown }))
+    })?
+}
+
+/// `switches` as the app shows them.
+pub fn shown(switches: &Switches) -> Value {
+    let all = serde_json::to_value(switches).expect("switches are plain data");
+    (SWITCHES.iter())
+        .map(|name| (*name, all[name].clone()))
+        .collect()
 }
 
 /// `owner/name`, each part letters, digits, `_`, `.` or `-`.
