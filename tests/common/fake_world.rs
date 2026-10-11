@@ -292,6 +292,15 @@ impl World for FakeWorld {
         Ok(self.files.borrow().get(path).cloned())
     }
 
+    fn list_files(&self, path: &str) -> WorldResult<Vec<String>> {
+        self.call(format!("find {path} -type f"))?;
+        let under = format!("{path}/");
+        let files = self.files.borrow();
+        Ok((files.keys())
+            .filter_map(|file| Some(file.strip_prefix(&under)?.to_string()))
+            .collect())
+    }
+
     fn github_viewer(&self) -> WorldResult<String> {
         self.call("github viewer".into())?;
         Ok(self.viewer.borrow().clone())
@@ -375,6 +384,8 @@ impl World for FakeWorld {
             base_branch: pr.base_branch,
             mergeable: Mergeable::Mergeable,
             updated_at: nico_agent::state::iso(self.clock.get()),
+            merged_at: (pr.state == PrState::Merged)
+                .then(|| nico_agent::state::iso(self.clock.get())),
         })
     }
 

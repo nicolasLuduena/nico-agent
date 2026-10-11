@@ -34,6 +34,8 @@ pub struct Pr {
     /// When GitHub was last asked about it.
     #[serde(default)]
     pub checked_at: Option<String>,
+    #[serde(default)]
+    pub merged_at: Option<String>,
 }
 
 /// Every watched PR, by URL.
@@ -155,6 +157,7 @@ pub fn watch(ctx: &Context, every: bool) -> io::Result<(Vec<String>, Vec<String>
             updated_at: now.updated_at,
             r#final: now.state != PrState::Open,
             checked_at: Some(state::iso(ctx.world.now())),
+            merged_at: now.merged_at,
         };
         save(&ctx.config_dir, &url, pr)?;
         if let Some(issue) = found_for {

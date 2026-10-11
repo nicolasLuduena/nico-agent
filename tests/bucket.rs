@@ -112,6 +112,7 @@ fn a_verdict_with_no_evidence_still_commits_its_findings_and_one_on_another_sha_
             base_branch: "main".into(),
             mergeable: Mergeable::Mergeable,
             updated_at: "2026-09-30T12:30:00Z".into(),
+            merged_at: None,
         },
     );
     t.world
@@ -204,6 +205,50 @@ fn get_bucket_serves_a_file_of_the_bucket_s_working_tree_and_refuses_any_path_ou
         [
             format!("read {BUCKET}/acme/api/7/abc/sign in.png"),
             format!("read {BUCKET}/acme/api/7/abc/gone.png"),
+        ]
+    );
+}
+
+#[test]
+fn get_bucket_of_a_folder_links_every_file_under_it_sandboxed_as_files_are() {
+    let t = setup();
+    t.tick();
+    t.world
+        .add_file(&format!("{BUCKET}/acme/api/7/abc/sign in.png"), b"png");
+    t.world
+        .add_file(&format!("{BUCKET}/acme/api/7/abc/<b>&.txt"), b"odd");
+    t.world
+        .add_file(&format!("{BUCKET}/acme/api/70/abc/shot.png"), b"not 7's");
+    t.world.calls.borrow_mut().clear();
+
+    let (status, headers, body) = get(&t, "/bucket/acme/api/7/");
+    let (missing, _, _) = get(&t, "/bucket/acme/api/8/");
+    let (git, _, _) = get(&t, "/bucket/.git/");
+
+    assert_eq!(status, 200);
+    assert_eq!(
+        headers,
+        [
+            (
+                "Content-Type".to_string(),
+                "text/html; charset=utf-8".to_string()
+            ),
+            ("Content-Security-Policy".into(), "sandbox".into()),
+        ]
+    );
+    assert_eq!(
+        String::from_utf8(body).unwrap(),
+        "<!doctype html>\n<title>/bucket/acme/api/7/</title>\n<ul>\n\
+         <li><a href=\"abc/%3Cb%3E%26.txt\">abc/&lt;b>&amp;.txt</a>\n\
+         <li><a href=\"abc/sign%20in.png\">abc/sign in.png</a>\n\
+         </ul>\n"
+    );
+    assert_eq!((missing, git), (404, 403));
+    assert_eq!(
+        t.world.calls(),
+        [
+            format!("find {BUCKET}/acme/api/7 -type f"),
+            format!("find {BUCKET}/acme/api/8 -type f"),
         ]
     );
 }

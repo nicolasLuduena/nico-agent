@@ -13,6 +13,7 @@ use crate::bucket;
 use crate::cli::{Context, Refusal, bad_invocation};
 use crate::config;
 use crate::dispatch;
+use crate::map;
 use crate::pause;
 use crate::refresh;
 use crate::repo;
@@ -25,6 +26,14 @@ pub const PORT: u16 = 42069;
 /// Every route and what it answers, for help lines.
 const ROUTES: &[(&str, &str)] = &[
     ("GET /api/status", "the status of every Repo and Dispatch"),
+    (
+        "GET /api/map/<owner/name>",
+        "the Repo's issues and how they block and stack on each other",
+    ),
+    (
+        "GET /api/node/<issue>",
+        "the issue's Dispatch, its restarts, its Verdict's findings and its Evidence",
+    ),
     (
         "GET /api/events",
         "a stream of `changed`, sent when state or an Agent state changes",
@@ -40,7 +49,7 @@ const ROUTES: &[(&str, &str)] = &[
     ),
     (
         "GET /bucket/<path>",
-        "a file of the Bucket, where each Verdict's Evidence is kept",
+        "a file of the Bucket, where each Verdict's Evidence is kept, or links to a folder's",
     ),
 ];
 
@@ -50,6 +59,21 @@ pub fn answer(ctx: &Context, request: &HttpRequest) -> Answer {
     match (request.method.as_str(), path) {
         ("GET", "/api/status") => reply(status(ctx)),
         ("GET", "/api/events") => events(ctx),
+        ("GET", path) if let Some(slug) = path.strip_prefix("/api/map/") => {
+            let slug = bucket::unescaped(slug);
+            let help = "Ask for a Repo /api/status lists";
+            found(map::map(ctx, &slug), format!("{slug} is not a Repo"), help)
+        }
+        ("GET", path) if let Some(issue) = path.strip_prefix("/api/node/") => {
+            // `owner/repo#N`, its `#` escaped.
+            let issue = bucket::unescaped(issue);
+            let help = "Ask for an issue /api/status lists among its dispatches";
+            found(
+                map::node(ctx, &issue),
+                format!("{issue} has no Dispatch"),
+                help,
+            )
+        }
         ("POST", "/api/dispatch") => ran(dispatch(ctx, request)),
         ("POST", "/api/refresh") => ran(refresh::refresh(&[], ctx)),
         ("PATCH", path)
@@ -178,6 +202,15 @@ fn reply(answer: Result<Value, Refusal>) -> Answer {
     match answer {
         Ok(answer) => json(200, answer),
         Err(no) => json(500, json!({ "error": no.error, "help": no.help })),
+    }
+}
+
+/// A read of what the path names, answered as [`reply`] does; 404 with
+/// `missing` and `help` when it names nothing.
+fn found(answer: Result<Option<Value>, Refusal>, missing: String, help: &str) -> Answer {
+    match answer {
+        Ok(None) => json(404, json!({ "error": missing, "help": [help] })),
+        answer => reply(answer.map(Option::unwrap_or_default)),
     }
 }
 

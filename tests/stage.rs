@@ -96,6 +96,7 @@ fn a_pr_is_found_on_the_dispatch_branch_once_and_then_watched_by_number() {
             "updated_at": "2026-09-30T12:00:00Z",
             "final": false,
             "checked_at": "2026-09-30T12:00:00Z",
+            "merged_at": null,
         })
     );
 }
@@ -200,6 +201,7 @@ fn the_stage_is_derived_from_the_pr_as_last_seen_and_a_failed_step() {
             base_branch: "main".into(),
             mergeable: Mergeable::Mergeable,
             updated_at: "2026-09-30T12:00:00Z".into(),
+            merged_at: None,
         },
     );
     t.tick();

@@ -50,6 +50,7 @@ fn push(t: &Setup, sha: &str) {
             base_branch: "main".into(),
             mergeable: Mergeable::Mergeable,
             updated_at: "2026-09-30T12:30:00Z".into(),
+            merged_at: None,
         },
     );
 }

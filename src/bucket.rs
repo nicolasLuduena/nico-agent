@@ -50,7 +50,8 @@ pub fn keep(
 }
 
 /// `GET /bucket/<path>`: the file at `path`, URL-escaped, in the Bucket's
-/// working tree; never one outside it, nor its git store.
+/// working tree, or for a folder (`path` ending in `/`) a page of links to
+/// every file under it; never one outside it, nor its git store.
 pub fn file(ctx: &Context, path: &str) -> Answer {
     let path = unescaped(path);
     if path.split('/').any(|part| part == ".." || part == ".git") {
@@ -58,20 +59,15 @@ pub fn file(ctx: &Context, path: &str) -> Answer {
         let help = ["Ask for a file under /bucket/<owner>/<repo>/<issue>/<sha>/"];
         return http::json(403, json!({ "error": error, "help": help }));
     }
+    if path.is_empty() || path.ends_with('/') {
+        return listing(ctx, &path);
+    }
     let read = config::load(&ctx.config_dir).and_then(|config| {
         let file = format!("{}/{path}", config.bucket.path);
         Ok(ctx.world.read_file(&file)?)
     });
     match read {
-        Ok(Some(body)) => Answer::Whole(HttpResponse {
-            status: 200,
-            headers: vec![
-                ("Content-Type".into(), media_type(&path).into()),
-                // Evidence is an agent's output: an HTML page in it runs no script on the app's origin.
-                ("Content-Security-Policy".into(), "sandbox".into()),
-            ],
-            body,
-        }),
+        Ok(Some(body)) => sandboxed(media_type(&path), body),
         Ok(None) => {
             let error = format!("no file {path} in the Bucket");
             let help = ["Each Verdict's Evidence is under /bucket/<owner>/<repo>/<issue>/<sha>/"];
@@ -81,8 +77,67 @@ pub fn file(ctx: &Context, path: &str) -> Answer {
     }
 }
 
+/// The Bucket's `folder` as a page linking each file under it.
+fn listing(ctx: &Context, folder: &str) -> Answer {
+    let files = config::load(&ctx.config_dir)
+        .and_then(|config| files(ctx.world, &config, folder.trim_end_matches('/')));
+    match files {
+        Ok(files) if !files.is_empty() => {
+            let html = |text: &str| text.replace('&', "&amp;").replace('<', "&lt;");
+            let links: String = (files.iter())
+                .map(|f| format!("<li><a href=\"{}\">{}</a>\n", escaped(f), html(f)))
+                .collect();
+            let title = html(&format!("/bucket/{folder}"));
+            let page = format!("<!doctype html>\n<title>{title}</title>\n<ul>\n{links}</ul>\n");
+            sandboxed("text/html; charset=utf-8", page.into())
+        }
+        Ok(_) => {
+            let error = format!("no folder {folder} in the Bucket");
+            let help = ["Each Verdict's Evidence is under /bucket/<owner>/<repo>/<issue>/<sha>/"];
+            http::json(404, json!({ "error": error, "help": help }))
+        }
+        Err(no) => http::json(500, json!({ "error": no.error, "help": no.help })),
+    }
+}
+
+/// `body`, of `media_type`, served so that no script in it runs on the app's
+/// origin: Evidence is an agent's output.
+fn sandboxed(media_type: &str, body: Vec<u8>) -> Answer {
+    Answer::Whole(HttpResponse {
+        status: 200,
+        headers: vec![
+            ("Content-Type".into(), media_type.into()),
+            ("Content-Security-Policy".into(), "sandbox".into()),
+        ],
+        body,
+    })
+}
+
+/// Every file under the Bucket's `folder`, by its path in it; none of its git store.
+pub fn files(world: &dyn World, config: &Config, folder: &str) -> Result<Vec<String>, Refusal> {
+    let path = format!("{}/{folder}", config.bucket.path);
+    let files = world
+        .list_files(path.trim_end_matches('/'))
+        .map_err(refused)?;
+    Ok((files.into_iter())
+        .filter(|f| !f.split('/').any(|part| part == ".git"))
+        .collect())
+}
+
+/// `path` as a URL's path: each byte but `/` and the unreserved ones `%XX`-escaped.
+pub fn escaped(path: &str) -> String {
+    (path.bytes())
+        .map(|b| match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' | b'/' => {
+                char::from(b).to_string()
+            }
+            _ => format!("%{b:02X}"),
+        })
+        .collect()
+}
+
 /// `text` with each `%XX` escape decoded; any other `%` kept as is.
-fn unescaped(text: &str) -> String {
+pub fn unescaped(text: &str) -> String {
     let (bytes, mut out, mut i) = (text.as_bytes(), vec![], 0);
     while i < bytes.len() {
         let hex = (bytes.get(i + 1..i + 3))
@@ -120,7 +175,7 @@ pub fn url(config: &Config, d: &Dispatch) -> String {
 }
 
 /// The Bucket's folder for `d`'s issue: `<repo>/<issue>`.
-fn folder(d: &Dispatch) -> String {
+pub fn folder(d: &Dispatch) -> String {
     format!("{}/{}", d.repo, id(&d.issue))
 }
 
