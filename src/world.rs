@@ -314,6 +314,8 @@ pub trait World {
     fn every(&self, interval: Duration, task: &mut dyn FnMut());
     fn process_id(&self) -> u32;
     fn process_alive(&self, pid: u32) -> bool;
+    /// This boot of the machine: a pid from another boot is another process.
+    fn boot_id(&self) -> String;
 }
 
 /// The World of the running binary.
@@ -1215,5 +1217,9 @@ impl World for RealWorld {
     fn process_alive(&self, pid: u32) -> bool {
         // shortcut: Linux-only liveness check; use kill(pid, 0) if nico-agent ever runs elsewhere.
         std::path::Path::new(&format!("/proc/{pid}")).exists()
+    }
+    fn boot_id(&self) -> String {
+        let id = fs::read_to_string("/proc/sys/kernel/random/boot_id");
+        id.unwrap_or_default().trim().into()
     }
 }

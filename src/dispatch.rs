@@ -21,7 +21,7 @@ use crate::source::{self, BlockerPr, Read, Start};
 use crate::stage;
 use crate::state;
 use crate::verdict;
-use crate::world::{PrState, READY_LABEL};
+use crate::world::{PrState, READY_LABEL, World};
 
 pub const FILE: &str = "dispatches.json";
 
@@ -85,6 +85,9 @@ pub struct Dispatch {
     /// The process running its steps, while one does.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub runner: Option<u32>,
+    /// The boot its runner ran in: a pid from an earlier one is another process.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runner_boot: Option<String>,
     pub created_at: String,
     pub updated_at: String,
     pub closed_at: Option<String>,
@@ -218,6 +221,7 @@ pub fn issue(ctx: &Context, config: &Config, key: &str, flags: Flags) -> Result<
         idle_since: None,
         rebasing: false,
         runner: Some(ctx.world.process_id()),
+        runner_boot: Some(ctx.world.boot_id()),
         created_at: now.clone(),
         updated_at: now,
         closed_at: None,
@@ -277,14 +281,14 @@ fn resume(
         }
         return answer(ctx, &existing, format!("{key} already In flight (no-op)"));
     };
-    let step = STEPS
-        .iter()
-        .find(|s| !leased.completed.iter().any(|c| c == *s));
-    let said = format!(
-        "{key} (resumed from {})",
-        step.expect("a lease leaves steps to do")
-    );
-    run(ctx, config, &repo, leased, said)
+    let step = leased.next_step().expect("a lease leaves steps to do");
+    run(
+        ctx,
+        config,
+        &repo,
+        leased,
+        format!("{key} (resumed from {step})"),
+    )
 }
 
 /// Restart the Implementer whose agent is gone, as the user: never counted
@@ -320,7 +324,7 @@ fn run(
                 error: no.error.clone(),
                 reason: None,
             });
-            record.runner = None;
+            (record.runner, record.runner_boot) = (None, None);
             save(ctx, &mut record)?;
             let mut help = no.help;
             help.push(SEE_STATUS.into());
@@ -334,7 +338,7 @@ fn run(
         record.failure = None;
         save(ctx, &mut record)?;
     }
-    record.runner = None;
+    (record.runner, record.runner_boot) = (None, None);
     save(ctx, &mut record)?;
     answer(ctx, &record, said)
 }
@@ -616,18 +620,29 @@ pub fn is_live(dispatch: &Dispatch, key: &str) -> bool {
     dispatch.issue == key && dispatch.closed_at.is_none()
 }
 
+impl Dispatch {
+    /// Its first step not done, while one is left.
+    pub fn next_step(&self) -> Option<&'static str> {
+        (STEPS.into_iter()).find(|s| !self.completed.iter().any(|c| c == s))
+    }
+
+    /// Whether a live process runs its steps: its runner, in this boot.
+    pub fn running(&self, world: &dyn World) -> bool {
+        self.runner.is_some_and(|pid| world.process_alive(pid))
+            && self.runner_boot.as_deref() == Some(&world.boot_id())
+    }
+}
+
 /// Take over the live Dispatch of `key` to run its steps, when steps are left
 /// and no live process runs them.
 fn lease(ctx: &Context, key: &str) -> io::Result<Option<Dispatch>> {
     update(&ctx.config_dir, |all| {
         let dispatch = all.iter_mut().find(|d| is_live(d, key))?;
-        let busy = dispatch
-            .runner
-            .is_some_and(|pid| ctx.world.process_alive(pid));
-        if busy || dispatch.completed.len() == STEPS.len() {
+        if dispatch.running(ctx.world) || dispatch.next_step().is_none() {
             return None;
         }
         dispatch.runner = Some(ctx.world.process_id());
+        dispatch.runner_boot = Some(ctx.world.boot_id());
         Some(dispatch.clone())
     })
 }

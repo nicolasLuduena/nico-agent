@@ -55,6 +55,8 @@ pub struct FakeWorld {
     pub logged: RefCell<Vec<String>>,
     pub pid: Cell<u32>,
     pub dead_pids: RefCell<Vec<u32>>,
+    /// This boot of the machine; a restart of it is a new one.
+    pub boot: RefCell<String>,
     workspaces: Cell<u32>,
     tabs: RefCell<HashMap<String, u32>>,
 }
@@ -89,6 +91,7 @@ impl Default for FakeWorld {
             logged: Default::default(),
             pid: Cell::new(4242),
             dead_pids: Default::default(),
+            boot: RefCell::new("boot-1".into()),
             workspaces: Cell::new(0),
             tabs: Default::default(),
         }
@@ -576,6 +579,10 @@ impl World for FakeWorld {
 
     fn process_alive(&self, pid: u32) -> bool {
         !self.dead_pids.borrow().contains(&pid)
+    }
+
+    fn boot_id(&self) -> String {
+        self.boot.borrow().clone()
     }
 }
 

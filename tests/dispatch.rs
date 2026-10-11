@@ -589,6 +589,7 @@ fn a_dispatch_another_live_process_runs_is_left_to_it_until_that_process_is_gone
     // Process 5000 took it over and is opening the tab.
     edit_dispatch(&t, |d| {
         d["runner"] = json!(5000);
+        d["runner_boot"] = json!("boot-1");
         d["failure"] = Value::Null;
     });
     t.world.calls.borrow_mut().clear();
@@ -601,6 +602,53 @@ fn a_dispatch_another_live_process_runs_is_left_to_it_until_that_process_is_gone
         during.json()["dispatched"],
         "acme/api#7 already In flight (no-op)"
     );
+    assert_eq!(after.json()["dispatched"], "acme/api#7 (resumed from tab)");
+    assert_eq!(t.world.calls(), ALL[6..]);
+}
+
+/// `with_issue`, with acme/api#7 dispatched by process 5000, which got as far
+/// as opening its tab.
+fn running_in_5000() -> Setup {
+    let t = with_issue();
+    t.world.fail_call("herdr tab create", "it broke");
+    dispatch_7(&t);
+    t.world.clear_failures();
+    edit_dispatch(&t, |d| {
+        d["runner"] = json!(5000);
+        d["runner_boot"] = json!("boot-1");
+        d["failure"] = Value::Null;
+    });
+    t
+}
+
+#[test]
+fn a_dispatch_whose_process_died_mid_steps_is_taken_up_by_the_tick_where_it_stopped() {
+    let t = running_in_5000();
+
+    let during = t.tick();
+    t.world.dead_pids.borrow_mut().push(5000);
+    t.world.calls.borrow_mut().clear();
+    let after = t.tick();
+
+    assert_eq!(during, Vec::<String>::new());
+    assert_eq!(after, ["acme/api#7 continued from tab"]);
+    assert_eq!(
+        herdr_calls(&t),
+        ["herdr agent list", ALL[6], ALL[7], ALL[9]]
+    );
+    let shown = &status(&t)["dispatches"][0];
+    assert_eq!(shown["completed"].as_array().unwrap().len(), 7);
+}
+
+#[test]
+fn after_a_reboot_a_lease_whose_pid_is_alive_again_is_another_process_and_dispatch_takes_it_up() {
+    let t = running_in_5000();
+    // The machine restarted, and pid 5000 is some other process now.
+    *t.world.boot.borrow_mut() = "boot-2".into();
+    t.world.calls.borrow_mut().clear();
+
+    let after = dispatch_7(&t);
+
     assert_eq!(after.json()["dispatched"], "acme/api#7 (resumed from tab)");
     assert_eq!(t.world.calls(), ALL[6..]);
 }

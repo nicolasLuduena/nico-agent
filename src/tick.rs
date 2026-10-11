@@ -39,6 +39,7 @@ pub fn tick(ctx: &Context) -> Result<Vec<String>, Refusal> {
     let agents = list_agents(ctx, &mut said)?;
     // 4. Restart what broke: rebooted, stalled (#240); conflict, retarget (#244); verdict (#243).
     said.extend(restart::step(ctx, &config, agents.as_deref(), &no_pr)?);
+    said.extend(take_up(ctx, &config)?);
     // 5. Start Reviewers (#242).
     said.extend(review::start_reviewers(ctx, &config, agents.as_deref())?);
     // 6. Flip Verified PRs to ready (#243).
@@ -129,19 +130,54 @@ fn fill_rooms(
         let readiness = source::readiness(read, &dispatches, &prs);
         let stackable = (readiness.stackable.into_iter()).filter(|_| repo.switches.stack);
         for row in readiness.ready.into_iter().chain(stackable).take(room) {
-            match dispatch::issue(ctx, config, &row.key, Flags::default()) {
-                Ok(answer) => {
-                    said.push(format!("{} dispatched", row.key));
-                    let warnings = answer["warnings"].as_array().into_iter().flatten();
-                    said.extend(warnings.filter_map(|w| w.as_str().map(String::from)));
-                }
-                // Failed at a step: it is live, so it holds its slot till resumed by hand.
-                Err(no) => {
-                    said.push(no.error);
-                    said.extend(restart::announce(ctx, &row.key)?);
-                }
-            }
+            let done = format!("{} dispatched", row.key);
+            said.extend(run_steps(ctx, config, &row.key, done)?);
         }
     }
     Ok(said)
+}
+
+/// (4) Take up, behind each Repo's `restart` switch, each live Dispatch
+/// whose steps stopped short with no live process running them (it died, or
+/// the machine restarted), from the step it stopped at, as `dispatch` does.
+fn take_up(ctx: &Context, config: &Config) -> Result<Vec<String>, Refusal> {
+    let mut said = vec![];
+    for d in dispatch::load(&ctx.config_dir)? {
+        let Some(step) = d.next_step() else {
+            continue;
+        };
+        if d.closed_at.is_none()
+            && d.failure.is_none()
+            && !d.running(ctx.world)
+            && config.repo_of(&d).switches.restart
+        {
+            let done = format!("{} continued from {step}", d.issue);
+            said.extend(run_steps(ctx, config, &d.issue, done)?);
+        }
+    }
+    Ok(said)
+}
+
+/// Run the steps of `key`'s Dispatch as `dispatch` does: `done` and its
+/// warnings, or why it failed, said once to the user too.
+fn run_steps(
+    ctx: &Context,
+    config: &Config,
+    key: &str,
+    done: String,
+) -> Result<Vec<String>, Refusal> {
+    Ok(match dispatch::issue(ctx, config, key, Flags::default()) {
+        Ok(answer) => {
+            let warnings = answer["warnings"].as_array().into_iter().flatten();
+            [done]
+                .into_iter()
+                .chain(warnings.filter_map(|w| w.as_str().map(String::from)))
+                .collect()
+        }
+        // Failed at a step: it is live, so it holds its room till dispatched by hand.
+        Err(no) => [no.error]
+            .into_iter()
+            .chain(restart::announce(ctx, key)?)
+            .collect(),
+    })
 }
