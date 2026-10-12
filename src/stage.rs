@@ -11,7 +11,7 @@ use crate::cli::Context;
 use crate::dispatch::{self, Dispatch};
 use crate::pause;
 use crate::state;
-use crate::verdict::{Outcome, Verdict};
+use crate::verdict::{self, Outcome, Verdict};
 use crate::world::{Mergeable, PrState};
 
 pub const FILE: &str = "prs.json";
@@ -59,8 +59,7 @@ pub enum Stage {
 
 /// Where `dispatch` stands, given its PR as last seen and its latest Verdict.
 pub fn of(dispatch: &Dispatch, pr: Option<&Pr>, verdict: Option<&Verdict>) -> Stage {
-    let passed =
-        |pr: &Pr| verdict.is_some_and(|v| v.result == Outcome::Pass && v.sha == pr.head_sha);
+    let passed = |pr| on_head(pr, verdict).is_some_and(|v| v.result == Outcome::Pass);
     match pr {
         Some(pr) if pr.state == PrState::Merged => Stage::Merged,
         Some(pr) if pr.state == PrState::Closed => Stage::Closed,
@@ -69,6 +68,41 @@ pub fn of(dispatch: &Dispatch, pr: Option<&Pr>, verdict: Option<&Verdict>) -> St
         Some(_) => Stage::PrDraft,
         None => Stage::Implementing,
     }
+}
+
+/// `verdict`, if it is on `pr`'s current head: a push after it leaves it on
+/// a head the PR no longer has, and then it no longer counts.
+fn on_head<'v>(pr: &Pr, verdict: Option<&'v Verdict>) -> Option<&'v Verdict> {
+    verdict.filter(|v| v.sha == pr.head_sha)
+}
+
+/// Where a Dispatch stands: its PR, its Stage and its latest Verdict.
+pub struct Standing<'a> {
+    /// Its PR's URL and what GitHub last said of it.
+    pub pr: Option<(&'a String, &'a Pr)>,
+    pub stage: Stage,
+    /// Its latest Verdict, on whatever head: what `status` shows.
+    pub latest_verdict: Option<Verdict>,
+}
+
+impl Standing<'_> {
+    /// Its latest Verdict if on its PR's current head: the only one that counts.
+    pub fn verdict_on_head(&self) -> Option<&Verdict> {
+        let (_, pr) = self.pr?;
+        on_head(pr, self.latest_verdict.as_ref())
+    }
+}
+
+/// Where `d` stands, its PR among `prs` and its Verdict read from `config_dir`.
+pub fn standing<'a>(config_dir: &Path, prs: &'a Prs, d: &Dispatch) -> io::Result<Standing<'a>> {
+    let pr = pr_of(prs, d);
+    let latest_verdict = verdict::load(config_dir, &d.issue)?;
+    let stage = of(d, pr.map(|(_, pr)| pr), latest_verdict.as_ref());
+    Ok(Standing {
+        pr,
+        stage,
+        latest_verdict,
+    })
 }
 
 /// The PR `d` found, by its URL, as GitHub last said of it.

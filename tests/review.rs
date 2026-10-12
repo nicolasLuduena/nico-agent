@@ -394,6 +394,33 @@ fn a_failing_verdict_keeps_its_findings_restarts_the_implementer_once_and_no_rev
 }
 
 #[test]
+fn a_failing_verdict_on_a_head_pushed_over_before_the_tick_restarts_nothing_and_a_reviewer_starts_for_the_new_head()
+ {
+    let t = reviewing();
+    let file = findings(&t, "Signing in shows a 500.\n");
+    verdict(
+        &t,
+        &["acme/api#7", "fail", "--sha", "sha9", "--findings", &file],
+    );
+    push(&t, "sha10");
+    t.world.advance(TICK);
+
+    let (said, calls) = calls_after(&t, || t.tick());
+
+    assert_eq!(said, ["acme/api#7: Reviewer started on codex for sha10"]);
+    assert_eq!(
+        herdr(&calls),
+        [
+            "herdr tab close w1:t3",
+            "herdr tab create --workspace w1 --cwd /worktrees/api-7 --label reviewer --no-focus",
+            r#"herdr agent start rev-api-7 --kind codex --pane w1:p4 -- -c projects={"/src/api"={trust_level="trusted"}}"#,
+            &review_prompt("sha10"),
+        ]
+    );
+    assert_eq!(stage(&t), "PR draft");
+}
+
+#[test]
 fn a_third_failing_verdict_marks_the_dispatch_failed_notifies_once_and_starts_no_reviewer_after() {
     let t = reviewing();
     let file = findings(&t, "Signing in shows a 500.\n");

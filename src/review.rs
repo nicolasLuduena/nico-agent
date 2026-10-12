@@ -10,7 +10,6 @@ use crate::config::{Config, fill_in};
 use crate::dispatch::{self, Dispatch};
 use crate::launch::{self, AgentLaunch};
 use crate::stage::{self, Pr, Stage};
-use crate::verdict;
 use crate::world::{self, Agent};
 
 /// A Dispatch's latest Reviewer.
@@ -45,18 +44,19 @@ pub fn start_reviewers(
         if !repo.switches.review {
             continue;
         }
-        let Some((url, pr)) = stage::pr_of(&prs, &d) else {
+        let standing = stage::standing(&ctx.config_dir, &prs, &d)?;
+        let Some((url, pr)) = standing.pr else {
             continue;
         };
-        let verdict = verdict::load(&ctx.config_dir, &d.issue)?;
         let gone = |r: &&Reviewer| {
             agents.is_some_and(|a| world::agent_state(a, &r.launch.agent).is_none())
         };
         let prompted = (d.reviewer.as_ref())
             .filter(|r| !gone(r))
             .and_then(|r| r.sha.as_ref());
-        if stage::of(&d, Some(pr), verdict.as_ref()) != Stage::PrDraft
-            || [prompted, verdict.as_ref().map(|v| &v.sha)].contains(&Some(&pr.head_sha))
+        if standing.stage != Stage::PrDraft
+            || standing.verdict_on_head().is_some()
+            || prompted == Some(&pr.head_sha)
         {
             continue;
         }

@@ -7,7 +7,6 @@ use crate::config::Config;
 use crate::dispatch;
 use crate::pause;
 use crate::stage::{self, Pr, Stage};
-use crate::verdict;
 
 /// (6) Flip to ready, behind each Repo's `flip` switch, the PR of every
 /// Verified Dispatch while it is draft, once per passing Verdict: one put
@@ -22,14 +21,14 @@ pub fn step(ctx: &Context, config: &Config) -> io::Result<Vec<String>> {
     let live = dispatch::load(&ctx.config_dir)?.into_iter();
     for d in live.filter(|d| d.closed_at.is_none()) {
         let on = config.repo_of(&d).switches.flip;
-        let Some((url, pr)) = stage::pr_of(&prs, &d) else {
+        let standing = stage::standing(&ctx.config_dir, &prs, &d)?;
+        let Some((url, pr)) = standing.pr else {
             continue;
         };
-        let verdict = verdict::load(&ctx.config_dir, &d.issue)?;
         if !on
             || !pr.draft
             || d.flipped.as_ref() == Some(&pr.head_sha)
-            || stage::of(&d, Some(pr), verdict.as_ref()) != Stage::Verified
+            || standing.stage != Stage::Verified
         {
             continue;
         }
