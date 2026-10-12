@@ -87,10 +87,22 @@ pub fn step(
                 agent_reason(&mut d, agents, &now, stalled)
             }),
         };
-        match reason {
-            Some(reason) => said.extend(by_loop(ctx, config, d, reason)?),
-            None if d != seen => dispatch::save(ctx, &mut d)?,
-            None => {}
+        if d != seen {
+            // Only what the reasons noted: a retarget's Base, rebasing, idle since when.
+            dispatch::edit(ctx, &d.issue, |live| {
+                if d.base != seen.base {
+                    live.base.clone_from(&d.base);
+                }
+                if d.rebasing != seen.rebasing {
+                    live.rebasing = d.rebasing;
+                }
+                if d.idle_since != seen.idle_since {
+                    live.idle_since.clone_from(&d.idle_since);
+                }
+            })?;
+        }
+        if let Some(reason) = reason {
+            said.extend(by_loop(ctx, config, d, reason)?);
         }
     }
     Ok(said)
@@ -150,7 +162,8 @@ fn by_loop(
             error,
             reason: Some(reason),
         });
-        dispatch::save(ctx, &mut record)?;
+        let failure = record.failure.clone();
+        dispatch::edit(ctx, &record.issue, |live| live.failure = failure)?;
         return Ok([said]
             .into_iter()
             .chain(announce_failed(ctx, &record))
@@ -175,13 +188,17 @@ pub fn restart(
     reason: Reason,
     by: &str,
 ) -> io::Result<Result<(), Refusal>> {
-    record.restarts.push(Restart {
+    let new = Restart {
         at: state::iso(ctx.world.now()),
         reason,
         by: by.into(),
-    });
+    };
+    record.restarts.push(new.clone());
     record.idle_since = None;
-    dispatch::save(ctx, record)?;
+    dispatch::edit(ctx, &record.issue, |live| {
+        live.restarts.push(new);
+        live.idle_since = None;
+    })?;
     let text = prompt(ctx, config, record, reason)?;
     let failed = relaunch(ctx, config, record, &text).err();
     record.failure = failed.as_ref().map(|(step, no)| Failure {
@@ -189,7 +206,10 @@ pub fn restart(
         error: no.error.clone(),
         reason: Some(reason),
     });
-    dispatch::save(ctx, record)?;
+    let relaunched = (record.implementer.clone(), record.failure.clone());
+    dispatch::edit(ctx, &record.issue, |live| {
+        (live.implementer, live.failure) = relaunched
+    })?;
     let Some((step, mut no)) = failed else {
         return Ok(Ok(()));
     };

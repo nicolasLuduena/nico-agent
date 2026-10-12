@@ -1,6 +1,6 @@
 mod common;
 
-use common::{Ran, Setup, github_issue, setup};
+use common::{Ran, Setup, edit_dispatch, github_issue, setup};
 use serde_json::{Value, json};
 
 const FLAGS: [&str; 6] = ["--harness", "claude", "--model", "opus", "--effort", "high"];
@@ -581,14 +581,6 @@ fn a_linear_issue_is_dispatched_into_the_repo_that_claims_it_on_linears_branch()
     assert_eq!(status(&t)["dispatches"][0]["issue"], "BLE-1");
 }
 
-/// Change the Dispatch of `acme/api#7` in `dispatches.json`, as another process would.
-fn edit_dispatch(t: &Setup, change: impl FnOnce(&mut Value)) {
-    let file = t.config_dir.join("dispatches.json");
-    let mut all: Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
-    change(&mut all[0]);
-    std::fs::write(&file, all.to_string()).unwrap();
-}
-
 #[test]
 fn a_dispatch_another_live_process_runs_is_left_to_it_until_that_process_is_gone() {
     let t = with_issue();
@@ -596,7 +588,7 @@ fn a_dispatch_another_live_process_runs_is_left_to_it_until_that_process_is_gone
     dispatch_7(&t);
     t.world.clear_failures();
     // Process 5000 took it over and is opening the tab.
-    edit_dispatch(&t, |d| {
+    edit_dispatch(&t.config_dir, |d| {
         d["runner"] = json!(5000);
         d["runner_boot"] = json!("boot-1");
         d["failure"] = Value::Null;
@@ -625,7 +617,7 @@ fn running_in_5000() -> Setup {
     t.world.fail_call("herdr tab create", "it broke");
     dispatch_7(&t);
     t.world.clear_failures();
-    edit_dispatch(&t, |d| {
+    edit_dispatch(&t.config_dir, |d| {
         d["runner"] = json!(5000);
         d["runner_boot"] = json!("boot-1");
         d["failure"] = Value::Null;
@@ -675,7 +667,7 @@ fn rebooted_before_prompt() -> Setup {
     let t = with_issue();
     t.world.stalled_prompts.set(3);
     dispatch_7(&t);
-    edit_dispatch(&t, |d| {
+    edit_dispatch(&t.config_dir, |d| {
         d["runner"] = json!(5000);
         d["runner_boot"] = json!("boot-1");
         d["failure"] = Value::Null;

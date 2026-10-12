@@ -7,11 +7,17 @@ use std::time::{Duration, SystemTime};
 
 use nico_agent::world::*;
 
+/// A write another process makes during an outside call.
+pub type Meanwhile = Box<dyn Fn()>;
+
 pub struct FakeWorld {
     /// Every outside call, in order.
     pub calls: RefCell<Vec<String>>,
     /// Calls that fail with a message, by a prefix of the recorded call.
     pub failures: RefCell<Vec<(String, String)>>,
+    /// What runs during each call recorded as starting with a prefix, as
+    /// another process would write meanwhile.
+    pub meanwhile: RefCell<Vec<(String, Meanwhile)>>,
     pub viewer: RefCell<String>,
     pub linear_user: RefCell<String>,
     /// Remotes of each clone, by path.
@@ -70,6 +76,7 @@ impl Default for FakeWorld {
         FakeWorld {
             calls: Default::default(),
             failures: Default::default(),
+            meanwhile: Default::default(),
             viewer: RefCell::new("me".into()),
             linear_user: RefCell::new("linear-me".into()),
             clones: Default::default(),
@@ -166,6 +173,11 @@ impl FakeWorld {
             .push((prefix.into(), message.into()));
     }
 
+    /// Run `meanwhile` during every call recorded as starting with `prefix`.
+    pub fn during_call(&self, prefix: &str, meanwhile: impl Fn() + 'static) {
+        (self.meanwhile.borrow_mut()).push((prefix.into(), Box::new(meanwhile)));
+    }
+
     pub fn clear_failures(&self) {
         self.failures.borrow_mut().clear();
     }
@@ -222,6 +234,11 @@ impl FakeWorld {
             .iter()
             .find(|(prefix, _)| text.starts_with(prefix.as_str()))
             .map(|(_, m)| m.clone());
+        for (prefix, write) in self.meanwhile.borrow().iter() {
+            if text.starts_with(prefix.as_str()) {
+                write();
+            }
+        }
         self.calls.borrow_mut().push(text);
         failure.map_or(Ok(()), |message| Err(WorldError(message)))
     }

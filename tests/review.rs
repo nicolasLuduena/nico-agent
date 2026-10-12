@@ -2,7 +2,7 @@ mod common;
 
 use std::time::Duration;
 
-use common::{Ran, Setup, github_issue, pull_request, setup};
+use common::{Ran, Setup, edit_dispatch, github_issue, pull_request, setup};
 use nico_agent::world::{Mergeable, PrState, PullRequest, PullRequestActivity};
 use serde_json::{Value, json};
 
@@ -265,6 +265,29 @@ fn a_passing_verdict_flips_the_draft_pr_to_ready_once_and_nothing_else_is_writte
     assert_eq!(
         (&shown["stage"], &shown["pr"]["draft"]),
         (&json!("Verified"), &json!(false))
+    );
+}
+
+#[test]
+fn an_answer_kept_while_the_pr_is_flipped_survives_the_flip() {
+    let t = reviewing();
+    verdict(&t, &["acme/api#7", "pass", "--sha", "sha9"]);
+    t.world.advance(TICK);
+    let answer = json!({
+        "since": "2026-09-30T12:05:00Z", "at": "2026-09-30T12:25:00Z",
+        "question": "Which database?", "text": "Postgres", "by": "user",
+    });
+    let (dir, kept) = (t.config_dir.clone(), answer.clone());
+    t.world.during_call("github pr ready acme/api#9", move || {
+        edit_dispatch(&dir, |d| d["answers"] = json!([kept]))
+    });
+
+    t.tick();
+
+    let shown = &t.cli(&["status", "--json"]).json()["dispatches"][0];
+    assert_eq!(
+        (&shown["answers"], &shown["flipped"]),
+        (&json!([answer]), &json!("sha9"))
     );
 }
 

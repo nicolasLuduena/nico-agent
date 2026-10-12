@@ -20,7 +20,7 @@ pub fn step(ctx: &Context, config: &Config) -> io::Result<Vec<String>> {
     }
     let prs = stage::load(&ctx.config_dir)?;
     let live = dispatch::load(&ctx.config_dir)?.into_iter();
-    for mut d in live.filter(|d| d.closed_at.is_none()) {
+    for d in live.filter(|d| d.closed_at.is_none()) {
         let on = config.repo_of(&d).switches.flip;
         let Some((url, pr)) = stage::pr_of(&prs, &d) else {
             continue;
@@ -40,8 +40,8 @@ pub fn step(ctx: &Context, config: &Config) -> io::Result<Vec<String>> {
                     ..pr.clone()
                 };
                 stage::save(&ctx.config_dir, url, ready)?;
-                d.flipped = Some(pr.head_sha.clone());
-                dispatch::save(ctx, &mut d)?;
+                let head = pr.head_sha.clone();
+                dispatch::edit(ctx, &d.issue, |live| live.flipped = Some(head))?;
                 said.push(format!("{}: PR {url} flipped to ready", d.issue));
             }
             Err(e) => {

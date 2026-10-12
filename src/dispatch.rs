@@ -671,12 +671,25 @@ fn lease(ctx: &Context, key: &str) -> io::Result<Option<Dispatch>> {
     })
 }
 
-/// Save `record` over the live Dispatch of its issue, stamped now.
-pub fn save(ctx: &Context, record: &mut Dispatch) -> io::Result<()> {
+/// Save `record` over the live Dispatch of its issue, stamped now: only for
+/// the process holding its lease.
+fn save(ctx: &Context, record: &mut Dispatch) -> io::Result<()> {
     record.updated_at = state::iso(ctx.world.now());
     update(&ctx.config_dir, |all| {
         if let Some(saved) = all.iter_mut().find(|d| is_live(d, &record.issue)) {
             *saved = record.clone();
+        }
+    })
+}
+
+/// Set the fields `change` sets on the live Dispatch of `issue`, stamped now:
+/// what another process wrote to its other fields meanwhile stands.
+pub fn edit(ctx: &Context, issue: &str, change: impl FnOnce(&mut Dispatch)) -> io::Result<()> {
+    let now = state::iso(ctx.world.now());
+    update(&ctx.config_dir, |all| {
+        if let Some(live) = all.iter_mut().find(|d| is_live(d, issue)) {
+            change(live);
+            live.updated_at = now;
         }
     })
 }
