@@ -71,7 +71,7 @@ struct RelationNode {
 struct RelatedNode {
     identifier: String,
     title: String,
-    state: Option<StateNode>,
+    state: StateNode,
 }
 
 #[derive(Deserialize)]
@@ -166,7 +166,7 @@ fn to_issue(world: &RealWorld, node: IssueNode) -> WorldResult<LinearIssue> {
             .map(|r| LinearBlocker {
                 identifier: r.issue.identifier,
                 title: r.issue.title,
-                state: r.issue.state.map(|s| s.kind).unwrap_or_default(),
+                state: r.issue.state.kind,
             })
             .collect(),
         has_sub_issues: !node.children.nodes.is_empty(),
