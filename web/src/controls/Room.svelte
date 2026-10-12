@@ -66,7 +66,6 @@
     border: 1px solid var(--ink-muted);
     border-radius: 2px;
     background: var(--surface);
-    font-variant-numeric: tabular-nums;
   }
   input:disabled {
     opacity: 0.5;

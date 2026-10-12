@@ -1,7 +1,7 @@
 //! `repo add|rm|list`: which Repos the loop works, kept in `config.toml`.
 
 use serde_json::{Value, json};
-use toml_edit::{InlineTable, Item, Table, value};
+use toml_edit::{InlineTable, Item, Table, TableLike, value};
 
 use crate::args::Args;
 use crate::bucket;
@@ -193,17 +193,7 @@ pub fn switches(ctx: &Context, slug: &str, set: &Value) -> Result<Value, Refusal
         let mut shown = shown(&repo.switches);
         for (name, on) in set {
             shown[name] = on.clone();
-            let mut on = toml_edit::Value::from(on.as_bool().expect("checked above"));
-            match switches.get_mut(name).and_then(Item::as_value_mut) {
-                // With the spacing and comment it was written with.
-                Some(was) => {
-                    *on.decor_mut() = was.decor().clone();
-                    *was = on;
-                }
-                None => {
-                    switches.insert(name, Item::Value(on));
-                }
-            }
+            set_kept(switches, name, on.as_bool().expect("checked above").into());
         }
         Ok(json!({ "switches": shown }))
     })?
@@ -244,19 +234,22 @@ pub fn room(ctx: &Context, slug: &str, set: &Value) -> Result<Value, Refusal> {
         let repo = doc["repos"][slug.as_str()]
             .as_table_like_mut()
             .expect("load read each Repo as a table");
-        let mut new = toml_edit::Value::from(i64::from(room));
-        match repo.get_mut("room").and_then(Item::as_value_mut) {
-            // With the spacing and comment it was written with.
-            Some(was) => {
-                *new.decor_mut() = was.decor().clone();
-                *was = new;
-            }
-            None => {
-                repo.insert("room", Item::Value(new));
-            }
-        }
+        set_kept(repo, "room", i64::from(room).into());
         Ok(json!({ "slug": slug, "room": room }))
     })?
+}
+
+/// Set `key` of `table` to `new`, with the spacing and comment it was written with.
+fn set_kept(table: &mut dyn TableLike, key: &str, mut new: toml_edit::Value) {
+    match table.get_mut(key).and_then(Item::as_value_mut) {
+        Some(was) => {
+            *new.decor_mut() = was.decor().clone();
+            *was = new;
+        }
+        None => {
+            table.insert(key, Item::Value(new));
+        }
+    }
 }
 
 /// The refusal of a `slug` the config has no Repo for.

@@ -43,7 +43,7 @@ Preconditions:
   The ARIA snapshot has `spinbutton "Room": "5"` and that paragraph under it.
 - **Set it on the page.** Run `$C page --evidence "$E/11-page-set" --click "spinbutton=Room" --press Control+a --press 2 --press Enter --wait 2`.
   `.requests.txt` has `PATCH /api/repo/verify/fixture {"room":2} -> 200`; the snapshot has
-  `spinbutton "Room": "2"`; `config.toml` has `room = 2`.
+  `spinbutton "Room": "2"`; `cp "$CONFIG_DIR/config.toml" "$E/11-page-set.config.toml"` has `room = 2`.
 - **Refused on the page.** Run `$C page --evidence "$E/12-page-refused" --click "spinbutton=Room" --press Control+a --press 0 --press Tab --expect "room is a whole number of at least 1, not 0"`.
   `.requests.txt` has `PATCH ... {"room":0} -> 400`; the snapshot has `spinbutton "Room": "2"` and an
   `alert` with the error and help; `config.toml` still has `room = 2`.
