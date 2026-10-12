@@ -1,13 +1,14 @@
 //! `refresh`: re-ask on purpose. Every Repo's Source is read again, then a
 //! tick runs that asks about every watched PR once, final ones included, so
-//! an undone merge or a hand-changed label shows up now. A paused Source
-//! stays paused.
+//! an undone merge or a hand-changed label shows up now; then each Repo's
+//! Readiness checks run again. A paused Source stays paused.
 
 use std::time::Duration;
 
 use serde_json::{Value, json};
 
 use crate::args::Args;
+use crate::checks;
 use crate::cli::{Context, Refusal};
 use crate::config;
 use crate::source;
@@ -27,6 +28,7 @@ pub fn refresh(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
         repos.push(shown);
     }
     let actions = tick::tick(ctx, true)?;
+    checks::run(ctx, &config, |_, _| true)?;
     let prs: Vec<Value> = (stage::load(&ctx.config_dir)?.into_iter())
         .map(|(url, pr)| json!({ "url": url, "state": pr.state, "final": pr.r#final }))
         .collect();

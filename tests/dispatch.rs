@@ -478,7 +478,8 @@ fn prompts(t: &Setup) -> Vec<String> {
 }
 
 #[test]
-fn the_prompt_has_the_bot_suffix_only_when_the_github_app_is_installed_on_the_repo() {
+fn the_prompt_has_the_bot_suffix_only_when_the_github_app_is_installed_on_the_repo_and_no_dispatch_warns_of_it()
+ {
     let installed = with_issue();
     installed
         .world
@@ -497,12 +498,8 @@ fn the_prompt_has_the_bot_suffix_only_when_the_github_app_is_installed_on_the_re
     let plain = "herdr agent prompt impl-api-7 /implement https://github.com/acme/api/issues/7 as draft PR against main, saving its Evidence under .evidence/7/ in the worktree and linking it to http://127.0.0.1:42069/bucket/acme/api/7/";
     assert_eq!(prompts(&installed), [format!("{plain}{BOT_SUFFIX}")]);
     assert_eq!(prompts(&unchecked), [plain]);
-    assert_eq!(
-        ran.json()["warnings"],
-        json!([
-            "could not check the GitHub App on acme/api, so the prompt has no bot suffix: `ghbot` is not installed or not on PATH"
-        ])
-    );
+    // The Repo's bot check says it, once.
+    assert_eq!(ran.json()["warnings"], Value::Null);
 }
 
 #[test]

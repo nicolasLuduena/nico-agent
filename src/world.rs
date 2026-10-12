@@ -255,6 +255,14 @@ pub trait World {
     /// Whether what `folder`, a path in the clone at `path`, holds is not its
     /// last commit's: a file new, changed or staged in it.
     fn git_changed(&self, path: &str, folder: &str) -> WorldResult<bool>;
+    /// Whether origin answers the clone at `path` without asking anything: a
+    /// key not loaded fails at once rather than waiting on its passphrase.
+    fn git_ls_remote(&self, path: &str) -> WorldResult<()>;
+    /// What `file` holds at `rev` in the clone at `path`; `None` when it has no such file.
+    fn git_show(&self, path: &str, rev: &str, file: &str) -> WorldResult<Option<String>>;
+    /// The names of what the folder `folder` holds at `rev` in the clone at
+    /// `path`; none when it has no such folder.
+    fn git_ls_tree(&self, path: &str, rev: &str, folder: &str) -> WorldResult<Vec<String>>;
 
     // files outside the config directory: worktrees, the Bucket
     /// Copy the files [`World::list_files`] lists under the folder `from`
@@ -267,6 +275,9 @@ pub trait World {
     /// Every file under the folder `path`, by its path from there, sorted,
     /// without symlinks nor git's `.git`; none when there is no such folder.
     fn list_files(&self, path: &str) -> WorldResult<Vec<String>>;
+    /// Whether the folder `dir` (`~/` the home directory) holds the skill
+    /// `name`: its `<name>/SKILL.md`, through symlinks.
+    fn has_skill(&self, dir: &str, name: &str) -> bool;
 
     // gh
     /// Login of the user's own GitHub session.
@@ -783,11 +794,17 @@ fn git(dir: &Path, args: &[&str]) -> WorldResult<(bool, String)> {
 /// Run `git -C <path> <args>`, never prompting: what it printed, trimmed, or
 /// its failure with git's first line about it.
 fn git_ok(path: &str, args: &[&str]) -> WorldResult<String> {
+    git_env(path, args, &[])
+}
+
+/// [`git_ok`] with `env` set too.
+fn git_env(path: &str, args: &[&str], env: &[(&str, &str)]) -> WorldResult<String> {
     let ran = Command::new("git")
         .arg("-C")
         .arg(path)
         .args(args)
         .env("GIT_TERMINAL_PROMPT", "0")
+        .envs(env.iter().copied())
         .stdin(Stdio::null())
         .output()
         .map_err(|e| WorldError(format!("could not run git: {e}")))?;
@@ -834,6 +851,14 @@ fn list_tree(dir: &Path, under: &Path, files: &mut Vec<PathBuf>) -> io::Result<(
         }
     }
     Ok(())
+}
+
+/// `path` with a leading `~/` the home directory.
+fn home(path: &str) -> PathBuf {
+    match path.strip_prefix("~/") {
+        Some(rest) => std::env::home_dir().unwrap_or_default().join(rest),
+        None => PathBuf::from(path),
+    }
 }
 
 /// A failed command's first line on stderr, else its exit status.
@@ -991,6 +1016,28 @@ impl World for RealWorld {
     fn git_changed(&self, path: &str, folder: &str) -> WorldResult<bool> {
         git_ok(path, &["status", "--porcelain", "--", folder]).map(|out| !out.is_empty())
     }
+    fn git_ls_remote(&self, path: &str) -> WorldResult<()> {
+        // ConnectTimeout: an unreachable origin does not hold serve's start, which checks it.
+        let ssh = (
+            "GIT_SSH_COMMAND",
+            "ssh -o BatchMode=yes -o ConnectTimeout=10",
+        );
+        git_env(path, &["ls-remote", "origin"], &[ssh]).map(drop)
+    }
+    fn git_show(&self, path: &str, rev: &str, file: &str) -> WorldResult<Option<String>> {
+        // Lists nothing for a file `rev` lacks; fails for a `rev` the clone lacks.
+        if git_ok(path, &["ls-tree", "--name-only", rev, "--", file])?.is_empty() {
+            return Ok(None);
+        }
+        git_ok(path, &["show", &format!("{rev}:{file}")]).map(Some)
+    }
+    fn git_ls_tree(&self, path: &str, rev: &str, folder: &str) -> WorldResult<Vec<String>> {
+        let folder = format!("{folder}/");
+        let listed = git_ok(path, &["ls-tree", "--name-only", rev, &folder])?;
+        Ok((listed.lines())
+            .map(|name| name.strip_prefix(&folder).unwrap_or(name).to_string())
+            .collect())
+    }
     fn copy_dir(&self, from: &str, to: &str) -> WorldResult<()> {
         copy_tree(Path::new(from), Path::new(to))
             .map_err(|e| WorldError(format!("could not copy {from} to {to}: {e}")))
@@ -1018,6 +1065,9 @@ impl World for RealWorld {
             .collect();
         files.sort();
         Ok(files)
+    }
+    fn has_skill(&self, dir: &str, name: &str) -> bool {
+        home(dir).join(name).join("SKILL.md").is_file()
     }
     fn github_viewer(&self) -> WorldResult<String> {
         let args = ["api", "user", "--jq", ".login"].map(String::from);
@@ -1397,10 +1447,7 @@ impl World for RealWorld {
         model: &str,
         effort: Option<&str>,
     ) -> WorldResult<()> {
-        let file = match file.strip_prefix("~/") {
-            Some(rest) => std::env::home_dir().unwrap_or_default().join(rest),
-            None => PathBuf::from(file),
-        };
+        let file = home(file);
         let shown = file.display();
         let fix = |problem: &str| WorldError(format!("{shown} {problem}; fix or delete it"));
         let mut saved: Value = match fs::read_to_string(&file) {

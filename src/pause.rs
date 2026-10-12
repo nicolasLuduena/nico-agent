@@ -165,6 +165,15 @@ impl World for Guarded<'_> {
     fn git_changed(&self, path: &str, folder: &str) -> WorldResult<bool> {
         self.world.git_changed(path, folder)
     }
+    fn git_ls_remote(&self, path: &str) -> WorldResult<()> {
+        self.world.git_ls_remote(path)
+    }
+    fn git_show(&self, path: &str, rev: &str, file: &str) -> WorldResult<Option<String>> {
+        self.world.git_show(path, rev, file)
+    }
+    fn git_ls_tree(&self, path: &str, rev: &str, folder: &str) -> WorldResult<Vec<String>> {
+        self.world.git_ls_tree(path, rev, folder)
+    }
     fn copy_dir(&self, from: &str, to: &str) -> WorldResult<()> {
         self.world.copy_dir(from, to)
     }
@@ -176,6 +185,9 @@ impl World for Guarded<'_> {
     }
     fn list_files(&self, path: &str) -> WorldResult<Vec<String>> {
         self.world.list_files(path)
+    }
+    fn has_skill(&self, dir: &str, name: &str) -> bool {
+        self.world.has_skill(dir, name)
     }
     fn herdr_worktree_create(
         &self,

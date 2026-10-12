@@ -78,13 +78,17 @@ pub fn setup() -> Setup {
 impl Setup {
     /// Run one tick of the loop: `serve` with its timer off, which ticks once.
     /// What it logged, a line per action, taken out of the log unstamped.
-    /// The call `serve` makes to listen is taken out too: only the tick's are left.
+    /// The calls `serve` makes before its tick, its Readiness checks and its
+    /// listen, are taken out too: only the tick's are left.
     pub fn tick(&self) -> Vec<String> {
         let runs = self.world.timer_runs.replace(0);
         let start = self.world.logged.borrow().len();
-        let listen = self.world.calls.borrow().len();
+        let served = self.world.calls.borrow().len();
         let ran = self.cli(&["serve"]);
-        self.world.calls.borrow_mut().remove(listen);
+        let mut calls = self.world.calls.borrow_mut();
+        let listen = (calls[served..].iter()).position(|c| c.starts_with("listen "));
+        calls.drain(served..=served + listen.expect("serve listens"));
+        drop(calls);
         self.world.timer_runs.set(runs);
         assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
         let said: Vec<String> = (self.world.logged.borrow_mut().drain(start..))

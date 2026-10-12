@@ -1,7 +1,8 @@
 <script lang="ts">
-  // The column right of the map: the Dispatch form, then the Repo's room, its
-  // switches and settings, then its removal.
+  // The column right of the map: the Repo's Readiness checks, the Dispatch
+  // form, then its room, its switches and settings, then its removal.
   import type { Repo, Status } from "../status";
+  import Checks from "./Checks.svelte";
   import DispatchForm from "./DispatchForm.svelte";
   import Remove from "./Remove.svelte";
   import Room from "./Room.svelte";
@@ -17,6 +18,7 @@
 <div class="controls">
   <!-- A new tab starts the column fresh: no other Repo's picks, saves or refusals. -->
   {#key repo.slug}
+    <Checks {repo} />
     <DispatchForm {repo} {status} />
     <Room {repo} {status} {project} />
     <Switches {repo} {project} />

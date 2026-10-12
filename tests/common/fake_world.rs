@@ -70,6 +70,8 @@ pub struct FakeWorld {
     pub files: RefCell<BTreeMap<String, Vec<u8>>>,
     /// The files of `files` as each clone's last commit of them holds them.
     pub committed: RefCell<BTreeMap<String, Vec<u8>>>,
+    /// Files at a commit of a clone, by `<path> <rev>:<file>`.
+    pub tree: RefCell<BTreeMap<String, String>>,
     /// How far local time is ahead of UTC, in seconds: 0, UTC, unless set.
     pub utc_offset: Cell<i64>,
     workspaces: Cell<u32>,
@@ -111,6 +113,7 @@ impl Default for FakeWorld {
             boot: RefCell::new("boot-1".into()),
             files: Default::default(),
             committed: Default::default(),
+            tree: Default::default(),
             utc_offset: Cell::new(0),
             workspaces: Cell::new(0),
             tabs: Default::default(),
@@ -226,6 +229,11 @@ impl FakeWorld {
         self.files.borrow_mut().insert(path.into(), contents.into());
     }
 
+    /// Put `file`, holding `text`, at `rev` of the clone at `path`.
+    pub fn add_tree_file(&self, path: &str, rev: &str, file: &str, text: &str) {
+        (self.tree.borrow_mut()).insert(format!("{path} {rev}:{file}"), text.into());
+    }
+
     pub fn logged(&self) -> Vec<String> {
         self.logged.borrow().clone()
     }
@@ -311,6 +319,31 @@ impl World for FakeWorld {
             .any(|(file, bytes)| committed.get(file) != Some(bytes)))
     }
 
+    fn git_ls_remote(&self, path: &str) -> WorldResult<()> {
+        self.call(format!(
+            "GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND=\"ssh -o BatchMode=yes -o ConnectTimeout=10\" git -C {path} ls-remote origin"
+        ))
+    }
+
+    fn git_show(&self, path: &str, rev: &str, file: &str) -> WorldResult<Option<String>> {
+        self.call(format!("git -C {path} show {rev}:{file}"))?;
+        Ok(self
+            .tree
+            .borrow()
+            .get(&format!("{path} {rev}:{file}"))
+            .cloned())
+    }
+
+    fn git_ls_tree(&self, path: &str, rev: &str, folder: &str) -> WorldResult<Vec<String>> {
+        self.call(format!("git -C {path} ls-tree --name-only {rev} {folder}/"))?;
+        let under = format!("{path} {rev}:{folder}/");
+        let mut names: Vec<String> = (self.tree.borrow().keys())
+            .filter_map(|key| Some(key.strip_prefix(&under)?.split('/').next()?.to_string()))
+            .collect();
+        names.dedup();
+        Ok(names)
+    }
+
     fn copy_dir(&self, from: &str, to: &str) -> WorldResult<()> {
         self.call(format!("cp -r {from}/. {to}"))?;
         let mut files = self.files.borrow_mut();
@@ -344,6 +377,11 @@ impl World for FakeWorld {
             .filter_map(|file| Some(file.strip_prefix(&under)?.to_string()))
             .filter(|file| !file.split('/').any(|part| part == ".git"))
             .collect())
+    }
+
+    fn has_skill(&self, dir: &str, name: &str) -> bool {
+        let file = format!("{dir}/{name}/SKILL.md");
+        self.call(format!("test -f {file}")).is_ok() && self.files.borrow().contains_key(&file)
     }
 
     fn github_viewer(&self) -> WorldResult<String> {

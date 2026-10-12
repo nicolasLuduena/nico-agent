@@ -38,7 +38,8 @@ it binds the rebuild.
 - **A map per Repo.** A node per issue with its kind (code or research) and
   state (Ready, Implementing, PR draft, Verified, Merged); edges for
   Blockers; a stacked PR drawn to the PR it targets. A needs-you strip across
-  Repos on top: Asking, failed twice, Verified PRs to merge. The morning
+  Repos on top: Asking, failed twice, Verified PRs to merge, a failing
+  Readiness check (what will break a Repo before it does). The morning
   summary renders first each day. A Refresh button is the one way to ask
   GitHub again.
 - **Local first.** What GitHub or Linear said is kept locally and shown from

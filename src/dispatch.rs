@@ -438,12 +438,13 @@ fn claim(ctx: &Context, record: &mut Dispatch) {
 }
 
 /// The implement prompt, or research for a Research issue, with the bot
-/// suffix when the GitHub App is installed on the Repo, asked each time.
+/// suffix when the GitHub App is installed on the Repo, asked each time;
+/// when it cannot be asked, the Repo's bot check says so.
 fn implement_prompt(
     ctx: &Context,
     config: &Config,
     harness: &Harness,
-    record: &mut Dispatch,
+    record: &Dispatch,
 ) -> String {
     let prompts = &config.prompts;
     let template = if record.research {
@@ -460,18 +461,11 @@ fn implement_prompt(
         ("bucketUrl", &bucket_url),
     ];
     let text = fill_in(template, &values);
-    match ctx.world.github_app_repos() {
-        Ok(repos) if repos.iter().any(|r| r.eq_ignore_ascii_case(&record.repo)) => {
-            text + &fill_in(&prompts.bot_suffix, &values)
-        }
-        Ok(_) => text,
-        Err(e) => {
-            record.warnings.push(format!(
-                "could not check the GitHub App on {}, so the prompt has no bot suffix: {e}",
-                record.repo
-            ));
-            text
-        }
+    let installed = (ctx.world.github_app_repos())
+        .is_ok_and(|repos| repos.iter().any(|r| r.eq_ignore_ascii_case(&record.repo)));
+    match installed {
+        true => text + &fill_in(&prompts.bot_suffix, &values),
+        false => text,
     }
 }
 

@@ -71,7 +71,8 @@ commands, and observable proof.
   refusals, the Bucket commits on a PR head and a Verdict, `/bucket/` and the node panel's Evidence
   links.
 - [The page's tabs and strip](./page-tabs-strip.md) covers the Repo tabs (click, keys, phone
-  select) and the needs-you strip's Asking, Blocked, Failed, Review, Verified and Paused rows.
+  select) and the needs-you strip's Asking, Blocked, Failed, Review, Verified and Paused rows (its
+  Check rows are in [checks.md](./checks.md)).
 - [Where each PR's review stands](./review.md) covers `review` in `status` and the page: the node's
   line under a PR draft Stage, the panel's Review section, and the strip's Review row for a review
   given up on.
@@ -83,6 +84,10 @@ commands, and observable proof.
   written to `config.toml`, and the loop obeying a switch turned off.
 - [Room](./room.md) covers `PATCH /api/repo/<slug>` with `{room}`, the page's Room input and its
   in-flight line, what is written to `config.toml`, and the loop filling a raised room.
+- [Readiness checks](./checks.md) covers each Repo's checks (clone, fetch, `.evidence/` ignored,
+  verification skill, skills, GitHub App) in `status`, `checks.json`, the needs-you strip's Check
+  rows and the tab's Readiness section; run on Refresh and after a settings write, and flipping
+  once the user fixes what one says.
 - [Refresh](./refresh.md) covers the page's Refresh button, `POST /api/refresh` and `nico-agent
   refresh`, and what the tick it runs does, down to a Stacked dispatch whose PR below merged or
   closed unmerged.
