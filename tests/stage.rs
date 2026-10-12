@@ -258,6 +258,89 @@ fn a_dispatch_whose_pr_is_final_is_closed_freeing_its_worktree_and_workspace_and
     assert_eq!(open["closed_at"], Value::Null);
 }
 
+/// PR `n` on issue 7's branch, in `state`, opened at `created_at`.
+fn pr_at(n: u64, state: PrState, created_at: &str) -> PullRequest {
+    PullRequest {
+        created_at: created_at.into(),
+        ..pr(n, "agent/api-7", state)
+    }
+}
+
+/// Issue 7's Dispatch, as `dispatches.json` holds it.
+fn dispatch_7(t: &Setup) -> Value {
+    let file = std::fs::read_to_string(t.config_dir.join("dispatches.json")).unwrap();
+    let all: Value = serde_json::from_str(&file).unwrap();
+    all.as_array().unwrap()[0].clone()
+}
+
+#[test]
+fn a_pr_opened_and_merged_or_closed_between_two_ticks_is_linked_and_its_dispatch_closed() {
+    for (state, stage) in [(PrState::Merged, "Merged"), (PrState::Closed, "Closed")] {
+        let t = dispatched();
+        t.tick();
+        // Issue 7 was dispatched at 12:00:00; both are final before the next tick, and 9 is the newer.
+        t.world
+            .add_pr(pr_at(8, PrState::Closed, "2026-09-30T12:00:00Z"));
+        t.world.add_pr(pr_at(9, state, "2026-09-30T12:00:30Z"));
+        t.world.advance(Duration::from_secs(60));
+
+        let calls = tick_calls(&t, &[WATCH, CLOSE].concat());
+
+        assert_eq!(
+            calls,
+            [
+                "github branch prs acme/api:agent/api-7",
+                "github pr activity acme/api#9",
+                "herdr worktree remove --workspace w1",
+                "herdr workspace close w1",
+            ]
+        );
+        let d = dispatch_7(&t);
+        assert_eq!(d["pr"], "https://github.com/acme/api/pull/9");
+        assert_eq!(d["closed_at"], "2026-09-30T12:01:00Z");
+        assert_eq!(status(&t)["dispatches"][0]["stage"], stage);
+    }
+}
+
+#[test]
+fn a_merged_or_closed_pr_opened_before_the_dispatch_started_is_an_earlier_dispatchs() {
+    let t = dispatched();
+    t.tick();
+    let before = dispatch_7(&t);
+    // Issue 7 was dispatched at 12:00:00.
+    t.world
+        .add_pr(pr_at(5, PrState::Merged, "2026-09-30T11:59:59Z"));
+    t.world
+        .add_pr(pr_at(6, PrState::Closed, "2026-09-30T11:00:00Z"));
+
+    let calls = tick_calls(&t, &[WATCH, CLOSE].concat());
+
+    assert_eq!(calls, ["github branch prs acme/api:agent/api-7"]);
+    assert_eq!(dispatch_7(&t), before);
+}
+
+#[test]
+fn an_open_pr_is_linked_over_a_final_one_on_the_same_branch() {
+    let t = dispatched();
+    t.world
+        .add_pr(pr_at(9, PrState::Open, "2026-09-30T12:00:10Z"));
+    t.world
+        .add_pr(pr_at(10, PrState::Merged, "2026-09-30T12:00:20Z"));
+
+    let calls = tick_calls(&t, &[WATCH, CLOSE].concat());
+
+    assert_eq!(
+        calls,
+        [
+            "github branch prs acme/api:agent/api-7",
+            "github pr activity acme/api#9",
+        ]
+    );
+    let d = dispatch_7(&t);
+    assert_eq!(d["pr"], "https://github.com/acme/api/pull/9");
+    assert_eq!(d["closed_at"], Value::Null);
+}
+
 /// Issue 7 dispatched with PR 9 seen, and merged since.
 fn merged() -> Setup {
     let t = dispatched();

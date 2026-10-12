@@ -144,6 +144,8 @@ pub struct PullRequest {
     pub state: PrState,
     pub base_branch: String,
     pub head_branch: Option<String>,
+    /// When it was opened, ISO 8601 as GitHub gives it.
+    pub created_at: String,
 }
 
 /// What is happening on a PR now.
@@ -706,7 +708,7 @@ const LINKED_PRS_QUERY: &str = "query($owner: String!, $name: String!, $number: 
   repository(owner: $owner, name: $name) {
     issue(number: $number) {
       closedByPullRequestsReferences(first: 20) {
-        nodes { number url state baseRefName headRefName headRepository { nameWithOwner } repository { nameWithOwner } }
+        nodes { number url state baseRefName headRefName createdAt headRepository { nameWithOwner } repository { nameWithOwner } }
       }
     }
   }
@@ -720,12 +722,14 @@ struct LinkedPrNode {
     state: String,
     base_ref_name: String,
     head_ref_name: String,
+    created_at: String,
     head_repository: Option<Repository>,
     repository: Repository,
 }
 
 /// The fields `gh pr view` and `gh pr list` give a PR by.
-const LISTED_PR_FIELDS: &str = "number,url,state,baseRefName,headRefName,isCrossRepository";
+const LISTED_PR_FIELDS: &str =
+    "number,url,state,baseRefName,headRefName,isCrossRepository,createdAt";
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -736,6 +740,7 @@ struct ListedPr {
     base_ref_name: String,
     head_ref_name: String,
     is_cross_repository: bool,
+    created_at: String,
 }
 
 fn pr_state(state: &str) -> PrState {
@@ -756,6 +761,7 @@ impl ListedPr {
             base_branch: self.base_ref_name,
             // A fork's head is not fetchable as origin/<head branch> in this clone.
             head_branch: (!self.is_cross_repository).then_some(self.head_ref_name),
+            created_at: self.created_at,
         }
     }
 }
@@ -1073,6 +1079,7 @@ impl World for RealWorld {
                     state: pr_state(&pr.state),
                     base_branch: pr.base_ref_name,
                     head_branch: own_head.then_some(pr.head_ref_name),
+                    created_at: pr.created_at,
                     repo,
                 }
             })

@@ -12,7 +12,7 @@ use crate::dispatch::{self, Dispatch};
 use crate::pause;
 use crate::state;
 use crate::verdict::{self, Outcome, Verdict};
-use crate::world::{Mergeable, PrState};
+use crate::world::{Mergeable, PrState, PullRequest};
 
 pub const FILE: &str = "prs.json";
 
@@ -155,10 +155,7 @@ pub fn watch(ctx: &Context, every: bool) -> io::Result<(Vec<String>, Vec<String>
     }
     for d in live().filter(|d| d.pr.is_none()) {
         match ctx.world.github_branch_pull_requests(&d.repo, &d.branch) {
-            // Only an open one: a closed PR on the branch is an earlier Dispatch's.
-            Ok(prs) => match (prs.into_iter())
-                .find(|pr| pr.state == PrState::Open && pr.head_branch.as_ref() == Some(&d.branch))
-            {
+            Ok(prs) => match its_pr(d, &prs) {
                 Some(pr) => asks.push((pr.url, d.repo.clone(), pr.number, Some(d.issue.clone()))),
                 None => no_pr.push(d.issue.clone()),
             },
@@ -201,6 +198,18 @@ pub fn watch(ctx: &Context, every: bool) -> io::Result<(Vec<String>, Vec<String>
         }
     }
     Ok((said, no_pr))
+}
+
+/// `d`'s PR among `prs` on its branch: an open one, else the newest merged or
+/// closed one opened since `d` started, since a PR can be merged or closed
+/// before any tick sees it open. One opened before is an earlier Dispatch's.
+fn its_pr(d: &Dispatch, prs: &[PullRequest]) -> Option<PullRequest> {
+    let ours = || (prs.iter()).filter(|pr| pr.head_branch.as_ref() == Some(&d.branch));
+    (ours().find(|pr| pr.state == PrState::Open))
+        .or_else(|| {
+            (ours().filter(|pr| pr.created_at >= d.created_at)).max_by_key(|pr| &pr.created_at)
+        })
+        .cloned()
 }
 
 pub fn save(config_dir: &Path, url: &str, pr: Pr) -> io::Result<()> {
