@@ -461,30 +461,10 @@ fn answer(world: &RealWorld, handler: &Handler, mut stream: TcpStream) -> io::Re
     }
 }
 
-/// The World of the running binary.
-pub struct RealWorld {
-    /// Where `secrets.env` may hold the Linear API key.
-    pub config_dir: PathBuf,
-}
-
-/// Run `gh` (or `ghbot`, its bot twin) with prompts and colors off: whether
-/// it succeeded, its stdout and stderr.
-fn gh_run(bin: &str, args: &[String]) -> WorldResult<(bool, String, String)> {
-    let ran = Command::new(bin)
-        .args(args)
-        .env("GH_PROMPT_DISABLED", "1")
-        .env("NO_COLOR", "1")
-        .stdin(Stdio::null())
-        .output()
-        .map_err(|_| WorldError(format!("`{bin}` is not installed or not on PATH")))?;
-    let text = |bytes: &[u8]| String::from_utf8_lossy(bytes).into_owned();
-    Ok((ran.status.success(), text(&ran.stdout), text(&ran.stderr)))
-}
-
 /// Send a request to a service nico-agent doesn't run; any status is a
-/// response. Through `curl`, with the headers on its stdin: on its command
-/// line, any user's `ps` would show an API key.
-fn http(request: &HttpRequest) -> WorldResult<HttpResponse> {
+/// response. The headers go on `curl`'s stdin: on its command line, any
+/// user's `ps` would show an API key.
+fn curl(request: &HttpRequest) -> WorldResult<HttpResponse> {
     let unreachable =
         |reason: &str| WorldError(format!("could not reach {}: {reason}", request.url));
     let mut curl = Command::new("curl");
@@ -533,6 +513,26 @@ fn http(request: &HttpRequest) -> WorldResult<HttpResponse> {
         headers,
         body: body.into(),
     })
+}
+
+/// The World of the running binary.
+pub struct RealWorld {
+    /// Where `secrets.env` may hold the Linear API key.
+    pub config_dir: PathBuf,
+}
+
+/// Run `gh` (or `ghbot`, its bot twin) with prompts and colors off: whether
+/// it succeeded, its stdout and stderr.
+fn gh_run(bin: &str, args: &[String]) -> WorldResult<(bool, String, String)> {
+    let ran = Command::new(bin)
+        .args(args)
+        .env("GH_PROMPT_DISABLED", "1")
+        .env("NO_COLOR", "1")
+        .stdin(Stdio::null())
+        .output()
+        .map_err(|_| WorldError(format!("`{bin}` is not installed or not on PATH")))?;
+    let text = |bytes: &[u8]| String::from_utf8_lossy(bytes).into_owned();
+    Ok((ran.status.success(), text(&ran.stdout), text(&ran.stderr)))
 }
 
 /// Run `gh`: what it printed, or its failure in words the user can act on.
