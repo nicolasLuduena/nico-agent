@@ -721,3 +721,180 @@ fn a_fail_without_findings_or_a_verdict_not_pass_or_fail_or_without_sha_is_a_bad
         );
     }
 }
+
+/// Where the review of the first Dispatch's PR stands, as `status --json` shows it.
+fn review(t: &Setup) -> Value {
+    t.cli(&["status", "--json"]).json()["dispatches"][0]["review"].clone()
+}
+
+#[test]
+fn a_reviewer_working_on_the_head_shows_the_review_as_reviewing_on_its_harness() {
+    let t = reviewing();
+
+    assert_eq!(
+        review(&t),
+        json!({ "state": "reviewing", "sha": "sha9", "harness": "codex", "attempts": 0, "cap": 2 })
+    );
+}
+
+#[test]
+fn a_reviewer_that_went_idle_on_the_head_without_a_verdict_shows_as_stopped_on_the_page() {
+    let t = reviewing();
+    t.world
+        .agents
+        .borrow_mut()
+        .insert("rev-api-7".into(), "idle".into());
+
+    let (status, page) = t.get("/api/status");
+
+    let stopped =
+        json!({ "state": "stopped", "sha": "sha9", "harness": "codex", "attempts": 0, "cap": 2 });
+    assert_eq!(review(&t), stopped);
+    assert_eq!((status, &page["dispatches"][0]["review"]), (200, &stopped));
+}
+
+#[test]
+fn a_passing_verdict_on_the_head_shows_the_review_as_passed() {
+    let t = reviewing();
+
+    verdict(&t, &["acme/api#7", "pass", "--sha", "sha9"]);
+
+    assert_eq!(
+        review(&t),
+        json!({ "state": "passed", "sha": "sha9", "harness": "codex", "attempts": 0, "cap": 2 })
+    );
+}
+
+#[test]
+fn a_failing_verdict_on_the_head_shows_the_review_as_failed_while_its_reviewer_still_works() {
+    let t = reviewing();
+    let file = findings(&t, "Signing in shows a 500.\n");
+
+    verdict(
+        &t,
+        &["acme/api#7", "fail", "--sha", "sha9", "--findings", &file],
+    );
+
+    let shown = &t.cli(&["status", "--json"]).json()["dispatches"][0];
+    assert_eq!(shown["agent_state"]["reviewer"], "working");
+    assert_eq!(shown["review"]["state"], "failed");
+}
+
+#[test]
+fn a_reviewer_that_failed_to_start_within_the_cap_shows_the_review_as_retrying_with_its_attempts() {
+    let t = with_pr("");
+    t.world
+        .fail_call("herdr agent start rev-api-7", "agent_name_taken: rev-api-7");
+
+    t.tick();
+    let once = review(&t);
+    t.world.advance(TICK);
+    t.tick();
+
+    assert_eq!(
+        once,
+        json!({ "state": "retrying", "sha": "sha9", "harness": "codex", "attempts": 1, "cap": 2 })
+    );
+    assert_eq!(review(&t)["attempts"], 2);
+    assert_eq!(review(&t)["state"], "retrying");
+}
+
+#[test]
+fn a_reviewer_that_failed_to_start_past_the_cap_shows_the_review_as_given_up_on_the_page() {
+    let t = with_pr("");
+    t.world
+        .fail_call("herdr agent start rev-api-7", "agent_name_taken: rev-api-7");
+
+    for _ in 0..3 {
+        t.tick();
+        t.world.advance(TICK);
+    }
+
+    let gave_up =
+        json!({ "state": "gave_up", "sha": "sha9", "harness": "codex", "attempts": 3, "cap": 2 });
+    assert_eq!(review(&t), gave_up);
+    assert_eq!(t.get("/api/status").1["dispatches"][0]["review"], gave_up);
+    assert_eq!(t.get("/api/node/acme%2Fapi%237").1["review"], gave_up);
+    assert_eq!(t.get("/api/map/acme/api").1["nodes"][0]["review"], gave_up);
+}
+
+#[test]
+fn with_review_off_the_review_shows_as_off_even_with_a_verdict_on_the_head() {
+    let t = with_pr("switches = { review = false }");
+    t.tick();
+
+    let before = review(&t);
+    verdict(&t, &["acme/api#7", "pass", "--sha", "sha9"]);
+
+    assert_eq!(
+        before,
+        json!({ "state": "off", "sha": "sha9", "harness": null, "attempts": 0, "cap": 2 })
+    );
+    assert_eq!(review(&t)["state"], "off");
+}
+
+#[test]
+fn a_review_switched_on_after_the_pr_appeared_shows_as_waiting_for_the_next_tick() {
+    let t = with_pr("switches = { review = false }");
+    t.tick();
+    let config = "[repos.\"acme/api\"]\npath = \"/src/api\"\n";
+    std::fs::write(t.config_dir.join("config.toml"), config).unwrap();
+
+    let waiting = review(&t);
+    t.world.advance(TICK);
+    t.tick();
+
+    assert_eq!(
+        waiting,
+        json!({ "state": "waiting", "sha": "sha9", "harness": null, "attempts": 0, "cap": 2 })
+    );
+    assert_eq!(review(&t)["state"], "reviewing");
+}
+
+#[test]
+fn a_reviewer_gone_from_herdr_before_its_verdict_counts_as_an_attempt_before_the_tick_starts_another()
+ {
+    let t = reviewing();
+    t.world.agents.borrow_mut().remove("rev-api-7");
+
+    let gone = review(&t);
+    t.world.advance(TICK);
+    t.tick();
+
+    assert_eq!(
+        gone,
+        json!({ "state": "retrying", "sha": "sha9", "harness": "codex", "attempts": 1, "cap": 2 })
+    );
+    assert_eq!(
+        review(&t),
+        json!({ "state": "reviewing", "sha": "sha9", "harness": "codex", "attempts": 1, "cap": 2 })
+    );
+}
+
+#[test]
+fn a_reviewer_gone_from_herdr_at_the_cap_shows_as_given_up_before_and_after_the_tick_and_with_herdr_down()
+ {
+    let t = reviewing();
+    for _ in 0..2 {
+        t.world.agents.borrow_mut().remove("rev-api-7");
+        t.world.advance(TICK);
+        t.tick();
+    }
+    t.world.agents.borrow_mut().remove("rev-api-7");
+
+    let before = review(&t);
+    t.world.advance(TICK);
+    let said = t.tick();
+    let after = review(&t);
+    t.world
+        .fail_call("herdr agent list", "herdr_unreachable: herdr is down");
+    let herdr_down = review(&t);
+
+    let gave_up =
+        json!({ "state": "gave_up", "sha": "sha9", "harness": "codex", "attempts": 3, "cap": 2 });
+    assert_eq!(said, [STOPPED]);
+    assert_eq!(
+        (before, after, herdr_down),
+        (gave_up.clone(), gave_up.clone(), gave_up)
+    );
+}

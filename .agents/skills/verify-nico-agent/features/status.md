@@ -13,7 +13,7 @@ the cache alone, plus what the page shows beside each map.
 - `status-not-ready` issues not labelled, waiting on a Blocker without PR, or assigned to someone else are in no list (`gardening`, the Ready `gardening` issues, is empty: the fixture has none).
 - `status-stale` a read older than a tick asks GitHub again; refused, the cache is still shown, with `error`.
 - `status-paused` a paused GitHub is asked nothing: `sources.github.paused_until` is set, an uncached Repo's `error` says when it is asked again.
-- `status-dispatches` each Dispatch with `stage` (`Failed`, `PR draft`, `Implementing`, `Verified`), `agent_state` `unknown` while herdr does not answer, `verdict` and `pr`.
+- `status-dispatches` each Dispatch with `stage` (`Failed`, `PR draft`, `Implementing`, `Verified`), `agent_state` `unknown` while herdr does not answer, `review` (see review.md), `verdict` and `pr`.
 - `status-api` `GET /api/status` holds the command's `sources` and `dispatches`, and per Repo also `switches`, `room`, `implementer`, `reviewer`, `harnesses`, `prs_checked_at` and `github_paused_until`.
 
 ## How to get to it (user POV)

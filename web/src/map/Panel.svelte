@@ -1,12 +1,13 @@
 <script lang="ts">
   // The open node's panel (desktop) or bottom sheet (phone): what the map
   // node knows, and for an issue with a Dispatch, /api/node/<issue>: its PR,
-  // restarts, Verdict with findings, and Evidence in the Bucket.
+  // restarts, review and Verdict with findings, and Evidence in the Bucket.
   import { onMount } from "svelte";
   import { ticked } from "../controls/Refused.svelte";
   import { watch } from "../live";
   import { selection } from "../selection.svelte";
-  import { number, type Stage } from "../status";
+  import * as review from "../review";
+  import { number, type Review, type Stage } from "../status";
   import { clock } from "../time";
   import Mark from "./Mark.svelte";
   import { shown } from "./RepoMap.svelte";
@@ -16,6 +17,7 @@
     pr: { url: string; draft: boolean; state: string; merged_at: string | null } | null;
     restarts: { at: string; reason: string; by: string }[];
     verdict: { result: "pass" | "fail"; sha: string; at: string; findings: string | null } | null;
+    review: Review | null;
     failure: { step: string; error: string } | null;
     evidence_folder: string;
     evidence: { path: string; url: string }[];
@@ -155,7 +157,11 @@
       </section>
 
       <section>
-        <h3 class="label">Verdict</h3>
+        <h3 class="label">Review</h3>
+        <!-- A Verdict on the head says it itself, below. -->
+        {#if full.review && full.review.state !== "passed" && full.review.state !== "failed"}
+          <p class="said">{@render ticked(review.said(issue, full.review))}</p>
+        {/if}
         {#if full.verdict}
           <p class="row">
             <span>
@@ -165,7 +171,7 @@
             <span class="at">{clock(full.verdict.at)}</span>
           </p>
           {#if full.verdict.findings}<p class="findings">{full.verdict.findings}</p>{/if}
-        {:else}
+        {:else if !full.review}
           <p class="note">No Verdict yet.</p>
         {/if}
       </section>
@@ -295,6 +301,13 @@
   }
   .sha {
     margin-left: 8px;
+  }
+  .said {
+    max-width: 70ch;
+    overflow-wrap: anywhere;
+  }
+  .said + .row {
+    margin-top: 8px;
   }
   .findings {
     margin-top: 8px;

@@ -8,6 +8,7 @@ use crate::cli::{Context, Refusal, bad_invocation};
 use crate::config::{self, Config};
 use crate::dispatch::{self, Dispatch};
 use crate::pause;
+use crate::review;
 use crate::source;
 use crate::stage::{self, Prs, Stage};
 use crate::world::{self, AgentState};
@@ -117,11 +118,8 @@ pub fn shown(
     };
     let mut shown_dispatches = vec![];
     for d in dispatches {
-        let stage::Standing {
-            pr,
-            stage,
-            latest_verdict,
-        } = stage::standing(&ctx.config_dir, prs, d)?;
+        let standing = stage::standing(&ctx.config_dir, prs, d)?;
+        let (pr, stage) = (standing.pr, standing.stage);
         let (slug, harness) = (&d.repo, &d.implementer.harness);
         let mut warnings = d.warnings.clone();
         if d.closed_at.is_none() {
@@ -152,7 +150,8 @@ pub fn shown(
                 shown["faux_nico"] = json!(run);
             }
         }
-        shown["verdict"] = json!(latest_verdict);
+        shown["review"] = json!(review::shown(config, d, &standing, agents.as_deref()));
+        shown["verdict"] = json!(standing.latest_verdict);
         shown["pr"] = pr.map_or(Value::Null, |(url, pr)| {
             let mut pr = json!(pr);
             pr["url"] = json!(url);

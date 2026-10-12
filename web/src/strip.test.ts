@@ -12,6 +12,7 @@ const status = (dispatches: Partial<Dispatch>[], githubPausedUntil: string | nul
     stage: "Implementing",
     implementer: { harness: "claude", model: null, effort: null },
     asking: null,
+    review: null,
     verdict: null,
     updated_at: "2026-09-30T11:00:00Z",
     closed_at: null,
@@ -62,6 +63,32 @@ describe("the needs-you strip", () => {
 
     expect(needsYou(verified)).toEqual([
       { kind: "Verified", repo: "acme/api", issue: "acme/api#7", text: "Add the export endpoint", at: "2026-09-30T05:02:00Z" },
+    ]);
+  });
+
+  it("lists a review that gave up or stopped, with how to record its Verdict by hand, and not one still trying", () => {
+    const review = { sha: "4f2a9c1e0b", harness: "codex", attempts: 0, cap: 2 };
+    const stuck = status([
+      { stage: "PR draft", review: { ...review, state: "gave_up", attempts: 3 } },
+      { issue: "acme/api#8", title: "Page the export", stage: "PR draft", review: { ...review, state: "stopped" } },
+      { issue: "acme/api#9", stage: "PR draft", review: { ...review, state: "retrying", attempts: 1 } },
+    ]);
+
+    expect(needsYou(stuck)).toEqual([
+      {
+        kind: "Review",
+        repo: "acme/api",
+        issue: "acme/api#7",
+        text: "Reviewer gave up on 4f2a9c1: review it by hand with `nico-agent verdict acme/api#7 pass|fail --sha 4f2a9c1e0b`",
+        at: null,
+      },
+      {
+        kind: "Review",
+        repo: "acme/api",
+        issue: "acme/api#8",
+        text: "Reviewer on codex stopped without a Verdict: review it by hand with `nico-agent verdict acme/api#8 pass|fail --sha 4f2a9c1e0b`",
+        at: null,
+      },
     ]);
   });
 
