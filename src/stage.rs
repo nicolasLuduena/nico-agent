@@ -100,6 +100,7 @@ pub fn watch(ctx: &Context, every: bool) -> io::Result<(Vec<String>, Vec<String>
         watched.retain(|url, _| dispatches.iter().any(|d| refers(d, url)));
         Ok::<_, io::Error>((state::text(&watched), watched))
     })?;
+    // Quiet while paused: each call would only be refused, and said.
     if pause::of(ctx.world, &ctx.config_dir, "GitHub")?.is_some() {
         return Ok((said, no_pr));
     }
@@ -129,7 +130,7 @@ pub fn watch(ctx: &Context, every: bool) -> io::Result<(Vec<String>, Vec<String>
             },
             Err(e) => {
                 said.push(format!("could not look for the PR of {}: {e}", d.issue));
-                if pause::note(&ctx.config_dir, &e)? {
+                if e.rate_limit().is_some() {
                     return Ok((said, no_pr));
                 }
             }
@@ -140,7 +141,7 @@ pub fn watch(ctx: &Context, every: bool) -> io::Result<(Vec<String>, Vec<String>
             Ok(now) => now,
             Err(e) => {
                 said.push(format!("could not ask GitHub about {url}: {e}"));
-                if pause::note(&ctx.config_dir, &e)? {
+                if e.rate_limit().is_some() {
                     return Ok((said, no_pr));
                 }
                 continue;

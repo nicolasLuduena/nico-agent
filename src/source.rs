@@ -113,6 +113,7 @@ pub fn issues(
     if cached.as_ref().is_some_and(|c| c.read_at > oldest) {
         return Ok((cached, None));
     }
+    // A read needs each of its Sources: none is asked while one is paused.
     let linear = repo.linear.as_ref().map(|_| "Linear");
     for source in ["GitHub"].into_iter().chain(linear) {
         if let Some(paused) = pause::of(world, config_dir, source)? {
@@ -120,10 +121,7 @@ pub fn issues(
         }
     }
     match read(world, slug, repo) {
-        Err(e) => {
-            pause::note(config_dir, &e)?;
-            Ok((cached, Some(e)))
-        }
+        Err(e) => Ok((cached, Some(e))),
         Ok(read) => {
             state::update(&file, |_| Ok::<_, io::Error>((state::text(&read), ())))?;
             Ok((Some(read), None))

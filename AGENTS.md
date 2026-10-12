@@ -15,7 +15,10 @@ Everything outside the process (herdr, git, `gh`, Linear, notifications, the
 clock, timers, HTTP) is reached through the `World` trait in `src/world.rs`,
 and nothing else. A new outside call is a new `World` method with its real
 implementation and its `FakeWorld` twin in `tests/common/fake_world.rs`,
-recording the call as the command it stands for.
+recording the call as the command it stands for. `run` wraps the World in
+`pause::Guarded`, so a new method gets a line there too: a GitHub or Linear
+call goes through its `ask`, which waits out the Source's pause and keeps
+the one a rate limit starts; any other call passes straight through.
 
 Tests drive the library entry `run` as the CLI would, through `setup()` and
 `cli()` in `tests/common/mod.rs`, and assert on three things only: the

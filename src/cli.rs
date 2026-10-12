@@ -4,6 +4,7 @@ use serde_json::{Value, json};
 
 use crate::answer;
 use crate::dispatch;
+use crate::pause;
 use crate::refresh;
 use crate::repo;
 use crate::serve;
@@ -90,6 +91,14 @@ const COMMANDS: &[(&str, &str)] = &[
 
 /// Run `nico-agent` with `argv` (without the program name).
 pub fn run(argv: &[String], ctx: &Context) -> Output {
+    let world = pause::Guarded {
+        world: ctx.world,
+        config_dir: &ctx.config_dir,
+    };
+    let ctx = &Context {
+        world: &world,
+        config_dir: ctx.config_dir.clone(),
+    };
     let json = argv.iter().any(|a| a == "--json");
     let words: Vec<&str> = argv
         .iter()
