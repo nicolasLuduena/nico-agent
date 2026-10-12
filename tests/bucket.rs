@@ -480,22 +480,30 @@ fn get_bucket_serves_a_file_of_the_bucket_s_working_tree_and_refuses_any_path_ou
 }
 
 #[test]
-fn get_bucket_of_a_folder_links_every_file_under_it_sandboxed_as_files_are() {
+fn get_bucket_of_an_issue_s_folder_shows_its_evidence_by_head_folder_and_step_sandboxed() {
     let t = setup();
     t.tick();
+    let sha = "abcdef0123456789abcdef0123456789abcdef01";
+    let at = format!("{BUCKET}/acme/api/7/{sha}");
     t.world
-        .add_file(&format!("{BUCKET}/acme/api/7/abc/sign in.png"), b"png");
+        .add_file(&format!("{at}/findings.md"), b"# Findings\n- ok\n");
+    let step = format!("{at}/status/01-list");
     t.world
-        .add_file(&format!("{BUCKET}/acme/api/7/abc/<b>&.txt"), b"odd");
+        .add_file(&format!("{step}.cmd"), b"nico-agent status --json\n");
+    t.world.add_file(&format!("{step}.exit"), b"2\n");
+    t.world.add_file(&format!("{step}.stderr"), b"");
+    t.world.add_file(
+        &format!("{step}.stdout"),
+        br#"{"z":[1,{"b":"x,y:"}],"a":{}}"#,
+    );
     t.world
-        .add_file(&format!("{BUCKET}/acme/api/70/abc/shot.png"), b"not 7's");
-    t.world.add_file(&format!("{BUCKET}/.git/HEAD"), b"ref");
+        .add_file(&format!("{at}/status/02-page.png"), b"png");
+    t.world.add_file(&format!("{at}/status/<b>&.txt"), b"odd");
+    t.world
+        .add_file(&format!("{BUCKET}/acme/api/70/abc/shot.txt"), b"not 7's");
     t.world.calls.borrow_mut().clear();
 
     let (status, headers, body) = get(&t, "/bucket/acme/api/7/");
-    let (missing, _, _) = get(&t, "/bucket/acme/api/8/");
-    let (git, _, _) = get(&t, "/bucket/.git/");
-    let (_, _, root) = get(&t, "/bucket/");
 
     assert_eq!(status, 200);
     assert_eq!(
@@ -505,29 +513,93 @@ fn get_bucket_of_a_folder_links_every_file_under_it_sandboxed_as_files_are() {
                 "Content-Type".to_string(),
                 "text/html; charset=utf-8".to_string()
             ),
+            // Evidence is an agent's output: its page runs no script either.
             ("Content-Security-Policy".into(), "sandbox".into()),
         ]
     );
+    let body = String::from_utf8(body).unwrap();
+    for shown in [
+        "<h1><a href=\"/bucket/\">Bucket</a> / <a href=\"/bucket/acme/\">acme</a> / \
+         <a href=\"/bucket/acme/api/\">api</a> / <a href=\"/bucket/acme/api/7/\">7</a></h1>",
+        "<h2>Head <code>abcdef0</code></h2>",
+        // The Verdict's findings, shown open.
+        &format!(
+            "<details open><summary><a href=\"{sha}/findings.md\">md</a> 2 lines</summary>\
+             <pre># Findings\n- ok</pre></details>"
+        ),
+        "<h3>status</h3>",
+        "<header><span class=\"n\">01</span><span class=\"name\">list</span>\
+         <span class=\"exit\">exit 2</span><code class=\"cmd\">nico-agent status --json</code></header>",
+        &format!(
+            "<p class=\"part empty\"><a href=\"{sha}/status/01-list.stderr\">stderr</a> empty</p>"
+        ),
+        // JSON indented, its keys in their order.
+        "<pre>{\n  &quot;z&quot;: [\n    1,\n    {\n      &quot;b&quot;: &quot;x,y:&quot;\n    }\n  ],\n  &quot;a&quot;: {}\n}</pre>",
+        &format!("<img src=\"{sha}/status/02-page.png\""),
+        &format!("<a href=\"{sha}/status/%3Cb%3E%26.txt\">txt</a>"),
+        "<span class=\"name\">&lt;b&gt;&amp;</span>",
+    ] {
+        assert!(body.contains(shown), "{shown}\nnot in\n{body}");
+    }
+    assert!(!body.contains("not 7's"), "{body}");
     assert_eq!(
-        String::from_utf8(body).unwrap(),
-        "<!doctype html>\n<title>/bucket/acme/api/7/</title>\n<ul>\n\
-         <li><a href=\"abc/%3Cb%3E%26.txt\">abc/&lt;b>&amp;.txt</a>\n\
-         <li><a href=\"abc/sign%20in.png\">abc/sign in.png</a>\n\
-         </ul>\n"
+        t.world.calls(),
+        [
+            format!("find {BUCKET}/acme/api/7 -name .git -prune -o -type f -print"),
+            format!("read {at}/findings.md"),
+            format!("read {step}.cmd"),
+            format!("read {step}.exit"),
+            format!("read {step}.stderr"),
+            format!("read {step}.stdout"),
+            // An image is embedded, never read.
+            format!("read {at}/status/<b>&.txt"),
+        ]
     );
-    assert_eq!((missing, git), (404, 403));
+}
+
+#[test]
+fn get_bucket_above_an_issue_s_folder_links_each_issue_s_with_its_heads() {
+    let t = setup();
+    t.tick();
+    t.world
+        .add_file(&format!("{BUCKET}/acme/api/7/abc/a.txt"), b"a");
+    t.world
+        .add_file(&format!("{BUCKET}/acme/api/7/def/b.txt"), b"b");
+    t.world
+        .add_file(&format!("{BUCKET}/acme/api/70/abc/shot.png"), b"png");
+    t.world
+        .add_file(&format!("{BUCKET}/README.md"), b"# Bucket");
+    t.world.add_file(&format!("{BUCKET}/.git/HEAD"), b"ref");
+    t.world.calls.borrow_mut().clear();
+
+    let (status, _, repo) = get(&t, "/bucket/acme/api/");
+    let (_, _, root) = get(&t, "/bucket/");
+    let (missing, _, _) = get(&t, "/bucket/acme/api/8/");
+    let (git, _, _) = get(&t, "/bucket/.git/");
+
+    assert_eq!((status, missing, git), (200, 404, 403));
+    let repo = String::from_utf8(repo).unwrap();
+    assert!(
+        repo.contains(
+            "<ul class=\"issues\">\n<li><a href=\"7/\">7</a> <span>2 heads</span>\n\
+             <li><a href=\"70/\">70</a> <span>1 head</span>\n</ul>"
+        ),
+        "{repo}"
+    );
     let root = String::from_utf8(root).unwrap();
     assert!(
-        root.contains("acme/api/70/abc/shot.png") && !root.contains(".git"),
+        root.contains("<a href=\"acme/api/70/\">acme/api/70</a>")
+            && !root.contains("README")
+            && !root.contains(".git"),
         "{root}"
     );
     assert_eq!(
         t.world.calls(),
         [
-            format!("find {BUCKET}/acme/api/7 -name .git -prune -o -type f -print"),
-            format!("find {BUCKET}/acme/api/8 -name .git -prune -o -type f -print"),
+            format!("find {BUCKET}/acme/api -name .git -prune -o -type f -print"),
             // The Bucket's git store is not walked.
             format!("find {BUCKET} -name .git -prune -o -type f -print"),
+            format!("find {BUCKET}/acme/api/8 -name .git -prune -o -type f -print"),
         ]
     );
 }
