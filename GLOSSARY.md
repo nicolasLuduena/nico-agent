@@ -107,7 +107,8 @@ _Avoid_: approval, review.
 flips it from draft to ready. _Avoid_: approved, green.
 
 **Bucket**: the git repo at `/mnt/agents-land/nico-agent-bucket` holding
-Evidence, one commit per Verdict, served with the Board through the tunnel.
+Evidence, one commit per PR head, Verdict and Close, served with the Board
+through the tunnel.
 _Avoid_: artifact store.
 
 ## Away

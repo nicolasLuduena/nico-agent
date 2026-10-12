@@ -90,6 +90,10 @@ pub struct Dispatch {
     /// The head its PR was flipped to ready at, by its passing Verdict.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub flipped: Option<String>,
+    /// The head of its open PR the tick last kept its Evidence in the Bucket
+    /// at, or found none to keep at.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kept: Option<String>,
     /// The process running its steps, while one does.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub runner: Option<u32>,
@@ -230,6 +234,7 @@ pub fn issue(ctx: &Context, config: &Config, key: &str, flags: Flags) -> Result<
         idle_since: None,
         rebasing: false,
         flipped: None,
+        kept: None,
         runner: Some(ctx.world.process_id()),
         runner_boot: Some(ctx.world.boot_id()),
         created_at: now.clone(),
@@ -684,7 +689,7 @@ pub fn save(ctx: &Context, record: &mut Dispatch) -> io::Result<()> {
 /// Close every live Dispatch whose PR is final: remove its worktree and
 /// close its workspace, keeping the record, the branch and the PR. One that
 /// fails stays live and is tried again next time. Says what it did.
-pub fn close_final(ctx: &Context) -> io::Result<Vec<String>> {
+pub fn close_final(ctx: &Context, config: &Config) -> io::Result<Vec<String>> {
     let prs = stage::load(&ctx.config_dir)?;
     let mut said = vec![];
     for d in load(&ctx.config_dir)?
@@ -694,6 +699,14 @@ pub fn close_final(ctx: &Context) -> io::Result<Vec<String>> {
         let Some((url, pr)) = stage::pr_of(&prs, &d).filter(|(_, pr)| pr.r#final) else {
             continue;
         };
+        // One whose Evidence could not be kept keeps its worktree, till it is.
+        match bucket::close(ctx, config, &d, &pr.head_sha) {
+            Ok(line) => said.extend(line),
+            Err(line) => {
+                said.push(line);
+                continue;
+            }
+        }
         let freed = d.workspace.as_ref().map_or(Ok(()), |workspace| {
             (ctx.world.herdr_worktree_remove(workspace))
                 .and_then(|()| ctx.world.herdr_workspace_close(workspace))

@@ -61,9 +61,9 @@ it binds the rebuild.
   nico-agent flips the PR from draft to ready. Nothing merges by itself;
   merging is the user's, in the morning, in dependency order.
 - Evidence artifacts live in the Bucket, a git repo at
-  `/mnt/agents-land/nico-agent-bucket`, one commit per Verdict, served with
-  the Board through a cloudflared tunnel behind Cloudflare Access for the
-  user only. PR bodies link there.
+  `/mnt/agents-land/nico-agent-bucket`, one commit per PR head, Verdict and
+  Close, served with the Board through a cloudflared tunnel behind
+  Cloudflare Access for the user only. PR bodies link there.
 
 ## How it recovers
 

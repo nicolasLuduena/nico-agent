@@ -1,19 +1,21 @@
 //! The Bucket: a git repo outside the config directory where Evidence
-//! outlives its worktree. Each Verdict's is committed at
-//! `<repo>/<issue>/<sha>/`, e.g. `acme/api/7/<sha>/` for `acme/api#7` or
-//! `acme/api/BLE-12/<sha>/` for a Linear issue: the files of the worktree's
-//! `.evidence/<issue>/`, and `findings.md`.
+//! outlives its worktree. It is committed at `<repo>/<issue>/<sha>/`, e.g.
+//! `acme/api/7/<sha>/` for `acme/api#7` or `acme/api/BLE-12/<sha>/` for a
+//! Linear issue, as each PR head is seen, on its Verdict and at Close: the
+//! files of the worktree's `.evidence/<issue>/`, and a Verdict's `findings.md`.
 
 use std::fs::File;
+use std::io;
 
 use crate::cli::{Context, Refusal};
 use crate::config::{self, Config};
-use crate::dispatch::Dispatch;
+use crate::dispatch::{self, Dispatch};
 use crate::http;
+use crate::stage;
 use crate::state;
 use crate::world::{Answer, HttpResponse, World, WorldError};
 
-const README: &str = "# nico-agent's Bucket\n\nEvidence, one commit per Verdict: `<owner>/<repo>/<issue>/<sha>/` holds what\nthe worktree's `.evidence/<issue>/` held when the Verdict on `<sha>` was\nrecorded, and the Reviewer's `findings.md`.\n";
+const README: &str = "# nico-agent's Bucket\n\nEvidence, one commit per PR head, Verdict and Close: `<owner>/<repo>/<issue>/<sha>/`\nholds what the worktree's `.evidence/<issue>/` held while its PR was at `<sha>`,\nand a Verdict's `findings.md` from its Reviewer.\n";
 
 /// Make the Bucket, a git repo with its README committed, unless there is one.
 pub fn create(ctx: &Context, config: &Config) -> Result<(), Refusal> {
@@ -65,6 +67,105 @@ pub fn keep(
     world.git_commit(bucket, &kept, message).map_err(refused)
 }
 
+/// Keep the Evidence of each live Dispatch at its open PR's head, once a
+/// head, so the PR's link to the Bucket opens before any Verdict: `pr <issue>
+/// <sha>`, nothing when its worktree has none. A failed keep is said and
+/// tried again next tick. Says what it kept.
+pub fn step(ctx: &Context, config: &Config) -> io::Result<Vec<String>> {
+    let mut said = vec![];
+    let prs = stage::load(&ctx.config_dir)?;
+    let live = dispatch::load(&ctx.config_dir)?.into_iter();
+    for d in live.filter(|d| d.closed_at.is_none()) {
+        let Some((_, pr)) = stage::pr_of(&prs, &d).filter(|(_, pr)| !pr.r#final) else {
+            continue;
+        };
+        let sha = &pr.head_sha;
+        if d.kept.as_ref() == Some(sha) {
+            continue;
+        }
+        let message = format!("pr {} {sha}", d.issue);
+        match keep_evidence(ctx, config, &d, sha, &message, false) {
+            Ok(line) => {
+                said.extend(line);
+                dispatch::update(&ctx.config_dir, |all| {
+                    if let Some(live) = all.iter_mut().find(|l| dispatch::is_live(l, &d.issue)) {
+                        live.kept = Some(sha.clone());
+                    }
+                })?;
+            }
+            Err(line) => said.push(line),
+        }
+    }
+    Ok(said)
+}
+
+/// At Close, keep `d`'s Evidence once more at its PR's last head `sha`, before
+/// its worktree goes, when the Bucket does not hold it all there as it is:
+/// Implementers update it after opening the PR. What to say of it, or why it
+/// could not be kept.
+pub fn close(
+    ctx: &Context,
+    config: &Config,
+    d: &Dispatch,
+    sha: &str,
+) -> Result<Option<String>, String> {
+    let message = format!("close {} {sha}", d.issue);
+    keep_evidence(ctx, config, d, sha, &message, true)
+}
+
+/// Commit `d`'s Evidence at `sha` with `message` when its worktree has any,
+/// and `unless_held`, only when the Bucket does not hold every file of it
+/// there as it is. What to say of it, or why it could not be kept.
+fn keep_evidence(
+    ctx: &Context,
+    config: &Config,
+    d: &Dispatch,
+    sha: &str,
+    message: &str,
+    unless_held: bool,
+) -> Result<Option<String>, String> {
+    let kept = new_evidence(ctx.world, config, d, sha, unless_held).and_then(|new| {
+        if new {
+            keep(ctx, config, d, sha, None, message)?;
+        }
+        Ok(new)
+    });
+    match kept {
+        Ok(true) => Ok(Some(format!(
+            "{}: Evidence at {sha} kept in the Bucket",
+            d.issue
+        ))),
+        Ok(false) => Ok(None),
+        Err(no) => Err(format!(
+            "could not keep the Evidence of {} at {sha}: {}",
+            d.issue, no.error
+        )),
+    }
+}
+
+/// Whether `d`'s worktree has Evidence to keep at `sha`: any, and with
+/// `unless_held`, any the Bucket does not hold there as it is.
+fn new_evidence(
+    world: &dyn World,
+    config: &Config,
+    d: &Dispatch,
+    sha: &str,
+    unless_held: bool,
+) -> Result<bool, Refusal> {
+    let Some(worktree) = &d.worktree else {
+        return Ok(false);
+    };
+    let from = format!("{worktree}/{}", evidence(d));
+    let to = format!("{}/{}/{sha}", config.bucket.path, folder(d));
+    let read = |path: String| world.read_file(&path).map_err(refused);
+    for file in world.list_files(&from).map_err(refused)? {
+        if !unless_held || read(format!("{from}/{file}"))? != read(format!("{to}/{file}"))? {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
 /// `GET /bucket/<path>`: the file at `path`, its escapes decoded, in the Bucket's
 /// working tree, or for a folder (`path` ending in `/`) a page of links to
 /// every file under it; never one outside it, nor its git store.
@@ -85,7 +186,7 @@ pub fn file(ctx: &Context, path: &str) -> Answer {
         Ok(Some(body)) => sandboxed(media_type(path), body),
         Ok(None) => {
             let error = format!("no file {path} in the Bucket");
-            let help = ["Each Verdict's Evidence is under /bucket/<owner>/<repo>/<issue>/<sha>/"];
+            let help = ["Each PR head's Evidence is under /bucket/<owner>/<repo>/<issue>/<sha>/"];
             http::error(404, &error, &help)
         }
         Err(no) => http::error(500, &no.error, &no.help),
@@ -108,7 +209,7 @@ fn listing(ctx: &Context, folder: &str) -> Answer {
         }
         Ok(_) => {
             let error = format!("no folder {folder} in the Bucket");
-            let help = ["Each Verdict's Evidence is under /bucket/<owner>/<repo>/<issue>/<sha>/"];
+            let help = ["Each PR head's Evidence is under /bucket/<owner>/<repo>/<issue>/<sha>/"];
             http::error(404, &error, &help)
         }
         Err(no) => http::error(500, &no.error, &no.help),

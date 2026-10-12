@@ -27,6 +27,231 @@ fn with_pr() -> Setup {
     t
 }
 
+/// Repo `acme/api` with `toml` in its config, its issue 7 dispatched into
+/// `/worktrees/api-7` and its PR 9 opened on its branch, for the next tick to
+/// find; no calls recorded yet.
+fn opened(toml: &str) -> Setup {
+    let t = setup();
+    t.world
+        .add_clone("/src/api", &["git@github.com:acme/api.git"]);
+    std::fs::create_dir_all(&t.config_dir).unwrap();
+    let config = format!("[repos.\"acme/api\"]\npath = \"/src/api\"\n{toml}\n");
+    std::fs::write(t.config_dir.join("config.toml"), config).unwrap();
+    t.world.add_issue("acme/api", github_issue("acme/api", 7));
+    t.tick();
+    t.world.add_pr(PullRequest {
+        head_branch: Some("agent/api-7".into()),
+        ..pull_request("acme/api", 9)
+    });
+    t.world.advance(Duration::from_secs(600));
+    t.world.calls.borrow_mut().clear();
+    t
+}
+
+/// The Implementer pushes: PR 9's head is now `sha`, and `state`.
+fn push(t: &Setup, sha: &str, state: PrState) {
+    t.world.activity.borrow_mut().insert(
+        "acme/api#9".into(),
+        PullRequestActivity {
+            state,
+            draft: true,
+            head_sha: sha.into(),
+            base_branch: "main".into(),
+            mergeable: Mergeable::Mergeable,
+            updated_at: "2026-09-30T12:30:00Z".into(),
+            merged_at: None,
+        },
+    );
+    t.world.advance(Duration::from_secs(600));
+}
+
+/// The calls since the last ones taken that touch the Bucket or a worktree's Evidence.
+fn bucket_calls(t: &Setup) -> Vec<String> {
+    let calls = t.world.calls.borrow_mut().drain(..).collect::<Vec<_>>();
+    (calls.into_iter())
+        .filter(|c| c.contains(BUCKET) || c.contains(".evidence"))
+        .collect()
+}
+
+#[test]
+fn a_pr_found_keeps_its_evidence_in_the_bucket_with_no_verdict_and_its_same_head_again_nothing() {
+    let t = opened("switches = { review = false }");
+    t.world
+        .add_file("/worktrees/api-7/.evidence/7/shot.png", b"png");
+
+    let said = t.tick();
+    let found = bucket_calls(&t);
+    let again = (t.tick(), bucket_calls(&t));
+    let (status, _, body) = get(&t, "/bucket/acme/api/7/");
+
+    assert_eq!(
+        said,
+        [
+            "acme/api#7: PR https://github.com/acme/api/pull/9 found",
+            "acme/api#7: Evidence at sha9 kept in the Bucket",
+        ]
+    );
+    assert_eq!(
+        found,
+        [
+            "find /worktrees/api-7/.evidence/7 -name .git -prune -o -type f -print".to_string(),
+            format!("git remotes {BUCKET}"),
+            format!("git init {BUCKET}"),
+            format!("write {BUCKET}/README.md"),
+            format!(
+                "git -C {BUCKET} add -- README.md && git -C {BUCKET} -c user.name=nico-agent -c user.email=nico-agent@localhost commit --quiet --allow-empty --no-gpg-sign -m nico-agent's Bucket"
+            ),
+            format!("cp -r /worktrees/api-7/.evidence/7/. {BUCKET}/acme/api/7/sha9"),
+            format!(
+                "git -C {BUCKET} add -- acme/api/7/sha9 && git -C {BUCKET} -c user.name=nico-agent -c user.email=nico-agent@localhost commit --quiet --allow-empty --no-gpg-sign -m pr acme/api#7 sha9"
+            ),
+        ]
+    );
+    // The same head again: nothing looked at, nothing kept.
+    assert_eq!(again, (vec![], vec![]));
+    assert_eq!(kept(&t), pairs(&[("7/sha9/shot.png", "png")]));
+    assert_eq!(status, 200);
+    assert!(
+        String::from_utf8(body)
+            .unwrap()
+            .contains("<a href=\"sha9/shot.png\">"),
+    );
+}
+
+#[test]
+fn a_new_head_adds_a_sha_folder_and_a_head_with_no_evidence_keeps_and_says_nothing() {
+    let t = opened("switches = { review = false }");
+
+    let found = (t.tick(), bucket_calls(&t));
+    // The Implementer saves Evidence after opening the PR, then pushes.
+    t.world
+        .add_file("/worktrees/api-7/.evidence/7/shot.png", b"png");
+    push(&t, "sha10", PrState::Open);
+    let pushed = t.tick();
+    let commit = bucket_calls(&t).pop();
+
+    assert_eq!(
+        found,
+        (
+            vec!["acme/api#7: PR https://github.com/acme/api/pull/9 found".to_string()],
+            vec![
+                "find /worktrees/api-7/.evidence/7 -name .git -prune -o -type f -print".to_string()
+            ],
+        )
+    );
+    assert_eq!(pushed, ["acme/api#7: Evidence at sha10 kept in the Bucket"]);
+    assert_eq!(
+        commit.unwrap(),
+        format!(
+            "git -C {BUCKET} add -- acme/api/7/sha10 && git -C {BUCKET} -c user.name=nico-agent -c user.email=nico-agent@localhost commit --quiet --allow-empty --no-gpg-sign -m pr acme/api#7 sha10"
+        )
+    );
+    assert_eq!(kept(&t), pairs(&[("7/sha10/shot.png", "png")]));
+}
+
+#[test]
+fn a_failed_keep_is_said_and_tried_again_next_tick() {
+    let t = opened("switches = { review = false }");
+    t.world
+        .add_file("/worktrees/api-7/.evidence/7/shot.png", b"png");
+    t.world.fail_call("cp -r", "No space left on device");
+
+    let failed = t.tick();
+    t.world.clear_failures();
+    t.world.advance(Duration::from_secs(600));
+    let retried = t.tick();
+
+    assert_eq!(
+        failed,
+        [
+            "acme/api#7: PR https://github.com/acme/api/pull/9 found",
+            "could not keep the Evidence of acme/api#7 at sha9: No space left on device",
+        ]
+    );
+    assert_eq!(retried, ["acme/api#7: Evidence at sha9 kept in the Bucket"]);
+    assert_eq!(kept(&t), pairs(&[("7/sha9/shot.png", "png")]));
+}
+
+#[test]
+fn close_keeps_evidence_changed_since_its_head_was_kept_before_removing_the_worktree_and_leaves_it_when_the_keep_fails()
+ {
+    let t = opened("switches = { review = false }");
+    t.world
+        .add_file("/worktrees/api-7/.evidence/7/shot.png", b"png");
+    t.tick();
+    // Updated after the PR was found, on the same head, which then merges.
+    t.world
+        .add_file("/worktrees/api-7/.evidence/7/shot.png", b"png, again");
+    push(&t, "sha9", PrState::Merged);
+    t.world.calls.borrow_mut().clear();
+    t.world.fail_call("cp -r", "No space left on device");
+
+    let failed = (t.tick(), t.world.calls());
+    t.world.calls.borrow_mut().clear();
+    t.world.clear_failures();
+    t.world.advance(Duration::from_secs(600));
+    let closed = (t.tick(), t.world.calls());
+
+    assert_eq!(
+        failed.0,
+        ["could not keep the Evidence of acme/api#7 at sha9: No space left on device"]
+    );
+    let removed = |calls: &[String]| (calls.iter()).any(|c| c.starts_with("herdr worktree remove"));
+    assert!(!removed(&failed.1), "{:?}", failed.1);
+    assert_eq!(
+        closed.0,
+        [
+            "acme/api#7: Evidence at sha9 kept in the Bucket",
+            "acme/api#7 Closed: its PR https://github.com/acme/api/pull/9 merged",
+        ]
+    );
+    let bucket: Vec<String> = (closed.1.into_iter())
+        .filter(|c| {
+            c.contains(BUCKET) || c.contains(".evidence") || c.starts_with("herdr worktree")
+        })
+        .collect();
+    assert_eq!(
+        bucket,
+        [
+            "find /worktrees/api-7/.evidence/7 -name .git -prune -o -type f -print".to_string(),
+            "read /worktrees/api-7/.evidence/7/shot.png".into(),
+            format!("read {BUCKET}/acme/api/7/sha9/shot.png"),
+            format!("git remotes {BUCKET}"),
+            format!("cp -r /worktrees/api-7/.evidence/7/. {BUCKET}/acme/api/7/sha9"),
+            format!(
+                "git -C {BUCKET} add -- acme/api/7/sha9 && git -C {BUCKET} -c user.name=nico-agent -c user.email=nico-agent@localhost commit --quiet --allow-empty --no-gpg-sign -m close acme/api#7 sha9"
+            ),
+            "herdr worktree remove --workspace w1".into(),
+        ]
+    );
+    assert_eq!(kept(&t), pairs(&[("7/sha9/shot.png", "png, again")]));
+}
+
+#[test]
+fn close_with_the_evidence_the_bucket_holds_commits_nothing() {
+    let t = opened("switches = { review = false }");
+    t.world
+        .add_file("/worktrees/api-7/.evidence/7/shot.png", b"png");
+    t.tick();
+    push(&t, "sha9", PrState::Merged);
+    t.world.calls.borrow_mut().clear();
+
+    let said = t.tick();
+
+    assert_eq!(
+        said,
+        ["acme/api#7 Closed: its PR https://github.com/acme/api/pull/9 merged"]
+    );
+    assert_eq!(
+        bucket_calls(&t),
+        [
+            "find /worktrees/api-7/.evidence/7 -name .git -prune -o -type f -print".to_string(),
+            "read /worktrees/api-7/.evidence/7/shot.png".into(),
+            format!("read {BUCKET}/acme/api/7/sha9/shot.png"),
+        ]
+    );
+}
+
 /// A findings file the Reviewer wrote, outside the config directory.
 fn findings(t: &Setup, text: &str) -> String {
     let file = t.config_dir.with_file_name("f.md");

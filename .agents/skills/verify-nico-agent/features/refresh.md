@@ -40,7 +40,8 @@ Preconditions:
   `prs` is `[{"final":false,"state":"open","url":"https://github.com/verify/fixture/pull/110"}]`;
   `actions` are, in order, `could not look for the PR of verify/fixture#1: ...` (and `#5`, `#6`),
   `could not ask GitHub about https://github.com/verify/fixture/pull/110: not authenticated with GitHub; run \`gh auth login\``,
-  the same for `.../pull/109` (the PR `#6` stacks on, watched from then on), `could not list herdr's agents: ...`
+  the same for `.../pull/109` (the PR `#6` stacks on, watched from then on), `verify/fixture#10: Evidence
+  at <its head> kept in the Bucket`, `could not list herdr's agents: ...`
   and `could not start the Reviewer of verify/fixture#10: \`herdr tab create\` failed: ...`.
   `$OUTSIDE_LOG` has `gh api user --jq .login`, a `gh pr list --repo verify/fixture --head agent/fixture-<n> ...`
   per Dispatch without a PR, `gh pr view 110 --repo verify/fixture --json ...` and `gh pr view 109 ...`,

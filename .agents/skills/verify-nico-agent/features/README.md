@@ -63,7 +63,8 @@ commands, and observable proof.
 - [Dispatch's refusals](./dispatch-refusals.md) covers every refusal of `dispatch`, `POST
   /api/dispatch` and the page's Dispatch form, down to a Ready issue failing at its first herdr step.
 - [Verdict recording to the Bucket](./verdict-bucket.md) covers `verdict` pass and fail, its
-  refusals, the Bucket commit, `/bucket/` and the node panel's Evidence links.
+  refusals, the Bucket commits on a PR head and a Verdict, `/bucket/` and the node panel's Evidence
+  links.
 - [The page's tabs and strip](./page-tabs-strip.md) covers the Repo tabs (click, keys, phone
   select) and the needs-you strip's Asking, Failed, Verified and Paused rows.
 - [Switches](./switches.md) covers `PATCH /api/repo/<slug>/switches`, the page's toggles, what is
