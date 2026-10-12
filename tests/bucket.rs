@@ -27,15 +27,15 @@ fn with_pr() -> Setup {
     t
 }
 
-/// Repo `acme/api` with `toml` in its config, its issue 7 dispatched into
+/// Repo `acme/api` with its `review` switch off, its issue 7 dispatched into
 /// `/worktrees/api-7` and its PR 9 opened on its branch, for the next tick to
 /// find; no calls recorded yet.
-fn opened(toml: &str) -> Setup {
+fn opened() -> Setup {
     let t = setup();
     t.world
         .add_clone("/src/api", &["git@github.com:acme/api.git"]);
     std::fs::create_dir_all(&t.config_dir).unwrap();
-    let config = format!("[repos.\"acme/api\"]\npath = \"/src/api\"\n{toml}\n");
+    let config = "[repos.\"acme/api\"]\npath = \"/src/api\"\nswitches = { review = false }\n";
     std::fs::write(t.config_dir.join("config.toml"), config).unwrap();
     t.world.add_issue("acme/api", github_issue("acme/api", 7));
     t.tick();
@@ -73,9 +73,34 @@ fn bucket_calls(t: &Setup) -> Vec<String> {
         .collect()
 }
 
+/// The Bucket's commit of what `add` holds, with `message`.
+fn commit(add: &str, message: &str) -> String {
+    format!(
+        "git -C {BUCKET} add -- {add} && git -C {BUCKET} -c user.name=nico-agent -c user.email=nico-agent@localhost commit --quiet --allow-empty --no-gpg-sign -m {message}"
+    )
+}
+
+/// The Bucket made, as the first keep finds it missing.
+fn made() -> Vec<String> {
+    vec![
+        format!("git remotes {BUCKET}"),
+        format!("git init {BUCKET}"),
+        format!("write {BUCKET}/README.md"),
+        commit("README.md", "nico-agent's Bucket"),
+    ]
+}
+
+/// Copying issue 7's Evidence to `<sha>/` and asking git whether it changed there.
+fn copied(sha: &str) -> Vec<String> {
+    vec![
+        format!("cp -r /worktrees/api-7/.evidence/7/. {BUCKET}/acme/api/7/{sha}"),
+        format!("git -C {BUCKET} status --porcelain -- acme/api/7/{sha}"),
+    ]
+}
+
 #[test]
 fn a_pr_found_keeps_its_evidence_in_the_bucket_with_no_verdict_and_its_same_head_again_nothing() {
-    let t = opened("switches = { review = false }");
+    let t = opened();
     t.world
         .add_file("/worktrees/api-7/.evidence/7/shot.png", b"png");
 
@@ -94,18 +119,11 @@ fn a_pr_found_keeps_its_evidence_in_the_bucket_with_no_verdict_and_its_same_head
     assert_eq!(
         found,
         [
-            "find /worktrees/api-7/.evidence/7 -name .git -prune -o -type f -print".to_string(),
-            format!("git remotes {BUCKET}"),
-            format!("git init {BUCKET}"),
-            format!("write {BUCKET}/README.md"),
-            format!(
-                "git -C {BUCKET} add -- README.md && git -C {BUCKET} -c user.name=nico-agent -c user.email=nico-agent@localhost commit --quiet --allow-empty --no-gpg-sign -m nico-agent's Bucket"
-            ),
-            format!("cp -r /worktrees/api-7/.evidence/7/. {BUCKET}/acme/api/7/sha9"),
-            format!(
-                "git -C {BUCKET} add -- acme/api/7/sha9 && git -C {BUCKET} -c user.name=nico-agent -c user.email=nico-agent@localhost commit --quiet --allow-empty --no-gpg-sign -m pr acme/api#7 sha9"
-            ),
+            made(),
+            copied("sha9"),
+            vec![commit("acme/api/7/sha9", "pr acme/api#7 sha9")]
         ]
+        .concat()
     );
     // The same head again: nothing looked at, nothing kept.
     assert_eq!(again, (vec![], vec![]));
@@ -120,30 +138,32 @@ fn a_pr_found_keeps_its_evidence_in_the_bucket_with_no_verdict_and_its_same_head
 
 #[test]
 fn a_new_head_adds_a_sha_folder_and_a_head_with_no_evidence_keeps_and_says_nothing() {
-    let t = opened("switches = { review = false }");
+    let t = opened();
 
     let found = (t.tick(), bucket_calls(&t));
     // The Implementer saves Evidence after opening the PR, then pushes.
     t.world
         .add_file("/worktrees/api-7/.evidence/7/shot.png", b"png");
     push(&t, "sha10", PrState::Open);
-    let pushed = t.tick();
-    let commit = bucket_calls(&t).pop();
+    let pushed = (t.tick(), bucket_calls(&t));
 
     assert_eq!(
         found,
         (
             vec!["acme/api#7: PR https://github.com/acme/api/pull/9 found".to_string()],
-            vec![
-                "find /worktrees/api-7/.evidence/7 -name .git -prune -o -type f -print".to_string()
-            ],
+            [made(), copied("sha9")].concat(),
         )
     );
-    assert_eq!(pushed, ["acme/api#7: Evidence at sha10 kept in the Bucket"]);
     assert_eq!(
-        commit.unwrap(),
-        format!(
-            "git -C {BUCKET} add -- acme/api/7/sha10 && git -C {BUCKET} -c user.name=nico-agent -c user.email=nico-agent@localhost commit --quiet --allow-empty --no-gpg-sign -m pr acme/api#7 sha10"
+        pushed,
+        (
+            vec!["acme/api#7: Evidence at sha10 kept in the Bucket".to_string()],
+            [
+                vec![format!("git remotes {BUCKET}")],
+                copied("sha10"),
+                vec![commit("acme/api/7/sha10", "pr acme/api#7 sha10")],
+            ]
+            .concat(),
         )
     );
     assert_eq!(kept(&t), pairs(&[("7/sha10/shot.png", "png")]));
@@ -151,7 +171,7 @@ fn a_new_head_adds_a_sha_folder_and_a_head_with_no_evidence_keeps_and_says_nothi
 
 #[test]
 fn a_failed_keep_is_said_and_tried_again_next_tick() {
-    let t = opened("switches = { review = false }");
+    let t = opened();
     t.world
         .add_file("/worktrees/api-7/.evidence/7/shot.png", b"png");
     t.world.fail_call("cp -r", "No space left on device");
@@ -173,9 +193,39 @@ fn a_failed_keep_is_said_and_tried_again_next_tick() {
 }
 
 #[test]
+fn a_head_whose_verdict_kept_its_evidence_before_the_tick_did_commits_nothing_more() {
+    let t = opened();
+    t.world
+        .add_file("/worktrees/api-7/.evidence/7/shot.png", b"png");
+    t.world.fail_call(
+        &format!("git -C {BUCKET} status"),
+        "fatal: unable to read the index",
+    );
+    let failed = t.tick();
+    t.world.clear_failures();
+    verdict(&t, &["pass", "--sha", "sha9"]);
+    t.world.calls.borrow_mut().clear();
+    t.world.advance(Duration::from_secs(600));
+
+    let after = (t.tick(), bucket_calls(&t));
+
+    assert_eq!(
+        failed[1],
+        "could not keep the Evidence of acme/api#7 at sha9: fatal: unable to read the index"
+    );
+    assert_eq!(
+        after,
+        (
+            vec!["acme/api#7: PR https://github.com/acme/api/pull/9 flipped to ready".to_string()],
+            [vec![format!("git remotes {BUCKET}")], copied("sha9")].concat(),
+        )
+    );
+}
+
+#[test]
 fn close_keeps_evidence_changed_since_its_head_was_kept_before_removing_the_worktree_and_leaves_it_when_the_keep_fails()
  {
-    let t = opened("switches = { review = false }");
+    let t = opened();
     t.world
         .add_file("/worktrees/api-7/.evidence/7/shot.png", b"png");
     t.tick();
@@ -184,52 +234,51 @@ fn close_keeps_evidence_changed_since_its_head_was_kept_before_removing_the_work
         .add_file("/worktrees/api-7/.evidence/7/shot.png", b"png, again");
     push(&t, "sha9", PrState::Merged);
     t.world.calls.borrow_mut().clear();
-    t.world.fail_call("cp -r", "No space left on device");
+    // Copied, then not committed.
+    let close = commit("acme/api/7/sha9", "close acme/api#7 sha9");
+    t.world
+        .fail_call(&close, "Unable to create index.lock: File exists");
 
-    let failed = (t.tick(), t.world.calls());
-    t.world.calls.borrow_mut().clear();
+    let failed = t.tick();
+    let failed_calls: Vec<String> = t.world.calls.borrow_mut().drain(..).collect();
     t.world.clear_failures();
     t.world.advance(Duration::from_secs(600));
-    let closed = (t.tick(), t.world.calls());
+    let closed = t.tick();
+    let closed_calls = t.world.calls();
 
     assert_eq!(
-        failed.0,
-        ["could not keep the Evidence of acme/api#7 at sha9: No space left on device"]
+        failed,
+        [
+            "could not keep the Evidence of acme/api#7 at sha9: Unable to create index.lock: File exists"
+        ]
     );
     let removed = |calls: &[String]| (calls.iter()).any(|c| c.starts_with("herdr worktree remove"));
-    assert!(!removed(&failed.1), "{:?}", failed.1);
+    assert!(!removed(&failed_calls), "{failed_calls:?}");
     assert_eq!(
-        closed.0,
+        closed,
         [
             "acme/api#7: Evidence at sha9 kept in the Bucket",
             "acme/api#7 Closed: its PR https://github.com/acme/api/pull/9 merged",
         ]
     );
-    let bucket: Vec<String> = (closed.1.into_iter())
-        .filter(|c| {
-            c.contains(BUCKET) || c.contains(".evidence") || c.starts_with("herdr worktree")
-        })
+    let kept_then_removed: Vec<String> = (closed_calls.into_iter())
+        .filter(|c| c.contains(BUCKET) || c.starts_with("herdr worktree"))
         .collect();
     assert_eq!(
-        bucket,
+        kept_then_removed,
         [
-            "find /worktrees/api-7/.evidence/7 -name .git -prune -o -type f -print".to_string(),
-            "read /worktrees/api-7/.evidence/7/shot.png".into(),
-            format!("read {BUCKET}/acme/api/7/sha9/shot.png"),
-            format!("git remotes {BUCKET}"),
-            format!("cp -r /worktrees/api-7/.evidence/7/. {BUCKET}/acme/api/7/sha9"),
-            format!(
-                "git -C {BUCKET} add -- acme/api/7/sha9 && git -C {BUCKET} -c user.name=nico-agent -c user.email=nico-agent@localhost commit --quiet --allow-empty --no-gpg-sign -m close acme/api#7 sha9"
-            ),
-            "herdr worktree remove --workspace w1".into(),
+            vec![format!("git remotes {BUCKET}")],
+            copied("sha9"),
+            vec![close, "herdr worktree remove --workspace w1".into()],
         ]
+        .concat()
     );
     assert_eq!(kept(&t), pairs(&[("7/sha9/shot.png", "png, again")]));
 }
 
 #[test]
 fn close_with_the_evidence_the_bucket_holds_commits_nothing() {
-    let t = opened("switches = { review = false }");
+    let t = opened();
     t.world
         .add_file("/worktrees/api-7/.evidence/7/shot.png", b"png");
     t.tick();
@@ -244,11 +293,7 @@ fn close_with_the_evidence_the_bucket_holds_commits_nothing() {
     );
     assert_eq!(
         bucket_calls(&t),
-        [
-            "find /worktrees/api-7/.evidence/7 -name .git -prune -o -type f -print".to_string(),
-            "read /worktrees/api-7/.evidence/7/shot.png".into(),
-            format!("read {BUCKET}/acme/api/7/sha9/shot.png"),
-        ]
+        [vec![format!("git remotes {BUCKET}")], copied("sha9")].concat()
     );
 }
 

@@ -59,6 +59,8 @@ pub struct FakeWorld {
     pub boot: RefCell<String>,
     /// Files outside the config directory (worktrees, the Bucket), by path.
     pub files: RefCell<BTreeMap<String, Vec<u8>>>,
+    /// The files of `files` as each clone's last commit of them holds them.
+    pub committed: RefCell<BTreeMap<String, Vec<u8>>>,
     /// How far local time is ahead of UTC, in seconds: 0, UTC, unless set.
     pub utc_offset: Cell<i64>,
     workspaces: Cell<u32>,
@@ -97,6 +99,7 @@ impl Default for FakeWorld {
             dead_pids: Default::default(),
             boot: RefCell::new("boot-1".into()),
             files: Default::default(),
+            committed: Default::default(),
             utc_offset: Cell::new(0),
             workspaces: Cell::new(0),
             tabs: Default::default(),
@@ -226,6 +229,15 @@ impl FakeWorld {
         failure.map_or(Ok(()), |message| Err(WorldError(message)))
     }
 
+    /// The files at `path` or under it, by path.
+    fn under(&self, path: &str) -> Vec<(String, Vec<u8>)> {
+        let folder = format!("{path}/");
+        (self.files.borrow().iter())
+            .filter(|(file, _)| *file == path || file.starts_with(&folder))
+            .map(|(file, bytes)| (file.clone(), bytes.clone()))
+            .collect()
+    }
+
     fn pr(&self, slug: &str, number: u64) -> Option<PullRequest> {
         self.prs
             .borrow()
@@ -260,10 +272,21 @@ impl World for FakeWorld {
         Ok(())
     }
 
+    /// What `add` holds is committed as it is.
     fn git_commit(&self, path: &str, add: &str, message: &str) -> WorldResult<()> {
         self.call(format!(
             "git -C {path} add -- {add} && git -C {path} -c user.name=nico-agent -c user.email=nico-agent@localhost commit --quiet --allow-empty --no-gpg-sign -m {message}"
-        ))
+        ))?;
+        let added = self.under(&format!("{path}/{add}"));
+        self.committed.borrow_mut().extend(added);
+        Ok(())
+    }
+
+    fn git_changed(&self, path: &str, folder: &str) -> WorldResult<bool> {
+        self.call(format!("git -C {path} status --porcelain -- {folder}"))?;
+        let committed = self.committed.borrow();
+        Ok((self.under(&format!("{path}/{folder}")).iter())
+            .any(|(file, bytes)| committed.get(file) != Some(bytes)))
     }
 
     fn copy_dir(&self, from: &str, to: &str) -> WorldResult<()> {

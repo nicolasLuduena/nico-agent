@@ -41,8 +41,8 @@ fn lock(ctx: &Context) -> Result<File, Refusal> {
     Ok(state::lock(&ctx.config_dir.join("bucket"))?)
 }
 
-/// Commit `d`'s Evidence and `findings` to the Bucket with `message`, for
-/// the Verdict on `sha`; the Bucket made first if it is missing.
+/// Commit `d`'s Evidence and `findings` to the Bucket at `sha` with
+/// `message`, even when nothing changed there: a Verdict is recorded so.
 pub fn keep(
     ctx: &Context,
     config: &Config,
@@ -52,16 +52,10 @@ pub fn keep(
     message: &str,
 ) -> Result<(), Refusal> {
     let (world, _lock) = (ctx.world, lock(ctx)?);
-    made(world, config)?;
+    let kept = copied(world, config, d, sha)?;
     let bucket = &config.bucket.path;
-    let kept = format!("{}/{sha}", folder(d));
-    let to = format!("{bucket}/{kept}");
-    if let Some(worktree) = &d.worktree {
-        let from = format!("{worktree}/{}", evidence(d));
-        world.copy_dir(&from, &to).map_err(refused)?;
-    }
     if let Some(text) = findings {
-        let file = format!("{to}/findings.md");
+        let file = format!("{bucket}/{kept}/findings.md");
         world.write_file(&file, text.as_bytes()).map_err(refused)?;
     }
     world.git_commit(bucket, &kept, message).map_err(refused)
@@ -69,8 +63,7 @@ pub fn keep(
 
 /// Keep the Evidence of each live Dispatch at its open PR's head, once a
 /// head, so the PR's link to the Bucket opens before any Verdict: `pr <issue>
-/// <sha>`, nothing when its worktree has none. A failed keep is said and
-/// tried again next tick. Says what it kept.
+/// <sha>`. A failed keep is said and tried again next tick. Says what it kept.
 pub fn step(ctx: &Context, config: &Config) -> io::Result<Vec<String>> {
     let mut said = vec![];
     let prs = stage::load(&ctx.config_dir)?;
@@ -84,7 +77,7 @@ pub fn step(ctx: &Context, config: &Config) -> io::Result<Vec<String>> {
             continue;
         }
         let message = format!("pr {} {sha}", d.issue);
-        match keep_evidence(ctx, config, &d, sha, &message, false) {
+        match keep_evidence(ctx, config, &d, sha, &message) {
             Ok(line) => {
                 said.extend(line);
                 dispatch::update(&ctx.config_dir, |all| {
@@ -99,38 +92,26 @@ pub fn step(ctx: &Context, config: &Config) -> io::Result<Vec<String>> {
     Ok(said)
 }
 
-/// At Close, keep `d`'s Evidence once more at its PR's last head `sha`, before
-/// its worktree goes, when the Bucket does not hold it all there as it is:
-/// Implementers update it after opening the PR. What to say of it, or why it
-/// could not be kept.
-pub fn close(
-    ctx: &Context,
-    config: &Config,
-    d: &Dispatch,
-    sha: &str,
-) -> Result<Option<String>, String> {
-    let message = format!("close {} {sha}", d.issue);
-    keep_evidence(ctx, config, d, sha, &message, true)
-}
-
-/// Commit `d`'s Evidence at `sha` with `message` when its worktree has any,
-/// and `unless_held`, only when the Bucket does not hold every file of it
-/// there as it is. What to say of it, or why it could not be kept.
-fn keep_evidence(
+/// Commit `d`'s Evidence to the Bucket at `sha` with `message` when it is
+/// not what the Bucket's last commit there holds: nothing when its worktree
+/// has none. What to say of it, or why it could not be kept.
+pub fn keep_evidence(
     ctx: &Context,
     config: &Config,
     d: &Dispatch,
     sha: &str,
     message: &str,
-    unless_held: bool,
 ) -> Result<Option<String>, String> {
-    let kept = new_evidence(ctx.world, config, d, sha, unless_held).and_then(|new| {
-        if new {
-            keep(ctx, config, d, sha, None, message)?;
+    let (world, bucket) = (ctx.world, &config.bucket.path);
+    let committed = lock(ctx).and_then(|_lock| {
+        let kept = copied(world, config, d, sha)?;
+        let changed = world.git_changed(bucket, &kept).map_err(refused)?;
+        if changed {
+            world.git_commit(bucket, &kept, message).map_err(refused)?;
         }
-        Ok(new)
+        Ok(changed)
     });
-    match kept {
+    match committed {
         Ok(true) => Ok(Some(format!(
             "{}: Evidence at {sha} kept in the Bucket",
             d.issue
@@ -143,27 +124,17 @@ fn keep_evidence(
     }
 }
 
-/// Whether `d`'s worktree has Evidence to keep at `sha`: any, and with
-/// `unless_held`, any the Bucket does not hold there as it is.
-fn new_evidence(
-    world: &dyn World,
-    config: &Config,
-    d: &Dispatch,
-    sha: &str,
-    unless_held: bool,
-) -> Result<bool, Refusal> {
-    let Some(worktree) = &d.worktree else {
-        return Ok(false);
-    };
-    let from = format!("{worktree}/{}", evidence(d));
-    let to = format!("{}/{}/{sha}", config.bucket.path, folder(d));
-    let read = |path: String| world.read_file(&path).map_err(refused);
-    for file in world.list_files(&from).map_err(refused)? {
-        if !unless_held || read(format!("{from}/{file}"))? != read(format!("{to}/{file}"))? {
-            return Ok(true);
-        }
+/// Copy `d`'s Evidence into the Bucket at `sha`, the Bucket made first if it
+/// is missing: the folder it is in there, `<repo>/<issue>/<sha>`.
+fn copied(world: &dyn World, config: &Config, d: &Dispatch, sha: &str) -> Result<String, Refusal> {
+    made(world, config)?;
+    let kept = format!("{}/{sha}", folder(d));
+    if let Some(worktree) = &d.worktree {
+        let from = format!("{worktree}/{}", evidence(d));
+        let to = format!("{}/{kept}", config.bucket.path);
+        world.copy_dir(&from, &to).map_err(refused)?;
     }
-    Ok(false)
+    Ok(kept)
 }
 
 /// `GET /bucket/<path>`: the file at `path`, its escapes decoded, in the Bucket's

@@ -699,8 +699,10 @@ pub fn close_final(ctx: &Context, config: &Config) -> io::Result<Vec<String>> {
         let Some((url, pr)) = stage::pr_of(&prs, &d).filter(|(_, pr)| pr.r#final) else {
             continue;
         };
-        // One whose Evidence could not be kept keeps its worktree, till it is.
-        match bucket::close(ctx, config, &d, &pr.head_sha) {
+        // Kept once more before its worktree goes: Implementers update it after
+        // opening the PR. One that could not be keeps its worktree, till it is.
+        let message = format!("close {} {}", d.issue, pr.head_sha);
+        match bucket::keep_evidence(ctx, config, &d, &pr.head_sha, &message) {
             Ok(line) => said.extend(line),
             Err(line) => {
                 said.push(line);
