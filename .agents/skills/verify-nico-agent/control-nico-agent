@@ -18,8 +18,12 @@
 #                                 run the CLI in the scratch HOME; exit code is the CLI's
 #   http [--evidence PREFIX] <METHOD> <PATH> [BODY]
 #                                 ask this run's serve, as the page does
-#   page [--evidence PREFIX] [--width PX] [--click ROLE=NAME | --click ROLE~NAME | --press KEY | --expect TEXT]...
-#                                 open serve's page in headless Chromium, act, capture
+#   page [--tunnel] [--evidence PREFIX] [--width PX] [--click ROLE=NAME | --click ROLE~NAME | --press KEY
+#        | --expect TEXT | --gone TEXT | --wait SECONDS | --mode pass|502|signed-out]...
+#                                 open serve's page in headless Chromium (through the tunnel stand-in), act, capture
+#   tunnel start|pass|502|signed-out
+#                                 start a stand-in for the cloudflared tunnel and Access in front of serve;
+#                                 pass requests on, answer 502, or answer Access's login redirect
 #   cleanup                       stop this run's serve, remove the run dir (never .evidence/)
 set -euo pipefail
 
@@ -483,6 +487,11 @@ cmd_http() {
 
 cmd_page() {
   load_run
+  local url="$URL"
+  if [ "${1:-}" = --tunnel ]; then
+    url="${TUNNEL_URL:-}"; shift
+    [ -n "$url" ] || die "page: no tunnel stand-in in this run. Run: control-nico-agent tunnel start"
+  fi
   local pw; pw="$(playwright_dir)" || die "page: no playwright package found beside the playwright CLI; set VERIFY_PLAYWRIGHT=<dir of the playwright package>"
   # The real node, not a version manager's shim, which may not work under the browser's HOME.
   local node_bin; node_bin="$(node -p process.execPath)"
@@ -493,12 +502,41 @@ cmd_page() {
     PLAYWRIGHT_BROWSERS_PATH="${PLAYWRIGHT_BROWSERS_PATH:-$REAL_HOME/.cache/ms-playwright}" \
     VERIFY_PLAYWRIGHT="$pw" \
     VERIFY_CHROMIUM="${VERIFY_CHROMIUM:-$(command -v chromium || command -v chromium-browser || command -v google-chrome || true)}" \
-    "$node_bin" "$SKILL_DIR/page.mjs" "$URL" "$@"
+    "$node_bin" "$SKILL_DIR/page.mjs" "$url" "$@"
+}
+
+# tunnel.mjs between the page and serve, as cloudflared and Access are: it cuts a response idle for
+# 100 seconds and, switched, answers every request with a 502 or Access's login redirect.
+cmd_tunnel() {
+  load_run
+  local what="${1:-}"
+  case "$what" in
+    start)
+      [ -z "${TUNNEL_URL:-}" ] || die "tunnel: already started at $TUNNEL_URL"
+      local port; port="$(free_port)"
+      setsid "$(node -p process.execPath)" "$SKILL_DIR/tunnel.mjs" "$URL" "$port" "$RUN_DIR/tunnel.log" \
+        > "$RUN_DIR/tunnel.out" 2>&1 < /dev/null &
+      local i
+      for i in $(seq 1 50); do
+        curl -fsS -o /dev/null "http://127.0.0.1:$port/api/status" 2>/dev/null && break
+        sleep 0.1
+      done
+      curl -fsS -o /dev/null "http://127.0.0.1:$port/api/status" || die "tunnel: did not answer on $port in 5s; see $RUN_DIR/tunnel.out"
+      printf 'TUNNEL_URL=http://127.0.0.1:%s\nTUNNEL_LOG=%s\n' "$port" "$RUN_DIR/tunnel.log" >> "$RUN_ENV"
+      echo "tunnel: http://127.0.0.1:$port to serve at $URL, logging to $RUN_DIR/tunnel.log"
+      ;;
+    pass|502|signed-out)
+      [ -n "${TUNNEL_URL:-}" ] || die "tunnel: not started. Run: control-nico-agent tunnel start"
+      curl -fsS -X PUT --data-raw "$what" "$TUNNEL_URL/__tunnel/mode"
+      ;;
+    *) die "tunnel: usage: tunnel start|pass|502|signed-out" ;;
+  esac
 }
 
 # Stop what this run started, never by name: each process whose executable lives in the run dir
-# (serve, and any CLI run still going) and each browser `page` left with its profile in the run's
-# tmp. serve leads its own session (setsid), so its whole group goes with it, git children included.
+# (serve, and any CLI run still going), each browser `page` left with its profile in the run's
+# tmp, and the tunnel stand-in logging into the run dir. serve leads its own session (setsid), so
+# its whole group goes with it, git children included.
 stop_run() {
   local p pid exe stopped=() alive=()
   for p in /proc/[0-9]*; do
@@ -511,7 +549,7 @@ stop_run() {
         kill -TERM "$pid" 2>/dev/null || true
       fi
       stopped+=("$pid")
-    elif { tr '\0' ' ' < "$p/cmdline"; } 2>/dev/null | grep -qF -- "--user-data-dir=$RUN_DIR/tmp/"; then
+    elif { tr '\0' ' ' < "$p/cmdline"; } 2>/dev/null | grep -qF -e "--user-data-dir=$RUN_DIR/tmp/" -e "$RUN_DIR/tunnel.log"; then
       kill -TERM "$pid" 2>/dev/null || true
       stopped+=("$pid")
     fi
@@ -525,7 +563,7 @@ stop_run() {
     sleep 0.1
   done
   for pid in "${alive[@]}"; do kill -KILL "$pid" 2>/dev/null || true; done
-  echo "cleanup: stopped pid ${stopped[*]} (this run's serve, CLI runs or browsers)"
+  echo "cleanup: stopped pid ${stopped[*]} (this run's serve, CLI runs, browsers or tunnel stand-in)"
 }
 
 cmd_cleanup() {
@@ -559,9 +597,10 @@ main() {
     run) cmd_run "$@" ;;
     http) cmd_http "$@" ;;
     page) cmd_page "$@" ;;
+    tunnel) cmd_tunnel "$@" ;;
     cleanup) cmd_cleanup "$@" ;;
-    ""|-h|--help|help) sed -n '2,23p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' ;;
-    *) die "unknown subcommand '$sub' (launch|doctor|env|seed|drift|state|run|http|page|cleanup)" ;;
+    ""|-h|--help|help) sed -n '2,27p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' ;;
+    *) die "unknown subcommand '$sub' (launch|doctor|env|seed|drift|state|run|http|page|tunnel|cleanup)" ;;
   esac
 }
 

@@ -42,7 +42,7 @@ pub struct Events<'a> {
 }
 
 impl Events<'_> {
-    /// What the stream sends at its next poll: nothing, or its events.
+    /// What the stream sends at its next poll: a keepalive, or its events.
     pub fn next(&mut self) -> String {
         (self.poll)(&self.t.world)
     }

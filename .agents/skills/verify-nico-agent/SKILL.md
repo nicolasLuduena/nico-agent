@@ -37,9 +37,10 @@ Decisions this skill was generated from (the interview of the repo):
 
 ## Helpers
 
-Two executable scripts ship with the skill: `control-nico-agent` (bash; needs `cargo`, `git`, `jq`,
-`curl`, `node`, `ss`, `setsid`) and `page.mjs`, which `control-nico-agent page` runs (needs the
-`playwright` CLI on `PATH`, and its browser or a `chromium` on `PATH`). Every subcommand reads
+Three executable scripts ship with the skill: `control-nico-agent` (bash; needs `cargo`, `git`, `jq`,
+`curl`, `node`, `ss`, `setsid`), `page.mjs`, which `control-nico-agent page` runs (needs the
+`playwright` CLI on `PATH`, and its browser or a `chromium` on `PATH`), and `tunnel.mjs`, which
+`control-nico-agent tunnel start` runs. Every subcommand reads
 `VERIFY_RUN_ID`; pick one per verification run, normally the issue number:
 
 ```sh
@@ -55,8 +56,10 @@ $C drift push <n>|stale|pause   # what GitHub would change: a new PR head, an ol
 $C state                        # fingerprint: config dir files, Dispatches, Verdicts, Bucket log, outside calls
 $C run [--evidence PREFIX] -- <nico-agent args...>       # the CLI in the scratch HOME; exit code is the CLI's
 $C http [--evidence PREFIX] <METHOD> <PATH> [BODY]       # ask serve, as the page does; exit 1 on 4xx/5xx
-$C page [--evidence PREFIX] [--width PX] [--click ROLE=NAME | --click ROLE~NAME | --press KEY | --expect TEXT]...
-                                # open the page, act in order, capture
+$C page [--tunnel] [--evidence PREFIX] [--width PX] [--click ROLE=NAME | --click ROLE~NAME | --press KEY | --expect TEXT
+        | --gone TEXT | --wait SECONDS | --mode pass|502|signed-out]...
+                                # open the page (through the tunnel stand-in), act in order, capture
+$C tunnel start|pass|502|signed-out   # a stand-in for cloudflared and Access in front of serve; $TUNNEL_URL, $TUNNEL_LOG
 $C cleanup                      # stop what the run started, remove the run dir; never touches .evidence/
 ```
 
@@ -66,8 +69,17 @@ writes `.cmd`, `.stdout` (the body), `.stderr`, `.exit` (the HTTP status) and `.
 what it captured, so a recipe can record and inspect at once. `page` steps: `--click tab=verify/second`
 clicks the element of that ARIA role whose accessible name is exactly the text, `--click
 "button~Failed verify/fixture #1"` one whose name contains it, `--press ArrowRight` a key,
-`--expect "Source not read yet"` waits for the text; it prints `ok` or `FAIL` per step and exits 1
-on the first failure, after capturing.
+`--expect "Source not read yet"` waits for the text, `--gone TEXT` up to a minute for it to go,
+`--wait 120` lets two minutes pass, and `--mode 502` switches the tunnel stand-in (with `--tunnel`
+only); it prints `ok` or `FAIL` per step and exits 1 on the first failure, after capturing.
+`.requests.txt` lists each `/api/events` stream as it is answered too, so a reconnect is a line.
+
+`tunnel start` puts `tunnel.mjs` between the page and serve, where cloudflared and Access sit: it
+cuts a response that sends nothing for 100 seconds, as Cloudflare does; switched to `502` it answers
+every request with a 502, as while the tunnel comes back, and to `signed-out` with Access's redirect
+to its login on another origin, as once the session lapses; `pass` passes requests on again.
+Switching to `502` cuts the open streams, as a dropped tunnel does; a lapse leaves them open, as
+Access does. It logs each answer, and each stream's end, to `$TUNNEL_LOG`.
 
 `seed dispatch` prints `{ issue, kind, worktree, branch, head, pr, evidence }`; keep it, the verdict
 recipes need `head`.
@@ -199,7 +211,8 @@ Proof standards:
 ```
 
 Stops every process whose executable lives in the run dir (serve, with its session and the `git`
-it runs; any CLI run still going) and any browser `page` left with its profile in the run's `tmp/`,
+it runs; any CLI run still going), any browser `page` left with its profile in the run's `tmp/` and
+the tunnel stand-in,
 then removes the run dir: the binary's copy, the scratch HOME and config, the fixtures and their
 worktrees, the Bucket, the stubs and `outside.log`. It refuses paths outside the run root, kills
 nothing by name, and never touches `.evidence/`, where the proof lives after cleanup. Run it after

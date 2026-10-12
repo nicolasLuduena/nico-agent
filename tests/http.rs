@@ -38,7 +38,11 @@ fn serve_listens_on_127_0_0_1_42069_before_its_first_tick_and_ticks_on_schedule(
 fn serve_listens_on_the_port_config_toml_sets() {
     let t = with_repo();
     let config = std::fs::read_to_string(t.config_dir.join("config.toml")).unwrap();
-    std::fs::write(t.config_dir.join("config.toml"), format!("port = 4321\n{config}")).unwrap();
+    std::fs::write(
+        t.config_dir.join("config.toml"),
+        format!("port = 4321\n{config}"),
+    )
+    .unwrap();
 
     let ran = t.cli(&["serve"]);
 
@@ -147,7 +151,7 @@ fn an_unknown_path_or_method_answers_404_with_the_routes_as_help() {
         "GET /api/status: the status of every Repo and Dispatch",
         "GET /api/map/<owner/name>: the Repo's issues and how they block and stack on each other",
         "GET /api/node/<issue>: the issue's Dispatch, its restarts, its Verdict's findings and its Evidence",
-        "GET /api/events: a stream of `changed`, sent when state or an Agent state changes",
+        "GET /api/events: a stream of `changed`, sent when state or an Agent state changes, and a keepalive comment otherwise",
         "POST /api/dispatch {issue, harness, model, effort}: `nico-agent dispatch` of the issue",
         "POST /api/refresh: `nico-agent refresh`",
         "PATCH /api/repo/<owner/name>/switches {name: bool}: set the Repo's switches",
@@ -222,9 +226,21 @@ fn the_app_is_served_at_slash_from_the_binary_with_every_file_it_loads() {
 }
 
 const CHANGED: &str = "event: changed\ndata: {}\n\n";
+const KEEPALIVE: &str = ": keepalive\n\n";
 
 #[test]
-fn events_sends_changed_after_a_state_file_is_written_and_nothing_till_the_next_change() {
+fn events_sends_a_keepalive_comment_on_every_quiet_poll_so_a_proxy_never_sees_it_idle() {
+    let t = dispatched();
+    let mut events = t.events();
+
+    // Cloudflare closes a response that sends nothing for 100 seconds: ten polls.
+    let sent: String = (0..10).map(|_| events.next()).collect();
+
+    assert_eq!(sent, KEEPALIVE.repeat(10));
+}
+
+#[test]
+fn events_sends_changed_after_a_state_file_is_written_and_a_keepalive_till_the_next_change() {
     let t = with_repo();
     t.tick();
     let mut events = t.events();
@@ -236,7 +252,7 @@ fn events_sends_changed_after_a_state_file_is_written_and_nothing_till_the_next_
     let after = events.next();
     let again = events.next();
 
-    assert_eq!([before, after, again], ["", CHANGED, ""]);
+    assert_eq!([before, after, again], [KEEPALIVE, CHANGED, KEEPALIVE]);
 }
 
 /// Repo `acme/api` with issue 7 dispatched, its Implementer working.
@@ -258,11 +274,12 @@ fn events_sends_changed_after_a_live_dispatch_s_agent_state_changes() {
     let after = events.next();
     let again = events.next();
 
-    assert_eq!([before, after, again], ["", CHANGED, ""]);
+    assert_eq!([before, after, again], [KEEPALIVE, CHANGED, KEEPALIVE]);
 }
 
 #[test]
-fn events_sends_nothing_across_a_tick_that_changed_no_state_nor_a_dispatch_s_agent_state() {
+fn events_sends_only_a_keepalive_across_a_tick_that_changed_no_state_nor_a_dispatch_s_agent_state()
+{
     let t = dispatched();
     let mut events = t.events();
     t.world.calls.borrow_mut().clear();
@@ -272,7 +289,7 @@ fn events_sends_nothing_across_a_tick_that_changed_no_state_nor_a_dispatch_s_age
 
     let quiet = events.next();
 
-    assert_eq!(quiet, "");
+    assert_eq!(quiet, KEEPALIVE);
     assert!(
         t.world
             .calls()

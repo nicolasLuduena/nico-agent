@@ -312,7 +312,7 @@ fn a_changed_morning_md_emits_changed_and_one_notification_with_its_first_item()
             "- acme/api#7 https://github.com/acme/api/pull/9".to_string()
         )]
     );
-    assert_eq!(events.next(), "");
+    assert_eq!(events.next(), ": keepalive\n\n");
     assert_eq!(again, Vec::<String>::new());
     assert_eq!(t.world.notifications.borrow().len(), 1);
 }
