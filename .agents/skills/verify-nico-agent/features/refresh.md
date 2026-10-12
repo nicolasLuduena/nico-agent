@@ -53,22 +53,36 @@ Preconditions:
   and `herdr tab create`. Run `$C page --evidence "$E/05-paused-page"`: the strip adds `Paused
   GitHub until <time>` under the three Failed rows.
 - **Proof.** `$C state > "$E/state.after.txt"`; copy `$OUTSIDE_LOG` to `$E/outside.log`.
-- **PR below closed.** In a fresh run, `repo add` and no `seed issues` (its dispatches would add
-  actions): `$C seed dispatch 10 stacked`,
-  `$C http PATCH /api/repo/verify/fixture/switches '{"restart":false}'`, `$C drift below closed` and
-  `: > "$OUTSIDE_LOG"`. Run `$C run --evidence "$E/06-below-closed" -- refresh --json`: the last
-  action is `verify/fixture#10 Failed: the PR below, https://github.com/verify/fixture/pull/109, closed unmerged`;
-  `$OUTSIDE_LOG` has one `notify-send ... verify/fixture#10\ Failed restart:\ the\ PR\ below\,\ https://github.com/verify/fixture/pull/109\,\ closed\ unmerged`
-  and no `herdr tab` line. `status --json`'s `dispatches[0]` has `stage` `Failed`, `base`
-  `agent/fixture-9`, `restarts` `[]` and `failure` `{"step":"restart","error":"the PR below, ..., closed unmerged"}`.
-  A second `refresh` adds no action for `#10` and no `notify-send`. `$C page --click "button~Failed verify/fixture #10"`
-  shows the panel's `the PR below, https://github.com/verify/fixture/pull/109, closed unmerged`,
-  `At the restart step.` and `No restarts.`
-- **PR below merged.** In a fresh run, `repo add` and no `seed issues`: `$C seed dispatch 10 stacked`,
-  `$C drift below merged` (Restart on). Run `$C run --evidence "$E/07-below-merged" -- refresh --json`: the last action is
-  `verify/fixture#10 failed at tab of its retarget restart: \`herdr tab close\` failed: ...` (herdr is
-  a stub); `$OUTSIDE_LOG` has `herdr tab close verify-tab-10`. `status --json`'s `dispatches[0]` has
-  `base` `main` and one `retarget` restart by `loop`.
+- **PR below closed.** A fresh run without `seed issues` (its dispatches would add actions):
+  `$C cleanup; $C launch --no-build && $C doctor && . "$($C env)"`,
+  `$C run -- repo add verify/fixture --path "$FIXTURE_CLONE" --json`, `$C seed dispatch 10 stacked`,
+  `$C http --evidence "$E/06-restart-off" PATCH /api/repo/verify/fixture/switches '{"restart":false}'`,
+  `$C drift below closed`, `$C state > "$E/state.closed.before.txt"` and `: > "$OUTSIDE_LOG"`.
+  Run `$C run --evidence "$E/06-below-closed" -- refresh --json`: the last action is
+  `verify/fixture#10 Failed: the PR below, https://github.com/verify/fixture/pull/109, closed unmerged`.
+  `$C state > "$E/state.closed.after.txt"`; its diff has `dispatches.json`'s `failure`; copy
+  `$OUTSIDE_LOG` to `$E/outside.below-closed.log`: one
+  `notify-send --app-name nico-agent -- verify/fixture#10\ Failed restart:\ the\ PR\ below\,\ https://github.com/verify/fixture/pull/109\,\ closed\ unmerged`
+  and no `herdr tab` line. Run `$C run --evidence "$E/06-below-closed-status" -- status --json`:
+  `dispatches[0]` has `stage` `Failed`, `base` `agent/fixture-9`, `restarts` `[]` and `failure`
+  `{"error":"the PR below, https://github.com/verify/fixture/pull/109, closed unmerged","step":"restart"}`.
+  `: > "$OUTSIDE_LOG"`, then `$C run --evidence "$E/06-below-closed-again" -- refresh --json`: no
+  action names `verify/fixture#10`, and `$OUTSIDE_LOG` has no `notify-send`. Run
+  `$C page --evidence "$E/06-below-closed-page" --click "button~Failed verify/fixture #10"`:
+  `region "Needs you"` has `button "Failed verify/fixture #10 Verify: seeded Dispatch 10 <time>"`;
+  `.requests.txt` has `GET /api/node/verify%2Ffixture%2310 -> 200`; the panel reads
+  `the PR below, https://github.com/verify/fixture/pull/109, closed unmerged`, `At the restart step.`
+  and `No restarts.` Copy `$OUTSIDE_LOG` to `$E/outside.log`.
+- **PR below merged.** A fresh run without `seed issues`, Restart on:
+  `$C cleanup; $C launch --no-build && $C doctor && . "$($C env)"`,
+  `$C run -- repo add verify/fixture --path "$FIXTURE_CLONE" --json`, `$C seed dispatch 10 stacked`,
+  `$C drift below merged`, `$C state > "$E/state.merged.before.txt"` and `: > "$OUTSIDE_LOG"`.
+  Run `$C run --evidence "$E/07-below-merged" -- refresh --json`: the last action is
+  `verify/fixture#10 failed at tab of its retarget restart: \`herdr tab close\` failed: verify_stub: herdr is a stub in this verification run`.
+  `$C state > "$E/state.merged.after.txt"`; copy `$OUTSIDE_LOG` to `$E/outside.below-merged.log`:
+  it has `herdr tab close verify-tab-10`. Run
+  `$C run --evidence "$E/07-below-merged-status" -- status --json`: `dispatches[0]` has `base`
+  `main` and `restarts` `[{"at":<now>,"by":"loop","reason":"retarget"}]`.
 
 ## Gotchas
 

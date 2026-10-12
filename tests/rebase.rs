@@ -6,7 +6,7 @@ use common::{Setup, github_issue, pull_request, setup};
 use nico_agent::world::{
     GitHubBlocker, IssueState, Mergeable, PrState, PullRequest, PullRequestActivity,
 };
-use serde_json::Value;
+use serde_json::{Value, json};
 
 const TICK: Duration = Duration::from_secs(600);
 
@@ -206,6 +206,22 @@ fn a_retarget_restarts_once_when_the_pr_below_merged_naming_its_base() {
 }
 
 #[test]
+fn with_restart_off_a_merged_pr_below_is_left_alone() {
+    let t = stacked("switches = { restart = false }");
+    next_tick(&t);
+    let mut prs = t.world.prs.borrow_mut();
+    prs.iter_mut().find(|pr| pr.number == 11).unwrap().state = PrState::Merged;
+    drop(prs);
+
+    let said = next_tick(&t);
+
+    assert_eq!(said, Vec::<String>::new());
+    assert_eq!(prompts(&t, 2), Vec::<String>::new());
+    let status = t.cli(&["status", "--json"]).json();
+    assert_eq!(status["dispatches"][0]["base"], "agent/api-1");
+}
+
+#[test]
 fn a_stacked_dispatch_whose_pr_below_closed_unmerged_is_failed_once_whatever_the_restart_switch() {
     for toml in ["", "switches = { restart = false }"] {
         let t = stacked(toml);
@@ -235,10 +251,10 @@ fn a_stacked_dispatch_whose_pr_below_closed_unmerged_is_failed_once_whatever_the
         let d = &status["dispatches"][0];
         assert_eq!(d["stage"], "Failed", "{toml}");
         assert_eq!(d["base"], "agent/api-1", "{toml}");
-        assert_eq!(d["restarts"], serde_json::json!([]), "{toml}");
+        assert_eq!(d["restarts"], json!([]), "{toml}");
         assert_eq!(
             d["failure"],
-            serde_json::json!({
+            json!({
                 "step": "restart",
                 "error": "the PR below, https://github.com/acme/api/pull/11, closed unmerged",
             }),

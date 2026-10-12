@@ -1,7 +1,8 @@
 //! Restart, the one recovery action: close a Dispatch's tab, open a new one
 //! in its workspace and worktree, start its Harness and send it the restart
 //! prompt for the reason. A reason restarted `max_restarts_per_reason`
-//! times already marks the Dispatch Failed instead, with one notification.
+//! times already marks the Dispatch Failed instead, with one notification,
+//! as does a PR below closed unmerged.
 
 use std::fmt;
 use std::io;
@@ -81,12 +82,7 @@ pub fn step(
     for mut d in live {
         if let Some(url) = rebase::closed_below(&d, &prs) {
             let error = format!("the PR below, {url}, closed unmerged");
-            let failure = Failure {
-                step: "restart".into(),
-                error,
-                reason: None,
-            };
-            said.extend(fail(ctx, d, failure)?);
+            said.extend(fail(ctx, d, error, None)?);
             continue;
         }
         if !config.repo_of(&d).switches.restart {
@@ -170,12 +166,7 @@ fn by_loop(
         .count();
     if times >= config.max_restarts_per_reason as usize {
         let error = format!("{reason} again after {times} restarts for it");
-        let failure = Failure {
-            step: "restart".into(),
-            error,
-            reason: Some(reason),
-        };
-        return fail(ctx, record, failure);
+        return fail(ctx, record, error, Some(reason));
     }
     let issue = record.issue.clone();
     Ok(match restart(ctx, config, &mut record, reason, "loop")? {
@@ -187,9 +178,20 @@ fn by_loop(
     })
 }
 
-/// Mark `record` Failed with `failure`, with one notification. Says what it did.
-fn fail(ctx: &Context, mut record: Dispatch, failure: Failure) -> io::Result<Vec<String>> {
-    let said = format!("{} Failed: {}", record.issue, failure.error);
+/// Mark `record` Failed at the restart step with `error`, on `reason` if a
+/// restart used it up, with one notification. Says what it did.
+fn fail(
+    ctx: &Context,
+    mut record: Dispatch,
+    error: String,
+    reason: Option<Reason>,
+) -> io::Result<Vec<String>> {
+    let said = format!("{} Failed: {error}", record.issue);
+    let failure = Failure {
+        step: "restart".into(),
+        error,
+        reason,
+    };
     record.failure = Some(failure.clone());
     dispatch::edit(ctx, &record.issue, |live| live.failure = Some(failure))?;
     Ok([said]
