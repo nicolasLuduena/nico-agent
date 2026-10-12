@@ -47,9 +47,9 @@ Preconditions:
   `base` `{"value":null,"from":"default"}`.
 - **API.** Run `$C http --evidence "$E/03-api" GET /api/status`. HTTP `200`; `projects` equals the
   command's, and each Repo has the same `{value, from}` settings plus `harnesses`.
-- **Page.** Run `$C page --evidence "$E/04-page-fixture" --click "tab=verify/fixture" --expect "Switches"`:
-  the snapshot has `spinbutton "Room": "2"`, `switch "Review"` unchecked and `switch "Dispatch" [checked]`.
-  With `--click "tab=verify/second"` (`05-page-second`): `spinbutton "Room": "4"`, `switch "Review"`
+- **Page.** Run `$C page --evidence "$E/04-page-fixture" --click "tab=verify/fixture" --expect "Switches" --click "region=Switches" --expect "Faux-nico answers"`:
+  the snapshot has `spinbutton "Room": "2"`, `Switches 4 of 8 on`, `switch "Review"` unchecked and
+  `switch "Dispatch" [checked]`. With `--click "tab=verify/second"` (`05-page-second`): `spinbutton "Room": "4"`, `switch "Review"`
   unchecked. `.console.txt` is empty.
 - **Refused.** Rename `room = 2` under `[projects.verify]` to `rom = 2` and run
   `$C run --evidence "$E/06-unknown-key" -- repo list --json`: exit `1`, `error` `<config> line <n>:

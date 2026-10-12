@@ -48,7 +48,7 @@ Preconditions:
 - **Obeyed.** `: > "$OUTSIDE_LOG"`; run `$C http --evidence "$E/09-refresh-off" POST /api/refresh`.
   HTTP `200`, `actions` `[]`; `$OUTSIDE_LOG` holds only `gh api user --jq .login` (no `gh issue
   edit`, no `herdr worktree create`): nothing was dispatched. Copy it to `$E/outside.off.log`.
-- **Toggle on the page.** Run `$C page --evidence "$E/10-toggle" --click "switch=Dispatch"`.
+- **Toggle on the page.** Run `$C page --evidence "$E/10-toggle" --click "region=Switches" --expect "3 of 8 on" --click "switch=Dispatch" --expect "4 of 8 on"`.
   `.requests.txt` has `PATCH /api/repo/verify/fixture/switches {"dispatch":true} -> 200`; the ARIA
   snapshot has `switch "Dispatch" [checked]`, `switch "Review"` unchecked, and `Faux-nico answers`,
   `Gardening`, `Quality-scan` unchecked; `config.toml` has `switches = { dispatch = true , review = false }`.
@@ -67,6 +67,8 @@ Preconditions:
   refresh, not by waiting.
 - The PATCH writes an inline table with toml_edit's spacing (`{ dispatch = true , review = false }`):
   assert on the values, not the spacing.
+- The switches are folded to `<n> of 8 on`: `--click "region=Switches"` opens them first, or a
+  `switch` is hidden and its click times out.
 - `--click "switch=Dispatch"` (role switch) is the toggle; `button "Dispatch"` is the Dispatch form's.
 - A refresh with Dispatch on dispatches every Ready and Stackable issue up to the room; each fails
   in the run and stays Failed. Relaunch before driving another feature.
