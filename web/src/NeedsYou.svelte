@@ -126,6 +126,7 @@
   /* A check's help is the fix: read whole, never cut. */
   .text.full {
     white-space: normal;
+    overflow-wrap: anywhere;
   }
   .help {
     display: block;

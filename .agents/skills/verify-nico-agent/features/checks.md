@@ -1,7 +1,7 @@
 # Readiness checks
 
 Each Repo's Readiness checks say what will break it before the loop hits it: its clone, a fetch that
-asks nothing, `.evidence/` ignored and a verification skill on its Base's tip, the skills its steps'
+asks nothing, `.evidence/` ignored and a Verification skill on its Base's tip, the skills its steps'
 prompts name for their Harness, and the GitHub App on it. They run when serve starts, on Refresh and
 after a write to the Repo's or its Project's settings, never on a plain tick, and stop nothing. Each
 failing one is a `Check` row in the needs-you strip and an errata block in the tab's Readiness
@@ -37,7 +37,7 @@ Preconditions:
   `$C run --evidence "$E/02-status" -- status --json`: `repos[0].checks.results` is, in order,
   `clone` ok (`<clone> is a clone of verify/fixture`), `fetch` ok (`<clone> fetches from origin
   without asking`), `evidence` failing (`.evidence/ is not ignored on main`), `verification` failing
-  (`main has no verification skill under .agents/skills/verify-*/`), `skills` failing (`no implement
+  (`main has no Verification skill under .agents/skills/verify-*/`), `skills` failing (`no implement
   skill for claude, the Implementer's Harness; no research skill for claude, ...; no verdict skill
   for codex, the Reviewer's Harness`, help `Install implement in one of ~/.claude/skills,
   <clone>/.claude/skills; ...`), `bot` failing (`could not check the GitHub App on verify/fixture:

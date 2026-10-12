@@ -7,7 +7,7 @@ use serde_json::{Value, json};
 const LS_REMOTE: &str = "GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND=\"ssh -o BatchMode=yes -o ConnectTimeout=10\" git -C /src/api ls-remote origin";
 
 /// Repo `acme/api` with everything its Readiness checks look for: a clone
-/// of it, `.evidence/` ignored and a verification skill on `main`, the
+/// of it, `.evidence/` ignored and a Verification skill on `main`, the
 /// skills its steps name for claude and codex (its Reviewer's), and the
 /// GitHub App on it; no calls recorded yet.
 fn ready() -> Setup {
@@ -72,7 +72,7 @@ fn serve_checks_each_repo_at_start_with_a_call_per_check_and_keeps_each_result()
             ok("clone", "/src/api is a clone of acme/api"),
             ok("fetch", "/src/api fetches from origin without asking"),
             ok("evidence", ".evidence/ is ignored on main"),
-            ok("verification", "main has the verification skill verify-api"),
+            ok("verification", "main has the Verification skill verify-api"),
             ok("skills", "each skill a step names is installed for its Harness"),
             ok("bot", "the GitHub App is installed on acme/api"),
         ],
@@ -98,6 +98,7 @@ fn each_failing_check_says_what_will_break_and_the_help_to_fix_it() {
     let denied =
         "`git ls-remote origin` failed in /src/api: git@github.com: Permission denied (publickey).";
     t.world.fail_call(LS_REMOTE, denied);
+    set_repo(&t, "base = \"main\"\n");
     t.world.tree.borrow_mut().clear();
     t.world
         .add_tree_file("/src/api", "origin/main", ".gitignore", "target/\n");
@@ -114,7 +115,7 @@ fn each_failing_check_says_what_will_break_and_the_help_to_fix_it() {
             { "name": "clone", "ok": true, "said": "/src/api is a clone of acme/api", "help": null },
             failing("fetch", denied, "Load its key with `ssh-add`, or set origin to its https URL"),
             failing("evidence", ".evidence/ is not ignored on main", "Add `.evidence/` to the Base's .gitignore, or Close cannot remove a worktree"),
-            failing("verification", "main has no verification skill under .agents/skills/verify-*/", "Add the Repo's verification skill as .agents/skills/verify-<name>/ on the Base; without it every Verdict fails"),
+            failing("verification", "main has no Verification skill under .agents/skills/verify-*/", "Add the Repo's Verification skill as .agents/skills/verify-<name>/ on the Base; without it every Verdict fails"),
             failing(
                 "skills",
                 "no implement skill for claude, the Implementer's Harness; no research skill for claude, the Implementer's Harness; no verdict skill for codex, the Reviewer's Harness",
@@ -129,6 +130,74 @@ fn each_failing_check_says_what_will_break_and_the_help_to_fix_it() {
     );
     // origin did not answer: the Base's tip is the clone's, unfetched.
     assert!(!t.world.calls().iter().any(|c| c.contains(" fetch origin")));
+}
+
+/// Append `toml` to `acme/api`'s table, the last in config.toml.
+fn set_repo(t: &Setup, toml: &str) {
+    let file = t.config_dir.join("config.toml");
+    let config = std::fs::read_to_string(&file).unwrap();
+    std::fs::write(&file, format!("{config}{toml}")).unwrap();
+}
+
+#[test]
+fn with_origin_asking_and_no_base_set_the_base_s_tip_is_not_checked_rather_than_origin_asked_for_its_default_branch()
+ {
+    let t = ready();
+    t.world.fail_call(
+        LS_REMOTE,
+        "`git ls-remote origin` failed in /src/api: Host key verification failed.",
+    );
+
+    let results = served(&t);
+
+    let names: Vec<&str> = (results.as_array().unwrap().iter())
+        .map(|r| r["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(names, ["clone", "fetch", "skills", "bot"]);
+    assert!(
+        !t.world
+            .calls()
+            .iter()
+            .any(|c| c.ends_with("default-branch"))
+    );
+}
+
+#[test]
+fn a_harness_that_names_no_skill_dirs_fails_the_skills_check_asking_for_them() {
+    let t = ready();
+    let file = t.config_dir.join("config.toml");
+    let config = std::fs::read_to_string(&file).unwrap();
+    let mine = "[harnesses.mine]\nlaunch_mode = \"herdr-kind\"\nkind = \"mine\"\nsigil = \"/\"\nmodel_args = []\neffort_args = []\n";
+    std::fs::write(
+        &file,
+        format!("{mine}{config}reviewer = {{ harness = \"mine\" }}\n"),
+    )
+    .unwrap();
+
+    let results = served(&t);
+
+    assert_eq!(
+        results[4],
+        failing(
+            "skills",
+            "no verdict skill for mine, the Reviewer's Harness",
+            "Set harnesses.mine.skill_dirs to where mine reads skills"
+        )
+    );
+}
+
+#[test]
+fn failing_checks_stop_no_step_of_the_loop() {
+    let t = ready();
+    t.world.clones.borrow_mut().clear();
+    t.world.app_repos.borrow_mut().clear();
+    t.world
+        .add_issue("acme/api", common::github_issue("acme/api", 7));
+
+    let said = t.tick();
+
+    assert_eq!(said, ["acme/api#7 dispatched"]);
+    assert_eq!(status_checks(&t)["results"][0]["ok"], false);
 }
 
 #[test]
@@ -185,10 +254,10 @@ fn a_reviewer_on_a_harness_with_no_verdict_skill_fails_the_skills_check_before_a
 fn the_skills_check_asks_for_faux_nico_and_quality_scan_only_while_their_switches_are_on_and_finds_skills_in_the_clone()
  {
     let t = ready();
-    let file = t.config_dir.join("config.toml");
-    let config = std::fs::read_to_string(&file).unwrap();
-    let on = "switches = { answer = true, quality_scan = true, review = false }\nfaux_nico = { harness = \"opencode\" }\n";
-    std::fs::write(&file, format!("{config}{on}")).unwrap();
+    set_repo(
+        &t,
+        "switches = { answer = true, quality_scan = true, review = false }\nfaux_nico = { harness = \"opencode\" }\n",
+    );
     t.world
         .add_file("/src/api/.claude/skills/quality-scan/SKILL.md", b"");
 

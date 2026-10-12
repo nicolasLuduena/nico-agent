@@ -14,6 +14,7 @@ use crate::answer::Answer;
 use crate::args::Args;
 use crate::asking::Asking;
 use crate::bucket;
+use crate::checks;
 use crate::cli::{Context, Refusal};
 use crate::config::{self, Config, Harness, Launch, Repo, fill_in};
 use crate::launch::{self, AgentLaunch};
@@ -461,11 +462,9 @@ fn implement_prompt(
         ("bucketUrl", &bucket_url),
     ];
     let text = fill_in(template, &values);
-    let installed = (ctx.world.github_app_repos())
-        .is_ok_and(|repos| repos.iter().any(|r| r.eq_ignore_ascii_case(&record.repo)));
-    match installed {
-        true => text + &fill_in(&prompts.bot_suffix, &values),
-        false => text,
+    match checks::app_installed(ctx.world, &record.repo) {
+        Ok(true) => text + &fill_in(&prompts.bot_suffix, &values),
+        _ => text,
     }
 }
 

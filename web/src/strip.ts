@@ -11,7 +11,7 @@ export interface Need {
   text: string;
   /** A failing check's help. */
   help?: string | null;
-  /** Since when it is Asking (null till a tick sees it), blocked or failing, when it last changed, its Verdict's time, or the pause's end; null for a review. */
+  /** Since when it is Asking (null till a tick sees it) or blocked, when it last changed (a check: when its Repo's checks last did), its Verdict's time, or the pause's end; null for a review. */
   at: string | null;
 }
 

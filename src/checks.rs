@@ -1,5 +1,5 @@
 //! Readiness checks: per Repo, what would break it before it does, said in
-//! needs-you. Run when `serve` starts, on Refresh and after a write to a
+//! needs-you. Checked when `serve` starts, on Refresh and after a write to a
 //! Repo's or its Project's settings; never on a plain tick, and never
 //! stopping a step. Kept in `checks.json`, a Repo's rewritten only when its
 //! results change, so `changed` is sent only then.
@@ -21,7 +21,7 @@ pub const FILE: &str = "checks.json";
 /// A Repo's checks, and since when they say what they say.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Checks {
-    /// When a run of them first found these results.
+    /// When they were first found to say this.
     pub at: String,
     pub results: Vec<Check>,
 }
@@ -88,11 +88,14 @@ fn check(world: &dyn World, config: &Config, slug: &str, repo: &Repo) -> Vec<Che
     }];
     if results[0].ok {
         let fetches = world.git_ls_remote(path);
-        let base = match &repo.base {
-            Some(base) => Ok(base.clone()),
-            None => world.git_default_branch(path),
+        // origin may be asked its default branch, and one that asks for a
+        // passphrase would hold serve's start: then the Base's tip goes unchecked.
+        let base = match (&repo.base, &fetches) {
+            (Some(base), _) => Some(Ok(base.clone())),
+            (None, Ok(())) => Some(world.git_default_branch(path)),
+            (None, Err(_)) => None,
         };
-        if let (Ok(()), Ok(base)) = (&fetches, &base) {
+        if let (Ok(()), Some(Ok(base))) = (&fetches, &base) {
             // One that fails leaves the tip the clone had, or none, which the checks below say.
             let _ = world.git_fetch(path, Some(base));
         }
@@ -107,8 +110,10 @@ fn check(world: &dyn World, config: &Config, slug: &str, repo: &Repo) -> Vec<Che
                 "Load its key with `ssh-add`, or set origin to its https URL".into(),
             ),
         });
-        results.push(evidence(world, path, &base));
-        results.push(verification(world, path, &base));
+        if let Some(base) = base {
+            results.push(evidence(world, path, &base));
+            results.push(verification(world, path, &base));
+        }
     }
     results.push(skills(world, config, repo));
     results.push(bot(world, slug));
@@ -118,12 +123,8 @@ fn check(world: &dyn World, config: &Config, slug: &str, repo: &Repo) -> Vec<Che
 /// `.evidence/` ignored by the `.gitignore` at the tip of the Base.
 fn evidence(world: &dyn World, path: &str, base: &WorldResult<String>) -> Check {
     let help = "Add `.evidence/` to the Base's .gitignore, or Close cannot remove a worktree";
-    let gitignore = base.clone().and_then(|base| {
-        let text = world.git_show(path, &format!("origin/{base}"), ".gitignore")?;
-        Ok((base, text.unwrap_or_default()))
-    });
-    match gitignore {
-        Ok((base, text)) if ignores_evidence(&text) => {
+    match at_tip(base, |tip| world.git_show(path, tip, ".gitignore")) {
+        Ok((base, text)) if ignores_evidence(text.as_deref().unwrap_or_default()) => {
             ok("evidence", format!(".evidence/ is ignored on {base}"))
         }
         Ok((base, _)) => failing(
@@ -133,6 +134,16 @@ fn evidence(world: &dyn World, path: &str, base: &WorldResult<String>) -> Check 
         ),
         Err(e) => failing("evidence", e.0, help.into()),
     }
+}
+
+/// What `read` finds at the tip of `base`, with the Base's name.
+fn at_tip<T>(
+    base: &WorldResult<String>,
+    read: impl FnOnce(&str) -> WorldResult<T>,
+) -> WorldResult<(String, T)> {
+    let base = base.clone()?;
+    let found = read(&format!("origin/{base}"))?;
+    Ok((base, found))
 }
 
 /// Whether the `.gitignore` `text` ignores the root's `.evidence/`, by a
@@ -154,22 +165,18 @@ fn ignores_evidence(text: &str) -> bool {
     ignored
 }
 
-/// A verification skill, `.agents/skills/verify-*/`, at the tip of the Base.
+/// A Verification skill, `.agents/skills/verify-*/`, at the tip of the Base.
 fn verification(world: &dyn World, path: &str, base: &WorldResult<String>) -> Check {
-    let help = "Add the Repo's verification skill as .agents/skills/verify-<name>/ on the Base; without it every Verdict fails";
-    let skills = base.clone().and_then(|base| {
-        let skills = world.git_ls_tree(path, &format!("origin/{base}"), ".agents/skills")?;
-        Ok((base, skills))
-    });
-    match skills {
+    let help = "Add the Repo's Verification skill as .agents/skills/verify-<name>/ on the Base; without it every Verdict fails";
+    match at_tip(base, |tip| world.git_ls_tree(path, tip, ".agents/skills")) {
         Ok((base, skills)) => match skills.iter().find(|s| s.starts_with("verify-")) {
             Some(skill) => ok(
                 "verification",
-                format!("{base} has the verification skill {skill}"),
+                format!("{base} has the Verification skill {skill}"),
             ),
             None => failing(
                 "verification",
-                format!("{base} has no verification skill under .agents/skills/verify-*/"),
+                format!("{base} has no Verification skill under .agents/skills/verify-*/"),
                 help.into(),
             ),
         },
@@ -221,15 +228,15 @@ fn skills(world: &dyn World, config: &Config, repo: &Repo) -> Check {
                 false => format!("{}/{dir}", repo.path),
             })
             .collect();
-        // A Harness that names none could read them anywhere.
-        if dirs.is_empty() || dirs.iter().any(|dir| world.has_skill(dir, skill)) {
+        if dirs.iter().any(|dir| world.has_skill(dir, skill)) {
             continue;
         }
-        missing.push(format!(
-            "no {skill} skill for {}, {whose} Harness",
-            launch.harness
-        ));
-        help.push(format!("Install {skill} in one of {}", dirs.join(", ")));
+        let name = &launch.harness;
+        missing.push(format!("no {skill} skill for {name}, {whose} Harness"));
+        help.push(match dirs.is_empty() {
+            true => format!("Set harnesses.{name}.skill_dirs to where {name} reads skills"),
+            false => format!("Install {skill} in one of {}", dirs.join(", ")),
+        });
     }
     match missing.is_empty() {
         true => ok(
@@ -249,13 +256,17 @@ fn skill_of(prompt: &str) -> Option<&str> {
     (!name.is_empty()).then_some(name)
 }
 
-/// The GitHub App installed on the Repo, which the implement prompt's bot suffix needs.
+/// Whether the GitHub App is installed on the Repo `slug`, which the
+/// implement prompt's bot suffix needs.
+pub fn app_installed(world: &dyn World, slug: &str) -> WorldResult<bool> {
+    let repos = world.github_app_repos()?;
+    Ok(repos.iter().any(|r| r.eq_ignore_ascii_case(slug)))
+}
+
 fn bot(world: &dyn World, slug: &str) -> Check {
-    match world.github_app_repos() {
-        Ok(repos) if repos.iter().any(|r| r.eq_ignore_ascii_case(slug)) => {
-            ok("bot", format!("the GitHub App is installed on {slug}"))
-        }
-        Ok(_) => failing(
+    match app_installed(world, slug) {
+        Ok(true) => ok("bot", format!("the GitHub App is installed on {slug}")),
+        Ok(false) => failing(
             "bot",
             format!("the GitHub App is not installed on {slug}"),
             format!("Install it on {slug}, or its PRs are opened as you, not the bot"),
