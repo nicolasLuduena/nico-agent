@@ -19,8 +19,7 @@ fn home(name: &str) -> PathBuf {
     let _ = fs::remove_dir_all(&root);
     let clone = root.join("api");
     fs::create_dir_all(clone.join("src")).unwrap();
-    let remote = ["remote", "add", "origin", "git@github.com:acme/api.git"];
-    for args in [&["init", "-q"][..], &remote] {
+    let git = |args: &[&str]| {
         let ran = Command::new("git")
             .arg("-C")
             .arg(&clone)
@@ -28,7 +27,9 @@ fn home(name: &str) -> PathBuf {
             .output()
             .unwrap();
         assert!(ran.status.success(), "git {args:?}");
-    }
+    };
+    git(&["init", "-q"]);
+    git(&["remote", "add", "origin", "git@github.com:acme/api.git"]);
     let config_dir = root.join(".config/nico-agent");
     fs::create_dir_all(&config_dir).unwrap();
     let config = format!("[bucket]\npath = \"{}\"\n", root.join("bucket").display());
@@ -118,16 +119,32 @@ fn repo_add_reads_a_real_clone_s_remotes() {
     assert!(bucket.join(".git").is_dir() && bucket.join("README.md").is_file());
 }
 
+/// `curl` answering Linear's refusal for its rate limit, per
+/// linear.app/developers/rate-limiting: the head (`HEADERS` and the status
+/// line) only for `--dump-header -`, the status only as `--write-out` asks.
+const LINEAR_LIMITED: &str = r#"cat > /dev/null
+for arg; do
+  case "$flag" in
+    --dump-header) [ "$arg" = - ] && printf 'HTTP/2 400\r\nHEADERS\r\n' ;;
+    --write-out) out=$arg ;;
+  esac
+  flag=$arg
+done
+printf '%s' '{"errors":[{"message":"Rate limit exceeded","extensions":{"code":"RATELIMITED"}}]}'
+printf '%s' "$out" | sed 's/%{http_code}/400/'"#;
+
 #[test]
 fn github_refusing_for_its_rate_limit_pauses_it_till_the_spent_limit_resets() {
-    // As `gh` words a spent limit; `gh api rate_limit` costs none, so it answers.
+    // As `gh` words a spent limit. `gh api rate_limit` costs none, so it
+    // answers: core spent till 2100-01-01, graphql with some left till 2101.
     let gh = r#"if [ "$*" = "api rate_limit" ]; then
-  echo '{"resources":{"core":{"remaining":4999,"reset":4133980800},"graphql":{"remaining":0,"reset":4102444800}}}'
+  echo '{"resources":{"core":{"remaining":0,"reset":4102444800},"graphql":{"remaining":4999,"reset":4133980800}}}'
 else
   echo 'gh: API rate limit exceeded for user ID 1. (HTTP 403)' >&2
   exit 1
 fi"#;
 
+    // `curl` is never run: GitHub, read first, refuses.
     let status = status_with("github-limit", gh, "exit 7");
 
     assert_eq!(
@@ -145,19 +162,29 @@ fn linear_refusing_for_its_rate_limit_pauses_it_till_the_spent_limit_resets() {
   "api user --jq .login") echo nico ;;
   *) echo '{"data":{"repository":{"issues":{"nodes":[],"pageInfo":{"hasNextPage":false,"endCursor":null}}}}}' ;;
 esac"#;
-    // As Linear refuses, per linear.app/developers/rate-limiting, through
-    // `--dump-header -` and `--write-out '\n%{http_code}'`.
-    let curl = r#"cat > /dev/null
-printf 'HTTP/2 400\r\nx-ratelimit-requests-remaining: 0\r\nx-ratelimit-requests-reset: 4133980800000\r\nx-ratelimit-complexity-remaining: 2500\r\nx-ratelimit-complexity-reset: 4165516800000\r\n\r\n%s\n400' \
-  '{"errors":[{"message":"Rate limit exceeded","extensions":{"code":"RATELIMITED"}}]}'"#;
+    let limits = ["requests", "endpoint-requests", "complexity"];
+    for spent in limits {
+        // The spent limit resets 2101-01-01 (in ms); the others, with some left, in 2102.
+        let headers: String = (limits.iter())
+            .map(|limit| {
+                let (left, reset) = match *limit == spent {
+                    true => (0, 4133980800000_u64),
+                    false => (1, 4165516800000),
+                };
+                format!("x-ratelimit-{limit}-remaining: {left}\\r\\nx-ratelimit-{limit}-reset: {reset}\\r\\n")
+            })
+            .collect();
+        let curl = LINEAR_LIMITED.replace("HEADERS", &headers);
 
-    let status = status_with("linear-limit", gh, curl);
+        let status = status_with(&format!("linear-{spent}"), gh, &curl);
 
-    assert_eq!(
-        status["sources"],
-        json!({
-            "github": { "paused_until": null },
-            "linear": { "paused_until": "2101-01-01T00:00:00Z" },
-        })
-    );
+        assert_eq!(
+            status["sources"],
+            json!({
+                "github": { "paused_until": null },
+                "linear": { "paused_until": "2101-01-01T00:00:00Z" },
+            }),
+            "{spent}"
+        );
+    }
 }
