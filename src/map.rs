@@ -63,6 +63,16 @@ pub fn map(ctx: &Context, name: &str) -> Result<Option<Value>, Refusal> {
             issues.push(issue);
         }
     }
+    // A Blocker in another Repo of the Project is keyed in GitHub's casing; its node, in the config's.
+    for blocker in issues.iter_mut().flat_map(|i| &mut i.blockers) {
+        let own = source::github_ref(&blocker.key).and_then(|(slug, number)| {
+            let own = slugs.iter().find(|s| s.eq_ignore_ascii_case(slug))?;
+            Some(format!("{own}#{number}"))
+        });
+        if let Some(own) = own {
+            blocker.key = own;
+        }
+    }
     let offered = |i: &Issue| i.open && i.labels.iter().any(|l| l == READY_LABEL);
     let mut keys: Vec<&str> = (issues.iter().filter(|i| offered(i)))
         .map(|i| i.key.as_str())

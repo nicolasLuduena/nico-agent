@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Project, Settings } from "../status";
-import { picked, projectOf, repoName, tag, undoLabel, unset } from "./settings";
+import { picked, projectOf, tag, undoLabel, unset } from "./settings";
 
 const claude = { harness: "claude", model: null, effort: null };
 const defaults: Settings = {
@@ -58,16 +58,6 @@ describe("a Project's own defaults", () => {
     expect(undoLabel({ value: 4, from: "project" }, undefined, ["room"], "project")).toBe("Use the default");
     expect(undoLabel({ value: false, from: "project" }, undefined, ["switches", "review"], "project")).toBe("Use the default");
     expect(undoLabel({ value: 3, from: "default" }, undefined, ["room"], "project")).toBeNull();
-  });
-});
-
-describe("a Repo's name on its Project's map", () => {
-  it("is its slug's name", () => {
-    expect(repoName("acme/web", ["acme/api", "acme/web"])).toBe("web");
-  });
-
-  it("is its whole slug when another Repo of the Project has the same name", () => {
-    expect(repoName("acme/api", ["acme/api", "other/api"])).toBe("acme/api");
   });
 });
 

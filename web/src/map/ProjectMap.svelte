@@ -13,15 +13,11 @@
   import { watch } from "../live";
   import { still } from "../motion";
   import { selection } from "../selection.svelte";
-  import { repoName } from "../controls/settings";
-  import { number, type Project } from "../status";
-  import { layout, NODE, withoutMerged, type MapNode, type Placed } from "./layout";
+  import { number, repoName, type Project } from "../status";
+  import { layout, NODE, withoutMerged, type Placed } from "./layout";
   import Mark, { worded } from "./Mark.svelte";
 
   let { project }: { project: Project } = $props();
-
-  /** The Repo of the Project a node is in, by name, when the Project has more than one; else none. */
-  const named = (n: MapNode) => (n.repo && project.repos.length > 1 ? repoName(n.repo, project.repos) : null);
 
   const PAD = 16;
   let failure = $state<string | null>(null);
@@ -225,7 +221,7 @@
   function said(n: Placed) {
     const a = agent(n);
     return [
-      [number(n.key, n.repo ?? ""), named(n)].filter(Boolean).join(" "),
+      [number(n.key, n.repo ?? ""), repoName(n.repo, project.repos)].filter(Boolean).join(" "),
       n.title ?? "",
       n.stage ?? "Blocker",
       a && `agent ${a}`,
@@ -281,7 +277,7 @@
         {/each}
         {#each drawn.nodes as n (n.key)}
           {@const a = agent(n)}
-          {@const repo = named(n)}
+          {@const repo = repoName(n.repo, project.repos)}
           <g
             class="node"
             data-key={n.key}

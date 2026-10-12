@@ -79,6 +79,17 @@ export interface Issue {
 /** `#7` for an issue of the Repo `slug`, else its whole key: another Repo's issue, or a Linear id. */
 export const number = (key: string, slug: string) => (key.startsWith(`${slug}#`) ? key.slice(slug.length) : key);
 
+/**
+ * How the map of a Project of `repos` names a node's Repo `slug`: its slug's
+ * name, or the whole slug when another Repo of the Project shares it; none
+ * while the Project has one Repo, or for a Blocker outside it.
+ */
+export function repoName(slug: string | null, repos: string[]): string | null {
+  if (!slug || repos.length < 2) return null;
+  const name = slug.slice(slug.indexOf("/") + 1);
+  return repos.filter((r) => r.slice(r.indexOf("/") + 1) === name).length > 1 ? slug : name;
+}
+
 export type Stage = "Implementing" | "PR draft" | "Verified" | "Merged" | "Closed" | "Failed";
 
 export interface Dispatch {

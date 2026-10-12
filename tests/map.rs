@@ -313,7 +313,8 @@ fn a_project_s_map_holds_every_repo_s_nodes_each_naming_its_repo_with_blocker_ed
     std::fs::write(t.config_dir.join("config.toml"), config).unwrap();
     t.world.add_issue("acme/api", github_issue("acme/api", 1));
     t.world.add_issue("acme/cli", github_issue("acme/cli", 4));
-    // Blocked by acme/api#1 in its Project, acme/cli#4 in another, other/lib#9 in none.
+    // Blocked by acme/api#1 in its Project, as GitHub cases its slug, acme/cli#4 in another
+    // Project, other/lib#9 in none.
     let blocker = |slug: &str, number| GitHubBlocker {
         slug: slug.into(),
         number,
@@ -324,7 +325,7 @@ fn a_project_s_map_holds_every_repo_s_nodes_each_naming_its_repo_with_blocker_ed
         "acme/web",
         nico_agent::world::GitHubIssue {
             blockers: vec![
-                blocker("acme/api", 1),
+                blocker("Acme/API", 1),
                 blocker("acme/cli", 4),
                 blocker("other/lib", 9),
             ],

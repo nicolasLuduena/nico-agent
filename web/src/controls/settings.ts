@@ -37,9 +37,3 @@ export const unset = (keys: string[]) => keys.reduceRight<unknown>((body, key) =
 /** `launch` with `field` picked: another Harness starts on its own model and Effort. */
 export const picked = (launch: Launch, field: keyof Launch, value: string | null): Launch =>
   field === "harness" ? { harness: value ?? launch.harness, model: null, effort: null } : { ...launch, [field]: value };
-
-/** The Repo `slug`'s name on the map of its Project of `repos`: its slug's name, or the whole slug when another shares it. */
-export function repoName(slug: string, repos: string[]): string {
-  const name = slug.slice(slug.indexOf("/") + 1);
-  return repos.filter((r) => r.slice(r.indexOf("/") + 1) === name).length > 1 ? slug : name;
-}

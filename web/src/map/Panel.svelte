@@ -7,8 +7,7 @@
   import { watch } from "../live";
   import { selection } from "../selection.svelte";
   import * as review from "../review";
-  import { repoName } from "../controls/settings";
-  import { number, type Project, type Review, type Stage } from "../status";
+  import { number, repoName, type Project, type Review, type Stage } from "../status";
   import { clock } from "../time";
   import Mark, { worded } from "./Mark.svelte";
   import { shown } from "./ProjectMap.svelte";
@@ -97,7 +96,7 @@
       <h2 id="panel-title" tabindex="-1" bind:this={title}>
         {node?.title ?? issue}
         {#if node?.url}<a href={node.url} target="_blank" rel="noreferrer"
-            >{number(issue, node.repo ?? "")}{#if node.repo && project.repos.length > 1}&nbsp;{repoName(node.repo, project.repos)}{/if}</a
+            >{[number(issue, node.repo ?? ""), repoName(node.repo, project.repos)].filter(Boolean).join(" ")}</a
           >{/if}
       </h2>
       <button type="button" class="quiet" onclick={close}>Close</button>

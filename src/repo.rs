@@ -210,9 +210,7 @@ pub fn set(ctx: &Context, slug: &str, set: &Value) -> Result<Value, Refusal> {
     let config = config::load(&ctx.config_dir)?;
     let (slug, repo) = config.repo(&slug).ok_or_else(|| not_configured(&slug))?;
     let mut shown = json!({ "slug": slug });
-    for (key, setting) in status::settings(&config, slug, repo) {
-        shown[key] = setting;
-    }
+    status::settings(&mut shown, &config, slug, repo);
     Ok(shown)
 }
 
@@ -238,9 +236,7 @@ pub fn set_project(ctx: &Context, name: &str, set: &Value) -> Result<Value, Refu
     })??;
     let config = config::load(&ctx.config_dir)?;
     let mut shown = json!({ "name": name, "defaults": config.projects.get(name) });
-    for (key, setting) in status::settings(&config, name, &config.project(name)) {
-        shown[key] = setting;
-    }
+    status::settings(&mut shown, &config, name, &config.project(name));
     Ok(shown)
 }
 

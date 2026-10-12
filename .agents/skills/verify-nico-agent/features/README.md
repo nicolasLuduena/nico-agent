@@ -25,7 +25,8 @@ recipe.
 - Run page actions through `$C page`, by ARIA role and accessible name; `ROLE~NAME` only where the
   name carries a time (strip rows).
 - Change outside state only through `$C seed` and `$C drift`; read state through `$C state`.
-- Use the issue numbers the fixtures give: 1 to 6 from `seed issues`, above 6 for `seed dispatch`.
+- Use the issue numbers the fixtures give: 1 to 6 from `seed issues`, verify/second's 1 and 2
+  from `seed issues second`, above 6 for `seed dispatch`.
 - Do not remove proof artifacts during cleanup.
 
 ## Proof and skip reporting
