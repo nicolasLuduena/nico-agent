@@ -72,7 +72,8 @@ pub fn answer(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
     if (d.answers.iter()).any(|a| (&a.since, &*a.text) == (&asking.since, text)) {
         return Ok(json!({ "answer": format!("{said} already recorded (no-op)") }));
     }
-    launch::prompt(ctx.world, &d.implementer.agent, text)?;
+    let harness = &config.harnesses[&d.implementer.harness];
+    launch::prompt(ctx.world, harness, &d.implementer.agent, text)?;
     let new = Answer {
         since: asking.since,
         at: state::iso(ctx.world.now()),

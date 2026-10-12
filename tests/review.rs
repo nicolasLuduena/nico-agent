@@ -69,6 +69,16 @@ fn herdr(calls: &[String]) -> Vec<&str> {
         .collect()
 }
 
+/// herdr reports `rev-api-7` in `state`.
+fn reviewer_state(t: &Setup, state: &str) {
+    (t.world.agents.borrow_mut()).insert("rev-api-7".into(), state.into());
+}
+
+/// `rev-api-7`'s pane shows `screen`.
+fn reviewer_screen(t: &Setup, screen: &str) {
+    (t.world.screens.borrow_mut()).insert("rev-api-7".into(), screen.into());
+}
+
 #[test]
 fn a_reviewer_starts_on_another_harness_when_the_pr_first_appears_and_only_then() {
     let t = with_pr("");
@@ -103,14 +113,20 @@ fn a_reviewer_starts_on_another_harness_when_the_pr_first_appears_and_only_then(
 }
 
 #[test]
-fn a_new_head_closes_the_last_reviewers_tab_and_starts_it_again_for_that_head() {
+fn a_new_head_waits_for_the_last_reviewer_to_stop_working_then_closes_its_tab_and_starts_it_again()
+{
     let t = with_pr("");
     t.tick();
     push(&t, "sha10");
     t.world.advance(TICK);
 
+    let (waited, while_working) = calls_after(&t, || t.tick());
+    reviewer_state(&t, "done");
+    t.world.advance(TICK);
     let (said, calls) = calls_after(&t, || t.tick());
 
+    assert_eq!(waited, Vec::<String>::new());
+    assert_eq!(herdr(&while_working), Vec::<&str>::new());
     assert_eq!(said, ["acme/api#7: Reviewer started on codex for sha10"]);
     assert_eq!(
         herdr(&calls),
@@ -178,6 +194,107 @@ fn a_reviewer_gone_from_herdr_before_its_verdict_is_started_again_for_that_head_
 }
 
 #[test]
+fn a_reviewer_herdr_calls_stalled_but_reports_working_has_started_and_is_not_prompted_again() {
+    let t = with_pr("");
+    t.world.lagging_prompts.set(1);
+
+    let (said, calls) = calls_after(&t, || t.tick());
+
+    assert_eq!(said[1], "acme/api#7: Reviewer started on codex for sha9");
+    let prompts = calls.iter().filter(|c| c.starts_with("herdr agent prompt"));
+    assert_eq!(prompts.count(), 1);
+    let reviewer = &t.cli(&["status", "--json"]).json()["dispatches"][0]["reviewer"];
+    assert_eq!(reviewer["sha"], "sha9");
+    assert_eq!(reviewer.get("failures"), None);
+}
+
+#[test]
+fn a_reviewer_prompt_stalled_in_its_input_box_is_sent_again_and_its_start_fails_after_three() {
+    let t = with_pr("");
+    t.world.stalled_prompts.set(3);
+    let prompt = review_prompt("sha9");
+    let typed = prompt.trim_start_matches("herdr agent prompt rev-api-7 ");
+    reviewer_screen(
+        &t,
+        &format!("› {typed}\n\n  gpt-6.1-sol medium · /worktrees/api-7"),
+    );
+
+    let (said, calls) = calls_after(&t, || t.tick());
+
+    assert_eq!(
+        said[1..],
+        [
+            "could not start the Reviewer of acme/api#7: rev-api-7 did not start working on its prompt"
+        ]
+    );
+    let tail: Vec<&str> = (calls.iter().map(String::as_str))
+        .skip_while(|c| *c != prompt)
+        .collect();
+    let looked = [
+        &*prompt,
+        "herdr agent list",
+        "herdr agent read rev-api-7 --source visible",
+    ];
+    assert_eq!(tail, looked.repeat(3));
+    let reviewer = &t.cli(&["status", "--json"]).json()["dispatches"][0]["reviewer"];
+    assert_eq!(reviewer["sha"], Value::Null);
+    assert_eq!(reviewer["failures"], json!(["sha9"]));
+}
+
+/// codex's hooks review, as the reproduction of #279 saw it after one prompt.
+const HOOKS_REVIEW: &str = "  Hooks\n  Lifecycle hooks from config and enabled plugins.\n\n  ⚠ 6 hooks need review before they can run.\n\n  Event                 Installed   Active      Review      Description\n› PostToolUse           1           0           1           After a tool executes\n\n  t trust all · enter review · esc close";
+
+#[test]
+fn a_reviewer_on_codexs_hooks_review_is_asking_a_question_and_is_sent_nothing_more() {
+    let t = with_pr("");
+    t.world.stalled_prompts.set(3);
+    reviewer_screen(&t, HOOKS_REVIEW);
+
+    let (said, calls) = calls_after(&t, || t.tick());
+
+    assert_eq!(
+        said[1..],
+        [
+            "could not start the Reviewer of acme/api#7: rev-api-7 is asking a question during startup"
+        ]
+    );
+    let prompt = review_prompt("sha9");
+    let tail: Vec<&str> = (calls.iter().map(String::as_str))
+        .skip_while(|c| *c != prompt)
+        .collect();
+    assert_eq!(
+        tail,
+        [
+            &*prompt,
+            "herdr agent list",
+            "herdr agent read rev-api-7 --source visible",
+        ]
+    );
+    let reviewer = &t.cli(&["status", "--json"]).json()["dispatches"][0]["reviewer"];
+    assert_eq!(reviewer["failures"], json!(["sha9"]));
+}
+
+#[test]
+fn a_reviewer_whose_start_failed_but_works_after_all_is_not_closed_until_it_stops_working() {
+    let t = with_pr("");
+    t.world.stalled_prompts.set(3);
+    t.tick();
+    // The user answers its screen and sends the prompt by hand.
+    reviewer_state(&t, "working");
+    t.world.advance(TICK);
+
+    let (said, calls) = calls_after(&t, || t.tick());
+    reviewer_state(&t, "idle");
+    t.world.advance(TICK);
+    let (after, later) = calls_after(&t, || t.tick());
+
+    assert_eq!(said, Vec::<String>::new());
+    assert_eq!(herdr(&calls), Vec::<&str>::new());
+    assert_eq!(after, ["acme/api#7: Reviewer started on codex for sha9"]);
+    assert_eq!(herdr(&later)[0], "herdr tab close w1:t3");
+}
+
+#[test]
 fn with_review_off_no_reviewer_starts() {
     let t = with_pr("switches = { review = false }");
 
@@ -197,8 +314,13 @@ fn reviewing() -> Setup {
     t
 }
 
+/// Record a Verdict, as the Reviewer does last: its turn then ends.
 fn verdict(t: &Setup, args: &[&str]) -> Ran {
-    t.cli(&[&["verdict"], args, &["--json"]].concat())
+    let ran = t.cli(&[&["verdict"], args, &["--json"]].concat());
+    if let Some(state) = t.world.agents.borrow_mut().get_mut("rev-api-7") {
+        *state = "done".into();
+    }
+    ran
 }
 
 fn stage(t: &Setup) -> Value {
@@ -774,6 +896,7 @@ fn a_failing_verdict_on_the_head_shows_the_review_as_failed_while_its_reviewer_s
         &t,
         &["acme/api#7", "fail", "--sha", "sha9", "--findings", &file],
     );
+    reviewer_state(&t, "working");
 
     let shown = &t.cli(&["status", "--json"]).json()["dispatches"][0];
     assert_eq!(shown["agent_state"]["reviewer"], "working");

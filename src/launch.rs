@@ -10,7 +10,7 @@ use serde_json::json;
 use crate::cli::Refusal;
 use crate::config::{Harness, LaunchMode, fill_in};
 use crate::source;
-use crate::world::{World, WorldResult};
+use crate::world::{AgentState, World, WorldResult, agent_state};
 
 /// How long herdr may take to see a pane-command agent, or an agent to settle
 /// once its trust question is answered.
@@ -133,8 +133,6 @@ pub fn get_ready(
     }
     let settled = ["idle".to_string(), "done".to_string()];
     let screen = world.herdr_agent_read(agent)?;
-    // Long paths wrap in the pane.
-    let flat = |text: &str| text.split_whitespace().collect::<String>();
     if let Some(trust) = &harness.trust_prompt
         && screen.contains(&trust.text)
         && flat(&screen).contains(&flat(cwd))
@@ -144,29 +142,52 @@ pub fn get_ready(
     }
     world
         .herdr_agent_wait(agent, &settled, SETTLE_TIMEOUT)
-        .map_err(|_| {
-            Refusal::new(
-                format!("{agent} is asking a question during startup"),
-                vec![format!(
-                    "Run `herdr agent read {agent}` to see what it is asking, and answer it in herdr"
-                )],
-            )
-        })
+        .map_err(|_| asking(agent))
 }
 
-/// Prompt the agent until it starts working on `text`.
-pub fn prompt(world: &dyn World, agent: &str, text: &str) -> Result<(), Refusal> {
+/// Prompt the agent until it starts working on `text`. A prompt herdr calls
+/// stalled is looked into before it is sent again: an agent herdr reports
+/// working took it, and one showing its Harness's startup question is the
+/// user's; neither is sent it again.
+pub fn prompt(
+    world: &dyn World,
+    harness: &Harness,
+    agent: &str,
+    text: &str,
+) -> Result<(), Refusal> {
     for _ in 0..PROMPT_ATTEMPTS {
-        if world.herdr_agent_prompt(agent, text)? {
+        if world.herdr_agent_prompt(agent, text)?
+            || agent_state(&world.herdr_agents()?, agent) == Some(AgentState::Working)
+        {
             return Ok(());
+        }
+        let screen = flat(&world.herdr_agent_read(agent)?);
+        if (harness.startup_questions.iter()).any(|q| screen.contains(&flat(q))) {
+            return Err(asking(agent));
         }
     }
     Err(Refusal::new(
         format!("{agent} did not start working on its prompt"),
+        // A question herdr reports idle takes every prompt.
         vec![format!(
-            "Run `herdr agent read {agent}` to see its screen, and send the prompt by hand"
+            "Run `herdr agent read {agent}` to see its screen, answer any question on it in herdr, and send the prompt by hand"
         )],
     ))
+}
+
+/// An agent's question before its prompt is the user's to answer in herdr.
+fn asking(agent: &str) -> Refusal {
+    Refusal::new(
+        format!("{agent} is asking a question during startup"),
+        vec![format!(
+            "Run `herdr agent read {agent}` to see what it is asking, and answer it in herdr"
+        )],
+    )
+}
+
+/// `text` without its whitespace: long lines wrap in the pane.
+fn flat(text: &str) -> String {
+    text.split_whitespace().collect()
 }
 
 /// The model and Effort arguments of those set, then the trust and extra ones, filled in.
