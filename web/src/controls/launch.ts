@@ -18,3 +18,6 @@ export function startingLaunch(repo: Repo, dispatches: Dispatch[], harness?: str
 export function choices(valid: string[] | null, chosen: string | null): (string | null)[] {
   return [null, ...new Set([...(valid ?? []), ...(chosen === null ? [] : [chosen])])];
 }
+
+/** How many of the Repo's Dispatches are In flight: those not Closed, each holding its room. */
+export const inFlight = (repo: Repo, dispatches: Dispatch[]) => dispatches.filter((d) => d.repo === repo.slug && d.closed_at === null).length;

@@ -71,6 +71,8 @@ commands, and observable proof.
   given up on.
 - [Switches](./switches.md) covers `PATCH /api/repo/<slug>/switches`, the page's toggles, what is
   written to `config.toml`, and the loop obeying a switch turned off.
+- [Room](./room.md) covers `PATCH /api/repo/<slug>` with `{room}`, the page's Room input and its
+  in-flight line, what is written to `config.toml`, and the loop filling a raised room.
 - [Refresh](./refresh.md) covers the page's Refresh button, `POST /api/refresh` and `nico-agent
   refresh`, and what the tick it runs does.
 - [Live updates](./live-updates.md) covers `GET /api/events` (`changed`, and a keepalive otherwise),
