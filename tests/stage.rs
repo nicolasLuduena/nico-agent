@@ -266,6 +266,7 @@ fn pr_at(n: u64, state: PrState, created_at: &str) -> PullRequest {
     }
 }
 
+/// Issue 7's Dispatch, as `dispatches.json` holds it.
 fn dispatch_7(t: &Setup) -> Value {
     let file = std::fs::read_to_string(t.config_dir.join("dispatches.json")).unwrap();
     let all: Value = serde_json::from_str(&file).unwrap();
@@ -274,24 +275,17 @@ fn dispatch_7(t: &Setup) -> Value {
 
 #[test]
 fn a_pr_opened_and_merged_or_closed_between_two_ticks_is_linked_and_its_dispatch_closed() {
-    for (state, said) in [(PrState::Merged, "merged"), (PrState::Closed, "closed")] {
+    for (state, stage) in [(PrState::Merged, "Merged"), (PrState::Closed, "Closed")] {
         let t = dispatched();
         t.tick();
-        // Opened at 12:00:30, after issue 7 was dispatched at 12:00:00, and final before the next tick.
+        // Issue 7 was dispatched at 12:00:00; both are final before the next tick, and 9 is the newer.
+        t.world
+            .add_pr(pr_at(8, PrState::Closed, "2026-09-30T12:00:00Z"));
         t.world.add_pr(pr_at(9, state, "2026-09-30T12:00:30Z"));
         t.world.advance(Duration::from_secs(60));
 
-        t.world.calls.borrow_mut().clear();
-        let lines = t.tick();
+        let calls = tick_calls(&t, &[WATCH, CLOSE].concat());
 
-        let url = "https://github.com/acme/api/pull/9";
-        assert!(
-            lines.contains(&format!("acme/api#7 Closed: its PR {url} {said}")),
-            "{lines:?}"
-        );
-        let calls: Vec<String> = (t.world.calls().into_iter())
-            .filter(|c| [WATCH, CLOSE].concat().iter().any(|k| c.starts_with(k)))
-            .collect();
         assert_eq!(
             calls,
             [
@@ -302,8 +296,9 @@ fn a_pr_opened_and_merged_or_closed_between_two_ticks_is_linked_and_its_dispatch
             ]
         );
         let d = dispatch_7(&t);
-        assert_eq!(d["pr"], url);
+        assert_eq!(d["pr"], "https://github.com/acme/api/pull/9");
         assert_eq!(d["closed_at"], "2026-09-30T12:01:00Z");
+        assert_eq!(status(&t)["dispatches"][0]["stage"], stage);
     }
 }
 
@@ -313,8 +308,10 @@ fn a_merged_or_closed_pr_opened_before_the_dispatch_started_is_an_earlier_dispat
     t.tick();
     let before = dispatch_7(&t);
     // Issue 7 was dispatched at 12:00:00.
-    t.world.add_pr(pr_at(5, PrState::Merged, "2026-09-30T11:59:59Z"));
-    t.world.add_pr(pr_at(6, PrState::Closed, "2026-09-30T11:00:00Z"));
+    t.world
+        .add_pr(pr_at(5, PrState::Merged, "2026-09-30T11:59:59Z"));
+    t.world
+        .add_pr(pr_at(6, PrState::Closed, "2026-09-30T11:00:00Z"));
 
     let calls = tick_calls(&t, &[WATCH, CLOSE].concat());
 
@@ -325,8 +322,10 @@ fn a_merged_or_closed_pr_opened_before_the_dispatch_started_is_an_earlier_dispat
 #[test]
 fn an_open_pr_is_linked_over_a_final_one_on_the_same_branch() {
     let t = dispatched();
-    t.world.add_pr(pr_at(9, PrState::Open, "2026-09-30T12:00:10Z"));
-    t.world.add_pr(pr_at(10, PrState::Merged, "2026-09-30T12:00:20Z"));
+    t.world
+        .add_pr(pr_at(9, PrState::Open, "2026-09-30T12:00:10Z"));
+    t.world
+        .add_pr(pr_at(10, PrState::Merged, "2026-09-30T12:00:20Z"));
 
     let calls = tick_calls(&t, &[WATCH, CLOSE].concat());
 

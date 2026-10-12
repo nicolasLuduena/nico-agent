@@ -201,14 +201,13 @@ pub fn watch(ctx: &Context, every: bool) -> io::Result<(Vec<String>, Vec<String>
 }
 
 /// `d`'s PR among `prs` on its branch: an open one, else the newest merged or
-/// closed one opened since `d` started, as it may be before a tick sees it.
-/// One opened before is an earlier Dispatch's.
+/// closed one opened since `d` started, since a PR can be merged or closed
+/// before any tick sees it open. One opened before is an earlier Dispatch's.
 fn its_pr(d: &Dispatch, prs: &[PullRequest]) -> Option<PullRequest> {
     let ours = || (prs.iter()).filter(|pr| pr.head_branch.as_ref() == Some(&d.branch));
     (ours().find(|pr| pr.state == PrState::Open))
         .or_else(|| {
-            (ours().filter(|pr| pr.created_at >= d.created_at))
-                .max_by(|a, b| a.created_at.cmp(&b.created_at))
+            (ours().filter(|pr| pr.created_at >= d.created_at)).max_by_key(|pr| &pr.created_at)
         })
         .cloned()
 }
