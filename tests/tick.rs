@@ -705,7 +705,8 @@ fn a_linear_rate_limit_pauses_the_repos_reading_linear_even_across_a_restart_of_
     t.world.fail_call("linear issues", limited);
     let serve = || {
         let (_, calls) = calls_after(&t, || t.cli(&["serve"]));
-        let reads = calls.into_iter().filter(|c| c.contains(" issues "));
+        let reads =
+            (calls.into_iter()).filter(|c| c.contains(" issues ") || c.starts_with("linear "));
         reads.collect::<Vec<_>>()
     };
 
@@ -722,6 +723,7 @@ fn a_linear_rate_limit_pauses_the_repos_reading_linear_even_across_a_restart_of_
         [
             "github issues acme/api",
             "github issues acme/web",
+            "linear viewer",
             "linear issues BLE"
         ]
     );
@@ -733,12 +735,14 @@ fn a_linear_rate_limit_pauses_the_repos_reading_linear_even_across_a_restart_of_
         paused["sources"]["github"]["paused_until"],
         serde_json::Value::Null
     );
+    // No Linear call at all till the pause ends.
     assert_eq!(during, ["github issues acme/api"]);
     assert_eq!(
         after,
         [
             "github issues acme/api",
             "github issues acme/web",
+            "linear viewer",
             "linear issues BLE"
         ]
     );

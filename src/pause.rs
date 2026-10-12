@@ -14,8 +14,11 @@ use crate::world::{
 
 pub const FILE: &str = "pauses.json";
 
+const GITHUB: &str = "GitHub";
+const LINEAR: &str = "Linear";
+
 /// Every Source, as its rate limit names it.
-pub const SOURCES: [&str; 2] = ["GitHub", "Linear"];
+pub const SOURCES: [&str; 2] = [GITHUB, LINEAR];
 
 /// When `source` may be asked again, while it is paused.
 pub fn until(world: &dyn World, config_dir: &Path, source: &str) -> io::Result<Option<String>> {
@@ -61,13 +64,17 @@ impl Guarded<'_> {
         source: &str,
         call: impl FnOnce(&dyn World) -> WorldResult<T>,
     ) -> WorldResult<T> {
-        let failed = |e: io::Error| WorldError(e.to_string());
-        if let Some(paused) = of(self.world, self.config_dir, source).map_err(failed)? {
+        let unread = |e: io::Error| WorldError(e.to_string());
+        if let Some(paused) = of(self.world, self.config_dir, source).map_err(unread)? {
             return Err(paused);
         }
         let asked = call(self.world);
-        if let Err(e) = &asked {
-            note(self.config_dir, e).map_err(failed)?;
+        // Still the rate limit it was, so the caller stops asking.
+        if let Err(e) = &asked
+            && let Err(unkept) = note(self.config_dir, e)
+        {
+            self.world
+                .log(&format!("could not keep {source}'s pause: {unkept}"));
         }
         asked
     }
@@ -75,52 +82,52 @@ impl Guarded<'_> {
 
 impl World for Guarded<'_> {
     fn github_viewer(&self) -> WorldResult<String> {
-        self.ask("GitHub", |w| w.github_viewer())
+        self.ask(GITHUB, |w| w.github_viewer())
     }
     fn github_issues(&self, slug: &str) -> WorldResult<Vec<GitHubIssue>> {
-        self.ask("GitHub", |w| w.github_issues(slug))
+        self.ask(GITHUB, |w| w.github_issues(slug))
     }
     fn github_linked_pull_requests(
         &self,
         slug: &str,
         number: u64,
     ) -> WorldResult<Vec<PullRequest>> {
-        self.ask("GitHub", |w| w.github_linked_pull_requests(slug, number))
+        self.ask(GITHUB, |w| w.github_linked_pull_requests(slug, number))
     }
     fn github_pull_request(&self, slug: &str, number: u64) -> WorldResult<Option<PullRequest>> {
-        self.ask("GitHub", |w| w.github_pull_request(slug, number))
+        self.ask(GITHUB, |w| w.github_pull_request(slug, number))
     }
     fn github_branch_pull_requests(
         &self,
         slug: &str,
         branch: &str,
     ) -> WorldResult<Vec<PullRequest>> {
-        self.ask("GitHub", |w| w.github_branch_pull_requests(slug, branch))
+        self.ask(GITHUB, |w| w.github_branch_pull_requests(slug, branch))
     }
     fn github_pull_request_activity(
         &self,
         slug: &str,
         number: u64,
     ) -> WorldResult<PullRequestActivity> {
-        self.ask("GitHub", |w| w.github_pull_request_activity(slug, number))
+        self.ask(GITHUB, |w| w.github_pull_request_activity(slug, number))
     }
     fn github_assign_self(&self, slug: &str, number: u64) -> WorldResult<()> {
-        self.ask("GitHub", |w| w.github_assign_self(slug, number))
+        self.ask(GITHUB, |w| w.github_assign_self(slug, number))
     }
     fn github_pr_ready(&self, slug: &str, number: u64) -> WorldResult<()> {
-        self.ask("GitHub", |w| w.github_pr_ready(slug, number))
+        self.ask(GITHUB, |w| w.github_pr_ready(slug, number))
     }
     fn linear_viewer(&self) -> WorldResult<String> {
-        self.ask("Linear", |w| w.linear_viewer())
+        self.ask(LINEAR, |w| w.linear_viewer())
     }
     fn linear_issues(&self, team: &str) -> WorldResult<Vec<LinearIssue>> {
-        self.ask("Linear", |w| w.linear_issues(team))
+        self.ask(LINEAR, |w| w.linear_issues(team))
     }
     fn linear_attachment_urls(&self, identifier: &str) -> WorldResult<Vec<String>> {
-        self.ask("Linear", |w| w.linear_attachment_urls(identifier))
+        self.ask(LINEAR, |w| w.linear_attachment_urls(identifier))
     }
     fn linear_assign_self(&self, identifier: &str) -> WorldResult<()> {
-        self.ask("Linear", |w| w.linear_assign_self(identifier))
+        self.ask(LINEAR, |w| w.linear_assign_self(identifier))
     }
 
     /// Each request's World guarded too.
