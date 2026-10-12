@@ -70,7 +70,7 @@ existing worktree with a note of what happened. _Avoid_: resume, repair,
 garden.
 
 **Needs you**: the strip across Repos listing what only the user can act on:
-Asking, failed twice, Verified PRs to merge. _Avoid_: inbox, alerts.
+Asking, failed twice, a review given up on or stopped, Verified PRs to merge. _Avoid_: inbox, alerts.
 
 **Harness**: the coding agent CLI a Dispatch runs on: claude, codex,
 opencode. Each has launch modes, models and Effort values. _Avoid_: tool,

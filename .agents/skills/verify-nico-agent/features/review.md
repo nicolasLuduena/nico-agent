@@ -10,8 +10,8 @@ a Verdict by hand.
 
 ## Sub-features
 
-- `review-status` each such Dispatch has `review` `{state, sha, harness, attempts, cap}`: `sha` the PR's head, `harness` its latest Reviewer's (null before one), `attempts` its failed starts for the head, `cap` `max_restarts_per_reason`; any other Dispatch has `review` null.
-- `review-retrying` a Reviewer whose start failed, at most `cap` times for the head, is `retrying`: the node reads `review retrying`, the panel `Reviewer failed to start (<n> of <cap>); trying again next tick`.
+- `review-status` each such Dispatch has `review` `{state, sha, harness, attempts, cap}`: `sha` the PR's head, `harness` its latest Reviewer's (null before one), `attempts` its starts for the head that failed or whose Reviewer left herdr, `cap` `max_restarts_per_reason`; any other Dispatch has `review` null.
+- `review-retrying` a Reviewer whose start failed or that left herdr before a Verdict, at most `cap` times for the head, is `retrying`: the node reads `review retrying`, the panel `Reviewer failed to start or left herdr (<n> of <cap>); trying again next tick`.
 - `review-gave-up` past `cap` it is `gave_up`: the node reads `review gave up` and needs you, the panel and a strip row `Review <repo> #<n>` read `Reviewer gave up on <sha7>: review it by hand with nico-agent verdict <issue> pass|fail --sha <head>`.
 - `review-passed` a pass Verdict on the head is `passed`: the panel's Review section shows the Verdict row `pass <sha7> <time>`.
 - `review-off` with the Repo's `review` switch off it is `off`, Verdict or not: the node reads `review off`, the panel `Review is off for this Repo`, and the strip drops its Review row.
@@ -36,7 +36,7 @@ Preconditions:
   start the Reviewer of verify/fixture#10: ...`. Run `$C run --evidence "$E/03-status" -- status --json`:
   `#10`'s `review` is `{"state":"retrying","sha":"<head of 10>","harness":"codex","attempts":1,"cap":2}`,
   `#11`'s is `passed` with `harness` null, `#1`'s (Failed) null.
-- **Retrying on the page.** Run `$C page --evidence "$E/04-retrying" --click "button~#10, Verify: seeded Dispatch 10" --expect "Reviewer failed to start (1 of 2); trying again next tick"`.
+- **Retrying on the page.** Run `$C page --evidence "$E/04-retrying" --click "button~#10, Verify: seeded Dispatch 10" --expect "Reviewer failed to start or left herdr (1 of 2); trying again next tick"`.
   The node button is `#10, Verify: seeded Dispatch 10, PR draft, PR 110 draft, review retrying`;
   the panel has `heading "Review"` then that paragraph.
 - **Passed on the page.** Run `$C page --evidence "$E/05-passed" --click "button~#11, Verify: seeded Dispatch 11" --expect "Evidence"`:

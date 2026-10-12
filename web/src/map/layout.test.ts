@@ -101,8 +101,9 @@ describe("the map's layout", () => {
         node("acme/api#19", { stage: "PR draft", review: review("stopped") }),
         node("acme/api#20", { stage: "PR draft", review: review("retrying") }),
         node("acme/api#21", { stage: "PR draft", review: review("waiting") }),
-        node("acme/api#22", { stage: "Verified", review: review("passed") }),
-        node("acme/api#23", { stage: "Implementing" }),
+        node("acme/api#22", { stage: "PR draft", review: review("failed") }),
+        node("acme/api#23", { stage: "Verified", review: review("passed") }),
+        node("acme/api#24", { stage: "Implementing" }),
       ],
       edges: [],
     });
@@ -114,8 +115,9 @@ describe("the map's layout", () => {
       ["acme/api#19", "review stopped", 110, true],
       ["acme/api#20", "review retrying", 110, false],
       ["acme/api#21", "waiting for review", 110, false],
-      ["acme/api#22", null, 88, true],
-      ["acme/api#23", null, 88, false],
+      ["acme/api#22", "verdict fail", 110, false],
+      ["acme/api#23", null, 88, true],
+      ["acme/api#24", null, 88, false],
     ]);
   });
 });

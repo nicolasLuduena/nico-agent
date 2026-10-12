@@ -67,7 +67,7 @@ export interface Review {
   sha: string;
   /** Its latest Reviewer's Harness; null before one was started. */
   harness: string | null;
-  /** The starts for the head that failed, or whose Reviewer left herdr before a Verdict. */
+  /** The starts for the head that failed, or whose Reviewer left herdr before a Verdict, as the next tick counts them. */
   attempts: number;
   /** How many of those are tried again before it gives up. */
   cap: number;

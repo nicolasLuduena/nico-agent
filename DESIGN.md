@@ -163,7 +163,7 @@ Barlow is a grotesk drawn from transit and highway signage. It is served from th
 - `number` (22px bold): the issue number on a node, which is the "departure time" of the timetable.
 - `head` (22px semibold): the panel's title and the Repo name where it heads a section.
 - `body` and `strong` (14px): titles, Stage words, form text, history rows.
-- `label` (14px semibold caps, 0.06em): `CODE` / `RESEARCH`, `ASKING` / `FAILED` / `VERIFIED` / `PAUSED`, form field labels.
+- `label` (14px semibold caps, 0.06em): `CODE` / `RESEARCH`, `ASKING` / `FAILED` / `REVIEW` / `VERIFIED` / `PAUSED`, form field labels.
 
 **The Right Column Rule.** Every time on the page (Source read, PRs checked, restarted at, Verdict at, paused until) is set right-aligned in a tabular column, `HH:MM`, plus the date when it isn't today.
 

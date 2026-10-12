@@ -775,8 +775,9 @@ fn a_failing_verdict_on_the_head_shows_the_review_as_failed_while_its_reviewer_s
         &["acme/api#7", "fail", "--sha", "sha9", "--findings", &file],
     );
 
-    assert_eq!(t.world.agents.borrow()["rev-api-7"], "working");
-    assert_eq!(review(&t)["state"], "failed");
+    let shown = &t.cli(&["status", "--json"]).json()["dispatches"][0];
+    assert_eq!(shown["agent_state"]["reviewer"], "working");
+    assert_eq!(shown["review"]["state"], "failed");
 }
 
 #[test]
@@ -833,9 +834,11 @@ fn with_review_off_the_review_shows_as_off_even_with_a_verdict_on_the_head() {
 }
 
 #[test]
-fn a_reviewer_gone_from_herdr_before_its_verdict_shows_the_review_as_waiting_for_the_next_tick() {
-    let t = reviewing();
-    t.world.agents.borrow_mut().remove("rev-api-7");
+fn a_review_switched_on_after_the_pr_appeared_shows_as_waiting_for_the_next_tick() {
+    let t = with_pr("switches = { review = false }");
+    t.tick();
+    let config = "[repos.\"acme/api\"]\npath = \"/src/api\"\n";
+    std::fs::write(t.config_dir.join("config.toml"), config).unwrap();
 
     let waiting = review(&t);
     t.world.advance(TICK);
@@ -843,7 +846,55 @@ fn a_reviewer_gone_from_herdr_before_its_verdict_shows_the_review_as_waiting_for
 
     assert_eq!(
         waiting,
-        json!({ "state": "waiting", "sha": "sha9", "harness": "codex", "attempts": 0, "cap": 2 })
+        json!({ "state": "waiting", "sha": "sha9", "harness": null, "attempts": 0, "cap": 2 })
     );
     assert_eq!(review(&t)["state"], "reviewing");
+}
+
+#[test]
+fn a_reviewer_gone_from_herdr_before_its_verdict_counts_as_an_attempt_before_the_tick_starts_another()
+ {
+    let t = reviewing();
+    t.world.agents.borrow_mut().remove("rev-api-7");
+
+    let gone = review(&t);
+    t.world.advance(TICK);
+    t.tick();
+
+    assert_eq!(
+        gone,
+        json!({ "state": "retrying", "sha": "sha9", "harness": "codex", "attempts": 1, "cap": 2 })
+    );
+    assert_eq!(
+        review(&t),
+        json!({ "state": "reviewing", "sha": "sha9", "harness": "codex", "attempts": 1, "cap": 2 })
+    );
+}
+
+#[test]
+fn a_reviewer_gone_from_herdr_at_the_cap_shows_as_given_up_before_and_after_the_tick_and_with_herdr_down()
+ {
+    let t = reviewing();
+    for _ in 0..2 {
+        t.world.agents.borrow_mut().remove("rev-api-7");
+        t.world.advance(TICK);
+        t.tick();
+    }
+    t.world.agents.borrow_mut().remove("rev-api-7");
+
+    let before = review(&t);
+    t.world.advance(TICK);
+    let said = t.tick();
+    let after = review(&t);
+    t.world
+        .fail_call("herdr agent list", "herdr_unreachable: herdr is down");
+    let herdr_down = review(&t);
+
+    let gave_up =
+        json!({ "state": "gave_up", "sha": "sha9", "harness": "codex", "attempts": 3, "cap": 2 });
+    assert_eq!(said, [STOPPED]);
+    assert_eq!(
+        (before, after, herdr_down),
+        (gave_up.clone(), gave_up.clone(), gave_up)
+    );
 }

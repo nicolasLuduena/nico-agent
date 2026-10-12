@@ -144,22 +144,27 @@ pub fn shown(
     let (_, pr) = standing.pr.filter(|_| reviewed)?;
     let head = &pr.head_sha;
     let reviewer = d.reviewer.as_ref();
-    // The Reviewer prompted for the head, as herdr says now; one gone from herdr is none.
-    let prompted = (reviewer.filter(|r| r.sha.as_ref() == Some(head))).and_then(|r| {
+    // herdr's Agent state of the Reviewer prompted for the head: `None` once it
+    // left herdr, `Unknown` while herdr does not say, which leaves it standing, as the tick does.
+    let prompted = (reviewer.filter(|r| r.sha.as_ref() == Some(head))).map(|r| {
         agents.map_or(Some(AgentState::Unknown), |a| {
             world::agent_state(a, &r.launch.agent)
         })
     });
-    let attempts = reviewer.map_or(0, |r| r.failures.iter().filter(|sha| *sha == head).count());
-    let cap = config.max_restarts_per_reason;
-    let state = match (standing.verdict_on_head(), prompted) {
+    let cap = config.max_restarts_per_reason as usize;
+    let mut attempts = reviewer.map_or(0, |r| r.failures.iter().filter(|sha| *sha == head).count());
+    // Gone before its Verdict: the next tick counts it, unless it gave up on the head already.
+    if prompted == Some(None) && attempts <= cap {
+        attempts += 1;
+    }
+    let state = match (standing.verdict_on_head(), prompted.flatten()) {
         _ if !config.repo_of(d).switches.review => "off",
         (Some(v), _) if v.result == Outcome::Pass => "passed",
         (Some(_), _) => "failed",
-        // herdr not saying leaves a prompted Reviewer standing, as the tick does.
+        // Past the cap none starts for the head: one still prompted for it is one that left.
+        _ if attempts > cap => "gave_up",
         (None, Some(AgentState::Working | AgentState::Unknown)) => "reviewing",
         (None, Some(_)) => "stopped",
-        _ if attempts > cap as usize => "gave_up",
         _ if attempts > 0 => "retrying",
         _ => "waiting",
     };
