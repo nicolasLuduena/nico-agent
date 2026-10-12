@@ -261,8 +261,24 @@ fn a_failed_read_keeps_the_last_cache_and_says_why() {
 
     let status = status(&t);
 
+    // What each Repo's read shows, not its settings.
+    let read = [
+        "slug",
+        "read_at",
+        "error",
+        "ready",
+        "stackable",
+        "gardening",
+        "waiting",
+    ];
+    let mut repos = status["repos"].clone();
+    for repo in repos.as_array_mut().unwrap() {
+        repo.as_object_mut()
+            .unwrap()
+            .retain(|key, _| read.contains(&key.as_str()));
+    }
     assert_eq!(
-        status["repos"],
+        repos,
         json!([
             {
                 "slug": "acme/api",

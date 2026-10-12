@@ -9,6 +9,7 @@ use std::io;
 use std::path::Path;
 use std::time::Duration;
 
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_path_to_error::Segment;
 use toml_edit::{Document, DocumentMut, Item, TableLike};
@@ -27,6 +28,9 @@ max_restarts_per_reason = 2
 # Where serve answers the app and the Bucket, on 127.0.0.1.
 port = 42069
 repos = {}
+# Each Project's defaults, by name, which its Repos take where they set none:
+# any Repo key but path, linear and project.
+projects = {}
 
 # Where Evidence is kept, one commit per PR head, Verdict and Close. With
 # `url` unset, links to it are serve's own; set it to the tunnel's, which the
@@ -97,7 +101,7 @@ model_args = []
 effort_args = []
 "#;
 
-/// What a Repo leaves out, filled in under each `repos.<slug>`.
+/// What a Repo leaves out, filled in under each `repos.<slug>` after its Project's.
 const REPO_DEFAULTS: &str = r#"
 room = 3
 implementer = { harness = "claude" }
@@ -109,6 +113,8 @@ switches = { dispatch = true, stack = true, review = true, restart = true, flip 
 pub struct Config {
     /// By slug, as first added.
     pub repos: BTreeMap<String, Repo>,
+    /// Each Project's defaults, by name, as written.
+    pub projects: BTreeMap<String, Settings>,
     /// The built-in ones (claude, codex, opencode) under the config's settings.
     pub harnesses: BTreeMap<String, Harness>,
     pub bucket: Bucket,
@@ -130,6 +136,8 @@ pub struct Config {
 pub struct Repo {
     pub path: String,
     pub linear: Option<Linear>,
+    /// The Project it belongs to; its own, named by its slug, when unset.
+    pub project: Option<String>,
     #[serde(deserialize_with = "positive")]
     pub room: u32,
     /// The Base a Dispatch starts from unless stacked; origin's default branch when unset.
@@ -144,9 +152,39 @@ pub struct Repo {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub faux_nico: Option<Launch>,
     pub switches: Switches,
+    /// What it sets itself, of what it shows above.
+    #[serde(skip)]
+    pub own: Settings,
+}
+
+/// The settings a Project holds for its Repos, or a Repo sets itself: any
+/// key of a Repo but `path`, `linear` and `project`, each unset till set.
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Settings {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub room: Option<std::num::NonZeroU32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub base: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub implementer: Option<Launch>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reviewer: Option<Launch>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub quality_scan: Option<Launch>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub faux_nico: Option<Launch>,
+    /// Each of [`SWITCHES`] it sets.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub switches: BTreeMap<String, bool>,
 }
 
 impl Repo {
+    /// The name of its Project: the one it names, else its own, named by its `slug`.
+    pub fn project_name<'a>(&'a self, slug: &'a str) -> &'a str {
+        self.project.as_deref().unwrap_or(slug)
+    }
+
     /// `launch`, one of this Repo's, as set; the implementer's when unset.
     pub fn or_implementer(&self, launch: &Option<Launch>) -> Launch {
         launch.clone().unwrap_or_else(|| self.implementer.clone())
@@ -213,6 +251,18 @@ pub struct Launch {
     pub model: Option<String>,
     pub effort: Option<String>,
 }
+
+/// The switches the app shows and sets.
+pub const SWITCHES: [&str; 8] = [
+    "dispatch",
+    "stack",
+    "review",
+    "restart",
+    "flip",
+    "answer",
+    "gardening",
+    "quality_scan",
+];
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -373,33 +423,60 @@ fn parse(file: &Path, text: &str) -> Result<Config, Refusal> {
         .map_err(|e| invalid(file, e.span().map(|s| line(text, s.start)), "", e.message()))?;
     let mut doc = spanned.clone().into_mut();
     fill(doc.as_table_mut(), defaults(DEFAULTS).as_table());
-    let repo_defaults = defaults(REPO_DEFAULTS);
-    if let Some(repos) = doc.get_mut("repos").and_then(Item::as_table_like_mut) {
-        for (_, repo) in repos.iter_mut() {
-            if let Some(repo) = repo.as_table_like_mut() {
-                fill(repo, repo_defaults.as_table());
-            }
-        }
-    }
     let line_of = |keys: &[&str]| line_of(&spanned, keys);
 
-    let config: Config = serde_path_to_error::deserialize(toml_edit::de::Deserializer::from(doc))
-        .map_err(|e| {
-        let keys: Vec<&str> = e
-            .path()
-            .iter()
-            .map_while(|segment| match segment {
-                Segment::Map { key } => Some(key.as_str()),
-                _ => None,
-            })
-            .collect();
-        invalid(
-            file,
-            line_of(&keys),
-            &e.path().to_string(),
-            e.inner().message(),
-        )
-    })?;
+    // Read before its Repos take its keys, so a bad one is refused at its own line.
+    #[derive(Deserialize)]
+    struct Projects {
+        projects: BTreeMap<String, Settings>,
+    }
+    let mut projects = DocumentMut::new();
+    projects.insert("projects", doc["projects"].clone());
+    let Projects { projects } = read(file, &spanned, projects)?;
+    for (name, project) in &projects {
+        if let Some(switch) = (project.switches.keys()).find(|s| !SWITCHES.contains(&s.as_str())) {
+            let expected: Vec<String> = SWITCHES.iter().map(|s| format!("`{s}`")).collect();
+            let problem = format!(
+                "unknown field `{switch}`, expected one of {}",
+                expected.join(", ")
+            );
+            let keys = ["projects", name, "switches", switch];
+            return Err(invalid(file, line_of(&keys), &keys.join("."), &problem));
+        }
+    }
+
+    let written = doc["repos"].clone();
+    let tables = doc["projects"].clone();
+    let repo_defaults = defaults(REPO_DEFAULTS);
+    if let Some(repos) = doc["repos"].as_table_like_mut() {
+        for (slug, repo) in repos.iter_mut() {
+            let Some(repo) = repo.as_table_like_mut() else {
+                continue;
+            };
+            let name = repo.get("project").and_then(Item::as_str).unwrap_or(&slug);
+            // A Project with no table has no defaults.
+            if let Some(project) = tables.get(name).and_then(Item::as_table_like) {
+                layer(repo, project);
+            }
+            layer(repo, repo_defaults.as_table());
+        }
+    }
+
+    let mut config: Config = read(file, &spanned, doc)?;
+    for (slug, repo) in &mut config.repos {
+        let mut own = DocumentMut::new();
+        for (key, item) in written[slug.as_str()]
+            .as_table_like()
+            .into_iter()
+            .flat_map(|t| t.iter())
+        {
+            if !["path", "linear", "project"].contains(&key) {
+                own.insert(key, item.clone());
+            }
+        }
+        repo.own =
+            read(file, &spanned, own).unwrap_or_else(|_| unreachable!("read as a Repo just now"));
+    }
 
     for (name, harness) in &config.harnesses {
         let (mode, needs, has) = match harness.launch_mode {
@@ -426,18 +503,22 @@ fn parse(file: &Path, text: &str) -> Result<Config, Refusal> {
             .push(format!("Harnesses: {}", names.join(", ")));
         refusal
     };
-    for (slug, repo) in &config.repos {
+    // A Repo takes its other launches from its Project's, or the defaults'.
+    let set = (config.projects.iter())
+        .map(|(name, project)| (["projects", name.as_str()], project))
+        .chain((config.repos.iter()).map(|(slug, repo)| (["repos", slug.as_str()], &repo.own)));
+    for (keys, settings) in set {
         for (role, launch) in [
-            ("implementer", Some(&repo.implementer)),
-            ("reviewer", repo.reviewer.as_ref()),
-            ("quality_scan", repo.quality_scan.as_ref()),
-            ("faux_nico", repo.faux_nico.as_ref()),
+            ("implementer", &settings.implementer),
+            ("reviewer", &settings.reviewer),
+            ("quality_scan", &settings.quality_scan),
+            ("faux_nico", &settings.faux_nico),
         ] {
             let Some(Launch { harness, .. }) = launch else {
                 continue;
             };
             if !config.harnesses.contains_key(harness) {
-                return Err(not_a_harness(&["repos", slug, role], harness));
+                return Err(not_a_harness(&[keys[0], keys[1], role], harness));
             }
         }
     }
@@ -451,6 +532,42 @@ fn parse(file: &Path, text: &str) -> Result<Config, Refusal> {
 
 fn defaults(text: &str) -> DocumentMut {
     text.parse().expect("the defaults are valid TOML")
+}
+
+/// `doc` read as a `T`, a bad value refused naming its key and its line in `spanned`.
+fn read<T: DeserializeOwned>(
+    file: &Path,
+    spanned: &Document<&str>,
+    doc: DocumentMut,
+) -> Result<T, Refusal> {
+    serde_path_to_error::deserialize(toml_edit::de::Deserializer::from(doc)).map_err(|e| {
+        let keys: Vec<&str> = (e.path().iter())
+            .map_while(|segment| match segment {
+                Segment::Map { key } => Some(key.as_str()),
+                _ => None,
+            })
+            .collect();
+        let line = line_of(spanned, &keys);
+        invalid(file, line, &e.path().to_string(), e.inner().message())
+    })
+}
+
+/// Put each setting of `layer` that `repo` lacks into it: the switches one
+/// by one, any other whole, a launch included.
+fn layer(repo: &mut dyn TableLike, layer: &dyn TableLike) {
+    for (key, setting) in layer.iter() {
+        match (repo.get_mut(key), setting.as_table_like()) {
+            (None, _) => {
+                repo.insert(key, setting.clone());
+            }
+            (Some(switches), Some(layer)) if key == "switches" => {
+                if let Some(switches) = switches.as_table_like_mut() {
+                    fill(switches, layer);
+                }
+            }
+            (Some(_), _) => {}
+        }
+    }
 }
 
 /// Put each key of `defaults` that `table` lacks into it, table by table.

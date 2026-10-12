@@ -52,7 +52,7 @@ fn serve_listens_on_the_port_config_toml_sets() {
 }
 
 #[test]
-fn status_is_the_status_command_s_plus_per_repo_its_times_switches_room_launches_and_harnesses() {
+fn status_is_the_status_command_s_plus_per_repo_its_times_and_harnesses() {
     let t = with_repo();
     t.tick();
 
@@ -60,19 +60,13 @@ fn status_is_the_status_command_s_plus_per_repo_its_times_switches_room_launches
 
     assert_eq!(status, 200, "{body}");
     let command = t.cli(&["status", "--json"]).json();
+    assert_eq!(body["projects"], command["projects"]);
     assert_eq!(body["sources"], command["sources"]);
     assert_eq!(body["dispatches"], command["dispatches"]);
     let mut repo = command["repos"][0].clone();
     let page = json!({
         "prs_checked_at": null,
         "github_paused_until": null,
-        "switches": {
-            "dispatch": true, "stack": true, "review": true, "restart": true, "flip": true,
-            "answer": false, "gardening": false, "quality_scan": false,
-        },
-        "room": 3,
-        "implementer": { "harness": "claude", "model": null, "effort": null },
-        "reviewer": { "harness": "codex", "model": null, "effort": null },
         "harnesses": {
             "claude": {
                 "models": ["fable", "opus", "sonnet", "haiku"],
@@ -525,7 +519,10 @@ fn patch_switches_writes_only_the_named_switches_and_answers_the_repo_s_switches
             "room = 1\nswitches = { gardening = true, stack = false }\n",
         );
     assert_eq!(config(&t), expected);
-    assert_eq!(t.get("/api/status").1["repos"][0]["switches"], no_review);
+    assert_eq!(
+        t.get("/api/status").1["repos"][0]["switches"]["review"],
+        json!({ "value": false, "from": "repo" })
+    );
 }
 
 #[test]
@@ -693,7 +690,10 @@ fn patch_room_writes_room_in_the_repo_s_table_alone_and_answers_it() {
         .replace("# trust it\n", "# trust it\nroom = 5\n")
         .replace("room = 1\n", "room = 2\n");
     assert_eq!(config(&t), expected);
-    assert_eq!(t.get("/api/status").1["repos"][0]["room"], 5);
+    assert_eq!(
+        t.get("/api/status").1["repos"][0]["room"],
+        json!({ "value": 5, "from": "repo" })
+    );
 }
 
 #[test]

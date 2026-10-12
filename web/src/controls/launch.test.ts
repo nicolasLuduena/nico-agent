@@ -10,8 +10,8 @@ const repo: Repo = {
   stackable: [],
   gardening: [],
   switches: {},
-  room: 3,
-  implementer: { harness: "claude", model: "opus", effort: null },
+  room: { value: 3, from: "default" },
+  implementer: { value: { harness: "claude", model: "opus", effort: null }, from: "repo" },
   harnesses: {
     claude: { models: ["opus", "sonnet"], efforts: ["low", "high"] },
     codex: { models: null, efforts: null },

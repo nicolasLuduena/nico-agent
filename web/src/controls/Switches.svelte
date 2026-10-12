@@ -11,7 +11,7 @@
   const label = (name: string) => said[name] ?? name[0].toUpperCase() + name.slice(1);
 
   // The PATCH's answer, until /api/status's next one.
-  let switches = $derived(repo.switches);
+  let switches = $derived(Object.fromEntries(Object.entries(repo.switches).map(([name, on]) => [name, on.value])));
   const on = $derived(Object.values(switches).filter(Boolean).length);
   let saving = $state<Record<string, boolean>>({});
   let refused = $state<Sent | null>(null);

@@ -160,8 +160,8 @@ fn host_of(url: &str) -> &str {
     at.split('/').next().unwrap_or_default()
 }
 
-/// `status`'s answer from the Sources' caches alone, plus per Repo what the
-/// page shows of it beside the map and offers in its Dispatch form.
+/// `status`'s answer from the Sources' caches alone, plus per Repo when its
+/// PRs were last read and the Harnesses its Dispatch form offers.
 fn status(ctx: &Context) -> Result<Value, Refusal> {
     let config = config::load(&ctx.config_dir)?;
     let prs = stage::load(&ctx.config_dir)?;
@@ -178,7 +178,7 @@ fn status(ctx: &Context) -> Result<Value, Refusal> {
         .collect();
     // `status` shows a row per Repo of the config, in its order.
     let rows = shown["repos"].as_array_mut().into_iter().flatten();
-    for (shown, (slug, repo)) in rows.zip(&config.repos) {
+    for (shown, slug) in rows.zip(config.repos.keys()) {
         let checked = (prs.values())
             .filter(|pr| pr.repo == *slug)
             .filter_map(|pr| pr.checked_at.as_ref())
@@ -186,10 +186,6 @@ fn status(ctx: &Context) -> Result<Value, Refusal> {
         let page = json!({
             "prs_checked_at": checked,
             "github_paused_until": paused,
-            "switches": repo::shown(&repo.switches),
-            "room": repo.room,
-            "implementer": repo.implementer,
-            "reviewer": config.reviewer(repo, &repo.implementer.harness),
             "harnesses": harnesses,
         });
         for (key, value) in page.as_object().into_iter().flatten() {

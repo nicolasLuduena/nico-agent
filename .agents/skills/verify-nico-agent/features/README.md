@@ -58,6 +58,9 @@ commands, and observable proof.
 
 - [Add, remove and list Repos](./repos.md) covers `repo add|rm|list`, their refusals and no-ops,
   and the Bucket `repo add` makes.
+- [Projects](./projects.md) covers `projects.<name>` and a Repo's `project` in `config.toml`:
+  defaults its Repos inherit, `repo list`'s `project`, `status`'s `projects` and `{value, from}`
+  per setting, the page's effective Room and switches, and a bad Project refused at its line.
 - [Status](./status.md) covers `status` and `GET /api/status` from a fresh cache, a Source that
   refuses, a stale cache, a paused GitHub, Dispatches with their Stage, and blocked Runs.
 - [Dispatch's refusals](./dispatch-refusals.md) covers every refusal of `dispatch`, `POST
