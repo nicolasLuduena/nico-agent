@@ -24,6 +24,12 @@ export function blocks(markdown: string): Block[] {
   return out;
 }
 
+/** The first line of `markdown` that is not a heading, as the Morning summary's notification sends it (src/away.rs). */
+export function firstLine(markdown: string): Span[] {
+  const line = markdown.split("\n").map((l) => l.trim()).find((l) => l && !l.startsWith("#"));
+  return line ? spans(line) : [];
+}
+
 /** **strong**, `code`, [named](https://…) and bare https://… links, the last without trailing punctuation. */
 const INLINE = /\*\*(.+?)\*\*|`([^`]+)`|\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/[^\s)]*[^\s).,;:!?])/g;
 

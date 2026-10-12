@@ -59,7 +59,7 @@ $C state                        # fingerprint: config dir files, Dispatches, Ver
 $C run [--evidence PREFIX] -- <nico-agent args...>       # the CLI in the scratch HOME; exit code is the CLI's
 $C http [--evidence PREFIX] [--header 'NAME: VALUE']... <METHOD> <PATH> [BODY]
                                 # ask serve, as the page does (or with other headers); exit 1 on 4xx/5xx
-$C page [--tunnel] [--evidence PREFIX] [--width PX] [--click ROLE=NAME | --click ROLE~NAME | --press KEY | --expect TEXT
+$C page [--tunnel] [--evidence PREFIX] [--width PX] [--storage FILE|none] [--click ROLE=NAME | --click ROLE~NAME | --press KEY | --expect TEXT
         | --gone TEXT | --wait SECONDS | --mode pass|502|signed-out]...
                                 # open the page (through the tunnel stand-in), act in order, capture
 $C tunnel start|pass|502|signed-out   # a stand-in for cloudflared and Access in front of serve; $TUNNEL_URL, $TUNNEL_LOG
@@ -75,7 +75,11 @@ clicks the element of that ARIA role whose accessible name is exactly the text, 
 "button~Failed verify/fixture #1"` one whose name contains it, `--press ArrowRight` a key,
 `--expect "Source not read yet"` waits for the text, `--gone TEXT` up to a minute for it to go,
 `--wait 120` lets two minutes pass, and `--mode 502` switches the tunnel stand-in (with `--tunnel`
-only); it prints `ok` or `FAIL` per step and exits 1 on the first failure, after capturing.
+only). Each `page` is a new browser with nothing stored: `--storage FILE` starts it with the
+storage `FILE` holds (none the first time) and saves it back at the end, so the next `page` with
+the same `FILE` is a reload in the same browser; `--storage none` is a browser whose `localStorage`
+throws, as one blocking the site's data does. `page` prints `ok` or `FAIL` per step and exits 1 on
+the first failure, after capturing.
 `.requests.txt` lists each `/api/events` stream as it is answered too, so a reconnect is a line.
 
 `tunnel start` sets `bucket.url` to the stand-in's URL, as `scripts/setup-tunnel.sh` does to the
