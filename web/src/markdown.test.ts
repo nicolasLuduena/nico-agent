@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { blocks } from "./markdown";
+import { blocks, firstLine } from "./markdown";
 
 const text = (text: string) => ({ kind: "text", text });
 
@@ -39,5 +39,21 @@ describe("the Morning summary's Markdown", () => {
     const hostile = '<img src=x onerror="alert(1)"> [run](javascript:alert(1))';
 
     expect(blocks(hostile)).toEqual([{ kind: "line", spans: [text(hostile)] }]);
+  });
+});
+
+describe("the Morning summary's first line", () => {
+  it("is the first line that is not a heading, as the notification sends it", () => {
+    const summary = "# Morning\n\n## Merge these\n  Morning of 2026-10-12: **2** to merge, 1 to answer  \n- acme/api#7\n";
+
+    expect(firstLine(summary)).toEqual([
+      text("Morning of 2026-10-12: "),
+      { kind: "strong", text: "2" },
+      text(" to merge, 1 to answer"),
+    ]);
+  });
+
+  it("is nothing when every line is a heading", () => {
+    expect(firstLine("# Morning\n\n## Nothing\n")).toEqual([]);
   });
 });

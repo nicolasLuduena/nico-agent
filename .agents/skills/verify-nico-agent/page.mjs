@@ -1,14 +1,16 @@
 #!/usr/bin/env node
 // page.mjs — open serve's page in headless Chromium, act on it as a user does, capture what it shows.
 // Called by `control-nico-agent page`, which passes the run's URL first and sets VERIFY_PLAYWRIGHT:
-//   page.mjs <url> [--evidence PREFIX] [--width PX] [--click ROLE=NAME | --click ROLE~NAME | --press KEY | --expect TEXT
+//   page.mjs <url> [--evidence PREFIX] [--width PX] [--storage FILE|none] [--click ROLE=NAME | --click ROLE~NAME | --press KEY | --expect TEXT
 //            | --gone TEXT | --wait SECONDS | --mode pass|502|signed-out]...
+// --storage FILE starts the browser with the storage FILE holds and saves it back after the last step, so
+// another call opens the page again as this browser would; --storage none is a browser whose localStorage throws.
 // Steps run in the order given; `--mode` asks the tunnel stand-in at <url> (tunnel.mjs) to answer so.
 // With --evidence it writes PREFIX.aria.txt (the ARIA snapshot after the last step), PREFIX.png,
 // PREFIX.requests.txt (each /api request the page made, with its status; each /api/events stream as
 // it is answered) and PREFIX.console.txt (console errors). It exits 1 when a step fails, after capturing.
 import { createRequire } from "node:module";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
 const require = createRequire(import.meta.url);
@@ -17,6 +19,7 @@ const { chromium } = require(process.env.VERIFY_PLAYWRIGHT);
 const [url, ...argv] = process.argv.slice(2);
 let evidence = null;
 let width = 1280;
+let storage = null;
 const steps = [];
 for (let i = 0; i < argv.length; i++) {
   const [flag, value] = [argv[i], argv[i + 1]];
@@ -24,6 +27,7 @@ for (let i = 0; i < argv.length; i++) {
   i++;
   if (flag === "--evidence") evidence = value;
   else if (flag === "--width") width = Number(value);
+  else if (flag === "--storage") storage = value;
   else if (flag === "--click" && /^[a-z]+[=~]/.test(value)) steps.push({ click: value });
   else if (flag === "--press") steps.push({ press: value });
   else if (flag === "--expect") steps.push({ expect: value });
@@ -34,7 +38,7 @@ for (let i = 0; i < argv.length; i++) {
 }
 
 function usage(why) {
-  console.error(`page: ${why}\nusage: page [--evidence PREFIX] [--width PX] [--click ROLE=NAME | --click ROLE~NAME | --press KEY | --expect TEXT | --gone TEXT | --wait SECONDS | --mode pass|502|signed-out]...`);
+  console.error(`page: ${why}\nusage: page [--evidence PREFIX] [--width PX] [--storage FILE|none] [--click ROLE=NAME | --click ROLE~NAME | --press KEY | --expect TEXT | --gone TEXT | --wait SECONDS | --mode pass|502|signed-out]...`);
   process.exit(2);
 }
 
@@ -47,7 +51,11 @@ const requests = [];
 const errors = [];
 let failed = null;
 try {
-  const page = await browser.newPage({ viewport: { width, height: 900 } });
+  const kept = storage === "none" ? null : storage;
+  const context = await browser.newContext({ viewport: { width, height: 900 }, storageState: kept && existsSync(kept) ? kept : undefined });
+  // As a browser that blocks the site's data: reading localStorage throws.
+  if (storage === "none") await context.addInitScript(() => Object.defineProperty(window, "localStorage", { get: () => { throw new DOMException("The user denied storage", "SecurityError"); } }));
+  const page = await context.newPage();
   let inFlight = 0;
   const api = (r) => new URL(r.url()).pathname.startsWith("/api/") && !r.url().endsWith("/api/events");
   page.on("request", (r) => api(r) && inFlight++);
@@ -100,6 +108,7 @@ try {
       break;
     }
   }
+  if (kept) await context.storageState({ path: kept });
   const aria = await page.locator("body").ariaSnapshot();
   console.log(aria);
   if (evidence) {

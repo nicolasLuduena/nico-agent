@@ -15,6 +15,7 @@
 #                                 a Dispatch of verify/fixture#<n> as the loop records it
 #   seed run quality-scan|morning|faux-nico <n>
 #                                 a Run of the loop's own agent, blocked, as the loop records it
+#   seed morning <file>|none      the Morning summary the morning agent leaves: <file> as morning.md, or none
 #   drift push <n>|stale|pause|below merged|closed
 #                                 what GitHub would change: a new PR head, an old read, a rate limit,
 #                                 the PR below a Stacked dispatch merged or closed unmerged
@@ -23,7 +24,7 @@
 #                                 run the CLI in the scratch HOME; exit code is the CLI's
 #   http [--evidence PREFIX] <METHOD> <PATH> [BODY]
 #                                 ask this run's serve, as the page does
-#   page [--tunnel] [--evidence PREFIX] [--width PX] [--click ROLE=NAME | --click ROLE~NAME | --press KEY
+#   page [--tunnel] [--evidence PREFIX] [--width PX] [--storage FILE|none] [--click ROLE=NAME | --click ROLE~NAME | --press KEY
 #        | --expect TEXT | --gone TEXT | --wait SECONDS | --mode pass|502|signed-out]...
 #                                 open serve's page in headless Chromium (through the tunnel stand-in), act, capture
 #   tunnel start|pass|502|signed-out
@@ -292,7 +293,8 @@ cmd_seed() {
     issues) seed_issues "$@" ;;
     dispatch) seed_dispatch "$@" ;;
     run) seed_run "$@" ;;
-    *) die "seed: usage: seed issues | seed dispatch <n> pr|asking|stacked | seed run quality-scan|morning|faux-nico <n>" ;;
+    morning) seed_morning "$@" ;;
+    *) die "seed: usage: seed issues | seed dispatch <n> pr|asking|stacked | seed run quality-scan|morning|faux-nico <n> | seed morning <file>|none" ;;
   esac
 }
 
@@ -383,6 +385,15 @@ seed_dispatch() {
 # A Run open and blocked since now, as the loop records one once herdr reports its agent blocked:
 # the `quality-scan` of verify/fixture, the `morning` agent, or the `faux-nico <n>` of the Asking of
 # a Dispatch seeded `asking`.
+# What the morning agent leaves in the config dir: <file>'s text as morning.md, or none.
+seed_morning() {
+  case "${1:-}" in
+    none) rm -f "$CONFIG_DIR/morning.md" ;;
+    "") die "seed: usage: seed morning <file>|none" ;;
+    *) [ -f "$1" ] || die "seed: no file $1"; cp "$1" "$CONFIG_DIR/morning.md" ;;
+  esac
+}
+
 seed_run() {
   local trigger="${1:-}" n="${2:-}" run
   local usage="seed: usage: seed run quality-scan|morning|faux-nico <n>"
