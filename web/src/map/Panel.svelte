@@ -23,7 +23,7 @@
     evidence: { path: string; url: string }[];
   }
 
-  let { issue }: { issue: string } = $props();
+  let { issue, slug }: { issue: string; slug: string } = $props();
 
   /** The Stages only a Dispatch has: any other node has no /api/node (it answers 404). */
   const DISPATCHED: Stage[] = ["Implementing", "PR draft", "Verified", "Merged", "Closed", "Failed"];
@@ -95,7 +95,7 @@
     <div class="line">
       <h2 id="panel-title" tabindex="-1" bind:this={title}>
         {node?.title ?? issue}
-        {#if node?.url}<a href={node.url} target="_blank" rel="noreferrer">{number(issue, selection.repo ?? "")}</a>{/if}
+        {#if node?.url}<a href={node.url} target="_blank" rel="noreferrer">{number(issue, slug)}</a>{/if}
       </h2>
       <button type="button" class="quiet" onclick={close}>Close</button>
     </div>
@@ -227,7 +227,6 @@
   }
   h2 a {
     font-weight: 700;
-    white-space: nowrap;
   }
   .stage {
     display: flex;
