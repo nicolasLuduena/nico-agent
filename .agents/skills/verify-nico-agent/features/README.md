@@ -74,7 +74,8 @@ commands, and observable proof.
 - [Room](./room.md) covers `PATCH /api/repo/<slug>` with `{room}`, the page's Room input and its
   in-flight line, what is written to `config.toml`, and the loop filling a raised room.
 - [Refresh](./refresh.md) covers the page's Refresh button, `POST /api/refresh` and `nico-agent
-  refresh`, and what the tick it runs does.
+  refresh`, and what the tick it runs does, down to a Stacked dispatch whose PR below merged or
+  closed unmerged.
 - [Answer an Asking Implementer](./answer.md) covers `answer`, its refusals, a text starting with
   `--`, and the answer typed through herdr (stubbed, so not recorded in a run).
 - [Live updates](./live-updates.md) covers `GET /api/events` (`changed`, and a keepalive otherwise),

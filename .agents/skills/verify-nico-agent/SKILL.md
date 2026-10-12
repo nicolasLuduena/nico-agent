@@ -51,9 +51,10 @@ $C launch [--no-build]          # build, make the scratch HOME, fixtures and con
 $C doctor                       # read-only health check of this run
 . "$($C env)"                   # this run's paths: $FIXTURE_CLONE, $SECOND_CLONE, $CONFIG_DIR, $BUCKET, $URL, $OUTSIDE_LOG
 $C seed issues                  # a fresh read of verify/fixture's issues, as the Source would cache it
-$C seed dispatch <n> pr|asking  # a Dispatch of verify/fixture#<n> as the loop records one; prints JSON
+$C seed dispatch <n> pr|asking|stacked  # a Dispatch of verify/fixture#<n> as the loop records one; prints JSON
 $C seed run quality-scan|morning|faux-nico <n>  # a Run of the loop's own agent, blocked; prints JSON
 $C drift push <n>|stale|pause   # what GitHub would change: a new PR head, an old read, a rate limit
+$C drift below merged|closed    # ... or the PR below a Stacked dispatch merged or closed unmerged
 $C state                        # fingerprint: config dir files, Dispatches, Verdicts, Bucket log, outside calls
 $C run [--evidence PREFIX] -- <nico-agent args...>       # the CLI in the scratch HOME; exit code is the CLI's
 $C http [--evidence PREFIX] <METHOD> <PATH> [BODY]       # ask serve, as the page does; exit 1 on 4xx/5xx
@@ -158,14 +159,18 @@ What the fixtures hold:
   every step done, in a worktree `worktrees/fixture-<n>` on `agent/fixture-<n>` holding
   `.evidence/<n>/proof.txt`, and its draft PR `https://github.com/verify/fixture/pull/<100+n>` open
   on the worktree's head in `prs.json`. `asking` records the same without a PR, its Implementer
-  Asking "Should the fixture keep its README? (seeded by verify-nico-agent)". Use numbers above 6.
+  Asking "Should the fixture keep its README? (seeded by verify-nico-agent)". `stacked` records the
+  same as `pr`, but Stacked on `#9`'s open PR `https://github.com/verify/fixture/pull/109` (head
+  `agent/fixture-9`, on `main`, also put in `prs.json`): its Base and its PR's base are
+  `agent/fixture-9`. Use numbers above 6.
 - `seed run` records a Run open and blocked since now, as the loop does once herdr reports its
   agent blocked: `quality-scan` of verify/fixture (agent `quality-scan-fixture`), `morning` (agent
   `morning`), or `faux-nico <n>` (agent `faux-nico-fixture-<n>`) on the Asking of a Dispatch seeded
   `asking`. A tick leaves it as it is: with herdr stubbed, no agent is ever seen ended.
 - `drift push <n>` commits to the seeded worktree and moves the PR's `head_sha`, as a push would;
   `drift stale` dates the cached read 2000-01-01, so the next `status` or `dispatch` asks GitHub;
-  `drift pause` writes GitHub paused for an hour, as a rate limit does.
+  `drift pause` writes GitHub paused for an hour, as a rate limit does; `drift below merged|closed`
+  makes PR #109 final, merged or closed unmerged, as GitHub would say.
 
 Stable handles are the command words and flags (`--path`, `--json`, `--harness`, `--model`,
 `--effort`, `--sha`, `--findings`), the exit codes, the JSON field names, the routes in `GET` of an

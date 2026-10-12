@@ -70,11 +70,11 @@ it binds the rebuild.
 One verb: **restart**. Start a fresh agent in the issue's existing worktree
 and tell it what happened: the machine rebooted, the agent stalled (idle with
 no PR for 20 minutes), the PR conflicts with its base, the PR below it
-merged, the Reviewer failed it. Same reason twice on one issue: stop and put
-it in the needs-you strip. State is files in the config directory, written
-atomically; herdr and the Sources stay the truth. `serve` runs as a user
-service with lingering, restarts the loop on boot, and writes one entry
-saying which Dispatches lost their agents.
+merged, the Reviewer failed it. Same reason twice on one issue, or the PR
+below closed unmerged: stop and put it in the needs-you strip. State is files
+in the config directory, written atomically; herdr and the Sources stay the
+truth. `serve` runs as a user service with lingering, restarts the loop on
+boot, and writes one entry saying which Dispatches lost their agents.
 
 ## When the user is away
 
