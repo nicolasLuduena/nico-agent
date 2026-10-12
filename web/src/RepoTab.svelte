@@ -14,7 +14,7 @@
   <RepoMap {repo} />
   <div class="side">
     {#if selection.issue}
-      <Panel issue={selection.issue} />
+      <Panel issue={selection.issue} slug={repo.slug} />
     {:else}
       <Controls {repo} {status} />
     {/if}
