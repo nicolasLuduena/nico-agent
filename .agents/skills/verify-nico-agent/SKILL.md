@@ -52,6 +52,7 @@ $C doctor                       # read-only health check of this run
 . "$($C env)"                   # this run's paths: $FIXTURE_CLONE, $SECOND_CLONE, $CONFIG_DIR, $BUCKET, $URL, $OUTSIDE_LOG
 $C seed issues                  # a fresh read of verify/fixture's issues, as the Source would cache it
 $C seed dispatch <n> pr|asking|stacked  # a Dispatch of verify/fixture#<n> as the loop records one; prints JSON
+$C seed run quality-scan|morning|faux-nico <n>  # a Run of the loop's own agent, blocked; prints JSON
 $C drift push <n>|stale|pause   # what GitHub would change: a new PR head, an old read, a rate limit
 $C drift below merged|closed    # ... or the PR below a Stacked dispatch merged or closed unmerged
 $C state                        # fingerprint: config dir files, Dispatches, Verdicts, Bucket log, outside calls
@@ -162,6 +163,10 @@ What the fixtures hold:
   same as `pr`, but Stacked on `#9`'s open PR `https://github.com/verify/fixture/pull/109` (head
   `agent/fixture-9`, on `main`, also put in `prs.json`): its Base and its PR's base are
   `agent/fixture-9`. Use numbers above 6.
+- `seed run` records a Run open and blocked since now, as the loop does once herdr reports its
+  agent blocked: `quality-scan` of verify/fixture (agent `quality-scan-fixture`), `morning` (agent
+  `morning`), or `faux-nico <n>` (agent `faux-nico-fixture-<n>`) on the Asking of a Dispatch seeded
+  `asking`. A tick leaves it as it is: with herdr stubbed, no agent is ever seen ended.
 - `drift push <n>` commits to the seeded worktree and moves the PR's `head_sha`, as a push would;
   `drift stale` dates the cached read 2000-01-01, so the next `status` or `dispatch` asks GitHub;
   `drift pause` writes GitHub paused for an hour, as a rate limit does; `drift below merged|closed`
@@ -171,9 +176,8 @@ Stable handles are the command words and flags (`--path`, `--json`, `--harness`,
 `--effort`, `--sha`, `--findings`), the exit codes, the JSON field names, the routes in `GET` of an
 unknown path's `help`, and on the page the ARIA roles and names: `tablist "Repos"` with one `tab`
 per Repo, `region "Needs you"`, `button "Refresh"`, `switch "Dispatch"` (and `Faux-nico answers`,
-`Flip to ready`, `Gardening`, `Quality-scan`, `Restart`, `Review`, `Stack`), `region "Dispatch"`
-with `button "Dispatch"`, `region "Map of
-<slug>"`. `run` executes with the run's `work/` as cwd: pass absolute paths (`--findings`).
+`Flip to ready`, `Gardening`, `Quality-scan`, `Restart`, `Review`, `Stack`), `spinbutton "Room"`,
+`region "Dispatch"` with `button "Dispatch"`, `region "Map of <slug>"`. `run` executes with the run's `work/` as cwd: pass absolute paths (`--findings`).
 
 Recipes per feature are in [`features/`](features/README.md); drive the ones the change touches,
 and every entry point the feature file lists, not just the convenient one.

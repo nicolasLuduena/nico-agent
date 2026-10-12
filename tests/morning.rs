@@ -344,3 +344,31 @@ fn a_morning_launch_on_no_harness_is_refused_naming_its_key() {
         format!("{file} line 5: morning.launch.harness: `gemini` is not a Harness")
     );
 }
+
+#[test]
+fn a_blocked_morning_agent_stays_open_and_tells_the_user_once() {
+    let t = with_repo("");
+    t.world.advance(TO_7AM);
+    t.tick();
+    (t.world.agents.borrow_mut()).insert("morning".into(), "blocked".into());
+    t.world.advance(TICK);
+
+    let blocked = t.tick();
+    t.world.advance(TICK);
+    let again = t.tick();
+
+    assert_eq!(blocked, ["morning is blocked"]);
+    assert_eq!(again, Vec::<String>::new());
+    assert_eq!(
+        *t.world.notifications.borrow(),
+        [(
+            "morning is blocked".to_string(),
+            "Take it over: herdr agent read morning.".to_string()
+        )]
+    );
+    let morning = last_morning(&t);
+    assert_eq!(
+        (&morning["blocked_since"], &morning["closed_at"]),
+        (&json!("2026-10-01T07:10:00Z"), &Value::Null)
+    );
+}

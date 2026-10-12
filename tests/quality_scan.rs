@@ -236,3 +236,43 @@ fn the_workspace_is_closed_once_herdr_reports_the_agent_gone_and_not_before() {
     assert!(!none.contains(&"herdr agent list".to_string()));
     assert_eq!(last_scan(&t)["closed_at"], "2026-10-04T03:20:00Z");
 }
+
+#[test]
+fn a_blocked_scan_stays_open_and_tells_the_user_once_each_time_it_blocks() {
+    let t = with_repo(ON);
+    t.world.advance(TO_SUNDAY_3AM);
+    t.tick();
+    let a_tick_later_herdr_reports = |state: &str| {
+        (t.world.agents.borrow_mut()).insert("quality-scan-api".into(), state.into());
+        t.world.advance(TICK);
+    };
+
+    a_tick_later_herdr_reports("blocked");
+    let (blocked, calls) = calls_after(&t, || t.tick());
+    a_tick_later_herdr_reports("blocked");
+    let still = t.tick();
+    let shown = last_scan(&t);
+    a_tick_later_herdr_reports("working");
+    let working = t.tick();
+    a_tick_later_herdr_reports("blocked");
+    let again = t.tick();
+
+    assert_eq!(blocked, ["quality-scan-api is blocked"]);
+    assert_eq!(
+        started(&calls),
+        ["notify quality-scan of acme/api is blocked"]
+    );
+    assert_eq!(still, Vec::<String>::new());
+    assert_eq!(working, Vec::<String>::new());
+    assert_eq!(again, ["quality-scan-api is blocked"]);
+    let told = (
+        "quality-scan of acme/api is blocked".to_string(),
+        "Take it over: herdr agent read quality-scan-api.".to_string(),
+    );
+    assert_eq!(*t.world.notifications.borrow(), [told.clone(), told]);
+    assert_eq!(
+        (&shown["blocked_since"], &shown["closed_at"]),
+        (&"2026-10-04T03:10:00Z".into(), &serde_json::Value::Null)
+    );
+    assert_eq!(last_scan(&t)["blocked_since"], "2026-10-04T03:40:00Z");
+}

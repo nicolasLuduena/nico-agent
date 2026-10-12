@@ -318,6 +318,22 @@ fn a_tick_reads_the_source_asks_about_prs_closes_then_fills_the_room_it_freed() 
     );
 }
 
+#[test]
+fn a_room_raised_from_the_page_is_filled_on_the_next_tick() {
+    let t = with_issues(&[1, 2]);
+    set_repo(&t, "room = 1");
+    t.tick();
+
+    let full = t.tick();
+    let patched = t.send("PATCH", "/api/repo/acme/api", r#"{"room": 2}"#);
+    let raised = t.tick();
+
+    assert_eq!(full, Vec::<String>::new());
+    assert_eq!(patched.0, 200);
+    assert_eq!(raised, ["acme/api#2 dispatched"]);
+    assert_eq!(prompted(&t), ["acme/api#1", "acme/api#2"]);
+}
+
 /// `issue` of `acme/api` blocked by the open issues `blockers` of `acme/api`.
 fn block(t: &Setup, issue: u64, blockers: &[u64]) {
     let mut issues = t.world.issues.borrow_mut();

@@ -38,7 +38,7 @@ task.
 Repo's room, start Reviewers, restart what broke. It makes no judgment.
 _Avoid_: scheduler, orchestrator, Lead.
 
-**Room**: how many Implementers a Repo may run at once; 3 unless set.
+**Room**: how many Dispatches a Repo may have In flight at once, a draft PR's included; 3 unless set.
 _Avoid_: concurrency, slots.
 
 **Dispatch**: one issue sent to one Implementer in its own herdr workspace
@@ -70,7 +70,8 @@ existing worktree with a note of what happened. _Avoid_: resume, repair,
 garden.
 
 **Needs you**: the strip across Repos listing what only the user can act on:
-Asking, failed twice, a review given up on or stopped, Verified PRs to merge. _Avoid_: inbox, alerts.
+Asking, failed twice, a review given up on or stopped, Verified PRs to merge, a
+Run whose agent herdr reports blocked. _Avoid_: inbox, alerts.
 
 **Harness**: the coding agent CLI a Dispatch runs on: claude, codex,
 opencode. Each has launch modes, models and Effort values. _Avoid_: tool,
@@ -127,5 +128,7 @@ filed. Rendered first on the Board. _Avoid_: report, digest.
 
 **Run**: one start of a trigger's agent: a quality-scan, a faux-nico or the
 morning agent, recorded with when it started and when it ended, so a missed
-scan or morning shows in `status`. A Dispatch is never a Run, nor called
-one. _Avoid_: job, session.
+scan or morning shows in `status`. One whose agent herdr reports waiting on
+a human is blocked, herdr's word: it stays open and the user is told once a
+spell. An Implementer so is Asking, never blocked. A Dispatch is never a
+Run, nor called one. _Avoid_: job, session.

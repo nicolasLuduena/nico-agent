@@ -273,7 +273,7 @@ fn relaunch(
     let ready =
         launch::start(world, harness, launch, &repo.path).map_err(|e| ("agent start", e.into()))?;
     launch::get_ready(world, harness, launch, worktree, ready).map_err(|no| ("agent ready", no))?;
-    launch::prompt(world, &launch.agent, text).map_err(|no| ("prompt", no))
+    launch::prompt(world, harness, &launch.agent, text).map_err(|no| ("prompt", no))
 }
 
 /// The restart prompt for `reason`: the prefix, then the reason's own text.

@@ -410,7 +410,7 @@ fn run_step(
         }
         "prompt" => {
             let text = implement_prompt(ctx, config, harness, record);
-            launch::prompt(world, &record.implementer.agent, &text)?;
+            launch::prompt(world, harness, &record.implementer.agent, &text)?;
         }
         _ => unreachable!("not a step: {step}"),
     }

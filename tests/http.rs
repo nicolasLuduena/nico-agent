@@ -155,6 +155,7 @@ fn an_unknown_path_or_method_answers_404_with_the_routes_as_help() {
         "POST /api/dispatch {issue, harness, model, effort}: `nico-agent dispatch` of the issue",
         "POST /api/refresh: `nico-agent refresh`",
         "PATCH /api/repo/<owner/name>/switches {name: bool}: set the Repo's switches",
+        "PATCH /api/repo/<owner/name> {room}: set how many Dispatches the Repo may have In flight at once",
         "GET /bucket/<path>: a file of the Bucket, where each Verdict's Evidence is kept, or links to a folder's",
     ]);
     assert_eq!(
@@ -537,6 +538,80 @@ fn patch_switches_refuses_an_unknown_switch_slug_or_value_and_writes_nothing() {
         (
             400,
             json!({ "error": "review is true or false, not \"no\"", "help": help })
+        )
+    );
+    assert_eq!(config(&t), WRITTEN);
+}
+
+#[test]
+fn patch_room_writes_room_in_the_repo_s_table_alone_and_answers_it() {
+    let t = written();
+
+    let api = t.send("PATCH", "/api/repo/acme/api", r#"{"room": 5}"#);
+    let web = t.send("PATCH", "/api/repo/ACME/WEB", r#"{"room": 2}"#);
+
+    assert_eq!(api, (200, json!({ "slug": "acme/api", "room": 5 })));
+    assert_eq!(web, (200, json!({ "slug": "acme/web", "room": 2 })));
+    let expected = WRITTEN
+        .replace("# trust it\n", "# trust it\nroom = 5\n")
+        .replace("room = 1\n", "room = 2\n");
+    assert_eq!(config(&t), expected);
+    assert_eq!(t.get("/api/status").1["repos"][0]["room"], 5);
+}
+
+#[test]
+fn patch_room_refuses_anything_but_a_whole_number_of_at_least_1_and_writes_nothing() {
+    let t = written();
+    let help = json!([
+        "room is how many Dispatches the Repo may have In flight at once, a whole number of at least 1"
+    ]);
+    let refused = |error: &str| (400, json!({ "error": error, "help": help }));
+
+    let bodies = [
+        (
+            r#"{"room": 0}"#,
+            "room is a whole number of at least 1, not 0",
+        ),
+        (
+            r#"{"room": -1}"#,
+            "room is a whole number of at least 1, not -1",
+        ),
+        (
+            r#"{"room": 1.5}"#,
+            "room is a whole number of at least 1, not 1.5",
+        ),
+        (
+            r#"{"room": "5"}"#,
+            "room is a whole number of at least 1, not \"5\"",
+        ),
+        (
+            r#"{"room": 4294967296}"#,
+            "room is a whole number of at least 1, not 4294967296",
+        ),
+        ("{}", "{} sets no room"),
+        ("[5]", "[5] sets no room"),
+        (
+            r#"{"room": 2, "base": "x"}"#,
+            "`base` is not a setting the page sets",
+        ),
+    ];
+    for (body, error) in bodies {
+        assert_eq!(
+            t.send("PATCH", "/api/repo/acme/api", body),
+            refused(error),
+            "{body}"
+        );
+    }
+    let unknown = t.send("PATCH", "/api/repo/acme/www", r#"{"room": 2}"#);
+
+    assert_eq!(
+        unknown,
+        (
+            409,
+            json!({
+                "error": "acme/www is not a configured Repo",
+                "help": ["Run `nico-agent repo add acme/www --path <clone>` first"],
+            })
         )
     );
     assert_eq!(config(&t), WRITTEN);

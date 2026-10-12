@@ -31,6 +31,7 @@ pub struct Reviewer {
 /// no Verdict and no Reviewer prompted for it still in herdr's `agents`;
 /// behind the `review` switch. A launch that fails is said and tried again
 /// next tick, in a fresh tab. Without `agents`, a prompted Reviewer stands.
+/// A Reviewer herdr reports working is never closed: the next head waits for it.
 /// A head's starts that fail or whose Reviewer leaves herdr are tried again
 /// `max_restarts_per_reason` times, then the user is told, once.
 pub fn start_reviewers(
@@ -60,6 +61,14 @@ pub fn start_reviewers(
             || standing.verdict_on_head().is_some()
             || prompted == Some(&pr.head_sha)
         {
+            continue;
+        }
+        // A start that failed but took its prompt after all (sent by hand),
+        // or a Reviewer still on an older head.
+        let working = |r: &Reviewer| {
+            agents.and_then(|a| world::agent_state(a, &r.launch.agent)) == Some(AgentState::Working)
+        };
+        if d.reviewer.as_ref().is_some_and(working) {
             continue;
         }
         let head = &pr.head_sha;
@@ -222,5 +231,5 @@ fn start(
         ("evidenceFolder", &bucket::evidence(d)),
     ];
     let text = fill_in(&config.prompts.review, &values);
-    launch::prompt(ctx.world, &reviewer.agent, &text)
+    launch::prompt(ctx.world, harness, &reviewer.agent, &text)
 }
