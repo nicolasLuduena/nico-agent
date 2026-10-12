@@ -29,7 +29,7 @@ max_restarts_per_reason = 2
 port = 42069
 repos = {}
 # Each Project's defaults, by name, which its Repos take where they set none:
-# any Repo key but path, linear and project.
+# any Repo key but path, linear, project and install.
 projects = {}
 
 # Where Evidence is kept, one commit per PR head, Verdict and Close. With
@@ -145,6 +145,8 @@ pub struct Repo {
     pub linear: Option<Linear>,
     /// The Project it belongs to; its own, named by its slug, when unset.
     pub project: Option<String>,
+    /// The command its Install runs in its clone after a merge into its Base.
+    pub install: Option<String>,
     #[serde(deserialize_with = "positive")]
     pub room: u32,
     /// The Base a Dispatch starts from unless stacked; origin's default branch when unset.
@@ -165,7 +167,7 @@ pub struct Repo {
 }
 
 /// The settings a Project holds for its Repos, or a Repo sets itself: any
-/// key of a Repo but `path`, `linear` and `project`, each unset till set.
+/// key of a Repo but `path`, `linear`, `project` and `install`, each unset till set.
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Settings {
@@ -481,7 +483,7 @@ fn parse(file: &Path, text: &str) -> Result<Config, Refusal> {
             .into_iter()
             .flat_map(|t| t.iter())
         {
-            if !["path", "linear", "project"].contains(&key) {
+            if !["path", "linear", "project", "install"].contains(&key) {
                 own.insert(key, item.clone());
             }
         }

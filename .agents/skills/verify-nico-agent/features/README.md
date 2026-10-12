@@ -88,6 +88,10 @@ commands, and observable proof.
   verification skill, skills, GitHub App) in `status`, `checks.json`, the needs-you strip's Check
   rows and the tab's Readiness section; run on Refresh and after a settings write, and flipping
   once the user fixes what one says.
+- [Install](./install.md) covers a Repo's `install` command set on its tab or by `PATCH`, refused
+  for a Project, `nico-agent install` pulling fast-forward and running it, its refusals off the Base
+  or with tracked changes, a failed one, one at a time with one more queued, the tick starting the
+  queued one, and the strip's Install row and the tab's Install section.
 - [Refresh](./refresh.md) covers the page's Refresh button, `POST /api/refresh` and `nico-agent
   refresh`, and what the tick it runs does, down to a Stacked dispatch whose PR below merged or
   closed unmerged.

@@ -10,6 +10,7 @@ pub mod dispatch;
 pub mod faux_nico;
 pub mod flip;
 pub mod http;
+pub mod install;
 pub mod launch;
 pub mod map;
 pub mod pause;

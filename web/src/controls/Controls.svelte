@@ -1,9 +1,10 @@
 <script lang="ts">
   // The column right of the map: the Repo's Readiness checks, the Dispatch
-  // form, then its room, its switches and settings, then its removal.
+  // form, then its room, its switches, settings and Install, then its removal.
   import type { Repo, Status } from "../status";
   import Checks from "./Checks.svelte";
   import DispatchForm from "./DispatchForm.svelte";
+  import Install from "./Install.svelte";
   import Remove from "./Remove.svelte";
   import Room from "./Room.svelte";
   import Settings from "./Settings.svelte";
@@ -23,6 +24,7 @@
     <Room {repo} {status} {project} />
     <Switches {repo} {project} />
     <Settings {repo} {status} {project} />
+    <Install {repo} />
     <Remove {repo} />
   {/key}
 </div>

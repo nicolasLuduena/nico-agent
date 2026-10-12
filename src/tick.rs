@@ -15,6 +15,7 @@ use crate::config::{self, Config};
 use crate::dispatch::{self, Flags};
 use crate::faux_nico;
 use crate::flip;
+use crate::install;
 use crate::restart;
 use crate::review;
 use crate::source::{self, Read};
@@ -38,8 +39,9 @@ pub fn tick(ctx: &Context, refresh: bool) -> Result<Vec<String>, Refusal> {
     };
     let config = config::load(&ctx.config_dir)?;
     let (mut said, reads) = read_sources(ctx, &config)?;
-    let (watched, no_pr) = stage::watch(ctx, refresh)?;
+    let (watched, no_pr, merged) = stage::watch(ctx, refresh)?;
     said.extend(watched);
+    said.extend(install::step(ctx, &config, &merged)?);
     said.extend(bucket::step(ctx, &config)?);
     said.extend(dispatch::close_final(ctx, &config)?);
     let agents = list_agents(ctx, &mut said)?;

@@ -174,6 +174,21 @@ impl World for Guarded<'_> {
     fn git_ls_tree(&self, path: &str, rev: &str, folder: &str) -> WorldResult<Vec<String>> {
         self.world.git_ls_tree(path, rev, folder)
     }
+    fn git_branch(&self, path: &str) -> WorldResult<String> {
+        self.world.git_branch(path)
+    }
+    fn git_tracked_changes(&self, path: &str) -> WorldResult<Vec<String>> {
+        self.world.git_tracked_changes(path)
+    }
+    fn git_pull(&self, path: &str) -> WorldResult<()> {
+        self.world.git_pull(path)
+    }
+    fn git_head(&self, path: &str) -> WorldResult<String> {
+        self.world.git_head(path)
+    }
+    fn shell(&self, cwd: &str, command: &str) -> WorldResult<(bool, String)> {
+        self.world.shell(cwd, command)
+    }
     fn copy_dir(&self, from: &str, to: &str) -> WorldResult<()> {
         self.world.copy_dir(from, to)
     }

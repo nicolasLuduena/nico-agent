@@ -4,6 +4,7 @@ use serde_json::{Value, json};
 
 use crate::answer;
 use crate::dispatch;
+use crate::install;
 use crate::pause;
 use crate::refresh;
 use crate::repo;
@@ -76,6 +77,10 @@ const COMMANDS: &[(&str, &str)] = &[
         "record the Reviewer's Verdict on the head of the issue's PR",
     ),
     (
+        "nico-agent install <owner/name>",
+        "pull the Repo's clone fast-forward on its Base and run its install command there, as the loop does after a merge into its Base",
+    ),
+    (
         "nico-agent status [--since <time>]",
         "show per Repo the Ready and Stackable issues, and every Dispatch; with --since, what merged, Closed, was answered and was scanned after it",
     ),
@@ -113,6 +118,7 @@ pub fn run(argv: &[String], ctx: &Context) -> Output {
         ["dispatch", args @ ..] => dispatch::dispatch(args, ctx),
         ["answer", args @ ..] => answer::answer(args, ctx),
         ["verdict", args @ ..] => verdict::verdict(args, ctx),
+        ["install", args @ ..] => install::install(args, ctx),
         ["status", args @ ..] => status::status(args, ctx),
         ["serve", args @ ..] => serve::serve(args, ctx),
         ["refresh", args @ ..] => refresh::refresh(args, ctx),

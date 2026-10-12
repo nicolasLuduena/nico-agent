@@ -120,10 +120,10 @@ pub fn load(config_dir: &Path) -> io::Result<Prs> {
 /// final ones included. What no Dispatch refers to any more is no longer
 /// watched. A failed read is said and asked again next time; it never stops
 /// the others, but a rate limit pauses them all. Says what it found and
-/// what failed, and which live Dispatches it looked for a PR for and found
-/// none: only of those is no PR known.
-pub fn watch(ctx: &Context, every: bool) -> io::Result<(Vec<String>, Vec<String>)> {
-    let (mut said, mut no_pr) = (vec![], vec![]);
+/// what failed, which live Dispatches it looked for a PR for and found
+/// none (only of those is no PR known), and the PRs it saw merge.
+pub fn watch(ctx: &Context, every: bool) -> io::Result<(Vec<String>, Vec<String>, Vec<Pr>)> {
+    let (mut said, mut no_pr, mut merged) = (vec![], vec![], vec![]);
     let dispatches = dispatch::load(&ctx.config_dir)?;
     let refers = |d: &Dispatch, url: &str| {
         d.pr.as_deref() == Some(url) || d.stacked_on.as_ref().is_some_and(|b| b.url == url)
@@ -136,7 +136,7 @@ pub fn watch(ctx: &Context, every: bool) -> io::Result<(Vec<String>, Vec<String>
     })?;
     // Quiet while paused: each call would only be refused, and said.
     if pause::of(ctx.world, &ctx.config_dir, "GitHub")?.is_some() {
-        return Ok((said, no_pr));
+        return Ok((said, no_pr, merged));
     }
     let live = || dispatches.iter().filter(|d| d.closed_at.is_none());
     // (url, repo, number, the Dispatch it was just found for)
@@ -162,7 +162,7 @@ pub fn watch(ctx: &Context, every: bool) -> io::Result<(Vec<String>, Vec<String>
             Err(e) => {
                 said.push(format!("could not look for the PR of {}: {e}", d.issue));
                 if e.rate_limit().is_some() {
-                    return Ok((said, no_pr));
+                    return Ok((said, no_pr, merged));
                 }
             }
         }
@@ -173,7 +173,7 @@ pub fn watch(ctx: &Context, every: bool) -> io::Result<(Vec<String>, Vec<String>
             Err(e) => {
                 said.push(format!("could not ask GitHub about {url}: {e}"));
                 if e.rate_limit().is_some() {
-                    return Ok((said, no_pr));
+                    return Ok((said, no_pr, merged));
                 }
                 continue;
             }
@@ -191,13 +191,20 @@ pub fn watch(ctx: &Context, every: bool) -> io::Result<(Vec<String>, Vec<String>
             checked_at: Some(state::iso(ctx.world.now())),
             merged_at: now.merged_at,
         };
+        if pr.state == PrState::Merged
+            && watched
+                .get(&url)
+                .is_none_or(|was| was.state != PrState::Merged)
+        {
+            merged.push(pr.clone());
+        }
         save(&ctx.config_dir, &url, pr)?;
         if let Some(issue) = found_for {
             dispatch::link_pr(&ctx.config_dir, &issue, &url)?;
             said.push(format!("{issue}: PR {url} found"));
         }
     }
-    Ok((said, no_pr))
+    Ok((said, no_pr, merged))
 }
 
 /// `d`'s PR among `prs` on its branch: an open one, else the newest merged or

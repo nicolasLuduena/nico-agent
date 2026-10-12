@@ -1,8 +1,8 @@
 //! Readiness checks: per Repo, what would break it before it does, said in
-//! needs-you. Checked when `serve` starts, on Refresh and after a write to a
-//! Repo's or its Project's settings; never on a plain tick, and never
-//! stopping a step. Kept in `checks.json`, a Repo's rewritten only when its
-//! results change, so `changed` is sent only then.
+//! needs-you. Checked when `serve` starts, on Refresh, after a write to a
+//! Repo's or its Project's settings and after its Install; never on a plain
+//! tick, and never stopping a step. Kept in `checks.json`, a Repo's rewritten
+//! only when its results change, so `changed` is sent only then.
 
 use std::collections::BTreeMap;
 use std::io;

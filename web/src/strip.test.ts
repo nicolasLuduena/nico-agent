@@ -161,4 +161,30 @@ describe("the needs-you strip", () => {
       },
     ]);
   });
+
+  it("lists a failed or refused Install with its Repo, its output's last line and the command to run it again, and not one that went fine", () => {
+    const install = (ok: boolean, output: string) => ({
+      command: "make install",
+      last: { at: "2026-09-30T02:10:00Z", sha: ok ? "4f2a9c1" : null, ok, output },
+    });
+    const installed: Status = {
+      ...status([]),
+      repos: [
+        { slug: "acme/api", install: install(false, "Compiling api\nerror: could not compile") } as Repo,
+        { slug: "acme/web", install: install(true, "done") } as Repo,
+        { slug: "acme/cli", install: { command: "make install", last: null } } as Repo,
+      ],
+    };
+
+    expect(needsYou(installed)).toEqual([
+      {
+        kind: "Install",
+        repo: "acme/api",
+        issue: null,
+        text: "error: could not compile",
+        help: "Run `nico-agent install acme/api` once it is fixed",
+        at: "2026-09-30T02:10:00Z",
+      },
+    ]);
+  });
 });

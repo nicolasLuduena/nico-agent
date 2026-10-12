@@ -51,7 +51,7 @@ const ROUTES: &[(&str, &str)] = &[
         "set the Repo's switches; null takes its Project's or the default",
     ),
     (
-        "PATCH /api/repo/<owner/name> {implementer, reviewer, room, base, project, switches}",
+        "PATCH /api/repo/<owner/name> {implementer, reviewer, room, base, project, install, switches}",
         "set the Repo's own settings; null takes its Project's or the default",
     ),
     (
