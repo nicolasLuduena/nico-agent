@@ -21,7 +21,7 @@
   {running ? "Refreshing…" : "Refresh"}
 </button>
 {#if sent && !sent.ok}
-  <!-- On a line of its own under the tabs row. -->
+  <!-- On a line of its own under the read times and Refresh. -->
   <div class="refused">
     <Refused error={sent.error} help={sent.help} />
   </div>

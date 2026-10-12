@@ -10,10 +10,11 @@
   // lays it out left to right, the field pans and zooms, a node opens its panel.
   import { tick, untrack } from "svelte";
   import { watch } from "../live";
+  import { still } from "../motion";
   import { selection } from "../selection.svelte";
   import { number, type Repo } from "../status";
   import { layout, NODE, withoutMerged, type Placed } from "./layout";
-  import Mark from "./Mark.svelte";
+  import Mark, { worded } from "./Mark.svelte";
 
   let { repo }: { repo: Repo } = $props();
 
@@ -72,9 +73,7 @@
   /** On desktop the field grows to the fitted map's height; on a phone it stays 60vh. */
   const tall = $derived(drawn && width ? `${drawn.height * scale + 2 * PAD}px` : null);
 
-  function fit() {
-    view = { x: PAD, y: PAD, k: scale };
-  }
+  const home = () => ({ x: PAD, y: PAD, k: scale });
 
   /** Zoomed in past the fit, a finger's every drag pans the map; fitted, a vertical swipe scrolls the page past it. */
   const closer = $derived(view.k > scale);
@@ -82,16 +81,39 @@
   $effect(() => {
     if (drawn && width && fitted !== repo.slug) {
       fitted = repo.slug;
-      untrack(fit);
+      untrack(() => (view = home()));
     }
   });
 
-  /** Pan `n` into the middle of the field when any of it is out of view. */
-  function reveal(n: Placed) {
+  /** The glide under way; a drag or zoom stops it where it is. */
+  let gliding = 0;
+  $effect(() => () => cancelAnimationFrame(gliding));
+
+  /** Move the view to `to` over 300ms, easing out, so the map shows where it went; then `done`. */
+  function glide(to: typeof view, done?: () => void) {
+    cancelAnimationFrame(gliding);
+    if (still()) {
+      view = to;
+      return done?.();
+    }
+    const from = view;
+    const start = performance.now();
+    const step = (now: number) => {
+      const t = Math.min(1, (now - start) / 300);
+      const e = t === 1 ? 1 : 1 - 2 ** (-10 * t);
+      view = { x: from.x + (to.x - from.x) * e, y: from.y + (to.y - from.y) * e, k: from.k + (to.k - from.k) * e };
+      if (t < 1) gliding = requestAnimationFrame(step);
+      else done?.();
+    };
+    gliding = requestAnimationFrame(step);
+  }
+
+  /** Pan `n` into the middle of the field when any of it is out of view; then `done`. */
+  function reveal(n: Placed, done?: () => void) {
     const { x, y, k } = view;
     const [left, top] = [x + n.x * k, y + n.y * k];
-    if (left >= 0 && top >= 0 && left + NODE.width * k <= width && top + n.height * k <= height) return;
-    view = { k, x: width / 2 - (n.x + NODE.width / 2) * k, y: height / 2 - (n.y + n.height / 2) * k };
+    if (left >= 0 && top >= 0 && left + NODE.width * k <= width && top + n.height * k <= height) return done?.();
+    glide({ k, x: width / 2 - (n.x + NODE.width / 2) * k, y: height / 2 - (n.y + n.height / 2) * k }, done);
   }
 
   // A strip item opens its node: pan to it, once per opening.
@@ -102,9 +124,10 @@
     if (!key) panned = null;
     if (!n || panned === key) return;
     panned = key;
-    untrack(() => reveal(n));
-    // And bring it onto the screen, when the page is scrolled away from it.
-    void tick().then(() => field.querySelector(`[data-key="${key}"]`)?.scrollIntoView({ block: "nearest" }));
+    // Then bring it onto the screen, where the map's glide left it, when the page is scrolled away from it.
+    const onScreen = () =>
+      field.querySelector(`[data-key="${key}"]`)?.scrollIntoView({ block: "nearest", behavior: still() ? "auto" : "smooth" });
+    void tick().then(() => reveal(n, onScreen));
   });
 
   function open(key: string) {
@@ -117,10 +140,12 @@
   function zoom(by: number, at: { x: number; y: number }) {
     const rect = field.getBoundingClientRect();
     const [px, py] = [at.x - rect.left, at.y - rect.top];
+    cancelAnimationFrame(gliding);
     const k = Math.min(2, Math.max(0.2, view.k * by));
     view = { k, x: px - ((px - view.x) * k) / view.k, y: py - ((py - view.y) * k) / view.k };
   }
   function down(e: PointerEvent) {
+    cancelAnimationFrame(gliding);
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
   }
   function move(e: PointerEvent) {
@@ -269,7 +294,8 @@
             {#if n.needs}<rect class="flag" width={NODE.width} height="4" />{/if}
             {#if n.stage === "Failed"}<rect class="failed" width="4" height={n.height} />{/if}
             <text class="number" x="12" y="30" use:fit_text={[number(n.key, repo.slug), 140]}></text>
-            <text class="kind" x="236" y="27">{n.kind.toUpperCase()}</text>
+            <!-- Nearly every node is code: only the exception is labelled. -->
+            {#if n.kind !== "code"}<text class="kind" x="236" y="27">{n.kind.toUpperCase()}</text>{/if}
             {#if n.title}
               <text class="title" x="12" y="53" use:fit_text={[n.title, 224]}></text>
             {:else}
@@ -279,7 +305,7 @@
               <rect class="flash" class:on={flashed.has(n.key)} x="4" y="60" width={NODE.width - 8} height="22" />
             {/key}
             <g transform="translate(12 64)"><Mark stage={n.stage} /></g>
-            <text class="stage" class:unknown={!n.stage} x="32" y="76">{n.stage ?? "Blocker"}</text>
+            <text class="stage {worded(n.stage)}" class:unknown={!n.stage} x="32" y="76">{n.stage ?? "Blocker"}</text>
             {#if n.pr}
               <text class="pr" x="218" y="76"
                 >PR {prNumber(n.pr.url)}{#if n.pr.draft}<tspan class="draft" dx="4">draft</tspan>{/if}</text
@@ -291,7 +317,7 @@
         {/each}
       </g>
     </svg>
-    <button type="button" class="fit" onclick={fit}>Fit</button>
+    <button type="button" class="fit" onclick={() => glide(home())}>Fit</button>
   {:else if drawn}
     {#if hideMerged && merged > 0}
       <p class="note">Nothing on this map but merged issues.</p>
@@ -358,9 +384,10 @@
   .edge {
     fill: none;
   }
+  /* A chain's line in full ink, so it reads as a route between its stops. */
   .blocker {
-    stroke: var(--ink-muted);
-    stroke-width: 1.5;
+    stroke: var(--ink);
+    stroke-width: 2;
   }
   /* Double rails: a through-coach connection, never a heavier Blocker line. */
   .stack {
@@ -423,6 +450,15 @@
   .stage {
     font-weight: 600;
   }
+  .stage.live {
+    fill: var(--live);
+  }
+  .stage.verified {
+    fill: var(--verified);
+  }
+  .stage.failed {
+    fill: var(--failed);
+  }
   .unknown,
   .draft,
   .review {
@@ -471,6 +507,7 @@
     stroke: var(--reversed);
   }
   .selected text,
+  .selected .stage,
   .selected .unknown,
   .selected .draft,
   .selected .review {

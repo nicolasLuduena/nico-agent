@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { blocks, firstLine, type Span } from "./markdown";
+  import { blocks, firstLine, withoutLive, type Span } from "./markdown";
 
   /** morning.md, as the morning agent wrote it. */
   let { text }: { text: string } = $props();
@@ -8,7 +8,9 @@
   const KEY = "nico-agent.morning-hidden";
   let hiddenText = $state(remembered());
   const hidden = $derived(hiddenText === text);
-  const shown = $derived(blocks(text));
+  // Merge, Answer and Fix are the band's, live; the page keeps the night's history.
+  const kept = $derived(withoutLive(text));
+  const shown = $derived(blocks(kept));
 
   function remembered(): string | null {
     try {
@@ -33,7 +35,7 @@
 
 <section class="morning" aria-label="Morning summary">
   {#if hidden}
-    <p class="first">{@render line(firstLine(text))}</p>
+    <p class="first">{@render line(firstLine(kept))}</p>
   {:else}
     <div class="sheet">
       {#each shown as block, i (i)}
@@ -77,14 +79,17 @@
     min-width: 0;
     align-self: center;
   }
+  /* A timetable's column head: full ink, on a rule. */
   h2 {
-    padding-top: 12px;
+    margin-top: 16px;
+    padding-top: 6px;
     padding-bottom: 4px;
-    color: var(--ink-muted);
+    border-top: 3px solid var(--rule);
+    font-size: 14px;
     break-after: avoid;
   }
   h2:first-child {
-    padding-top: 0;
+    margin-top: 0;
   }
   ul,
   ol {

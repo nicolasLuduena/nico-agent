@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { blocks, firstLine } from "./markdown";
+import { blocks, firstLine, withoutLive } from "./markdown";
 
 const text = (text: string) => ({ kind: "text", text });
 
@@ -43,7 +43,7 @@ describe("the Morning summary's Markdown", () => {
 });
 
 describe("the Morning summary's first line", () => {
-  it("is the first line that is not a heading, as the notification sends it", () => {
+  it("is the first line that is not a heading", () => {
     const summary = "# Morning\n\n## Merge these\n  Morning of 2026-10-12: **2** to merge, 1 to answer  \n- acme/api#7\n";
 
     expect(firstLine(summary)).toEqual([
@@ -53,7 +53,27 @@ describe("the Morning summary's first line", () => {
     ]);
   });
 
+  it("drops a list item's marker", () => {
+    expect(firstLine("## Landed\n- acme/api#5 Read once\n")).toEqual([text("acme/api#5 Read once")]);
+    expect(firstLine("## Merge these\n1. acme/api#7\n")).toEqual([text("acme/api#7")]);
+  });
+
   it("is nothing when every line is a heading", () => {
     expect(firstLine("# Morning\n\n## Nothing\n")).toEqual([]);
+  });
+});
+
+describe("the Morning summary on the page", () => {
+  it("drops the sections the needs-you band shows live, keeping the night's history", () => {
+    const summary =
+      "## Merge these\n1. acme/api#7\n\n## Answer these\nNothing needs you\n\n## Fix these\n- acme/api#9: stalled\n\n## Landed\n- acme/api#5 Read once\n\n## Filed\nNothing ran\n";
+
+    expect(blocks(withoutLive(summary))).toEqual([
+      { kind: "heading", spans: [text("Landed")] },
+      { kind: "list", ordered: false, items: [[text("acme/api#5 Read once")]] },
+      { kind: "heading", spans: [text("Filed")] },
+      { kind: "line", spans: [text("Nothing ran")] },
+    ]);
+    expect(firstLine(withoutLive(summary))).toEqual([text("acme/api#5 Read once")]);
   });
 });

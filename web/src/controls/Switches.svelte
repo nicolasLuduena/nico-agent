@@ -12,6 +12,7 @@
 
   // The PATCH's answer, until /api/status's next one.
   let switches = $derived(repo.switches);
+  const on = $derived(Object.values(switches).filter(Boolean).length);
   let saving = $state<Record<string, boolean>>({});
   let refused = $state<Sent | null>(null);
 
@@ -28,34 +29,44 @@
   }
 </script>
 
+<!-- Set once and left: folded to how many are on, opened to change one. -->
 <section aria-labelledby="switches-head">
-  <h2 class="label" id="switches-head">Switches</h2>
-  <ul>
-    {#each Object.keys(switches) as name (name)}
-      <li>
-        <label>
-          <span>{label(name)}</span>
-          <input
-            type="checkbox"
-            role="switch"
-            checked={switches[name]}
-            disabled={saving[name]}
-            aria-busy={saving[name]}
-            onchange={(e) => toggle(name, e.currentTarget)}
-          />
-        </label>
-      </li>
-    {/each}
-  </ul>
-  {#if refused && !refused.ok}
-    <Refused error={refused.error} help={refused.help} />
-  {/if}
+  <details>
+    <summary>
+      <span class="label" id="switches-head">Switches</span>
+      <span class="on">{on} of {Object.keys(switches).length} on</span>
+    </summary>
+    <ul>
+      {#each Object.keys(switches) as name (name)}
+        <li>
+          <label>
+            <span>{label(name)}</span>
+            <input
+              type="checkbox"
+              role="switch"
+              checked={switches[name]}
+              disabled={saving[name]}
+              aria-busy={saving[name]}
+              onchange={(e) => toggle(name, e.currentTarget)}
+            />
+          </label>
+        </li>
+      {/each}
+    </ul>
+    {#if refused && !refused.ok}
+      <Refused error={refused.error} help={refused.help} />
+    {/if}
+  </details>
 </section>
 
 <style>
-  section {
-    display: grid;
-    gap: 8px;
+  summary {
+    padding-block: 10px;
+    cursor: pointer;
+  }
+  .on {
+    float: right;
+    color: var(--ink-muted);
   }
   ul {
     padding: 0;

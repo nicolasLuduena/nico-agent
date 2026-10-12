@@ -1,5 +1,5 @@
 <script lang="ts">
-  // The column right of the map: the Repo's switches and room, then the Dispatch form.
+  // The column right of the map: the Dispatch form, then the Repo's room and its switches.
   import type { Repo, Status } from "../status";
   import DispatchForm from "./DispatchForm.svelte";
   import Room from "./Room.svelte";
@@ -11,9 +11,9 @@
 <div class="controls">
   <!-- A new tab starts the column fresh: no other Repo's picks, saves or refusals. -->
   {#key repo.slug}
-    <Switches {repo} />
-    <Room {repo} {status} />
     <DispatchForm {repo} {status} />
+    <Room {repo} {status} />
+    <Switches {repo} />
   {/key}
 </div>
 

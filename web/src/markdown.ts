@@ -24,10 +24,26 @@ export function blocks(markdown: string): Block[] {
   return out;
 }
 
-/** The first line of `markdown` that is not a heading, as the Morning summary's notification sends it (src/away.rs). */
+/** The sections the needs-you band shows live; morning.md's snapshot of them only goes stale once the user acts. */
+const LIVE = ["merge these", "answer these", "fix these"];
+
+/** `markdown` without its live sections, each from its heading to the next: the night's history is what stays. */
+export function withoutLive(markdown: string): string {
+  let live = false;
+  return markdown
+    .split("\n")
+    .filter((line) => {
+      const heading = /^#{1,6}\s+(.*)$/.exec(line.trim());
+      if (heading) live = LIVE.includes(heading[1].trim().toLowerCase());
+      return !live;
+    })
+    .join("\n");
+}
+
+/** The first line of `markdown` that is not a heading, a list item's marker dropped: the folded Morning summary's one line. */
 export function firstLine(markdown: string): Span[] {
   const line = markdown.split("\n").map((l) => l.trim()).find((l) => l && !l.startsWith("#"));
-  return line ? spans(line) : [];
+  return line ? spans(line.replace(/^(?:[-*+]|\d+[.)])\s+/, "")) : [];
 }
 
 /** **strong**, `code`, [named](https://…) and bare https://… links, the last without trailing punctuation. */

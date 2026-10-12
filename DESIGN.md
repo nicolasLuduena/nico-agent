@@ -92,11 +92,11 @@ components:
     padding: "12px 24px"
   tab:
     textColor: "{colors.ink-muted}"
-    typography: "{typography.strong}"
-    padding: "12px 16px"
+    typography: "{typography.head}"
+    padding: "10px 0 8px"
   tab-active:
     textColor: "{colors.ink}"
-    typography: "{typography.strong}"
+    typography: "{typography.head}"
   panel:
     backgroundColor: "{colors.surface}"
     textColor: "{colors.ink}"
@@ -132,18 +132,18 @@ The page is one working screen, read at the desk in the morning and checked on t
 
 **The Costume Rule.** If a part of the page reads as a station sign before it reads as a working control, it has gone too far. Take the world back out until it is type, colour, density and the map's move.
 
-Motion is short and functional. The panel and the sheet slide in 160ms ease-out. When a refetch changes a node's Stage, its Stage cell flashes once (200ms), like a board updating a single line. Under `prefers-reduced-motion` all motion is off and changes simply appear.
+Motion is short and functional. The panel and the sheet slide in 160ms ease-out. When a refetch changes a line, that line flashes once (200ms, 18% of its own ink), like a board updating a single line: a node's Stage cell, a row new to the needs-you band (not on the first read, nor as the band turns yellow, which says it already), and the read times when a read moves them (not when another tab shows its own). When a band row, a node taking keyboard focus, or Fit moves the map, the view glides there in 300ms, easing out, so the map shows where it went; a drag or zoom stops it where it is. Opened from the band, the page then scrolls to the node. Nothing loops and nothing moves on load. Under `prefers-reduced-motion` all motion is off and changes simply appear.
 
 ## Colors
 
 Restrained strategy with working colours: tinted neutrals for the sheet, and four hues that each do one job.
 
-- **Sheet:** `ground` is the page; `surface` is the map field, the panel, the sheet and the form. `hairline` separates rows and frames nodes. `rule` (full ink) is for structural rules: the band edges, the active tab's underline, the panel's leading edge.
+- **Sheet:** `ground` is the page; `surface` is the map field, the panel, the sheet and the form. `hairline` separates rows and frames nodes. `rule` (full ink) is for structural rules: the band edges, the active tab's underline, the Morning summary's column heads, the panel's leading edge.
 - **Ink:** `ink` is for everything you read first. `ink-muted` is for labels, kinds and times. It is never used for an issue number, a title or a Stage word.
 - **Signal yellow (`signal`):** what needs you, and nothing else. It fills the needs-you band and the 4px flag on a node that needs you.
 - **Live blue (`live`):** an agent is at work (Implementing, PR draft), links, focus rings, and the `stack` edge.
 - **Verified green (`verified`):** a passing Verdict on the head commit.
-- **Failed red (`failed`):** Failed (the node, and its Failure in the panel), a failing Verdict, refusals, and serve out of reach. It shows up as the errata rule and the strike, never as a fill.
+- **Failed red (`failed`):** Failed (the node, and its Failure in the panel), a failing Verdict, refusals, and serve out of reach. It shows up as the errata rule, the strike and the Stage word, never as a fill.
 - **Reversed:** the selected node, full ink with the text reversed out.
 
 **The One Job Rule.** Yellow means needs you. A yellow pixel anywhere else is a bug.
@@ -174,17 +174,17 @@ A 4px base. Spacing steps are 4, 8, 12, 16, 24 and 32. On desktop the page gutte
 **Desktop (720px and wider), top to bottom:**
 
 1. **Header:** the `nico-agent` wordmark (14px caps label) on the left, the Light / Dark / System segmented control on the right.
-2. **Morning slot:** the page's first content section: the Morning summary, `morning.md` rendered as Markdown on `surface`, its section heads as `label`s in `ink-muted`, its lists flowing in columns at least 280px wide (one on a phone). It renders nothing when `morning.md` is absent, and takes no space then. A `button-quiet` "Hide" at its right folds it to one line, the summary's first line that is not a heading, beside a "Show" that opens it again; hidden stays first, and is remembered in this browser until `morning.md` says something else.
+2. **Morning slot:** the page's first content section: the Morning summary, `morning.md` rendered as Markdown on `surface`, the night's history only (Landed, Filed, faux-nico said: Merge these, Answer these and Fix these are the needs-you band's, shown there live, where a morning snapshot of them would go stale once acted on), its section heads as `label`s in `ink`, each on a 3px `rule` like a timetable's column head, its lists flowing in columns at least 280px wide (one on a phone). It renders nothing when `morning.md` is absent, and takes no space then. A `button-quiet` "Hide" at its right folds it to one line, the first line it shows that is not a heading, its list marker dropped, beside a "Show" that opens it again; hidden stays first, and is remembered in this browser until `morning.md` says something else.
 3. **Needs-you band:** full width, square, set at the top of the work.
-4. **Repo tabs:** one tab per Repo. The same row carries "Source read HH:MM · PRs checked HH:MM" and the Refresh button, right-aligned.
-5. **Work area:** the map fills the left; a 320px column on the right holds the switches, the room and the Dispatch form. A `button-quiet` at the map's bottom left, while it holds a merged issue, reads "Hide merged", or "Show N merged" once they are hidden; hidden is remembered in this browser for every map. Opening a node puts the 400px node panel in place of that column, and closing it brings the column back. Beside a map taller than the window, the panel stays in view. The map keeps its pan and zoom throughout.
+4. **Repo tabs:** one tab per Repo. The same row carries "Source read HH:MM · PRs checked HH:MM" and the Refresh button, right-aligned. When long Repo names leave them no room, those two move to a line above the tabs, still right-aligned, so the tabs stay on their baseline.
+5. **Work area:** the map fills the left; a 320px column on the right holds the Dispatch form, the room and the switches. A `button-quiet` at the map's bottom left, while it holds a merged issue, reads "Hide merged", or "Show N merged" once they are hidden; hidden is remembered in this browser for every map. Opening a node puts the 400px node panel in place of that column, and closing it brings the column back. Beside a map taller than the window, the panel stays in view. The map keeps its pan and zoom throughout.
 
 **Phone (under 720px):**
 
 - 16px gutters and no horizontal scroll, anywhere, with the sheet open or closed.
 - The tabs become one native `<select>` named "Repo".
 - The band's items stack, one item per block (kind and Repo/#issue on the first line, the question or title on the second).
-- The map starts fitted to the viewport width at 60vh tall and still pans and zooms. Fitted, a vertical swipe on it scrolls the page past it and a sideways one pans it; pinched in, every drag pans it. The switches and the form follow below it.
+- The map starts fitted to the viewport width at 60vh tall and still pans and zooms. Fitted, a vertical swipe on it scrolls the page past it and a sideways one pans it; pinched in, every drag pans it. The Dispatch form, the room and the switches follow below it.
 - The node panel becomes a bottom sheet: up to 85vh, scrolls inside, closed by a button or a swipe down.
 
 **The No Scroll Rule.** At 360px wide, nothing is wider than the viewport. Long titles ellipsize on nodes and wrap in the panel.
@@ -199,12 +199,12 @@ Structure is square (`rounded.none`): nodes, the band, tabs, the panel, the shee
 
 **Node** (248×88px, `hairline` frame, `surface` fill), three rows, and a fourth while it is PR draft:
 
-1. The issue number (`number`) on the left; the kind (`label`, `ink-muted`) on the right.
+1. The issue number (`number`) on the left; `RESEARCH` (`label`, `ink-muted`) on the right for a research issue, and nothing for code, which nearly every node is. The panel names the kind either way.
 2. The title (`body`), one line, ellipsized.
-3. The Stage cell: a 14px mark in a fixed cell, then the Stage word (`strong`). On the right, the Agent state mark (an 8px dot: `live` filled = working, hollow = idle, `signal` = Asking, none = no agent) and the PR number with "draft" when it is one.
+3. The Stage cell: a 14px mark in a fixed cell, then the Stage word (`strong`), in its mark's colour when that is a working one (Implementing and PR draft `live`, Verified `verified`, Failed `failed`), like a departures board's status column, and in `ink` for every other Stage. The panel's Stage word does the same; the selected node reverses it with the rest. On the right, the Agent state mark (an 8px dot: `live` filled = working, hollow = idle, `signal` = Asking, none = no agent) and the PR number with "draft" when it is one.
 4. Under the Stage word, where its review stands (`body`, `ink-muted`): `reviewing`, `review off`, `review gave up`, … The node is 22px taller for it.
 
-**Stage marks** (shape carries the state; colour repeats it):
+**Stage marks** (shape carries the state; colour repeats it, and the Stage word repeats the working colours):
 
 | Stage | Mark | Colour |
 |---|---|---|
@@ -222,12 +222,12 @@ A node that needs you carries a 4px `signal` flag across its top edge.
 
 **Edges:** dagre lays them out left to right (Blockers left, blocked right) as polylines with a small open arrowhead at the blocked end.
 
-- `blocker`: one 1.5px `ink-muted` line.
+- `blocker`: one 2px `ink` line, so a chain reads as a route between its stops.
 - `stack`: double rails, `live`, drawn as a 5px stroke with a 2px `surface` stroke over it, so it reads as two parallel lines (a through-coach connection) and never as a heavier blocker line.
 
 **Band (needs you):** one row per item: kind (`label`), `repo #issue` (`strong`, tabular), the question's first line, the title, or where the review stands with the command that records a Verdict by hand (`body`, ellipsized), and the time right-aligned. The whole row is the button that focuses the node. With items, it is `signal` with a 1px `rule` top and bottom. With none, it is `surface` with a hairline frame and reads "Nothing needs you" in `ink-muted`. GitHub paused is a row like the others: `PAUSED · GitHub · until HH:MM`. So is an agent of the loop's own that herdr reports blocked: `BLOCKED · <agent> · HH:MM`, under its `repo #issue` for a faux-nico, the only one with a node to focus.
 
-**Tabs:** text tabs on a hairline baseline. The active tab is `ink` with a 3px `rule` underline; the others are `ink-muted`.
+**Tabs:** text tabs on a hairline baseline, each Repo's name set in `head` (it heads the work below it), 24px apart with no side padding, so the first aligns with the gutter and the underline is as wide as the name. The active tab is `ink` with a 3px `rule` underline; the others are `ink-muted`.
 
 **Panel and sheet:** the `head` title with a `#number` link to the issue, then sections separated by hairlines, each with a `label` head: PR (link, draft flag), Failure when the Dispatch Failed (the error in `strong` on the errata rule, then the step it stopped at), Restarts (rows of time, then reason), Review (where the review stands, in a line, unless a Verdict on the head says it; then the Verdict: the result word in its colour, the sha in tabular figures, the time, then the findings text wrapped at a 70-character measure), Evidence (one link per file, under `/bucket/`). Opening it moves focus to its title; closing it returns focus to the node or strip row that opened it.
 
@@ -235,7 +235,7 @@ A node that needs you carries a 4px `signal` flag across its top edge.
 
 These are the shapes the UI tickets build. They are not implemented yet.
 
-- **Switches:** eight rows (dispatch, stack, review, restart, flip, answer, gardening, quality_scan), with the name as `strong` on the left and a standard toggle on the right (`live` when on, `hairline` track when off). A toggle that is saving is disabled until the PATCH answers.
+- **Switches:** set once and left, so folded (a native disclosure) to one line: `SWITCHES` (`label`) and how many are on, `6 of 8 on` in `ink-muted` at its right. Opened, eight rows (dispatch, stack, review, restart, flip, answer, gardening, quality_scan), with the name as `strong` on the left and a standard toggle on the right (`live` when on, `hairline` track when off). A toggle that is saving is disabled until the PATCH answers.
 - **Room:** a row like a switch's, "Room" as `strong` on the left and a number input on the right, then one `ink-muted` line counting the Repo's Dispatches In flight. A refused value appears inline under it, as the Dispatch form's refusal does, and the input goes back to the room set.
 - **Dispatch form:** a native select for the issue (Ready, Stackable and Gardening only, `#number title`), then Harness, model and Effort as native selects, then a `button` labelled "Dispatch". A refusal appears inline under the button as a `failed` 4px errata rule with the error in `strong` and the help lines in `body`.
 - **Refresh:** a `button-quiet`. It reads "Refreshing…" and is disabled while the POST runs. The read times update when it answers.

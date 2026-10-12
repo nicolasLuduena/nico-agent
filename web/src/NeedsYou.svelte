@@ -1,5 +1,6 @@
 <script lang="ts">
   import { ticked } from "./controls/Refused.svelte";
+  import { flash } from "./motion";
   import { selection } from "./selection.svelte";
   import type { Need } from "./strip";
   import { clock } from "./time";
@@ -10,6 +11,12 @@
   function open(need: Need) {
     selection.repo = need.repo;
     selection.issue = need.issue;
+  }
+
+  /** A row the band did not have: it flashes once as it arrives. Not on the first read, nor as the band turns yellow, which says it already. */
+  function arrive(row: Element) {
+    flash(row);
+    return {};
   }
 </script>
 
@@ -32,7 +39,7 @@
   {:else}
     <ul>
       {#each needs as need (`${need.kind} ${need.repo} ${need.issue ?? need.text}`)}
-        <li>
+        <li in:arrive>
           {#if need.issue}
             <button type="button" class="row" onclick={() => open(need)}>{@render cells(need)}</button>
           {:else}
@@ -98,6 +105,10 @@
   }
   .ref {
     font-weight: 600;
+  }
+  /* A command keeps the band's own ink: the page's would be white on yellow in Dark. */
+  .text :global(code) {
+    color: inherit;
   }
   .text,
   .ref {

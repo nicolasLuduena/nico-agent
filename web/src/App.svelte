@@ -3,6 +3,7 @@
   import Refresh from "./controls/Refresh.svelte";
   import { watch } from "./live";
   import Morning from "./Morning.svelte";
+  import { flash } from "./motion";
   import NeedsYou from "./NeedsYou.svelte";
   import RepoTab from "./RepoTab.svelte";
   import { selection } from "./selection.svelte";
@@ -31,6 +32,16 @@
   function show(slug: string) {
     selection.repo = slug;
     selection.issue = null;
+  }
+
+  /** The read times flash once when a read moves them, not when another Repo's tab shows its own. */
+  function moved(el: HTMLElement, [slug, times]: [string, string]) {
+    return {
+      update([nextSlug, nextTimes]: [string, string]) {
+        if (nextSlug === slug && nextTimes !== times) flash(el);
+        [slug, times] = [nextSlug, nextTimes];
+      },
+    };
   }
 
   /** The tabs' arrow keys, Home and End: the next tab shows, and takes focus. */
@@ -87,11 +98,14 @@
             {/each}
           </select>
         </label>
-        <p class="times">
-          {repo.read_at ? `Source read ${clock(repo.read_at)}` : "Source not read yet"}
-          · {repo.prs_checked_at ? `PRs checked ${clock(repo.prs_checked_at)}` : "PRs not checked yet"}
-        </p>
-        <Refresh />
+        <!-- Beside the tabs; above them when long Repo names leave no room, so the tabs stay on the baseline. -->
+        <div class="read">
+          <p class="times" use:moved={[repo.slug, `${repo.read_at} ${repo.prs_checked_at}`]}>
+            {repo.read_at ? `Source read ${clock(repo.read_at)}` : "Source not read yet"}
+            · {repo.prs_checked_at ? `PRs checked ${clock(repo.prs_checked_at)}` : "PRs not checked yet"}
+          </p>
+          <Refresh />
+        </div>
       </div>
       <div role="tabpanel" id="repo-tab" aria-labelledby="tab-{repo.slug}">
         <RepoTab {repo} {status} />
@@ -122,27 +136,33 @@
     padding: 16px var(--gutter);
     color: var(--ink-muted);
   }
+  /* Wrapping in reverse: a line that does not fit goes above the tabs, never between them and their baseline. */
   .bar {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: wrap-reverse;
     align-items: center;
-    gap: 16px;
+    gap: 12px 16px;
     margin: 0 var(--gutter);
+    padding-top: 8px;
     border-bottom: 1px solid var(--hairline);
   }
   .tabs {
     display: flex;
     flex-wrap: wrap;
+    column-gap: 24px;
     margin-right: auto;
   }
+  /* Each Repo's name heads its work, set as DESIGN.md's `head`, its rule as wide as the name. */
   [role="tab"] {
-    padding: 12px 16px;
+    padding: 10px 0 8px;
     border: 0;
     border-bottom: 3px solid transparent;
     margin-bottom: -1px;
     background: none;
     color: var(--ink-muted);
+    font-size: 22px;
     font-weight: 600;
+    line-height: 1.2;
     cursor: pointer;
   }
   [role="tab"]:hover {
@@ -153,10 +173,18 @@
     border-bottom-color: var(--rule);
   }
   [role="tab"]:focus-visible {
-    outline-offset: -4px;
+    outline-offset: 2px;
   }
   .pick {
     display: none;
+  }
+  .read {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 0 16px;
+    margin-left: auto;
   }
   .times {
     color: var(--ink-muted);
@@ -168,7 +196,12 @@
     .bar {
       flex-wrap: wrap;
       gap: 8px 16px;
+      padding-top: 0;
       padding-bottom: 12px;
+    }
+    .read {
+      flex: 1 1 100%;
+      margin-left: 0;
     }
     .tabs {
       display: none;

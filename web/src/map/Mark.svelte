@@ -1,10 +1,6 @@
 <svelte:options namespace="svg" />
 
-<script lang="ts">
-  // A Stage's mark, DESIGN.md's table: its shape carries the Stage, its colour
-  // repeats it. A 14px cell; the caller places it. Nothing for no Stage.
-  let { stage }: { stage: string | null } = $props();
-
+<script module lang="ts">
   const tone: Record<string, string> = {
     Waiting: "muted",
     Implementing: "live",
@@ -14,6 +10,15 @@
     Closed: "muted",
     Failed: "failed",
   };
+
+  /** The Stage word's colour, like a departures board's status column: its mark's working colour, or none (ink) for the rest. */
+  export const worded = (stage: string | null) => (["live", "verified", "failed"].includes(tone[stage ?? ""]) ? tone[stage!] : "");
+</script>
+
+<script lang="ts">
+  // A Stage's mark, DESIGN.md's table: its shape carries the Stage, its colour
+  // repeats it. A 14px cell; the caller places it. Nothing for no Stage.
+  let { stage }: { stage: string | null } = $props();
 </script>
 
 <g class="mark {tone[stage ?? ''] ?? 'ink'}" aria-hidden="true">

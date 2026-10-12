@@ -9,7 +9,7 @@
   import * as review from "../review";
   import { number, type Review, type Stage } from "../status";
   import { clock } from "../time";
-  import Mark from "./Mark.svelte";
+  import Mark, { worded } from "./Mark.svelte";
   import { shown } from "./RepoMap.svelte";
 
   /** What `GET /api/node/<issue>` answers: the issue's last Dispatch, as /api/status shows it, with its Evidence. */
@@ -102,7 +102,7 @@
     {#if node}
       <p class="stage">
         <svg width="14" height="14" viewBox="0 0 14 14"><Mark stage={node.stage} /></svg>
-        <strong>{node.stage ?? "Blocker"}</strong>
+        <strong class={worded(node.stage)}>{node.stage ?? "Blocker"}</strong>
         <span class="label kind">{node.kind}</span>
       </p>
     {/if}
@@ -292,11 +292,16 @@
   .by {
     color: var(--ink-muted);
   }
-  .pass {
+  .pass,
+  .verified {
     color: var(--verified);
   }
-  .fail {
+  .fail,
+  .failed {
     color: var(--failed);
+  }
+  .live {
+    color: var(--live);
   }
   .sha {
     margin-left: 8px;
