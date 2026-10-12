@@ -114,37 +114,43 @@ pub fn answer(ctx: &Context, port: u16, request: &HttpRequest) -> Answer {
 fn foreign(ctx: &Context, port: u16, request: &HttpRequest) -> Option<Answer> {
     let mut hosts = vec![format!("127.0.0.1:{port}"), format!("localhost:{port}")];
     // Read each time, as the Bucket's links are: the tunnel's host is in once it is set.
-    if let Some(url) = config::load(&ctx.config_dir)
+    let tunnel = config::load(&ctx.config_dir)
         .ok()
-        .and_then(|c| c.bucket.url)
-    {
-        let at = url.split_once("://").map_or(url.as_str(), |(_, at)| at);
-        hosts.extend(at.split('/').next().map(String::from));
-    }
+        .and_then(|c| c.bucket.url);
+    hosts.extend(tunnel.map(|url| host_of(&url).to_string()));
     let header = |name: &str| {
         (request.headers.iter())
             .find(|(n, _)| n.eq_ignore_ascii_case(name))
             .map(|(_, value)| value.as_str())
     };
-    let help = [format!("Ask serve on {}", hosts.join(" or "))];
+    // Not the tunnel's host itself: a page rebound to 127.0.0.1 reads this.
+    let help = [format!(
+        "Ask serve on 127.0.0.1:{port}, localhost:{port} or bucket.url's host"
+    )];
     let Some(host) = header("Host") else {
         return Some(error(403, "the request names no Host", &help));
     };
     if !hosts.iter().any(|h| h.eq_ignore_ascii_case(host)) {
         return Some(error(403, &format!("Host {host} is not serve's"), &help));
     }
-    let origin = header("Origin").filter(|_| matches!(request.method.as_str(), "POST" | "PATCH"));
-    // `null`, a sandboxed page's or a file's, has no `://`: foreign too.
-    let ours = |origin: &str| {
-        (origin.split_once("://")).is_some_and(|(_, at)| at.eq_ignore_ascii_case(host))
-    };
-    let origin = origin.filter(|origin| !ours(origin))?;
+    let origin =
+        header("Origin").filter(|_| matches!(request.method.as_str(), "POST" | "PATCH"))?;
+    // `null`, a sandboxed page's or a file's, is no host of serve's: foreign too.
+    if host_of(origin).eq_ignore_ascii_case(host) {
+        return None;
+    }
     let help = ["Send it from the app serve answers, or with no Origin"];
     Some(error(
         403,
         &format!("Origin {origin} is not the request's Host"),
         &help,
     ))
+}
+
+/// `url`'s host[:port]: what follows its `://`, up to its path.
+fn host_of(url: &str) -> &str {
+    let at = url.split_once("://").map_or(url, |(_, at)| at);
+    at.split('/').next().unwrap_or_default()
 }
 
 /// `status`'s answer from the Sources' caches alone, plus per Repo what the

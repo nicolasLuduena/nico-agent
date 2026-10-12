@@ -3,7 +3,7 @@ mod common;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use common::{Setup, github_issue, pull_request, setup};
+use common::{HOST, Setup, github_issue, pull_request, setup};
 use nico_agent::world::{Answer, PullRequest};
 use serde_json::json;
 
@@ -570,7 +570,7 @@ fn a_request_on_a_foreign_or_missing_host_answers_403_and_reads_nothing() {
     let other_port = t.send_with("GET", "/api/status", &[("host", "127.0.0.1:4321")], "");
     let missing = t.send_with("GET", "/api/status", &[], "");
 
-    let help = ["Ask serve on 127.0.0.1:42069 or localhost:42069"];
+    let help = ["Ask serve on 127.0.0.1:42069, localhost:42069 or bucket.url's host"];
     assert_eq!(
         foreign,
         (
@@ -591,7 +591,7 @@ fn a_request_on_a_foreign_or_missing_host_answers_403_and_reads_nothing() {
 }
 
 /// What the app sends that changes something: a refresh, a Dispatch of
-/// Ready issue 7, a switch turned off.
+/// Ready issue 7, a Switch turned off.
 const WRITES: [(&str, &str, &str); 3] = [
     ("POST", "/api/refresh", ""),
     ("POST", "/api/dispatch", r#"{"issue": "acme/api#7"}"#),
@@ -609,7 +609,7 @@ fn a_post_or_patch_from_a_page_on_another_host_answers_403_and_does_nothing() {
 
     for (method, path, body) in WRITES {
         for origin in ["https://evil.example", "null", "http://127.0.0.1:4321"] {
-            let headers = [("Host", "127.0.0.1:42069"), ("origin", origin)];
+            let headers = [("Host", HOST), ("origin", origin)];
 
             let answered = t.send_with(method, path, &headers, body);
 
@@ -632,22 +632,23 @@ fn on_tunnel() -> Setup {
 }
 
 #[test]
-fn the_same_requests_on_localhost_or_on_bucket_url_s_host_from_its_page_answer_as_on_127_0_0_1() {
+fn the_same_requests_from_the_app_on_127_0_0_1_localhost_or_bucket_url_s_host_answer_as_curl_s() {
     for (host, origin) in [
+        (HOST, "http://127.0.0.1:42069"),
         ("localhost:42069", "http://localhost:42069"),
         ("nico.example.com", "https://nico.example.com"),
     ] {
         for (method, path, body) in WRITES.into_iter().chain([("GET", "/api/status", "")]) {
-            let (page, app) = (on_tunnel(), on_tunnel());
+            let (app, curl) = (on_tunnel(), on_tunnel());
 
             let headers = [("host", host), ("Origin", origin)];
-            let answered = page.send_with(method, path, &headers, body);
-            let before = app.send(method, path, body);
+            let answered = app.send_with(method, path, &headers, body);
+            let curl_s = curl.send(method, path, body);
 
             assert_eq!(answered.0, 200, "{method} {path} on {host}: {}", answered.1);
-            assert_eq!(answered, before, "{method} {path} on {host}");
-            assert_eq!(page.world.calls(), app.world.calls());
-            assert_eq!(files(&page), files(&app));
+            assert_eq!(answered, curl_s, "{method} {path} on {host}");
+            assert_eq!(app.world.calls(), curl.world.calls());
+            assert_eq!(files(&app), files(&curl));
         }
     }
 }

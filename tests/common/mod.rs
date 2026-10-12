@@ -16,6 +16,9 @@ use nico_agent::world::{Answer, HttpRequest, Poll};
 use nico_agent::{Context, run};
 use serde_json::Value;
 
+/// Where the app reaches `serve`: its own host, on the default port.
+pub const HOST: &str = "127.0.0.1:42069";
+
 pub struct Setup {
     pub world: FakeWorld,
     /// Not created yet: commands create it when they first write.
@@ -87,7 +90,7 @@ impl Setup {
 
     /// Send `serve`, which must have run, a request as the app would: on its own host.
     pub fn request(&self, method: &str, path: &str, body: &str) -> Answer {
-        self.request_with(method, path, &[("Host", "127.0.0.1:42069")], body)
+        self.request_with(method, path, &[("Host", HOST)], body)
     }
 
     /// Send `serve` a request with `headers` and no other.
@@ -118,7 +121,7 @@ impl Setup {
 
     /// `method path` of `serve` with `body`: its status and JSON body.
     pub fn send(&self, method: &str, path: &str, body: &str) -> (u16, Value) {
-        self.send_with(method, path, &[("Host", "127.0.0.1:42069")], body)
+        self.send_with(method, path, &[("Host", HOST)], body)
     }
 
     /// [`Setup::send`] with `headers` and no other.
