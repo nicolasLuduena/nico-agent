@@ -50,6 +50,11 @@ fn a_bad_value_is_refused_naming_its_key_and_line() {
             "\n[repos.\"acme/api\"]\nroom = 2\n",
             "config.toml line 2: repos.acme/api: missing field `path`",
         ),
+        // A launch is taken whole, so one written without its Harness gets none.
+        (
+            "[repos.\"acme/api\"]\npath = \"/src/api\"\nimplementer = { model = \"opus\" }\n",
+            "config.toml line 3: repos.acme/api.implementer: missing field `harness`",
+        ),
         (
             "stall_minutes = 0\n",
             "config.toml line 1: stall_minutes: invalid value: integer `0`, expected a nonzero u32",

@@ -432,7 +432,7 @@ fn parse(file: &Path, text: &str) -> Result<Config, Refusal> {
     }
     let mut projects = DocumentMut::new();
     projects.insert("projects", doc["projects"].clone());
-    let Projects { projects } = read(file, &spanned, projects)?;
+    let Projects { projects } = deserialize(file, &spanned, projects)?;
     for (name, project) in &projects {
         if let Some(switch) = (project.switches.keys()).find(|s| !SWITCHES.contains(&s.as_str())) {
             let expected: Vec<String> = SWITCHES.iter().map(|s| format!("`{s}`")).collect();
@@ -445,27 +445,27 @@ fn parse(file: &Path, text: &str) -> Result<Config, Refusal> {
         }
     }
 
-    let written = doc["repos"].clone();
-    let tables = doc["projects"].clone();
+    let written_repos = doc["repos"].clone();
+    let written_projects = doc["projects"].clone();
     let repo_defaults = defaults(REPO_DEFAULTS);
     if let Some(repos) = doc["repos"].as_table_like_mut() {
         for (slug, repo) in repos.iter_mut() {
             let Some(repo) = repo.as_table_like_mut() else {
                 continue;
             };
+            // Repo::project_name, on the TOML; a Project with no table has no defaults.
             let name = repo.get("project").and_then(Item::as_str).unwrap_or(&slug);
-            // A Project with no table has no defaults.
-            if let Some(project) = tables.get(name).and_then(Item::as_table_like) {
+            if let Some(project) = written_projects.get(name).and_then(Item::as_table_like) {
                 layer(repo, project);
             }
             layer(repo, repo_defaults.as_table());
         }
     }
 
-    let mut config: Config = read(file, &spanned, doc)?;
+    let mut config: Config = deserialize(file, &spanned, doc)?;
     for (slug, repo) in &mut config.repos {
         let mut own = DocumentMut::new();
-        for (key, item) in written[slug.as_str()]
+        for (key, item) in written_repos[slug.as_str()]
             .as_table_like()
             .into_iter()
             .flat_map(|t| t.iter())
@@ -474,8 +474,8 @@ fn parse(file: &Path, text: &str) -> Result<Config, Refusal> {
                 own.insert(key, item.clone());
             }
         }
-        repo.own =
-            read(file, &spanned, own).unwrap_or_else(|_| unreachable!("read as a Repo just now"));
+        repo.own = deserialize(file, &spanned, own)
+            .unwrap_or_else(|_| unreachable!("read as a Repo just now"));
     }
 
     for (name, harness) in &config.harnesses {
@@ -504,10 +504,10 @@ fn parse(file: &Path, text: &str) -> Result<Config, Refusal> {
         refusal
     };
     // A Repo takes its other launches from its Project's, or the defaults'.
-    let set = (config.projects.iter())
+    let written = (config.projects.iter())
         .map(|(name, project)| (["projects", name.as_str()], project))
         .chain((config.repos.iter()).map(|(slug, repo)| (["repos", slug.as_str()], &repo.own)));
-    for (keys, settings) in set {
+    for (keys, settings) in written {
         for (role, launch) in [
             ("implementer", &settings.implementer),
             ("reviewer", &settings.reviewer),
@@ -535,7 +535,7 @@ fn defaults(text: &str) -> DocumentMut {
 }
 
 /// `doc` read as a `T`, a bad value refused naming its key and its line in `spanned`.
-fn read<T: DeserializeOwned>(
+fn deserialize<T: DeserializeOwned>(
     file: &Path,
     spanned: &Document<&str>,
     doc: DocumentMut,
@@ -552,17 +552,17 @@ fn read<T: DeserializeOwned>(
     })
 }
 
-/// Put each setting of `layer` that `repo` lacks into it: the switches one
+/// Put each setting of `lower` that `repo` lacks into it: the switches one
 /// by one, any other whole, a launch included.
-fn layer(repo: &mut dyn TableLike, layer: &dyn TableLike) {
-    for (key, setting) in layer.iter() {
+fn layer(repo: &mut dyn TableLike, lower: &dyn TableLike) {
+    for (key, setting) in lower.iter() {
         match (repo.get_mut(key), setting.as_table_like()) {
             (None, _) => {
                 repo.insert(key, setting.clone());
             }
-            (Some(switches), Some(layer)) if key == "switches" => {
+            (Some(switches), Some(lower)) if key == "switches" => {
                 if let Some(switches) = switches.as_table_like_mut() {
-                    fill(switches, layer);
+                    fill(switches, lower);
                 }
             }
             (Some(_), _) => {}

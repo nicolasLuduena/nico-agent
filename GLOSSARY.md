@@ -85,8 +85,9 @@ provider.
 **Effort**: the Harness's reasoning level for a launch. _Avoid_: thinking
 budget.
 
-**Switch**: a per-Repo on/off for one automatic step: dispatch, stack,
-review, restart, flip to ready, faux-nico answers, gardening, quality-scan.
+**Switch**: a Repo's on/off, or its Project's default, for one automatic
+step: dispatch, stack, review, restart, flip to ready, faux-nico answers,
+gardening, quality-scan.
 _Avoid_: standing order, manual mode.
 
 **Close**: end a Dispatch, removing its worktree and workspace; the branch
