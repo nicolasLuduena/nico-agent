@@ -1,36 +1,47 @@
 <script lang="ts">
-  // The Repo's launches, Base and Project as /api/status shows them, each
-  // written to config.toml on change; the Repo's own launch or Base goes back
-  // to its Project's or the default.
+  // A Repo's launches, Base and Project, or a Project's launches and Base, as
+  // /api/status shows them, each written to config.toml on change; its own
+  // launch or Base goes back to its Project's or the default.
   import { reload } from "../live";
-  import type { Project, Repo, Status } from "../status";
+  import { selection } from "../selection.svelte";
+  import type { Project, Repo } from "../status";
   import From from "./From.svelte";
   import { choices } from "./launch";
   import Refused from "./Refused.svelte";
-  import { patch, type Sent } from "./send";
-  import { picked, unset } from "./settings";
+  import type { Sent } from "./send";
+  import { type Holder, picked, unset } from "./settings";
 
-  let { repo, status, project }: { repo: Repo; status: Status; project: Project | undefined } = $props();
+  let {
+    holder,
+    harnesses,
+    repo,
+    projects = [],
+  }: { holder: Holder; harnesses: Repo["harnesses"]; repo?: Repo; projects?: Project[] } = $props();
+  const id = $props.id();
 
   // The PATCH's answer, until /api/status's next one.
-  let shown = $derived({ implementer: repo.implementer, reviewer: repo.reviewer, base: repo.base });
+  let shown = $derived({ implementer: holder.settings.implementer, reviewer: holder.settings.reviewer, base: holder.settings.base });
   let saving = $state<string | null>(null);
   let refused = $state<Sent | null>(null);
 
-  /** The Project it names; none while it is its own. */
-  const joined = $derived(project && project.name !== repo.slug ? project.name : null);
-  const projects = $derived(status.projects.map((p) => p.name).filter((name) => name !== repo.slug));
+  /** The Project the Repo names; none while it is its own. */
+  const joined = $derived(repo && holder.under && holder.under.name !== repo.slug ? holder.under.name : null);
+  const others = $derived(projects.map((p) => p.name).filter((name) => name !== repo?.slug));
 
   /** PATCH `body` as the setting `key`; `back` puts a refused field back to what is set. */
   async function save(key: string, body: Record<string, unknown>, back?: () => void) {
     saving = key;
     refused = null;
-    const sent = await patch(repo.slug, body);
+    const sent = await holder.patch(body);
     saving = null;
     if (sent.ok) {
       shown = { implementer: sent.answer.implementer, reviewer: sent.answer.reviewer, base: sent.answer.base };
-      // Its Project, and so what it takes from it, shows from /api/status.
-      if (key === "project") reload();
+      // Its Project, and so its tab and what it takes from it, shows from /api/status; the
+      // new tab reads its own map, and the old one, which may be gone, is not asked again.
+      if (key === "project" && repo) {
+        selection.project = (body.project as string | null) ?? repo.slug;
+        reload("/api/status");
+      }
     } else {
       refused = sent;
       back?.();
@@ -43,18 +54,18 @@
 
 {#snippet launch(key: "implementer" | "reviewer", title: string)}
   {@const setting = shown[key]}
-  {@const takes = repo.harnesses[setting.value.harness] ?? { models: null, efforts: null }}
+  {@const takes = harnesses[setting.value.harness] ?? { models: null, efforts: null }}
   {@const pick = (field: "harness" | "model" | "effort", select: HTMLSelectElement) =>
     save(key, { [key]: picked(setting.value, field, select.value || null) }, () => (select.value = setting.value[field] ?? ""))}
-  <div class="launch" role="group" aria-labelledby="{key}-head">
+  <div class="launch" role="group" aria-labelledby="{id}-{key}">
     <div class="row">
-      <span class="name" id="{key}-head">{title}</span>
-      <From {setting} {project} keys={[key]} name={title} busy={saving === key} onundo={() => save(key, unset([key]))} />
+      <span class="name" id="{id}-{key}">{title}</span>
+      <From {setting} {holder} keys={[key]} name={title} busy={saving === key} onundo={() => save(key, unset([key]))} />
     </div>
     <label class="wide">
       <span class="label">Harness</span>
       <select aria-label="{title} Harness" value={setting.value.harness} disabled={saving === key} onchange={(e) => pick("harness", e.currentTarget)}>
-        {#each Object.keys(repo.harnesses) as name (name)}
+        {#each Object.keys(harnesses) as name (name)}
           <option value={name}>{name}</option>
         {/each}
       </select>
@@ -78,16 +89,16 @@
   </div>
 {/snippet}
 
-<section aria-labelledby="settings-head">
-  <h2 class="label" id="settings-head">Settings</h2>
+<section aria-labelledby="{id}-head">
+  <h2 class="label" id="{id}-head">Settings</h2>
   {@render launch("implementer", "Implementer")}
   {@render launch("reviewer", "Reviewer")}
   <div class="row">
-    <label class="name" for="base">Base</label>
-    <From setting={shown.base} {project} keys={["base"]} name="Base" busy={saving === "base"} onundo={() => save("base", unset(["base"]))} />
+    <label class="name" for="{id}-base">Base</label>
+    <From setting={shown.base} {holder} keys={["base"]} name="Base" busy={saving === "base"} onundo={() => save("base", unset(["base"]))} />
   </div>
   <input
-    id="base"
+    id="{id}-base"
     value={shown.base.value ?? ""}
     placeholder="origin's default branch"
     disabled={saving === "base"}
@@ -98,28 +109,30 @@
       input.value = shown.base.value ?? "";
     }}
   />
-  <div class="row">
-    <label class="name" for="project">Project</label>
-    {#if joined}
-      <button type="button" class="quiet" disabled={saving === "project"} onclick={() => save("project", { project: null })}>Leave {joined}</button>
-    {/if}
-  </div>
-  <input
-    id="project"
-    list="projects"
-    value={joined ?? ""}
-    placeholder="its own"
-    disabled={saving === "project"}
-    onchange={(e) => {
-      const input = e.currentTarget;
-      save("project", { project: named(input) }, () => (input.value = joined ?? ""));
-    }}
-  />
-  <datalist id="projects">
-    {#each projects as name (name)}
-      <option value={name}></option>
-    {/each}
-  </datalist>
+  {#if repo}
+    <div class="row">
+      <label class="name" for="{id}-project">Project</label>
+      {#if joined}
+        <button type="button" class="quiet" disabled={saving === "project"} onclick={() => save("project", { project: null })}>Leave {joined}</button>
+      {/if}
+    </div>
+    <input
+      id="{id}-project"
+      list="{id}-projects"
+      value={joined ?? ""}
+      placeholder="its own"
+      disabled={saving === "project"}
+      onchange={(e) => {
+        const input = e.currentTarget;
+        save("project", { project: named(input) }, () => (input.value = joined ?? ""));
+      }}
+    />
+    <datalist id="{id}-projects">
+      {#each others as name (name)}
+        <option value={name}></option>
+      {/each}
+    </datalist>
+  {/if}
   {#if refused && !refused.ok}
     <Refused error={refused.error} help={refused.help} />
   {/if}

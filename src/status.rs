@@ -177,7 +177,11 @@ pub fn shown(
     let projects: Vec<Value> = (projects.into_iter())
         .map(|(name, repos)| {
             let defaults = config.projects.get(name).cloned().unwrap_or_default();
-            json!({ "name": name, "repos": repos, "defaults": defaults })
+            let mut shown = json!({ "name": name, "repos": repos, "defaults": defaults });
+            for (key, setting) in settings(config, name, &config.project(name)) {
+                shown[key] = setting;
+            }
+            shown
         })
         .collect();
     let mut shown = json!({
@@ -190,7 +194,8 @@ pub fn shown(
 }
 
 /// Each setting of the Repo `slug` as `{value, from}`, `from` the first of
-/// the Repo, its Project and the defaults that sets it.
+/// the Repo, its Project and the defaults that sets it; of a Project, as
+/// [`Config::project`] makes it, by its name, its own or the defaults'.
 pub fn settings(config: &Config, slug: &str, repo: &Repo) -> Vec<(&'static str, Value)> {
     let own = json!(repo.own);
     let project = json!(config.projects.get(repo.project_name(slug)));

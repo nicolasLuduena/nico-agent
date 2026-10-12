@@ -1,15 +1,17 @@
 <script lang="ts">
   import { ticked } from "./controls/Refused.svelte";
+  import { projectOf } from "./controls/settings";
   import { flash } from "./motion";
   import { selection } from "./selection.svelte";
+  import type { Project } from "./status";
   import type { Need } from "./strip";
   import { clock } from "./time";
 
-  let { needs }: { needs: Need[] } = $props();
+  let { needs, projects }: { needs: Need[]; projects: Project[] } = $props();
 
-  /** Show the item's Repo with its node open. */
+  /** Show the tab of the item's Repo's Project with its node open. */
   function open(need: Need) {
-    selection.repo = need.repo;
+    selection.project = need.repo && (projectOf(need.repo, projects)?.name ?? null);
     selection.issue = need.issue;
   }
 

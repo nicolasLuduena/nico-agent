@@ -70,8 +70,13 @@ commands, and observable proof.
 - [Verdict recording to the Bucket](./verdict-bucket.md) covers `verdict` pass and fail, its
   refusals, the Bucket commits on a PR head and a Verdict, `/bucket/` and the node panel's Evidence
   links.
-- [The page's tabs and strip](./page-tabs-strip.md) covers the Repo tabs (click, keys, phone
-  select) and the needs-you strip's Asking, Blocked, Failed, Review, Verified and Paused rows.
+- [The page's tabs and strip](./page-tabs-strip.md) covers the tabs of Repos each its own Project
+  (click, keys, phone select) and the needs-you strip's Asking, Blocked, Failed, Review, Verified
+  and Paused rows.
+- [A tab and a map per Project](./project-tabs.md) covers a Project of two Repos on the page: one
+  tab, `GET /api/map/<project>` with nodes from both, each naming its Repo, a Blocker edge across
+  them and an outside Blocker with no Stage, the Project's defaults edited on the tab reaching
+  every Repo that does not set its own, the phone select and a strip row opening the Project's tab.
 - [Where each PR's review stands](./review.md) covers `review` in `status` and the page: the node's
   line under a PR draft Stage, the panel's Review section, and the strip's Review row for a review
   given up on.
@@ -99,6 +104,6 @@ commands, and observable proof.
   tunnel answered as before.
 
 Not yet mapped (drive by hand, then add a file): the faux-nico, gardening and quality-scan
-triggers, `GET /api/map/<slug>` and the map's node layout beyond what the tabs file asserts, the morning agent writing `morning.md` (off in a run: set `morning.enabled = true` and `hour` to the current one to drive it), the theme switch, `serve` restarting Dispatches after a reboot, and everything that needs a live
+triggers, the map's node layout beyond what the tabs and project-tabs files assert, the morning agent writing `morning.md` (off in a run: set `morning.enabled = true` and `hour` to the current one to drive it), the theme switch, `serve` restarting Dispatches after a reboot, and everything that needs a live
 herdr or GitHub (an Implementer started, a Reviewer started, a PR flipped to ready): `cargo test`
 covers those through the fake World.

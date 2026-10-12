@@ -12,6 +12,15 @@ fn with_config(text: &str) -> Setup {
     t
 }
 
+/// The Projects `status` shows, each as written: its name, Repos and
+/// defaults, without the settings it shows of them.
+fn written(status: &serde_json::Value) -> serde_json::Value {
+    let projects = status["projects"].as_array().expect("projects");
+    (projects.iter())
+        .map(|p| json!({ "name": p["name"], "repos": p["repos"], "defaults": p["defaults"] }))
+        .collect()
+}
+
 /// What `repo list` refuses the config with: its error and help.
 fn refusal(t: &Setup) -> (String, Vec<String>) {
     let ran = t.cli(&["repo", "list", "--json"]);
@@ -234,8 +243,12 @@ fn a_repo_without_project_takes_the_defaults_of_the_project_named_by_its_slug() 
         json!({ "value": 4, "from": "project" })
     );
     assert_eq!(
-        status["projects"],
+        written(&status),
         json!([{ "name": "acme/cli", "repos": ["acme/cli"], "defaults": { "room": 4 } }])
+    );
+    assert_eq!(
+        status["projects"][0]["room"],
+        json!({ "value": 4, "from": "project" })
     );
 }
 
@@ -256,7 +269,7 @@ project = "docs"
     let status = t.cli(&["status", "--json"]).json();
 
     assert_eq!(
-        status["projects"],
+        written(&status),
         json!([
             { "name": "acme/cli", "repos": ["acme/cli"], "defaults": {} },
             { "name": "docs", "repos": ["acme/docs"], "defaults": {} },
@@ -316,10 +329,23 @@ project = "docs"
                 // Another Harness than the implementer's, as by default.
                 "reviewer": setting(launch("claude"), "default"),
                 "quality_scan": setting(gpt_5.clone(), "default"),
-                "faux_nico": setting(gpt_5, "default"),
+                "faux_nico": setting(gpt_5.clone(), "default"),
                 "switches": switches(&[("review", false, "project"), ("gardening", true, "project")]),
             })
         )
+    );
+    // A Project's own, or the defaults: what a Repo of it that sets none takes.
+    assert_eq!(
+        settings(&status["projects"][2]),
+        json!({
+            "room": setting(json!(2), "project"),
+            "base": setting(json!("develop"), "project"),
+            "implementer": setting(gpt_5.clone(), "project"),
+            "reviewer": setting(launch("claude"), "default"),
+            "quality_scan": setting(gpt_5.clone(), "default"),
+            "faux_nico": setting(gpt_5, "default"),
+            "switches": switches(&[("review", false, "project"), ("gardening", true, "project")]),
+        })
     );
     assert_eq!(
         (&repos[1]["slug"], settings(&repos[1])),

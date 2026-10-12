@@ -11,7 +11,21 @@ export interface Status {
   morning?: Run;
 }
 
-export interface Repo {
+/** The settings of a Repo, or the defaults of a Project, each as it takes effect. */
+export interface Settings {
+  /** dispatch, stack, review, restart, flip, answer, gardening, quality_scan. */
+  switches: Record<string, Setting<boolean>>;
+  /** How many Dispatches a Repo may have In flight at once. */
+  room: Setting<number>;
+  /** The branch a Dispatch starts from unless stacked; null, origin's default branch. */
+  base: Setting<string | null>;
+  /** The launch the loop dispatches on. */
+  implementer: Setting<Launch>;
+  /** The launch Reviewers start on. */
+  reviewer: Setting<Launch>;
+}
+
+export interface Repo extends Settings {
   slug: string;
   /** When its Source was last read; null before the first read. */
   read_at: string | null;
@@ -21,24 +35,14 @@ export interface Repo {
   stackable: Issue[];
   /** Ready Gardening issues, kept out of `ready`. */
   gardening: Issue[];
-  /** dispatch, stack, review, restart, flip, answer, gardening, quality_scan. */
-  switches: Record<string, Setting<boolean>>;
-  /** How many Dispatches it may have In flight at once. */
-  room: Setting<number>;
-  /** The branch a Dispatch starts from unless stacked; null, origin's default branch. */
-  base: Setting<string | null>;
-  /** The launch the loop dispatches on. */
-  implementer: Setting<Launch>;
-  /** The launch its Reviewers start on. */
-  reviewer: Setting<Launch>;
   /** Each configured Harness, with the models and Efforts it takes (null: any). */
   harnesses: Record<string, { models: string[] | null; efforts: string[] | null }>;
   /** Its last quality-scan's Run; none before the first. */
   last_scan?: Run;
 }
 
-/** Repos that work together, and the defaults they take where they set none. */
-export interface Project {
+/** Repos that work together, and the defaults they take where they set none, each shown as its own or the default. */
+export interface Project extends Settings {
   name: string;
   /** The slugs of its Repos. */
   repos: string[];
@@ -46,7 +50,7 @@ export interface Project {
   defaults: Record<string, any>;
 }
 
-/** A Repo's setting as it takes effect, and which of the Repo, its Project and the defaults sets it. */
+/** A setting as it takes effect, and which of the Repo, its Project and the defaults sets it. */
 export interface Setting<T> {
   value: T;
   from: "repo" | "project" | "default";

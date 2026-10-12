@@ -13,7 +13,7 @@ lists the Projects and shows each setting of a Repo with where it comes from: `r
 - `projects-switches` a Project's switch reaches its Repos while the Repos' other switches stay their defaults.
 - `projects-list` `repo list` shows each Repo's `project`: the one it names, else its slug.
 - `projects-status` `status` and `GET /api/status` hold `projects: [{name, repos, defaults}]` and, per Repo, each setting as `{value, from}`, the Reviewer's default launch included.
-- `projects-page` the Repo's tab shows the effective Room, switches and settings, a Project's included and tagged `project`.
+- `projects-page` the Project's tab shows its defaults, then each Repo's effective Room, switches and settings, a Project's included and tagged `project`.
 - `projects-refused` an unknown key, or a launch naming no Harness, in `projects.<name>` is refused (exit 1) naming its line.
 
 ## How to get to it (user POV)
@@ -21,7 +21,8 @@ lists the Projects and shows each setting of a Repo with where it comes from: `r
 - By hand: add `project = "<name>"` under each `repos."<slug>"` and a `[projects.<name>]` table in
   `config.toml`.
 - Run `nico-agent repo list` and `nico-agent status` (`--json` for scripts).
-- Open serve's page: each Repo's tab shows its Room, switches and settings as they take effect.
+- Open serve's page: the Project's tab shows its defaults and each Repo's Room, switches and
+  settings as they take effect (see project-tabs for the tab and its map).
 
 ## Driving it with control-nico-agent
 
@@ -47,10 +48,14 @@ Preconditions:
   `base` `{"value":null,"from":"default"}`.
 - **API.** Run `$C http --evidence "$E/03-api" GET /api/status`. HTTP `200`; `projects` equals the
   command's, and each Repo has the same `{value, from}` settings plus `harnesses`.
-- **Page.** Run `$C page --evidence "$E/04-page-fixture" --click "tab=verify/fixture" --expect "Switches" --click "region=Switches" --expect "Faux-nico answers"`:
-  the snapshot has `spinbutton "Room": "2"`, `Switches 4 of 8 on`, `switch "Review"` unchecked and
-  `switch "Dispatch" [checked]`. With `--click "tab=verify/second"` (`05-page-second`): `spinbutton "Room": "4"`, `switch "Review"`
-  unchecked. `.console.txt` is empty.
+- **Page.** Run `$C page --evidence "$E/04-page" --click "tab=verify" --expect "Defaults for its Repos" --within "region=verify" --click "region=Switches" --within "region=verify/fixture" --click "region=Switches" --within "region=verify/second" --click "region=Switches" --expect "Faux-nico answers"`:
+  `tablist "Projects"` has `tab "verify"` alone; each panel's Switches read `4 of 8 on`.
+  `region "verify"` (the Project's defaults) has `text: Room` with `button "Use the default Room"`
+  and `spinbutton "Room": "2"`, and `switch "Review"` unchecked beside `button "Use the default
+  Review"`; `region "verify/fixture"` has `text: Room project`, `spinbutton "Room": "2"`, `switch
+  "Review"` unchecked beside `text: Review project` and `switch "Dispatch" [checked]`; `region
+  "verify/second"` has `button "Use the Project's Room"`, `spinbutton "Room": "4"` and `switch
+  "Review"` unchecked. `.console.txt` is empty.
 - **Refused.** Rename `room = 2` under `[projects.verify]` to `rom = 2` and run
   `$C run --evidence "$E/06-unknown-key" -- repo list --json`: exit `1`, `error` `<config> line <n>:
   projects.verify.rom: unknown field \`rom\`, expected one of \`room\`, ...`, `<n>` the line of `rom`.

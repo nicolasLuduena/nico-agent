@@ -25,7 +25,7 @@
 #                                 run the CLI in the scratch HOME; exit code is the CLI's
 #   http [--evidence PREFIX] <METHOD> <PATH> [BODY]
 #                                 ask this run's serve, as the page does
-#   page [--tunnel] [--evidence PREFIX] [--width PX] [--storage FILE|none] [--click ROLE=NAME | --click ROLE~NAME | --press KEY | --type TEXT
+#   page [--tunnel] [--evidence PREFIX] [--width PX] [--storage FILE|none] [--within ROLE=NAME|page | --click ROLE=NAME | --click ROLE~NAME | --press KEY | --type TEXT
 #        | --expect TEXT | --gone TEXT | --wait SECONDS | --mode pass|502|signed-out]...
 #                                 open serve's page in headless Chromium (through the tunnel stand-in), act, capture
 #   tunnel start|pass|502|signed-out
@@ -317,13 +317,16 @@ cmd_seed() {
     dispatch) seed_dispatch "$@" ;;
     run) seed_run "$@" ;;
     morning) seed_morning "$@" ;;
-    *) die "seed: usage: seed issues | seed dispatch <n> pr|asking|stacked | seed run quality-scan|morning|faux-nico <n> | seed morning <file>|none" ;;
+    *) die "seed: usage: seed issues [second] | seed dispatch <n> pr|asking|stacked | seed run quality-scan|morning|faux-nico <n> | seed morning <file>|none" ;;
   esac
 }
 
 # What a read of verify/fixture's GitHub issues would cache, read now: one Ready, one Research,
-# one Stackable on an open PR, and three that are not Ready, each for its own reason.
+# one Stackable on an open PR, and three that are not Ready, each for its own reason. With
+# `second`, verify/second's instead: #1 waiting on verify/fixture#1, a Blocker in another Repo,
+# and #2 on verify/outside#7, in no Repo.
 seed_issues() {
+  [ "${1:-}" != second ] || { seed_second_issues; return; }
   local at; at="$(now)"
   local u="https://github.com/$SLUG/issues"
   write_state "$CONFIG_DIR/issues/$SLUG.json" "$(jq -n --arg at "$at" --arg u "$u" --arg s "$SLUG" '
@@ -343,6 +346,21 @@ seed_issues() {
             prs: [{number: 109, url: "https://github.com/\($s)/pull/109", head_branch: "agent/fixture-9"}]}])
     ] }')"
   jq -c '{ file: input_filename, read_at, issues: [.issues[] | {key, title}] }' "$CONFIG_DIR/issues/$SLUG.json"
+}
+
+seed_second_issues() {
+  local at; at="$(now)"
+  write_state "$CONFIG_DIR/issues/$SECOND.json" "$(jq -n --arg at "$at" --arg s "$SECOND" --arg f "$SLUG" '
+    def waits($n; $title; $blocker; $blocker_title): {
+      key: "\($s)#\($n)", title: $title, url: "https://github.com/\($s)/issues/\($n)",
+      branch: "agent/second-\($n)", created_at: "2026-01-0\($n)T10:00:00Z", open: true,
+      labels: ["ready-for-agent"], assignees: [], has_sub_issues: false,
+      blockers: [{key: $blocker, title: $blocker_title, resolved: false, prs: []}] };
+    { read_at: $at, user: ["verify-nico"], issues: [
+      waits(1; "Verify: waits on fixture #1"; "\($f)#1"; "Verify: a Ready issue"),
+      waits(2; "Verify: waits on an outside issue"; "verify/outside#7"; "Verify: an outside Blocker")
+    ] }')"
+  jq -c '{ file: input_filename, read_at, issues: [.issues[] | {key, title}] }' "$CONFIG_DIR/issues/$SECOND.json"
 }
 
 # A Dispatch of verify/fixture#<n> with every step done, as the loop records one, in a worktree of

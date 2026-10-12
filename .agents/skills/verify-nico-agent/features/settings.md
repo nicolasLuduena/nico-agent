@@ -60,20 +60,23 @@ Preconditions:
 - **Base.** Run `$C page --evidence "$E/07-base" --click "textbox=Base" --type dev --press Enter --expect "Base Use the default"`.
   `PATCH ... {"base":"dev"} -> 200`; `config.toml` has `base = "dev"`.
 - **Join a Project.** Run `$C page --evidence "$E/08-join" --click "combobox=Project" --type verify --press Enter --expect "Leave verify"`.
-  `PATCH ... {"project":"verify"} -> 200`, then `GET /api/status`; `config.toml` has
-  `project = "verify"`.
+  `PATCH ... {"project":"verify"} -> 200`, then `GET /api/status` and `GET /api/map/verify`; the tab
+  is now `tab "verify" [selected]`, its Project's, with `region "verify"` (the Project's defaults)
+  above `region "verify/fixture"`; `config.toml` has `project = "verify"`.
 - **The Project's defaults.** Run `$C http --evidence "$E/09-project" PATCH /api/project/verify '{"room":2,"base":"main","switches":{"review":false}}'`.
-  HTTP `200`, `{"defaults":{"base":"main","room":2,"switches":{"review":false}},"name":"verify"}`;
-  `config.toml` gains `[projects.verify]` with those three. `$C page --evidence "$E/10-page-project" --click "region=Switches" --expect "Use the Project's"`:
+  HTTP `200`, `name` `verify`, `defaults` `{"base":"main","room":2,"switches":{"review":false}}`
+  and each of the Project's settings as status shows it, `room` `{"from":"project","value":2}`;
+  `config.toml` gains `[projects.verify]` with those three. `$C page --evidence "$E/10-page-project" --within "region=verify/fixture" --click "region=Switches" --expect "Use the Project's"`:
   `text: Room project`, `spinbutton "Room": "2"`, `text: Review project` with `switch "Review"`
   unchecked, `button "Use the Project's Base"` (the Repo's `dev` wins over the Project's `main`).
 - **Use the Project's.** Run `$C page --evidence "$E/11-undo-to-project" --click "button=Use the Project's Base" --expect "Base project"`.
   `PATCH ... {"base":null} -> 200`; `text: Base project`, `textbox "Base": main`; `config.toml`'s
   Repo has no `base` line.
-- **Emptied.** Run `$C page --evidence "$E/11b-empty-base" --click "textbox=Base" --press Control+a --press Backspace --press Enter --expect "Base project"`.
+- **Emptied.** Run `$C page --evidence "$E/11b-empty-base" --within "region=verify/fixture" --click "textbox=Base" --press Control+a --press Backspace --press Enter --expect "Base project"`.
   `PATCH ... {"base":null} -> 200`; the field shows the Project's again, `textbox "Base": main`.
 - **Leave it.** Run `$C page --evidence "$E/12-leave" --click "button=Leave verify" --gone "Leave verify"`.
-  `PATCH ... {"project":null} -> 200`; `text: Room default`, `spinbutton "Room": "3"`;
+  `PATCH ... {"project":null} -> 200`; `tab "verify/fixture" [selected]` again, no `tab "verify"`
+  (it has no Repo left), `text: Room default`, `spinbutton "Room": "3"`;
   `config.toml`'s Repo has no `project` line, and `[projects.verify]` stays.
 - **API, percent-encoded.** Run `$C http --evidence "$E/13-api" PATCH /api/repo/verify%2Ffixture '{"implementer":{"harness":"codex","model":"gpt-5"},"room":4,"switches":{"stack":false}}'`.
   HTTP `200`; `slug` `verify/fixture`, `implementer` `{"from":"repo","value":{"effort":null,"harness":"codex","model":"gpt-5"}}`,
@@ -104,6 +107,8 @@ Preconditions:
 - Dispatch turned off is the Repo's own switch, so `button "Use the default Dispatch"` is on the
   page throughout: expect a row's own text (`Reviewer Use the default`, `Base project`), never a
   bare `Use the default`.
+- On a Project's tab its defaults come first, with the same control names as a Repo's: a bare
+  `--click` reaches the Project's. Scope a Repo's with `--within "region=<slug>"`.
 - A launch is replaced whole: picking a Harness sends model and Effort null, the Harness's own.
 - The PATCH writes an inline table with toml_edit's spacing (`{ dispatch = false , stack = false }`):
   assert on the values, not the spacing.

@@ -1,6 +1,6 @@
 ---
 name: nico-agent
-description: The Station Timetable. Each Repo reads like a printed railway timetable, Blocker chains running left to right like a train's stops, on an arrivals-sheet white (a night-board blue in Dark), with signal yellow kept for what needs you.
+description: The Station Timetable. Each Project reads like a printed railway timetable, Blocker chains running left to right like a train's stops, on an arrivals-sheet white (a night-board blue in Dark), with signal yellow kept for what needs you.
 colors:
   ground: "#f4f5f2"
   surface: "#ffffff"
@@ -128,7 +128,7 @@ components:
 
 ## Overview
 
-The page is one working screen, read at the desk in the morning and checked on the phone. Its world is the printed railway timetable: the departures poster on the platform and the arrivals sheet beside it. That world contributes four things and nothing else: **type** (a grotesk with tabular figures, numbers set bold like departure times), **palette** (sheet white, full ink, a few working colours), **density** (a timetable fits a lot on one sheet without crowding), and **one signature move**: each Repo's map reads like a timetable, with Blocker chains running left to right like a train's stops. The navigation, tabs, switches, selects and buttons are standard web controls. The world never supplies them.
+The page is one working screen, read at the desk in the morning and checked on the phone. Its world is the printed railway timetable: the departures poster on the platform and the arrivals sheet beside it. That world contributes four things and nothing else: **type** (a grotesk with tabular figures, numbers set bold like departure times), **palette** (sheet white, full ink, a few working colours), **density** (a timetable fits a lot on one sheet without crowding), and **one signature move**: each Project's map reads like a timetable, with Blocker chains running left to right like a train's stops. The navigation, tabs, switches, selects and buttons are standard web controls. The world never supplies them.
 
 **The Costume Rule.** If a part of the page reads as a station sign before it reads as a working control, it has gone too far. Take the world back out until it is type, colour, density and the map's move.
 
@@ -176,13 +176,13 @@ A 4px base. Spacing steps are 4, 8, 12, 16, 24 and 32. On desktop the page gutte
 1. **Header:** the `nico-agent` wordmark (14px caps label) on the left, the Light / Dark / System segmented control on the right.
 2. **Morning slot:** the page's first content section: the Morning summary, `morning.md` rendered as Markdown on `surface`, the night's history only (Landed, Filed, faux-nico said: Merge these, Answer these and Fix these are the needs-you band's, shown there live, where a morning snapshot of them would go stale once acted on), its section heads as `label`s in `ink`, each on a 3px `rule` like a timetable's column head, its lists flowing in columns at least 280px wide (one on a phone). It renders nothing when `morning.md` is absent, and takes no space then. A `button-quiet` "Hide" at its right folds it to one line, the first line it shows that is not a heading, its list marker dropped, beside a "Show" that opens it again; hidden stays first, and is remembered in this browser until `morning.md` says something else.
 3. **Needs-you band:** full width, square, set at the top of the work.
-4. **Repo tabs:** one tab per Repo. The same row carries "Source read HH:MM · PRs checked HH:MM" and the Refresh button, right-aligned. When long Repo names leave them no room, those two move to a line above the tabs, still right-aligned, so the tabs stay on their baseline.
-5. **Work area:** the map fills the left; a 320px column on the right holds the Dispatch form, the room, the switches, the settings and the Repo's Remove. A `button-quiet` at the map's bottom left, while it holds a merged issue, reads "Hide merged", or "Show N merged" once they are hidden; hidden is remembered in this browser for every map. Opening a node puts the 400px node panel in place of that column, and closing it brings the column back. Beside a map taller than the window, the panel stays in view. The map keeps its pan and zoom throughout.
+4. **Project tabs:** one tab per Project, a Repo with none being its own. The same row carries "Source read HH:MM · PRs checked HH:MM", the oldest of its Repos', and the Refresh button, right-aligned. When long Project names leave them no room, those two move to a line above the tabs, still right-aligned, so the tabs stay on their baseline.
+5. **Work area:** the Project's map fills the left; a 320px column on the right holds, unless the Project is a Repo's own, the Project's defaults (its name as `head`, then its room, switches and settings), then a panel per Repo (its slug as `head` when the Project has the defaults panel, then its Dispatch form, room, switches, settings and Remove). A `button-quiet` at the map's bottom left, while it holds a merged issue, reads "Hide merged", or "Show N merged" once they are hidden; hidden is remembered in this browser for every map. Opening a node puts the 400px node panel in place of that column, and closing it brings the column back. Beside a map taller than the window, the panel stays in view. The map keeps its pan and zoom throughout.
 
 **Phone (under 720px):**
 
 - 16px gutters and no horizontal scroll, anywhere, with the sheet open or closed.
-- The tabs become one native `<select>` named "Repo".
+- The tabs become one native `<select>` named "Project".
 - The band's items stack, one item per block (kind and Repo/#issue on the first line, the question or title on the second).
 - The map starts fitted to the viewport width at 60vh tall and still pans and zooms. Fitted, a vertical swipe on it scrolls the page past it and a sideways one pans it; pinched in, every drag pans it. The Dispatch form, the room and the switches follow below it.
 - The node panel becomes a bottom sheet: up to 85vh, scrolls inside, closed by a button or a swipe down.
@@ -199,7 +199,7 @@ Structure is square (`rounded.none`): nodes, the band, tabs, the panel, the shee
 
 **Node** (248×88px, `hairline` frame, `surface` fill), three rows, and a fourth while it is PR draft:
 
-1. The issue number (`number`) on the left; `RESEARCH` (`label`, `ink-muted`) on the right for a research issue, and nothing for code, which nearly every node is. The panel names the kind either way.
+1. The issue number (`number`) on the left, followed, when the Project has more than one Repo, by its Repo's name (`strong`, `ink-muted`, ellipsized); `RESEARCH` (`label`, `ink-muted`) on the right for a research issue, and nothing for code, which nearly every node is. The panel names the kind either way.
 2. The title (`body`), one line, ellipsized.
 3. The Stage cell: a 14px mark in a fixed cell, then the Stage word (`strong`), in its mark's colour when that is a working one (Implementing and PR draft `live`, Verified `verified`, Failed `failed`), like a departures board's status column, and in `ink` for every other Stage. The panel's Stage word does the same; the selected node reverses it with the rest. On the right, the Agent state mark (an 8px dot: `live` filled = working, hollow = idle, `signal` = Asking, none = no agent) and the PR number with "draft" when it is one.
 4. Under the Stage word, where its review stands (`body`, `ink-muted`): `reviewing`, `review off`, `review gave up`, … The node is 22px taller for it.
@@ -227,7 +227,7 @@ A node that needs you carries a 4px `signal` flag across its top edge.
 
 **Band (needs you):** one row per item: kind (`label`), `repo #issue` (`strong`, tabular), the question's first line, the title, or where the review stands with the command that records a Verdict by hand (`body`, ellipsized), and the time right-aligned. The whole row is the button that focuses the node. With items, it is `signal` with a 1px `rule` top and bottom. With none, it is `surface` with a hairline frame and reads "Nothing needs you" in `ink-muted`. GitHub paused is a row like the others: `PAUSED · GitHub · until HH:MM`. So is an agent of the loop's own that herdr reports blocked: `BLOCKED · <agent> · HH:MM`, under its `repo #issue` for a faux-nico, the only one with a node to focus.
 
-**Tabs:** text tabs on a hairline baseline, each Repo's name set in `head` (it heads the work below it), 24px apart with no side padding, so the first aligns with the gutter and the underline is as wide as the name. The active tab is `ink` with a 3px `rule` underline; the others are `ink-muted`.
+**Tabs:** text tabs on a hairline baseline, each Project's name set in `head` (it heads the work below it), 24px apart with no side padding, so the first aligns with the gutter and the underline is as wide as the name. The active tab is `ink` with a 3px `rule` underline; the others are `ink-muted`.
 
 **Panel and sheet:** the `head` title with a `#number` link to the issue, then sections separated by hairlines, each with a `label` head: PR (link, draft flag), Failure when the Dispatch Failed (the error in `strong` on the errata rule, then the step it stopped at), Restarts (rows of time, then reason), Review (where the review stands, in a line, unless a Verdict on the head says it; then the Verdict: the result word in its colour, the sha in tabular figures, the time, then the findings text wrapped at a 70-character measure), Evidence (one link per file, under `/bucket/`). Opening it moves focus to its title; closing it returns focus to the node or strip row that opened it.
 
@@ -236,9 +236,9 @@ A node that needs you carries a 4px `signal` flag across its top edge.
 These are the shapes the UI tickets build. They are not implemented yet.
 
 - **Switches:** set once and left, so folded (a native disclosure) to one line: `SWITCHES` (`label`) and how many are on, `6 of 8 on` in `ink-muted` at its right. Opened, eight rows (dispatch, stack, review, restart, flip, answer, gardening, quality_scan), with the name as `strong` on the left and a standard toggle on the right (`live` when on, `hairline` track when off). A toggle that is saving is disabled until the PATCH answers.
-- **Where a setting comes from:** beside each setting, left of its control, a `label` in `ink-muted` reading `project` or `default` while the Repo does not set it; once it does, a `button-quiet` "Use the Project's" (or "Use the default") in its place, which removes the Repo's own. A long name wraps it under the name.
-- **Room:** a row like a switch's, "Room" as `strong` on the left and a number input on the right, then one `ink-muted` line counting the Repo's Dispatches In flight. A refused value appears inline under it, as the Dispatch form's refusal does, and the input goes back to the room set.
-- **Settings:** under a `label` head, the Implementer and the Reviewer, each its name as `strong` then Harness, model and Effort as the Dispatch form's selects; then Base and Project as text inputs, Project offering the Projects there are and, while the Repo is in one, a `button-quiet` "Leave <name>". A change is written as it is made; a refusal appears inline under the section.
+- **Where a setting comes from:** beside each setting, left of its control, a `label` in `ink-muted` reading `project` or `default` while the Repo does not set it; once it does, a `button-quiet` "Use the Project's" (or "Use the default") in its place, which removes the Repo's own. A Project's defaults read `default` while it does not set one, and "Use the default" once it does. A long name wraps it under the name.
+- **Room:** a row like a switch's, "Room" as `strong` on the left and a number input on the right, then, for a Repo, one `ink-muted` line counting its Dispatches In flight. A refused value appears inline under it, as the Dispatch form's refusal does, and the input goes back to the room set.
+- **Settings:** under a `label` head, the Implementer and the Reviewer, each its name as `strong` then Harness, model and Effort as the Dispatch form's selects; then Base and, for a Repo, Project as text inputs, Project offering the Projects there are and, while the Repo is in one, a `button-quiet` "Leave <name>". A change is written as it is made; a refusal appears inline under the section.
 - **Remove:** a `button-quiet` "Remove <slug>…" at the column's foot, which asks once more ("Its clone stays") before it removes; a refusal appears inline under it.
 - **Add a Repo:** a `surface` section under the work area: Repo, its clone and its Project as text inputs in a row (stacked on a phone), then a `button` "Add". The new Repo's tab opens once added.
 - **Dispatch form:** a native select for the issue (Ready, Stackable and Gardening only, `#number title`), then Harness, model and Effort as native selects, then a `button` labelled "Dispatch". A refusal appears inline under the button as a `failed` 4px errata rule with the error in `strong` and the help lines in `body`.

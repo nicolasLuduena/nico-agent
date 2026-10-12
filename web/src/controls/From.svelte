@@ -1,25 +1,25 @@
 <script lang="ts">
-  // Beside a setting: where it comes from while the Repo does not set it, else
-  // the button that removes the Repo's own, named for what takes its place.
-  import type { Project, Setting } from "../status";
-  import { tag, undoLabel } from "./settings";
+  // Beside a setting: where it comes from while the Repo (or the Project) does
+  // not set it, else the button that removes its own, named for what takes its place.
+  import type { Setting } from "../status";
+  import { type Holder, tag, undoLabel } from "./settings";
 
   let {
     setting,
-    project,
+    holder,
     keys,
     name,
     busy,
     onundo,
-  }: { setting: Setting<unknown>; project: Project | undefined; keys: string[]; name: string; busy: boolean; onundo: () => void } = $props();
+  }: { setting: Setting<unknown>; holder: Holder; keys: string[]; name: string; busy: boolean; onundo: () => void } = $props();
 
-  const instead = $derived(undoLabel(setting, project, keys));
+  const instead = $derived(undoLabel(setting, holder.under, keys, holder.own));
 </script>
 
 {#if instead}
   <button type="button" class="quiet" aria-label="{instead} {name}" disabled={busy} onclick={onundo}>{instead}</button>
 {:else}
-  <span class="label">{tag(setting)}</span>
+  <span class="label">{tag(setting, holder.own)}</span>
 {/if}
 
 <style>

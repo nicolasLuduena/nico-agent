@@ -33,7 +33,7 @@ Preconditions:
   the map shows `#1` and `#5` Ready, `#6` Stackable. `: > "$OUTSIDE_LOG"`.
 - **Press Refresh.** Run `$C page --evidence "$E/02-pressed" --click "button=Refresh" --expect "Failed"`.
   `.requests.txt` has, after the first load, `POST /api/refresh -> 200` then `GET /api/status -> 200`
-  and `GET /api/map/verify/fixture -> 200`; the strip now lists `Failed verify/fixture #1`, `#5` and
+  and `GET /api/map/verify%2Ffixture -> 200`; the strip now lists `Failed verify/fixture #1`, `#5` and
   `#6`, and the map's nodes say `Failed, needs you`. `$OUTSIDE_LOG` starts `gh api user --jq .login`
   (the fresh cache was not trusted), then the dispatches' `gh issue edit`, `herdr worktree create`
   and `notify-send` lines. Copy it to `$E/outside.pressed.log`.

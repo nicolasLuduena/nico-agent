@@ -67,6 +67,7 @@ fn a_blocked_ready_for_agent_issue_is_a_node_with_a_blocker_edge_from_each_open_
         node(&map, "acme/api#1"),
         &json!({
             "key": "acme/api#1",
+            "repo": "acme/api",
             "title": "Issue 1",
             "url": "https://github.com/acme/api/issues/1",
             "kind": "code",
@@ -85,6 +86,7 @@ fn a_blocked_ready_for_agent_issue_is_a_node_with_a_blocker_edge_from_each_open_
         node(&map, "acme/api#5"),
         &json!({
             "key": "acme/api#5",
+            "repo": "acme/api",
             "title": "Blocker 5",
             "url": "https://github.com/acme/api/issues/5",
             "kind": "code",
@@ -189,7 +191,7 @@ fn an_issue_merged_6_days_ago_is_a_node_with_its_merged_time_and_one_merged_8_da
 }
 
 #[test]
-fn the_map_answers_in_full_from_local_state_while_github_is_paused_and_404_for_no_repo() {
+fn the_map_answers_in_full_from_local_state_while_github_is_paused_and_404_for_no_project() {
     let t = with_issues("dispatch = false", &[1, 2]);
     block(&t, 2, &[1]);
     t.tick();
@@ -210,8 +212,8 @@ fn the_map_answers_in_full_from_local_state_while_github_is_paused_and_404_for_n
         (
             404,
             json!({
-                "error": "acme/web is not a Repo",
-                "help": ["Ask for a Repo /api/status lists"],
+                "error": "acme/web is not a Project",
+                "help": ["Ask for a Project /api/status lists"],
             })
         )
     );
@@ -296,4 +298,96 @@ fn a_node_is_its_dispatch_with_restarts_its_verdict_s_findings_and_every_bucket_
             })
         )
     );
+}
+
+#[test]
+fn a_project_s_map_holds_every_repo_s_nodes_each_naming_its_repo_with_blocker_edges_across_them() {
+    let t = setup();
+    std::fs::create_dir_all(&t.config_dir).unwrap();
+    let off = "switches = { dispatch = false }";
+    let config = format!(
+        "[repos.\"acme/api\"]\npath = \"/src/api\"\nproject = \"acme shop\"\n{off}\n\n\
+         [repos.\"acme/web\"]\npath = \"/src/web\"\nproject = \"acme shop\"\n{off}\n\n\
+         [repos.\"acme/cli\"]\npath = \"/src/cli\"\n{off}\n"
+    );
+    std::fs::write(t.config_dir.join("config.toml"), config).unwrap();
+    t.world.add_issue("acme/api", github_issue("acme/api", 1));
+    t.world.add_issue("acme/cli", github_issue("acme/cli", 4));
+    // Blocked by acme/api#1 in its Project, acme/cli#4 in another, other/lib#9 in none.
+    let blocker = |slug: &str, number| GitHubBlocker {
+        slug: slug.into(),
+        number,
+        title: format!("Blocker {number}"),
+        state: IssueState::Open,
+    };
+    t.world.add_issue(
+        "acme/web",
+        nico_agent::world::GitHubIssue {
+            blockers: vec![
+                blocker("acme/api", 1),
+                blocker("acme/cli", 4),
+                blocker("other/lib", 9),
+            ],
+            ..github_issue("acme/web", 3)
+        },
+    );
+    t.tick();
+
+    let (status, map) = t.get("/api/map/acme%20shop");
+    let in_shop = t.get("/api/map/acme/api");
+    let (_, own) = t.get("/api/map/acme/cli");
+
+    assert_eq!(status, 200, "{map}");
+    assert_eq!(
+        keys(&map),
+        ["acme/api#1", "acme/cli#4", "acme/web#3", "other/lib#9"]
+    );
+    let shown = |key: &str| {
+        let n = node(&map, key);
+        (n["stage"].clone(), n["repo"].clone())
+    };
+    assert_eq!(shown("acme/api#1"), (json!("Ready"), json!("acme/api")));
+    assert_eq!(shown("acme/web#3"), (json!("Waiting"), json!("acme/web")));
+    // Outside the Project, a Blocker is a link node with no Stage, configured or not.
+    assert_eq!(
+        node(&map, "acme/cli#4"),
+        &json!({
+            "key": "acme/cli#4",
+            "repo": null,
+            "title": "Blocker 4",
+            "url": "https://github.com/acme/cli/issues/4",
+            "kind": "code",
+            "stage": null,
+            "agent_state": null,
+            "pr": null,
+            "review": null,
+            "verdict": null,
+            "restarts": 0,
+            "created_at": null,
+            "merged_at": null,
+        })
+    );
+    assert_eq!(shown("other/lib#9"), (json!(null), json!(null)));
+    assert_eq!(
+        map["edges"],
+        json!([
+            { "from": "acme/api#1", "to": "acme/web#3", "kind": "blocker" },
+            { "from": "acme/cli#4", "to": "acme/web#3", "kind": "blocker" },
+            { "from": "other/lib#9", "to": "acme/web#3", "kind": "blocker" },
+        ])
+    );
+    // A Repo in a Project has no map of its own; one without is its own Project.
+    assert_eq!(
+        in_shop,
+        (
+            404,
+            json!({
+                "error": "acme/api is not a Project",
+                "help": ["Ask for a Project /api/status lists"],
+            })
+        )
+    );
+    assert_eq!(keys(&own), ["acme/cli#4"]);
+    assert_eq!(node(&own, "acme/cli#4")["repo"], "acme/cli");
+    assert_eq!(node(&own, "acme/cli#4")["stage"], "Ready");
 }

@@ -1,20 +1,20 @@
 <script lang="ts">
-  // The switches /api/status shows of the Repo, each written to config.toml on
-  // toggle; one the Repo sets goes back to its Project's or the default.
-  import type { Project, Repo } from "../status";
+  // The switches /api/status shows of a Repo or a Project, each written to
+  // config.toml on toggle; one it sets goes back to its Project's or the default.
   import From from "./From.svelte";
   import Refused from "./Refused.svelte";
-  import { patch, type Sent } from "./send";
-  import { unset } from "./settings";
+  import type { Sent } from "./send";
+  import { type Holder, unset } from "./settings";
 
-  let { repo, project }: { repo: Repo; project: Project | undefined } = $props();
+  let { holder }: { holder: Holder } = $props();
+  const id = $props.id();
 
   /** A switch's name as the Glossary says it, capitalised. */
   const said: Record<string, string> = { flip: "Flip to ready", answer: "Faux-nico answers", quality_scan: "Quality-scan" };
   const label = (name: string) => said[name] ?? name[0].toUpperCase() + name.slice(1);
 
   // The PATCH's answer, until /api/status's next one.
-  let switches = $derived(repo.switches);
+  let switches = $derived(holder.settings.switches);
   const on = $derived(Object.values(switches).filter((s) => s.value).length);
   let saving = $state<Record<string, boolean>>({});
   let refused = $state<Sent | null>(null);
@@ -22,7 +22,7 @@
   async function save(name: string, body: Record<string, unknown>, input?: HTMLInputElement) {
     saving[name] = true;
     refused = null;
-    const sent = await patch(repo.slug, body);
+    const sent = await holder.patch(body);
     saving[name] = false;
     if (sent.ok) switches = sent.answer.switches;
     else {
@@ -33,26 +33,26 @@
 </script>
 
 <!-- Set once and left: folded to how many are on, opened to change one. -->
-<section aria-labelledby="switches-head">
+<section aria-labelledby="{id}-head">
   <details>
     <summary>
-      <span class="label" id="switches-head">Switches</span>
+      <span class="label" id="{id}-head">Switches</span>
       <span class="on">{on} of {Object.keys(switches).length} on</span>
     </summary>
     <ul>
       {#each Object.keys(switches) as name (name)}
         <li>
-          <label for="switch-{name}">{label(name)}</label>
+          <label for="{id}-{name}">{label(name)}</label>
           <From
             setting={switches[name]}
-            {project}
+            {holder}
             keys={["switches", name]}
             name={label(name)}
             busy={saving[name]}
             onundo={() => save(name, unset(["switches", name]))}
           />
           <input
-            id="switch-{name}"
+            id="{id}-{name}"
             type="checkbox"
             role="switch"
             checked={switches[name].value}
