@@ -163,7 +163,7 @@ Barlow is a grotesk drawn from transit and highway signage. It is served from th
 - `number` (22px bold): the issue number on a node, which is the "departure time" of the timetable.
 - `head` (22px semibold): the panel's title and the Repo name where it heads a section.
 - `body` and `strong` (14px): titles, Stage words, form text, history rows.
-- `label` (14px semibold caps, 0.06em): `CODE` / `RESEARCH`, `ASKING` / `FAILED` / `VERIFIED` / `PAUSED`, form field labels.
+- `label` (14px semibold caps, 0.06em): `CODE` / `RESEARCH`, `ASKING` / `FAILED` / `REVIEW` / `VERIFIED` / `PAUSED`, form field labels.
 
 **The Right Column Rule.** Every time on the page (Source read, PRs checked, restarted at, Verdict at, paused until) is set right-aligned in a tabular column, `HH:MM`, plus the date when it isn't today.
 
@@ -177,7 +177,7 @@ A 4px base. Spacing steps are 4, 8, 12, 16, 24 and 32. On desktop the page gutte
 2. **Morning slot:** the page's first content section: the Morning summary, `morning.md` rendered as Markdown on `surface`, its section heads as `label`s in `ink-muted`, its lists flowing in columns at least 280px wide (one on a phone). It renders nothing when `morning.md` is absent, and takes no space then.
 3. **Needs-you band:** full width, square, set at the top of the work.
 4. **Repo tabs:** one tab per Repo. The same row carries "Source read HH:MM · PRs checked HH:MM" and the Refresh button, right-aligned.
-5. **Work area:** the map fills the left; a 320px column on the right holds the switches and the Dispatch form. Opening a node puts the 400px node panel in place of that column, and closing it brings the column back. Beside a map taller than the window, the panel stays in view. The map keeps its pan and zoom throughout.
+5. **Work area:** the map fills the left; a 320px column on the right holds the switches, the room and the Dispatch form. Opening a node puts the 400px node panel in place of that column, and closing it brings the column back. Beside a map taller than the window, the panel stays in view. The map keeps its pan and zoom throughout.
 
 **Phone (under 720px):**
 
@@ -197,11 +197,12 @@ Flat, like the printed sheet. Depth is drawn with rules, never with blur. The on
 
 Structure is square (`rounded.none`): nodes, the band, tabs, the panel, the sheet. Controls (buttons, inputs, selects, toggles) get `rounded.control` (2px) so they read as pressable.
 
-**Node** (248×88px, `hairline` frame, `surface` fill), three rows:
+**Node** (248×88px, `hairline` frame, `surface` fill), three rows, and a fourth while it is PR draft:
 
 1. The issue number (`number`) on the left; the kind (`label`, `ink-muted`) on the right.
 2. The title (`body`), one line, ellipsized.
 3. The Stage cell: a 14px mark in a fixed cell, then the Stage word (`strong`). On the right, the Agent state mark (an 8px dot: `live` filled = working, hollow = idle, `signal` = Asking, none = no agent) and the PR number with "draft" when it is one.
+4. Under the Stage word, where its review stands (`body`, `ink-muted`): `reviewing`, `review off`, `review gave up`, … The node is 22px taller for it.
 
 **Stage marks** (shape carries the state; colour repeats it):
 
@@ -224,17 +225,18 @@ A node that needs you carries a 4px `signal` flag across its top edge.
 - `blocker`: one 1.5px `ink-muted` line.
 - `stack`: double rails, `live`, drawn as a 5px stroke with a 2px `surface` stroke over it, so it reads as two parallel lines (a through-coach connection) and never as a heavier blocker line.
 
-**Band (needs you):** one row per item: kind (`label`), `repo #issue` (`strong`, tabular), the question's first line or the title (`body`, ellipsized), and the time right-aligned. The whole row is the button that focuses the node. With items, it is `signal` with a 1px `rule` top and bottom. With none, it is `surface` with a hairline frame and reads "Nothing needs you" in `ink-muted`. GitHub paused is a row like the others: `PAUSED · GitHub · until HH:MM`.
+**Band (needs you):** one row per item: kind (`label`), `repo #issue` (`strong`, tabular), the question's first line, the title, or where the review stands with the command that records a Verdict by hand (`body`, ellipsized), and the time right-aligned. The whole row is the button that focuses the node. With items, it is `signal` with a 1px `rule` top and bottom. With none, it is `surface` with a hairline frame and reads "Nothing needs you" in `ink-muted`. GitHub paused is a row like the others: `PAUSED · GitHub · until HH:MM`. So is an agent of the loop's own that herdr reports blocked: `BLOCKED · <agent> · HH:MM`, under its `repo #issue` for a faux-nico, the only one with a node to focus.
 
 **Tabs:** text tabs on a hairline baseline. The active tab is `ink` with a 3px `rule` underline; the others are `ink-muted`.
 
-**Panel and sheet:** the `head` title with a `#number` link to the issue, then sections separated by hairlines, each with a `label` head: PR (link, draft flag), Failure when the Dispatch Failed (the error in `strong` on the errata rule, then the step it stopped at), Restarts (rows of time, then reason), Verdict (the result word in its colour, the sha in tabular figures, the time, then the findings text wrapped at a 70-character measure), Evidence (one link per file, under `/bucket/`). Opening it moves focus to its title; closing it returns focus to the node or strip row that opened it.
+**Panel and sheet:** the `head` title with a `#number` link to the issue, then sections separated by hairlines, each with a `label` head: PR (link, draft flag), Failure when the Dispatch Failed (the error in `strong` on the errata rule, then the step it stopped at), Restarts (rows of time, then reason), Review (where the review stands, in a line, unless a Verdict on the head says it; then the Verdict: the result word in its colour, the sha in tabular figures, the time, then the findings text wrapped at a 70-character measure), Evidence (one link per file, under `/bucket/`). Opening it moves focus to its title; closing it returns focus to the node or strip row that opened it.
 
 ## Components
 
 These are the shapes the UI tickets build. They are not implemented yet.
 
 - **Switches:** eight rows (dispatch, stack, review, restart, flip, answer, gardening, quality_scan), with the name as `strong` on the left and a standard toggle on the right (`live` when on, `hairline` track when off). A toggle that is saving is disabled until the PATCH answers.
+- **Room:** a row like a switch's, "Room" as `strong` on the left and a number input on the right, then one `ink-muted` line counting the Repo's Dispatches In flight. A refused value appears inline under it, as the Dispatch form's refusal does, and the input goes back to the room set.
 - **Dispatch form:** a native select for the issue (Ready, Stackable and Gardening only, `#number title`), then Harness, model and Effort as native selects, then a `button` labelled "Dispatch". A refusal appears inline under the button as a `failed` 4px errata rule with the error in `strong` and the help lines in `body`.
 - **Refresh:** a `button-quiet`. It reads "Refreshing…" and is disabled while the POST runs. The read times update when it answers.
 - **Theme switch:** a three-segment control (Light / Dark / System), with the active segment reversed. This is the one sanctioned reversal outside the map, because a segmented control's selected state is a standard affordance.

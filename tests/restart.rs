@@ -2,7 +2,7 @@ mod common;
 
 use std::time::Duration;
 
-use common::{Setup, github_issue, pull_request, setup};
+use common::{Setup, edit_dispatch, github_issue, pull_request, setup};
 use nico_agent::world::PullRequest;
 use serde_json::{Value, json};
 
@@ -118,6 +118,32 @@ fn the_third_stall_marks_the_dispatch_failed_notifies_once_and_it_is_never_resta
             { "at": "2026-09-30T12:30:00Z", "reason": "stalled", "by": "loop" },
             { "at": "2026-09-30T13:00:00Z", "reason": "stalled", "by": "loop" },
         ])
+    );
+}
+
+#[test]
+fn a_reviewer_set_while_the_implementer_restarts_survives_the_restart() {
+    let t = dispatched(&[1]);
+    let reviewer = json!({
+        "agent": "rev-api-1", "harness": "codex", "model": null, "effort": null,
+        "tab": "w1:t3", "pane": "w1:p4", "sha": "sha1",
+    });
+    let (dir, set) = (t.config_dir.clone(), reviewer.clone());
+    t.world
+        .during_call("herdr agent prompt impl-api-1", move || {
+            edit_dispatch(&dir, |d| d["reviewer"] = set.clone())
+        });
+
+    let said = stall(&t, 1);
+
+    assert_eq!(said, ["acme/api#1 restarted: stalled"]);
+    let shown = &status(&t)["dispatches"][0];
+    assert_eq!(
+        (&shown["reviewer"], &shown["restarts"]),
+        (
+            &reviewer,
+            &json!([{ "at": "2026-09-30T12:30:00Z", "reason": "stalled", "by": "loop" }])
+        )
     );
 }
 

@@ -136,6 +136,61 @@ fn an_answer_with_no_text_or_another_author_is_refused_with_its_usage() {
 }
 
 #[test]
+fn an_answer_that_starts_with_a_flag_is_typed_and_recorded() {
+    let t = asking();
+
+    let spaced = t.cli(&[
+        "answer",
+        "acme/api#7",
+        "--text",
+        "--force is fine",
+        "--json",
+    ]);
+    let joined = t.cli(&[
+        "answer",
+        "acme/api#7",
+        "--text=--force is fine here",
+        "--json",
+    ]);
+
+    assert_eq!(
+        (spaced.exit_code, joined.exit_code),
+        (0, 0),
+        "{} {}",
+        spaced.stdout,
+        joined.stdout
+    );
+    assert_eq!(
+        t.world.calls(),
+        [
+            "herdr agent prompt impl-api-7 --force is fine",
+            "herdr agent prompt impl-api-7 --force is fine here",
+        ]
+    );
+    let texts: Vec<Value> = (answers(&t).as_array().unwrap().iter())
+        .map(|a| a["text"].clone())
+        .collect();
+    assert_eq!(texts, ["--force is fine", "--force is fine here"]);
+}
+
+#[test]
+fn an_answer_whose_text_is_another_flag_or_empty_is_refused() {
+    let t = asking();
+    let refused = |args: &[&str]| {
+        let ran = t.cli(&[&["answer", "acme/api#7"], args, &["--json"]].concat());
+        (ran.exit_code, ran.json())
+    };
+    let needs_text = (2, json!({"error": "--text needs a value", "help": [USAGE]}));
+
+    assert_eq!(refused(&["--text", "--by", "faux-nico"]), needs_text);
+    assert_eq!(refused(&["--text", "--by=faux-nico"]), needs_text);
+    assert_eq!(refused(&["--text", ""]), needs_text);
+    assert_eq!(refused(&["--text="]), needs_text);
+    assert_eq!(t.world.calls(), Vec::<String>::new());
+    assert_eq!(answers(&t), Value::Null);
+}
+
+#[test]
 fn an_answer_to_an_issue_not_asking_closed_or_unknown_is_refused_with_help() {
     let t = asking();
     let answer = |issue| t.cli(&["answer", issue, "--text", "Keep it.", "--json"]);

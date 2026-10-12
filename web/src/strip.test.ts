@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Dispatch, Status } from "./status";
+import type { Dispatch, Repo, Run, Status } from "./status";
 import { needsYou } from "./strip";
 
 const status = (dispatches: Partial<Dispatch>[], githubPausedUntil: string | null = null): Status => ({
@@ -12,6 +12,7 @@ const status = (dispatches: Partial<Dispatch>[], githubPausedUntil: string | nul
     stage: "Implementing",
     implementer: { harness: "claude", model: null, effort: null },
     asking: null,
+    review: null,
     verdict: null,
     updated_at: "2026-09-30T11:00:00Z",
     closed_at: null,
@@ -47,6 +48,34 @@ describe("the needs-you strip", () => {
     ]);
   });
 
+  it("lists each blocked agent of the loop after the Asking, by the name to take it over with, as of its block", () => {
+    const blocked = (agent: string, at: string): Run => ({ agent, blocked_since: at });
+    const asking = { since: "2026-09-30T04:12:00Z", question: "Keep the v1 route?" };
+    const loop: Status = {
+      ...status([{ stage: "Failed", asking, faux_nico: blocked("faux-nico-api-7", "2026-09-30T04:20:00Z") }]),
+      repos: [{ slug: "acme/api", last_scan: blocked("quality-scan-api", "2026-09-30T03:10:00Z") } as Repo],
+      morning: blocked("morning", "2026-09-30T07:10:00Z"),
+    };
+
+    expect(needsYou(loop)).toEqual([
+      { kind: "Asking", repo: "acme/api", issue: "acme/api#7", text: "Keep the v1 route?", at: "2026-09-30T04:12:00Z" },
+      { kind: "Blocked", repo: "acme/api", issue: "acme/api#7", text: "faux-nico-api-7", at: "2026-09-30T04:20:00Z" },
+      { kind: "Blocked", repo: "acme/api", issue: null, text: "quality-scan-api", at: "2026-09-30T03:10:00Z" },
+      { kind: "Blocked", repo: null, issue: null, text: "morning", at: "2026-09-30T07:10:00Z" },
+      { kind: "Failed", repo: "acme/api", issue: "acme/api#7", text: "Add the export endpoint", at: "2026-09-30T11:00:00Z" },
+    ]);
+  });
+
+  it("lists no agent of the loop that is not blocked", () => {
+    const quiet: Status = {
+      ...status([{ faux_nico: { agent: "faux-nico-api-7" } }]),
+      repos: [{ slug: "acme/api", last_scan: { agent: "quality-scan-api" } } as Repo],
+      morning: { agent: "morning" },
+    };
+
+    expect(needsYou(quiet)).toEqual([]);
+  });
+
   it("lists a Failed Dispatch with its title, as of its last change", () => {
     const failed = status([{ issue: "BLE-12", repo: "acme/web", title: "Retry the webhook", stage: "Failed", updated_at: "2026-09-30T03:40:00Z" }]);
 
@@ -62,6 +91,32 @@ describe("the needs-you strip", () => {
 
     expect(needsYou(verified)).toEqual([
       { kind: "Verified", repo: "acme/api", issue: "acme/api#7", text: "Add the export endpoint", at: "2026-09-30T05:02:00Z" },
+    ]);
+  });
+
+  it("lists a review that gave up or stopped, with how to record its Verdict by hand, and not one still trying", () => {
+    const review = { sha: "4f2a9c1e0b", harness: "codex", attempts: 0, cap: 2 };
+    const stuck = status([
+      { stage: "PR draft", review: { ...review, state: "gave_up", attempts: 3 } },
+      { issue: "acme/api#8", title: "Page the export", stage: "PR draft", review: { ...review, state: "stopped" } },
+      { issue: "acme/api#9", stage: "PR draft", review: { ...review, state: "retrying", attempts: 1 } },
+    ]);
+
+    expect(needsYou(stuck)).toEqual([
+      {
+        kind: "Review",
+        repo: "acme/api",
+        issue: "acme/api#7",
+        text: "Reviewer gave up on 4f2a9c1: review it by hand with `nico-agent verdict acme/api#7 pass|fail --sha 4f2a9c1e0b`",
+        at: null,
+      },
+      {
+        kind: "Review",
+        repo: "acme/api",
+        issue: "acme/api#8",
+        text: "Reviewer on codex stopped without a Verdict: review it by hand with `nico-agent verdict acme/api#8 pass|fail --sha 4f2a9c1e0b`",
+        at: null,
+      },
     ]);
   });
 

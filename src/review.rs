@@ -3,15 +3,16 @@
 //! re-run the Repo's verification and record a Verdict with `verdict`.
 
 use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
 
 use crate::bucket;
 use crate::cli::{Context, Refusal};
 use crate::config::{Config, fill_in};
 use crate::dispatch::{self, Dispatch};
 use crate::launch::{self, AgentLaunch};
-use crate::stage::{self, Pr, Stage};
-use crate::verdict;
-use crate::world::{self, Agent};
+use crate::stage::{self, Pr, Stage, Standing};
+use crate::verdict::Outcome;
+use crate::world::{self, Agent, AgentState};
 
 /// A Dispatch's latest Reviewer.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -30,6 +31,7 @@ pub struct Reviewer {
 /// no Verdict and no Reviewer prompted for it still in herdr's `agents`;
 /// behind the `review` switch. A launch that fails is said and tried again
 /// next tick, in a fresh tab. Without `agents`, a prompted Reviewer stands.
+/// A Reviewer herdr reports working is never closed: the next head waits for it.
 /// A head's starts that fail or whose Reviewer leaves herdr are tried again
 /// `max_restarts_per_reason` times, then the user is told, once.
 pub fn start_reviewers(
@@ -45,19 +47,28 @@ pub fn start_reviewers(
         if !repo.switches.review {
             continue;
         }
-        let Some((url, pr)) = stage::pr_of(&prs, &d) else {
+        let standing = stage::standing(&ctx.config_dir, &prs, &d)?;
+        let Some((url, pr)) = standing.pr else {
             continue;
         };
-        let verdict = verdict::load(&ctx.config_dir, &d.issue)?;
         let gone = |r: &&Reviewer| {
             agents.is_some_and(|a| world::agent_state(a, &r.launch.agent).is_none())
         };
         let prompted = (d.reviewer.as_ref())
             .filter(|r| !gone(r))
             .and_then(|r| r.sha.as_ref());
-        if stage::of(&d, Some(pr), verdict.as_ref()) != Stage::PrDraft
-            || [prompted, verdict.as_ref().map(|v| &v.sha)].contains(&Some(&pr.head_sha))
+        if standing.stage != Stage::PrDraft
+            || standing.verdict_on_head().is_some()
+            || prompted == Some(&pr.head_sha)
         {
+            continue;
+        }
+        // A start that failed but took its prompt after all (sent by hand),
+        // or a Reviewer still on an older head.
+        let working = |r: &Reviewer| {
+            agents.and_then(|a| world::agent_state(a, &r.launch.agent)) == Some(AgentState::Working)
+        };
+        if d.reviewer.as_ref().is_some_and(working) {
             continue;
         }
         let head = &pr.head_sha;
@@ -127,6 +138,54 @@ pub fn start_reviewers(
     Ok(said)
 }
 
+/// Where the review of `d`'s PR stands for its head, as `status` shows it,
+/// by the rules [`start_reviewers`] starts Reviewers on; `agents` as herdr
+/// listed them, if it did. `None` unless `d` is live and its Stage PR draft
+/// or Verified: no Reviewer is started for any other.
+pub fn shown(
+    config: &Config,
+    d: &Dispatch,
+    standing: &Standing,
+    agents: Option<&[Agent]>,
+) -> Option<Value> {
+    let reviewed =
+        d.closed_at.is_none() && matches!(standing.stage, Stage::PrDraft | Stage::Verified);
+    let (_, pr) = standing.pr.filter(|_| reviewed)?;
+    let head = &pr.head_sha;
+    let reviewer = d.reviewer.as_ref();
+    // herdr's Agent state of the Reviewer prompted for the head: `None` once it
+    // left herdr, `Unknown` while herdr does not say, which leaves it standing, as the tick does.
+    let prompted = (reviewer.filter(|r| r.sha.as_ref() == Some(head))).map(|r| {
+        agents.map_or(Some(AgentState::Unknown), |a| {
+            world::agent_state(a, &r.launch.agent)
+        })
+    });
+    let cap = config.max_restarts_per_reason as usize;
+    let mut attempts = reviewer.map_or(0, |r| r.failures.iter().filter(|sha| *sha == head).count());
+    // Gone before its Verdict: the next tick counts it, unless it gave up on the head already.
+    if prompted == Some(None) && attempts <= cap {
+        attempts += 1;
+    }
+    let state = match (standing.verdict_on_head(), prompted.flatten()) {
+        _ if !config.repo_of(d).switches.review => "off",
+        (Some(v), _) if v.result == Outcome::Pass => "passed",
+        (Some(_), _) => "failed",
+        // Past the cap none starts for the head: one still prompted for it is one that left.
+        _ if attempts > cap => "gave_up",
+        (None, Some(AgentState::Working | AgentState::Unknown)) => "reviewing",
+        (None, Some(_)) => "stopped",
+        _ if attempts > 0 => "retrying",
+        _ => "waiting",
+    };
+    Some(json!({
+        "state": state,
+        "sha": head,
+        "harness": reviewer.map(|r| &r.launch.harness),
+        "attempts": attempts,
+        "cap": cap,
+    }))
+}
+
 /// Say that the Reviewer of `issue` for `head` failed to start or left
 /// herdr before a Verdict `times` times, and tell the user.
 fn stop(ctx: &Context, issue: &str, head: &str, times: usize) -> Vec<String> {
@@ -172,5 +231,5 @@ fn start(
         ("evidenceFolder", &bucket::evidence(d)),
     ];
     let text = fill_in(&config.prompts.review, &values);
-    launch::prompt(ctx.world, &reviewer.agent, &text)
+    launch::prompt(ctx.world, harness, &reviewer.agent, &text)
 }

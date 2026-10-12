@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Dispatch, Launch, Repo } from "../status";
-import { choices, startingLaunch } from "./launch";
+import { choices, inFlight, startingLaunch } from "./launch";
 
 const repo: Repo = {
   slug: "acme/api",
@@ -10,6 +10,7 @@ const repo: Repo = {
   stackable: [],
   gardening: [],
   switches: {},
+  room: 3,
   implementer: { harness: "claude", model: "opus", effort: null },
   harnesses: {
     claude: { models: ["opus", "sonnet"], efforts: ["low", "high"] },
@@ -61,5 +62,19 @@ describe("a model or Effort select's options", () => {
   it("are the default and the one chosen, for a Harness that takes any", () => {
     expect(choices(null, "gpt-5")).toEqual([null, "gpt-5"]);
     expect(choices(null, null)).toEqual([null]);
+  });
+});
+
+describe("the Repo's Dispatches in flight", () => {
+  it("are its Dispatches not Closed, not another Repo's", () => {
+    const dispatches = [
+      { repo: "acme/api", closed_at: null },
+      { repo: "acme/api", closed_at: "2026-10-01T00:00:00Z" },
+      { repo: "acme/api", closed_at: null },
+      { repo: "acme/web", closed_at: null },
+    ] as Dispatch[];
+
+    expect(inFlight(repo, dispatches)).toBe(2);
+    expect(inFlight(repo, [])).toBe(0);
   });
 });

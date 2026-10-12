@@ -7,7 +7,7 @@
 
 mod fake_world;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 
@@ -49,6 +49,15 @@ impl Events<'_> {
     pub fn next(&mut self) -> String {
         (self.poll)(&self.t.world)
     }
+}
+
+/// Change the first Dispatch in `config_dir`'s dispatches.json, as another
+/// process would.
+pub fn edit_dispatch(config_dir: &Path, change: impl FnOnce(&mut Value)) {
+    let file = config_dir.join("dispatches.json");
+    let mut all: Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
+    change(&mut all[0]);
+    std::fs::write(&file, all.to_string()).unwrap();
 }
 
 pub fn setup() -> Setup {

@@ -12,6 +12,8 @@
 #   env                           print the path of run.env, to source: . "$(control-nico-agent env)"
 #   seed issues                   a fresh Source read of verify/fixture (issues 1-6)
 #   seed dispatch <n> pr|asking   a Dispatch of verify/fixture#<n> as the loop records it
+#   seed run quality-scan|morning|faux-nico <n>
+#                                 a Run of the loop's own agent, blocked, as the loop records it
 #   drift push <n>|stale|pause    what GitHub would change: a new PR head, an old read, a rate limit
 #   state                         read-only fingerprint of the config dir, Bucket and outside calls
 #   run [--evidence PREFIX] -- <nico-agent args...>
@@ -286,7 +288,8 @@ cmd_seed() {
   case "$what" in
     issues) seed_issues "$@" ;;
     dispatch) seed_dispatch "$@" ;;
-    *) die "seed: usage: seed issues | seed dispatch <n> pr|asking" ;;
+    run) seed_run "$@" ;;
+    *) die "seed: usage: seed issues | seed dispatch <n> pr|asking | seed run quality-scan|morning|faux-nico <n>" ;;
   esac
 }
 
@@ -363,6 +366,35 @@ seed_dispatch() {
   jq -n --arg issue "$issue" --arg worktree "$worktree" --arg branch "$branch" --arg head "$head" \
     --argjson pr "$pr" --arg evidence "$worktree/.evidence/$n/proof.txt" --arg kind "$kind" \
     '{ issue: $issue, kind: $kind, worktree: $worktree, branch: $branch, head: $head, pr: $pr, evidence: $evidence }'
+}
+
+# A Run open and blocked since now, as the loop records one once herdr reports its agent blocked:
+# the `quality-scan` of verify/fixture, the `morning` agent, or the `faux-nico <n>` of the Asking of
+# a Dispatch seeded `asking`.
+seed_run() {
+  local trigger="${1:-}" n="${2:-}" run
+  local usage="seed: usage: seed run quality-scan|morning|faux-nico <n>"
+  case "$trigger" in
+    quality-scan) run="$(jq -nc --arg s "$SLUG" '{ trigger: "quality-scan", repo: $s, agent: "quality-scan-fixture" }')" ;;
+    morning) run='{ "trigger": "morning", "repo": null, "agent": "morning" }' ;;
+    faux-nico)
+      [[ "$n" =~ ^[0-9]+$ ]] || die "$usage"
+      local since=""
+      [ -f "$CONFIG_DIR/dispatches.json" ] && since="$(jq -r --arg i "$SLUG#$n" \
+        'first(.[] | select(.issue == $i and .closed_at == null) | .asking.since // empty)' "$CONFIG_DIR/dispatches.json")"
+      [ -n "$since" ] || die "seed: $SLUG#$n is not Asking (seed dispatch $n asking first)"
+      run="$(jq -nc --arg s "$SLUG" --arg n "$n" --arg since "$since" \
+        '{ trigger: "faux-nico", issue: "\($s)#\($n)", asking: $since, repo: $s, agent: "faux-nico-fixture-\($n)" }')" ;;
+    *) die "$usage" ;;
+  esac
+  local at all="[]"; at="$(now)"
+  [ -f "$CONFIG_DIR/runs.json" ] && all="$(cat "$CONFIG_DIR/runs.json")"
+  jq -e --arg a "$(jq -r .agent <<<"$run")" 'any(.[]; .agent == $a and .closed_at == null)' <<<"$all" >/dev/null \
+    && die "seed: $(jq -r .agent <<<"$run") already has an open Run"
+  run="$(jq -c --arg at "$at" '. + { at: $at, harness: "claude", model: null, effort: null, tab: null,
+    pane: null, workspace: "verify-workspace-\(.agent)", worktree: null, blocked_since: $at, closed_at: null }' <<<"$run")"
+  write_state "$CONFIG_DIR/runs.json" "$(jq --argjson run "$run" '. + [$run]' <<<"$all")"
+  printf '%s\n' "$run"
 }
 
 cmd_drift() {

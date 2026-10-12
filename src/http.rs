@@ -51,6 +51,10 @@ const ROUTES: &[(&str, &str)] = &[
         "set the Repo's switches",
     ),
     (
+        "PATCH /api/repo/<owner/name> {room}",
+        "set how many Dispatches the Repo may have In flight at once",
+    ),
+    (
         "GET /bucket/<path>",
         "a file of the Bucket, where each Verdict's Evidence is kept, or links to a folder's",
     ),
@@ -94,6 +98,9 @@ pub fn answer(ctx: &Context, port: u16, request: &HttpRequest) -> Answer {
                 .and_then(|path| path.strip_suffix("/switches")) =>
         {
             ran(body(request).and_then(|set| repo::switches(ctx, slug, &set)))
+        }
+        ("PATCH", path) if let Some(slug) = path.strip_prefix("/api/repo/") => {
+            ran(body(request).and_then(|set| repo::room(ctx, slug, &set)))
         }
         ("GET", path) if let Some(path) = path.strip_prefix("/bucket/") => {
             bucket::file(ctx, &unescaped(path))
