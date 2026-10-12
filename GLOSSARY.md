@@ -128,6 +128,7 @@ filed. Rendered first on the Board. _Avoid_: report, digest.
 
 **Run**: one start of a trigger's agent: a quality-scan, a faux-nico or the
 morning agent, recorded with when it started and when it ended, so a missed
-scan or morning shows in `status`. One whose agent herdr reports blocked
-stays open and the user is told once. A Dispatch is never a Run, nor called
-one. _Avoid_: job, session.
+scan or morning shows in `status`. One whose agent herdr reports waiting on
+a human is blocked, herdr's word: it stays open and the user is told once a
+spell. An Implementer so is Asking, never blocked. A Dispatch is never a
+Run, nor called one. _Avoid_: job, session.

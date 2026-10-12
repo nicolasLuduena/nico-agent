@@ -242,19 +242,19 @@ fn a_blocked_scan_stays_open_and_tells_the_user_once_each_time_it_blocks() {
     let t = with_repo(ON);
     t.world.advance(TO_SUNDAY_3AM);
     t.tick();
-    let state = |s: &str| {
-        (t.world.agents.borrow_mut()).insert("quality-scan-api".into(), s.into());
+    let a_tick_later_herdr_reports = |state: &str| {
+        (t.world.agents.borrow_mut()).insert("quality-scan-api".into(), state.into());
         t.world.advance(TICK);
     };
 
-    state("blocked");
+    a_tick_later_herdr_reports("blocked");
     let (blocked, calls) = calls_after(&t, || t.tick());
-    state("blocked");
+    a_tick_later_herdr_reports("blocked");
     let still = t.tick();
     let shown = last_scan(&t);
-    state("working");
+    a_tick_later_herdr_reports("working");
     let working = t.tick();
-    state("blocked");
+    a_tick_later_herdr_reports("blocked");
     let again = t.tick();
 
     assert_eq!(blocked, ["quality-scan-api is blocked"]);

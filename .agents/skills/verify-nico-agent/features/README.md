@@ -59,13 +59,13 @@ commands, and observable proof.
 - [Add, remove and list Repos](./repos.md) covers `repo add|rm|list`, their refusals and no-ops,
   and the Bucket `repo add` makes.
 - [Status](./status.md) covers `status` and `GET /api/status` from a fresh cache, a Source that
-  refuses, a stale cache, a paused GitHub, and Dispatches with their Stage.
+  refuses, a stale cache, a paused GitHub, Dispatches with their Stage, and blocked Runs.
 - [Dispatch's refusals](./dispatch-refusals.md) covers every refusal of `dispatch`, `POST
   /api/dispatch` and the page's Dispatch form, down to a Ready issue failing at its first herdr step.
 - [Verdict recording to the Bucket](./verdict-bucket.md) covers `verdict` pass and fail, its
   refusals, the Bucket commit, `/bucket/` and the node panel's Evidence links.
 - [The page's tabs and strip](./page-tabs-strip.md) covers the Repo tabs (click, keys, phone
-  select) and the needs-you strip's Asking, Failed, Review, Verified and Paused rows.
+  select) and the needs-you strip's Asking, Blocked, Failed, Review, Verified and Paused rows.
 - [Where each PR's review stands](./review.md) covers `review` in `status` and the page: the node's
   line under a PR draft Stage, the panel's Review section, and the strip's Review row for a review
   given up on.

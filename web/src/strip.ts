@@ -4,7 +4,7 @@ import type { Dispatch, Run, Status } from "./status";
 /** One row of the needs-you strip: what only the user can act on. */
 export interface Need {
   kind: "Asking" | "Blocked" | "Failed" | "Review" | "Verified" | "Paused";
-  /** The Repo and issue whose node the row opens; none for a paused Source, the morning agent, or a Repo's quality-scan. */
+  /** The Repo and issue whose node the row opens; neither for a paused Source or the morning agent, no issue for a quality-scan. */
   repo: string | null;
   issue: string | null;
   /** The question's first line, the issue's title, the blocked agent's name, where its review stands, or the paused Source. */
@@ -19,7 +19,7 @@ export function needsYou(status: Status): Need[] {
   const row = (kind: Need["kind"], d: Dispatch, at: string | null, text = d.title): Need => ({ kind, repo: d.repo, issue: d.issue, text, at });
   // An agent of the loop's own herdr reports blocked holds its Run open till the user takes it over.
   const blocked = (run: Run | undefined, repo: string | null, issue: string | null): Need[] =>
-    run?.blocked_since && run.closed_at === null ? [{ kind: "Blocked", repo, issue, text: run.agent, at: run.blocked_since }] : [];
+    run?.blocked_since ? [{ kind: "Blocked", repo, issue, text: run.agent, at: run.blocked_since }] : [];
   return [
     // Asking as herdr says now, as the map shows it; the question, one line of its pane, once a tick reads it.
     ...live

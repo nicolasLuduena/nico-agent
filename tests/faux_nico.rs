@@ -233,7 +233,7 @@ fn a_blocked_faux_nico_stays_open_and_tells_the_user_once_with_the_question() {
         *t.world.notifications.borrow(),
         [(
             "faux-nico of acme/api#7 is blocked".to_string(),
-            "\"Should I keep the old endpoint?\"\nAnswer it with nico-agent answer acme/api#7.\nTake it over: herdr agent read faux-nico-api-7."
+            "\"Should I keep the old endpoint?\"\nAnswer it with nico-agent answer acme/api#7 --text \"...\".\nTake it over: herdr agent read faux-nico-api-7."
                 .to_string()
         )]
     );
@@ -241,6 +241,34 @@ fn a_blocked_faux_nico_stays_open_and_tells_the_user_once_with_the_question() {
     assert_eq!(
         (&run["blocked_since"], &run["closed_at"]),
         (&json!("2026-09-30T12:20:00Z"), &Value::Null)
+    );
+}
+
+#[test]
+fn a_faux_nico_blocked_after_answering_is_named_to_take_over_with_no_question_to_answer() {
+    let t = faux_nico_working();
+    let answer = [
+        "answer",
+        "acme/api#7",
+        "--text",
+        "Keep it.",
+        "--by",
+        "faux-nico",
+    ];
+    assert_eq!(t.cli(&answer).exit_code, 0);
+    agent_state(&t, "faux-nico-api-7", "blocked");
+    // herdr has not yet seen the Implementer take the answer.
+    agent_state(&t, "impl-api-7", "blocked");
+
+    let said = t.tick();
+
+    assert_eq!(said, ["faux-nico-api-7 is blocked"]);
+    assert_eq!(
+        *t.world.notifications.borrow(),
+        [(
+            "faux-nico of acme/api#7 is blocked".to_string(),
+            "Take it over: herdr agent read faux-nico-api-7.".to_string()
+        )]
     );
 }
 

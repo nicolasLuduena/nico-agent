@@ -31,7 +31,7 @@
     <p>Nothing needs you</p>
   {:else}
     <ul>
-      {#each needs as need (`${need.kind} ${need.issue ?? need.text}`)}
+      {#each needs as need (`${need.kind} ${need.repo} ${need.issue ?? need.text}`)}
         <li>
           {#if need.issue}
             <button type="button" class="row" onclick={() => open(need)}>{@render cells(need)}</button>

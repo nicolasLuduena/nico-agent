@@ -88,6 +88,7 @@ fn pass(ctx: &Context, run: &Run) -> io::Result<Vec<String>> {
         .collect())
 }
 
-fn answered(d: &Dispatch, since: &str) -> bool {
+/// Whether `d`'s Asking since `since` has an answer.
+pub fn answered(d: &Dispatch, since: &str) -> bool {
     d.answers.iter().any(|a| a.since == since)
 }

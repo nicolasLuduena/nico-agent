@@ -33,9 +33,8 @@ export interface Repo {
 export interface Run {
   /** Its herdr agent, the name to take it over with. */
   agent: string;
-  /** While herdr reports it blocked, since when. */
+  /** While herdr reports it blocked, since when; none once it is closed. */
   blocked_since?: string;
-  closed_at: string | null;
 }
 
 /** A Harness, and its model and Effort; null is the default. */

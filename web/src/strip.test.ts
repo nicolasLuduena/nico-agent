@@ -49,7 +49,7 @@ describe("the needs-you strip", () => {
   });
 
   it("lists each blocked agent of the loop after the Asking, by the name to take it over with, as of its block", () => {
-    const blocked = (agent: string, at: string): Run => ({ agent, blocked_since: at, closed_at: null });
+    const blocked = (agent: string, at: string): Run => ({ agent, blocked_since: at });
     const asking = { since: "2026-09-30T04:12:00Z", question: "Keep the v1 route?" };
     const loop: Status = {
       ...status([{ stage: "Failed", asking, faux_nico: blocked("faux-nico-api-7", "2026-09-30T04:20:00Z") }]),
@@ -66,11 +66,11 @@ describe("the needs-you strip", () => {
     ]);
   });
 
-  it("lists no agent of the loop that is working or ended", () => {
+  it("lists no agent of the loop that is not blocked", () => {
     const quiet: Status = {
-      ...status([{ faux_nico: { agent: "faux-nico-api-7", closed_at: null } }]),
-      repos: [{ slug: "acme/api", last_scan: { agent: "quality-scan-api", closed_at: "2026-09-30T03:10:00Z" } } as Repo],
-      morning: { agent: "morning", closed_at: null },
+      ...status([{ faux_nico: { agent: "faux-nico-api-7" } }]),
+      repos: [{ slug: "acme/api", last_scan: { agent: "quality-scan-api" } } as Repo],
+      morning: { agent: "morning" },
     };
 
     expect(needsYou(quiet)).toEqual([]);
