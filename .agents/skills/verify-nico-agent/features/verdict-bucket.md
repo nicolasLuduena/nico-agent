@@ -1,9 +1,11 @@
 # Verdict recording to the Bucket
 
-`verdict` is how a Reviewer records its pass or fail on one head of a Dispatch's open PR. A
-recorded Verdict commits the worktree's `.evidence/<n>/` and the findings to the Bucket at
-`<owner>/<repo>/<n>/<sha>/`, which serve shows under `/bucket/` and the node's panel links; a pass
-makes the Stage Verified, and a push to the PR leaves the Verdict on a head the PR no longer has.
+`verdict` is how a Reviewer records its pass or fail on one head of a Dispatch's open PR. The
+Bucket keeps the worktree's `.evidence/<n>/` at `<owner>/<repo>/<n>/<sha>/` as soon as a tick sees
+the PR at that head, so the PR body's link opens before any Verdict; a recorded Verdict commits it
+again there with the findings. serve shows the Bucket under `/bucket/` and the node's panel links
+it; a pass makes the Stage Verified, and a push to the PR leaves the Verdict on a head the PR no
+longer has.
 
 ## Sub-features
 
@@ -12,6 +14,9 @@ makes the Stage Verified, and a push to the PR leaves the Verdict on a head the 
 - `verdict-no-pr` a live Dispatch with no open PR is exit 1.
 - `verdict-wrong-head` a `--sha` other than the PR's head is exit 1, naming the head to verify.
 - `verdict-findings-unreadable` a `--findings` file that cannot be read is exit 1.
+- `bucket-pr-head` a tick (here a refresh) keeps the Evidence of a Dispatch's open PR at its head with no Verdict: action `<issue>: Evidence at <sha> kept in the Bucket`, a Bucket commit `pr <issue> <sha>`, and `/bucket/<owner>/<repo>/<n>/` listing it.
+- `bucket-pr-head-noop` a tick on a head whose Evidence is kept already keeps nothing and says nothing.
+- `bucket-new-head` a tick after a push keeps the Evidence again under the new head's `<sha>/`.
 - `verdict-pass` records `pass` on the head: `verdicts/<owner>/<repo>#<n>.json`, a Bucket commit `verdict <issue> pass <sha>` with the Evidence, and `stage` `Verified`.
 - `verdict-noop` the same Verdict again answers `already recorded (no-op)` and commits nothing.
 - `verdict-push` after a push, the old head's Verdict no longer counts (`PR draft`) and is refused for the new head.
@@ -21,6 +26,7 @@ makes the Stage Verified, and a push to the PR leaves the Verdict on a head the 
 
 ## How to get to it (user POV)
 
+- The loop's tick, or the user's Refresh, sees the PR at a head it has not kept Evidence at.
 - The Reviewer runs `nico-agent verdict <issue> pass|fail --sha <head> [--findings <file>]` in the
   Dispatch's worktree.
 - The user opens `/bucket/<owner>/<repo>/<n>/` (or the PR body's link), or clicks the node, or its
@@ -52,36 +58,45 @@ Preconditions:
 - **Unreadable findings.** Run `$C run --evidence "$E/08-findings-missing" -- verdict verify/fixture#10 fail --sha "$HEAD" --findings /nonexistent.md --json`.
   Exit `1`, `error` `could not read the findings in /nonexistent.md: No such file or directory (os error 2)`.
   `$C state` still matches `state.before.txt`: no refusal wrote anything.
-- **Pass.** Run `$C run --evidence "$E/09-pass" -- verdict verify/fixture#10 pass --sha "$HEAD" --json`.
+- **Kept before any Verdict.** Run `$C run --evidence "$E/09-refresh" -- refresh --json`.
+  `actions` hold `verify/fixture#10: Evidence at $HEAD kept in the Bucket`, after the `could not ask
+  GitHub about ...` lines. Run `$C http --evidence "$E/10-bucket-before-verdict" GET /bucket/verify/fixture/10/`:
+  HTTP `200`, a page linking `$HEAD/proof.txt`. Run `$C run --evidence "$E/11-refresh-again" -- refresh --json`:
+  no `kept in the Bucket` action. `$C state > "$E/state.kept.txt"`: its Bucket log adds one commit
+  `pr verify/fixture#10 $HEAD` with `verify/fixture/10/$HEAD/proof.txt`.
+- **Pass.** Run `$C run --evidence "$E/12-pass" -- verdict verify/fixture#10 pass --sha "$HEAD" --json`.
   Exit `0`, `{"stage":"Verified","verdict":"verify/fixture#10 pass at $HEAD"}`.
-- **Same again.** Same command, `--evidence "$E/10-pass-again"`: `verdict` ends `already recorded (no-op)`.
-  `$C state > "$E/state.pass.txt"`; its diff from `state.before.txt` adds `verdicts/verify/fixture#10.json`
-  `{"result":"pass","sha":"$HEAD"}` and one Bucket commit `verdict verify/fixture#10 pass $HEAD` with
-  `verify/fixture/10/$HEAD/proof.txt`.
-- **Served.** Run `$C http --evidence "$E/11-bucket-file" GET "/bucket/verify/fixture/10/$HEAD/proof.txt"`:
+- **Same again.** Same command, `--evidence "$E/13-pass-again"`: `verdict` ends `already recorded (no-op)`.
+  `$C state > "$E/state.pass.txt"`; its diff from `state.kept.txt` adds `verdicts/verify/fixture#10.json`
+  `{"result":"pass","sha":"$HEAD"}` and one Bucket commit `verdict verify/fixture#10 pass $HEAD`,
+  with no file changed: the `pr` commit before it holds `verify/fixture/10/$HEAD/proof.txt`.
+- **Served.** Run `$C http --evidence "$E/14-bucket-file" GET "/bucket/verify/fixture/10/$HEAD/proof.txt"`:
   HTTP `200`, body `Evidence of verify/fixture#10 at $HEAD, seeded by verify-nico-agent`, headers
   `Content-Type: text/plain; charset=utf-8` and `Content-Security-Policy: sandbox`.
-- **Panel.** Run `$C page --evidence "$E/12-panel" --click "button~#10, Verify: seeded Dispatch 10"`.
+- **Panel.** Run `$C page --evidence "$E/15-panel" --click "button~#10, Verify: seeded Dispatch 10"`.
   `.requests.txt` has `GET /api/node/verify%2Ffixture%2310 -> 200`; the ARIA snapshot has
   `region "Verify: seeded Dispatch 10 verify/fixture#10"` with `strong: Verified`, `heading "Review"` then
   `pass <first 7 of $HEAD> <time>`, and under `heading "Evidence"` a `link "$HEAD/proof.txt"` to
   `/bucket/verify/fixture/10/$HEAD/proof.txt` and `link "The whole folder"`.
 - **Push.** Run `$C drift push 10 > "$E/push10.json"`; `NEW=$(jq -r .head "$E/push10.json")`. Run
-  `$C run --evidence "$E/13-after-push" -- status --json`: `#10`'s `stage` is `PR draft`, its
-  `verdict.sha` still `$HEAD`. Run `$C run --evidence "$E/14-old-head" -- verdict verify/fixture#10 pass --sha "$HEAD" --json`:
+  `$C run --evidence "$E/16-after-push" -- status --json`: `#10`'s `stage` is `PR draft`, its
+  `verdict.sha` still `$HEAD`. Run `$C run --evidence "$E/17-old-head" -- verdict verify/fixture#10 pass --sha "$HEAD" --json`:
   exit `1`, `$HEAD is not the head of ...`, `The PR moved to $NEW`.
+- **New head.** Run `$C run --evidence "$E/18-refresh-new-head" -- refresh --json`: `actions` hold
+  `verify/fixture#10: Evidence at $NEW kept in the Bucket` (and the Reviewer's refusal).
 - **Fail.** Write `$E/findings.md` (`# Findings` and one item), then run
-  `$C run --evidence "$E/15-fail" -- verdict verify/fixture#10 fail --sha "$NEW" --findings "$PWD/$E/findings.md" --json`.
+  `$C run --evidence "$E/19-fail" -- verdict verify/fixture#10 fail --sha "$NEW" --findings "$PWD/$E/findings.md" --json`.
   Exit `0`, `{"stage":"PR draft","verdict":"verify/fixture#10 fail at $NEW"}`. Run
-  `$C http --evidence "$E/16-bucket-findings" GET "/bucket/verify/fixture/10/$NEW/findings.md"`:
+  `$C http --evidence "$E/20-bucket-findings" GET "/bucket/verify/fixture/10/$NEW/findings.md"`:
   HTTP `200`, the findings' text.
-- **Folder, missing, outside.** `$C http --evidence "$E/17-bucket-folder" GET /bucket/verify/fixture/10/`:
+- **Folder, missing, outside.** `$C http --evidence "$E/21-bucket-folder" GET /bucket/verify/fixture/10/`:
   HTTP `200`, an HTML page linking `$HEAD/proof.txt`, `$NEW/findings.md`, `$NEW/proof.txt`.
-  `$C http --evidence "$E/18-bucket-missing" GET /bucket/verify/fixture/10/nope.txt`: HTTP `404`,
-  `no file verify/fixture/10/nope.txt in the Bucket`. `$C http --evidence "$E/19-bucket-outside" GET /bucket/../config.toml`:
+  `$C http --evidence "$E/22-bucket-missing" GET /bucket/verify/fixture/10/nope.txt`: HTTP `404`,
+  `no file verify/fixture/10/nope.txt in the Bucket`. `$C http --evidence "$E/23-bucket-outside" GET /bucket/../config.toml`:
   HTTP `403`, `../config.toml is not in the Bucket's working tree`.
-- **Proof.** `$C state > "$E/state.after.txt"`: the Bucket log has three commits, newest first
-  `verdict verify/fixture#10 fail $NEW` (`findings.md`, `proof.txt`), `verdict verify/fixture#10 pass $HEAD`,
+- **Proof.** `$C state > "$E/state.after.txt"`: the Bucket log has five commits, newest first
+  `verdict verify/fixture#10 fail $NEW` (`findings.md`), `pr verify/fixture#10 $NEW` (`proof.txt`),
+  `verdict verify/fixture#10 pass $HEAD` (no file), `pr verify/fixture#10 $HEAD` (`proof.txt`),
   `nico-agent's Bucket`. Copy `$OUTSIDE_LOG` to `$E/outside.log`.
 
 ## Gotchas
@@ -89,7 +104,13 @@ Preconditions:
 - `--findings` is read relative to the cwd, which for `$C run` is the run's `work/`: pass an
   absolute path.
 - The seeded Dispatch's Evidence is `.evidence/<n>/proof.txt` in its worktree; the Bucket copies
-  whatever that folder holds at Verdict time, so a second Verdict copies it again under its own sha.
+  whatever that folder holds when a tick first sees a head and at each Verdict, under that head's
+  sha. A Verdict on a head without a tick first (as right after `drift push`) commits the Evidence
+  itself.
+- Keeping Evidence at Close (a merged or closed PR) is not drivable: no `drift` makes a PR final.
+  `cargo test` covers it.
+- A refresh before the Pass step also tries the Reviewer (refused by the herdr stub), which never
+  fails the Dispatch: the Pass still answers `Verified`.
 - Do not tick (refresh) after a fail Verdict unless that is the point: the loop restarts the
   Implementer, the herdr stub refuses, and the Dispatch turns Failed.
 - A pass Verdict on a draft PR leaves the PR draft in `prs.json`: flipping it needs GitHub, which a

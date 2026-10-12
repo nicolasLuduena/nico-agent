@@ -250,6 +250,9 @@ pub trait World {
     /// Commit what `add`, a path in the clone at `path`, holds, new files
     /// included, if it is there; even when nothing changed.
     fn git_commit(&self, path: &str, add: &str, message: &str) -> WorldResult<()>;
+    /// Whether what `folder`, a path in the clone at `path`, holds is not its
+    /// last commit's: a file new, changed or staged in it.
+    fn git_changed(&self, path: &str, folder: &str) -> WorldResult<bool>;
 
     // files outside the config directory: worktrees, the Bucket
     /// Copy the files [`World::list_files`] lists under the folder `from`
@@ -978,6 +981,9 @@ impl World for RealWorld {
             "--no-gpg-sign",
         ];
         git_ok(path, &[&commit[..], &["-m", message]].concat()).map(drop)
+    }
+    fn git_changed(&self, path: &str, folder: &str) -> WorldResult<bool> {
+        git_ok(path, &["status", "--porcelain", "--", folder]).map(|out| !out.is_empty())
     }
     fn copy_dir(&self, from: &str, to: &str) -> WorldResult<()> {
         copy_tree(Path::new(from), Path::new(to))

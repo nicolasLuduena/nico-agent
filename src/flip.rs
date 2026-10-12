@@ -45,7 +45,7 @@ pub fn step(ctx: &Context, config: &Config) -> io::Result<Vec<String>> {
             }
             Err(e) => {
                 said.push(format!("could not flip {url} to ready: {e}"));
-                if pause::note(&ctx.config_dir, &e)? {
+                if e.rate_limit().is_some() {
                     break;
                 }
             }

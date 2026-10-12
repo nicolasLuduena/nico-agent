@@ -185,8 +185,8 @@ and every entry point the feature file lists, not just the convenient one.
 ## Evidence
 
 Record into `.evidence/<issue>/<feature>/` in the worktree, one folder per feature driven;
-nico-agent copies `.evidence/<issue>/` to the Bucket on Verdict and the PR body's Evidence section
-links there. `.evidence/` is gitignored at the repo root.
+nico-agent copies `.evidence/<issue>/` to the Bucket at each PR head, Verdict and Close, and the PR
+body's Evidence section links there. `.evidence/` is gitignored at the repo root.
 
 ```sh
 E=.evidence/<issue>/status

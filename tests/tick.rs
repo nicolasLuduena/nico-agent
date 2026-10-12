@@ -302,7 +302,10 @@ fn a_tick_reads_the_source_asks_about_prs_closes_then_fills_the_room_it_freed() 
             "github issues acme/api",
             // (2) the PR that can still change
             "github pr activity acme/api#9",
-            // (3) Close
+            // (3) Close, its worktree's Evidence kept first if the Bucket lacks it
+            "git remotes /mnt/agents-land/nico-agent-bucket",
+            "cp -r /worktrees/api-1/.evidence/1/. /mnt/agents-land/nico-agent-bucket/acme/api/1/sha9",
+            "git -C /mnt/agents-land/nico-agent-bucket status --porcelain -- acme/api/1/sha9",
             "herdr worktree remove --workspace w1",
             "herdr workspace close w1",
             // (7) the room it freed
@@ -632,7 +635,7 @@ fn during_a_github_pause_the_tick_closes_and_dispatches_from_what_it_knows() {
     t.world.fail_call("github viewer", limited);
     t.world.advance(TICK);
 
-    let said = t.tick();
+    let (said, github) = github_calls_after(&t, || t.tick());
 
     assert_eq!(
         said,
@@ -640,8 +643,12 @@ fn during_a_github_pause_the_tick_closes_and_dispatches_from_what_it_knows() {
             format!("could not read the issues of acme/api: {limited}"),
             "acme/api#1 Closed: its PR https://github.com/acme/api/pull/9 merged".into(),
             "acme/api#2 dispatched".into(),
+            // Not Claimed, nor tried again once GitHub resumes.
+            format!("could not Claim acme/api#2: {limited}; assign it to yourself by hand"),
         ]
     );
+    // The GitHub App answers on its own rate limit: the prompt's bot suffix.
+    assert_eq!(github, ["github viewer", "github app repos"]);
 }
 
 #[test]
@@ -714,7 +721,8 @@ fn a_linear_rate_limit_pauses_the_repos_reading_linear_even_across_a_restart_of_
     t.world.fail_call("linear issues", limited);
     let serve = || {
         let (_, calls) = calls_after(&t, || t.cli(&["serve"]));
-        let reads = calls.into_iter().filter(|c| c.contains(" issues "));
+        let reads =
+            (calls.into_iter()).filter(|c| c.contains(" issues ") || c.starts_with("linear "));
         reads.collect::<Vec<_>>()
     };
 
@@ -731,6 +739,7 @@ fn a_linear_rate_limit_pauses_the_repos_reading_linear_even_across_a_restart_of_
         [
             "github issues acme/api",
             "github issues acme/web",
+            "linear viewer",
             "linear issues BLE"
         ]
     );
@@ -742,12 +751,14 @@ fn a_linear_rate_limit_pauses_the_repos_reading_linear_even_across_a_restart_of_
         paused["sources"]["github"]["paused_until"],
         serde_json::Value::Null
     );
+    // No Linear call at all till the pause ends.
     assert_eq!(during, ["github issues acme/api"]);
     assert_eq!(
         after,
         [
             "github issues acme/api",
             "github issues acme/web",
+            "linear viewer",
             "linear issues BLE"
         ]
     );

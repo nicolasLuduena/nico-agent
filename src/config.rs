@@ -28,8 +28,9 @@ max_restarts_per_reason = 2
 port = 42069
 repos = {}
 
-# Where Evidence is kept, one commit per Verdict. With `url` unset, links to
-# it are serve's own; set it to the tunnel's, which the PR bodies then link.
+# Where Evidence is kept, one commit per PR head, Verdict and Close. With
+# `url` unset, links to it are serve's own; set it to the tunnel's, which the
+# PR bodies then link.
 [bucket]
 path = "/mnt/agents-land/nico-agent-bucket"
 
