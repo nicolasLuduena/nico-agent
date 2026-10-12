@@ -342,7 +342,13 @@ fn no_pane_opens_for_a_merge_into_another_branch_nor_for_a_repo_without_an_insta
     let plain = with_prs(plain, &[7]);
     merge(&plain, 9);
 
-    for t in [&stacked, &plain] {
+    let on_dev = with_install();
+    let text = config(&on_dev) + "base = \"dev\"\n";
+    std::fs::write(on_dev.config_dir.join("config.toml"), text).unwrap();
+    let on_dev = with_prs(on_dev, &[7]);
+    merge(&on_dev, 9);
+
+    for t in [&stacked, &plain, &on_dev] {
         assert_eq!(tick_installs(t), (vec![], vec![]));
         assert!(!t.config_dir.join("installs.json").exists());
     }
@@ -433,5 +439,29 @@ fn an_install_that_could_not_be_started_is_queued_again_and_started_next_tick() 
             "herdr workspace close w2",
             "herdr workspace create --cwd /src/api --label install-api --no-focus",
         ]
+    );
+}
+
+#[test]
+fn a_merge_whose_base_cannot_be_told_installs_rather_than_be_lost() {
+    let t = with_prs(with_install(), &[7]);
+    merge(&t, 9);
+    t.world.fail_call(
+        "git -C /src/api default-branch",
+        "no origin/HEAD in /src/api",
+    );
+
+    let (said, calls) = tick_installs(&t);
+
+    assert_eq!(
+        said,
+        [
+            "could not tell whether a merge into acme/api was into its Base, so its Install runs: no origin/HEAD in /src/api",
+            "acme/api: Install started in install-api",
+        ]
+    );
+    assert_eq!(
+        calls.last().unwrap(),
+        "herdr pane run w2:p2 nico-agent install acme/api"
     );
 }

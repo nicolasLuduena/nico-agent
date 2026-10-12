@@ -4,7 +4,7 @@ A Repo's Install is the command it runs in its clone after a PR merges into its 
 builds is what the next agent uses. `install = "<command>"` is a Repo's own setting, set on its tab
 or with `PATCH /api/repo/<slug>`, never a Project's. `nico-agent install <slug>` refuses a clone off
 its Base or with changes to tracked files, else pulls fast-forward and runs the command with `sh -c`,
-showing its output as it runs; it keeps `{at, sha, ok, output}` (the last 20 lines) in
+showing its output on stderr as it runs; it keeps `{at, sha, ok, output}` (the last 20 lines) in
 `installs.json`, then runs the Repo's Readiness checks. One runs at a time per Repo: asked while one
 runs, it queues one more, which the next tick starts in a herdr workspace `install-<repo>`. A failed
 or refused one is an `Install` row in the needs-you strip and an errata block in the tab's Install
@@ -14,7 +14,7 @@ section, with `nico-agent install <slug>` as its help.
 
 - `install-set` `PATCH /api/repo/<slug>` with `{"install": "<command>"}` writes `install` to the Repo's table; `null`, or the tab's field emptied, removes it; `status` shows `install: {command, last}` only while it has one.
 - `install-refused-settings` an empty command, `install` in `PATCH /api/project/<name>`, and `install` written under `projects.<name>` in `config.toml` are refused (the last at its file line), nothing written.
-- `install-run` `nico-agent install <slug>` pulls the clone fast-forward and runs the command, its output shown as printed; exit `0` with `{installed: "<slug> at <sha>"}`, and `installs.json` holds `last: {at, sha, ok: true, output}` with the last 20 lines.
+- `install-run` `nico-agent install <slug>` pulls the clone fast-forward and runs the command, its output shown on stderr as printed; exit `0` with stdout the one JSON object `{installed: "<slug> at <sha>"}`, and `installs.json` holds `last: {at, sha, ok: true, output}` with the last 20 lines.
 - `install-refused` a clone off its Base (`<clone> is on <branch>, not its Base <base>`) or with tracked changes (`<clone> has changes to tracked files: M <file>`) is refused before any pull: exit `1`, `sha` null, `ok` false, the reason as `output`.
 - `install-failed` a command that exits non-zero: exit `1`, `the Install of <slug> failed: <its last line>`, `ok` false with the sha it pulled.
 - `install-checks` the Repo's Readiness checks run after each Install (its `ghbot` call in the outside log).
@@ -39,8 +39,8 @@ Preconditions:
 - **Set.** `$C http --evidence "$E/01-set-install" PATCH /api/repo/verify/fixture '{"install":"seq 1 25"}'`:
   HTTP `200`; `config.toml`'s Repo table gains `install = "seq 1 25"`. `$C run --evidence "$E/02-status" -- status --json`:
   `repos[0].install` is `{"command":"seq 1 25","last":null}`.
-- **Run.** `$C run --evidence "$E/03-install" -- install verify/fixture --json`: exit `0`; stdout
-  prints `1` to `25` as it runs, then `{"installed":"verify/fixture at <sha>"}`, `<sha>` being
+- **Run.** `$C run --evidence "$E/03-install" -- install verify/fixture --json`: exit `0`; stderr
+  prints `1` to `25` as it runs; stdout is `{"installed":"verify/fixture at <sha>"}` alone, `<sha>` being
   `git -C "$FIXTURE_CLONE" rev-parse HEAD`; `installs.json`'s `last.output` is `6` to `25`, `ok` true.
 - **Pulls.** Push a commit to `main` from another clone (as in [checks.md](./checks.md)'s "Fix pushed
   elsewhere", with `HOME=$R/home`); `: > "$OUTSIDE_LOG"`; run `install` again: its `<sha>` is the

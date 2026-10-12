@@ -276,8 +276,9 @@ pub trait World {
 
     // shell
     /// Run `command` with `sh -c` in the folder `cwd`, with no input, showing
-    /// what it prints as it prints it: whether it succeeded, and what it
-    /// printed, stdout and stderr as they came.
+    /// what it prints on stderr as it prints it, so stdout stays the
+    /// command's own: whether it succeeded, and what it printed, stdout and
+    /// stderr as they came.
     fn shell(&self, cwd: &str, command: &str) -> WorldResult<(bool, String)>;
 
     // files outside the config directory: worktrees, the Bucket
@@ -1081,7 +1082,8 @@ impl World for RealWorld {
             .stderr(writer)
             .spawn()
             .map_err(failed)?;
-        let (mut printed, mut chunk, mut shown) = (vec![], [0; 8192], io::stdout());
+        // shortcut: a process it leaves in the background holding the pipe holds this till it ends; none we run does.
+        let (mut printed, mut chunk, mut shown) = (vec![], [0; 8192], io::stderr());
         loop {
             let n = reader.read(&mut chunk).map_err(failed)?;
             if n == 0 {

@@ -116,21 +116,18 @@ pub fn step(ctx: &Context, config: &Config, merged: &[Pr]) -> io::Result<Vec<Str
     for (slug, repo) in (config.repos.iter()).filter(|(_, r)| r.install.is_some()) {
         let install = installs.get(slug).cloned().unwrap_or_default();
         let mut into = merged.iter().filter(|pr| pr.repo == *slug).peekable();
-        // Asked only on a merge: a merge into a stacked branch is no merge into it.
-        let base = match (into.peek(), &repo.base) {
-            (None, _) => None,
-            (Some(_), Some(base)) => Some(base.clone()),
-            (Some(_), None) => match ctx.world.git_default_branch(&repo.path) {
-                Ok(base) => Some(base),
-                Err(e) => {
-                    said.push(format!(
-                        "could not tell whether a merge into {slug} was into its Base: {e}"
-                    ));
-                    None
-                }
-            },
+        // A merge into a stacked branch is none into the Base. One whose Base
+        // cannot be told is taken as one: else, seen once, it is lost.
+        let merge = match into.peek().map(|_| base(ctx.world, repo)) {
+            None => None,
+            Some(Ok(base)) => into.any(|pr| pr.base == base).then_some(base),
+            Some(Err(e)) => {
+                said.push(format!(
+                    "could not tell whether a merge into {slug} was into its Base, so its Install runs: {e}"
+                ));
+                Some("its Base".into())
+            }
         };
-        let merge = base.filter(|base| into.any(|pr| pr.base == *base));
         if merge.is_none() && !install.queued {
             continue;
         }
@@ -149,19 +146,20 @@ pub fn step(ctx: &Context, config: &Config, merged: &[Pr]) -> io::Result<Vec<Str
 }
 
 /// Run `nico-agent install <slug>` in a new tab of a new workspace
-/// `install-<repo>` on its clone, closing the last one's; one that could not
-/// be is queued again. What it said.
-fn start(ctx: &Context, slug: &str, repo: &Repo, last: Option<&str>) -> io::Result<String> {
+/// `install-<repo>` on its clone, closing the `previous` Install's; one that
+/// could not be is queued again. What it said.
+fn start(ctx: &Context, slug: &str, repo: &Repo, previous: Option<&str>) -> io::Result<String> {
     let (world, label) = (ctx.world, launch::repo_agent_name("install", slug));
     let mut made = None;
-    let opened = (|| {
-        if let Some(last) = last {
-            world.herdr_workspace_close(last)?;
+    let mut open = || {
+        if let Some(previous) = previous {
+            world.herdr_workspace_close(previous)?;
         }
         let workspace = made.insert(world.herdr_workspace_create(&repo.path, &label)?);
         let tab = world.herdr_tab_create(workspace, &repo.path, "install")?;
         world.herdr_pane_run(&tab.pane, &format!("nico-agent install {slug}"))
-    })();
+    };
+    let opened = open();
     update(&ctx.config_dir, slug, |install| {
         install.workspace = made.or(install.workspace.take());
         install.queued = opened.is_err();
@@ -191,10 +189,7 @@ fn claim(ctx: &Context, slug: &str) -> io::Result<Option<u32>> {
 fn run(world: &dyn World, repo: &Repo, command: &str, at: String) -> Last {
     let path = &repo.path;
     let pulled = || -> WorldResult<String> {
-        let base = match &repo.base {
-            Some(base) => base.clone(),
-            None => world.git_default_branch(path)?,
-        };
+        let base = base(world, repo)?;
         let on = world.git_branch(path)?;
         if on != base {
             let on = if on.is_empty() { "no branch" } else { &on };
@@ -231,6 +226,11 @@ fn run(world: &dyn World, repo: &Repo, command: &str, at: String) -> Last {
         ok,
         output: lines[lines.len().saturating_sub(OUTPUT_LINES)..].join("\n"),
     }
+}
+
+/// The Repo's Base: as set, else origin's default branch.
+fn base(world: &dyn World, repo: &Repo) -> WorldResult<String> {
+    (repo.base.clone()).map_or_else(|| world.git_default_branch(&repo.path), Ok)
 }
 
 /// Change the Repo `slug`'s Installs under the file's lock.

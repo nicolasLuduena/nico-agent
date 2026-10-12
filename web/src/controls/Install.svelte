@@ -75,7 +75,6 @@
   }
   pre {
     font: inherit;
-    font-size: 13px;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
   }
