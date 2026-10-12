@@ -19,7 +19,8 @@ impl<'a> Args<'a> {
             positionals: vec![],
             flags: HashMap::new(),
         };
-        let mut rest = args.iter().copied();
+        let mut rest = args.iter().copied().peekable();
+        let own_flag = |arg: &str| flags.contains(&arg.split_once('=').map_or(arg, |(n, _)| n));
         while let Some(arg) = rest.next() {
             if !arg.starts_with("--") {
                 parsed.positionals.push(arg);
@@ -34,9 +35,11 @@ impl<'a> Args<'a> {
                     command,
                 ));
             }
+            // A value may start with `--` (an answer about a command line); only
+            // the command's own flags are not the value before them.
             match value
-                .or_else(|| rest.next())
-                .filter(|v| !v.is_empty() && !v.starts_with("--"))
+                .or_else(|| rest.next_if(|next| !own_flag(next)))
+                .filter(|v| !v.is_empty())
             {
                 Some(value) => parsed.flags.insert(name, value),
                 None => return Err(bad_invocation(format!("{name} needs a value"), command)),
