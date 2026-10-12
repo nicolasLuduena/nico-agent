@@ -118,11 +118,11 @@ fn with_restart_off_a_conflict_is_left_alone() {
     assert_eq!(prompts(&t, 1), Vec::<String>::new());
 }
 
-/// Issue 2, Stacked by a tick on its Blocker #1's open PR 11, which was
-/// worked outside the loop and targets `develop`; its own PR 12 on 11's head
-/// found by the next tick.
-fn stacked() -> Setup {
-    let t = with_issues("", &[2]);
+/// Issue 2, with `toml` in the Repo's settings, Stacked by a tick on its
+/// Blocker #1's open PR 11, which was worked outside the loop and targets
+/// `develop`; its own PR 12 on 11's head found by the next tick.
+fn stacked(toml: &str) -> Setup {
+    let t = with_issues(toml, &[2]);
     let mut issues = t.world.issues.borrow_mut();
     issues.get_mut("acme/api").unwrap()[0].blockers = vec![GitHubBlocker {
         slug: "acme/api".into(),
@@ -154,8 +154,8 @@ fn asked(t: &Setup) -> Vec<String> {
 }
 
 #[test]
-fn a_retarget_restarts_once_when_the_pr_below_turns_final_naming_its_base() {
-    let t = stacked();
+fn a_retarget_restarts_once_when_the_pr_below_merged_naming_its_base() {
+    let t = stacked("");
     let watching = next_tick(&t);
     let asked_while_open = asked(&t);
     let mut prs = t.world.prs.borrow_mut();
@@ -203,6 +203,48 @@ fn a_retarget_restarts_once_when_the_pr_below_turns_final_naming_its_base() {
     assert_eq!(asked(&t), ["github pr activity acme/api#12"]);
     let status = t.cli(&["status", "--json"]).json();
     assert_eq!(status["dispatches"][0]["base"], "develop");
+}
+
+#[test]
+fn a_stacked_dispatch_whose_pr_below_closed_unmerged_is_failed_once_whatever_the_restart_switch() {
+    for toml in ["", "switches = { restart = false }"] {
+        let t = stacked(toml);
+        next_tick(&t);
+        let mut prs = t.world.prs.borrow_mut();
+        prs.iter_mut().find(|pr| pr.number == 11).unwrap().state = PrState::Closed;
+        drop(prs);
+
+        let closed = next_tick(&t);
+        let notified: Vec<String> = (t.world.calls().into_iter())
+            .filter(|c| c.starts_with("notify "))
+            .collect();
+        let sent = prompts(&t, 2);
+        let after = next_tick(&t);
+
+        assert_eq!(
+            closed,
+            [
+                "acme/api#2 Failed: the PR below, https://github.com/acme/api/pull/11, closed unmerged"
+            ],
+            "{toml}"
+        );
+        assert_eq!(notified, ["notify acme/api#2 Failed"], "{toml}");
+        assert_eq!(sent, Vec::<String>::new(), "{toml}");
+        assert_eq!(after, Vec::<String>::new(), "{toml}");
+        let status = t.cli(&["status", "--json"]).json();
+        let d = &status["dispatches"][0];
+        assert_eq!(d["stage"], "Failed", "{toml}");
+        assert_eq!(d["base"], "agent/api-1", "{toml}");
+        assert_eq!(d["restarts"], serde_json::json!([]), "{toml}");
+        assert_eq!(
+            d["failure"],
+            serde_json::json!({
+                "step": "restart",
+                "error": "the PR below, https://github.com/acme/api/pull/11, closed unmerged",
+            }),
+            "{toml}"
+        );
+    }
 }
 
 #[test]

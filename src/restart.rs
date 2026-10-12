@@ -37,7 +37,7 @@ pub enum Reason {
     Stalled,
     /// Its PR conflicts with its Base.
     Conflict,
-    /// The PR it is stacked on became final.
+    /// The PR it is stacked on merged.
     Retarget,
     /// The Reviewer failed its PR.
     Verdict,
@@ -53,15 +53,17 @@ impl fmt::Display for Reason {
 }
 
 /// (4) Restart, behind each Repo's `restart` switch, each live Dispatch that
-/// broke, once a tick, for the first of its reasons: its PR below became
-/// final or its PR conflicts (see [`rebase::reason`]); the Reviewer failed
+/// broke, once a tick, for the first of its reasons: its PR below merged or
+/// its PR conflicts (see [`rebase::reason`]); the Reviewer failed
 /// its PR's head; its agent is missing from herdr's `agents` (rebooted); its
 /// agent was idle or done for `stall_minutes` with no PR (stalled), which
 /// only a Dispatch the watch found no PR for this tick, in `no_pr`, can
 /// be. A rebase comes first, as it moves the head a Verdict is on, and any
 /// restart starts an agent that was gone; a reason passed over holds next
 /// tick if still true. Without `agents`, no agent reason: herdr down is not
-/// every agent gone. Says what it did.
+/// every agent gone. One whose PR below closed unmerged is marked Failed
+/// instead, with one notification: no restart, so whatever the switch says.
+/// Says what it did.
 pub fn step(
     ctx: &Context,
     config: &Config,
@@ -72,12 +74,24 @@ pub fn step(
     let now = ctx.world.now();
     let stalled = state::iso(now - Duration::from_secs(u64::from(config.stall_minutes) * 60));
     let now = state::iso(now);
-    let broke = (dispatch::load(&ctx.config_dir)?.into_iter())
-        .filter(|d| config.repo_of(d).switches.restart)
+    let live = (dispatch::load(&ctx.config_dir)?.into_iter())
         .filter(|d| d.closed_at.is_none() && d.failure.is_none())
         .filter(|d| d.completed.len() == STEPS.len());
     let mut said = vec![];
-    for mut d in broke {
+    for mut d in live {
+        if let Some(url) = rebase::closed_below(&d, &prs) {
+            let error = format!("the PR below, {url}, closed unmerged");
+            let failure = Failure {
+                step: "restart".into(),
+                error,
+                reason: None,
+            };
+            said.extend(fail(ctx, d, failure)?);
+            continue;
+        }
+        if !config.repo_of(&d).switches.restart {
+            continue;
+        }
         let seen = d.clone();
         let reason = match rebase::reason(&mut d, &prs) {
             Some(reason) => Some(reason),
@@ -156,18 +170,12 @@ fn by_loop(
         .count();
     if times >= config.max_restarts_per_reason as usize {
         let error = format!("{reason} again after {times} restarts for it");
-        let said = format!("{} Failed: {error}", record.issue);
-        record.failure = Some(Failure {
+        let failure = Failure {
             step: "restart".into(),
             error,
             reason: Some(reason),
-        });
-        let failure = record.failure.clone();
-        dispatch::edit(ctx, &record.issue, |live| live.failure = failure)?;
-        return Ok([said]
-            .into_iter()
-            .chain(announce_failed(ctx, &record))
-            .collect());
+        };
+        return fail(ctx, record, failure);
     }
     let issue = record.issue.clone();
     Ok(match restart(ctx, config, &mut record, reason, "loop")? {
@@ -177,6 +185,17 @@ fn by_loop(
             .chain(announce_failed(ctx, &record))
             .collect(),
     })
+}
+
+/// Mark `record` Failed with `failure`, with one notification. Says what it did.
+fn fail(ctx: &Context, mut record: Dispatch, failure: Failure) -> io::Result<Vec<String>> {
+    let said = format!("{} Failed: {}", record.issue, failure.error);
+    record.failure = Some(failure.clone());
+    dispatch::edit(ctx, &record.issue, |live| live.failure = Some(failure))?;
+    Ok([said]
+        .into_iter()
+        .chain(announce_failed(ctx, &record))
+        .collect())
 }
 
 /// Restart `record`'s Implementer for `reason`, as `by`, recording it first:

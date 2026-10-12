@@ -72,7 +72,8 @@ commands, and observable proof.
 - [Switches](./switches.md) covers `PATCH /api/repo/<slug>/switches`, the page's toggles, what is
   written to `config.toml`, and the loop obeying a switch turned off.
 - [Refresh](./refresh.md) covers the page's Refresh button, `POST /api/refresh` and `nico-agent
-  refresh`, and what the tick it runs does.
+  refresh`, and what the tick it runs does, down to a Stacked dispatch whose PR below merged or
+  closed unmerged.
 - [Live updates](./live-updates.md) covers `GET /api/events` (`changed`, and a keepalive otherwise),
   the page left open behind the tunnel, its reconnecting after the stream is lost, and the
   signed-out line when Access's session lapses.

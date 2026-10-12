@@ -11,8 +11,11 @@
 #   doctor                        read-only: is this run worth driving?
 #   env                           print the path of run.env, to source: . "$(control-nico-agent env)"
 #   seed issues                   a fresh Source read of verify/fixture (issues 1-6)
-#   seed dispatch <n> pr|asking   a Dispatch of verify/fixture#<n> as the loop records it
-#   drift push <n>|stale|pause    what GitHub would change: a new PR head, an old read, a rate limit
+#   seed dispatch <n> pr|asking|stacked
+#                                 a Dispatch of verify/fixture#<n> as the loop records it
+#   drift push <n>|stale|pause|below merged|closed
+#                                 what GitHub would change: a new PR head, an old read, a rate limit,
+#                                 the PR below a Stacked dispatch merged or closed unmerged
 #   state                         read-only fingerprint of the config dir, Bucket and outside calls
 #   run [--evidence PREFIX] -- <nico-agent args...>
 #                                 run the CLI in the scratch HOME; exit code is the CLI's
@@ -286,7 +289,7 @@ cmd_seed() {
   case "$what" in
     issues) seed_issues "$@" ;;
     dispatch) seed_dispatch "$@" ;;
-    *) die "seed: usage: seed issues | seed dispatch <n> pr|asking" ;;
+    *) die "seed: usage: seed issues | seed dispatch <n> pr|asking|stacked" ;;
   esac
 }
 
@@ -316,10 +319,11 @@ seed_issues() {
 
 # A Dispatch of verify/fixture#<n> with every step done, as the loop records one, in a worktree of
 # the fixture on agent/fixture-<n> holding .evidence/<n>/proof.txt. `pr`: its draft PR #(100+n) open
-# on the worktree's head, as GitHub last said. `asking`: no PR, its Implementer Asking.
+# on the worktree's head, as GitHub last said. `asking`: no PR, its Implementer Asking. `stacked`:
+# as `pr`, but Stacked on #9's open PR #109 (head agent/fixture-9), its Base and its PR's base.
 seed_dispatch() {
   local n="${1:-}" kind="${2:-}"
-  [[ "$n" =~ ^[0-9]+$ ]] && [[ "$kind" =~ ^(pr|asking)$ ]] || die "seed: usage: seed dispatch <n> pr|asking"
+  [[ "$n" =~ ^[0-9]+$ ]] && [[ "$kind" =~ ^(pr|asking|stacked)$ ]] || die "seed: usage: seed dispatch <n> pr|asking|stacked"
   local issue="$SLUG#$n" branch="agent/fixture-$n" worktree="$RUN_DIR/worktrees/fixture-$n"
   [ ! -e "$worktree" ] || die "seed: verify/fixture#$n is already seeded at $worktree"
   if [ -f "$CONFIG_DIR/dispatches.json" ] && jq -e --arg i "$issue" 'any(.[]; .issue == $i and .closed_at == null)' "$CONFIG_DIR/dispatches.json" >/dev/null; then
@@ -333,16 +337,23 @@ seed_dispatch() {
   mkdir -p "$worktree/.evidence/$n"
   printf 'Evidence of %s at %s, seeded by verify-nico-agent\n' "$issue" "$head" > "$worktree/.evidence/$n/proof.txt"
 
-  local at pr=null asking=null; at="$(now)"
-  local url="https://github.com/$SLUG/pull/$((100 + n))"
-  if [ "$kind" = pr ]; then
+  local at pr=null asking=null base=main stacked_on=null; at="$(now)"
+  local url="https://github.com/$SLUG/pull/$((100 + n))" below="https://github.com/$SLUG/pull/109"
+  if [ "$kind" = stacked ]; then
+    base=agent/fixture-9
+    stacked_on="$(jq -nc --arg u "$below" '{ number: 109, url: $u, head_branch: "agent/fixture-9" }')"
+  fi
+  if [ "$kind" != asking ]; then
     pr="\"$url\""
     local prs="{}"
     [ -f "$CONFIG_DIR/prs.json" ] && prs="$(cat "$CONFIG_DIR/prs.json")"
     write_state "$CONFIG_DIR/prs.json" "$(jq --arg url "$url" --arg s "$SLUG" --argjson num $((100 + n)) \
-      --arg head "$head" --arg at "$at" '.[$url] = { repo: $s, number: $num, state: "open", draft: true,
-        head_sha: $head, base: "main", mergeable: "mergeable", updated_at: $at, final: false,
-        checked_at: $at, merged_at: null }' <<<"$prs")"
+      --arg head "$head" --arg at "$at" --arg base "$base" --arg below "$below" --arg kind "$kind" '
+      def open($num; $head; $base): { repo: $s, number: $num, state: "open", draft: true,
+        head_sha: $head, base: $base, mergeable: "mergeable", updated_at: $at, final: false,
+        checked_at: $at, merged_at: null };
+      .[$url] = open($num; $head; $base)
+      | if $kind == "stacked" then .[$below] = open(109; "seeded-109"; "main") else . end' <<<"$prs")"
   else
     asking="$(jq -nc --arg at "$at" '{ since: $at, question: "Should the fixture keep its README? (seeded by verify-nico-agent)" }')"
   fi
@@ -350,16 +361,17 @@ seed_dispatch() {
   [ -f "$CONFIG_DIR/dispatches.json" ] && all="$(cat "$CONFIG_DIR/dispatches.json")"
   write_state "$CONFIG_DIR/dispatches.json" "$(jq --arg issue "$issue" --arg n "$n" --arg s "$SLUG" \
     --arg clone "$FIXTURE_CLONE" --arg branch "$branch" --arg worktree "$worktree" --arg at "$at" \
-    --argjson pr "$pr" --argjson asking "$asking" '. + [{
+    --argjson pr "$pr" --argjson asking "$asking" --arg base "$base" --argjson stacked_on "$stacked_on" '. + [{
       issue: $issue, title: "Verify: seeded Dispatch \($n)", url: "https://github.com/\($s)/issues/\($n)",
-      repo: $s, repo_path: $clone, branch: $branch, base: "main", worktree: $worktree,
+      repo: $s, repo_path: $clone, branch: $branch, base: $base, worktree: $worktree,
       workspace: "verify-workspace-\($n)", pr: $pr,
       implementer: { agent: "impl-fixture-\($n)", harness: "claude", model: null, effort: null,
         tab: "verify-tab-\($n)", pane: "verify-pane-\($n)" },
       reviewer: null, research: false, asking: $asking,
       completed: ["claim", "fetch", "worktree", "tab", "agent start", "agent ready", "prompt"],
       failure: null, claimed: true, warnings: [], restarts: [],
-      created_at: $at, updated_at: $at, closed_at: null }]' <<<"$all")"
+      created_at: $at, updated_at: $at, closed_at: null }
+      + if $stacked_on == null then {} else { stacked_on: $stacked_on } end]' <<<"$all")"
   jq -n --arg issue "$issue" --arg worktree "$worktree" --arg branch "$branch" --arg head "$head" \
     --argjson pr "$pr" --arg evidence "$worktree/.evidence/$n/proof.txt" --arg kind "$kind" \
     '{ issue: $issue, kind: $kind, worktree: $worktree, branch: $branch, head: $head, pr: $pr, evidence: $evidence }'
@@ -398,7 +410,18 @@ cmd_drift() {
       write_state "$CONFIG_DIR/pauses.json" "$(jq --arg u "$until" '.github = $u' <<<"$pauses")"
       jq -c . "$CONFIG_DIR/pauses.json"
       ;;
-    *) die "drift: usage: drift push <n> | drift stale | drift pause" ;;
+    # The PR a seeded Stacked dispatch sits on, #109, merged or closed unmerged, as GitHub would say.
+    below)
+      local how="${2:-}" url="https://github.com/$SLUG/pull/109"
+      [[ "$how" =~ ^(merged|closed)$ ]] || die "drift: usage: drift below merged|closed"
+      jq -e --arg u "$url" 'has($u)' "$CONFIG_DIR/prs.json" >/dev/null 2>&1 \
+        || die "drift: no PR below seeded (seed dispatch <n> stacked first)"
+      write_state "$CONFIG_DIR/prs.json" "$(jq --arg u "$url" --arg how "$how" --arg at "$(now)" '
+        .[$u] |= (.state = $how | .final = true | .updated_at = $at | .checked_at = $at
+          | .merged_at = (if $how == "merged" then $at else null end))' "$CONFIG_DIR/prs.json")"
+      jq -c --arg u "$url" '.[$u] | { url: $u, state, final, merged_at }' "$CONFIG_DIR/prs.json"
+      ;;
+    *) die "drift: usage: drift push <n> | drift stale | drift pause | drift below merged|closed" ;;
   esac
 }
 
