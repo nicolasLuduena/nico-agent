@@ -1,7 +1,7 @@
 //! `repo add|rm|list`: which Repos the loop works, kept in `config.toml`.
 
 use serde_json::{Value, json};
-use toml_edit::{InlineTable, Item, Table, value};
+use toml_edit::{InlineTable, Item, Table, TableLike, value};
 
 use crate::args::Args;
 use crate::bucket;
@@ -181,12 +181,7 @@ pub fn switches(ctx: &Context, slug: &str, set: &Value) -> Result<Value, Refusal
     }
     config::edit(&ctx.config_dir, |config, doc| {
         let Some((slug, repo)) = config.repo(slug) else {
-            return Err(Refusal::new(
-                format!("{slug} is not a configured Repo"),
-                vec![format!(
-                    "Run `nico-agent repo add {slug} --path <clone>` first"
-                )],
-            ));
+            return Err(not_configured(slug));
         };
         let switches = doc["repos"][slug.as_str()]
             .as_table_like_mut()
@@ -198,20 +193,73 @@ pub fn switches(ctx: &Context, slug: &str, set: &Value) -> Result<Value, Refusal
         let mut shown = shown(&repo.switches);
         for (name, on) in set {
             shown[name] = on.clone();
-            let mut on = toml_edit::Value::from(on.as_bool().expect("checked above"));
-            match switches.get_mut(name).and_then(Item::as_value_mut) {
-                // With the spacing and comment it was written with.
-                Some(was) => {
-                    *on.decor_mut() = was.decor().clone();
-                    *was = on;
-                }
-                None => {
-                    switches.insert(name, Item::Value(on));
-                }
-            }
+            set_kept(switches, name, on.as_bool().expect("checked above").into());
         }
         Ok(json!({ "switches": shown }))
     })?
+}
+
+/// Write `set`, `{"room": n}`, to the room of the Repo `slug` in the config,
+/// keeping the rest as written; the Repo's slug and room after.
+pub fn room(ctx: &Context, slug: &str, set: &Value) -> Result<Value, Refusal> {
+    let bad = |error: String| Refusal {
+        error,
+        help: vec![
+            "room is how many Dispatches the Repo may have In flight at once, \
+             a whole number of at least 1"
+                .into(),
+        ],
+        exit_code: 2,
+    };
+    let set = (set.as_object())
+        .filter(|set| set.contains_key("room"))
+        .ok_or_else(|| bad(format!("{set} sets no room")))?;
+    if let Some(name) = set.keys().find(|name| *name != "room") {
+        return Err(bad(format!("`{name}` is not a setting the page sets")));
+    }
+    // A room past u32 would leave config.toml unreadable.
+    let room = (set["room"].as_u64())
+        .and_then(|room| u32::try_from(room).ok())
+        .filter(|room| *room >= 1)
+        .ok_or_else(|| {
+            bad(format!(
+                "room is a whole number of at least 1, not {}",
+                set["room"]
+            ))
+        })?;
+    config::edit(&ctx.config_dir, |config, doc| {
+        let Some((slug, _)) = config.repo(slug) else {
+            return Err(not_configured(slug));
+        };
+        let repo = doc["repos"][slug.as_str()]
+            .as_table_like_mut()
+            .expect("load read each Repo as a table");
+        set_kept(repo, "room", i64::from(room).into());
+        Ok(json!({ "slug": slug, "room": room }))
+    })?
+}
+
+/// Set `key` of `table` to `new`, with the spacing and comment it was written with.
+fn set_kept(table: &mut dyn TableLike, key: &str, mut new: toml_edit::Value) {
+    match table.get_mut(key).and_then(Item::as_value_mut) {
+        Some(was) => {
+            *new.decor_mut() = was.decor().clone();
+            *was = new;
+        }
+        None => {
+            table.insert(key, Item::Value(new));
+        }
+    }
+}
+
+/// The refusal of a `slug` the config has no Repo for.
+fn not_configured(slug: &str) -> Refusal {
+    Refusal::new(
+        format!("{slug} is not a configured Repo"),
+        vec![format!(
+            "Run `nico-agent repo add {slug} --path <clone>` first"
+        )],
+    )
 }
 
 /// `switches` as the app shows them.

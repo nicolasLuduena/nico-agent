@@ -1,7 +1,9 @@
 # The page's tabs and strip
 
 serve's page opens on the needs-you strip, across Repos: every Implementer Asking (with its
-question), every Failed Dispatch, every Verified PR to merge, and a paused GitHub; "Nothing needs
+question), every agent of the loop's own herdr reports blocked (a faux-nico, a quality-scan, the
+morning agent), every Failed Dispatch, every PR whose review was given up on or stopped, every
+Verified PR to merge, and a paused GitHub; "Nothing needs
 you" when there is none. Under it, one tab per Repo shows that Repo's map, read times, switches and
 Dispatch form; arrow keys move between tabs, and at phone width the tabs become one select named
 Repo. A strip row opens its Repo's tab with the node's panel.
@@ -14,7 +16,9 @@ Repo. A strip row opens its Repo's tab with the node's panel.
 - `tabs-keys` ArrowRight, ArrowLeft, Home and End move the selection (wrapping) and focus.
 - `tabs-phone` under 720px the tablist is replaced by `combobox "Repo"` with an option per Repo.
 - `strip-asking` an Asking Implementer is a row `Asking <repo> #<n> <question> <since>`.
+- `strip-blocked` a blocked Run is a row `Blocked <agent> <since>`, under `<repo> #<n>` for a faux-nico, whose row opens its Dispatch's node.
 - `strip-failed` a Failed Dispatch is a row `Failed <repo> #<n> <title> <updated>`.
+- `strip-review` a review given up on or stopped is a row `Review <repo> #<n> <where it stands>: review it by hand with nico-agent verdict ...` (see review.md).
 - `strip-verified` a Verified PR is a row `Verified <repo> #<n> <title> <verdict time>`.
 - `strip-paused` a paused GitHub is a row `Paused GitHub until <time>`, with nothing to open.
 - `strip-open` clicking a row selects its Repo's tab and opens that node's panel (`GET /api/node/<issue>`).
@@ -49,9 +53,11 @@ Preconditions:
   with `option "verify/fixture" [selected]` and `option "verify/second"`; the screenshot is one column.
 - **Fill the strip.** Run `$C run -- dispatch verify/fixture#1 --json` (Failed at worktree),
   `$C seed dispatch 10 pr > "$E/seed10.json"`, `$C run -- verdict verify/fixture#10 pass --sha "$(jq -r .head "$E/seed10.json")" --json`,
-  `$C seed dispatch 12 asking` and `$C drift pause`. Run `$C page --evidence "$E/07-strip"`.
+  `$C seed dispatch 12 asking`, `$C seed run faux-nico 12`, `$C seed run quality-scan`, `$C seed run morning`
+  and `$C drift pause`. Run `$C page --evidence "$E/07-strip"`.
   `region "Needs you"` lists, in order: `button "Asking verify/fixture #12 Should the fixture keep its README? (seeded by verify-nico-agent) <time>"`,
-  `button "Failed verify/fixture #1 Verify: a Ready issue <time>"`, `button "Verified verify/fixture #10 Verify: seeded Dispatch 10 <time>"`,
+  `button "Blocked verify/fixture #12 faux-nico-fixture-12 <time>"`, `listitem: Blocked quality-scan-fixture <time>`,
+  `listitem: Blocked morning <time>`, `button "Failed verify/fixture #1 Verify: a Ready issue <time>"`, `button "Verified verify/fixture #10 Verify: seeded Dispatch 10 <time>"`,
   and `listitem: Paused GitHub until <time>`. The map's nodes `#1`, `#10` end `needs you`.
 - **Open a row.** Run `$C page --evidence "$E/08-open" --click "button~Failed verify/fixture #1"`.
   `.requests.txt` has `GET /api/node/verify%2Ffixture%231 -> 200`; the map's `#1` node is
@@ -63,7 +69,7 @@ Preconditions:
 - Times on the page are the browser's local clock (`HH:MM`); match them with `~` or ignore them.
 - The page first shows `Reading nico-agent…`; `$C page` waits for it to go before any step.
 - The strip reads Asking from the Dispatch (or herdr saying `blocked`); with herdr stubbed only a
-  seeded `asking` shows.
+  seeded `asking` shows. Likewise a blocked Run shows only as `seed run` records it.
 - A Verified row needs a pass Verdict on the PR's current head: after `drift push` it drops to
   `PR draft` and leaves the strip.
 - `seed issues` caches only `verify/fixture`; `verify/second` stays `Source not read yet`.

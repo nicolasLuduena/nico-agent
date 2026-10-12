@@ -7,11 +7,17 @@ use std::time::{Duration, SystemTime};
 
 use nico_agent::world::*;
 
+/// A write another process makes during an outside call.
+pub type Meanwhile = Box<dyn Fn()>;
+
 pub struct FakeWorld {
     /// Every outside call, in order.
     pub calls: RefCell<Vec<String>>,
     /// Calls that fail with a message, by a prefix of the recorded call.
     pub failures: RefCell<Vec<(String, String)>>,
+    /// What runs during each call recorded as starting with a prefix, as
+    /// another process would write meanwhile.
+    pub meanwhile: RefCell<Vec<(String, Meanwhile)>>,
     pub viewer: RefCell<String>,
     pub linear_user: RefCell<String>,
     /// Remotes of each clone, by path.
@@ -44,6 +50,9 @@ pub struct FakeWorld {
     pub blocked_screen: RefCell<Option<String>>,
     /// How many prompts from now on agents drop without starting work.
     pub stalled_prompts: Cell<u32>,
+    /// How many prompts from now on agents take while herdr reports them
+    /// stalled, its state lagging behind the agent's.
+    pub lagging_prompts: Cell<u32>,
     /// Desktop notifications shown, as (title, body).
     pub notifications: RefCell<Vec<(String, String)>>,
     pub clock: Cell<SystemTime>,
@@ -72,6 +81,7 @@ impl Default for FakeWorld {
         FakeWorld {
             calls: Default::default(),
             failures: Default::default(),
+            meanwhile: Default::default(),
             viewer: RefCell::new("me".into()),
             linear_user: RefCell::new("linear-me".into()),
             clones: Default::default(),
@@ -89,6 +99,7 @@ impl Default for FakeWorld {
             screens: Default::default(),
             blocked_screen: Default::default(),
             stalled_prompts: Default::default(),
+            lagging_prompts: Default::default(),
             notifications: Default::default(),
             // 2026-09-30T12:00:00Z
             clock: Cell::new(SystemTime::UNIX_EPOCH + Duration::from_secs(1_790_769_600)),
@@ -169,6 +180,11 @@ impl FakeWorld {
             .push((prefix.into(), message.into()));
     }
 
+    /// Run `meanwhile` during every call recorded as starting with `prefix`.
+    pub fn during_call(&self, prefix: &str, meanwhile: impl Fn() + 'static) {
+        (self.meanwhile.borrow_mut()).push((prefix.into(), Box::new(meanwhile)));
+    }
+
     pub fn clear_failures(&self) {
         self.failures.borrow_mut().clear();
     }
@@ -225,6 +241,11 @@ impl FakeWorld {
             .iter()
             .find(|(prefix, _)| text.starts_with(prefix.as_str()))
             .map(|(_, m)| m.clone());
+        for (prefix, write) in self.meanwhile.borrow().iter() {
+            if text.starts_with(prefix.as_str()) {
+                write();
+            }
+        }
         self.calls.borrow_mut().push(text);
         failure.map_or(Ok(()), |message| Err(WorldError(message)))
     }
@@ -601,6 +622,10 @@ impl World for FakeWorld {
         self.agents
             .borrow_mut()
             .insert(name.into(), "working".into());
+        if self.lagging_prompts.get() > 0 {
+            self.lagging_prompts.set(self.lagging_prompts.get() - 1);
+            return Ok(false);
+        }
         Ok(true)
     }
 

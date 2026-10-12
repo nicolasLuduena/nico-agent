@@ -127,6 +127,7 @@ pub fn map(ctx: &Context, slug: &str) -> Result<Option<Value>, Refusal> {
                 "stage": stage,
                 "agent_state": shown["agent_state"],
                 "pr": pr,
+                "review": shown["review"],
                 "verdict": if verdict.is_null() { Value::Null } else {
                     json!({ "result": verdict["result"], "sha": verdict["sha"], "at": verdict["at"] })
                 },

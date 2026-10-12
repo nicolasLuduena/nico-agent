@@ -22,7 +22,6 @@ use crate::review::Reviewer;
 use crate::source::{self, BlockerPr, Read, Start};
 use crate::stage;
 use crate::state;
-use crate::verdict;
 use crate::world::{self, PrState, READY_LABEL, World};
 
 pub const FILE: &str = "dispatches.json";
@@ -416,7 +415,7 @@ fn run_step(
         }
         "prompt" => {
             let text = implement_prompt(ctx, config, harness, record);
-            launch::prompt(world, &record.implementer.agent, &text)?;
+            launch::prompt(world, harness, &record.implementer.agent, &text)?;
         }
         _ => unreachable!("not a step: {step}"),
     }
@@ -481,11 +480,9 @@ const SEE_STATUS: &str = "Run `nico-agent status` to see the Dispatch";
 /// What `dispatch` says of one issue.
 fn answer(ctx: &Context, record: &Dispatch, said: String) -> Result<Value, Refusal> {
     let prs = stage::load(&ctx.config_dir)?;
-    let pr = stage::pr_of(&prs, record).map(|(_, pr)| pr);
-    let verdict = verdict::load(&ctx.config_dir, &record.issue)?;
     let mut answer = json!({
         "dispatched": said,
-        "stage": stage::of(record, pr, verdict.as_ref()),
+        "stage": stage::standing(&ctx.config_dir, &prs, record)?.stage,
         "workspace": record.workspace,
         "agent": record.implementer.agent,
     });
@@ -676,12 +673,25 @@ fn lease(ctx: &Context, key: &str) -> io::Result<Option<Dispatch>> {
     })
 }
 
-/// Save `record` over the live Dispatch of its issue, stamped now.
-pub fn save(ctx: &Context, record: &mut Dispatch) -> io::Result<()> {
+/// Save `record` over the live Dispatch of its issue, stamped now: only for
+/// the process holding its lease.
+fn save(ctx: &Context, record: &mut Dispatch) -> io::Result<()> {
     record.updated_at = state::iso(ctx.world.now());
     update(&ctx.config_dir, |all| {
         if let Some(saved) = all.iter_mut().find(|d| is_live(d, &record.issue)) {
             *saved = record.clone();
+        }
+    })
+}
+
+/// Set the fields `change` sets on the live Dispatch of `issue`, stamped now:
+/// what another process wrote to its other fields meanwhile stands.
+pub fn edit(ctx: &Context, issue: &str, change: impl FnOnce(&mut Dispatch)) -> io::Result<()> {
+    let now = state::iso(ctx.world.now());
+    update(&ctx.config_dir, |all| {
+        if let Some(live) = all.iter_mut().find(|d| is_live(d, issue)) {
+            change(live);
+            live.updated_at = now;
         }
     })
 }

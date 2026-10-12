@@ -82,6 +82,9 @@ effort_args = ["-c", "model_reasoning_effort={effort}"]
 # codex asks to trust the clone (not the worktree) even when herdr reports it
 # ready; this answers it for the session without writing ~/.codex/config.toml.
 trust_args = ["-c", 'projects={"{repoPath}"={trust_level="trusted"}}']
+# Its review of new or changed hooks, which herdr reports ready (#279), takes
+# a prompt's Enter: the user's to answer, so no prompt is sent into it again.
+startup_questions = ["Hooks need review", "review before"]
 
 # Its TUI takes no model or Effort flag: the model goes in
 # OPENCODE_CONFIG_CONTENT and the Effort in its variant file.
@@ -250,6 +253,9 @@ pub struct Harness {
     pub efforts: Option<Vec<String>>,
     /// The question it asks before working in a new folder, and the keys that answer yes.
     pub trust_prompt: Option<TrustPrompt>,
+    /// Text on a screen it asks the user a question on while herdr reports it ready.
+    #[serde(default)]
+    pub startup_questions: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]

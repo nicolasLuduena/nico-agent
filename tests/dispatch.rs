@@ -1,6 +1,6 @@
 mod common;
 
-use common::{Ran, Setup, github_issue, setup};
+use common::{Ran, Setup, edit_dispatch, github_issue, setup};
 use serde_json::{Value, json};
 
 const FLAGS: [&str; 6] = ["--harness", "claude", "--model", "opus", "--effort", "high"];
@@ -376,7 +376,7 @@ fn the_failure_of_a_step_says_what_to_do_about_it() {
         json!({
             "error": "acme/api#8 failed at prompt: impl-api-8 did not start working on its prompt",
             "help": [
-                "Run `herdr agent read impl-api-8` to see its screen, and send the prompt by hand",
+                "Run `herdr agent read impl-api-8` to see its screen, answer any question on it in herdr, and send the prompt by hand",
                 "Run `nico-agent status` to see the Dispatch",
                 "Run the same `nico-agent dispatch` again to continue from prompt",
             ],
@@ -643,14 +643,6 @@ fn a_linear_claim_refused_for_its_rate_limit_pauses_linear_and_none_is_asked_til
     );
 }
 
-/// Change the Dispatch of `acme/api#7` in `dispatches.json`, as another process would.
-fn edit_dispatch(t: &Setup, change: impl FnOnce(&mut Value)) {
-    let file = t.config_dir.join("dispatches.json");
-    let mut all: Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
-    change(&mut all[0]);
-    std::fs::write(&file, all.to_string()).unwrap();
-}
-
 #[test]
 fn a_dispatch_another_live_process_runs_is_left_to_it_until_that_process_is_gone() {
     let t = with_issue();
@@ -658,7 +650,7 @@ fn a_dispatch_another_live_process_runs_is_left_to_it_until_that_process_is_gone
     dispatch_7(&t);
     t.world.clear_failures();
     // Process 5000 took it over and is opening the tab.
-    edit_dispatch(&t, |d| {
+    edit_dispatch(&t.config_dir, |d| {
         d["runner"] = json!(5000);
         d["runner_boot"] = json!("boot-1");
         d["failure"] = Value::Null;
@@ -687,7 +679,7 @@ fn running_in_5000() -> Setup {
     t.world.fail_call("herdr tab create", "it broke");
     dispatch_7(&t);
     t.world.clear_failures();
-    edit_dispatch(&t, |d| {
+    edit_dispatch(&t.config_dir, |d| {
         d["runner"] = json!(5000);
         d["runner_boot"] = json!("boot-1");
         d["failure"] = Value::Null;
@@ -737,7 +729,7 @@ fn rebooted_before_prompt() -> Setup {
     let t = with_issue();
     t.world.stalled_prompts.set(3);
     dispatch_7(&t);
-    edit_dispatch(&t, |d| {
+    edit_dispatch(&t.config_dir, |d| {
         d["runner"] = json!(5000);
         d["runner_boot"] = json!("boot-1");
         d["failure"] = Value::Null;
@@ -870,6 +862,7 @@ fn status_shows_the_dispatch_implementing_with_its_launch_and_steps() {
             "closed_at": null,
             "stage": "Implementing",
             "agent_state": { "implementer": "working", "reviewer": null },
+            "review": null,
             "verdict": null,
         }])
     );

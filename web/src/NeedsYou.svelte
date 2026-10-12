@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { ticked } from "./controls/Refused.svelte";
   import { selection } from "./selection.svelte";
   import type { Need } from "./strip";
   import { clock } from "./time";
@@ -17,7 +18,7 @@
   {#if need.repo && need.issue}
     <!-- `acme/api #7`, or `acme/api BLE-12` for a Linear issue. -->
     <span class="ref">{need.repo} {need.issue.replace(need.repo, "")}</span>
-    <span class="text">{need.text}</span>
+    <span class="text">{@render ticked(need.text)}</span>
   {:else}
     <span class="ref">{need.text}</span>
     <span class="text"></span>
@@ -30,7 +31,7 @@
     <p>Nothing needs you</p>
   {:else}
     <ul>
-      {#each needs as need (`${need.kind} ${need.issue}`)}
+      {#each needs as need (`${need.kind} ${need.repo} ${need.issue ?? need.text}`)}
         <li>
           {#if need.issue}
             <button type="button" class="row" onclick={() => open(need)}>{@render cells(need)}</button>

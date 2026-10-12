@@ -5,6 +5,8 @@ export interface Status {
   dispatches: Dispatch[];
   /** morning.md as the morning agent wrote it; null while there is none. */
   morning_summary?: string | null;
+  /** The last morning agent's Run; none before the first. */
+  morning?: Run;
 }
 
 export interface Repo {
@@ -19,10 +21,22 @@ export interface Repo {
   gardening: Issue[];
   /** dispatch, stack, review, restart, flip, answer, gardening, quality_scan. */
   switches: Record<string, boolean>;
+  /** How many Dispatches it may have In flight at once. */
+  room: number;
   /** The launch the loop dispatches on. */
   implementer: Launch;
   /** Each configured Harness, with the models and Efforts it takes (null: any). */
   harnesses: Record<string, { models: string[] | null; efforts: string[] | null }>;
+  /** Its last quality-scan's Run; none before the first. */
+  last_scan?: Run;
+}
+
+/** One start of an agent of the loop's own: a quality-scan, a faux-nico or the morning agent. */
+export interface Run {
+  /** Its herdr agent, the name to take it over with. */
+  agent: string;
+  /** While herdr reports it blocked, since when; none once it is closed. */
+  blocked_since?: string;
 }
 
 /** A Harness, and its model and Effort; null is the default. */
@@ -53,7 +67,24 @@ export interface Dispatch {
   asking: { since: string; question: string } | null;
   /** Each agent's state as herdr says now (`blocked`: Asking); a Closed Dispatch has none. */
   agent_state?: { implementer: string; reviewer: string | null };
+  /** Where the review of its open PR stands, while it is PR draft or Verified. */
+  review: Review | null;
+  /** Its last faux-nico's Run, while it is live. */
+  faux_nico?: Run;
   verdict: { result: "pass" | "fail"; sha: string; at: string } | null;
   updated_at: string;
   closed_at: string | null;
+}
+
+/** Where the review of a Dispatch's PR stands for its head; serve derives it, first match wins. */
+export interface Review {
+  state: "off" | "passed" | "failed" | "reviewing" | "stopped" | "retrying" | "gave_up" | "waiting";
+  /** The PR head it is about. */
+  sha: string;
+  /** Its latest Reviewer's Harness; null before one was started. */
+  harness: string | null;
+  /** The starts for the head that failed, or whose Reviewer left herdr before a Verdict, as the next tick counts them. */
+  attempts: number;
+  /** How many of those are tried again before it gives up. */
+  cap: number;
 }

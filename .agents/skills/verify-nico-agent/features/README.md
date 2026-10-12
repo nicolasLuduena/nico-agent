@@ -59,7 +59,7 @@ commands, and observable proof.
 - [Add, remove and list Repos](./repos.md) covers `repo add|rm|list`, their refusals and no-ops,
   and the Bucket `repo add` makes.
 - [Status](./status.md) covers `status` and `GET /api/status` from a fresh cache, a Source that
-  refuses, a stale cache, a paused GitHub, and Dispatches with their Stage.
+  refuses, a stale cache, a paused GitHub, Dispatches with their Stage, and blocked Runs.
 - [Dispatch's refusals](./dispatch-refusals.md) covers every refusal of `dispatch`, `POST
   /api/dispatch` and the page's Dispatch form, down to a Ready issue failing at its first herdr step,
   and its Claim while GitHub is paused.
@@ -67,18 +67,23 @@ commands, and observable proof.
   refusals, the Bucket commits on a PR head and a Verdict, `/bucket/` and the node panel's Evidence
   links.
 - [The page's tabs and strip](./page-tabs-strip.md) covers the Repo tabs (click, keys, phone
-  select) and the needs-you strip's Asking, Failed, Verified and Paused rows.
+  select) and the needs-you strip's Asking, Blocked, Failed, Review, Verified and Paused rows.
+- [Where each PR's review stands](./review.md) covers `review` in `status` and the page: the node's
+  line under a PR draft Stage, the panel's Review section, and the strip's Review row for a review
+  given up on.
 - [Switches](./switches.md) covers `PATCH /api/repo/<slug>/switches`, the page's toggles, what is
   written to `config.toml`, and the loop obeying a switch turned off.
+- [Room](./room.md) covers `PATCH /api/repo/<slug>` with `{room}`, the page's Room input and its
+  in-flight line, what is written to `config.toml`, and the loop filling a raised room.
 - [Refresh](./refresh.md) covers the page's Refresh button, `POST /api/refresh` and `nico-agent
   refresh`, and what the tick it runs does.
+- [Answer an Asking Implementer](./answer.md) covers `answer`, its refusals, a text starting with
+  `--`, and the answer typed through herdr (stubbed, so not recorded in a run).
 - [Live updates](./live-updates.md) covers `GET /api/events` (`changed`, and a keepalive otherwise),
   the page left open behind the tunnel, its reconnecting after the stream is lost, and the
   signed-out line when Access's session lapses.
 
-Not yet mapped (drive by hand, then add a file): `nico-agent answer <issue> --text <text> [--by
-faux-nico]` (its refusals are drivable on a seeded `asking` Dispatch; typing into the pane needs
-herdr), the faux-nico, gardening and quality-scan triggers, `GET /api/map/<slug>` and the map's node layout
-beyond what the tabs file asserts, the morning agent and `morning.md` on the page (off in a run: set `morning.enabled = true` and `hour` to the current one to drive it), the theme switch, `serve` restarting Dispatches after a reboot, and everything that needs a live
+Not yet mapped (drive by hand, then add a file): the faux-nico, gardening and quality-scan
+triggers, `GET /api/map/<slug>` and the map's node layout beyond what the tabs file asserts, the morning agent and `morning.md` on the page (off in a run: set `morning.enabled = true` and `hour` to the current one to drive it), the theme switch, `serve` restarting Dispatches after a reboot, and everything that needs a live
 herdr or GitHub (an Implementer started, a Reviewer started, a PR flipped to ready): `cargo test`
 covers those through the fake World.

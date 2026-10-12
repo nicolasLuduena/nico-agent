@@ -75,7 +75,7 @@ Preconditions:
   `Content-Type: text/plain; charset=utf-8` and `Content-Security-Policy: sandbox`.
 - **Panel.** Run `$C page --evidence "$E/15-panel" --click "button~#10, Verify: seeded Dispatch 10"`.
   `.requests.txt` has `GET /api/node/verify%2Ffixture%2310 -> 200`; the ARIA snapshot has
-  `region "Verify: seeded Dispatch 10 verify/fixture#10"` with `strong: Verified`, `heading "Verdict"` then
+  `region "Verify: seeded Dispatch 10 verify/fixture#10"` with `strong: Verified`, `heading "Review"` then
   `pass <first 7 of $HEAD> <time>`, and under `heading "Evidence"` a `link "$HEAD/proof.txt"` to
   `/bucket/verify/fixture/10/$HEAD/proof.txt` and `link "The whole folder"`.
 - **Push.** Run `$C drift push 10 > "$E/push10.json"`; `NEW=$(jq -r .head "$E/push10.json")`. Run

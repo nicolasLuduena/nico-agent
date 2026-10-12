@@ -27,7 +27,7 @@ it binds the rebuild.
 ## What it is
 
 - **A loop**, in `serve`, every 10 minutes and on every PR event. Per Repo:
-  fill the room (3 Implementers at most) with the oldest Ready issues; stack
+  fill the room (3 Dispatches In flight at most) with the oldest Ready issues; stack
   a Stackable issue on its Blocker's open PR; start a Reviewer when a PR
   appears; restart whatever broke. No judgment anywhere in it.
 - **herdr as the runtime.** One workspace and worktree per issue. nico-agent
@@ -88,6 +88,11 @@ saying which Dispatches lost their agents.
 - **morning**, once a day: reads the action log and PRs and writes
   `morning.md`: merge these in this order, these need an answer, these
   failed, this gardening landed, these ideas were filed.
+
+One of these herdr reports blocked, most likely on a permission prompt, is
+kept open with whatever it holds, an answer ready or half its filing: one
+notification names the agent to take over, and for a faux-nico the question,
+to answer by hand.
 
 ## Gardening
 

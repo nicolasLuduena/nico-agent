@@ -2,7 +2,7 @@ mod common;
 
 use std::time::Duration;
 
-use common::{Ran, Setup, github_issue, pull_request, setup};
+use common::{Ran, Setup, edit_dispatch, github_issue, pull_request, setup};
 use nico_agent::world::{Mergeable, PrState, PullRequest, PullRequestActivity};
 use serde_json::{Value, json};
 
@@ -69,6 +69,16 @@ fn herdr(calls: &[String]) -> Vec<&str> {
         .collect()
 }
 
+/// herdr reports `rev-api-7` in `state`.
+fn reviewer_state(t: &Setup, state: &str) {
+    (t.world.agents.borrow_mut()).insert("rev-api-7".into(), state.into());
+}
+
+/// `rev-api-7`'s pane shows `screen`.
+fn reviewer_screen(t: &Setup, screen: &str) {
+    (t.world.screens.borrow_mut()).insert("rev-api-7".into(), screen.into());
+}
+
 #[test]
 fn a_reviewer_starts_on_another_harness_when_the_pr_first_appears_and_only_then() {
     let t = with_pr("");
@@ -103,14 +113,20 @@ fn a_reviewer_starts_on_another_harness_when_the_pr_first_appears_and_only_then(
 }
 
 #[test]
-fn a_new_head_closes_the_last_reviewers_tab_and_starts_it_again_for_that_head() {
+fn a_new_head_waits_for_the_last_reviewer_to_stop_working_then_closes_its_tab_and_starts_it_again()
+{
     let t = with_pr("");
     t.tick();
     push(&t, "sha10");
     t.world.advance(TICK);
 
+    let (waited, while_working) = calls_after(&t, || t.tick());
+    reviewer_state(&t, "done");
+    t.world.advance(TICK);
     let (said, calls) = calls_after(&t, || t.tick());
 
+    assert_eq!(waited, Vec::<String>::new());
+    assert_eq!(herdr(&while_working), Vec::<&str>::new());
     assert_eq!(said, ["acme/api#7: Reviewer started on codex for sha10"]);
     assert_eq!(
         herdr(&calls),
@@ -178,6 +194,107 @@ fn a_reviewer_gone_from_herdr_before_its_verdict_is_started_again_for_that_head_
 }
 
 #[test]
+fn a_reviewer_herdr_calls_stalled_but_reports_working_has_started_and_is_not_prompted_again() {
+    let t = with_pr("");
+    t.world.lagging_prompts.set(1);
+
+    let (said, calls) = calls_after(&t, || t.tick());
+
+    assert_eq!(said[1], "acme/api#7: Reviewer started on codex for sha9");
+    let prompts = calls.iter().filter(|c| c.starts_with("herdr agent prompt"));
+    assert_eq!(prompts.count(), 1);
+    let reviewer = &t.cli(&["status", "--json"]).json()["dispatches"][0]["reviewer"];
+    assert_eq!(reviewer["sha"], "sha9");
+    assert_eq!(reviewer.get("failures"), None);
+}
+
+#[test]
+fn a_reviewer_prompt_stalled_in_its_input_box_is_sent_again_and_its_start_fails_after_three() {
+    let t = with_pr("");
+    t.world.stalled_prompts.set(3);
+    let prompt = review_prompt("sha9");
+    let typed = prompt.trim_start_matches("herdr agent prompt rev-api-7 ");
+    reviewer_screen(
+        &t,
+        &format!("› {typed}\n\n  gpt-6.1-sol medium · /worktrees/api-7"),
+    );
+
+    let (said, calls) = calls_after(&t, || t.tick());
+
+    assert_eq!(
+        said[1..],
+        [
+            "could not start the Reviewer of acme/api#7: rev-api-7 did not start working on its prompt"
+        ]
+    );
+    let tail: Vec<&str> = (calls.iter().map(String::as_str))
+        .skip_while(|c| *c != prompt)
+        .collect();
+    let looked = [
+        &*prompt,
+        "herdr agent list",
+        "herdr agent read rev-api-7 --source visible",
+    ];
+    assert_eq!(tail, looked.repeat(3));
+    let reviewer = &t.cli(&["status", "--json"]).json()["dispatches"][0]["reviewer"];
+    assert_eq!(reviewer["sha"], Value::Null);
+    assert_eq!(reviewer["failures"], json!(["sha9"]));
+}
+
+/// codex's hooks review, as the reproduction of #279 saw it after one prompt.
+const HOOKS_REVIEW: &str = "  Hooks\n  Lifecycle hooks from config and enabled plugins.\n\n  ⚠ 6 hooks need review before they can run.\n\n  Event                 Installed   Active      Review      Description\n› PostToolUse           1           0           1           After a tool executes\n\n  t trust all · enter review · esc close";
+
+#[test]
+fn a_reviewer_on_codexs_hooks_review_is_asking_a_question_and_is_sent_nothing_more() {
+    let t = with_pr("");
+    t.world.stalled_prompts.set(3);
+    reviewer_screen(&t, HOOKS_REVIEW);
+
+    let (said, calls) = calls_after(&t, || t.tick());
+
+    assert_eq!(
+        said[1..],
+        [
+            "could not start the Reviewer of acme/api#7: rev-api-7 is asking a question during startup"
+        ]
+    );
+    let prompt = review_prompt("sha9");
+    let tail: Vec<&str> = (calls.iter().map(String::as_str))
+        .skip_while(|c| *c != prompt)
+        .collect();
+    assert_eq!(
+        tail,
+        [
+            &*prompt,
+            "herdr agent list",
+            "herdr agent read rev-api-7 --source visible",
+        ]
+    );
+    let reviewer = &t.cli(&["status", "--json"]).json()["dispatches"][0]["reviewer"];
+    assert_eq!(reviewer["failures"], json!(["sha9"]));
+}
+
+#[test]
+fn a_reviewer_whose_start_failed_but_works_after_all_is_not_closed_until_it_stops_working() {
+    let t = with_pr("");
+    t.world.stalled_prompts.set(3);
+    t.tick();
+    // The user answers its screen and sends the prompt by hand.
+    reviewer_state(&t, "working");
+    t.world.advance(TICK);
+
+    let (said, calls) = calls_after(&t, || t.tick());
+    reviewer_state(&t, "idle");
+    t.world.advance(TICK);
+    let (after, later) = calls_after(&t, || t.tick());
+
+    assert_eq!(said, Vec::<String>::new());
+    assert_eq!(herdr(&calls), Vec::<&str>::new());
+    assert_eq!(after, ["acme/api#7: Reviewer started on codex for sha9"]);
+    assert_eq!(herdr(&later)[0], "herdr tab close w1:t3");
+}
+
+#[test]
 fn with_review_off_no_reviewer_starts() {
     let t = with_pr("switches = { review = false }");
 
@@ -197,8 +314,13 @@ fn reviewing() -> Setup {
     t
 }
 
+/// Record a Verdict, as the Reviewer does last: its turn then ends.
 fn verdict(t: &Setup, args: &[&str]) -> Ran {
-    t.cli(&[&["verdict"], args, &["--json"]].concat())
+    let ran = t.cli(&[&["verdict"], args, &["--json"]].concat());
+    if let Some(state) = t.world.agents.borrow_mut().get_mut("rev-api-7") {
+        *state = "done".into();
+    }
+    ran
 }
 
 fn stage(t: &Setup) -> Value {
@@ -265,6 +387,29 @@ fn a_passing_verdict_flips_the_draft_pr_to_ready_once_and_nothing_else_is_writte
     assert_eq!(
         (&shown["stage"], &shown["pr"]["draft"]),
         (&json!("Verified"), &json!(false))
+    );
+}
+
+#[test]
+fn an_answer_kept_while_the_pr_is_flipped_survives_the_flip() {
+    let t = reviewing();
+    verdict(&t, &["acme/api#7", "pass", "--sha", "sha9"]);
+    t.world.advance(TICK);
+    let answer = json!({
+        "since": "2026-09-30T12:05:00Z", "at": "2026-09-30T12:25:00Z",
+        "question": "Which database?", "text": "Postgres", "by": "user",
+    });
+    let (dir, kept) = (t.config_dir.clone(), answer.clone());
+    t.world.during_call("github pr ready acme/api#9", move || {
+        edit_dispatch(&dir, |d| d["answers"] = json!([kept]))
+    });
+
+    t.tick();
+
+    let shown = &t.cli(&["status", "--json"]).json()["dispatches"][0];
+    assert_eq!(
+        (&shown["answers"], &shown["flipped"]),
+        (&json!([answer]), &json!("sha9"))
     );
 }
 
@@ -368,6 +513,33 @@ fn a_failing_verdict_keeps_its_findings_restarts_the_implementer_once_and_no_rev
     );
     assert_eq!(again, Vec::<String>::new());
     assert_eq!(herdr(&later), Vec::<&str>::new());
+}
+
+#[test]
+fn a_failing_verdict_on_a_head_pushed_over_before_the_tick_restarts_nothing_and_a_reviewer_starts_for_the_new_head()
+ {
+    let t = reviewing();
+    let file = findings(&t, "Signing in shows a 500.\n");
+    verdict(
+        &t,
+        &["acme/api#7", "fail", "--sha", "sha9", "--findings", &file],
+    );
+    push(&t, "sha10");
+    t.world.advance(TICK);
+
+    let (said, calls) = calls_after(&t, || t.tick());
+
+    assert_eq!(said, ["acme/api#7: Reviewer started on codex for sha10"]);
+    assert_eq!(
+        herdr(&calls),
+        [
+            "herdr tab close w1:t3",
+            "herdr tab create --workspace w1 --cwd /worktrees/api-7 --label reviewer --no-focus",
+            r#"herdr agent start rev-api-7 --kind codex --pane w1:p4 -- -c projects={"/src/api"={trust_level="trusted"}}"#,
+            &review_prompt("sha10"),
+        ]
+    );
+    assert_eq!(stage(&t), "PR draft");
 }
 
 #[test]
@@ -670,4 +842,182 @@ fn a_fail_without_findings_or_a_verdict_not_pass_or_fail_or_without_sha_is_a_bad
             "{args:?}"
         );
     }
+}
+
+/// Where the review of the first Dispatch's PR stands, as `status --json` shows it.
+fn review(t: &Setup) -> Value {
+    t.cli(&["status", "--json"]).json()["dispatches"][0]["review"].clone()
+}
+
+#[test]
+fn a_reviewer_working_on_the_head_shows_the_review_as_reviewing_on_its_harness() {
+    let t = reviewing();
+
+    assert_eq!(
+        review(&t),
+        json!({ "state": "reviewing", "sha": "sha9", "harness": "codex", "attempts": 0, "cap": 2 })
+    );
+}
+
+#[test]
+fn a_reviewer_that_went_idle_on_the_head_without_a_verdict_shows_as_stopped_on_the_page() {
+    let t = reviewing();
+    t.world
+        .agents
+        .borrow_mut()
+        .insert("rev-api-7".into(), "idle".into());
+
+    let (status, page) = t.get("/api/status");
+
+    let stopped =
+        json!({ "state": "stopped", "sha": "sha9", "harness": "codex", "attempts": 0, "cap": 2 });
+    assert_eq!(review(&t), stopped);
+    assert_eq!((status, &page["dispatches"][0]["review"]), (200, &stopped));
+}
+
+#[test]
+fn a_passing_verdict_on_the_head_shows_the_review_as_passed() {
+    let t = reviewing();
+
+    verdict(&t, &["acme/api#7", "pass", "--sha", "sha9"]);
+
+    assert_eq!(
+        review(&t),
+        json!({ "state": "passed", "sha": "sha9", "harness": "codex", "attempts": 0, "cap": 2 })
+    );
+}
+
+#[test]
+fn a_failing_verdict_on_the_head_shows_the_review_as_failed_while_its_reviewer_still_works() {
+    let t = reviewing();
+    let file = findings(&t, "Signing in shows a 500.\n");
+
+    verdict(
+        &t,
+        &["acme/api#7", "fail", "--sha", "sha9", "--findings", &file],
+    );
+    reviewer_state(&t, "working");
+
+    let shown = &t.cli(&["status", "--json"]).json()["dispatches"][0];
+    assert_eq!(shown["agent_state"]["reviewer"], "working");
+    assert_eq!(shown["review"]["state"], "failed");
+}
+
+#[test]
+fn a_reviewer_that_failed_to_start_within_the_cap_shows_the_review_as_retrying_with_its_attempts() {
+    let t = with_pr("");
+    t.world
+        .fail_call("herdr agent start rev-api-7", "agent_name_taken: rev-api-7");
+
+    t.tick();
+    let once = review(&t);
+    t.world.advance(TICK);
+    t.tick();
+
+    assert_eq!(
+        once,
+        json!({ "state": "retrying", "sha": "sha9", "harness": "codex", "attempts": 1, "cap": 2 })
+    );
+    assert_eq!(review(&t)["attempts"], 2);
+    assert_eq!(review(&t)["state"], "retrying");
+}
+
+#[test]
+fn a_reviewer_that_failed_to_start_past_the_cap_shows_the_review_as_given_up_on_the_page() {
+    let t = with_pr("");
+    t.world
+        .fail_call("herdr agent start rev-api-7", "agent_name_taken: rev-api-7");
+
+    for _ in 0..3 {
+        t.tick();
+        t.world.advance(TICK);
+    }
+
+    let gave_up =
+        json!({ "state": "gave_up", "sha": "sha9", "harness": "codex", "attempts": 3, "cap": 2 });
+    assert_eq!(review(&t), gave_up);
+    assert_eq!(t.get("/api/status").1["dispatches"][0]["review"], gave_up);
+    assert_eq!(t.get("/api/node/acme%2Fapi%237").1["review"], gave_up);
+    assert_eq!(t.get("/api/map/acme/api").1["nodes"][0]["review"], gave_up);
+}
+
+#[test]
+fn with_review_off_the_review_shows_as_off_even_with_a_verdict_on_the_head() {
+    let t = with_pr("switches = { review = false }");
+    t.tick();
+
+    let before = review(&t);
+    verdict(&t, &["acme/api#7", "pass", "--sha", "sha9"]);
+
+    assert_eq!(
+        before,
+        json!({ "state": "off", "sha": "sha9", "harness": null, "attempts": 0, "cap": 2 })
+    );
+    assert_eq!(review(&t)["state"], "off");
+}
+
+#[test]
+fn a_review_switched_on_after_the_pr_appeared_shows_as_waiting_for_the_next_tick() {
+    let t = with_pr("switches = { review = false }");
+    t.tick();
+    let config = "[repos.\"acme/api\"]\npath = \"/src/api\"\n";
+    std::fs::write(t.config_dir.join("config.toml"), config).unwrap();
+
+    let waiting = review(&t);
+    t.world.advance(TICK);
+    t.tick();
+
+    assert_eq!(
+        waiting,
+        json!({ "state": "waiting", "sha": "sha9", "harness": null, "attempts": 0, "cap": 2 })
+    );
+    assert_eq!(review(&t)["state"], "reviewing");
+}
+
+#[test]
+fn a_reviewer_gone_from_herdr_before_its_verdict_counts_as_an_attempt_before_the_tick_starts_another()
+ {
+    let t = reviewing();
+    t.world.agents.borrow_mut().remove("rev-api-7");
+
+    let gone = review(&t);
+    t.world.advance(TICK);
+    t.tick();
+
+    assert_eq!(
+        gone,
+        json!({ "state": "retrying", "sha": "sha9", "harness": "codex", "attempts": 1, "cap": 2 })
+    );
+    assert_eq!(
+        review(&t),
+        json!({ "state": "reviewing", "sha": "sha9", "harness": "codex", "attempts": 1, "cap": 2 })
+    );
+}
+
+#[test]
+fn a_reviewer_gone_from_herdr_at_the_cap_shows_as_given_up_before_and_after_the_tick_and_with_herdr_down()
+ {
+    let t = reviewing();
+    for _ in 0..2 {
+        t.world.agents.borrow_mut().remove("rev-api-7");
+        t.world.advance(TICK);
+        t.tick();
+    }
+    t.world.agents.borrow_mut().remove("rev-api-7");
+
+    let before = review(&t);
+    t.world.advance(TICK);
+    let said = t.tick();
+    let after = review(&t);
+    t.world
+        .fail_call("herdr agent list", "herdr_unreachable: herdr is down");
+    let herdr_down = review(&t);
+
+    let gave_up =
+        json!({ "state": "gave_up", "sha": "sha9", "harness": "codex", "attempts": 3, "cap": 2 });
+    assert_eq!(said, [STOPPED]);
+    assert_eq!(
+        (before, after, herdr_down),
+        (gave_up.clone(), gave_up.clone(), gave_up)
+    );
 }
