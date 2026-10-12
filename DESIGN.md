@@ -225,7 +225,7 @@ A node that needs you carries a 4px `signal` flag across its top edge.
 - `blocker`: one 1.5px `ink-muted` line.
 - `stack`: double rails, `live`, drawn as a 5px stroke with a 2px `surface` stroke over it, so it reads as two parallel lines (a through-coach connection) and never as a heavier blocker line.
 
-**Band (needs you):** one row per item: kind (`label`), `repo #issue` (`strong`, tabular), the question's first line, the title, or where the review stands with the command that records a Verdict by hand (`body`, ellipsized), and the time right-aligned. The whole row is the button that focuses the node. With items, it is `signal` with a 1px `rule` top and bottom. With none, it is `surface` with a hairline frame and reads "Nothing needs you" in `ink-muted`. GitHub paused is a row like the others: `PAUSED · GitHub · until HH:MM`.
+**Band (needs you):** one row per item: kind (`label`), `repo #issue` (`strong`, tabular), the question's first line, the title, or where the review stands with the command that records a Verdict by hand (`body`, ellipsized), and the time right-aligned. The whole row is the button that focuses the node. With items, it is `signal` with a 1px `rule` top and bottom. With none, it is `surface` with a hairline frame and reads "Nothing needs you" in `ink-muted`. GitHub paused is a row like the others: `PAUSED · GitHub · until HH:MM`. So is an agent of the loop's own that herdr reports blocked: `BLOCKED · <agent> · HH:MM`, under its `repo #issue` for a faux-nico, the only one with a node to focus.
 
 **Tabs:** text tabs on a hairline baseline. The active tab is `ink` with a 3px `rule` underline; the others are `ink-muted`.
 
