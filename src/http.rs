@@ -56,7 +56,7 @@ const ROUTES: &[(&str, &str)] = &[
     ),
     (
         "GET /bucket/<path>",
-        "a file of the Bucket, where each Verdict's Evidence is kept, or links to a folder's",
+        "a file of the Bucket, where each Verdict's Evidence is kept, or a page of a folder's",
     ),
 ];
 

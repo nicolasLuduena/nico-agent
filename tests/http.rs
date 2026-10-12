@@ -157,7 +157,7 @@ fn an_unknown_path_or_method_answers_404_with_the_routes_as_help() {
         "POST /api/refresh: `nico-agent refresh`",
         "PATCH /api/repo/<owner/name>/switches {name: bool}: set the Repo's switches",
         "PATCH /api/repo/<owner/name> {room}: set how many Dispatches the Repo may have In flight at once",
-        "GET /bucket/<path>: a file of the Bucket, where each Verdict's Evidence is kept, or links to a folder's",
+        "GET /bucket/<path>: a file of the Bucket, where each Verdict's Evidence is kept, or a page of a folder's",
     ]);
     assert_eq!(
         unknown,
