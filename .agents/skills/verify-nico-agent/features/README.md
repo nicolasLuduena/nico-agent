@@ -83,6 +83,9 @@ commands, and observable proof.
 - [Live updates](./live-updates.md) covers `GET /api/events` (`changed`, and a keepalive otherwise),
   the page left open behind the tunnel, its reconnecting after the stream is lost, and the
   signed-out line when Access's session lapses.
+- [Requests from other sites](./foreign-requests.md) covers the 403 serve answers a foreign or
+  missing `Host` and a foreign or `null` `Origin` on a write, and the page, `localhost` and the
+  tunnel answered as before.
 
 Not yet mapped (drive by hand, then add a file): the faux-nico, gardening and quality-scan
 triggers, `GET /api/map/<slug>` and the map's node layout beyond what the tabs file asserts, the morning agent and `morning.md` on the page (off in a run: set `morning.enabled = true` and `hour` to the current one to drive it), the theme switch, `serve` restarting Dispatches after a reboot, and everything that needs a live

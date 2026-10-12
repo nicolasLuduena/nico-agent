@@ -15,13 +15,13 @@ pub fn serve(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
     Args::parse("serve", args, &[])?.positionals(&[])?;
     // shortcut: tick_minutes and port are read once; a change to either needs a restart of serve.
     let config = config::load(&ctx.config_dir)?;
-    let config_dir = ctx.config_dir.clone();
+    let (config_dir, port) = (ctx.config_dir.clone(), config.port);
     let handler = move |world: &dyn World, request: &HttpRequest| {
         let ctx = Context {
             world,
             config_dir: config_dir.clone(),
         };
-        http::answer(&ctx, request)
+        http::answer(&ctx, port, request)
     };
     // Without the app the loop still works: a port taken is said, not fatal.
     if let Err(e) = ctx.world.listen(config.port, Box::new(handler)) {

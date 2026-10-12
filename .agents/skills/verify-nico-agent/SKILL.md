@@ -57,7 +57,8 @@ $C drift push <n>|stale|pause   # what GitHub would change: a new PR head, an ol
 $C drift below merged|closed    # ... or the PR below a Stacked dispatch merged or closed unmerged
 $C state                        # fingerprint: config dir files, Dispatches, Verdicts, Bucket log, outside calls
 $C run [--evidence PREFIX] -- <nico-agent args...>       # the CLI in the scratch HOME; exit code is the CLI's
-$C http [--evidence PREFIX] <METHOD> <PATH> [BODY]       # ask serve, as the page does; exit 1 on 4xx/5xx
+$C http [--evidence PREFIX] [--header 'NAME: VALUE']... <METHOD> <PATH> [BODY]
+                                # ask serve, as the page does (or with other headers); exit 1 on 4xx/5xx
 $C page [--tunnel] [--evidence PREFIX] [--width PX] [--click ROLE=NAME | --click ROLE~NAME | --press KEY | --expect TEXT
         | --gone TEXT | --wait SECONDS | --mode pass|502|signed-out]...
                                 # open the page (through the tunnel stand-in), act in order, capture
@@ -66,7 +67,8 @@ $C cleanup                      # stop what the run started, remove the run dir;
 ```
 
 `run --evidence PREFIX` writes `PREFIX.cmd`, `.stdout`, `.stderr` and `.exit`; `http --evidence`
-writes `.cmd`, `.stdout` (the body), `.stderr`, `.exit` (the HTTP status) and `.headers`; `page
+writes `.cmd` (each `--header` in brackets first), `.stdout` (the body), `.stderr`, `.exit` (the
+HTTP status) and `.headers`; `page
 --evidence` writes `.cmd`, `.aria.txt`, `.png`, `.requests.txt` and `.console.txt`. Each still prints
 what it captured, so a recipe can record and inspect at once. `page` steps: `--click tab=verify/second`
 clicks the element of that ARIA role whose accessible name is exactly the text, `--click
@@ -76,7 +78,9 @@ clicks the element of that ARIA role whose accessible name is exactly the text, 
 only); it prints `ok` or `FAIL` per step and exits 1 on the first failure, after capturing.
 `.requests.txt` lists each `/api/events` stream as it is answered too, so a reconnect is a line.
 
-`tunnel start` puts `tunnel.mjs` between the page and serve, where cloudflared and Access sit: it
+`tunnel start` sets `bucket.url` to the stand-in's URL, as `scripts/setup-tunnel.sh` does to the
+tunnel's, since serve refuses a request on a host not its own, and puts `tunnel.mjs` between the
+page and serve, where cloudflared and Access sit: it
 cuts a response that sends nothing for 100 seconds, as Cloudflare does; switched to `502` it answers
 every request with a 502, as while the tunnel comes back, and to `signed-out` with Access's redirect
 to its login on another origin, as once the session lapses; `pass` passes requests on again.
