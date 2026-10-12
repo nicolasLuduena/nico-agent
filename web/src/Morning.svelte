@@ -18,7 +18,7 @@
     }
   }
 
-  function hide(next: boolean) {
+  function setHidden(next: boolean) {
     hiddenText = next ? text : null;
     try {
       if (next) localStorage.setItem(KEY, text);
@@ -51,7 +51,7 @@
       {/each}
     </div>
   {/if}
-  <button type="button" onclick={() => hide(!hidden)}>{hidden ? "Show" : "Hide"}</button>
+  <button type="button" onclick={() => setHidden(!hidden)}>{hidden ? "Show" : "Hide"}</button>
 </section>
 
 <style>

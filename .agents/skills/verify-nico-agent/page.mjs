@@ -51,8 +51,8 @@ const requests = [];
 const errors = [];
 let failed = null;
 try {
-  const kept = storage !== null && storage !== "none" && existsSync(storage) ? storage : undefined;
-  const context = await browser.newContext({ viewport: { width, height: 900 }, storageState: kept });
+  const kept = storage === "none" ? null : storage;
+  const context = await browser.newContext({ viewport: { width, height: 900 }, storageState: kept && existsSync(kept) ? kept : undefined });
   // As a browser that blocks the site's data: reading localStorage throws.
   if (storage === "none") await context.addInitScript(() => Object.defineProperty(window, "localStorage", { get: () => { throw new DOMException("The user denied storage", "SecurityError"); } }));
   const page = await context.newPage();
@@ -108,7 +108,7 @@ try {
       break;
     }
   }
-  if (storage !== null && storage !== "none") await context.storageState({ path: storage });
+  if (kept) await context.storageState({ path: kept });
   const aria = await page.locator("body").ariaSnapshot();
   console.log(aria);
   if (evidence) {

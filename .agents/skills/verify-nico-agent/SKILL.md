@@ -53,6 +53,7 @@ $C doctor                       # read-only health check of this run
 $C seed issues                  # a fresh read of verify/fixture's issues, as the Source would cache it
 $C seed dispatch <n> pr|asking|stacked  # a Dispatch of verify/fixture#<n> as the loop records one; prints JSON
 $C seed run quality-scan|morning|faux-nico <n>  # a Run of the loop's own agent, blocked; prints JSON
+$C seed morning <file>|none     # the Morning summary the morning agent leaves: <file> as morning.md, or none
 $C drift push <n>|stale|pause   # what GitHub would change: a new PR head, an old read, a rate limit
 $C drift below merged|closed    # ... or the PR below a Stacked dispatch merged or closed unmerged
 $C state                        # fingerprint: config dir files, Dispatches, Verdicts, Bucket log, outside calls
@@ -175,6 +176,8 @@ What the fixtures hold:
   agent blocked: `quality-scan` of verify/fixture (agent `quality-scan-fixture`), `morning` (agent
   `morning`), or `faux-nico <n>` (agent `faux-nico-fixture-<n>`) on the Asking of a Dispatch seeded
   `asking`. A tick leaves it as it is: with herdr stubbed, no agent is ever seen ended.
+- `seed morning <file>` puts `<file>`'s text in the config dir as `morning.md`, as the morning agent
+  writes its summary (the agent itself is off in a run); `seed morning none` takes it away.
 - `drift push <n>` commits to the seeded worktree and moves the PR's `head_sha`, as a push would;
   `drift stale` dates the cached read 2000-01-01, so the next `status` or `dispatch` asks GitHub;
   `drift pause` writes GitHub paused for an hour, as a rate limit does; `drift below merged|closed`
