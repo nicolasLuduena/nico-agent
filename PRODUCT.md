@@ -89,6 +89,17 @@ saying which Dispatches lost their agents.
   `morning.md`: merge these in this order, these need an answer, these
   failed, this gardening landed, these ideas were filed.
 
+## Gardening
+
+Pre-approved for quality-scan to file as `gardening`:
+
+- Dead code: unused functions, options, flags or config, found by grep.
+- Test gaps: risky logic with no test through `run` that fails when it breaks.
+- Lint debt: `#[allow]`s and clippy findings that can be fixed instead of
+  silenced.
+- Single-implementation abstractions: a trait, wrapper or factory with one
+  implementation that only passes calls through.
+
 ## What it writes to a Source
 
 Three things only: the Claim (assigning the issue to the user), the Evidence
