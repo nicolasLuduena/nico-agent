@@ -463,19 +463,26 @@ cmd_run() {
 
 cmd_http() {
   load_run
-  local evidence=""
-  if [ "${1:-}" = --evidence ]; then evidence="${2:-}"; shift 2 || die "http: --evidence needs a path prefix"; fi
+  local evidence="" sent=""
+  # --header, as another site's page or a name rebound to 127.0.0.1 would send it; `Host:` sends none.
+  local -a extra=()
+  while [ "${1:-}" = --evidence ] || [ "${1:-}" = --header ]; do
+    case "$1" in
+      --evidence) evidence="${2:-}"; shift 2 || die "http: --evidence needs a path prefix" ;;
+      --header) extra+=(-H "${2:-}"); sent+="[${2:-}] "; shift 2 || die "http: --header needs 'NAME: VALUE'" ;;
+    esac
+  done
   local method="${1:-}" path="${2:-}" body="${3:-}"
-  [ -n "$method" ] && [ -n "$path" ] || die "http: usage: http [--evidence PREFIX] <METHOD> <PATH> [BODY]"
+  [ -n "$method" ] && [ -n "$path" ] || die "http: usage: http [--evidence PREFIX] [--header 'NAME: VALUE']... <METHOD> <PATH> [BODY]"
   local out err headers status code=0
   out="$(mktemp)"; err="$(mktemp)"; headers="$(mktemp)"
   # --path-as-is: the path goes as given, `..` included, as a hand-made request would send it.
-  local -a args=(-sS --path-as-is -X "$method" -D "$headers" -o "$out" -w '%{http_code}')
+  local -a args=(-sS --path-as-is -X "$method" -D "$headers" -o "$out" -w '%{http_code}' "${extra[@]}")
   [ -n "$body" ] && args+=(--data-raw "$body")
   status="$(curl "${args[@]}" "$URL$path" 2>"$err")" || code=$?
   [ "$code" -eq 0 ] || die "http: could not reach serve at $URL: $(cat "$err")"
   if [ -n "$evidence" ]; then
-    local cmd="$method $path${body:+ $body}"
+    local cmd="$sent$method $path${body:+ $body}"
     record "$evidence" "$cmd" "$out" "$err" "$status"
     tr -d '\r' < "$headers" > "$evidence.headers"
   fi
@@ -514,6 +521,8 @@ cmd_tunnel() {
     start)
       [ -z "${TUNNEL_URL:-}" ] || die "tunnel: already started at $TUNNEL_URL"
       local port; port="$(free_port)"
+      # As setup-tunnel.sh does for cloudflared: serve answers the tunnel's host once bucket.url names it.
+      sed -i "/^\[bucket\]$/a url = \"http://127.0.0.1:$port\"" "$CONFIG_DIR/config.toml"
       setsid "$(node -p process.execPath)" "$SKILL_DIR/tunnel.mjs" "$URL" "$port" "$RUN_DIR/tunnel.log" \
         > "$RUN_DIR/tunnel.out" 2>&1 < /dev/null &
       local i

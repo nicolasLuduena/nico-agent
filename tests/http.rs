@@ -1,5 +1,6 @@
 mod common;
 
+use std::path::PathBuf;
 use std::time::Duration;
 
 use common::{Setup, github_issue, pull_request, setup};
@@ -540,4 +541,113 @@ fn patch_switches_refuses_an_unknown_switch_slug_or_value_and_writes_nothing() {
         )
     );
     assert_eq!(config(&t), WRITTEN);
+}
+
+/// Every file under the config dir, by its path there, with what it holds.
+fn files(t: &Setup) -> Vec<(PathBuf, Vec<u8>)> {
+    let (mut files, mut dirs) = (vec![], vec![t.config_dir.clone()]);
+    while let Some(dir) = dirs.pop() {
+        for entry in std::fs::read_dir(dir).unwrap().flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                dirs.push(path);
+            } else {
+                let held = std::fs::read(&path).unwrap();
+                files.push((path.strip_prefix(&t.config_dir).unwrap().into(), held));
+            }
+        }
+    }
+    files.sort();
+    files
+}
+
+#[test]
+fn a_request_on_a_foreign_or_missing_host_answers_403_and_reads_nothing() {
+    let t = ready_7();
+    let before = files(&t);
+
+    let foreign = t.send_with("GET", "/api/status", &[("Host", "evil.example")], "");
+    let other_port = t.send_with("GET", "/api/status", &[("host", "127.0.0.1:4321")], "");
+    let missing = t.send_with("GET", "/api/status", &[], "");
+
+    let help = ["Ask serve on 127.0.0.1:42069 or localhost:42069"];
+    assert_eq!(
+        foreign,
+        (
+            403,
+            json!({ "error": "Host evil.example is not serve's", "help": help })
+        )
+    );
+    assert_eq!(other_port.0, 403, "{}", other_port.1);
+    assert_eq!(
+        missing,
+        (
+            403,
+            json!({ "error": "the request names no Host", "help": help })
+        )
+    );
+    assert_eq!(t.world.calls(), Vec::<String>::new());
+    assert_eq!(files(&t), before);
+}
+
+/// What the app sends that changes something: a refresh, a Dispatch of
+/// Ready issue 7, a switch turned off.
+const WRITES: [(&str, &str, &str); 3] = [
+    ("POST", "/api/refresh", ""),
+    ("POST", "/api/dispatch", r#"{"issue": "acme/api#7"}"#),
+    (
+        "PATCH",
+        "/api/repo/acme/api/switches",
+        r#"{"review": false}"#,
+    ),
+];
+
+#[test]
+fn a_post_or_patch_from_a_page_on_another_host_answers_403_and_does_nothing() {
+    let t = ready_7();
+    let before = files(&t);
+
+    for (method, path, body) in WRITES {
+        for origin in ["https://evil.example", "null", "http://127.0.0.1:4321"] {
+            let headers = [("Host", "127.0.0.1:42069"), ("origin", origin)];
+
+            let answered = t.send_with(method, path, &headers, body);
+
+            let help = ["Send it from the app serve answers, or with no Origin"];
+            let error = format!("Origin {origin} is not the request's Host");
+            let refused = (403, json!({ "error": error, "help": help }));
+            assert_eq!(answered, refused, "{method} {path}");
+        }
+    }
+    assert_eq!(t.world.calls(), Vec::<String>::new());
+    assert_eq!(files(&t), before);
+}
+
+/// `ready_7`, set since serve started to serve the Bucket on the tunnel's `https://nico.example.com`.
+fn on_tunnel() -> Setup {
+    let t = ready_7();
+    let tunnel = config(&t) + "\n[bucket]\nurl = \"https://nico.example.com/\"\n";
+    std::fs::write(t.config_dir.join("config.toml"), tunnel).unwrap();
+    t
+}
+
+#[test]
+fn the_same_requests_on_localhost_or_on_bucket_url_s_host_from_its_page_answer_as_on_127_0_0_1() {
+    for (host, origin) in [
+        ("localhost:42069", "http://localhost:42069"),
+        ("nico.example.com", "https://nico.example.com"),
+    ] {
+        for (method, path, body) in WRITES.into_iter().chain([("GET", "/api/status", "")]) {
+            let (page, app) = (on_tunnel(), on_tunnel());
+
+            let headers = [("host", host), ("Origin", origin)];
+            let answered = page.send_with(method, path, &headers, body);
+            let before = app.send(method, path, body);
+
+            assert_eq!(answered.0, 200, "{method} {path} on {host}: {}", answered.1);
+            assert_eq!(answered, before, "{method} {path} on {host}");
+            assert_eq!(page.world.calls(), app.world.calls());
+            assert_eq!(files(&page), files(&app));
+        }
+    }
 }

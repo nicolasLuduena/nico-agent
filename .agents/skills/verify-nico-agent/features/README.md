@@ -73,6 +73,9 @@ commands, and observable proof.
 - [Live updates](./live-updates.md) covers `GET /api/events` (`changed`, and a keepalive otherwise),
   the page left open behind the tunnel, its reconnecting after the stream is lost, and the
   signed-out line when Access's session lapses.
+- [Requests from other sites](./foreign-requests.md) covers the 403 serve answers a foreign or
+  missing `Host` and a foreign or `null` `Origin` on a write, and the page, `localhost` and the
+  tunnel answered as before.
 
 Not yet mapped (drive by hand, then add a file): `nico-agent answer <issue> --text <text> [--by
 faux-nico]` (its refusals are drivable on a seeded `asking` Dispatch; typing into the pane needs

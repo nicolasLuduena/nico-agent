@@ -56,8 +56,11 @@ const ROUTES: &[(&str, &str)] = &[
     ),
 ];
 
-/// Answer `request`, as the app sent it.
-pub fn answer(ctx: &Context, request: &HttpRequest) -> Answer {
+/// Answer `request`, as the app sent it to serve on `port`.
+pub fn answer(ctx: &Context, port: u16, request: &HttpRequest) -> Answer {
+    if let Some(refused) = foreign(ctx, port, request) {
+        return refused;
+    }
     let path = request.url.split('?').next().unwrap_or_default();
     match (request.method.as_str(), path) {
         ("GET", "/api/status") => reply(status(ctx)),
@@ -103,6 +106,45 @@ pub fn answer(ctx: &Context, request: &HttpRequest) -> Answer {
             error(404, &no_route, &help)
         }
     }
+}
+
+/// A 403 for what another site's page sends through the browser: a request
+/// on a host not serve's (a name rebound to 127.0.0.1 included), or a POST or
+/// PATCH from a page on another host; `None` for one serve answers.
+fn foreign(ctx: &Context, port: u16, request: &HttpRequest) -> Option<Answer> {
+    let mut hosts = vec![format!("127.0.0.1:{port}"), format!("localhost:{port}")];
+    // Read each time, as the Bucket's links are: the tunnel's host is in once it is set.
+    if let Some(url) = config::load(&ctx.config_dir)
+        .ok()
+        .and_then(|c| c.bucket.url)
+    {
+        let at = url.split_once("://").map_or(url.as_str(), |(_, at)| at);
+        hosts.extend(at.split('/').next().map(String::from));
+    }
+    let header = |name: &str| {
+        (request.headers.iter())
+            .find(|(n, _)| n.eq_ignore_ascii_case(name))
+            .map(|(_, value)| value.as_str())
+    };
+    let help = [format!("Ask serve on {}", hosts.join(" or "))];
+    let Some(host) = header("Host") else {
+        return Some(error(403, "the request names no Host", &help));
+    };
+    if !hosts.iter().any(|h| h.eq_ignore_ascii_case(host)) {
+        return Some(error(403, &format!("Host {host} is not serve's"), &help));
+    }
+    let origin = header("Origin").filter(|_| matches!(request.method.as_str(), "POST" | "PATCH"));
+    // `null`, a sandboxed page's or a file's, has no `://`: foreign too.
+    let ours = |origin: &str| {
+        (origin.split_once("://")).is_some_and(|(_, at)| at.eq_ignore_ascii_case(host))
+    };
+    let origin = origin.filter(|origin| !ours(origin))?;
+    let help = ["Send it from the app serve answers, or with no Origin"];
+    Some(error(
+        403,
+        &format!("Origin {origin} is not the request's Host"),
+        &help,
+    ))
 }
 
 /// `status`'s answer from the Sources' caches alone, plus per Repo what the

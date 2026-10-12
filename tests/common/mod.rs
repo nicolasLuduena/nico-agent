@@ -85,14 +85,27 @@ impl Setup {
         said
     }
 
-    /// Send `serve`, which must have run, a request as the app would.
+    /// Send `serve`, which must have run, a request as the app would: on its own host.
     pub fn request(&self, method: &str, path: &str, body: &str) -> Answer {
+        self.request_with(method, path, &[("Host", "127.0.0.1:42069")], body)
+    }
+
+    /// Send `serve` a request with `headers` and no other.
+    pub fn request_with(
+        &self,
+        method: &str,
+        path: &str,
+        headers: &[(&str, &str)],
+        body: &str,
+    ) -> Answer {
         let listening = self.world.listening.borrow();
         let handler = listening.as_ref().expect("serve has not listened");
         let request = HttpRequest {
             method: method.into(),
             url: path.into(),
-            headers: vec![],
+            headers: (headers.iter())
+                .map(|(name, value)| (name.to_string(), value.to_string()))
+                .collect(),
             body: body.into(),
         };
         handler(&self.world, &request)
@@ -105,7 +118,18 @@ impl Setup {
 
     /// `method path` of `serve` with `body`: its status and JSON body.
     pub fn send(&self, method: &str, path: &str, body: &str) -> (u16, Value) {
-        let Answer::Whole(response) = self.request(method, path, body) else {
+        self.send_with(method, path, &[("Host", "127.0.0.1:42069")], body)
+    }
+
+    /// [`Setup::send`] with `headers` and no other.
+    pub fn send_with(
+        &self,
+        method: &str,
+        path: &str,
+        headers: &[(&str, &str)],
+        body: &str,
+    ) -> (u16, Value) {
+        let Answer::Whole(response) = self.request_with(method, path, headers, body) else {
             panic!("{method} {path} answered with a stream");
         };
         let body = serde_json::from_slice(&response.body).unwrap_or_else(|e| {
