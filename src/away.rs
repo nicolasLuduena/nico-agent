@@ -301,7 +301,7 @@ fn start(
     )?;
     let ready = launch::start(ctx.world, harness, &run.launch, repo_path)?;
     launch::get_ready(ctx.world, harness, &run.launch, cwd, ready)?;
-    launch::prompt(ctx.world, &run.launch.agent, text)
+    launch::prompt(ctx.world, harness, &run.launch.agent, text)
 }
 
 /// Start the morning agent, while `morning` is enabled, within the hour of

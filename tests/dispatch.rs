@@ -376,7 +376,7 @@ fn the_failure_of_a_step_says_what_to_do_about_it() {
         json!({
             "error": "acme/api#8 failed at prompt: impl-api-8 did not start working on its prompt",
             "help": [
-                "Run `herdr agent read impl-api-8` to see its screen, and send the prompt by hand",
+                "Run `herdr agent read impl-api-8` to see its screen, answer any question on it in herdr, and send the prompt by hand",
                 "Run `nico-agent status` to see the Dispatch",
                 "Run the same `nico-agent dispatch` again to continue from prompt",
             ],

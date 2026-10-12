@@ -50,6 +50,9 @@ pub struct FakeWorld {
     pub blocked_screen: RefCell<Option<String>>,
     /// How many prompts from now on agents drop without starting work.
     pub stalled_prompts: Cell<u32>,
+    /// How many prompts from now on agents take while herdr reports them
+    /// stalled, its state lagging behind the agent's.
+    pub lagging_prompts: Cell<u32>,
     /// Desktop notifications shown, as (title, body).
     pub notifications: RefCell<Vec<(String, String)>>,
     pub clock: Cell<SystemTime>,
@@ -94,6 +97,7 @@ impl Default for FakeWorld {
             screens: Default::default(),
             blocked_screen: Default::default(),
             stalled_prompts: Default::default(),
+            lagging_prompts: Default::default(),
             notifications: Default::default(),
             // 2026-09-30T12:00:00Z
             clock: Cell::new(SystemTime::UNIX_EPOCH + Duration::from_secs(1_790_769_600)),
@@ -595,6 +599,10 @@ impl World for FakeWorld {
         self.agents
             .borrow_mut()
             .insert(name.into(), "working".into());
+        if self.lagging_prompts.get() > 0 {
+            self.lagging_prompts.set(self.lagging_prompts.get() - 1);
+            return Ok(false);
+        }
         Ok(true)
     }
 
