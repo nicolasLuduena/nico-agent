@@ -5,6 +5,8 @@ export interface Status {
   dispatches: Dispatch[];
   /** morning.md as the morning agent wrote it; null while there is none. */
   morning_summary?: string | null;
+  /** The last morning agent's Run; none before the first. */
+  morning?: Run;
 }
 
 export interface Repo {
@@ -23,6 +25,17 @@ export interface Repo {
   implementer: Launch;
   /** Each configured Harness, with the models and Efforts it takes (null: any). */
   harnesses: Record<string, { models: string[] | null; efforts: string[] | null }>;
+  /** Its last quality-scan's Run; none before the first. */
+  last_scan?: Run;
+}
+
+/** One start of an agent of the loop's own: a quality-scan, a faux-nico or the morning agent. */
+export interface Run {
+  /** Its herdr agent, the name to take it over with. */
+  agent: string;
+  /** While herdr reports it blocked, since when. */
+  blocked_since?: string;
+  closed_at: string | null;
 }
 
 /** A Harness, and its model and Effort; null is the default. */
@@ -55,6 +68,8 @@ export interface Dispatch {
   agent_state?: { implementer: string; reviewer: string | null };
   /** Where the review of its open PR stands, while it is PR draft or Verified. */
   review: Review | null;
+  /** Its last faux-nico's Run, while it is live. */
+  faux_nico?: Run;
   verdict: { result: "pass" | "fail"; sha: string; at: string } | null;
   updated_at: string;
   closed_at: string | null;

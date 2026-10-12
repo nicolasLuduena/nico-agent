@@ -89,6 +89,11 @@ saying which Dispatches lost their agents.
   `morning.md`: merge these in this order, these need an answer, these
   failed, this gardening landed, these ideas were filed.
 
+One of these herdr reports blocked, most likely on a permission prompt, is
+kept open with whatever it holds, an answer ready or half its filing: one
+notification names the agent to take over, and for a faux-nico the question,
+to answer by hand.
+
 ## Gardening
 
 Pre-approved for quality-scan to file as `gardening`:

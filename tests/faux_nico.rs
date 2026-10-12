@@ -218,6 +218,64 @@ fn faux_nico_ending_with_the_implementer_still_asking_tells_the_user_once_and_is
 }
 
 #[test]
+fn a_blocked_faux_nico_stays_open_and_tells_the_user_once_with_the_question() {
+    let t = faux_nico_working();
+    agent_state(&t, "faux-nico-api-7", "blocked");
+
+    let (said, calls) = calls_after(&t, || t.tick());
+    t.world.advance(TICK);
+    let again = t.tick();
+
+    assert_eq!(said, ["faux-nico-api-7 is blocked"]);
+    assert_eq!(git_and_herdr(&calls), Vec::<&str>::new());
+    assert_eq!(again, Vec::<String>::new());
+    assert_eq!(
+        *t.world.notifications.borrow(),
+        [(
+            "faux-nico of acme/api#7 is blocked".to_string(),
+            "\"Should I keep the old endpoint?\"\nAnswer it with nico-agent answer acme/api#7.\nTake it over: herdr agent read faux-nico-api-7."
+                .to_string()
+        )]
+    );
+    let run = faux_nico(&t);
+    assert_eq!(
+        (&run["blocked_since"], &run["closed_at"]),
+        (&json!("2026-09-30T12:20:00Z"), &Value::Null)
+    );
+}
+
+#[test]
+fn a_blocked_faux_nico_then_seen_idle_is_closed_and_passes_its_asking_to_the_user() {
+    let t = faux_nico_working();
+    agent_state(&t, "faux-nico-api-7", "blocked");
+    t.tick();
+    t.world.advance(TICK);
+    agent_state(&t, "faux-nico-api-7", "idle");
+
+    let said = t.tick();
+
+    assert_eq!(
+        said,
+        [
+            "faux-nico-api-7 ended; its workspace closed",
+            "acme/api#7: faux-nico left its Asking to the user",
+        ]
+    );
+    let titles: Vec<String> = (t.world.notifications.borrow().iter())
+        .map(|(title, _)| title.clone())
+        .collect();
+    assert_eq!(
+        titles,
+        ["faux-nico of acme/api#7 is blocked", "acme/api#7 is Asking"]
+    );
+    let run = faux_nico(&t);
+    assert_eq!(
+        (&run["passed"], &run["closed_at"], &run["blocked_since"]),
+        (&json!(true), &json!("2026-09-30T12:30:00Z"), &Value::Null)
+    );
+}
+
+#[test]
 fn faux_nico_ending_after_answering_tells_no_one_and_is_closed() {
     let t = faux_nico_working();
     let ran = t.cli(&[

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Dispatch, Status } from "./status";
+import type { Dispatch, Repo, Run, Status } from "./status";
 import { needsYou } from "./strip";
 
 const status = (dispatches: Partial<Dispatch>[], githubPausedUntil: string | null = null): Status => ({
@@ -46,6 +46,34 @@ describe("the needs-you strip", () => {
     expect(needsYou(blocked)).toEqual([
       { kind: "Asking", repo: "acme/api", issue: "acme/api#7", text: "Add the export endpoint", at: null },
     ]);
+  });
+
+  it("lists each blocked agent of the loop after the Asking, by the name to take it over with, as of its block", () => {
+    const blocked = (agent: string, at: string): Run => ({ agent, blocked_since: at, closed_at: null });
+    const asking = { since: "2026-09-30T04:12:00Z", question: "Keep the v1 route?" };
+    const loop: Status = {
+      ...status([{ stage: "Failed", asking, faux_nico: blocked("faux-nico-api-7", "2026-09-30T04:20:00Z") }]),
+      repos: [{ slug: "acme/api", last_scan: blocked("quality-scan-api", "2026-09-30T03:10:00Z") } as Repo],
+      morning: blocked("morning", "2026-09-30T07:10:00Z"),
+    };
+
+    expect(needsYou(loop)).toEqual([
+      { kind: "Asking", repo: "acme/api", issue: "acme/api#7", text: "Keep the v1 route?", at: "2026-09-30T04:12:00Z" },
+      { kind: "Blocked", repo: "acme/api", issue: "acme/api#7", text: "faux-nico-api-7", at: "2026-09-30T04:20:00Z" },
+      { kind: "Blocked", repo: "acme/api", issue: null, text: "quality-scan-api", at: "2026-09-30T03:10:00Z" },
+      { kind: "Blocked", repo: null, issue: null, text: "morning", at: "2026-09-30T07:10:00Z" },
+      { kind: "Failed", repo: "acme/api", issue: "acme/api#7", text: "Add the export endpoint", at: "2026-09-30T11:00:00Z" },
+    ]);
+  });
+
+  it("lists no agent of the loop that is working or ended", () => {
+    const quiet: Status = {
+      ...status([{ faux_nico: { agent: "faux-nico-api-7", closed_at: null } }]),
+      repos: [{ slug: "acme/api", last_scan: { agent: "quality-scan-api", closed_at: "2026-09-30T03:10:00Z" } } as Repo],
+      morning: { agent: "morning", closed_at: null },
+    };
+
+    expect(needsYou(quiet)).toEqual([]);
   });
 
   it("lists a Failed Dispatch with its title, as of its last change", () => {

@@ -14,6 +14,7 @@ the cache alone, plus what the page shows beside each map.
 - `status-stale` a read older than a tick asks GitHub again; refused, the cache is still shown, with `error`.
 - `status-paused` a paused GitHub is asked nothing: `sources.github.paused_until` is set, an uncached Repo's `error` says when it is asked again.
 - `status-dispatches` each Dispatch with `stage` (`Failed`, `PR draft`, `Implementing`, `Verified`), `agent_state` `unknown` while herdr does not answer, `review` (see review.md), `verdict` and `pr`.
+- `status-runs` a Run its agent blocked shows `blocked_since` where status shows it: `repos[].last_scan`, the live Dispatch's `faux_nico`, `morning`.
 - `status-api` `GET /api/status` holds the command's `sources` and `dispatches`, and per Repo also `switches`, `room`, `implementer`, `reviewer`, `harnesses`, `prs_checked_at` and `github_paused_until`.
 
 ## How to get to it (user POV)
@@ -30,7 +31,7 @@ Preconditions:
 - `E=.evidence/<issue>/status`.
 
 - **No read yet.** Run `$C run --evidence "$E/01-no-cache" -- status --json`. Exit `0`; `repos[0]`
-  is `{"error":"not authenticated with GitHub; run \`gh auth login\`","read_at":null,"ready":[],"slug":"verify/fixture","stackable":[],"waiting":[]}`;
+  is `{"error":"not authenticated with GitHub; run \`gh auth login\`","gardening":[],"read_at":null,"ready":[],"slug":"verify/fixture","stackable":[],"waiting":[]}`;
   `dispatches` `[]`. `$OUTSIDE_LOG` gained `gh api user --jq .login`.
 - **Cached read.** Run `$C seed issues`, then `$C state > "$E/state.before.txt"` and `$C run --evidence "$E/02-cached" -- status --json`.
   Exit `0`; no `error`; `read_at` is the seed's; `ready` is `verify/fixture#1` "Verify: a Ready
@@ -44,6 +45,11 @@ Preconditions:
   `https://github.com/verify/fixture/pull/110` and `pr.draft` true, `verify/fixture#12`
   `Implementing` with `asking.question`; each `agent_state.implementer` `unknown`. `ready` no longer
   lists `#1`. `$OUTSIDE_LOG` gained `herdr agent list`.
+- **Blocked Runs.** Run `$C seed run faux-nico 12`, `$C seed run quality-scan` and `$C seed run morning`,
+  then `$C run --evidence "$E/03-runs" -- status --json`. `repos[0].last_scan` is agent
+  `quality-scan-fixture`, `dispatches[2].faux_nico` agent `faux-nico-fixture-12` with `issue`
+  `verify/fixture#12` and `asking` that Dispatch's `asking.since`, and `morning` agent `morning`;
+  each with `blocked_since` the seed's time and `closed_at` null.
 - **API.** Run `$C http --evidence "$E/04-api" GET /api/status`. HTTP `200`; `dispatches` and
   `sources` equal the command's; `repos[0]` adds `switches` (`dispatch`, `flip`, `restart`,
   `review`, `stack` true; `answer`, `gardening`, `quality_scan` false), `room` `3`, `implementer` claude, `reviewer` codex, `harnesses`

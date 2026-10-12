@@ -43,6 +43,9 @@ pub struct Run {
     /// Why its start stopped short, if it did; it counts as run all the same.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub failure: Option<String>,
+    /// While herdr reports its agent blocked, since when; the user is told once a spell.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub blocked_since: Option<String>,
     /// When its agent was seen ended and its workspace closed.
     pub closed_at: Option<String>,
 }
@@ -108,7 +111,9 @@ pub fn step(
 
 /// Close each open Run whose agent is idle, done or gone from herdr: remove
 /// its worktree and close its workspace. One that fails is said and tried
-/// again next tick. What it said, and the Runs it closed.
+/// again next tick. One blocked stays open, its user told once a spell: a
+/// faux-nico waiting on a permission may hold its answer. What it said, and
+/// the Runs it closed.
 fn close_ended(ctx: &Context, agents: Option<&[Agent]>) -> io::Result<(Vec<String>, Vec<Run>)> {
     let open: Vec<Run> = (load(&ctx.config_dir)?.into_iter())
         .filter(|r| r.closed_at.is_none())
@@ -131,9 +136,20 @@ fn close_ended(ctx: &Context, agents: Option<&[Agent]>) -> io::Result<(Vec<Strin
     let (mut said, mut ended) = (vec![], vec![]);
     for run in open {
         let agent = &run.launch.agent;
-        let state = world::agent_state(agents, agent);
-        if !matches!(state, None | Some(AgentState::Idle | AgentState::Done)) {
-            continue;
+        match world::agent_state(agents, agent) {
+            None | Some(AgentState::Idle | AgentState::Done) => {}
+            Some(AgentState::Blocked) if run.blocked_since.is_none() => {
+                let now = state::iso(ctx.world.now());
+                update_open(&ctx.config_dir, &run, |open| open.blocked_since = Some(now))?;
+                said.push(format!("{agent} is blocked"));
+                said.extend(tell_blocked(ctx, &run)?);
+                continue;
+            }
+            Some(AgentState::Working) if run.blocked_since.is_some() => {
+                update_open(&ctx.config_dir, &run, |open| open.blocked_since = None)?;
+                continue;
+            }
+            Some(_) => continue,
         }
         let closed = run.workspace.as_ref().map_or(Ok(()), |workspace| {
             (run.worktree.as_ref())
@@ -145,21 +161,61 @@ fn close_ended(ctx: &Context, agents: Option<&[Agent]>) -> io::Result<(Vec<Strin
             continue;
         }
         let now = state::iso(ctx.world.now());
-        update(&ctx.config_dir, |all| {
-            let open = all
-                .iter_mut()
-                .find(|r| r.closed_at.is_none() && r.launch == run.launch);
-            if let Some(open) = open {
-                open.closed_at = Some(now.clone());
-            }
+        update_open(&ctx.config_dir, &run, |open| {
+            open.closed_at = Some(now.clone());
+            open.blocked_since = None;
         })?;
         said.push(format!("{agent} ended; its workspace closed"));
         ended.push(Run {
             closed_at: Some(now),
+            blocked_since: None,
             ..run
         });
     }
     Ok((said, ended))
+}
+
+/// Change the open Run of `run`'s agent under the file's lock.
+fn update_open(config_dir: &Path, run: &Run, change: impl FnOnce(&mut Run)) -> io::Result<()> {
+    update(config_dir, |all| {
+        let open = (all.iter_mut()).find(|r| r.closed_at.is_none() && r.launch == run.launch);
+        if let Some(open) = open {
+            change(open);
+        }
+    })
+}
+
+/// Tell the user `run`'s agent is blocked, naming it to take over, and for a
+/// faux-nico the Asking it was started for, to answer by hand; what failed,
+/// said. Once: a failed notification is not tried again.
+fn tell_blocked(ctx: &Context, run: &Run) -> io::Result<Option<String>> {
+    let label = run.trigger.label();
+    let (who, asked) = match &run.trigger {
+        Trigger::FauxNico { issue, asking, .. } => {
+            let dispatches = dispatch::load(&ctx.config_dir)?;
+            let question = (dispatches.iter())
+                .find(|d| dispatch::is_live(d, issue))
+                .and_then(|d| d.asking.as_ref().filter(|a| a.since == *asking));
+            let asked = question.map_or(String::new(), |a| {
+                format!(
+                    "\"{}\"\nAnswer it with nico-agent answer {issue}.\n",
+                    a.question
+                )
+            });
+            (Some(issue.as_str()), asked)
+        }
+        _ => (run.repo.as_deref(), String::new()),
+    };
+    let title = who.map_or(format!("{label} is blocked"), |who| {
+        format!("{label} of {who} is blocked")
+    });
+    let body = format!(
+        "{asked}Take it over: herdr agent read {}.",
+        run.launch.agent
+    );
+    Ok((ctx.world.notify(&title, &body))
+        .err()
+        .map(|e| format!("could not notify \"{title}\": {e}")))
 }
 
 /// Start a quality-scan in each Repo with its switch on that has room, no
@@ -240,6 +296,7 @@ pub fn start_run(
         workspace: None,
         worktree: None,
         failure: None,
+        blocked_since: None,
         closed_at: None,
     };
     let said = match start(&mut run) {
