@@ -177,7 +177,7 @@ A 4px base. Spacing steps are 4, 8, 12, 16, 24 and 32. On desktop the page gutte
 2. **Morning slot:** the page's first content section: the Morning summary, `morning.md` rendered as Markdown on `surface`, its section heads as `label`s in `ink-muted`, its lists flowing in columns at least 280px wide (one on a phone). It renders nothing when `morning.md` is absent, and takes no space then. A `button-quiet` "Hide" at its right folds it to one line, the summary's first line that is not a heading, beside a "Show" that opens it again; hidden stays first, and is remembered in this browser until `morning.md` says something else.
 3. **Needs-you band:** full width, square, set at the top of the work.
 4. **Repo tabs:** one tab per Repo. The same row carries "Source read HH:MM · PRs checked HH:MM" and the Refresh button, right-aligned.
-5. **Work area:** the map fills the left; a 320px column on the right holds the switches, the room and the Dispatch form. Opening a node puts the 400px node panel in place of that column, and closing it brings the column back. Beside a map taller than the window, the panel stays in view. The map keeps its pan and zoom throughout.
+5. **Work area:** the map fills the left; a 320px column on the right holds the switches, the room and the Dispatch form. A `button-quiet` at the map's bottom left, while it holds a merged issue, reads "Hide merged", or "Show N merged" once they are hidden; hidden is remembered in this browser for every map. Opening a node puts the 400px node panel in place of that column, and closing it brings the column back. Beside a map taller than the window, the panel stays in view. The map keeps its pan and zoom throughout.
 
 **Phone (under 720px):**
 

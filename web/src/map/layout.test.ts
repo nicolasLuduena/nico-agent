@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Review } from "../status";
-import { layout, type MapEdge, type MapNode } from "./layout";
+import { layout, withoutMerged, type MapEdge, type MapNode } from "./layout";
 
 const node = (key: string, rest: Partial<MapNode> = {}): MapNode => ({
   key,
@@ -74,6 +74,22 @@ describe("the map's layout", () => {
       ["acme/api#9", false],
       ["acme/api#10", false],
     ]);
+  });
+
+  it("hides the merged issues and every edge to or from one, and nothing else", () => {
+    const map = {
+      nodes: [node("acme/api#8", { stage: "Merged" }), node("acme/api#9", { stage: "Verified" }), node("acme/api#10")],
+      edges: [
+        { from: "acme/api#8", to: "acme/api#10", kind: "blocker" },
+        { from: "acme/api#9", to: "acme/api#8", kind: "stack" },
+        { from: "acme/api#9", to: "acme/api#10", kind: "blocker" },
+      ] satisfies MapEdge[],
+    };
+
+    const shown = withoutMerged(map);
+
+    expect(shown.nodes.map((n) => n.key)).toEqual(["acme/api#9", "acme/api#10"]);
+    expect(shown.edges).toEqual([{ from: "acme/api#9", to: "acme/api#10", kind: "blocker" }]);
   });
 
   it("flags what needs you, as the strip lists it: an Implementer Asking, a Failed Dispatch, a Verified PR", () => {
