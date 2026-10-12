@@ -12,7 +12,7 @@
   import { watch } from "../live";
   import { selection } from "../selection.svelte";
   import { number, type Repo } from "../status";
-  import { layout, NODE, type Placed } from "./layout";
+  import { layout, NODE, withoutMerged, type Placed } from "./layout";
   import Mark from "./Mark.svelte";
 
   let { repo }: { repo: Repo } = $props();
@@ -28,7 +28,28 @@
   let fitted: string | null = null;
   let panned: string | null = null;
 
-  const drawn = $derived(shown.map && layout(shown.map));
+  // "Hide merged", remembered in this browser for every Repo's map.
+  const HIDE_MERGED = "nico-agent.hide-merged";
+  let hideMerged = $state(remembered());
+  function remembered() {
+    try {
+      return localStorage.getItem(HIDE_MERGED) === "1";
+    } catch {
+      return false;
+    }
+  }
+  function toggleMerged() {
+    hideMerged = !hideMerged;
+    fitted = null;
+    try {
+      localStorage.setItem(HIDE_MERGED, hideMerged ? "1" : "0");
+    } catch {
+      // Kept for this visit only.
+    }
+  }
+  const merged = $derived(shown.map?.nodes.filter((n) => n.stage === "Merged").length ?? 0);
+
+  const drawn = $derived(shown.map && layout(hideMerged ? withoutMerged(shown.map) : shown.map));
 
   $effect(() => {
     const slug = repo.slug;
@@ -272,9 +293,16 @@
     </svg>
     <button type="button" class="fit" onclick={fit}>Fit</button>
   {:else if drawn}
-    <p class="note">Nothing on this map: no open <code>ready-for-agent</code> issue, nothing in flight or merged in the last 7 days.</p>
+    {#if hideMerged && merged > 0}
+      <p class="note">Nothing on this map but merged issues.</p>
+    {:else}
+      <p class="note">Nothing on this map: no open <code>ready-for-agent</code> issue, nothing in flight or merged in the last 7 days.</p>
+    {/if}
   {:else}
     <p class="note">{failure ?? "Reading the map…"}</p>
+  {/if}
+  {#if merged > 0}
+    <button type="button" class="fit merged" onclick={toggleMerged}>{hideMerged ? `Show ${merged} merged` : "Hide merged"}</button>
   {/if}
 </section>
 
@@ -321,6 +349,10 @@
   }
   .fit:hover {
     background: var(--ground);
+  }
+  .merged {
+    right: auto;
+    left: 8px;
   }
 
   .edge {

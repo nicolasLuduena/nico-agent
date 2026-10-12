@@ -54,6 +54,15 @@ const heightOf = (n: MapNode) => NODE.height + (line(n) ? NODE.row : 0);
 /** An edge as drawn: its points run left to right, the arrowhead at the last. */
 export type Drawn = MapEdge & { points: Point[] };
 
+/** The map without its merged issues and the edges to or from them: "Hide merged". */
+export function withoutMerged(map: MapData): MapData {
+  const merged = new Set(map.nodes.filter((n) => n.stage === "Merged").map((n) => n.key));
+  return {
+    nodes: map.nodes.filter((n) => !merged.has(n.key)),
+    edges: map.edges.filter((e) => !merged.has(e.from) && !merged.has(e.to)),
+  };
+}
+
 /** Lay out a Repo's map left to right with dagre: Blockers left, the issues they block right. */
 export function layout(map: MapData): { width: number; height: number; nodes: Placed[]; edges: Drawn[] } {
   const g = new dagre.graphlib.Graph();
@@ -76,7 +85,7 @@ export function layout(map: MapData): { width: number; height: number; nodes: Pl
         y: y - heightOf(n) / 2,
         height: heightOf(n),
         line: line(n),
-        // serve sends a merged issue for 7 days after its merge.
+        // serve sends a merged issue for 7 days after its merge, unless the map hides them.
         faded: n.stage === "Merged",
         needs:
           n.agent_state?.implementer === "blocked" ||
