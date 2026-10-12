@@ -111,11 +111,11 @@ pub fn step(
 /// Whether the head of `d`'s open PR has a failing Verdict that no `verdict`
 /// restart came at or after: one restart per failing Verdict.
 fn failed_verdict(ctx: &Context, d: &Dispatch, prs: &Prs) -> io::Result<bool> {
-    let Some((_, pr)) = stage::pr_of(prs, d).filter(|(_, pr)| !pr.r#final) else {
+    let standing = stage::standing(&ctx.config_dir, prs, d)?;
+    if standing.pr.is_none_or(|(_, pr)| pr.r#final) {
         return Ok(false);
-    };
-    let failed = verdict::load(&ctx.config_dir, &d.issue)?
-        .filter(|v| v.result == Outcome::Fail && v.sha == pr.head_sha);
+    }
+    let failed = (standing.verdict_on_head()).filter(|v| v.result == Outcome::Fail);
     Ok(failed
         .is_some_and(|v| !(d.restarts.iter()).any(|r| r.reason == Reason::Verdict && r.at >= v.at)))
 }

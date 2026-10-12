@@ -22,7 +22,6 @@ use crate::review::Reviewer;
 use crate::source::{self, BlockerPr, Read, Start};
 use crate::stage;
 use crate::state;
-use crate::verdict;
 use crate::world::{self, PrState, READY_LABEL, World};
 
 pub const FILE: &str = "dispatches.json";
@@ -476,11 +475,9 @@ const SEE_STATUS: &str = "Run `nico-agent status` to see the Dispatch";
 /// What `dispatch` says of one issue.
 fn answer(ctx: &Context, record: &Dispatch, said: String) -> Result<Value, Refusal> {
     let prs = stage::load(&ctx.config_dir)?;
-    let pr = stage::pr_of(&prs, record).map(|(_, pr)| pr);
-    let verdict = verdict::load(&ctx.config_dir, &record.issue)?;
     let mut answer = json!({
         "dispatched": said,
-        "stage": stage::of(record, pr, verdict.as_ref()),
+        "stage": stage::standing(&ctx.config_dir, &prs, record)?.stage,
         "workspace": record.workspace,
         "agent": record.implementer.agent,
     });
