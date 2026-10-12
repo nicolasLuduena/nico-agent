@@ -21,8 +21,8 @@ longer has.
 - `verdict-noop` the same Verdict again answers `already recorded (no-op)` and commits nothing.
 - `verdict-push` after a push, the old head's Verdict no longer counts (`PR draft`) and is refused for the new head.
 - `verdict-fail` records `fail` with the findings file's text: the Bucket gains `findings.md` beside the Evidence.
-- `bucket-serve` `GET /bucket/<path>` serves a kept file (sandboxed), a folder as links, 404 for a missing file, 403 outside the working tree.
-- `bucket-panel` on the page, the node's panel shows the Verdict and links each Evidence file and the whole folder.
+- `bucket-serve` `GET /bucket/<path>` serves a kept file (sandboxed), an issue's folder as its Evidence page by head, folder and step, 404 for a missing file, 403 outside the working tree.
+- `bucket-panel` on the page, the node's panel shows the Verdict and an Open Evidence link to the issue's folder, with its heads and files counted.
 
 ## How to get to it (user POV)
 
@@ -61,7 +61,7 @@ Preconditions:
 - **Kept before any Verdict.** Run `$C run --evidence "$E/09-refresh" -- refresh --json`.
   `actions` hold `verify/fixture#10: Evidence at $HEAD kept in the Bucket`, after the `could not ask
   GitHub about ...` lines. Run `$C http --evidence "$E/10-bucket-before-verdict" GET /bucket/verify/fixture/10/`:
-  HTTP `200`, a page linking `$HEAD/proof.txt`. Run `$C run --evidence "$E/11-refresh-again" -- refresh --json`:
+  HTTP `200`, a page with `Head <first 7 of $HEAD>` and a `proof` step showing its text, linked to `$HEAD/proof.txt`. Run `$C run --evidence "$E/11-refresh-again" -- refresh --json`:
   no `kept in the Bucket` action. `$C state > "$E/state.kept.txt"`: its Bucket log adds one commit
   `pr verify/fixture#10 $HEAD` with `verify/fixture/10/$HEAD/proof.txt`.
 - **Pass.** Run `$C run --evidence "$E/12-pass" -- verdict verify/fixture#10 pass --sha "$HEAD" --json`.
@@ -76,8 +76,8 @@ Preconditions:
 - **Panel.** Run `$C page --evidence "$E/15-panel" --click "button~#10, Verify: seeded Dispatch 10"`.
   `.requests.txt` has `GET /api/node/verify%2Ffixture%2310 -> 200`; the ARIA snapshot has
   `region "Verify: seeded Dispatch 10 verify/fixture#10"` with `strong: Verified`, `heading "Review"` then
-  `pass <first 7 of $HEAD> <time>`, and under `heading "Evidence"` a `link "$HEAD/proof.txt"` to
-  `/bucket/verify/fixture/10/$HEAD/proof.txt` and `link "The whole folder"`.
+  `pass <first 7 of $HEAD> <time>`, and under `heading "Evidence"` a `link "Open Evidence"` to
+  `/bucket/verify/fixture/10/` and `1 head · 1 file`.
 - **Push.** Run `$C drift push 10 > "$E/push10.json"`; `NEW=$(jq -r .head "$E/push10.json")`. Run
   `$C run --evidence "$E/16-after-push" -- status --json`: `#10`'s `stage` is `PR draft`, its
   `verdict.sha` still `$HEAD`. Run `$C run --evidence "$E/17-old-head" -- verdict verify/fixture#10 pass --sha "$HEAD" --json`:

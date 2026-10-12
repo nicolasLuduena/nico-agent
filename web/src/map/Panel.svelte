@@ -179,12 +179,13 @@
       <section>
         <h3 class="label">Evidence</h3>
         {#if full.evidence.length}
-          <ul class="evidence">
-            {#each full.evidence as file (file.url)}
-              <li><a href={file.url} target="_blank" rel="noreferrer">{file.path}</a></li>
-            {/each}
-          </ul>
-          <p><a href={full.evidence_folder} target="_blank" rel="noreferrer">The whole folder</a></p>
+          {@const heads = new Set(full.evidence.map((file) => file.path.split("/")[0])).size}
+          <p class="row">
+            <a class="quiet" href={full.evidence_folder} target="_blank" rel="noreferrer">Open Evidence</a>
+            <span class="at">
+              {heads} head{heads === 1 ? "" : "s"} · {full.evidence.length} file{full.evidence.length === 1 ? "" : "s"}
+            </span>
+          </p>
         {:else}
           <p class="note">No Evidence in the Bucket.</p>
         {/if}
@@ -252,8 +253,7 @@
     font-size: 14px;
     color: var(--ink-muted);
   }
-  ol,
-  ul {
+  ol {
     margin: 0;
     padding: 0;
     list-style: none;
@@ -319,13 +319,6 @@
     white-space: pre-wrap;
     overflow-wrap: anywhere;
   }
-  .evidence li {
-    padding: 2px 0;
-    overflow-wrap: anywhere;
-  }
-  .evidence + p {
-    margin-top: 8px;
-  }
   .note {
     color: var(--ink-muted);
   }
@@ -344,6 +337,12 @@
   }
   .quiet:hover {
     background: var(--ground);
+  }
+  a.quiet {
+    display: inline-flex;
+    align-items: center;
+    color: var(--ink);
+    text-decoration: none;
   }
 
   /* Beside a map taller than the window, the panel stays in view. */
@@ -382,18 +381,6 @@
       padding-bottom: 8px;
       background: var(--surface);
       touch-action: none;
-    }
-    /* A thumb's target, not a line of text. */
-    .evidence a,
-    .evidence + p a {
-      display: block;
-      padding: 8px 0;
-    }
-    .evidence li {
-      padding: 0;
-    }
-    .evidence + p {
-      margin-top: 0;
     }
     .grip {
       display: block;
