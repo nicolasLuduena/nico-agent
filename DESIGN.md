@@ -197,11 +197,12 @@ Flat, like the printed sheet. Depth is drawn with rules, never with blur. The on
 
 Structure is square (`rounded.none`): nodes, the band, tabs, the panel, the sheet. Controls (buttons, inputs, selects, toggles) get `rounded.control` (2px) so they read as pressable.
 
-**Node** (248×88px, `hairline` frame, `surface` fill), three rows:
+**Node** (248×88px, `hairline` frame, `surface` fill), three rows, and a fourth while it is PR draft:
 
 1. The issue number (`number`) on the left; the kind (`label`, `ink-muted`) on the right.
 2. The title (`body`), one line, ellipsized.
 3. The Stage cell: a 14px mark in a fixed cell, then the Stage word (`strong`). On the right, the Agent state mark (an 8px dot: `live` filled = working, hollow = idle, `signal` = Asking, none = no agent) and the PR number with "draft" when it is one.
+4. Under the Stage word, where its review stands (`body`, `ink-muted`): `reviewing`, `review off`, `review gave up`, … The node is 22px taller for it.
 
 **Stage marks** (shape carries the state; colour repeats it):
 
@@ -224,11 +225,11 @@ A node that needs you carries a 4px `signal` flag across its top edge.
 - `blocker`: one 1.5px `ink-muted` line.
 - `stack`: double rails, `live`, drawn as a 5px stroke with a 2px `surface` stroke over it, so it reads as two parallel lines (a through-coach connection) and never as a heavier blocker line.
 
-**Band (needs you):** one row per item: kind (`label`), `repo #issue` (`strong`, tabular), the question's first line or the title (`body`, ellipsized), and the time right-aligned. The whole row is the button that focuses the node. With items, it is `signal` with a 1px `rule` top and bottom. With none, it is `surface` with a hairline frame and reads "Nothing needs you" in `ink-muted`. GitHub paused is a row like the others: `PAUSED · GitHub · until HH:MM`.
+**Band (needs you):** one row per item: kind (`label`), `repo #issue` (`strong`, tabular), the question's first line, the title, or where the review stands with the command that records a Verdict by hand (`body`, ellipsized), and the time right-aligned. The whole row is the button that focuses the node. With items, it is `signal` with a 1px `rule` top and bottom. With none, it is `surface` with a hairline frame and reads "Nothing needs you" in `ink-muted`. GitHub paused is a row like the others: `PAUSED · GitHub · until HH:MM`.
 
 **Tabs:** text tabs on a hairline baseline. The active tab is `ink` with a 3px `rule` underline; the others are `ink-muted`.
 
-**Panel and sheet:** the `head` title with a `#number` link to the issue, then sections separated by hairlines, each with a `label` head: PR (link, draft flag), Failure when the Dispatch Failed (the error in `strong` on the errata rule, then the step it stopped at), Restarts (rows of time, then reason), Verdict (the result word in its colour, the sha in tabular figures, the time, then the findings text wrapped at a 70-character measure), Evidence (one link per file, under `/bucket/`). Opening it moves focus to its title; closing it returns focus to the node or strip row that opened it.
+**Panel and sheet:** the `head` title with a `#number` link to the issue, then sections separated by hairlines, each with a `label` head: PR (link, draft flag), Failure when the Dispatch Failed (the error in `strong` on the errata rule, then the step it stopped at), Restarts (rows of time, then reason), Review (where the review stands, in a line, unless a Verdict on the head says it; then the Verdict: the result word in its colour, the sha in tabular figures, the time, then the findings text wrapped at a 70-character measure), Evidence (one link per file, under `/bucket/`). Opening it moves focus to its title; closing it returns focus to the node or strip row that opened it.
 
 ## Components
 

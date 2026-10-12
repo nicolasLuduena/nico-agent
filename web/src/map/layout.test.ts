@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { Review } from "../status";
 import { layout, type MapEdge, type MapNode } from "./layout";
 
 const node = (key: string, rest: Partial<MapNode> = {}): MapNode => ({
@@ -9,6 +10,7 @@ const node = (key: string, rest: Partial<MapNode> = {}): MapNode => ({
   stage: "Ready",
   agent_state: null,
   pr: null,
+  review: null,
   verdict: null,
   restarts: 0,
   created_at: null,
@@ -87,5 +89,33 @@ describe("the map's layout", () => {
     });
 
     expect(drawn.nodes.filter((n) => n.needs).map((n) => n.key)).toEqual(["acme/api#11", "acme/api#12", "acme/api#13"]);
+  });
+
+  it("gives a PR draft node a row under its Stage saying where its review stands, and flags one that stopped or gave up", () => {
+    const review = (state: Review["state"]): Review => ({ state, sha: "4f2a9c1e0b", harness: "codex", attempts: 0, cap: 2 });
+    const drawn = layout({
+      nodes: [
+        node("acme/api#16", { stage: "PR draft", review: review("reviewing") }),
+        node("acme/api#17", { stage: "PR draft", review: review("off") }),
+        node("acme/api#18", { stage: "PR draft", review: review("gave_up") }),
+        node("acme/api#19", { stage: "PR draft", review: review("stopped") }),
+        node("acme/api#20", { stage: "PR draft", review: review("retrying") }),
+        node("acme/api#21", { stage: "PR draft", review: review("waiting") }),
+        node("acme/api#22", { stage: "Verified", review: review("passed") }),
+        node("acme/api#23", { stage: "Implementing" }),
+      ],
+      edges: [],
+    });
+
+    expect(drawn.nodes.map((n) => [n.key, n.line, n.height, n.needs])).toEqual([
+      ["acme/api#16", "reviewing", 110, false],
+      ["acme/api#17", "review off", 110, false],
+      ["acme/api#18", "review gave up", 110, true],
+      ["acme/api#19", "review stopped", 110, true],
+      ["acme/api#20", "review retrying", 110, false],
+      ["acme/api#21", "waiting for review", 110, false],
+      ["acme/api#22", null, 88, true],
+      ["acme/api#23", null, 88, false],
+    ]);
   });
 });

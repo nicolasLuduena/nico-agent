@@ -3,14 +3,16 @@
 //! re-run the Repo's verification and record a Verdict with `verdict`.
 
 use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
 
 use crate::bucket;
 use crate::cli::{Context, Refusal};
 use crate::config::{Config, fill_in};
 use crate::dispatch::{self, Dispatch};
 use crate::launch::{self, AgentLaunch};
-use crate::stage::{self, Pr, Stage};
-use crate::world::{self, Agent};
+use crate::stage::{self, Pr, Stage, Standing};
+use crate::verdict::Outcome;
+use crate::world::{self, Agent, AgentState};
 
 /// A Dispatch's latest Reviewer.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -125,6 +127,49 @@ pub fn start_reviewers(
         })?;
     }
     Ok(said)
+}
+
+/// Where the review of `d`'s PR stands for its head, as `status` shows it,
+/// by the rules [`start_reviewers`] starts Reviewers on; `agents` as herdr
+/// listed them, if it did. `None` unless `d` is live and its Stage PR draft
+/// or Verified: no Reviewer is started for any other.
+pub fn shown(
+    config: &Config,
+    d: &Dispatch,
+    standing: &Standing,
+    agents: Option<&[Agent]>,
+) -> Option<Value> {
+    let reviewed =
+        d.closed_at.is_none() && matches!(standing.stage, Stage::PrDraft | Stage::Verified);
+    let (_, pr) = standing.pr.filter(|_| reviewed)?;
+    let head = &pr.head_sha;
+    let reviewer = d.reviewer.as_ref();
+    // The Reviewer prompted for the head, as herdr says now; one gone from herdr is none.
+    let prompted = (reviewer.filter(|r| r.sha.as_ref() == Some(head))).and_then(|r| {
+        agents.map_or(Some(AgentState::Unknown), |a| {
+            world::agent_state(a, &r.launch.agent)
+        })
+    });
+    let attempts = reviewer.map_or(0, |r| r.failures.iter().filter(|sha| *sha == head).count());
+    let cap = config.max_restarts_per_reason;
+    let state = match (standing.verdict_on_head(), prompted) {
+        _ if !config.repo_of(d).switches.review => "off",
+        (Some(v), _) if v.result == Outcome::Pass => "passed",
+        (Some(_), _) => "failed",
+        // herdr not saying leaves a prompted Reviewer standing, as the tick does.
+        (None, Some(AgentState::Working | AgentState::Unknown)) => "reviewing",
+        (None, Some(_)) => "stopped",
+        _ if attempts > cap as usize => "gave_up",
+        _ if attempts > 0 => "retrying",
+        _ => "waiting",
+    };
+    Some(json!({
+        "state": state,
+        "sha": head,
+        "harness": reviewer.map(|r| &r.launch.harness),
+        "attempts": attempts,
+        "cap": cap,
+    }))
 }
 
 /// Say that the Reviewer of `issue` for `head` failed to start or left

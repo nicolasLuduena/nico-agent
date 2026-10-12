@@ -1,7 +1,7 @@
 # The page's tabs and strip
 
 serve's page opens on the needs-you strip, across Repos: every Implementer Asking (with its
-question), every Failed Dispatch, every Verified PR to merge, and a paused GitHub; "Nothing needs
+question), every Failed Dispatch, every PR whose review was given up on or stopped, every Verified PR to merge, and a paused GitHub; "Nothing needs
 you" when there is none. Under it, one tab per Repo shows that Repo's map, read times, switches and
 Dispatch form; arrow keys move between tabs, and at phone width the tabs become one select named
 Repo. A strip row opens its Repo's tab with the node's panel.
@@ -15,6 +15,7 @@ Repo. A strip row opens its Repo's tab with the node's panel.
 - `tabs-phone` under 720px the tablist is replaced by `combobox "Repo"` with an option per Repo.
 - `strip-asking` an Asking Implementer is a row `Asking <repo> #<n> <question> <since>`.
 - `strip-failed` a Failed Dispatch is a row `Failed <repo> #<n> <title> <updated>`.
+- `strip-review` a review given up on or stopped is a row `Review <repo> #<n> <where it stands>: review it by hand with nico-agent verdict ...` (see review.md).
 - `strip-verified` a Verified PR is a row `Verified <repo> #<n> <title> <verdict time>`.
 - `strip-paused` a paused GitHub is a row `Paused GitHub until <time>`, with nothing to open.
 - `strip-open` clicking a row selects its Repo's tab and opens that node's panel (`GET /api/node/<issue>`).

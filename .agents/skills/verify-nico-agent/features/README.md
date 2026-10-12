@@ -66,6 +66,9 @@ commands, and observable proof.
   refusals, the Bucket commit, `/bucket/` and the node panel's Evidence links.
 - [The page's tabs and strip](./page-tabs-strip.md) covers the Repo tabs (click, keys, phone
   select) and the needs-you strip's Asking, Failed, Verified and Paused rows.
+- [Where each PR's review stands](./review.md) covers `review` in `status` and the page: the node's
+  line under a PR draft Stage, the panel's Review section, and the strip's Review row for a review
+  given up on.
 - [Switches](./switches.md) covers `PATCH /api/repo/<slug>/switches`, the page's toggles, what is
   written to `config.toml`, and the loop obeying a switch turned off.
 - [Refresh](./refresh.md) covers the page's Refresh button, `POST /api/refresh` and `nico-agent

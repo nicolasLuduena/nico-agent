@@ -53,7 +53,22 @@ export interface Dispatch {
   asking: { since: string; question: string } | null;
   /** Each agent's state as herdr says now (`blocked`: Asking); a Closed Dispatch has none. */
   agent_state?: { implementer: string; reviewer: string | null };
+  /** Where the review of its open PR stands, while it is PR draft or Verified. */
+  review: Review | null;
   verdict: { result: "pass" | "fail"; sha: string; at: string } | null;
   updated_at: string;
   closed_at: string | null;
+}
+
+/** Where the review of a Dispatch's PR stands for its head; serve derives it, first match wins. */
+export interface Review {
+  state: "off" | "passed" | "failed" | "reviewing" | "stopped" | "retrying" | "gave_up" | "waiting";
+  /** The PR head it is about. */
+  sha: string;
+  /** Its latest Reviewer's Harness; null before one was started. */
+  harness: string | null;
+  /** The starts for the head that failed, or whose Reviewer left herdr before a Verdict. */
+  attempts: number;
+  /** How many of those are tried again before it gives up. */
+  cap: number;
 }

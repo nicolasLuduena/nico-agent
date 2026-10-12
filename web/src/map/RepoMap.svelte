@@ -69,8 +69,8 @@
   function reveal(n: Placed) {
     const { x, y, k } = view;
     const [left, top] = [x + n.x * k, y + n.y * k];
-    if (left >= 0 && top >= 0 && left + NODE.width * k <= width && top + NODE.height * k <= height) return;
-    view = { k, x: width / 2 - (n.x + NODE.width / 2) * k, y: height / 2 - (n.y + NODE.height / 2) * k };
+    if (left >= 0 && top >= 0 && left + NODE.width * k <= width && top + n.height * k <= height) return;
+    view = { k, x: width / 2 - (n.x + NODE.width / 2) * k, y: height / 2 - (n.y + n.height / 2) * k };
   }
 
   // A strip item opens its node: pan to it, once per opening.
@@ -178,6 +178,7 @@
       n.stage ?? "Blocker",
       a && `agent ${a}`,
       n.pr && `PR ${prNumber(n.pr.url)}${n.pr.draft ? " draft" : ""}`,
+      n.line,
       n.needs && "needs you",
     ]
       .filter(Boolean)
@@ -242,10 +243,10 @@
             onkeydown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), open(n.key))}
             onfocus={() => reveal(n)}
           >
-            <rect class="ring" x="-3.5" y="-3.5" width={NODE.width + 7} height={NODE.height + 7} />
-            <rect class="frame" x="0.5" y="0.5" width={NODE.width - 1} height={NODE.height - 1} />
+            <rect class="ring" x="-3.5" y="-3.5" width={NODE.width + 7} height={n.height + 7} />
+            <rect class="frame" x="0.5" y="0.5" width={NODE.width - 1} height={n.height - 1} />
             {#if n.needs}<rect class="flag" width={NODE.width} height="4" />{/if}
-            {#if n.stage === "Failed"}<rect class="failed" width="4" height={NODE.height} />{/if}
+            {#if n.stage === "Failed"}<rect class="failed" width="4" height={n.height} />{/if}
             <text class="number" x="12" y="30" use:fit_text={[number(n.key, repo.slug), 140]}></text>
             <text class="kind" x="236" y="27">{n.kind.toUpperCase()}</text>
             {#if n.title}
@@ -264,6 +265,7 @@
               >
             {/if}
             {#if a}<circle class="agent {a}" cx="231" cy="71" r="4" />{/if}
+            {#if n.line}<text class="review" x="32" y="98">{n.line}</text>{/if}
           </g>
         {/each}
       </g>
@@ -390,7 +392,8 @@
     font-weight: 600;
   }
   .unknown,
-  .draft {
+  .draft,
+  .review {
     fill: var(--ink-muted);
   }
   .pr {
@@ -437,7 +440,8 @@
   }
   .selected text,
   .selected .unknown,
-  .selected .draft {
+  .selected .draft,
+  .selected .review {
     fill: var(--reversed-ink);
   }
   .selected .agent.working,
