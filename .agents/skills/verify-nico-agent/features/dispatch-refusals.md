@@ -17,6 +17,7 @@ reaches.
 - `dispatch-not-ready` exit 1 `<issue> is not Ready`, `help` saying why: not labelled, waits on its Blockers, assigned to someone else, or not in the read.
 - `dispatch-launch` an unknown Harness, model or Effort is exit 2, listing the valid ones.
 - `dispatch-step-failed` a Ready issue is claimed (a warning when the Claim fails), fetched, and fails at `worktree`; exit 1 with `Run the same \`nico-agent dispatch\` again to continue from worktree`; its Stage is Failed.
+- `dispatch-paused` while GitHub is paused, the Claim asks GitHub nothing: its warning names the pause.
 - `dispatch-in-flight` the same issue on another Harness is exit 1 `already In flight with claude`.
 - `dispatch-api` `POST /api/dispatch` answers a refusal 409 (400 for a bad body) with the same `{error, help}`.
 - `dispatch-form` the page's Dispatch form posts the chosen issue and launch and shows the refusal inline under it.
@@ -55,7 +56,7 @@ Preconditions:
   (`--evidence "$E/10-harness"`, `11-model`, `12-effort`). Each exit `2`: `unknown Harness \`pi\``
   / `Valid Harnesses: claude, codex, opencode`; `unknown model \`gpt-9\` for claude` / `Valid models
   for claude: fable, opus, sonnet, haiku`; `unknown Effort \`ludicrous\` for claude` / `Valid
-  Efforts for claude: low, medium, high, xhigh, max`. `dispatches.json` does not exist yet.
+  Efforts for claude: low, medium, high, xhigh, max`. `dispatches.json` holds no Dispatch yet.
 - **Step failed.** `$C state > "$E/state.before.txt"`; run `$C run --evidence "$E/13-ready" -- dispatch verify/fixture#1 --json`.
   Exit `1`, `error` `verify/fixture#1 failed at worktree: \`herdr worktree create\` failed: verify_stub: herdr is a stub in this verification run`,
   `help` ends `Run the same \`nico-agent dispatch\` again to continue from worktree`. `$OUTSIDE_LOG`
@@ -73,8 +74,12 @@ Preconditions:
   The form's Issue starts on `#5 Verify: a Research issue` (#1 is In flight); `.requests.txt` has
   `POST /api/dispatch {"issue":"verify/fixture#5","harness":"claude","model":null,"effort":null} -> 409`;
   the ARIA snapshot has an `alert` under `button "Dispatch"` reading `verify/fixture#5 failed at worktree:`.
-- **Proof.** Copy `$OUTSIDE_LOG` to `$E/outside.log`; `$C run --evidence "$E/19-status" -- status --json`
-  shows `#1` and `#5` with `stage` `Failed`.
+- **Paused.** Run `$C drift pause`, then `$C run --evidence "$E/19-paused" -- dispatch verify/fixture#6 --json`.
+  Exit `1`, `error` `verify/fixture#6 failed at fetch: ...` (see Gotchas); `$OUTSIDE_LOG` gained
+  no line: no `gh issue edit 6`.
+- **Proof.** Copy `$OUTSIDE_LOG` to `$E/outside.log`; `$C run --evidence "$E/20-status" -- status --json`
+  shows `#1`, `#5` and `#6` with `stage` `Failed`, `#6`'s `warnings` `could not Claim verify/fixture#6:
+  GitHub rate limit exceeded; nico-agent asks it again at <the pause's time>; assign it to yourself by hand`.
 
 ## Gotchas
 
@@ -84,6 +89,7 @@ Preconditions:
   holds the Repo's room, turns Failed, and makes the issue leave `ready`. It cannot be undone in the
   run; relaunch to start clean.
 - The Claim's failure is only a warning on the Dispatch (`could not Claim ...`), never a refusal.
+- The pause lasts an hour and survives everything but cleanup: drive it last.
 - `#6` (Stackable) fails at `fetch`, not `worktree`: the fixture's origin has no `agent/fixture-9`.
 - The browser logs its own `Failed to load resource: ... 409` in `.console.txt` for a refused
   request; that is not an app error.

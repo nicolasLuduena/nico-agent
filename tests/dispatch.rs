@@ -447,6 +447,26 @@ fn a_failed_claim_is_a_warning_on_the_record_not_a_failure_and_is_not_retried() 
     );
 }
 
+#[test]
+fn a_claim_refused_for_github_s_rate_limit_pauses_github() {
+    let t = with_issue();
+    let limited = "GitHub rate limit exceeded; nico-agent asks it again at 2026-09-30T13:00:00Z";
+    t.world.fail_call("github assign", limited);
+
+    let ran = dispatch_7(&t);
+
+    assert_eq!(
+        ran.json()["warnings"],
+        json!([format!(
+            "could not Claim acme/api#7: {limited}; assign it to yourself by hand"
+        )])
+    );
+    assert_eq!(
+        status(&t)["sources"]["github"]["paused_until"],
+        "2026-09-30T13:00:00Z"
+    );
+}
+
 const BOT_SUFFIX: &str = ", opened with `ghbot pr create` (not `gh`); end every commit message with the trailer `Co-authored-by: nicolasluduena-coding-agent[bot] <324920906+nicolasluduena-coding-agent[bot]@users.noreply.github.com>`";
 
 fn prompts(t: &Setup) -> Vec<String> {
@@ -579,6 +599,48 @@ fn a_linear_issue_is_dispatched_into_the_repo_that_claims_it_on_linears_branch()
         ]
     );
     assert_eq!(status(&t)["dispatches"][0]["issue"], "BLE-1");
+}
+
+#[test]
+fn a_linear_claim_refused_for_its_rate_limit_pauses_linear_and_none_is_asked_till_then() {
+    let t = setup();
+    t.world
+        .add_clone("/src/api", &["git@github.com:acme/api.git"]);
+    t.cli(&[
+        "repo",
+        "add",
+        "acme/api",
+        "--path",
+        "/src/api",
+        "--linear-team",
+        "BLE",
+    ]);
+    t.world.add_linear_issue(common::linear_issue("BLE-1"));
+    t.world.add_linear_issue(common::linear_issue("BLE-2"));
+    let limited = "Linear rate limit exceeded; nico-agent asks it again at 2026-09-30T13:00:00Z";
+    t.world.fail_call("linear assign", limited);
+
+    let hit = dispatch(&t, &[&["ble-1"], &FLAGS[..]].concat());
+    t.world.clear_failures();
+    t.world.calls.borrow_mut().clear();
+    let paused = dispatch(&t, &[&["ble-2"], &FLAGS[..]].concat());
+
+    let warning = |key: &str| {
+        json!([format!(
+            "could not Claim {key}: {limited}; assign it to yourself by hand"
+        )])
+    };
+    assert_eq!(hit.json()["warnings"], warning("BLE-1"));
+    assert_eq!(paused.json()["warnings"], warning("BLE-2"));
+    assert!(
+        t.world.calls().iter().all(|c| !c.starts_with("linear ")),
+        "{:?}",
+        t.world.calls()
+    );
+    assert_eq!(
+        status(&t)["sources"]["linear"]["paused_until"],
+        "2026-09-30T13:00:00Z"
+    );
 }
 
 /// Change the Dispatch of `acme/api#7` in `dispatches.json`, as another process would.

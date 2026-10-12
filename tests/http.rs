@@ -391,6 +391,32 @@ fn post_dispatch_on_an_issue_not_ready_answers_409_with_the_command_s_refusal_an
 }
 
 #[test]
+fn post_dispatch_while_github_is_paused_claims_nothing_and_warns_of_the_pause() {
+    let t = ready_7();
+    t.world.add_issue("acme/api", github_issue("acme/api", 8));
+    t.cli(&["refresh"]);
+    let limited = "GitHub rate limit exceeded; nico-agent asks it again at 2026-09-30T13:00:00Z";
+    t.world.fail_call("github assign", limited);
+    t.send("POST", "/api/dispatch", r#"{"issue": "acme/api#7"}"#);
+    t.world.clear_failures();
+    t.world.calls.borrow_mut().clear();
+
+    let (status, body) = t.send("POST", "/api/dispatch", r#"{"issue": "acme/api#8"}"#);
+
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(
+        body["warnings"],
+        json!([format!(
+            "could not Claim acme/api#8: {limited}; assign it to yourself by hand"
+        )])
+    );
+    let github: Vec<String> = (t.world.calls().into_iter())
+        .filter(|c| c.starts_with("github "))
+        .collect();
+    assert_eq!(github, ["github app repos"]);
+}
+
+#[test]
 fn post_dispatch_without_an_issue_or_with_a_body_not_json_answers_400() {
     let t = ready_7();
 

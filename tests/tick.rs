@@ -619,7 +619,7 @@ fn during_a_github_pause_the_tick_closes_and_dispatches_from_what_it_knows() {
     t.world.fail_call("github viewer", limited);
     t.world.advance(TICK);
 
-    let said = t.tick();
+    let (said, github) = github_calls_after(&t, || t.tick());
 
     assert_eq!(
         said,
@@ -627,8 +627,12 @@ fn during_a_github_pause_the_tick_closes_and_dispatches_from_what_it_knows() {
             format!("could not read the issues of acme/api: {limited}"),
             "acme/api#1 Closed: its PR https://github.com/acme/api/pull/9 merged".into(),
             "acme/api#2 dispatched".into(),
+            // Not Claimed, nor tried again once GitHub resumes.
+            format!("could not Claim acme/api#2: {limited}; assign it to yourself by hand"),
         ]
     );
+    // The GitHub App answers on its own rate limit: the prompt's bot suffix.
+    assert_eq!(github, ["github viewer", "github app repos"]);
 }
 
 #[test]

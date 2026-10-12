@@ -61,7 +61,8 @@ commands, and observable proof.
 - [Status](./status.md) covers `status` and `GET /api/status` from a fresh cache, a Source that
   refuses, a stale cache, a paused GitHub, and Dispatches with their Stage.
 - [Dispatch's refusals](./dispatch-refusals.md) covers every refusal of `dispatch`, `POST
-  /api/dispatch` and the page's Dispatch form, down to a Ready issue failing at its first herdr step.
+  /api/dispatch` and the page's Dispatch form, down to a Ready issue failing at its first herdr step,
+  and its Claim while GitHub is paused.
 - [Verdict recording to the Bucket](./verdict-bucket.md) covers `verdict` pass and fail, its
   refusals, the Bucket commits on a PR head and a Verdict, `/bucket/` and the node panel's Evidence
   links.

@@ -129,7 +129,7 @@ pub fn watch(ctx: &Context, every: bool) -> io::Result<(Vec<String>, Vec<String>
             },
             Err(e) => {
                 said.push(format!("could not look for the PR of {}: {e}", d.issue));
-                if pause::note(&ctx.config_dir, &e)? {
+                if e.rate_limit().is_some() {
                     return Ok((said, no_pr));
                 }
             }
@@ -140,7 +140,7 @@ pub fn watch(ctx: &Context, every: bool) -> io::Result<(Vec<String>, Vec<String>
             Ok(now) => now,
             Err(e) => {
                 said.push(format!("could not ask GitHub about {url}: {e}"));
-                if pause::note(&ctx.config_dir, &e)? {
+                if e.rate_limit().is_some() {
                     return Ok((said, no_pr));
                 }
                 continue;
