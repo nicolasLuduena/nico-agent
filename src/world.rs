@@ -73,13 +73,6 @@ pub enum Mergeable {
     Unknown,
 }
 
-/// An issue of a GitHub repo, by `owner/name` and number.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct IssueRef {
-    pub slug: String,
-    pub number: u64,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GitHubBlocker {
     pub slug: String,
@@ -99,8 +92,6 @@ pub struct GitHubIssue {
     pub labels: Vec<String>,
     pub assignees: Vec<String>,
     pub blockers: Vec<GitHubBlocker>,
-    /// The Spec this issue belongs to, if any.
-    pub parent: Option<IssueRef>,
     /// Whether the issue has sub-issues, which makes it a parent, never dispatched.
     pub has_sub_issues: bool,
 }
@@ -141,7 +132,6 @@ pub struct LinearIssue {
     pub state: String,
     pub assignee: Option<String>,
     pub blockers: Vec<LinearBlocker>,
-    pub parent: Option<String>,
     pub has_sub_issues: bool,
 }
 
@@ -588,7 +578,6 @@ const ISSUES_QUERY: &str = "query($owner: String!, $name: String!, $label: Strin
         labels(first: 50) { nodes { name } }
         assignees(first: 20) { nodes { login } }
         blockedBy(first: 50) { nodes { number title state repository { nameWithOwner } } }
-        parent { number repository { nameWithOwner } }
         subIssuesSummary { total }
       }
     }
@@ -606,7 +595,6 @@ struct IssueNode {
     labels: Nodes<Named>,
     assignees: Nodes<Login>,
     blocked_by: Nodes<NumberedNode>,
-    parent: Option<NumberedNode>,
     sub_issues_summary: Total,
 }
 
@@ -618,9 +606,7 @@ struct Login {
 #[derive(Deserialize)]
 struct NumberedNode {
     number: u64,
-    #[serde(default)]
     title: String,
-    #[serde(default)]
     state: String,
     repository: Repository,
 }
@@ -656,10 +642,6 @@ impl From<IssueNode> for GitHubIssue {
                     state: issue_state(&b.state),
                 })
                 .collect(),
-            parent: node.parent.map(|p| IssueRef {
-                slug: p.repository.name_with_owner,
-                number: p.number,
-            }),
             has_sub_issues: node.sub_issues_summary.total > 0,
         }
     }
