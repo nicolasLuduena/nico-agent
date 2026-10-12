@@ -46,8 +46,6 @@ pub struct FakeWorld {
     pub stalled_prompts: Cell<u32>,
     /// Desktop notifications shown, as (title, body).
     pub notifications: RefCell<Vec<(String, String)>>,
-    /// What answers HTTP requests, by URL; any other URL is unreachable.
-    pub endpoints: RefCell<HashMap<String, HttpResponse>>,
     pub clock: Cell<SystemTime>,
     /// How many times `every` runs its task before it returns.
     pub timer_runs: Cell<u32>,
@@ -90,7 +88,6 @@ impl Default for FakeWorld {
             blocked_screen: Default::default(),
             stalled_prompts: Default::default(),
             notifications: Default::default(),
-            endpoints: Default::default(),
             // 2026-09-30T12:00:00Z
             clock: Cell::new(SystemTime::UNIX_EPOCH + Duration::from_secs(1_790_769_600)),
             timer_runs: Cell::new(0),
@@ -607,20 +604,6 @@ impl World for FakeWorld {
             .borrow_mut()
             .push((title.into(), body.into()));
         Ok(())
-    }
-
-    fn http(&self, request: &HttpRequest) -> WorldResult<HttpResponse> {
-        self.call(format!("http {} {}", request.method, request.url))?;
-        self.endpoints
-            .borrow()
-            .get(&request.url)
-            .cloned()
-            .ok_or_else(|| {
-                WorldError(format!(
-                    "could not reach {}: connection refused",
-                    request.url
-                ))
-            })
     }
 
     /// Keeps `handler` for the tests to send requests to.

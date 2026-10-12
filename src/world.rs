@@ -358,8 +358,6 @@ pub trait World {
     fn notify(&self, title: &str, body: &str) -> WorldResult<()>;
 
     // http
-    /// Send a request to a service nico-agent doesn't run; any status is a response.
-    fn http(&self, request: &HttpRequest) -> WorldResult<HttpResponse>;
     /// Answer HTTP on 127.0.0.1:`port` with `handler`, a thread per request,
     /// while this thread goes on; fails when the port cannot be taken.
     fn listen(&self, port: u16, handler: Handler) -> WorldResult<()>;
@@ -451,6 +449,60 @@ fn answer(world: &RealWorld, handler: &Handler, mut stream: TcpStream) -> io::Re
             }
         }
     }
+}
+
+/// Send a request to a service nico-agent doesn't run; any status is a
+/// response. The headers go on `curl`'s stdin: on its command line, any
+/// user's `ps` would show an API key.
+fn curl(request: &HttpRequest) -> WorldResult<HttpResponse> {
+    let unreachable =
+        |reason: &str| WorldError(format!("could not reach {}: {reason}", request.url));
+    let mut curl = Command::new("curl");
+    curl.args(["--silent", "--show-error", "--max-time", "30", "--request"])
+        .arg(&request.method)
+        .args(["--header", "@-", "--dump-header", "-"])
+        .args(["--write-out", "\n%{http_code}"]);
+    if !request.body.is_empty() {
+        curl.arg("--data-binary").arg(&request.body);
+    }
+    let mut child = curl
+        .arg(&request.url)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|_| WorldError("`curl` is not installed or not on PATH".into()))?;
+    let headers: String = (request.headers.iter())
+        .map(|(name, value)| format!("{name}: {value}\n"))
+        .collect();
+    (child.stdin.take().expect("stdin is piped"))
+        .write_all(headers.as_bytes())
+        .map_err(|e| unreachable(&e.to_string()))?;
+    let ran = child
+        .wait_with_output()
+        .map_err(|e| unreachable(&e.to_string()))?;
+    if !ran.status.success() {
+        let stderr = String::from_utf8_lossy(&ran.stderr);
+        return Err(unreachable(stderr.lines().next().unwrap_or("curl failed")));
+    }
+    let out = String::from_utf8_lossy(&ran.stdout);
+    let (mut body, status) = out.rsplit_once('\n').unwrap_or(("", &out));
+    // `--dump-header -` puts each response's head before the body, a
+    // proxy's or a `100 Continue`'s before the last one's.
+    let mut headers = vec![];
+    while body.starts_with("HTTP/") {
+        let (head, rest) = body.split_once("\r\n\r\n").unwrap_or((body, ""));
+        headers = (head.lines().skip(1))
+            .filter_map(|line| line.split_once(':'))
+            .map(|(name, value)| (name.trim().into(), value.trim().into()))
+            .collect();
+        body = rest;
+    }
+    Ok(HttpResponse {
+        status: status.trim().parse().map_err(|_| invalid(&request.url))?,
+        headers,
+        body: body.into(),
+    })
 }
 
 /// The World of the running binary.
@@ -1377,58 +1429,6 @@ impl World for RealWorld {
         }
         let reason = first_line(&ran.stderr, &ran.status);
         Err(WorldError(format!("`notify-send` failed: {reason}")))
-    }
-    /// Through `curl`, with the headers on its stdin: on its command line,
-    /// any user's `ps` would show an API key.
-    fn http(&self, request: &HttpRequest) -> WorldResult<HttpResponse> {
-        let unreachable =
-            |reason: &str| WorldError(format!("could not reach {}: {reason}", request.url));
-        let mut curl = Command::new("curl");
-        curl.args(["--silent", "--show-error", "--max-time", "30", "--request"])
-            .arg(&request.method)
-            .args(["--header", "@-", "--dump-header", "-"])
-            .args(["--write-out", "\n%{http_code}"]);
-        if !request.body.is_empty() {
-            curl.arg("--data-binary").arg(&request.body);
-        }
-        let mut child = curl
-            .arg(&request.url)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|_| WorldError("`curl` is not installed or not on PATH".into()))?;
-        let headers: String = (request.headers.iter())
-            .map(|(name, value)| format!("{name}: {value}\n"))
-            .collect();
-        (child.stdin.take().expect("stdin is piped"))
-            .write_all(headers.as_bytes())
-            .map_err(|e| unreachable(&e.to_string()))?;
-        let ran = child
-            .wait_with_output()
-            .map_err(|e| unreachable(&e.to_string()))?;
-        if !ran.status.success() {
-            let stderr = String::from_utf8_lossy(&ran.stderr);
-            return Err(unreachable(stderr.lines().next().unwrap_or("curl failed")));
-        }
-        let out = String::from_utf8_lossy(&ran.stdout);
-        let (mut body, status) = out.rsplit_once('\n').unwrap_or(("", &out));
-        // `--dump-header -` puts each response's head before the body, a
-        // proxy's or a `100 Continue`'s before the last one's.
-        let mut headers = vec![];
-        while body.starts_with("HTTP/") {
-            let (head, rest) = body.split_once("\r\n\r\n").unwrap_or((body, ""));
-            headers = (head.lines().skip(1))
-                .filter_map(|line| line.split_once(':'))
-                .map(|(name, value)| (name.trim().into(), value.trim().into()))
-                .collect();
-            body = rest;
-        }
-        Ok(HttpResponse {
-            status: status.trim().parse().map_err(|_| invalid(&request.url))?,
-            headers,
-            body: body.into(),
-        })
     }
     fn listen(&self, port: u16, handler: Handler) -> WorldResult<()> {
         let listener = TcpListener::bind(("127.0.0.1", port))

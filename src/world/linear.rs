@@ -12,7 +12,7 @@ use serde_json::{Value, json};
 
 use super::{
     HttpRequest, HttpResponse, LinearBlocker, LinearIssue, LinearProject, LinearTeam, Named, Nodes,
-    Page, PageInfo, READY_LABEL, RealWorld, World, WorldError, WorldResult, invalid,
+    Page, PageInfo, READY_LABEL, RealWorld, World, WorldError, WorldResult, curl, invalid,
 };
 use crate::state;
 
@@ -225,8 +225,7 @@ fn query<T: DeserializeOwned>(world: &RealWorld, text: &str, variables: Value) -
         ],
         body: json!({ "query": text, "variables": variables }).to_string(),
     };
-    let response = world
-        .http(&request)
+    let response = curl(&request)
         .map_err(|_| WorldError("Linear request failed; check your network".into()))?;
     if let Some(reset) = rate_limit_reset(world, &response) {
         return Err(WorldError::rate_limited("Linear", &state::iso(reset)));
