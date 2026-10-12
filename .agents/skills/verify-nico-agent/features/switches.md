@@ -1,9 +1,12 @@
 # Switches
 
 Each Repo has a switch per automatic step of the loop: dispatch, stack, review, restart, flip,
-answer (faux-nico answers), gardening, quality_scan. The page shows all eight in the Repo's tab and
-writes a toggle to `config.toml` through `PATCH /api/repo/<slug>/switches`, keeping the rest of the
-file as written; the loop obeys the switch from its next tick on.
+answer (faux-nico answers), gardening, quality_scan. The page shows all eight in the Repo's tab, each
+tagged `default` or `project` while the Repo does not set it, and writes a toggle to `config.toml`
+through `PATCH /api/repo/<slug>` with `{"switches": {name: bool}}`, keeping the rest of the file as
+written; "Use the default" beside a switch the Repo sets removes it (see settings). Scripts can
+send `{name: bool}` to `PATCH /api/repo/<slug>/switches`. The loop obeys the switch from its next
+tick on.
 
 ## Sub-features
 
@@ -12,7 +15,7 @@ file as written; the loop obeys the switch from its next tick on.
 - `switches-bad-name` a name that is not a switch is 400, listing the eight.
 - `switches-bad-value` a non-boolean value, a body that is not an object, or not JSON is 400.
 - `switches-unknown-repo` a slug that is not a Repo is 409, with the `repo add` to run.
-- `switches-toggle` on the page, clicking `switch "Dispatch"` sends the PATCH and the switch shows the answer.
+- `switches-toggle` on the page, clicking `switch "Dispatch"` sends `{"switches":{"dispatch":...}}` and the switch shows the answer, with `button "Use the default Dispatch"` beside it.
 - `switches-obeyed` with Dispatch off, a refresh tick dispatches no Ready issue; on again, it does.
 
 ## How to get to it (user POV)
@@ -49,7 +52,7 @@ Preconditions:
   HTTP `200`, `actions` `[]`; `$OUTSIDE_LOG` holds only `gh api user --jq .login` (no `gh issue
   edit`, no `herdr worktree create`): nothing was dispatched. Copy it to `$E/outside.off.log`.
 - **Toggle on the page.** Run `$C page --evidence "$E/10-toggle" --click "region=Switches" --expect "3 of 8 on" --click "switch=Dispatch" --expect "4 of 8 on"`.
-  `.requests.txt` has `PATCH /api/repo/verify/fixture/switches {"dispatch":true} -> 200`; the ARIA
+  `.requests.txt` has `PATCH /api/repo/verify/fixture {"switches":{"dispatch":true}} -> 200`; the ARIA
   snapshot has `switch "Dispatch" [checked]`, `switch "Review"` unchecked, and `Faux-nico answers`,
   `Gardening`, `Quality-scan` unchecked; `config.toml` has `switches = { dispatch = true , review = false }`.
 - **Obeyed again.** `: > "$OUTSIDE_LOG"`; run `$C http --evidence "$E/11-refresh-on" POST /api/refresh`.

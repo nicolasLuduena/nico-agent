@@ -134,3 +134,22 @@ code {
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
+
+/* DESIGN.md's button-quiet, set small for an action beside a setting. */
+.quiet {
+  flex: none;
+  min-height: 28px;
+  padding: 4px 8px;
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  background: var(--surface);
+  font-weight: 600;
+  cursor: pointer;
+}
+.quiet:hover:not(:disabled) {
+  background: var(--ground);
+}
+.quiet:disabled {
+  color: var(--ink-muted);
+  cursor: progress;
+}

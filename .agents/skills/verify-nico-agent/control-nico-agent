@@ -8,6 +8,7 @@
 #
 # Subcommands (see SKILL.md for when to use each):
 #   launch [--no-build]           build, make the scratch HOME and fixtures, start serve
+#   restart                       stop this run's serve and start it again, as a reboot would
 #   doctor                        read-only: is this run worth driving?
 #   env                           print the path of run.env, to source: . "$(control-nico-agent env)"
 #   seed issues                   a fresh Source read of verify/fixture (issues 1-6)
@@ -24,7 +25,7 @@
 #                                 run the CLI in the scratch HOME; exit code is the CLI's
 #   http [--evidence PREFIX] <METHOD> <PATH> [BODY]
 #                                 ask this run's serve, as the page does
-#   page [--tunnel] [--evidence PREFIX] [--width PX] [--storage FILE|none] [--click ROLE=NAME | --click ROLE~NAME | --press KEY
+#   page [--tunnel] [--evidence PREFIX] [--width PX] [--storage FILE|none] [--click ROLE=NAME | --click ROLE~NAME | --press KEY | --type TEXT
 #        | --expect TEXT | --gone TEXT | --wait SECONDS | --mode pass|502|signed-out]...
 #                                 open serve's page in headless Chromium (through the tunnel stand-in), act, capture
 #   tunnel start|pass|502|signed-out
@@ -200,11 +201,6 @@ path = "$RUN_DIR/bucket"
 enabled = false
 EOF
 
-  # setsid: serve leads its own session, so it outlives this shell and cleanup can stop it whole.
-  in_fixture "$RUN_DIR/work" setsid "$RUN_DIR/bin/nico-agent" serve \
-    > "$RUN_DIR/serve.log" 2>&1 < /dev/null &
-  local started=$!
-
   cat > "$RUN_ENV" <<EOF
 NICO_AGENT_BIN=$RUN_DIR/bin/nico-agent
 NICO_AGENT_VERSION=$(cargo_version)
@@ -221,7 +217,22 @@ SECOND_SLUG=$SECOND
 SECOND_CLONE=$RUN_DIR/fixture/${SECOND#*/}
 OUTSIDE_LOG=$RUN_DIR/outside.log
 EOF
+  start_serve "$port"
+  echo "launch: run dir   $RUN_DIR"
+  echo "launch: HOME      $FIXTURE_HOME (config $CONFIG_DIR/config.toml)"
+  echo "launch: serve     pid $SERVE_PID on http://127.0.0.1:$port"
+  echo "launch: fixtures  $SLUG at $RUN_DIR/fixture/${SLUG#*/}, $SECOND at $RUN_DIR/fixture/${SECOND#*/}"
+  echo "launch: ready when doctor passes: control-nico-agent doctor"
+}
 
+# Start serve on <port> in the scratch HOME, wait till it answers, and record its pid in run.env
+# as SERVE_PID, which must own the port.
+start_serve() {
+  local port="$1"
+  # setsid: serve leads its own session, so it outlives this shell and cleanup can stop it whole.
+  in_fixture "$RUN_DIR/work" setsid "$RUN_DIR/bin/nico-agent" serve \
+    > "$RUN_DIR/serve.log" 2>&1 < /dev/null &
+  local started=$!
   local i
   for i in $(seq 1 100); do
     kill -0 "$started" 2>/dev/null || die "serve exited at launch; see $RUN_DIR/serve.log (run cleanup)"
@@ -236,12 +247,24 @@ EOF
   local pid; pid="$(ss -ltnpH "sport = :$port" | sed -n 's/.*pid=\([0-9]*\),.*/\1/p' | head -1)"
   [ "$(readlink "/proc/$pid/exe" 2>/dev/null)" = "$RUN_DIR/bin/nico-agent" ] \
     || die "port $port is answered by pid ${pid:-?}, not this run's serve (run cleanup, launch again)"
+  sed -i '/^SERVE_PID=/d' "$RUN_ENV"
   echo "SERVE_PID=$pid" >> "$RUN_ENV"
-  echo "launch: run dir   $RUN_DIR"
-  echo "launch: HOME      $FIXTURE_HOME (config $CONFIG_DIR/config.toml)"
-  echo "launch: serve     pid $pid on http://127.0.0.1:$port"
-  echo "launch: fixtures  $SLUG at $RUN_DIR/fixture/${SLUG#*/}, $SECOND at $RUN_DIR/fixture/${SECOND#*/}"
-  echo "launch: ready when doctor passes: control-nico-agent doctor"
+  SERVE_PID=$pid
+}
+
+# Stop this run's serve, its whole session, and start it again on the same HOME and port: what it
+# shows after comes from the scratch config dir alone, as after a reboot or a service restart.
+cmd_restart() {
+  load_run
+  local was="$SERVE_PID" i
+  kill -TERM -- "-$was" 2>/dev/null || die "restart: serve (pid $was) is not running (run cleanup, launch again)"
+  for i in $(seq 1 50); do
+    kill -0 "$was" 2>/dev/null || break
+    sleep 0.1
+  done
+  kill -KILL -- "-$was" 2>/dev/null || true
+  start_serve "$PORT"
+  echo "restart: serve pid $was stopped; pid $SERVE_PID on $URL"
 }
 
 cmd_doctor() {
@@ -664,6 +687,7 @@ main() {
   local sub="${1:-}"; shift || true
   case "$sub" in
     launch) cmd_launch "$@" ;;
+    restart) cmd_restart "$@" ;;
     doctor) cmd_doctor "$@" ;;
     env) load_run; echo "$RUN_ENV" ;;
     seed) cmd_seed "$@" ;;
@@ -674,8 +698,8 @@ main() {
     page) cmd_page "$@" ;;
     tunnel) cmd_tunnel "$@" ;;
     cleanup) cmd_cleanup "$@" ;;
-    ""|-h|--help|help) sed -n '2,27p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' ;;
-    *) die "unknown subcommand '$sub' (launch|doctor|env|seed|drift|state|run|http|page|tunnel|cleanup)" ;;
+    ""|-h|--help|help) sed -n '2,28p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' ;;
+    *) die "unknown subcommand '$sub' (launch|restart|doctor|env|seed|drift|state|run|http|page|tunnel|cleanup)" ;;
   esac
 }
 

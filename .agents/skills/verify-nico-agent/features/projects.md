@@ -13,7 +13,7 @@ lists the Projects and shows each setting of a Repo with where it comes from: `r
 - `projects-switches` a Project's switch reaches its Repos while the Repos' other switches stay their defaults.
 - `projects-list` `repo list` shows each Repo's `project`: the one it names, else its slug.
 - `projects-status` `status` and `GET /api/status` hold `projects: [{name, repos, defaults}]` and, per Repo, each setting as `{value, from}`, the Reviewer's default launch included.
-- `projects-page` the Repo's tab shows the effective Room and switches, a Project's included.
+- `projects-page` the Repo's tab shows the effective Room, switches and settings, a Project's included and tagged `project`.
 - `projects-refused` an unknown key, or a launch naming no Harness, in `projects.<name>` is refused (exit 1) naming its line.
 
 ## How to get to it (user POV)
@@ -21,7 +21,7 @@ lists the Projects and shows each setting of a Repo with where it comes from: `r
 - By hand: add `project = "<name>"` under each `repos."<slug>"` and a `[projects.<name>]` table in
   `config.toml`.
 - Run `nico-agent repo list` and `nico-agent status` (`--json` for scripts).
-- Open serve's page: each Repo's tab shows its Room and switches as they take effect.
+- Open serve's page: each Repo's tab shows its Room, switches and settings as they take effect.
 
 ## Driving it with control-nico-agent
 
@@ -64,8 +64,9 @@ Preconditions:
 
 ## Gotchas
 
-- No command writes a Project yet: the page and `repo add --project` come later. Edit the file by
-  hand, and restore it after each refusal, or every later command refuses too.
+- This recipe edits the file by hand, to prove the layering of what the user writes; restore it
+  after each refusal, or every later command refuses too. `repo add --project`, the page and
+  `PATCH /api/project/<name>` write the same keys (see repos and settings).
 - A Repo with no `project` takes the defaults of `projects."<its slug>"` if there is one: it is
   that Project.
 - A launch is replaced whole: a Repo's `implementer = { harness = "claude" }` drops the Project's

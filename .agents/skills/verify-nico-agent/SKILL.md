@@ -48,6 +48,7 @@ export VERIFY_RUN_ID=<issue>
 C=.agents/skills/verify-nico-agent/control-nico-agent   # run from the repo root
 
 $C launch [--no-build]          # build, make the scratch HOME, fixtures and config, start serve
+$C restart                      # stop serve and start it again on the same HOME and port, as a reboot would
 $C doctor                       # read-only health check of this run
 . "$($C env)"                   # this run's paths: $FIXTURE_CLONE, $SECOND_CLONE, $CONFIG_DIR, $BUCKET, $URL, $OUTSIDE_LOG
 $C seed issues                  # a fresh read of verify/fixture's issues, as the Source would cache it
@@ -60,7 +61,7 @@ $C state                        # fingerprint: config dir files, Dispatches, Ver
 $C run [--evidence PREFIX] -- <nico-agent args...>       # the CLI in the scratch HOME; exit code is the CLI's
 $C http [--evidence PREFIX] [--header 'NAME: VALUE']... <METHOD> <PATH> [BODY]
                                 # ask serve, as the page does (or with other headers); exit 1 on 4xx/5xx
-$C page [--tunnel] [--evidence PREFIX] [--width PX] [--storage FILE|none] [--click ROLE=NAME | --click ROLE~NAME | --press KEY | --expect TEXT
+$C page [--tunnel] [--evidence PREFIX] [--width PX] [--storage FILE|none] [--click ROLE=NAME | --click ROLE~NAME | --press KEY | --type TEXT | --expect TEXT
         | --gone TEXT | --wait SECONDS | --mode pass|502|signed-out]...
                                 # open the page (through the tunnel stand-in), act in order, capture
 $C tunnel start|pass|502|signed-out   # a stand-in for cloudflared and Access in front of serve; $TUNNEL_URL, $TUNNEL_LOG
@@ -73,7 +74,8 @@ HTTP status) and `.headers`; `page
 --evidence` writes `.cmd`, `.aria.txt`, `.png`, `.requests.txt` and `.console.txt`. Each still prints
 what it captured, so a recipe can record and inspect at once. `page` steps: `--click tab=verify/second`
 clicks the element of that ARIA role whose accessible name is exactly the text, `--click
-"button~Failed verify/fixture #1"` one whose name contains it, `--press ArrowRight` a key,
+"button~Failed verify/fixture #1"` one whose name contains it, `--press ArrowRight` a key, `--type
+dev` text into what has focus,
 `--expect "Source not read yet"` waits for the text, `--gone TEXT` up to a minute for it to go,
 `--wait 120` lets two minutes pass, and `--mode 502` switches the tunnel stand-in (with `--tunnel`
 only). Each `page` is a new browser with nothing stored: `--storage FILE` starts it with the
@@ -123,7 +125,8 @@ when `web/node_modules` is older than its lockfile), copies the binary into the 
   then none for 10 hours; every later tick is a `refresh` or the page's Refresh button.
 
 Ready signal: `launch` prints serve's pid and URL once `GET /api/status` answers and the port's
-owner is this run's binary; then `doctor` passes. Teardown is `cleanup`. `launch` refuses to run
+owner is this run's binary; then `doctor` passes. `restart` stops serve and starts it again the same
+way, on the same port, recording its new pid; serve ticks once at start, as at launch. Teardown is `cleanup`. `launch` refuses to run
 twice for one `VERIFY_RUN_ID` (cleanup first). Pass `--no-build` to reuse `target/debug/nico-agent`
 as built; a failing `cargo build` is a broken checkout: fix or report that before verifying.
 
@@ -188,7 +191,11 @@ Stable handles are the command words and flags (`--path`, `--json`, `--harness`,
 unknown path's `help`, and on the page the ARIA roles and names: `tablist "Repos"` with one `tab`
 per Repo, `region "Needs you"`, `button "Refresh"`, `switch "Dispatch"` (and `Faux-nico answers`,
 `Flip to ready`, `Gardening`, `Quality-scan`, `Restart`, `Review`, `Stack`), `spinbutton "Room"`,
-`region "Dispatch"` with `button "Dispatch"`, `region "Map of <slug>"`. `run` executes with the run's `work/` as cwd: pass absolute paths (`--findings`).
+`region "Dispatch"` with `button "Dispatch"`, `region "Map of <slug>"`, `region "Settings"` with
+`combobox "Implementer Harness"` (and `model`, `Effort`, and the same for `Reviewer`), `textbox
+"Base"`, `combobox "Project"`, `button "Use the default <Setting>"` or `"Use the Project's
+<Setting>"`, `button "Remove <slug>…"`, `region "Add a Repo"` with `textbox "Repo"`, `textbox "Its
+clone"`, `combobox "Its Project"` and `button "Add"`. `run` executes with the run's `work/` as cwd: pass absolute paths (`--findings`).
 
 Recipes per feature are in [`features/`](features/README.md); drive the ones the change touches,
 and every entry point the feature file lists, not just the convenient one.

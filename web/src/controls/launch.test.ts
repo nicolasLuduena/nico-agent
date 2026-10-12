@@ -11,7 +11,9 @@ const repo: Repo = {
   gardening: [],
   switches: {},
   room: { value: 3, from: "default" },
+  base: { value: null, from: "default" },
   implementer: { value: { harness: "claude", model: "opus", effort: null }, from: "repo" },
+  reviewer: { value: { harness: "codex", model: null, effort: null }, from: "default" },
   harnesses: {
     claude: { models: ["opus", "sonnet"], efforts: ["low", "high"] },
     codex: { models: null, efforts: null },

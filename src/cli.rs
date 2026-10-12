@@ -58,7 +58,7 @@ impl From<WorldError> for Refusal {
 const COMMANDS: &[(&str, &str)] = &[
     ("nico-agent --version", "print the version"),
     (
-        "nico-agent repo add <owner/name> --path <clone> [--linear-team <team> --linear-project <project> --linear-label <label>]",
+        "nico-agent repo add <owner/name> --path <clone> [--project <name>] [--linear-team <team> --linear-project <project> --linear-label <label>]",
         "add a Repo",
     ),
     ("nico-agent repo rm <owner/name>", "remove a Repo"),

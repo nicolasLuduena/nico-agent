@@ -45,10 +45,13 @@ it binds the rebuild.
   there. A PR is asked about again only while it can still change; merged and
   closed are kept forever. Refresh re-asks on purpose. Rate limits and
   outages leave the Board readable and the loop running on what it knows.
-- **Switches per Repo**, editable from its tab: dispatch, stack, review,
-  restart, flip to ready, faux-nico answers, gardening, quality-scan. All off
-  is a Repo that only shows. Defaults: all on except faux-nico answers and
-  gardening.
+- **Every setting a Repo or Project has, editable from its tab**, each
+  shown with where it comes from (default, Project, Repo) and undone back to
+  it: the implementer and Reviewer launches, room, Base, its Project, and the
+  switches: dispatch, stack, review, restart, flip to ready, faux-nico
+  answers, gardening, quality-scan. All switches off is a Repo that only
+  shows. Defaults: all on except faux-nico answers and gardening. A Repo is
+  added, removed and moved into or out of a Project from the page too.
 
 ## How work is verified
 

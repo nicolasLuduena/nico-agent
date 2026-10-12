@@ -50,8 +50,8 @@ Preconditions:
   the command a `code`; `.requests.txt` has `GET /api/node/verify%2Ffixture%2310 -> 200`; the node
   button ends `review gave up, needs you`. At `--width 390` (`11-phone`) the row wraps and nothing
   is wider than the screen.
-- **Off.** Run `$C page --evidence "$E/12-review-off" --click "switch=Review" --click "button~#10, Verify: seeded Dispatch 10" --expect "Review is off for this Repo"`:
-  `.requests.txt` has `PATCH /api/repo/verify/fixture/switches {"review":false} -> 200`. Run
+- **Off.** Run `$C page --evidence "$E/12-review-off" --click "region=Switches" --click "switch=Review" --click "button~#10, Verify: seeded Dispatch 10" --expect "Review is off for this Repo"`:
+  `.requests.txt` has `PATCH /api/repo/verify/fixture {"switches":{"review":false}} -> 200`. Run
   `status --json` (`13-status-off`): `#10` and `#11` `review.state` `off`. Run `$C page --evidence "$E/14-off-settled" --click "button~#10, Verify: seeded Dispatch 10" --expect "Review is off for this Repo"`:
   no Review row in the strip, the node button ends `review off` without `needs you`.
 - **Proof.** `$C state > "$E/state.after.txt"`, its diff from `state.before.txt` into `$E/state.diff`

@@ -51,8 +51,20 @@ const ROUTES: &[(&str, &str)] = &[
         "set the Repo's switches",
     ),
     (
-        "PATCH /api/repo/<owner/name> {room}",
-        "set how many Dispatches the Repo may have In flight at once",
+        "PATCH /api/repo/<owner/name> {implementer, reviewer, room, base, project, switches}",
+        "set the Repo's own settings; null takes its Project's or the default",
+    ),
+    (
+        "PATCH /api/project/<name> {implementer, reviewer, room, base, switches}",
+        "set the Project's defaults for its Repos; null removes one",
+    ),
+    (
+        "POST /api/repo {slug, path, project}",
+        "`nico-agent repo add`",
+    ),
+    (
+        "DELETE /api/repo/<owner/name>",
+        "`nico-agent repo rm`, refused while the Repo has a Dispatch In flight",
     ),
     (
         "GET /bucket/<path>",
@@ -97,10 +109,17 @@ pub fn answer(ctx: &Context, port: u16, request: &HttpRequest) -> Answer {
             if let Some(slug) = (path.strip_prefix("/api/repo/"))
                 .and_then(|path| path.strip_suffix("/switches")) =>
         {
-            ran(body(request).and_then(|set| repo::switches(ctx, slug, &set)))
+            ran(body(request).and_then(|set| repo::switches(ctx, &unescaped(slug), &set)))
         }
         ("PATCH", path) if let Some(slug) = path.strip_prefix("/api/repo/") => {
-            ran(body(request).and_then(|set| repo::room(ctx, slug, &set)))
+            ran(body(request).and_then(|set| repo::set(ctx, &unescaped(slug), &set)))
+        }
+        ("PATCH", path) if let Some(name) = path.strip_prefix("/api/project/") => {
+            ran(body(request).and_then(|set| repo::set_project(ctx, &unescaped(name), &set)))
+        }
+        ("POST", "/api/repo") => ran(add(ctx, request)),
+        ("DELETE", path) if let Some(slug) = path.strip_prefix("/api/repo/") => {
+            ran(remove(ctx, &unescaped(slug)))
         }
         ("GET", path) if let Some(path) = path.strip_prefix("/bucket/") => {
             bucket::file(ctx, &unescaped(path))
@@ -116,8 +135,8 @@ pub fn answer(ctx: &Context, port: u16, request: &HttpRequest) -> Answer {
 }
 
 /// A 403 for what another site's page sends through the browser: a request
-/// on a host not serve's (a name rebound to 127.0.0.1 included), or a POST or
-/// PATCH from a page on another host; `None` for one serve answers.
+/// on a host not serve's (a name rebound to 127.0.0.1 included), or a POST,
+/// PATCH or DELETE from a page on another host; `None` for one serve answers.
 fn foreign(ctx: &Context, port: u16, request: &HttpRequest) -> Option<Answer> {
     let mut hosts = vec![format!("127.0.0.1:{port}"), format!("localhost:{port}")];
     // Read each time, as the Bucket's links are: the tunnel's host is in once it is set.
@@ -140,8 +159,8 @@ fn foreign(ctx: &Context, port: u16, request: &HttpRequest) -> Option<Answer> {
     if !hosts.iter().any(|h| h.eq_ignore_ascii_case(host)) {
         return Some(error(403, &format!("Host {host} is not serve's"), &help));
     }
-    let origin =
-        header("Origin").filter(|_| matches!(request.method.as_str(), "POST" | "PATCH"))?;
+    let origin = header("Origin")
+        .filter(|_| matches!(request.method.as_str(), "POST" | "PATCH" | "DELETE"))?;
     // `null`, a sandboxed page's or a file's, is no host of serve's: foreign too.
     if host_of(origin).eq_ignore_ascii_case(host) {
         return None;
@@ -291,21 +310,58 @@ fn ran(answer: Result<Value, Refusal>) -> Answer {
 /// `dispatch <issue> --harness --model --effort`, from the body's
 /// `{issue, harness, model, effort}`; a launch null or left out is unset.
 fn dispatch(ctx: &Context, request: &HttpRequest) -> Result<Value, Refusal> {
+    let args = args(request, "dispatch", ["issue", "harness", "model", "effort"])?;
+    let args: Vec<&str> = args.iter().map(String::as_str).collect();
+    dispatch::dispatch(&args, ctx)
+}
+
+/// `repo add <slug> --path --project`, from the body's `{slug, path, project}`.
+fn add(ctx: &Context, request: &HttpRequest) -> Result<Value, Refusal> {
+    let args = args(request, "repo add", ["slug", "path", "project"])?;
+    let args: Vec<&str> = args.iter().map(String::as_str).collect();
+    repo::add(&args, ctx)
+}
+
+/// `command`'s arguments from the body's `{first, flag...}`: `first`'s value,
+/// then `--<flag>=<value>`; one null or left out is unset.
+fn args<const N: usize>(
+    request: &HttpRequest,
+    command: &str,
+    names: [&str; N],
+) -> Result<Vec<String>, Refusal> {
     let body = body(request)?;
     let mut args = vec![];
-    for name in ["issue", "harness", "model", "effort"] {
+    for (i, name) in names.into_iter().enumerate() {
         match &body[name] {
             Value::Null => {}
-            Value::String(issue) if name == "issue" => args.push(issue.clone()),
+            Value::String(first) if i == 0 => args.push(first.clone()),
             Value::String(flag) => args.push(format!("--{name}={flag}")),
             other => {
                 let error = format!("{name} is a string, not {other}");
-                return Err(bad_invocation(error, "dispatch"));
+                return Err(bad_invocation(error, command));
             }
         }
     }
-    let args: Vec<&str> = args.iter().map(String::as_str).collect();
-    dispatch::dispatch(&args, ctx)
+    Ok(args)
+}
+
+/// `repo rm <slug>`, refused while the Repo has a Dispatch In flight: from
+/// the page, a Repo goes only once its work is Closed.
+fn remove(ctx: &Context, slug: &str) -> Result<Value, Refusal> {
+    let dispatches = dispatch::load(&ctx.config_dir)?;
+    let live: Vec<&str> = (dispatches.iter())
+        .filter(|d| d.closed_at.is_none() && d.repo.eq_ignore_ascii_case(slug))
+        .map(|d| d.issue.as_str())
+        .collect();
+    if !live.is_empty() {
+        return Err(Refusal::new(
+            format!("{slug} has a Dispatch In flight: {}", live.join(", ")),
+            vec![format!(
+                "Remove it once each is Closed, or run `nico-agent repo rm {slug}`, which leaves them to finish"
+            )],
+        ));
+    }
+    repo::rm(&[slug], ctx)
 }
 
 /// The request's body, which is JSON, or a bad request.

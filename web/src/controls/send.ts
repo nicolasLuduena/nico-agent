@@ -12,3 +12,6 @@ export async function send(method: string, path: string, body?: unknown): Promis
     return { ok: false, error: "Could not reach nico-agent serve.", help: ["Check that `nico-agent serve` is running, then try again."] };
   }
 }
+
+/** Set the Repo `slug`'s own settings, `body` as `PATCH /api/repo/<slug>` takes it; it answers the Repo's settings after. */
+export const patch = (slug: string, body: Record<string, unknown>) => send("PATCH", `/api/repo/${slug}`, body);

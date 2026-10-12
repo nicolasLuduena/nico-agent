@@ -150,7 +150,10 @@ fn an_unknown_path_or_method_answers_404_with_the_routes_as_help() {
         "POST /api/dispatch {issue, harness, model, effort}: `nico-agent dispatch` of the issue",
         "POST /api/refresh: `nico-agent refresh`",
         "PATCH /api/repo/<owner/name>/switches {name: bool}: set the Repo's switches",
-        "PATCH /api/repo/<owner/name> {room}: set how many Dispatches the Repo may have In flight at once",
+        "PATCH /api/repo/<owner/name> {implementer, reviewer, room, base, project, switches}: set the Repo's own settings; null takes its Project's or the default",
+        "PATCH /api/project/<name> {implementer, reviewer, room, base, switches}: set the Project's defaults for its Repos; null removes one",
+        "POST /api/repo {slug, path, project}: `nico-agent repo add`",
+        "DELETE /api/repo/<owner/name>: `nico-agent repo rm`, refused while the Repo has a Dispatch In flight",
         "GET /bucket/<path>: a file of the Bucket, where each Verdict's Evidence is kept, or a page of a folder's",
     ]);
     assert_eq!(
@@ -615,8 +618,8 @@ fn a_request_on_a_foreign_or_missing_host_answers_403_and_reads_nothing() {
 }
 
 /// What the app sends that changes something: a refresh, a Dispatch of
-/// Ready issue 7, a Switch turned off.
-const WRITES: [(&str, &str, &str); 3] = [
+/// Ready issue 7, a Switch turned off, a setting, the Repo added again and removed.
+const WRITES: [(&str, &str, &str); 6] = [
     ("POST", "/api/refresh", ""),
     ("POST", "/api/dispatch", r#"{"issue": "acme/api#7"}"#),
     (
@@ -624,10 +627,17 @@ const WRITES: [(&str, &str, &str); 3] = [
         "/api/repo/acme/api/switches",
         r#"{"review": false}"#,
     ),
+    ("PATCH", "/api/repo/acme/api", r#"{"room": 2}"#),
+    (
+        "POST",
+        "/api/repo",
+        r#"{"slug": "acme/api", "path": "/src/api"}"#,
+    ),
+    ("DELETE", "/api/repo/acme/api", ""),
 ];
 
 #[test]
-fn a_post_or_patch_from_a_page_on_another_host_answers_403_and_does_nothing() {
+fn a_post_patch_or_delete_from_a_page_on_another_host_answers_403_and_does_nothing() {
     let t = ready_7();
     let before = files(&t);
 
@@ -684,8 +694,15 @@ fn patch_room_writes_room_in_the_repo_s_table_alone_and_answers_it() {
     let api = t.send("PATCH", "/api/repo/acme/api", r#"{"room": 5}"#);
     let web = t.send("PATCH", "/api/repo/ACME/WEB", r#"{"room": 2}"#);
 
-    assert_eq!(api, (200, json!({ "slug": "acme/api", "room": 5 })));
-    assert_eq!(web, (200, json!({ "slug": "acme/web", "room": 2 })));
+    assert_eq!(api.0, 200, "{}", api.1);
+    assert_eq!(
+        (&api.1["slug"], &api.1["room"]),
+        (&json!("acme/api"), &json!({ "value": 5, "from": "repo" }))
+    );
+    assert_eq!(
+        (&web.1["slug"], &web.1["room"]),
+        (&json!("acme/web"), &json!({ "value": 2, "from": "repo" }))
+    );
     let expected = WRITTEN
         .replace("# trust it\n", "# trust it\nroom = 5\n")
         .replace("room = 1\n", "room = 2\n");
@@ -697,45 +714,97 @@ fn patch_room_writes_room_in_the_repo_s_table_alone_and_answers_it() {
 }
 
 #[test]
-fn patch_room_refuses_anything_but_a_whole_number_of_at_least_1_and_writes_nothing() {
+fn patch_repo_refuses_a_bad_value_of_any_setting_and_writes_nothing() {
     let t = written();
-    let help = json!([
-        "room is how many Dispatches the Repo may have In flight at once, a whole number of at least 1"
-    ]);
-    let refused = |error: &str| (400, json!({ "error": error, "help": help }));
+    let room = "room is how many Dispatches the Repo may have In flight at once, a whole number of at least 1";
+    let settings = "Settings: implementer, reviewer, room, base, project, switches; null takes the Project's or the default";
+    let switches =
+        "Switches: dispatch, stack, review, restart, flip, answer, gardening, quality_scan";
+    let harnesses = "Harnesses: claude, codex, opencode";
 
     let bodies = [
         (
             r#"{"room": 0}"#,
             "room is a whole number of at least 1, not 0",
+            room,
         ),
         (
             r#"{"room": -1}"#,
             "room is a whole number of at least 1, not -1",
+            room,
         ),
         (
             r#"{"room": 1.5}"#,
             "room is a whole number of at least 1, not 1.5",
+            room,
         ),
         (
             r#"{"room": "5"}"#,
             "room is a whole number of at least 1, not \"5\"",
+            room,
         ),
         (
             r#"{"room": 4294967296}"#,
             "room is a whole number of at least 1, not 4294967296",
+            room,
         ),
-        ("{}", "{} sets no room"),
-        ("[5]", "[5] sets no room"),
+        ("{}", "{} sets nothing", settings),
+        ("[5]", "[5] sets nothing", settings),
         (
-            r#"{"room": 2, "base": "x"}"#,
-            "`base` is not a setting the page sets",
+            r#"{"room": 2, "rom": 2}"#,
+            "`rom` is not a setting the page sets",
+            settings,
+        ),
+        (
+            r#"{"base": ""}"#,
+            "base is a name, not \"\"",
+            "base is the branch a Dispatch starts from unless stacked",
+        ),
+        (
+            r#"{"project": 7}"#,
+            "project is a name, not 7",
+            "project is the name of the Project the Repo joins",
+        ),
+        (
+            r#"{"implementer": "claude"}"#,
+            "implementer is {harness, model, effort}, not \"claude\"",
+            harnesses,
+        ),
+        (
+            r#"{"reviewer": {"harness": "claude", "modle": "opus"}}"#,
+            "reviewer is {harness, model, effort}, not {\"harness\":\"claude\",\"modle\":\"opus\"}",
+            harnesses,
+        ),
+        (
+            r#"{"reviewer": {"harness": "pi"}}"#,
+            "unknown Harness `pi`",
+            "Valid Harnesses: claude, codex, opencode",
+        ),
+        (
+            r#"{"implementer": {"harness": "claude", "model": "gpt-5"}}"#,
+            "unknown model `gpt-5` for claude",
+            "Valid models for claude: fable, opus, sonnet, haiku",
+        ),
+        (
+            r#"{"switches": {"reveiw": false}}"#,
+            "`reveiw` is not a switch",
+            switches,
+        ),
+        (
+            r#"{"switches": {"review": "no"}}"#,
+            "review is true or false, not \"no\"",
+            switches,
+        ),
+        (
+            r#"{"switches": [true]}"#,
+            "[true] is not an object of switches",
+            switches,
         ),
     ];
-    for (body, error) in bodies {
+    for (body, error, help) in bodies {
         assert_eq!(
             t.send("PATCH", "/api/repo/acme/api", body),
-            refused(error),
+            (400, json!({ "error": error, "help": [help] })),
             "{body}"
         );
     }
@@ -752,4 +821,339 @@ fn patch_room_refuses_anything_but_a_whole_number_of_at_least_1_and_writes_nothi
         )
     );
     assert_eq!(config(&t), WRITTEN);
+}
+
+#[test]
+fn patch_repo_writes_only_the_named_settings_keeping_the_user_s_comments_and_answers_its_settings()
+{
+    let t = written();
+
+    let api = t.send(
+        "PATCH",
+        "/api/repo/acme%2Fapi",
+        r#"{
+            "implementer": {"harness": "codex", "model": "gpt-5"},
+            "reviewer": {"harness": "claude", "model": "opus", "effort": null},
+            "base": "dev",
+            "switches": {"review": false, "gardening": true}
+        }"#,
+    );
+    let web = t.send(
+        "PATCH",
+        "/api/repo/ACME/WEB",
+        r#"{"room": 2, "project": "shop"}"#,
+    );
+
+    let expected = WRITTEN
+        .replace(
+            "switches = { dispatch = true, review = true } # trust it\n",
+            "switches = { dispatch = true, review = false , gardening = true } # trust it\n\
+             base = \"dev\"\n\
+             implementer = { harness = \"codex\", model = \"gpt-5\" }\n\
+             reviewer = { harness = \"claude\", model = \"opus\" }\n",
+        )
+        .replace("room = 1\n", "room = 2\nproject = \"shop\"\n");
+    assert_eq!(config(&t), expected);
+    assert_eq!(api.0, 200, "{}", api.1);
+    assert_eq!(api.1["slug"], "acme/api");
+    assert_eq!(
+        api.1["implementer"],
+        json!({ "value": { "harness": "codex", "model": "gpt-5", "effort": null }, "from": "repo" })
+    );
+    assert_eq!(
+        api.1["reviewer"],
+        json!({ "value": { "harness": "claude", "model": "opus", "effort": null }, "from": "repo" })
+    );
+    assert_eq!(api.1["base"], json!({ "value": "dev", "from": "repo" }));
+    assert_eq!(
+        api.1["switches"]["gardening"],
+        json!({ "value": true, "from": "repo" })
+    );
+    assert_eq!(web, (200, web.1.clone()));
+    assert_eq!(web.1["room"], json!({ "value": 2, "from": "repo" }));
+    // The answer is the Repo's settings as status shows them.
+    let status = t.get("/api/status").1;
+    for (answer, shown) in [(&api.1, &status["repos"][0]), (&web.1, &status["repos"][1])] {
+        for (key, setting) in answer.as_object().unwrap() {
+            assert_eq!(&shown[key], setting, "{key}");
+        }
+    }
+    assert_eq!(
+        status["projects"],
+        json!([
+            { "name": "acme/api", "repos": ["acme/api"], "defaults": {} },
+            { "name": "shop", "repos": ["acme/web"], "defaults": {} },
+        ])
+    );
+}
+
+/// `serve` listening, on `acme/api` in Project `shop`, each setting its own.
+const IN_SHOP: &str = r#"[repos."acme/api"]
+path = "/src/api"
+project = "shop" # with web, one day
+room = 2 # mine
+reviewer = { harness = "opencode" }
+switches = { review = true, stack = false }
+
+[projects.shop]
+room = 4
+switches = { review = false }
+"#;
+
+fn in_shop() -> Setup {
+    let t = with_repo();
+    std::fs::write(t.config_dir.join("config.toml"), IN_SHOP).unwrap();
+    t.tick();
+    t
+}
+
+#[test]
+fn null_removes_the_repo_s_own_value_and_status_shows_the_project_s_or_the_default() {
+    let t = in_shop();
+
+    let removed = t.send(
+        "PATCH",
+        "/api/repo/acme/api",
+        r#"{"room": null, "reviewer": null, "switches": {"review": null}}"#,
+    );
+
+    assert_eq!(
+        config(&t),
+        IN_SHOP
+            .replace(
+                "room = 2 # mine\nreviewer = { harness = \"opencode\" }\n",
+                ""
+            )
+            .replace("{ review = true, stack = false }", "{ stack = false }")
+    );
+    let shown = &t.get("/api/status").1["repos"][0];
+    assert_eq!(shown["room"], json!({ "value": 4, "from": "project" }));
+    assert_eq!(
+        shown["switches"]["review"],
+        json!({ "value": false, "from": "project" })
+    );
+    assert_eq!(
+        shown["reviewer"],
+        json!({ "value": { "harness": "codex", "model": null, "effort": null }, "from": "default" })
+    );
+    assert_eq!(removed.1["room"], shown["room"]);
+
+    let last_switch = t.send(
+        "PATCH",
+        "/api/repo/acme/api",
+        r#"{"switches": {"stack": null}}"#,
+    );
+    let out_of_shop = t.send("PATCH", "/api/repo/acme/api", r#"{"project": null}"#);
+
+    assert_eq!((last_switch.0, out_of_shop.0), (200, 200));
+    assert_eq!(
+        config(&t),
+        "[repos.\"acme/api\"]\npath = \"/src/api\"\n\n[projects.shop]\nroom = 4\nswitches = { review = false }\n"
+    );
+    let shown = &t.get("/api/status").1["repos"][0];
+    assert_eq!(shown["room"], json!({ "value": 3, "from": "default" }));
+    assert_eq!(
+        shown["switches"]["stack"],
+        json!({ "value": true, "from": "default" })
+    );
+}
+
+#[test]
+fn patch_project_writes_its_defaults_which_its_repos_take_and_null_removes_one() {
+    let t = in_shop();
+
+    let set = t.send(
+        "PATCH",
+        "/api/project/shop",
+        r#"{"room": 5, "implementer": {"harness": "codex"}, "switches": {"gardening": true}}"#,
+    );
+    let removed = t.send("PATCH", "/api/project/shop", r#"{"room": null}"#);
+    // A Repo with no `project` is its own, named by its slug: its table is made.
+    let mine = written();
+    let own = mine.send("PATCH", "/api/project/acme%2Fapi", r#"{"base": "dev"}"#);
+
+    assert_eq!(
+        set,
+        (
+            200,
+            json!({ "name": "shop", "defaults": {
+                "room": 5,
+                "implementer": { "harness": "codex", "model": null, "effort": null },
+                "switches": { "review": false, "gardening": true },
+            } })
+        )
+    );
+    assert_eq!(removed.1["defaults"]["room"], json!(null));
+    assert_eq!(
+        own,
+        (
+            200,
+            json!({ "name": "acme/api", "defaults": { "base": "dev" } })
+        )
+    );
+    assert_eq!(
+        config(&t),
+        IN_SHOP.replace(
+            "room = 4\nswitches = { review = false }\n",
+            "switches = { review = false , gardening = true }\nimplementer = { harness = \"codex\" }\n"
+        )
+    );
+    assert_eq!(
+        config(&mine),
+        format!("{WRITTEN}\n[projects.\"acme/api\"]\nbase = \"dev\"\n")
+    );
+    assert_eq!(
+        mine.get("/api/status").1["repos"][0]["base"],
+        json!({ "value": "dev", "from": "project" })
+    );
+    let shown = &t.get("/api/status").1["repos"][0];
+    assert_eq!(
+        shown["implementer"],
+        json!({ "value": { "harness": "codex", "model": null, "effort": null }, "from": "project" })
+    );
+    assert_eq!(
+        shown["switches"]["gardening"],
+        json!({ "value": true, "from": "project" })
+    );
+}
+
+#[test]
+fn patch_project_refuses_project_a_bad_value_or_a_name_no_project_has_and_writes_nothing() {
+    let t = in_shop();
+
+    let project = t.send("PATCH", "/api/project/shop", r#"{"project": "mall"}"#);
+    let bad = t.send("PATCH", "/api/project/shop", r#"{"room": 0}"#);
+    let unknown = t.send("PATCH", "/api/project/mall", r#"{"room": 2}"#);
+
+    assert_eq!(
+        project,
+        (
+            400,
+            json!({
+                "error": "`project` is not a setting the page sets",
+                "help": ["Settings: implementer, reviewer, room, base, switches; null takes the Project's or the default"],
+            })
+        )
+    );
+    assert_eq!(bad.0, 400);
+    assert_eq!(
+        unknown,
+        (
+            409,
+            json!({ "error": "mall is not a Project", "help": ["Projects: shop"] })
+        )
+    );
+    assert_eq!(config(&t), IN_SHOP);
+}
+
+/// `serve` listening on no Repo, `/src/web` a clone of acme/web; no calls recorded yet.
+fn no_repo() -> Setup {
+    let t = setup();
+    t.world
+        .add_clone("/src/web", &["git@github.com:acme/web.git"]);
+    t.tick();
+    t.world.calls.borrow_mut().clear();
+    t
+}
+
+#[test]
+fn post_repo_adds_as_repo_add_does_and_delete_removes_as_repo_rm_does() {
+    let (app, cli) = (no_repo(), no_repo());
+
+    let posted = app.send(
+        "POST",
+        "/api/repo",
+        r#"{"slug": "acme/web", "path": "/src/web", "project": "shop"}"#,
+    );
+    let added = cli.cli(&[
+        "repo",
+        "add",
+        "acme/web",
+        "--path",
+        "/src/web",
+        "--project",
+        "shop",
+        "--json",
+    ]);
+
+    assert_eq!(
+        posted,
+        (200, json!({ "repo": "acme/web added", "path": "/src/web" }))
+    );
+    assert_eq!(posted.1, added.json());
+    assert_eq!(app.world.calls(), cli.world.calls());
+    assert_eq!(
+        config(&app),
+        "[repos.\"acme/web\"]\npath = \"/src/web\"\nproject = \"shop\"\n"
+    );
+    assert_eq!(config(&app), config(&cli));
+
+    let deleted = app.send("DELETE", "/api/repo/acme%2Fweb", "");
+    let removed = cli.cli(&["repo", "rm", "acme/web", "--json"]);
+
+    assert_eq!(
+        deleted,
+        (
+            200,
+            json!({ "repo": "acme/web removed", "stays": ["the clone at /src/web"] })
+        )
+    );
+    assert_eq!(deleted.1, removed.json());
+    assert_eq!(config(&app), config(&cli));
+    assert_eq!(app.get("/api/status").1["repos"], json!([]));
+}
+
+#[test]
+fn post_repo_refuses_as_repo_add_does_and_writes_nothing() {
+    let t = no_repo();
+    let usage = "Run `nico-agent repo add <owner/name> --path <clone> [--project <name>] [--linear-team <team> --linear-project <project> --linear-label <label>]` to add a Repo";
+
+    let no_path = t.send("POST", "/api/repo", r#"{"slug": "acme/web"}"#);
+    let not_a_string = t.send("POST", "/api/repo", r#"{"slug": "acme/web", "path": 7}"#);
+    let not_a_clone = t.send(
+        "POST",
+        "/api/repo",
+        r#"{"slug": "acme/api", "path": "/src/web"}"#,
+    );
+
+    assert_eq!(
+        no_path,
+        (
+            400,
+            json!({ "error": "missing required flag --path", "help": [usage] })
+        )
+    );
+    assert_eq!(
+        not_a_string,
+        (
+            400,
+            json!({ "error": "path is a string, not 7", "help": [usage] })
+        )
+    );
+    assert_eq!(not_a_clone.0, 409);
+    assert_eq!(
+        not_a_clone.1["error"],
+        "/src/web is not a clone of acme/api (its remotes: git@github.com:acme/web.git)"
+    );
+    assert!(!t.config_dir.join("config.toml").exists());
+}
+
+#[test]
+fn delete_repo_is_refused_while_the_repo_has_a_dispatch_in_flight() {
+    let t = dispatched();
+    let before = config(&t);
+
+    let refused = t.send("DELETE", "/api/repo/ACME/API", "");
+
+    assert_eq!(
+        refused,
+        (
+            409,
+            json!({
+                "error": "ACME/API has a Dispatch In flight: acme/api#7",
+                "help": ["Remove it once each is Closed, or run `nico-agent repo rm ACME/API`, which leaves them to finish"],
+            })
+        )
+    );
+    assert_eq!(config(&t), before);
 }

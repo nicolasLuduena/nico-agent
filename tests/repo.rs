@@ -140,6 +140,48 @@ fn adding_twice_is_a_no_op_that_says_so_and_a_change_updates_the_entry() {
 }
 
 #[test]
+fn add_with_project_names_the_repo_s_project_and_again_without_it_keeps_it() {
+    let t = with_clone("/src/api", "git@github.com:acme/api.git");
+    t.cli(&[
+        "repo",
+        "add",
+        "acme/api",
+        "--path",
+        "/src/api",
+        "--project",
+        "shop",
+    ]);
+
+    let moved = t.cli(&[
+        "repo",
+        "add",
+        "acme/api",
+        "--path",
+        "/src/api",
+        "--project=mall",
+        "--json",
+    ]);
+    let again = t.cli(&["repo", "add", "acme/api", "--path", "/src/api", "--json"]);
+
+    assert_eq!(
+        moved.json(),
+        json!({ "repo": "acme/api updated", "path": "/src/api" })
+    );
+    assert_eq!(
+        again.json(),
+        json!({ "repo": "acme/api already added (no-op)", "path": "/src/api" })
+    );
+    assert_eq!(
+        std::fs::read_to_string(t.config_dir.join("config.toml")).unwrap(),
+        "[repos.\"acme/api\"]\npath = \"/src/api\"\nproject = \"mall\"\n"
+    );
+    assert_eq!(
+        t.cli(&["repo", "list", "--json"]).json()["repos"][0]["project"],
+        "mall"
+    );
+}
+
+#[test]
 fn rm_removes_the_entry_and_says_what_stays() {
     let t = with_clone("/src/api", "git@github.com:acme/api.git");
     t.world
@@ -228,7 +270,7 @@ fn a_removed_repos_work_in_flight_is_still_watched_reviewed_flipped_restarted_an
 #[test]
 fn a_bad_invocation_exits_2_with_the_usage_before_any_outside_call() {
     let t = setup();
-    let usage = "Run `nico-agent repo add <owner/name> --path <clone> [--linear-team <team> --linear-project <project> --linear-label <label>]` to add a Repo";
+    let usage = "Run `nico-agent repo add <owner/name> --path <clone> [--project <name>] [--linear-team <team> --linear-project <project> --linear-label <label>]` to add a Repo";
     let cases: [(&[&str], &str); 7] = [
         (&["repo", "add", "acme/api"], "missing required flag --path"),
         (

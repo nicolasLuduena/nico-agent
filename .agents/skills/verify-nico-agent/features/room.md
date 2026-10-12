@@ -1,15 +1,16 @@
 # Room
 
 Each Repo has a room: how many Dispatches it may have In flight at once, a draft PR's included; 3
-unless set. The page shows it in the Repo's tab under the switches, as a number input with the
-Repo's Dispatches not Closed counted under it, and writes a change to `config.toml` through
-`PATCH /api/repo/<slug>`, keeping the rest of the file as written; the loop fills the new room from
-its next tick on.
+unless set. The page shows it in the Repo's tab above the switches, as a number input with the
+Repo's Dispatches not Closed counted under it and tagged `default` or `project` while the Repo
+does not set it, and writes a change to `config.toml` through `PATCH /api/repo/<slug>`, keeping the
+rest of the file as written; "Use the default" (or "Use the Project's") removes the Repo's own. The
+loop fills the new room from its next tick on.
 
 ## Sub-features
 
-- `room-patch` `PATCH` with `{"room": n}` writes `room = n` in the Repo's table and answers `{slug, room}`.
-- `room-bad-value` `0`, `-1`, `1.5`, `"5"`, `{}`, another key beside room, or a body not JSON is 400, writing nothing.
+- `room-patch` `PATCH` with `{"room": n}` writes `room = n` in the Repo's table and answers the Repo's settings, `room` `{"value": n, "from": "repo"}`.
+- `room-bad-value` `0`, `-1`, `1.5`, `"5"`, `{}`, a key that is no setting beside room, or a body not JSON is 400, writing nothing.
 - `room-unknown-repo` a slug that is not a Repo is 409, with the `repo add` to run.
 - `room-page-set` on the page, a new value in `spinbutton "Room"` is sent on Enter or blur and shown from the answer.
 - `room-page-refused` a refused value shows its error inline under the input, which goes back to the room set.
@@ -32,12 +33,14 @@ Preconditions:
 - `E=.evidence/<issue>/room`; `$C state > "$E/state.before.txt"`.
 
 - **Set it.** Run `$C http --evidence "$E/01-set" PATCH /api/repo/verify/fixture '{"room":5}'`.
-  HTTP `200`, `{"room":5,"slug":"verify/fixture"}`; `config.toml`'s `[repos."verify/fixture"]` gains `room = 5`.
+  HTTP `200`, `slug` `verify/fixture` and `room` `{"from":"repo","value":5}` among the Repo's
+  settings; `config.toml`'s `[repos."verify/fixture"]` gains `room = 5`.
 - **Refusals.** Each of `'{"room":0}'`, `'{"room":-1}'`, `'{"room":1.5}'`, `'{"room":"5"}'`, `'{}'`,
-  `'{"room":2,"base":"x"}'` and `'not json'` (`02` to `08`): HTTP `400`, e.g. `room is a whole number
-  of at least 1, not 0`, `{} sets no room`, `` `base` is not a setting the page sets ``, with `help`
-  `room is how many Dispatches the Repo may have In flight at once, a whole number of at least 1`
-  (none for not JSON). On `/api/repo/other/repo` with `'{"room":2}'` (`09-unknown-repo`): `409`,
+  `'{"room":2,"rom":2}'` and `'not json'` (`02` to `08`): HTTP `400`, e.g. `room is a whole number
+  of at least 1, not 0` with `help` `room is how many Dispatches the Repo may have In flight at
+  once, a whole number of at least 1`; `{} sets nothing` and `` `rom` is not a setting the page
+  sets `` with `help` `Settings: implementer, reviewer, room, base, project, switches; null takes
+  the Project's or the default` (none for not JSON). On `/api/repo/other/repo` with `'{"room":2}'` (`09-unknown-repo`): `409`,
   `other/repo is not a configured Repo`. `config.toml` is byte for byte unchanged by each.
 - **On the page.** Run `$C page --evidence "$E/10-page" --expect "1 in flight; each Dispatch holds its room until its PR merges or closes"`.
   The ARIA snapshot has `spinbutton "Room": "5"` and that paragraph under it.
