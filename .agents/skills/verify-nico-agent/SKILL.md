@@ -166,7 +166,7 @@ Stable handles are the command words and flags (`--path`, `--json`, `--harness`,
 `--effort`, `--sha`, `--findings`), the exit codes, the JSON field names, the routes in `GET` of an
 unknown path's `help`, and on the page the ARIA roles and names: `tablist "Repos"` with one `tab`
 per Repo, `region "Needs you"`, `button "Refresh"`, `switch "Dispatch"` (and `Faux-nico answers`,
-`Flip to ready`, `Gardening`, `Quality-scan`, `Restart`, `Review`, `Stack`), `region "Dispatch"`
+`Flip to ready`, `Gardening`, `Quality-scan`, `Restart`, `Review`, `Stack`), `spinbutton "Room"`, `region "Dispatch"`
 with `button "Dispatch"`, `region "Map of
 <slug>"`. `run` executes with the run's `work/` as cwd: pass absolute paths (`--findings`).
 

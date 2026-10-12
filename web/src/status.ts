@@ -19,6 +19,8 @@ export interface Repo {
   gardening: Issue[];
   /** dispatch, stack, review, restart, flip, answer, gardening, quality_scan. */
   switches: Record<string, boolean>;
+  /** How many Dispatches it may have In flight at once. */
+  room: number;
   /** The launch the loop dispatches on. */
   implementer: Launch;
   /** Each configured Harness, with the models and Efforts it takes (null: any). */

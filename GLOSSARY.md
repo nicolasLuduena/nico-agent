@@ -38,7 +38,7 @@ task.
 Repo's room, start Reviewers, restart what broke. It makes no judgment.
 _Avoid_: scheduler, orchestrator, Lead.
 
-**Room**: how many Implementers a Repo may run at once; 3 unless set.
+**Room**: how many Dispatches a Repo may have In flight at once, a draft PR's included; 3 unless set.
 _Avoid_: concurrency, slots.
 
 **Dispatch**: one issue sent to one Implementer in its own herdr workspace
