@@ -155,7 +155,7 @@ pub fn linear_issue(identifier: &str) -> LinearIssue {
     }
 }
 
-/// An open PR of `slug` on `agent/pr-N`, against `main`.
+/// An open PR of `slug` on `agent/pr-N`, against `main`, opened before the clock starts.
 pub fn pull_request(slug: &str, number: u64) -> PullRequest {
     PullRequest {
         repo: slug.into(),
@@ -164,6 +164,7 @@ pub fn pull_request(slug: &str, number: u64) -> PullRequest {
         state: PrState::Open,
         base_branch: "main".into(),
         head_branch: Some(format!("agent/pr-{number}")),
+        created_at: "2026-09-01T00:00:00Z".into(),
     }
 }
 
