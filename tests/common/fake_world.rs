@@ -118,7 +118,6 @@ pub fn github_issue(slug: &str, number: u64) -> GitHubIssue {
         labels: vec!["ready-for-agent".into()],
         assignees: vec![],
         blockers: vec![],
-        parent: None,
         has_sub_issues: false,
     }
 }
@@ -141,7 +140,6 @@ pub fn linear_issue(identifier: &str) -> LinearIssue {
         state: "unstarted".into(),
         assignee: None,
         blockers: vec![],
-        parent: None,
         has_sub_issues: false,
     }
 }

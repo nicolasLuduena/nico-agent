@@ -25,7 +25,7 @@ const ISSUES_QUERY: &str = "query($filter: IssueFilter!, $cursor: String) {
       state { type } assignee { id }
       labels(first: 100) { nodes { name } pageInfo { hasNextPage endCursor } }
       inverseRelations(first: 100) { nodes { type issue { identifier title state { type } } } pageInfo { hasNextPage endCursor } }
-      parent { identifier } children(first: 1) { nodes { id } }
+      children(first: 1) { nodes { id } }
     }
     pageInfo { hasNextPage endCursor }
   }
@@ -46,7 +46,6 @@ struct IssueNode {
     assignee: Option<IdNode>,
     labels: Page<Named>,
     inverse_relations: Page<RelationNode>,
-    parent: Option<RelatedNode>,
     children: Nodes<IdNode>,
 }
 
@@ -71,8 +70,6 @@ struct RelationNode {
 #[derive(Deserialize)]
 struct RelatedNode {
     identifier: String,
-    /// Asked of a Blocker, not of a parent.
-    #[serde(default)]
     title: String,
     state: Option<StateNode>,
 }
@@ -172,7 +169,6 @@ fn to_issue(world: &RealWorld, node: IssueNode) -> WorldResult<LinearIssue> {
                 state: r.issue.state.map(|s| s.kind).unwrap_or_default(),
             })
             .collect(),
-        parent: node.parent.map(|p| p.identifier),
         has_sub_issues: !node.children.nodes.is_empty(),
     })
 }
