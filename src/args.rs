@@ -1,5 +1,7 @@
 //! A command's arguments: positionals, and flags as `--name value` or
-//! `--name=value`. Anything off is a bad invocation (exit 2).
+//! `--name=value`. A value may start with `--`, but the `value` of
+//! `--name value` is never one of the command's own flags. Anything off is a
+//! bad invocation (exit 2).
 
 use std::collections::HashMap;
 
@@ -29,14 +31,14 @@ impl<'a> Args<'a> {
             let (name, value) = arg
                 .split_once('=')
                 .map_or((arg, None), |(n, v)| (n, Some(v)));
-            if !flags.contains(&name) {
+            if !own_flag(arg) {
                 return Err(bad_invocation(
                     format!("unknown flag {name} for `{command}`"),
                     command,
                 ));
             }
-            // A value may start with `--` (an answer about a command line); only
-            // the command's own flags are not the value before them.
+            // The next argument is the value even when it starts with `--`, as an
+            // answer about a command line does, unless it is a flag of the command.
             match value
                 .or_else(|| rest.next_if(|next| !own_flag(next)))
                 .filter(|v| !v.is_empty())

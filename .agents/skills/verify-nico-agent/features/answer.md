@@ -1,10 +1,8 @@
 # Answer an Asking Implementer
 
 `answer` is how the user, or a faux-nico, unblocks an Implementer that herdr reports Asking: it
-types the text into the Implementer's pane through herdr, then records it on the Dispatch beside
-the question it answers. A run never reaches herdr, so an answer is driven to the moment it is typed
-(the `herdr agent prompt` call in `outside.log`, the text one argument as given) and to its
-refusals; recording it needs the prompt to land, which `cargo test` covers.
+types the text, as given, into the Implementer's pane through herdr, then records it on the Dispatch
+beside the question it answers. A text may start with `--`, as an answer about a command line does.
 
 ## Sub-features
 
@@ -12,7 +10,7 @@ refusals; recording it needs the prompt to land, which `cargo test` covers.
 - `answer-dash-text` a text starting with `--` is the answer, as `--text "--force is fine"` and as `--text=--force is fine`.
 - `answer-no-dispatch` an issue with no live Dispatch is exit 1.
 - `answer-not-asking` a live Dispatch whose Implementer is not Asking is exit 1.
-- `answer-typed` an answer, by the user or `--by faux-nico`, is typed as `herdr agent prompt <implementer> <text> --wait --until working --timeout 30000`; with herdr stubbed that is exit 1 and nothing is recorded.
+- `answer-typed` an answer, by the user or `--by faux-nico`, is typed as `herdr agent prompt <implementer> <text> --wait --until working --timeout 30000`.
 
 ## How to get to it (user POV)
 
@@ -56,8 +54,9 @@ Preconditions:
 
 ## Gotchas
 
-- Nothing is recorded in a run: the herdr stub refuses the prompt, so `answers` stays empty and the
-  same answer again is typed again, not `already recorded (no-op)`.
+- A run never reaches herdr: the stub refuses the prompt, so an answer is exit 1, `answers` stays
+  empty and the same answer again is typed again, not `already recorded (no-op)`. Recording an
+  answer needs the prompt to land, which `cargo test` covers.
 - `outside.log` quotes each argument shell-style: `--force\ is\ fine` is one argument, the text as
-  given. Real herdr takes it as `<TEXT>`; `-- <text>` would be refused (`unknown option`).
+  given.
 - `status` between steps calls `gh api user` and `herdr agent list`, which then show in the diff.

@@ -156,7 +156,8 @@ fn an_answer_that_starts_with_a_flag_is_typed_and_recorded() {
     assert_eq!(
         (spaced.exit_code, joined.exit_code),
         (0, 0),
-        "{}",
+        "{} {}",
+        spaced.stdout,
         joined.stdout
     );
     assert_eq!(
