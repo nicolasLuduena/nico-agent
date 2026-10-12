@@ -2,7 +2,7 @@
   // Beside a setting: where it comes from while the Repo does not set it, else
   // the button that removes the Repo's own, named for what takes its place.
   import type { Project, Setting } from "../status";
-  import { tag, undo } from "./settings";
+  import { tag, undoLabel } from "./settings";
 
   let {
     setting,
@@ -13,7 +13,7 @@
     onundo,
   }: { setting: Setting<unknown>; project: Project | undefined; keys: string[]; name: string; busy: boolean; onundo: () => void } = $props();
 
-  const instead = $derived(undo(setting, project, keys));
+  const instead = $derived(undoLabel(setting, project, keys));
 </script>
 
 {#if instead}

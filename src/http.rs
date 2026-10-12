@@ -48,7 +48,7 @@ const ROUTES: &[(&str, &str)] = &[
     ("POST /api/refresh", "`nico-agent refresh`"),
     (
         "PATCH /api/repo/<owner/name>/switches {name: bool}",
-        "set the Repo's switches",
+        "set the Repo's switches; null takes its Project's or the default",
     ),
     (
         "PATCH /api/repo/<owner/name> {implementer, reviewer, room, base, project, switches}",
@@ -119,7 +119,7 @@ pub fn answer(ctx: &Context, port: u16, request: &HttpRequest) -> Answer {
         }
         ("POST", "/api/repo") => ran(add(ctx, request)),
         ("DELETE", path) if let Some(slug) = path.strip_prefix("/api/repo/") => {
-            ran(remove(ctx, &unescaped(slug)))
+            ran(repo::rm_idle(ctx, &unescaped(slug)))
         }
         ("GET", path) if let Some(path) = path.strip_prefix("/bucket/") => {
             bucket::file(ctx, &unescaped(path))
@@ -310,28 +310,28 @@ fn ran(answer: Result<Value, Refusal>) -> Answer {
 /// `dispatch <issue> --harness --model --effort`, from the body's
 /// `{issue, harness, model, effort}`; a launch null or left out is unset.
 fn dispatch(ctx: &Context, request: &HttpRequest) -> Result<Value, Refusal> {
-    let args = args(request, "dispatch", ["issue", "harness", "model", "effort"])?;
-    let args: Vec<&str> = args.iter().map(String::as_str).collect();
-    dispatch::dispatch(&args, ctx)
+    let argv = argv(
+        request,
+        "dispatch",
+        &["issue", "harness", "model", "effort"],
+    )?;
+    let argv: Vec<&str> = argv.iter().map(String::as_str).collect();
+    dispatch::dispatch(&argv, ctx)
 }
 
 /// `repo add <slug> --path --project`, from the body's `{slug, path, project}`.
 fn add(ctx: &Context, request: &HttpRequest) -> Result<Value, Refusal> {
-    let args = args(request, "repo add", ["slug", "path", "project"])?;
-    let args: Vec<&str> = args.iter().map(String::as_str).collect();
-    repo::add(&args, ctx)
+    let argv = argv(request, "repo add", &["slug", "path", "project"])?;
+    let argv: Vec<&str> = argv.iter().map(String::as_str).collect();
+    repo::add(&argv, ctx)
 }
 
 /// `command`'s arguments from the body's `{first, flag...}`: `first`'s value,
 /// then `--<flag>=<value>`; one null or left out is unset.
-fn args<const N: usize>(
-    request: &HttpRequest,
-    command: &str,
-    names: [&str; N],
-) -> Result<Vec<String>, Refusal> {
+fn argv(request: &HttpRequest, command: &str, names: &[&str]) -> Result<Vec<String>, Refusal> {
     let body = body(request)?;
     let mut args = vec![];
-    for (i, name) in names.into_iter().enumerate() {
+    for (i, name) in names.iter().enumerate() {
         match &body[name] {
             Value::Null => {}
             Value::String(first) if i == 0 => args.push(first.clone()),
@@ -343,25 +343,6 @@ fn args<const N: usize>(
         }
     }
     Ok(args)
-}
-
-/// `repo rm <slug>`, refused while the Repo has a Dispatch In flight: from
-/// the page, a Repo goes only once its work is Closed.
-fn remove(ctx: &Context, slug: &str) -> Result<Value, Refusal> {
-    let dispatches = dispatch::load(&ctx.config_dir)?;
-    let live: Vec<&str> = (dispatches.iter())
-        .filter(|d| d.closed_at.is_none() && d.repo.eq_ignore_ascii_case(slug))
-        .map(|d| d.issue.as_str())
-        .collect();
-    if !live.is_empty() {
-        return Err(Refusal::new(
-            format!("{slug} has a Dispatch In flight: {}", live.join(", ")),
-            vec![format!(
-                "Remove it once each is Closed, or run `nico-agent repo rm {slug}`, which leaves them to finish"
-            )],
-        ));
-    }
-    repo::rm(&[slug], ctx)
 }
 
 /// The request's body, which is JSON, or a bad request.

@@ -1,4 +1,5 @@
-//! `repo add|rm|list`: which Repos the loop works, kept in `config.toml`.
+//! `repo add|rm|list`: which Repos the loop works, kept in `config.toml`;
+//! and the settings the page writes there, a Repo's own and a Project's.
 
 use serde_json::{Map, Value, json};
 use toml_edit::{InlineTable, Item, Table, TableLike, value};
@@ -32,6 +33,12 @@ pub fn add(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
         .ok_or_else(|| bad_invocation("missing required flag --path".into(), ADD))?;
     let path = std::path::absolute(path)?.display().to_string();
     let project = args.flag("--project");
+    if let Some(project) = project.filter(|p| !is_name(p)) {
+        return Err(bad_invocation(
+            format!("`{project}` is not a Project's name"),
+            ADD,
+        ));
+    }
     let linear = match (
         args.flag("--linear-team"),
         args.flag("--linear-project"),
@@ -124,6 +131,25 @@ pub fn rm(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
             .collect();
         json!({ "repo": format!("{slug} removed"), "stays": stays })
     })
+}
+
+/// `repo rm <slug>` as the page asks it: refused while the Repo has a
+/// Dispatch In flight, where the command keeps it In flight till Closed.
+pub fn rm_idle(ctx: &Context, slug: &str) -> Result<Value, Refusal> {
+    let dispatches = dispatch::load(&ctx.config_dir)?;
+    let in_flight: Vec<&str> = (dispatches.iter())
+        .filter(|d| d.closed_at.is_none() && d.repo.eq_ignore_ascii_case(slug))
+        .map(|d| d.issue.as_str())
+        .collect();
+    if !in_flight.is_empty() {
+        return Err(Refusal::new(
+            format!("{slug} has a Dispatch In flight: {}", in_flight.join(", ")),
+            vec![format!(
+                "Remove it once each is Closed, or run `nico-agent repo rm {slug}`, which keeps them In flight till they are Closed"
+            )],
+        ));
+    }
+    rm(&[slug], ctx)
 }
 
 pub fn list(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
@@ -258,7 +284,7 @@ fn checked<'a>(
                     help.into(),
                 ));
             }
-            ("base" | "project", Value::String(name)) if !name.trim().is_empty() => {}
+            ("base" | "project", Value::String(name)) if is_name(name) => {}
             ("base" | "project", other) => {
                 let help = match key.as_str() {
                     "base" => "base is the branch a Dispatch starts from unless stacked",
@@ -326,9 +352,23 @@ fn write(table: &mut dyn TableLike, set: &Map<String, Value>) {
             }
             Value::Object(_) => {
                 let launch: Launch = serde_json::from_value(new.clone()).expect("checked above");
+                let fields = [("model", launch.model), ("effort", launch.effort)];
+                // One written as its own `[...]` table keeps its header and comments.
+                if let Some(written) = table.get_mut(key).and_then(Item::as_table_mut) {
+                    set_kept(written, "harness", launch.harness.into());
+                    for (field, set) in fields {
+                        match set {
+                            Some(set) => set_kept(written, field, set.into()),
+                            None => {
+                                written.remove(field);
+                            }
+                        }
+                    }
+                    continue;
+                }
                 let mut written = InlineTable::new();
                 written.insert("harness", launch.harness.into());
-                for (field, set) in [("model", launch.model), ("effort", launch.effort)] {
+                for (field, set) in fields {
                     if let Some(set) = set {
                         written.insert(field, set.into());
                     }
@@ -386,6 +426,11 @@ pub fn shown(switches: &Switches) -> Value {
     (SWITCHES.iter())
         .map(|name| (*name, all[name].clone()))
         .collect()
+}
+
+/// A Base's or Project's name: not empty, nor starting or ending in a space.
+fn is_name(text: &str) -> bool {
+    !text.is_empty() && text.trim() == text
 }
 
 /// `owner/name`, each part letters, digits, `_`, `.` or `-`.

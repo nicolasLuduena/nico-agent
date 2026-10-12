@@ -149,7 +149,7 @@ fn an_unknown_path_or_method_answers_404_with_the_routes_as_help() {
         "GET /api/events: a stream of `changed`, sent when state or an Agent state changes, and a keepalive comment otherwise",
         "POST /api/dispatch {issue, harness, model, effort}: `nico-agent dispatch` of the issue",
         "POST /api/refresh: `nico-agent refresh`",
-        "PATCH /api/repo/<owner/name>/switches {name: bool}: set the Repo's switches",
+        "PATCH /api/repo/<owner/name>/switches {name: bool}: set the Repo's switches; null takes its Project's or the default",
         "PATCH /api/repo/<owner/name> {implementer, reviewer, room, base, project, switches}: set the Repo's own settings; null takes its Project's or the default",
         "PATCH /api/project/<name> {implementer, reviewer, room, base, switches}: set the Project's defaults for its Repos; null removes one",
         "POST /api/repo {slug, path, project}: `nico-agent repo add`",
@@ -761,6 +761,11 @@ fn patch_repo_refuses_a_bad_value_of_any_setting_and_writes_nothing() {
             "base is the branch a Dispatch starts from unless stacked",
         ),
         (
+            r#"{"base": " dev"}"#,
+            "base is a name, not \" dev\"",
+            "base is the branch a Dispatch starts from unless stacked",
+        ),
+        (
             r#"{"project": 7}"#,
             "project is a name, not 7",
             "project is the name of the Project the Repo joins",
@@ -1151,9 +1156,29 @@ fn delete_repo_is_refused_while_the_repo_has_a_dispatch_in_flight() {
             409,
             json!({
                 "error": "ACME/API has a Dispatch In flight: acme/api#7",
-                "help": ["Remove it once each is Closed, or run `nico-agent repo rm ACME/API`, which leaves them to finish"],
+                "help": ["Remove it once each is Closed, or run `nico-agent repo rm ACME/API`, which keeps them In flight till they are Closed"],
             })
         )
     );
     assert_eq!(config(&t), before);
+}
+
+#[test]
+fn a_launch_written_as_its_own_table_keeps_its_header_and_comments() {
+    let t = with_repo();
+    let written = "[repos.\"acme/api\"]\npath = \"/src/api\"\n\n# codex is cheaper\n[repos.\"acme/api\".reviewer]\nharness = \"codex\" # for now\neffort = \"high\"\n";
+    std::fs::write(t.config_dir.join("config.toml"), written).unwrap();
+    t.tick();
+
+    let set = t.send(
+        "PATCH",
+        "/api/repo/acme/api",
+        r#"{"reviewer": {"harness": "claude", "model": "opus"}}"#,
+    );
+
+    assert_eq!(set.0, 200, "{}", set.1);
+    assert_eq!(
+        config(&t),
+        "[repos.\"acme/api\"]\npath = \"/src/api\"\n\n# codex is cheaper\n[repos.\"acme/api\".reviewer]\nharness = \"claude\" # for now\nmodel = \"opus\"\n"
+    );
 }

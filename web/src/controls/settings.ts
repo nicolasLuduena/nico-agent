@@ -11,7 +11,7 @@ export const tag = (setting: Setting<unknown>) => (setting.from === "repo" ? nul
  * (`["room"]`, `["switches", "review"]`), named for what takes its place;
  * none while the Repo does not set it.
  */
-export function undo(setting: Setting<unknown>, project: Project | undefined, keys: string[]): string | null {
+export function undoLabel(setting: Setting<unknown>, project: Project | undefined, keys: string[]): string | null {
   if (setting.from !== "repo") return null;
   const sets = keys.reduce<any>((layer, key) => layer?.[key], project?.defaults) != null;
   return sets ? "Use the Project's" : "Use the default";

@@ -271,7 +271,7 @@ fn a_removed_repos_work_in_flight_is_still_watched_reviewed_flipped_restarted_an
 fn a_bad_invocation_exits_2_with_the_usage_before_any_outside_call() {
     let t = setup();
     let usage = "Run `nico-agent repo add <owner/name> --path <clone> [--project <name>] [--linear-team <team> --linear-project <project> --linear-label <label>]` to add a Repo";
-    let cases: [(&[&str], &str); 7] = [
+    let cases: [(&[&str], &str); 8] = [
         (&["repo", "add", "acme/api"], "missing required flag --path"),
         (
             &["repo", "add", "--path", "/src/api"],
@@ -306,6 +306,18 @@ fn a_bad_invocation_exits_2_with_the_usage_before_any_outside_call() {
                 "P",
             ],
             "--linear-project and --linear-label need --linear-team",
+        ),
+        (
+            &[
+                "repo",
+                "add",
+                "acme/api",
+                "--path",
+                "/src/api",
+                "--project",
+                " shop",
+            ],
+            "` shop` is not a Project's name",
         ),
     ];
 

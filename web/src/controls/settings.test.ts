@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Project } from "../status";
-import { picked, projectOf, tag, undo, unset } from "./settings";
+import { picked, projectOf, tag, undoLabel, unset } from "./settings";
 
 const shop: Project = { name: "shop", repos: ["acme/api", "acme/web"], defaults: { room: 4, switches: { review: false } } };
 const own: Project = { name: "acme/cli", repos: ["acme/cli"], defaults: {} };
@@ -18,20 +18,20 @@ describe("a setting's tag", () => {
 
 describe("removing the Repo's own value", () => {
   it("is offered only for a value the Repo sets", () => {
-    expect(undo({ value: 4, from: "project" }, shop, ["room"])).toBeNull();
-    expect(undo({ value: 3, from: "default" }, own, ["room"])).toBeNull();
+    expect(undoLabel({ value: 4, from: "project" }, shop, ["room"])).toBeNull();
+    expect(undoLabel({ value: 3, from: "default" }, own, ["room"])).toBeNull();
   });
 
   it("falls back to the Project's when its Project sets it, a switch one by one", () => {
-    expect(undo({ value: 2, from: "repo" }, shop, ["room"])).toBe("Use the Project's");
-    expect(undo({ value: true, from: "repo" }, shop, ["switches", "review"])).toBe("Use the Project's");
+    expect(undoLabel({ value: 2, from: "repo" }, shop, ["room"])).toBe("Use the Project's");
+    expect(undoLabel({ value: true, from: "repo" }, shop, ["switches", "review"])).toBe("Use the Project's");
   });
 
   it("falls back to the default when its Project does not set it", () => {
-    expect(undo({ value: "dev", from: "repo" }, shop, ["base"])).toBe("Use the default");
-    expect(undo({ value: false, from: "repo" }, shop, ["switches", "stack"])).toBe("Use the default");
-    expect(undo({ value: 2, from: "repo" }, own, ["room"])).toBe("Use the default");
-    expect(undo({ value: 2, from: "repo" }, undefined, ["room"])).toBe("Use the default");
+    expect(undoLabel({ value: "dev", from: "repo" }, shop, ["base"])).toBe("Use the default");
+    expect(undoLabel({ value: false, from: "repo" }, shop, ["switches", "stack"])).toBe("Use the default");
+    expect(undoLabel({ value: 2, from: "repo" }, own, ["room"])).toBe("Use the default");
+    expect(undoLabel({ value: 2, from: "repo" }, undefined, ["room"])).toBe("Use the default");
   });
 
   it("sends null for the setting, or for the one switch", () => {

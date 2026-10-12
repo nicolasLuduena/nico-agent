@@ -14,7 +14,7 @@ and help, and writes nothing. What the page wrote is what serve shows after a re
 - `settings-launch` a Harness picked on the page sends `{"reviewer": {harness, model: null, effort: null}}` and writes `reviewer = { harness = "<name>" }`.
 - `settings-restart` a launch set on the page shows the same after serve restarts.
 - `settings-undo` `button "Use the default <Setting>"` (or `Use the Project's <Setting>`) sends `{<key>: null}`, `{"switches": {<name>: null}}` for a switch, and removes the Repo's own line.
-- `settings-base` a Base typed and entered writes `base = "<name>"`; emptied, it is removed.
+- `settings-base` a Base typed and entered writes `base = "<name>"`; emptied, it is removed and the field shows what takes its place.
 - `settings-project` a Project typed in `combobox "Project"` writes `project = "<name>"`, the Repo then takes that Project's defaults, tagged `project`; `button "Leave <name>"` removes it.
 - `settings-api` `PATCH /api/repo/<slug>` with any of `implementer`, `reviewer`, `room`, `base`, `project`, `switches` writes only those and answers `{slug, <each setting>: {value, from}}`; a percent-encoded slug reaches its Repo.
 - `settings-project-api` `PATCH /api/project/<name>` with the same keys but `project` writes `[projects.<name>]` and answers `{name, defaults}`.
@@ -70,6 +70,8 @@ Preconditions:
 - **Use the Project's.** Run `$C page --evidence "$E/11-undo-to-project" --click "button=Use the Project's Base" --expect "Base project"`.
   `PATCH ... {"base":null} -> 200`; `text: Base project`, `textbox "Base": main`; `config.toml`'s
   Repo has no `base` line.
+- **Emptied.** Run `$C page --evidence "$E/11b-empty-base" --click "textbox=Base" --press Control+a --press Backspace --press Enter --expect "Base project"`.
+  `PATCH ... {"base":null} -> 200`; the field shows the Project's again, `textbox "Base": main`.
 - **Leave it.** Run `$C page --evidence "$E/12-leave" --click "button=Leave verify" --gone "Leave verify"`.
   `PATCH ... {"project":null} -> 200`; `text: Room default`, `spinbutton "Room": "3"`;
   `config.toml`'s Repo has no `project` line, and `[projects.verify]` stays.

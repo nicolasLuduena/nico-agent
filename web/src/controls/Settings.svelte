@@ -91,9 +91,11 @@
     value={shown.base.value ?? ""}
     placeholder="origin's default branch"
     disabled={saving === "base"}
-    onchange={(e) => {
+    onchange={async (e) => {
       const input = e.currentTarget;
-      save("base", { base: named(input) }, () => (input.value = shown.base.value ?? ""));
+      await save("base", { base: named(input) });
+      // Emptied, it shows what takes its place, which may be the value it last showed.
+      input.value = shown.base.value ?? "";
     }}
   />
   <div class="row">

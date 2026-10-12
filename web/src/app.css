@@ -135,11 +135,11 @@ code {
   text-transform: uppercase;
 }
 
-/* DESIGN.md's button-quiet, set small for an action beside a setting. */
+/* DESIGN.md's button-quiet, as the panel's: an action beside a setting. */
 .quiet {
   flex: none;
-  min-height: 28px;
-  padding: 4px 8px;
+  min-height: 36px;
+  padding: 0 16px;
   border: 1px solid var(--rule);
   border-radius: 2px;
   background: var(--surface);

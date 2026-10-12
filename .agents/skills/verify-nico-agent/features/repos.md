@@ -81,7 +81,7 @@ Preconditions:
 - **Refused with work In flight.** `$C seed dispatch 7 pr`; run `$C page --evidence "$E/20-page-remove-refused" --click "button=Remove verify/fixture…" --click "button=Remove verify/fixture" --expect "has a Dispatch In flight"`.
   `.requests.txt` has `DELETE /api/repo/verify/fixture -> 409`; an `alert` reads `verify/fixture
   has a Dispatch In flight: verify/fixture#7` with help `Remove it once each is Closed, or run
-  \`nico-agent repo rm verify/fixture\`, which leaves them to finish`; `config.toml` still has
+  \`nico-agent repo rm verify/fixture\`, which keeps them In flight till they are Closed`; `config.toml` still has
   verify/fixture.
 - **Proof.** `$C state > "$E/state.after.txt"`; `diff "$E/state.before.txt" "$E/state.after.txt" > "$E/state.diff"`
   shows `config.toml` gaining `[repos."verify/fixture"]` with its `path` (verify/second added
