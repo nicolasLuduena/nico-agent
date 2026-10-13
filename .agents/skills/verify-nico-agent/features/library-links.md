@@ -69,6 +69,12 @@ Preconditions:
   verify/fixture`, help `Unlink it in verify/fixture's settings first; ...`; `POST /api/libraries`
   of it answers `already linked by verify/fixture (no-op)`; one with `"path":"../.."` is 400; the
   `state` diff around them is empty.
+- **Unlink.** After the refusals, `$C page --evidence "$E/14-unlink" --within "region=verify/fixture"
+  --click "button=Unlink verify/second@v1.0:lib" --expect "None linked" --click "button=Use the
+  default Libraries" --gone "Use the default"`: `.requests.txt` holds `PATCH
+  /api/repo/verify/fixture {"libraries":[]}` then `{"libraries":null}`; `$C state` diff: the
+  Repo's `libraries` line gone from `config.toml`; its Wiki stays in the Bucket, as `wikis.json`
+  keeps its build, so linking it again builds nothing.
 - **Phone.** `$C page --evidence "$E/13-tab-phone" --width 390 --hash "#/libraries" --expect "None
   added."`: the Project select reads `Libraries`, the page is 390px wide in a 390px window.
 

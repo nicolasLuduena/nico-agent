@@ -10,16 +10,18 @@
 
   let { status }: { status: Status } = $props();
 
+  /** The version whose removal is asked, then running; whether an add is. */
   let asking = $state<string | null>(null);
-  let running = $state<string | null>(null);
+  let removing = $state<string | null>(null);
+  let adding = $state(false);
   let refused = $state<{ id: string; sent: Sent } | null>(null);
   let added = $state<Sent | null>(null);
 
   async function remove(id: string) {
-    running = id;
+    removing = id;
     refused = null;
     const sent = await send("DELETE", `/api/libraries/${encodeURIComponent(id)}`);
-    running = null;
+    removing = null;
     asking = null;
     if (sent.ok) reload("/api/status");
     else refused = { id, sent };
@@ -30,11 +32,11 @@
     const form = event.currentTarget as HTMLFormElement;
     const data = new FormData(form);
     const field = (name: string) => String(data.get(name) ?? "").trim();
-    running = "";
+    adding = true;
     added = null;
     // No subfolder is the whole repository: left out, not empty.
     added = await send("POST", "/api/libraries", { repo: field("repo"), tag: field("tag"), ...(field("path") && { path: field("path") }) });
-    running = null;
+    adding = false;
     if (!added.ok) return;
     form.reset();
     reload("/api/status");
@@ -61,10 +63,10 @@
           <span class="buttons">
             {#if asking === id}
               <span role="status">Remove it? Its Wiki leaves the Bucket's files; its history keeps it.</span>
-              <button type="button" class="quiet" disabled={running === id} aria-busy={running === id} onclick={() => remove(id)}>
-                {running === id ? "Removing…" : `Remove ${id}`}
+              <button type="button" class="quiet" disabled={removing === id} aria-busy={removing === id} onclick={() => remove(id)}>
+                {removing === id ? "Removing…" : `Remove ${id}`}
               </button>
-              <button type="button" class="quiet" disabled={running === id} onclick={() => (asking = null)}>Keep it</button>
+              <button type="button" class="quiet" disabled={removing === id} onclick={() => (asking = null)}>Keep it</button>
             {:else}
               <button type="button" class="quiet" onclick={() => ((asking = id), (refused = null))}>Remove {id}…</button>
             {/if}
@@ -92,7 +94,7 @@
         <span class="label">Subfolder</span>
         <input name="path" placeholder="the whole repository" autocomplete="off" />
       </label>
-      <button type="submit" disabled={running === ""} aria-busy={running === ""}>{running === "" ? "Adding…" : "Add"}</button>
+      <button type="submit" disabled={adding} aria-busy={adding}>{adding ? "Adding…" : "Add"}</button>
     </form>
     {#if added?.ok}
       <p role="status">{added.answer.library}.</p>

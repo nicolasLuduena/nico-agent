@@ -204,7 +204,7 @@ fn a_bad_version_is_refused_and_nothing_written() {
 /// and its Wiki built.
 fn with_built() -> Setup {
     let t = serving(&format!(
-        "{WRITTEN}\n[wiki]\nlibraries = [\n  {{ repo = \"acme/kit\", tag = \"v1\" }}, # mine\n  {EFFECT_TOML}, # effect\n]\n"
+        "{WRITTEN}\n[wiki]\nlibraries = [\n  # For my sessions.\n  {{ repo = \"acme/kit\", tag = \"v1\" }}, # mine\n  # To learn it.\n  {EFFECT_TOML}, # effect\n]\n"
     ));
     t.world.add_clone(BUCKET, &[]);
     (t.world).add_tree_file(
@@ -277,7 +277,7 @@ fn removing_an_unlinked_version_takes_its_wiki_out_of_the_bucket_in_one_commit()
     assert_eq!(
         config(&t),
         format!(
-            "{WRITTEN}\n[wiki]\nlibraries = [\n  {{ repo = \"acme/kit\", tag = \"v1\" }}, # mine\n]\n"
+            "{WRITTEN}\n[wiki]\nlibraries = [\n  # For my sessions.\n  {{ repo = \"acme/kit\", tag = \"v1\" }}, # mine\n]\n"
         )
     );
     assert_eq!(effect(&t), Value::Null);
@@ -341,4 +341,98 @@ fn removing_a_version_while_its_wiki_builds_is_refused() {
     );
     assert_eq!(config(&t), written);
     assert_eq!(wikis(&t)[0]["state"], "building");
+}
+
+/// Repo `acme/api` linking two versions, one per line, with comments.
+const LINKS: &str = "[repos.\"acme/api\"]\npath = \"/src/api\"\nlibraries = [\n  # Pinned for the api.\n  { repo = \"acme/kit\", tag = \"v1\" }, # the old one\n  { repo = \"acme/ui\", tag = \"v2\" },\n]\n";
+
+#[test]
+fn linking_and_unlinking_in_a_repos_settings_keeps_each_other_link_as_written() {
+    let t = serving(LINKS);
+    let (kit, ui) = (
+        r#"{"repo": "acme/kit", "tag": "v1"}"#,
+        r#"{"repo": "acme/ui", "tag": "v2"}"#,
+    );
+
+    let linked = t.send(
+        "PATCH",
+        "/api/repo/acme%2Fapi",
+        &format!(r#"{{"libraries": [{kit}, {ui}, {EFFECT_JSON}]}}"#),
+    );
+    let after_link = config(&t);
+    let unlinked = t.send(
+        "PATCH",
+        "/api/repo/acme%2Fapi",
+        &format!(r#"{{"libraries": [{ui}, {EFFECT_JSON}]}}"#),
+    );
+
+    assert_eq!(
+        (linked.0, unlinked.0),
+        (200, 200),
+        "{linked:?} {unlinked:?}"
+    );
+    assert_eq!(
+        after_link,
+        LINKS.replace(
+            "  { repo = \"acme/ui\", tag = \"v2\" },\n",
+            &format!("  {{ repo = \"acme/ui\", tag = \"v2\" }},\n  {EFFECT_TOML},\n"),
+        )
+    );
+    // The old one goes with the comments about it.
+    assert_eq!(
+        config(&t),
+        format!(
+            "[repos.\"acme/api\"]\npath = \"/src/api\"\nlibraries = [\n  {{ repo = \"acme/ui\", tag = \"v2\" }},\n  {EFFECT_TOML},\n]\n"
+        )
+    );
+}
+
+#[test]
+fn a_version_without_a_subfolder_may_send_it_null_and_one_written_twice_is_removed_whole() {
+    let t = serving(&format!(
+        "{WRITTEN}\n[wiki]\nlibraries = [{{ repo = \"acme/app\", tag = \"v1\" }}, {{ repo = \"acme/kit\", tag = \"v1\" }}, {{ repo = \"acme/kit\", tag = \"v1\" }}]\n"
+    ));
+    // The tick started acme/app's build, the first.
+    let listed = t.get("/api/status").1["libraries"].clone();
+
+    let added = t.send(
+        "POST",
+        "/api/libraries",
+        r#"{"repo": "acme/ui", "tag": "v2", "path": null}"#,
+    );
+    let removed = t.send("DELETE", "/api/libraries/acme%2Fkit%40v1", "");
+
+    // The tab lists it once.
+    assert_eq!(
+        listed,
+        json!([{ "repo": "acme/app", "tag": "v1" }, { "repo": "acme/kit", "tag": "v1" }])
+    );
+    assert_eq!(added, (200, json!({ "library": "acme/ui@v2 added" })));
+    assert_eq!(removed.0, 200, "{}", removed.1);
+    assert_eq!(
+        config(&t),
+        format!(
+            "{WRITTEN}\n[wiki]\nlibraries = [{{ repo = \"acme/app\", tag = \"v1\" }}, {{ repo = \"acme/ui\", tag = \"v2\" }}]\n"
+        )
+    );
+}
+
+#[test]
+fn removing_a_version_a_repo_takes_from_its_project_points_at_the_projects_defaults() {
+    let t = serving(&format!(
+        "[projects.shop]\nlibraries = [{EFFECT_TOML}]\n\n[repos.\"acme/api\"]\npath = \"/src/api\"\nproject = \"shop\"\n\n[wiki]\nlibraries = [{EFFECT_TOML}]\n"
+    ));
+
+    let refused = t.send("DELETE", EFFECT_PATH, "");
+
+    assert_eq!(
+        refused,
+        (
+            409,
+            json!({
+                "error": format!("{EFFECT} is linked by acme/api"),
+                "help": ["Unlink it from projects.\"shop\".libraries in config.toml, which acme/api takes it from; the Libraries tab holds only the versions no Repo links"],
+            })
+        )
+    );
 }

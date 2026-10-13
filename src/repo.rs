@@ -1,7 +1,6 @@
 //! `repo add|rm|list`: which Repos the loop works, kept in `config.toml`;
 //! and the settings the page writes there, a Repo's own and a Project's.
 
-use serde::Serialize;
 use serde_json::{Map, Value, json};
 use toml_edit::{InlineTable, Item, Table, TableLike, value};
 
@@ -415,9 +414,7 @@ fn write(table: &mut dyn TableLike, set: &Map<String, Value>) {
             Value::Array(_) => {
                 let libraries: Vec<Library> =
                     serde_json::from_value(new.clone()).expect("checked above");
-                let written = (libraries.serialize(toml_edit::ser::ValueSerializer::new()))
-                    .expect("Library versions are TOML");
-                set_kept(table, key, written);
+                library::write(table, key, &libraries);
             }
             Value::Bool(_) => unreachable!("checked above"),
         }

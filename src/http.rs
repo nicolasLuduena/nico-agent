@@ -244,8 +244,10 @@ fn status(ctx: &Context) -> Result<Value, Refusal> {
             shown[key] = value.clone();
         }
     }
+    // Each once, though written twice.
+    let mut listed = std::collections::HashSet::new();
     let unlinked = (config.wiki.libraries.iter())
-        .filter(|l| library::linked_by(&config, &l.id()).is_none())
+        .filter(|l| library::linked_by(&config, &l.id()).is_none() && listed.insert(l.id()))
         .collect::<Vec<_>>();
     shown["libraries"] = json!(unlinked);
     // shortcut: an unreadable morning.md shows as none, like a missing one; say why if one ever is.

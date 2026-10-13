@@ -7,7 +7,7 @@
   import DispatchForm from "./DispatchForm.svelte";
   import Install from "./Install.svelte";
   import { inFlight } from "./launch";
-  import Links from "./Links.svelte";
+  import LibraryLinks from "./LibraryLinks.svelte";
   import Remove from "./Remove.svelte";
   import Room from "./Room.svelte";
   import { patch } from "./send";
@@ -34,7 +34,7 @@
     <Room {holder} live={inFlight(repo, status.dispatches)} />
     <Switches {holder} />
     <Settings {holder} harnesses={repo.harnesses} {repo} projects={status.projects} />
-    <Links {holder} wikis={status.wikis} />
+    <LibraryLinks {holder} wikis={status.wikis} />
     <Install {repo} />
     <Remove {repo} />
   {/key}
