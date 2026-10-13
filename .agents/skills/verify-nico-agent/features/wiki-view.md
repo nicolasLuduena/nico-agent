@@ -5,10 +5,10 @@ Each Wiki has a page of its own at `/wiki/<id>`, a Repo's `<owner>/<name>` or a 
 fragment (`#<component>`); serve answers the app there as it does at `/`, through the tunnel too.
 The page holds the Wiki alone: a masthead line with `link "Board"`, the Wiki's id, and its build
 and buttons ([wiki-buttons.md](./wiki-buttons.md), [wiki-progress.md](./wiki-progress.md)); its
-Component tree with search beside the open Component and its outline. The Component reads as a
-page: its trail, its name, the one file it cites said once when it cites one, its overview, its
-Interpretations as one list in the build's order, each with its kind and its Anchors as quiet
-citations opening GitHub at the Wiki's commit and lines, then whichever of its Relationship
+Component tree with search beside the open Component and its outline. The Component reads in
+order: its trail, its name, the one file it cites said once when it cites one, its overview, its
+Interpretations as one list in the build's order, each with its kind and its Anchors set quietly,
+each opening GitHub at the Wiki's commit and lines, then whichever of its Relationship
 diagram, its Explainer, its sub-Components (each with its overview's first sentence) and its Gaps
 it has, and a link to the next Component in the tree's order. Under 1080px the outline, and under
 720px the tree too, open as bottom sheets. A Project tab's Wiki view lists its Wikis, each a link to

@@ -38,6 +38,7 @@ const escaped = (text: string) =>
     .map((part) => encodeURIComponent(part).replaceAll("%40", "@").replaceAll("%3A", ":"))
     .join("/");
 
+/** `text` unescaped; a broken escape left as written, so it names a Wiki no one has. */
 const unescaped = (text: string) => {
   try {
     return decodeURIComponent(text);

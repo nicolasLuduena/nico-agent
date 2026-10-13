@@ -17,8 +17,9 @@
   import { freshness, progressed, search, unexplored, type Component, type Hit, type Listed, type Wiki } from "./wiki";
 
   /** The Wiki the path names, and the Component the fragment does, which back and forward change. */
-  const id = reading(location.pathname, location.hash)?.wiki ?? "";
-  let component = $state(reading(location.pathname, location.hash)?.component ?? null);
+  const start = reading(location.pathname, location.hash);
+  const id = start?.wiki ?? "";
+  let component = $state(start?.component ?? null);
 
   let listed = $state<Listed[] | null>(null);
   let wiki = $state<Wiki | null>(null);
@@ -88,7 +89,6 @@
   const related = $derived(
     !!open && (open.relationships.length > 0 || (wiki?.components ?? []).some((c) => c.relationships.some((r) => r.to === open.id))),
   );
-  const link = (component: string) => fragment(component);
 
   const hits = $derived(wiki && query.trim() ? search(wiki, query) : []);
   /** The open Component's name, then each section it shows, with how many it holds: the heads Reading gives ids. */
@@ -126,7 +126,7 @@
     {#each children.get(parent) ?? [] as c (c.id)}
       <li>
         <a
-          href={link(c.id)}
+          href={fragment(c.id)}
           aria-current={c.id === open?.id ? "page" : undefined}
           onclick={() => {
             opened = null;
@@ -224,7 +224,7 @@
               <ul class="hits">
                 {#each hits as hit (`${hit.component.id} ${hit.interpretation?.id ?? ""}`)}
                   <li>
-                    <a href={link(hit.component.id)} onclick={() => follow(hit)}>
+                    <a href={fragment(hit.component.id)} onclick={() => follow(hit)}>
                       <span class="where"
                         ><strong>{hit.component.name}</strong>
                         {#if hit.interpretation}<span class="label">{hit.interpretation.kind}</span>{/if}</span
@@ -242,7 +242,7 @@
           </nav>
         {/if}
       </Sheet>
-      <Reading {wiki} component={open} {parts} {related} {link} {found} />
+      <Reading {wiki} component={open} {parts} {related} link={fragment} {found} />
       <Sheet id="wiki-outline" title={TITLES.outline} folded={narrow.current} open={opened === "outline"} close={() => (opened = null)}>
         <nav aria-label="Outline">
           <ul class="outline">
@@ -269,7 +269,7 @@
     flex-wrap: wrap;
     align-items: center;
     gap: 8px 16px;
-    padding: 10px var(--gutter);
+    padding: 8px var(--gutter);
     border-bottom: 1px solid var(--hairline);
   }
   .board {
@@ -302,7 +302,7 @@
   /* Out of the way of the reading: a size down from the Board's buttons, on a hairline. */
   .masthead .quiet {
     min-height: 28px;
-    padding: 0 10px;
+    padding: 0 12px;
     border-color: var(--hairline);
   }
   .masthead .quiet:hover:not(:disabled) {
@@ -341,7 +341,7 @@
     justify-content: center;
     align-items: start;
     gap: 32px;
-    padding: 24px var(--gutter) 64px;
+    padding: 24px var(--gutter) 32px;
   }
   .find {
     width: 100%;

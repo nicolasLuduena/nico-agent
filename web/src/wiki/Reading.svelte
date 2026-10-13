@@ -1,5 +1,5 @@
 <script lang="ts">
-  // The open Component of a Wiki, as a page to read: its trail, its name,
+  // The open Component of a Wiki, set for reading: its trail, its name,
   // its overview, its Interpretations in the build's order, each with its
   // kind in the margin and its Anchors quietly under it, then whichever of
   // its Relationship diagram, its Explainer, its sub-Components and its Gaps
@@ -9,7 +9,7 @@
   import Anchors from "./Anchors.svelte";
   import Explainer from "./Explainer.svelte";
   import Relationships from "./Relationships.svelte";
-  import { cited, fileUrl, gist, named, next, REASONS, trail, type Component, type Hit, type Wiki } from "./wiki";
+  import { cited, citedFiles, fileUrl, gist, named, next, REASONS, trail, type Component, type Hit, type Wiki } from "./wiki";
 
   let {
     wiki,
@@ -33,11 +33,7 @@
   const after = $derived(next(wiki, component));
   /** The one file its Anchors cite, said once above them; else each Anchor names its file. */
   const file = $derived(cited(component));
-  const name = $derived.by(() => {
-    if (file) return null;
-    const anchors = [...component.interpretations, ...(component.explainer?.steps ?? [])].flatMap((x) => x.anchors);
-    return named([...new Set(anchors.map((a) => a.path))]);
-  });
+  const name = $derived(file ? null : named(citedFiles(component)));
 
   // Another Component opened takes focus to its name, which scrolls it into view; the first one shown does not.
   // A search hit, once its Component shows, scrolls to its Interpretation, focuses it and flashes it, once.
@@ -172,7 +168,7 @@
 <style>
   /* A sheet laid on the page, its text at a reading size and measure; each
      kind hangs in a margin left of its sentence once the sheet has room for
-     one, and the diagrams and the way on take the margin too. */
+     one; the Relationship diagram, the Explainer and the way on take it too. */
   .reading {
     container-type: inline-size;
     min-width: 0;
@@ -254,7 +250,7 @@
   section {
     margin-top: 40px;
   }
-  /* A diagram takes the margin too: it needs the room more than the measure. */
+  /* The Relationship diagram and the Explainer take the margin too: they need the room more than the measure. */
   .wide {
     margin-left: calc(-1 * var(--margin));
   }
@@ -315,7 +311,7 @@
     display: flex;
     flex-wrap: wrap;
     gap: 0 16px;
-    margin-top: 2px;
+    margin-top: 4px;
     font-size: 14px;
     line-height: 1.45;
   }
@@ -342,7 +338,7 @@
     justify-content: flex-end;
     align-items: baseline;
     gap: 4px 12px;
-    margin-top: 48px;
+    margin-top: 32px;
     margin-left: calc(-1 * var(--margin));
     padding-top: 16px;
     border-top: 1px solid var(--rule);

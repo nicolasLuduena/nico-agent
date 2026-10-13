@@ -128,7 +128,7 @@ commands, and observable proof.
 - [Read a Wiki on its page](./wiki-view.md) covers `GET /wiki/<id>` answering the app,
   `GET /api/wikis` and `GET /api/wiki/<id>`, a Project tab's Wiki view listing its Wikis, each
   Wiki's page (`/wiki/<id>#<component>`): its masthead, the Component tree, the Component's trail,
-  Interpretations as one list with their kinds and quiet Anchor citations, the Relationship diagram
+  Interpretations as one list with their kinds and their Anchors set quietly, the Relationship diagram
   and the Explainer clicked through, sub-Components, Gaps and Next, an old Board link and an
   unknown id, back and forward, search, the outline, the sheets, light and dark at desk and phone
   width, through the tunnel, and a real Wiki seeded with `seed wiki`.

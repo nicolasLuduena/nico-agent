@@ -1,5 +1,5 @@
 <script lang="ts">
-  // The Anchors a claim cites, each a quiet citation linking GitHub at the
+  // The Anchors a claim cites, each set quietly, a link to GitHub at the
   // Wiki's commit and lines: its file by `name`, then its lines, never
   // broken; or its lines alone when the Component says its one file once
   // (`name` null). The full path is in the link, its name and its title.
@@ -11,10 +11,10 @@
 </script>
 
 {#each anchors as a, n (n)}
-  {@const shown = name?.(a.path)}
-  <a href={anchorUrl(wiki, a)} target="_blank" rel="noreferrer" title="{a.path} {lines(a)}"
-    ><span class="hidden">{shown ? a.path.slice(0, -shown.length) : `${a.path} `}</span>{shown ?? (a.start === a.end ? "line" : "lines")}
-    <span class="lines">{lines(a)}</span></a
+  {@const word = a.start === a.end ? "line" : "lines"}
+  {@const said = name ? `${a.path} ${lines(a)}` : `${a.path} ${word} ${lines(a)}`}
+  <a href={anchorUrl(wiki, a)} target="_blank" rel="noreferrer" title={said} aria-label={said}
+    >{name ? name(a.path) : word} <span class="lines">{lines(a)}</span></a
   >
 {/each}
 
@@ -30,14 +30,5 @@
   }
   .lines {
     font-weight: 600;
-  }
-  /* The folders the name leaves out, read aloud but not shown. */
-  .hidden {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
   }
 </style>

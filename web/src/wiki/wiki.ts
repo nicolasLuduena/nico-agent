@@ -224,14 +224,19 @@ export function next(wiki: Pick<Wiki, "components">, component: Component): Comp
   return null;
 }
 
-/** The one file every Anchor of `component` cites, its Explainer's too; null when they cite more, or none. */
-export function cited(component: Component): string | null {
+/** Each file the Anchors of `component` cite, its Explainer's too, once. */
+export function citedFiles(component: Component): string[] {
   const anchors = [...component.interpretations, ...(component.explainer?.steps ?? [])].flatMap((x) => x.anchors);
-  const paths = new Set(anchors.map((a) => a.path));
-  return paths.size === 1 ? [...paths][0] : null;
+  return [...new Set(anchors.map((a) => a.path))];
 }
 
-/** Each of `paths` by its file's name, with as many of its folders as tell it from another of `paths` of that name. */
+/** The one file every Anchor of `component` cites, its Explainer's too; null when they cite more, or none. */
+export function cited(component: Component): string | null {
+  const files = citedFiles(component);
+  return files.length === 1 ? files[0] : null;
+}
+
+/** A namer of each of `paths`: its file's name, with as many of its folders as tell it from another of `paths` of that name. */
 export function named(paths: string[]): (path: string) => string {
   return (path) => {
     const parts = path.split("/");
