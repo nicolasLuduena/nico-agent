@@ -1,14 +1,18 @@
 <script lang="ts">
   // A Project's Wiki view: a picker of its Repos' Wikis, the open one's
-  // header, its Component tree and the open Component in a reading column.
+  // header, its Component tree with search over it, the open Component in a
+  // reading column and its outline; the tree and the outline as sheets once
+  // the window is too narrow for them beside the Component.
   import { onMount } from "svelte";
+  import { MediaQuery } from "svelte/reactivity";
   import { watch } from "../live";
   import { hash } from "../route";
   import { selection } from "../selection.svelte";
   import type { Project } from "../status";
   import { clock } from "../time";
   import Reading from "./Reading.svelte";
-  import type { Component, Listed, Wiki } from "./wiki";
+  import Sheet from "./Sheet.svelte";
+  import { byKind, search, type Component, type Hit, type Listed, type Wiki } from "./wiki";
 
   let { project }: { project: Project } = $props();
 
@@ -17,8 +21,16 @@
   /** Why the Wikis, or the open one, could not be read; each cleared by its next answer. */
   let failure = $state<string | null>(null);
   let wikiFailure = $state<string | null>(null);
-  /** On a phone, the tree shows over the column only once asked for. */
-  let treeOpen = $state(false);
+  /** The tree folds into a sheet on a phone, the outline under 1080px too; at most one is open. */
+  const TITLES = { tree: "Components", outline: "Outline" } as const;
+  type Fold = keyof typeof TITLES;
+  const phone = new MediaQuery("(width < 720px)");
+  const narrow = new MediaQuery("(width < 1080px)");
+  let opened = $state<Fold | null>(null);
+  const toggles = $derived<Fold[]>(phone.current ? ["tree", "outline"] : narrow.current ? ["outline"] : []);
+  let query = $state("");
+  /** The search hit last followed, for Reading to scroll to. */
+  let found = $state.raw<Hit | null>(null);
 
   onMount(() =>
     watch<Listed[]>(
@@ -63,10 +75,36 @@
   });
   /** The Component the hash names, or the top one. */
   const open = $derived(wiki?.components.find((c) => c.id === selection.component) ?? children.get(null)?.[0]);
+  const parts = $derived(open ? (children.get(open.id) ?? []) : []);
   const link = (component: string) => hash({ project: project.name, view: "wiki", wiki: id, component });
 
+  const hits = $derived(wiki && query.trim() ? search(wiki, query) : []);
+  /** The open Component's name, then each section it shows, with how many it holds: the heads Reading gives ids. */
+  const outline = $derived(
+    open
+      ? [
+          { id: "component-name", name: open.name, count: null },
+          ...byKind(open).map((k) => ({ id: `kind-${k.kind}`, name: `${k.kind[0].toUpperCase()}${k.kind.slice(1)}s`, count: k.interpretations.length })),
+          ...(parts.length > 0 ? [{ id: "parts", name: "Components", count: parts.length }] : []),
+          ...(open.gaps.length > 0 ? [{ id: "gaps", name: "Gaps", count: open.gaps.length }] : []),
+        ]
+      : [],
+  );
+
   function pick(chosen: string) {
+    found = null;
     Object.assign(selection, { wiki: chosen, component: null });
+  }
+  function follow(hit: Hit) {
+    opened = null;
+    // A copy, so following the same hit again scrolls to it again.
+    found = { ...hit };
+  }
+  function bring(head: string) {
+    opened = null;
+    const at = document.getElementById(head);
+    at?.scrollIntoView();
+    at?.focus({ preventScroll: true });
   }
 </script>
 
@@ -74,7 +112,14 @@
   <ul>
     {#each children.get(parent) ?? [] as c (c.id)}
       <li>
-        <a href={link(c.id)} aria-current={c.id === open?.id ? "page" : undefined} onclick={() => (treeOpen = false)}>{c.name}</a>
+        <a
+          href={link(c.id)}
+          aria-current={c.id === open?.id ? "page" : undefined}
+          onclick={() => {
+            opened = null;
+            found = null;
+          }}>{c.name}</a
+        >
         {#if children.has(c.id)}
           {@render branch(c.id)}
         {/if}
@@ -117,17 +162,64 @@
           · Built {clock(wiki.builtAt)}
         </p>
       {/if}
+      {#if open && toggles.length > 0}
+        <div class="toggles">
+          {#each toggles as sheet (sheet)}
+            <button
+              type="button"
+              class="quiet"
+              aria-expanded={opened === sheet}
+              aria-controls="wiki-{sheet}"
+              onclick={() => (opened = opened === sheet ? null : sheet)}>{TITLES[sheet]}</button
+            >
+          {/each}
+        </div>
+      {/if}
     </header>
 
     {#if wiki && open}
-      <div class="read" class:tree-open={treeOpen}>
-        <button type="button" class="quiet toggle" aria-expanded={treeOpen} aria-controls="wiki-tree" onclick={() => (treeOpen = !treeOpen)}
-          >Components</button
-        >
-        <nav id="wiki-tree" class="tree" aria-label="Components">
-          {@render branch(null)}
-        </nav>
-        <Reading {wiki} component={open} parts={children.get(open.id) ?? []} {link} />
+      <div class="read">
+        <Sheet id="wiki-tree" title={TITLES.tree} folded={phone.current} open={opened === "tree"} close={() => (opened = null)}>
+          <input class="find" type="search" placeholder="Search this Wiki" aria-label="Search this Wiki" bind:value={query} />
+          {#if query.trim()}
+            <p class="found" role="status">{hits.length === 0 ? "Nothing found" : `${hits.length} found`}</p>
+            {#if hits.length > 0}
+              <nav aria-label="Found">
+                <ul class="hits">
+                  {#each hits as hit (`${hit.component.id} ${hit.interpretation?.id ?? ""}`)}
+                    <li>
+                      <a href={link(hit.component.id)} onclick={() => follow(hit)}>
+                        <span class="where"
+                          ><strong>{hit.component.name}</strong>
+                          {#if hit.interpretation}<span class="label">{hit.interpretation.kind}</span>{/if}</span
+                        >
+                        <span class="text">{hit.text}</span>
+                      </a>
+                    </li>
+                  {/each}
+                </ul>
+              </nav>
+            {/if}
+          {:else}
+            <nav class="tree" aria-label="Components">
+              {@render branch(null)}
+            </nav>
+          {/if}
+        </Sheet>
+        <Reading {wiki} component={open} {parts} {link} {found} />
+        <Sheet id="wiki-outline" title={TITLES.outline} folded={narrow.current} open={opened === "outline"} close={() => (opened = null)}>
+          <nav aria-label="Outline">
+            <ul class="outline">
+              {#each outline as head (head.id)}
+                <li>
+                  <button type="button" onclick={() => bring(head.id)}
+                    >{head.name}{#if head.count !== null}{" "}<span class="count">{head.count}</span>{/if}</button
+                  >
+                </li>
+              {/each}
+            </ul>
+          </nav>
+        </Sheet>
       </div>
     {:else if !wikiFailure}
       <p class="none">Reading the Wiki of {id}…</p>
@@ -177,24 +269,36 @@
     font-weight: 600;
   }
 
-  /* The tree beside the reading column, staying in view beside a long Component. */
+  /* The tree, the Component and its outline, side by side. */
   .read {
     display: grid;
-    grid-template-columns: 240px minmax(0, 1fr);
+    grid-template-columns: 240px minmax(0, 1fr) 200px;
     align-items: start;
     gap: 24px;
   }
-  .toggle {
-    display: none;
+  .toggles {
+    display: flex;
+    gap: 8px;
   }
-  .tree {
-    position: sticky;
-    top: 16px;
-    max-height: calc(100vh - 32px);
-    overflow: auto;
-    overflow-wrap: anywhere;
+  .find {
+    width: 100%;
+    min-height: 36px;
+    margin-bottom: 8px;
+    padding: 0 8px;
+    border: 1px solid var(--ink-muted);
+    border-radius: 2px;
+    background: var(--surface);
   }
-  .tree ul {
+  .find::placeholder {
+    color: var(--ink-muted);
+  }
+  .found {
+    padding-bottom: 4px;
+    color: var(--ink-muted);
+  }
+  .tree ul,
+  .hits,
+  .outline {
     padding: 0;
     list-style: none;
   }
@@ -209,7 +313,9 @@
     color: var(--ink);
     text-decoration: none;
   }
-  .tree a:hover {
+  .tree a:hover,
+  .hits a:hover strong,
+  .outline button:hover {
     text-decoration: underline;
   }
   /* The open Component, underlined with the rule as the active tab is. */
@@ -218,8 +324,56 @@
     text-decoration: underline 3px var(--rule);
     text-underline-offset: 5px;
   }
+  /* A hit: where it is, then its text in two lines at most. */
+  .hits a {
+    display: grid;
+    gap: 2px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--hairline);
+    color: var(--ink);
+    text-decoration: none;
+  }
+  .where {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .where .label,
+  .text {
+    color: var(--ink-muted);
+  }
+  .text {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
+  }
+  .outline button {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    width: 100%;
+    padding: 4px 0;
+    border: 0;
+    background: none;
+    text-align: left;
+    cursor: pointer;
+  }
+  .outline li:first-child button {
+    font-weight: 600;
+  }
+  .count {
+    color: var(--ink-muted);
+  }
 
-  /* The tree folds behind a button over the column. */
+  /* The outline goes behind its button. */
+  @media (width < 1080px) {
+    .read {
+      grid-template-columns: 240px minmax(0, 1fr);
+    }
+  }
+  /* The tree too; the header's two lines stack. */
   @media (width < 720px) {
     .built {
       margin-left: 0;
@@ -229,20 +383,8 @@
       grid-template-columns: minmax(0, 1fr);
       gap: 12px;
     }
-    .toggle {
-      display: block;
-      justify-self: start;
-    }
-    .tree {
-      display: none;
-      position: static;
-      max-height: none;
-      padding: 8px 12px;
-      background: var(--surface);
-      border: 1px solid var(--hairline);
-    }
-    .tree-open .tree {
-      display: block;
+    .toggles {
+      flex-basis: 100%;
     }
   }
 </style>

@@ -1,3 +1,5 @@
+import { spans } from "../markdown";
+
 /** A Wiki as `GET /api/wikis` lists it. */
 export interface Listed {
   id: string;
@@ -49,6 +51,13 @@ export interface Gap {
 /** The kinds of Interpretation, in the order a Component lists them. */
 export const KINDS = ["role", "invariant", "precondition", "postcondition", "effect"];
 
+/** A Component's Interpretations by kind, in `KINDS`' order, the kinds it has none of left out. */
+export function byKind(component: Component): { kind: string; interpretations: Interpretation[] }[] {
+  return KINDS.map((kind) => ({ kind, interpretations: component.interpretations.filter((i) => i.kind === kind) })).filter(
+    (k) => k.interpretations.length > 0,
+  );
+}
+
 /** Why the build left each Gap, as the page says it. */
 export const REASONS: Record<Gap["reason"], string> = {
   budget: "Not explored: the build's calls ran out",
@@ -59,4 +68,31 @@ export const REASONS: Record<Gap["reason"], string> = {
 /** The Anchor's lines on GitHub, at the commit the Wiki describes. */
 export function anchorUrl(wiki: Pick<Wiki, "target" | "commit">, a: Anchor): string {
   return `https://github.com/${wiki.target.repo}/blob/${wiki.commit}/${a.path.split("/").map(encodeURIComponent).join("/")}#L${a.start}-L${a.end}`;
+}
+
+/** Where `search` found its words: a Component by its name or overview, or one of its Interpretations. */
+export interface Hit {
+  component: Component;
+  interpretation: Interpretation | null;
+  /** The text found, the overview or the Interpretation's, as the page shows it: without its Markdown marks. */
+  text: string;
+}
+
+/** Every Component whose name or overview holds each word of `query`, case aside, then every Interpretation that does, in the Wiki's order; each read as the page shows it. */
+export function search(wiki: Pick<Wiki, "components">, query: string): Hit[] {
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return [];
+  const holds = (text: string) => words.every((w) => text.toLowerCase().includes(w));
+  const shown = (markdown: string) =>
+    spans(markdown)
+      .map((s) => s.text)
+      .join("");
+  return [
+    ...wiki.components
+      .map((c) => ({ component: c, interpretation: null, text: shown(c.overview) }))
+      .filter((h) => holds(`${h.component.name}\n${h.text}`)),
+    ...wiki.components.flatMap((c) =>
+      c.interpretations.map((i) => ({ component: c, interpretation: i, text: shown(i.text) })).filter((h) => holds(h.text)),
+    ),
+  ];
 }

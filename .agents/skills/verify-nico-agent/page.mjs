@@ -127,9 +127,18 @@ try {
   if (kept) await context.storageState({ path: kept });
   const aria = await page.locator("body").ariaSnapshot();
   console.log(aria);
+  // What the window shows: where it is scrolled, the page's width against its own, and what has focus.
+  const view = await page.evaluate(() => {
+    const at = document.activeElement;
+    const focus = !at || at === document.body ? "nothing" : `${at.tagName.toLowerCase()} "${at.textContent.trim().replace(/\s+/g, " ").slice(0, 100)}"`;
+    return `scrolled to ${scrollX},${scrollY}\npage ${document.documentElement.scrollWidth}px wide in a ${innerWidth}px window\nfocus on ${focus}\n`;
+  });
+  console.log(view);
   if (evidence) {
     mkdirSync(dirname(evidence), { recursive: true });
     writeFileSync(`${evidence}.aria.txt`, `${aria}\n`);
+    writeFileSync(`${evidence}.view.txt`, view);
+    await page.screenshot({ path: `${evidence}.view.png` });
     await page.screenshot({ path: `${evidence}.png`, fullPage: true });
     writeFileSync(`${evidence}.requests.txt`, requests.map((r) => `${r}\n`).join(""));
     writeFileSync(`${evidence}.console.txt`, errors.map((e) => `${e}\n`).join(""));

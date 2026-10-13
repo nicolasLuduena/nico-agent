@@ -76,7 +76,9 @@ $C cleanup                      # stop what the run started, remove the run dir;
 `run --evidence PREFIX` writes `PREFIX.cmd`, `.stdout`, `.stderr` and `.exit`; `http --evidence`
 writes `.cmd` (each `--header` in brackets first), `.stdout` (the body), `.stderr`, `.exit` (the
 HTTP status) and `.headers`; `page
---evidence` writes `.cmd`, `.aria.txt`, `.png`, `.requests.txt` and `.console.txt`. Each still prints
+--evidence` writes `.cmd`, `.aria.txt`, `.png` (the whole page), `.view.png` (the window, as scrolled),
+`.view.txt` (where the window is scrolled, the page's width against the window's, and what has focus),
+`.requests.txt` and `.console.txt`. Each still prints
 what it captured, so a recipe can record and inspect at once. `page` steps: `--click tab=verify/second`
 clicks the element of that ARIA role whose accessible name is exactly the text, `--click
 "button~Failed verify/fixture #1"` one whose name contains it, `--within "region=verify/fixture"` makes
@@ -216,9 +218,12 @@ unknown path's `help`, and on the page the ARIA roles and names: `tablist "Proje
 "<slug>"` per Repo, each holding `switch "Dispatch"` (and `Faux-nico answers`,
 `Flip to ready`, `Gardening`, `Quality-scan`, `Restart`, `Review`, `Stack`, `Wiki`), `spinbutton "Room"`,
 `navigation "View"` with `link "Map"` and `link "Wiki"` (the
-Wiki view: `combobox "Wiki"`, `navigation "Components"` with a `link` per Component, `button
-"Components"` at phone width, `article "<Component>"` with a `region` per kind of Interpretation,
-`"Components"` and `"Gaps"`), `region "Dispatch"` with `button "Dispatch"` (a Repo's only), `region "Readiness"` with a `group` reading `N of M pass` (a Repo's only), `region "Map of <project>"`, `region "Settings"` with
+Wiki view: `combobox "Wiki"`, `searchbox "Search this Wiki"` with, while it holds words, a `status`
+`N found` and `navigation "Found"` with a `link` per hit in place of `navigation "Components"` with
+a `link` per Component, `article "<Component>"` with a `region` per kind of Interpretation,
+`"Components"` and `"Gaps"`, `navigation "Outline"` with a `button` per head; under 1080px
+`button "Outline"`, under 720px `button "Components"` too, each opening its sheet with `button
+"Close"`), `region "Dispatch"` with `button "Dispatch"` (a Repo's only), `region "Readiness"` with a `group` reading `N of M pass` (a Repo's only), `region "Map of <project>"`, `region "Settings"` with
 `combobox "Implementer Harness"` (and `model`, `Effort`, and the same for `Reviewer`), `textbox
 "Base"`, `combobox "Project"` (a Repo's only), `region "Install"` with `textbox "Install"` (a Repo's only), `button "Use the default <Setting>"` or `"Use the
 Project's <Setting>"`, `button "Remove <slug>…"`; a `--click` takes the first match, which is the
