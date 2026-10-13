@@ -1,5 +1,6 @@
-//! `scripts/install-service.sh`, run with a temp HOME and a fake `systemctl`
-//! that logs its arguments instead of touching systemd.
+//! `scripts/install-service.sh`, run with a temp HOME and fake `systemctl`,
+//! `sudo` and `ollama` that log their arguments instead of touching the
+//! system; the fake `systemctl --user cat` finds a unit only in the temp HOME.
 
 use std::fs;
 use std::path::PathBuf;
@@ -22,18 +23,24 @@ impl Sandbox {
         ));
         let _ = fs::remove_dir_all(&home);
         fs::create_dir_all(home.join("fakebin")).unwrap();
-        let systemctl = home.join("fakebin/systemctl");
-        let log = home.join("systemctl.log");
-        fs::write(
-            &systemctl,
-            format!("#!/bin/sh\necho \"$*\" >> '{}'\n", log.display()),
-        )
-        .unwrap();
-        Command::new("chmod")
-            .arg("+x")
-            .arg(&systemctl)
-            .status()
-            .unwrap();
+        let units = home.join(".config/systemd/user");
+        for (name, then) in [
+            (
+                "systemctl",
+                format!(
+                    "if [ \"$2\" = cat ]; then exec test -e '{}'/\"$3\"; fi",
+                    units.display()
+                ),
+            ),
+            ("sudo", String::new()),
+            ("ollama", String::new()),
+        ] {
+            let stub = home.join("fakebin").join(name);
+            let log = home.join(format!("{name}.log"));
+            let script = format!("#!/bin/sh\necho \"$*\" >> '{}'\n{then}\n", log.display());
+            fs::write(&stub, script).unwrap();
+            Command::new("chmod").arg("+x").arg(&stub).status().unwrap();
+        }
         Sandbox { home }
     }
 
@@ -69,7 +76,12 @@ impl Sandbox {
     }
 
     fn systemctl(&self) -> Vec<String> {
-        let log = fs::read_to_string(self.home.join("systemctl.log")).unwrap_or_default();
+        self.log("systemctl")
+    }
+
+    /// What the fake `name` was called with, a line a call.
+    fn log(&self, name: &str) -> Vec<String> {
+        let log = fs::read_to_string(self.home.join(format!("{name}.log"))).unwrap_or_default();
         log.lines().map(String::from).collect()
     }
 
@@ -127,10 +139,49 @@ WantedBy=default.target
             "--user daemon-reload",
             "--user enable nico-agent.service",
             "--user restart nico-agent.service",
+            "--user cat ollama.service",
             "--user enable nico-agent.service",
             "--user restart nico-agent.service",
+            "--user cat ollama.service",
         ]
     );
+    // With no unit of the user's own, the system's the package installs.
+    assert_eq!(
+        s.log("sudo"),
+        [
+            "systemctl enable --now ollama.service",
+            "systemctl enable --now ollama.service"
+        ]
+    );
+    assert_eq!(
+        s.log("ollama"),
+        ["pull nomic-embed-text", "pull nomic-embed-text"]
+    );
+}
+
+#[test]
+fn it_enables_the_users_own_ollama_unit_and_pulls_the_configured_embedding_model() {
+    let s = Sandbox::new();
+    let units = s.home.join(".config/systemd/user");
+    fs::create_dir_all(&units).unwrap();
+    fs::write(units.join("ollama.service"), "[Service]\n").unwrap();
+    let config = s.home.join(".config/nico-agent");
+    fs::create_dir_all(&config).unwrap();
+    let toml = "[wiki]\nhour = 2\nembed_model = \"mxbai-embed-large\" # a bigger one\n";
+    fs::write(config.join("config.toml"), toml).unwrap();
+
+    let (code, out) = s.run(&["--yes"], "");
+
+    assert_eq!(code, 0, "{out}");
+    assert_eq!(
+        s.systemctl()[3..],
+        [
+            "--user cat ollama.service",
+            "--user enable --now ollama.service"
+        ]
+    );
+    assert_eq!(s.log("sudo"), Vec::<String>::new());
+    assert_eq!(s.log("ollama"), ["pull mxbai-embed-large"]);
 }
 
 #[test]
@@ -142,6 +193,7 @@ fn declining_leaves_everything_untouched() {
     assert_eq!(code, 0, "{out}");
     assert_eq!(s.units(), Vec::<String>::new());
     assert_eq!(s.systemctl(), Vec::<String>::new());
+    assert_eq!(s.log("ollama"), Vec::<String>::new());
 }
 
 #[test]
@@ -154,7 +206,7 @@ fn remove_stops_the_service_and_deletes_its_unit() {
     assert_eq!(code, 0, "{out}");
     assert_eq!(s.units(), Vec::<String>::new());
     assert_eq!(
-        s.systemctl()[3..],
+        s.systemctl()[4..],
         [
             "--user disable --now nico-agent.service",
             "--user daemon-reload"

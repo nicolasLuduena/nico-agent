@@ -132,11 +132,18 @@ fn a_leaf_lands_in_the_bucket_as_one_commit_and_the_build_says_built() {
     assert!(calls.contains(&format!(
         "git -C /src/api worktree add --detach --quiet {dir} origin/main"
     )));
+    // Then its records are embedded.
     assert_eq!(
-        calls.last().unwrap(),
-        &format!(
-            "git -C {BUCKET} add -- wiki/acme/api/wiki.json && git -C {BUCKET} -c user.name=nico-agent -c user.email=nico-agent@localhost commit --quiet --allow-empty --no-gpg-sign -m wiki acme/api abc1234"
-        )
+        calls[calls.len() - 2..],
+        [
+            format!(
+                "git -C {BUCKET} add -- wiki/acme/api/wiki.json && git -C {BUCKET} -c user.name=nico-agent -c user.email=nico-agent@localhost commit --quiet --allow-empty --no-gpg-sign -m wiki acme/api abc1234"
+            ),
+            format!(
+                "{EMBED}{}",
+                json!({ "model": "nomic-embed-text", "input": ["A small API.", "lib.rs declares the crate's modules."] })
+            ),
+        ]
     );
     assert!(!(t.world.files.borrow().keys()).any(|f| f.starts_with(&format!("{dir}/"))));
 }
@@ -606,4 +613,107 @@ fn a_repo_not_configured_is_refused_and_no_outcome_written() {
     assert!(!t.config_dir.join("wikis.json").exists());
     assert_eq!(t.cli(&["wiki", "--json"]).exit_code, 2);
     assert_eq!(t.cli(&["wiki", "build", "--json"]).exit_code, 2);
+}
+
+const EMBED: &str = "curl -X POST http://127.0.0.1:11434/api/embed -d ";
+
+/// What the config directory keeps of the embeddings of acme/api's Wiki.
+fn vectors(t: &Setup) -> Option<Value> {
+    let file = t.config_dir.join("wiki/acme/api/vectors.json");
+    let text = std::fs::read_to_string(file).ok()?;
+    Some(serde_json::from_str(&text).unwrap())
+}
+
+#[test]
+fn a_build_ends_by_embedding_every_overview_and_interpretation_through_ollama() {
+    let t = with_repo("");
+    let entry = interpretation("role", "run is the entry point.", "src/lib.rs", 4, 4);
+    answer(
+        &t,
+        "acme/api",
+        json!({
+            "kind": "division",
+            "overview": "An API and its web front.",
+            "components": [
+                { "name": "Core", "summary": "The crate.", "files": ["src/lib.rs", "src/config.rs"] },
+                { "name": "Web front", "summary": "The page.", "files": ["web/app.ts"] },
+            ],
+            "interpretations": [entry],
+        }),
+    );
+    let config = interpretation(
+        "invariant",
+        "Config is a unit struct.",
+        "src/config.rs",
+        1,
+        1,
+    );
+    answer(
+        &t,
+        "acme/api > Core",
+        json!({ "kind": "leaf", "overview": "The crate's modules.", "interpretations": [config] }),
+    );
+    let port = interpretation("effect", "The page serves on port 80.", "web/app.ts", 2, 2);
+    answer(
+        &t,
+        "acme/api > Web front",
+        json!({ "kind": "leaf", "overview": "The page.", "interpretations": [port] }),
+    );
+    (t.world.embeddings.borrow_mut()).insert("The page serves on port 80.".into(), vec![1.0, 0.0]);
+
+    let ran = t.cli(&["wiki", "build", "acme/api", "--json"]);
+
+    assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
+    let texts = [
+        "An API and its web front.",
+        "run is the entry point.",
+        "The crate's modules.",
+        "Config is a unit struct.",
+        "The page.",
+        "The page serves on port 80.",
+    ];
+    let embedded = json!({ "model": "nomic-embed-text", "input": texts });
+    // After the Wiki is in the Bucket: a Wiki is served without its embeddings.
+    let calls = t.world.calls();
+    assert_eq!(calls.last().unwrap(), &format!("{EMBED}{embedded}"));
+    assert!(calls[calls.len() - 2].starts_with(&format!("git -C {BUCKET} add -- ")));
+    let mut kept: serde_json::Map<String, Value> = (texts.iter())
+        .map(|text| (text.to_string(), json!([0.0, 1.0])))
+        .collect();
+    kept.insert("The page serves on port 80.".into(), json!([1.0, 0.0]));
+    assert_eq!(
+        vectors(&t),
+        Some(json!({ "model": "nomic-embed-text", "vectors": kept }))
+    );
+    assert_eq!(outcomes(&t)["acme/api"]["outcome"], "built");
+}
+
+#[test]
+fn a_failed_embedding_leaves_the_wiki_built_without_its_vectors_on_the_ollama_configured() {
+    let t = with_repo("[wiki]\nembed_model = \"mxbai-embed-large\"\nollama = \"http://gpu:11434\"");
+    answer(
+        &t,
+        "acme/api",
+        json!({ "kind": "leaf", "overview": "A small API." }),
+    );
+    let embed = "curl -X POST http://gpu:11434/api/embed -d ";
+    t.world.fail_call(
+        embed,
+        "could not reach http://gpu:11434/api/embed: connection refused",
+    );
+
+    let ran = t.cli(&["wiki", "build", "acme/api", "--json"]);
+
+    assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
+    assert_eq!(ran.json()["outcome"], "built");
+    let embedded = json!({ "model": "mxbai-embed-large", "input": ["A small API."] });
+    assert!(t.world.calls().contains(&format!("{embed}{embedded}")));
+    assert_eq!(vectors(&t), None);
+    assert!(
+        t.world.logged().iter().any(|l| l.ends_with(
+            "could not embed the Wiki of acme/api, so ask embeds it first: could not reach http://gpu:11434/api/embed: connection refused"
+        )),
+        "{:?}",
+        t.world.logged()
+    );
 }

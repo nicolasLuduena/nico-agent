@@ -156,7 +156,7 @@ fn it_answers_the_handshake_as_mcp_requires_and_never_a_notification() {
 }
 
 #[test]
-fn it_lists_its_four_tools_each_read_only_with_its_arguments() {
+fn it_lists_its_five_tools_each_read_only_with_its_arguments() {
     let t = setup();
 
     let answered = mcp(
@@ -184,6 +184,7 @@ fn it_lists_its_four_tools_each_read_only_with_its_arguments() {
             ("find_component", &json!(["wiki", "query"])),
             ("get_component", &json!(["wiki", "id"])),
             ("read_anchor", &json!(["wiki", "path", "start", "end"])),
+            ("ask", &json!(["wiki", "question"])),
         ]
     );
 }
@@ -438,7 +439,7 @@ fn a_repo_whose_wiki_is_not_built_is_not_served() {
 #[test]
 fn it_answers_what_it_cannot_do_with_the_json_rpc_error_for_it() {
     let t = setup();
-    let unknown = request(2, "tools/call", json!({ "name": "ask", "arguments": {} }));
+    let unknown = request(2, "tools/call", json!({ "name": "grep", "arguments": {} }));
     let newer = request(
         5,
         "initialize",
@@ -466,7 +467,7 @@ fn it_answers_what_it_cannot_do_with_the_json_rpc_error_for_it() {
     let unparsed = mcp(&t, &[], &[]);
 
     let error = |id: Value, code: i64, message: &str| json!({ "jsonrpc": "2.0", "id": id, "error": { "code": code, "message": message } });
-    assert_eq!(answered[1], error(json!(2), -32602, "Unknown tool: ask"));
+    assert_eq!(answered[1], error(json!(2), -32602, "Unknown tool: grep"));
     assert_eq!(
         answered[2],
         error(json!(3), -32601, "Method not found: resources/list")
@@ -479,4 +480,227 @@ fn it_answers_what_it_cannot_do_with_the_json_rpc_error_for_it() {
         json!({ "content": [{ "type": "text", "text": "`wiki` is required, a string" }], "isError": true })
     );
     assert_eq!(unparsed, [error(Value::Null, -32700, "Parse error")]);
+}
+
+const QUESTION: &str = "Which number does a browser connect to?";
+const EMBED: &str = "curl -X POST http://127.0.0.1:11434/api/embed -d ";
+
+/// acme/api with its Wiki one leaf of nine records: its overview, "The page
+/// serves on port 80.", six claims of `src/lib.rs`, "Claim 1." to "Claim 6.",
+/// and "Config is a unit struct.". Ollama embeds the port's claim as it
+/// embeds `QUESTION`, the config's opposite it, and the rest across it.
+fn with_claims() -> Setup {
+    let t = setup();
+    std::fs::create_dir_all(&t.config_dir).unwrap();
+    let config = "[repos.\"acme/api\"]\npath = \"/src/api\"\n";
+    std::fs::write(t.config_dir.join("config.toml"), config).unwrap();
+    t.world.add_clone(BUCKET, &[]);
+    for (file, text) in [
+        ("src/lib.rs", LIB),
+        ("src/config.rs", CONFIG),
+        ("web/app.ts", APP),
+    ] {
+        for rev in ["origin/main", "abc1234"] {
+            t.world.add_tree_file("/src/api", rev, file, text);
+        }
+    }
+    let mut claims = vec![interpretation(
+        "effect",
+        "The page serves on port 80.",
+        "web/app.ts",
+        2,
+        2,
+    )];
+    claims.extend(
+        (1..=6).map(|n| interpretation("role", &format!("Claim {n}."), "src/lib.rs", 1, 2)),
+    );
+    claims.push(interpretation(
+        "invariant",
+        "Config is a unit struct.",
+        "src/config.rs",
+        1,
+        1,
+    ));
+    answer(
+        &t,
+        "acme/api",
+        json!({ "kind": "leaf", "overview": "An HTTP API and its web page.", "interpretations": claims }),
+    );
+    let mut embeddings = t.world.embeddings.borrow_mut();
+    embeddings.insert(QUESTION.into(), vec![1.0, 0.0]);
+    embeddings.insert("The page serves on port 80.".into(), vec![1.0, 0.0]);
+    embeddings.insert("Config is a unit struct.".into(), vec![-1.0, 0.0]);
+    drop(embeddings);
+    let ran = t.cli(&["wiki", "build", "acme/api", "--json"]);
+    assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
+    t
+}
+
+/// The wiki model answers `QUESTION` with `sentences`.
+fn answers(t: &Setup, sentences: Value) {
+    let answer = json!({ "sentences": sentences }).to_string();
+    (t.world.headless.borrow_mut()).push((QUESTION.into(), answer));
+}
+
+/// The calls `ask` made to the wiki model, each its whole command line.
+fn asked(t: &Setup) -> Vec<String> {
+    let dir = t.config_dir.display().to_string();
+    (t.world.calls().into_iter())
+        .filter(|c| c.starts_with(&format!("cd {dir} && ")))
+        .collect()
+}
+
+#[test]
+fn ask_answers_from_the_closest_records_only_and_drops_each_sentence_citing_none_of_theirs() {
+    let t = with_claims();
+    let port = json!({ "path": "web/app.ts", "start": 2, "end": 2 });
+    answers(
+        &t,
+        json!([
+            { "text": "A browser connects to port 80.", "anchors": [port] },
+            { "text": "Config holds no fields.", "anchors": [{ "path": "src/config.rs", "start": 1, "end": 1 }] },
+            { "text": "It is fast.", "anchors": [] },
+            { "text": "It also serves.", "anchors": [port, { "path": "web/app.ts", "start": 1, "end": 2 }] },
+            { "text": "Its first line is a module.", "anchors": [{ "path": "src/lib.rs", "start": 1, "end": 1 }] },
+            { "text": "Backwards.", "anchors": [{ "path": "src/lib.rs", "start": 2, "end": 1 }] },
+        ]),
+    );
+    let before = t.world.calls().len();
+
+    let answered = call(
+        &t,
+        &[],
+        "ask",
+        json!({ "wiki": "acme/api", "question": QUESTION }),
+    );
+
+    let claim = |id: u64, kind: &str, text: &str, anchor: Value| json!({ "component": "index", "id": id, "kind": kind, "text": text, "anchors": [anchor] });
+    let lib = json!({ "path": "src/lib.rs", "start": 1, "end": 2 });
+    assert_eq!(
+        answered,
+        Ok(json!({
+            "answer": [
+                { "text": "A browser connects to port 80.", "anchors": [port] },
+                { "text": "Its first line is a module.", "anchors": [{ "path": "src/lib.rs", "start": 1, "end": 1 }] },
+            ],
+            "records": [
+                claim(1, "effect", "The page serves on port 80.", port.clone()),
+                claim(2, "role", "Claim 1.", lib.clone()),
+                claim(3, "role", "Claim 2.", lib.clone()),
+                claim(4, "role", "Claim 3.", lib.clone()),
+                claim(5, "role", "Claim 4.", lib.clone()),
+                claim(6, "role", "Claim 5.", lib.clone()),
+                claim(7, "role", "Claim 6.", lib),
+            ],
+        }))
+    );
+    let calls = t.world.calls()[before..].to_vec();
+    let question = json!({ "model": "nomic-embed-text", "input": [QUESTION] });
+    assert!(calls.contains(&format!("{EMBED}{question}")), "{calls:?}");
+    // One call with no tools at all, of the eight records closest to the
+    // question, best first, each claim with the lines it cites.
+    let asked = asked(&t);
+    assert_eq!(asked.len(), 1);
+    let dir = t.config_dir.display();
+    let prompt = (asked[0].strip_prefix(&format!(
+        r#"cd {dir} && env OPENCODE_CONFIG_CONTENT={{"permission":{{"*":"deny"}}}} opencode2 run --standalone -m opencode-go/deepseek-v4.1-flash --format json "#
+    )))
+    .expect("a call with no tools");
+    assert!(prompt.contains(&format!("\n{QUESTION}\n")), "{prompt}");
+    let shown = |text: &str| {
+        prompt
+            .find(text)
+            .unwrap_or_else(|| panic!("{text} in {prompt}"))
+    };
+    assert!(prompt.contains(
+        "The page serves on port 80.\n\n{\"path\": \"web/app.ts\", \"start\": 2, \"end\": 2}\n\n```\n2: export const port = 80;\n```\n"
+    ), "{prompt}");
+    assert!(shown("The page serves on port 80.") < shown("An HTTP API and its web page."));
+    assert!(shown("Claim 6.") > 0);
+    assert!(!prompt.contains("Config is a unit struct."), "{prompt}");
+    assert!(!prompt.contains("pub struct Config;"), "{prompt}");
+}
+
+#[test]
+fn ask_embeds_the_records_whose_vectors_are_missing_first_and_keeps_them() {
+    let t = with_claims();
+    let vectors = t.config_dir.join("wiki/acme/api/vectors.json");
+    std::fs::remove_file(&vectors).unwrap();
+    answers(&t, json!([]));
+    let ask = || {
+        call(
+            &t,
+            &[],
+            "ask",
+            json!({ "wiki": "acme/api", "question": QUESTION }),
+        )
+    };
+    let embeds = || {
+        (t.world.calls().into_iter())
+            .filter(|c| c.starts_with(EMBED))
+            .collect::<Vec<_>>()
+    };
+    let built = embeds().len();
+
+    let first = ask();
+    let kept = std::fs::read_to_string(&vectors);
+    let second = ask();
+
+    let records = [
+        "An HTTP API and its web page.",
+        "The page serves on port 80.",
+        "Claim 1.",
+        "Claim 2.",
+        "Claim 3.",
+        "Claim 4.",
+        "Claim 5.",
+        "Claim 6.",
+        "Config is a unit struct.",
+    ];
+    let embed = |input: &[&str]| {
+        format!(
+            "{EMBED}{}",
+            json!({ "model": "nomic-embed-text", "input": input })
+        )
+    };
+    assert_eq!(
+        embeds()[built..],
+        [embed(&records), embed(&[QUESTION]), embed(&[QUESTION])]
+    );
+    assert_eq!(first, Ok(json!({ "answer": [], "records": [] })));
+    assert_eq!(second, first);
+    let kept: Value = serde_json::from_str(&kept.unwrap()).unwrap();
+    assert_eq!(kept["model"], "nomic-embed-text");
+    assert_eq!(
+        kept["vectors"]["The page serves on port 80."],
+        json!([1.0, 0.0])
+    );
+    assert_eq!(kept["vectors"].as_object().unwrap().len(), records.len());
+    // One that does not read is made again, as a missing one is.
+    std::fs::write(&vectors, "{\"model\": ").unwrap();
+    assert_eq!(ask(), first);
+    assert_eq!(embeds()[built + 3..], [embed(&records), embed(&[QUESTION])]);
+}
+
+#[test]
+fn ask_says_search_is_unavailable_when_ollama_fails_and_asks_no_model() {
+    let t = with_claims();
+    answers(&t, json!([]));
+    t.world.fail_call(
+        EMBED,
+        "could not reach http://127.0.0.1:11434/api/embed: Connection refused",
+    );
+
+    let answered = call(
+        &t,
+        &[],
+        "ask",
+        json!({ "wiki": "acme/api", "question": QUESTION }),
+    );
+
+    assert_eq!(
+        answered,
+        Err("search unavailable, use find_component".into())
+    );
+    assert!(asked(&t).is_empty());
 }

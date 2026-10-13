@@ -1,13 +1,14 @@
 //! `nico-agent mcp`: the Wikis, served to agents as an MCP server over
 //! stdio, a JSON-RPC message a line. Each call reads the config, the Bucket
 //! and the Repos' clones afresh, so a build that lands meanwhile is served;
-//! it writes nothing.
+//! it writes nothing but the embeddings `ask` makes of a Wiki lacking them.
 
 use std::cmp::Reverse;
 
 use serde_json::{Value, json};
 
 use crate::args::Args;
+use crate::ask;
 use crate::bucket;
 use crate::cli::{Context, Refusal};
 use crate::config::{self, Config};
@@ -15,7 +16,7 @@ use crate::config::{self, Config};
 /// The MCP versions it speaks, the latest last.
 const VERSIONS: [&str; 4] = ["2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25"];
 
-const INSTRUCTIONS: &str = "The Wikis of the user's Repos: what each Repo's code does as of one commit, as a tree of Components whose every claim (an Interpretation) cites the lines it rests on (its Anchors). Ask here before reading a Repo's code: `wikis` lists them, `find_component` finds a Component by words, `get_component` reads one, the top one being `index`, and `read_anchor` reads the lines a claim cites. Where a Wiki and the code disagree, the code wins.";
+const INSTRUCTIONS: &str = "The Wikis of the user's Repos: what each Repo's code does as of one commit, as a tree of Components whose every claim (an Interpretation) cites the lines it rests on (its Anchors). Ask here before reading a Repo's code: `wikis` lists them, `find_component` finds a Component by words, `get_component` reads one, the top one being `index`, `read_anchor` reads the lines a claim cites, and `ask` answers a question in a few sentences, each citing lines. Where a Wiki and the code disagree, the code wins.";
 
 /// `mcp [--wiki <owner/name>]...`: answer each request on stdin till it
 /// closes, serving the Wikis named, or every one.
@@ -125,6 +126,12 @@ fn tools() -> Value {
             }),
             &["wiki", "path", "start", "end"],
         ),
+        tool(
+            "ask",
+            "Ask a Wiki a question about its Repo's code: an answer of a few sentences, each citing the Anchors it rests on, made from only the Interpretations and overviews closest to the question, with the Interpretations it cites. Answers \"search unavailable\" when it cannot search: use find_component then.",
+            json!({ "wiki": wiki, "question": { "type": "string", "description": "The question, in words." } }),
+            &["wiki", "question"],
+        ),
     ])
 }
 
@@ -159,6 +166,11 @@ fn called(
         "read_anchor" => config.and_then(|config| {
             let (slug, clone, wiki) = served(&config)?;
             anchor(ctx, &slug, &clone, &wiki, arguments)
+        }),
+        "ask" => config.and_then(|config| {
+            let (slug, clone, wiki) = served(&config)?;
+            let question = text(arguments, "question")?;
+            ask::ask(ctx, &config, &slug, &clone, &wiki, question)
         }),
         _ => return None,
     })
