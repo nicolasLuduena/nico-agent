@@ -232,6 +232,7 @@ fn tell_blocked(ctx: &Context, run: &Run) -> io::Result<Option<String>> {
 /// Start a quality-scan in each Repo with its switch on that has room, no
 /// scan running, and none since the latest weekly slot; a Repo never scanned
 /// only within its slot's hour, so turning the switch on scans nothing at once.
+/// Each is given the built Wikis of the Library versions its Repo links.
 fn scan(ctx: &Context, config: &Config) -> Result<Vec<String>, Refusal> {
     let runs = load(&ctx.config_dir)?;
     let dispatches = dispatch::load(&ctx.config_dir)?;

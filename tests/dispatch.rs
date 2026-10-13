@@ -883,9 +883,14 @@ fn launched(t: &Setup) -> Vec<String> {
 fn an_implementer_of_a_repo_linking_a_built_library_version_starts_with_its_wiki_mcp_and_asks_it_first()
  {
     let t = with_repo_config(&format!(
-        "libraries = [{KIT_TOML}, {{ repo = \"acme/ui\", tag = \"v2\" }}]\n"
+        "switches = {{ wiki = true }}\nlibraries = [{KIT_TOML}, {{ repo = \"acme/ui\", tag = \"v2\" }}]\n"
     ));
     kit_built(&t);
+    // Its Repo's own Wiki, built too, is never given.
+    (t.world).add_tree_file("/src/api", "origin/main", "src/lib.rs", "pub fn run() {}\n");
+    let leaf = json!({ "kind": "leaf", "overview": "The api." });
+    (t.world.headless.borrow_mut()).push(("## The part: acme/api".into(), leaf.to_string()));
+    assert_eq!(t.cli(&["wiki", "build", "acme/api", "--json"]).exit_code, 0);
 
     assert_eq!(
         launched(&t),

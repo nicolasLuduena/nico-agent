@@ -419,6 +419,7 @@ fn run_step(
             launch::get_ready(world, harness, &record.implementer, worktree, *ready)?;
         }
         "prompt" => {
+            // shortcut: read again, not kept from "agent start", so a Library built between a failed step and its rerun gets the line without the MCP; keep the Wikis on the record if that bites.
             let (_, line) = wiki::libraries(&ctx.config_dir, config, repo)?;
             let text = implement_prompt(ctx, config, harness, record) + &line;
             launch::prompt(world, harness, &record.implementer.agent, &text)?;

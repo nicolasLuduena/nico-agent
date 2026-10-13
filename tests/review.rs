@@ -34,6 +34,7 @@ fn dispatched(toml: &str) -> Setup {
     dispatch(with_issue(toml))
 }
 
+/// `t` with issue 7 dispatched by a tick.
 fn dispatch(t: Setup) -> Setup {
     assert_eq!(t.tick(), ["acme/api#7 dispatched"]);
     t
@@ -44,6 +45,7 @@ fn with_pr(toml: &str) -> Setup {
     pr_opened(dispatched(toml))
 }
 
+/// `t` with PR 9 opened on issue 7's branch, a tick later.
 fn pr_opened(t: Setup) -> Setup {
     t.world.add_pr(PullRequest {
         head_branch: Some("agent/api-7".into()),
