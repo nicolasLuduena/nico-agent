@@ -85,14 +85,18 @@ Preconditions:
 - **A division's claim about one Component.** `$C seed correction none`. Write `$E/division.json`, a
   division into `Readme` (`README.md`) with a `role` at `README.md` `1`-`1`, and `$E/readme.json`, a
   leaf with a `role` at `1`-`1`. `$C seed answer "$E/division.json" "verify/fixture"`, `$C seed answer
-  "$E/readme.json" "verify/fixture > Readme"`, then `$C run --evidence "$E/09-division-claim" -- wiki build verify/fixture --json`.
+  "$E/readme.json" "verify/fixture > Readme"`, `$C state > "$E/state.division.before.txt"`, then
+  `$C run --evidence "$E/09-division-claim" -- wiki build verify/fixture --json`.
   Exit `0`, `"components":2`, `"gaps":{"unreadable":1}`; stderr says `verify/fixture: 1 claim(s) failed,
   sent back (round 1 of 3, call 2 of 48)`, then rounds 2 and 3, then `verify/fixture: dropped
   interpretation 1 {...}: its Anchors all fall in the files of Readme, so it is about that Component,
   not how the division's Components work together` and `verify/fixture > Readme: asked (call 5 of 48)`.
   `$C http --evidence "$E/10-bucket-division" GET /bucket/wiki/verify/fixture/wiki.json`: `index`
   with no Interpretation and `gaps` `[{"paths":["README.md"],"reason":"unreadable"}]`, `readme` with
-  its `role`. Copy `$OUTSIDE_LOG` to `$E/outside.log`.
+  its `role`. The `state` diff from `state.division.before.txt`: `wikis.json` `built`, a Bucket
+  commit `wiki verify/fixture <commit>`, and five `opencode2 run` calls: the top part, three
+  corrections with `-s` and its session, each listing `interpretation 1` with that why, then
+  Readme's. Copy `$OUTSIDE_LOG` to `$E/outside.log`.
 
 ## Gotchas
 

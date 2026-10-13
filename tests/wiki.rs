@@ -1227,11 +1227,11 @@ fn a_leaf_s_explainer_lands_on_its_component_and_a_division_s_is_not_asked_for()
     assert_eq!(components[1]["gaps"], json!([]));
     assert!(components[0].get("explainer").is_none());
     assert!(components[2].get("explainer").is_none());
-    // A leaf's prompt asks for one.
+    // A leaf's prompt says what one is.
     let asked = (t.world.calls().into_iter())
         .find(|c| c.contains("## The part: acme/api > Core\n"))
         .unwrap();
-    assert!(asked.contains("\"explainer\": {\"title\": "), "{asked}");
+    assert!(asked.contains("in place of null: {\"title\": "), "{asked}");
 }
 
 #[test]

@@ -1655,13 +1655,15 @@ How much to write: each limit below is the most, not a target. Write less whenev
 - A leaf has at most 5 Interpretations: the ones a newcomer most needs, or would most likely get wrong.
 - A division has at most 3 Interpretations, each about how its Components work together. One whose Anchors all fall in the files of one Component is about that Component, and fails.
 - An Anchor is lines of a listed file, 1-based and inclusive: start <= end <= the file's line count.
-- A leaf has an Explainer only for a flow, in order, that its Interpretations don't already state: a title, at most 8 steps numbered from 1, each a one-sentence caption citing at least one Anchor and not restating an Interpretation, with an optional lane naming where the step happens, and arrows from step to step by number, each with an optional label. Leave it out otherwise.
+- Most leaves have no Explainer. A leaf has one only for a flow, in order, that its Interpretations don't already state, and its steps don't restate them: a title, at most 8 steps numbered from 1, each a one-sentence caption citing at least one Anchor, with an optional lane naming where the step happens, and arrows from step to step by number, each with an optional label.
 
 Answer with one JSON object and nothing else, in one of two shapes:
 
-{"kind": "leaf", "overview": "...", "interpretations": [{"kind": "role", "text": "...", "anchors": [{"path": "...", "start": 1, "end": 2}]}], "explainer": {"title": "...", "steps": [{"n": 1, "caption": "...", "anchors": [{"path": "...", "start": 1, "end": 2}], "lane": "..."}], "arrows": [{"from": 1, "to": 2, "label": "..."}]}}
+{"kind": "leaf", "overview": "...", "interpretations": [{"kind": "role", "text": "...", "anchors": [{"path": "...", "start": 1, "end": 2}]}], "explainer": null}
 
 {"kind": "division", "overview": "...", "components": [{"name": "...", "summary": "...", "files": ["..."]}], "relationships": [{"from": "...", "to": "...", "kind": "uses", "description": "..."}], "interpretations": [{"kind": "invariant", "text": "...", "anchors": [{"path": "...", "start": 1, "end": 2}]}]}
+
+A leaf that has an Explainer gives it in place of null: {"title": "...", "steps": [{"n": 1, "caption": "...", "anchors": [{"path": "...", "start": 1, "end": 2}], "lane": "..."}], "arrows": [{"from": 1, "to": 2, "label": "..."}]}
 "#;
 
 /// What the model is asked of `part`.
@@ -1674,7 +1676,7 @@ fn prompt(slug: &str, part: &Part, lines: &HashMap<&str, usize>) -> String {
             "This part is the Component \"{}\" of {above}, described as: {}\n\n",
             part.name, part.summary
         ),
-        None => "This part is the root: the whole repo.\n\n".into(),
+        None => format!("This part is the root: the whole of {slug}.\n\n"),
     };
     // The files last: a path is never taken for a placeholder.
     let values = [
@@ -1783,15 +1785,20 @@ fn checked(
         _ => (&[][..], answer.explainer.as_slice()),
     };
     // Read before the Interpretations, which a division's are held to; listed after them.
-    let mut unnamed = vec![];
-    let named = claims("component", division, &mut unnamed, |c: &Named| {
-        let outside = c.files.iter().find(|f| !in_part.contains(f.as_str()));
-        match (c.files.is_empty(), outside) {
-            (true, _) => Some("it has no files".into()),
-            (_, Some(f)) => Some(format!("{f} is not one of the part's files")),
-            _ => None,
-        }
-    });
+    let mut dropped_components = vec![];
+    let named = claims(
+        "component",
+        division,
+        &mut dropped_components,
+        |c: &Named| {
+            let outside = c.files.iter().find(|f| !in_part.contains(f.as_str()));
+            match (c.files.is_empty(), outside) {
+                (true, _) => Some("it has no files".into()),
+                (_, Some(f)) => Some(format!("{f} is not one of the part's files")),
+                _ => None,
+            }
+        },
+    );
     let mut dropped = vec![];
     let interpretations = claims(
         "interpretation",
@@ -1839,7 +1846,7 @@ fn checked(
             })
     })
     .pop();
-    dropped.append(&mut unnamed);
+    dropped.append(&mut dropped_components);
     let said = claims(
         "relationship",
         &answer.relationships,
