@@ -198,6 +198,9 @@ impl World for Guarded<'_> {
     fn git_rev_count(&self, path: &str, from: &str, to: &str) -> WorldResult<usize> {
         self.world.git_rev_count(path, from, to)
     }
+    fn git_fetch_tag(&self, path: &str, url: &str, tag: &str) -> WorldResult<()> {
+        self.world.git_fetch_tag(path, url, tag)
+    }
     fn harness_headless(
         &self,
         cwd: &str,

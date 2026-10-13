@@ -53,7 +53,7 @@ fn a_bad_value_is_refused_naming_its_key_and_line() {
         ),
         (
             "[repos.\"acme/api\"]\npath = \"/src/api\"\nrom = 3\n",
-            "config.toml line 3: repos.acme/api.rom: unknown field `rom`, expected one of `path`, `linear`, `project`, `install`, `room`, `base`, `implementer`, `reviewer`, `quality_scan`, `faux_nico`, `switches`",
+            "config.toml line 3: repos.acme/api.rom: unknown field `rom`, expected one of `path`, `linear`, `project`, `install`, `room`, `base`, `implementer`, `reviewer`, `quality_scan`, `faux_nico`, `switches`, `libraries`",
         ),
         (
             "\n[repos.\"acme/api\"]\nroom = 2\n",
@@ -79,6 +79,18 @@ fn a_bad_value_is_refused_naming_its_key_and_line() {
         (
             "[harnesses.pi]\nlaunch_mode = \"pane-command\"\nsigil = \"/\"\nmodel_args = []\neffort_args = []\n",
             "config.toml line 1: harnesses.pi: a pane-command Harness needs command",
+        ),
+        (
+            "[repos.\"acme/api\"]\npath = \"/src/api\"\nlibraries = [{ repo = \"effect\", tag = \"v3\" }]\n",
+            "config.toml line 3: repos.acme/api.libraries[0].repo: invalid value: string \"effect\", expected a GitHub repository's owner/name",
+        ),
+        (
+            "[repos.\"acme/api\"]\npath = \"/src/api\"\nlibraries = [{ repo = \"Effect-TS/effect\", tag = \"v3:x\" }]\n",
+            "config.toml line 3: repos.acme/api.libraries[0].tag: invalid value: string \"v3:x\", expected a git tag",
+        ),
+        (
+            "\n[wiki]\nlibraries = [{ repo = \"Effect-TS/effect\", tag = \"v3\", path = \"../..\" }]\n",
+            "config.toml line 3: wiki.libraries[0].path: invalid value: string \"../..\", expected a folder's path from the repository's root, such as packages/effect",
         ),
     ];
 
@@ -392,12 +404,12 @@ fn a_bad_key_or_launch_in_a_project_is_refused_at_its_own_line() {
     let cases = [
         (
             format!("{repo}[projects.shop]\npath = \"/src/shop\"\n"),
-            "config.toml line 6: projects.shop.path: unknown field `path`, expected one of `room`, `base`, `implementer`, `reviewer`, `quality_scan`, `faux_nico`, `switches`".to_string(),
+            "config.toml line 6: projects.shop.path: unknown field `path`, expected one of `room`, `base`, `implementer`, `reviewer`, `quality_scan`, `faux_nico`, `switches`, `libraries`".to_string(),
         ),
         // A Repo's Install runs in its own clone: no Project holds one.
         (
             format!("{repo}[projects.shop]\nroom = 2\ninstall = \"make\"\n"),
-            "config.toml line 7: projects.shop.install: unknown field `install`, expected one of `room`, `base`, `implementer`, `reviewer`, `quality_scan`, `faux_nico`, `switches`".to_string(),
+            "config.toml line 7: projects.shop.install: unknown field `install`, expected one of `room`, `base`, `implementer`, `reviewer`, `quality_scan`, `faux_nico`, `switches`, `libraries`".to_string(),
         ),
         (
             format!("{repo}[projects.shop]\nroom = 0\n"),

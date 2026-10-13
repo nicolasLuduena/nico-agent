@@ -306,6 +306,10 @@ pub trait World {
     fn git_ls_tree_blobs(&self, path: &str, rev: &str) -> WorldResult<Vec<(String, String)>>;
     /// How many commits `to` holds that `from` does not, in the clone at `path`.
     fn git_rev_count(&self, path: &str, from: &str, to: &str) -> WorldResult<usize>;
+    /// Fetch the tag `tag` of `url`, its commit alone, into the bare repo at
+    /// `path`, made first if missing: one kept across fetches, with the
+    /// user's own git credentials.
+    fn git_fetch_tag(&self, path: &str, url: &str, tag: &str) -> WorldResult<()>;
 
     // Harnesses
     /// Make each of `calls` in the folder `cwd`, with no input, up to
@@ -1228,6 +1232,14 @@ impl World for RealWorld {
         let counted = git_ok(path, &["rev-list", "--count", &format!("{from}..{to}")])?;
         (counted.parse())
             .map_err(|e| WorldError(format!("git rev-list --count printed {counted:?}: {e}")))
+    }
+    fn git_fetch_tag(&self, path: &str, url: &str, tag: &str) -> WorldResult<()> {
+        fs::create_dir_all(path).map_err(|e| WorldError(format!("could not make {path}: {e}")))?;
+        // Again on a bare repo, it only says so: its objects stay.
+        git_ok(path, &["init", "--bare", "--quiet"])?;
+        let refspec = format!("+refs/tags/{tag}:refs/tags/{tag}");
+        let fetch = ["fetch", "--quiet", "--depth", "1", url, &refspec];
+        git_env(path, &fetch, &[BATCH_SSH]).map(drop)
     }
     fn harness_headless(
         &self,

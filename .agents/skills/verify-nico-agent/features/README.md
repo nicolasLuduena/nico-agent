@@ -146,6 +146,11 @@ commands, and observable proof.
   buttons, each `POST /api/wiki/<id>/update|rebuild|continue` queueing its build first even with
   the switch off, `GET /api/wikis`' `state`, `pane`, `why`, `budget` and `calls`, `wiki build
   --continue` asking only the budget Gaps at the Wiki's commit, and the refusals.
+- [Library Wikis](./library-wikis.md) covers a Library version linked or added in `config.toml`
+  queued at the next refresh, built once at its tag (`drift tag`) from a bare clone in the config
+  dir reused across versions, covering only its subfolder, an unknown tag failing with why, never
+  queued again once built, served by `status`, `/api/wikis`, `/api/wiki/<id>` and the MCP, and a
+  bad entry refused at its line.
 - [Requests from other sites](./foreign-requests.md) covers the 403 serve answers a foreign or
   missing `Host` and a foreign or `null` `Origin` on a write, and the page, `localhost` and the
   tunnel answered as before.
