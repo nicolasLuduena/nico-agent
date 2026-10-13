@@ -10,7 +10,8 @@ use serde_json::{Value, json};
 
 #[test]
 fn a_torn_last_line_is_dropped_and_the_rest_read() {
-    let file = setup().config_dir.join("log.jsonl");
+    let t = setup();
+    let file = t.config_dir.join("log.jsonl");
     fs::create_dir_all(file.parent().unwrap()).unwrap();
     let mut torn =
         b"{\"at\":1,\"what\":\"one\"}\n{\"at\":2,\"what\":\"two\"}\n{\"at\":3,\"wh".to_vec();
@@ -30,7 +31,8 @@ fn a_torn_last_line_is_dropped_and_the_rest_read() {
 
 #[test]
 fn a_missing_file_reads_empty_and_a_bad_line_before_the_last_is_an_error() {
-    let file = setup().config_dir.join("log.jsonl");
+    let t = setup();
+    let file = t.config_dir.join("log.jsonl");
     assert_eq!(
         read_json_lines::<Value>(&file).unwrap(),
         Vec::<Value>::new()

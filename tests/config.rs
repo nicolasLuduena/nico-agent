@@ -482,14 +482,15 @@ room = 1 # web is fragile
 
 #[test]
 fn concurrent_writers_leave_a_valid_file_with_every_change() {
-    let config_dir = setup().config_dir;
+    let t = setup();
     let writers: Vec<_> = (0..12)
         .map(|i| {
-            let config_dir = config_dir.clone();
+            let config_dir = t.config_dir.clone();
             std::thread::spawn(move || {
                 let t = Setup {
                     world: common::FakeWorld::default(),
                     config_dir,
+                    root: None,
                 };
                 let path = format!("/src/r{i}");
                 t.world
@@ -503,10 +504,6 @@ fn concurrent_writers_leave_a_valid_file_with_every_change() {
         assert_eq!(writer.join().unwrap(), 0);
     }
 
-    let t = Setup {
-        world: common::FakeWorld::default(),
-        config_dir,
-    };
     let listed = t.cli(&["repo", "list", "--json"]);
     assert_eq!(listed.exit_code, 0, "{}", listed.stdout);
     assert_eq!(listed.json()["repos"].as_array().unwrap().len(), 12);

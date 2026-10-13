@@ -3,10 +3,12 @@
 //! that log their arguments instead of touching Cloudflare or systemd. The
 //! real binary checks the config it writes.
 
+mod common;
+
 use std::fs;
-use std::path::PathBuf;
 use std::process::{Command, Stdio};
-use std::sync::atomic::{AtomicU32, Ordering};
+
+use common::Scratch;
 
 const SCRIPT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/scripts/setup-tunnel.sh");
 const TUNNEL_ID: &str = "6ff42ae2-765d-4adf-8112-31c55c1551ef";
@@ -17,18 +19,12 @@ const FIRST_RUN: &str = "\n\n\nnico.example.com\nnico@example.com\ny\n\n\ny\ny\n
 const RERUN: &str = "\n\n\n\n\n\n\ny\ny\n\n\ny\n";
 
 struct Sandbox {
-    home: PathBuf,
+    home: Scratch,
 }
 
 impl Sandbox {
     fn new(config: Option<&str>) -> Self {
-        static NEXT: AtomicU32 = AtomicU32::new(0);
-        let home = std::env::temp_dir().join(format!(
-            "nico-agent-tunnel-{}-{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = fs::remove_dir_all(&home);
+        let home = Scratch::new("tunnel");
         fs::create_dir_all(home.join("fakebin")).unwrap();
         let log = home.join("calls.log");
         let log = log.display();
@@ -73,7 +69,7 @@ impl Sandbox {
         let mut child = Command::new("bash")
             .arg(SCRIPT)
             .env_clear()
-            .env("HOME", &self.home)
+            .env("HOME", &*self.home)
             .env("USER", "nico")
             .env(
                 "PATH",

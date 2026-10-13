@@ -1,8 +1,11 @@
+mod common;
+
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
 
+use common::Scratch;
 use serde_json::{Value, json};
 
 fn nico_agent(args: &[&str]) -> std::process::Output {
@@ -14,9 +17,8 @@ fn nico_agent(args: &[&str]) -> std::process::Output {
 
 /// A scratch HOME holding `api/`, a git clone of acme/api, and a config whose
 /// Bucket is `bucket/`.
-fn home(name: &str) -> PathBuf {
-    let root = std::env::temp_dir().join(format!("nico-agent-{name}-{}", std::process::id()));
-    let _ = fs::remove_dir_all(&root);
+fn home(name: &str) -> Scratch {
+    let root = Scratch::new(name);
     let clone = root.join("api");
     fs::create_dir_all(clone.join("src")).unwrap();
     let git = |args: &[&str]| {
