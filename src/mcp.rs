@@ -12,6 +12,7 @@ use crate::ask;
 use crate::bucket;
 use crate::cli::{Context, Refusal};
 use crate::config::{self, Config};
+use crate::wiki;
 
 /// The MCP versions it speaks, the latest last.
 const VERSIONS: [&str; 4] = ["2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25"];
@@ -111,7 +112,7 @@ fn tools() -> Value {
         ),
         tool(
             "get_component",
-            "Read a Component of a Wiki: its overview, its Interpretations (one-sentence claims, each an invariant, precondition, postcondition, effect or role, citing Anchors: a path and lines, 1-based and inclusive), its Relationships (`to` what it uses, `from` what uses it), its sub-Components and its Gaps; a leaf's files too. `index` is a Wiki's top Component.",
+            "Read a Component of a Wiki: its overview, its Interpretations (one-sentence claims, each an invariant, precondition, postcondition, effect or role, citing Anchors: a path and lines, 1-based and inclusive; one `stale` cites a file that changed on the Repo's Base since it was written, so check it in the code), its Relationships (`to` what it uses, `from` what uses it), its sub-Components and its Gaps; a leaf's files too. `index` is a Wiki's top Component.",
             json!({ "wiki": wiki, "id": { "type": "string", "description": "The Component's id, as find_component or a parent gives it." } }),
             &["wiki", "id"],
         ),
@@ -146,12 +147,12 @@ fn called(
     let config = config::load(&ctx.config_dir).map_err(|no| no.error);
     let served = |config: &Config| -> Result<_, String> {
         let wiki = text(arguments, "wiki")?;
-        let (slug, path) = (config.repo(wiki))
+        let (slug, repo) = (config.repo(wiki))
             .filter(|(slug, _)| serves(named, slug))
-            .map(|(slug, repo)| (slug.clone(), repo.path.clone()))
+            .map(|(slug, repo)| (slug.clone(), repo.clone()))
             .ok_or_else(|| unserved(wiki))?;
         let wiki = read(ctx, config, &slug)?.ok_or_else(|| unserved(&slug))?;
-        Ok((slug, path, wiki))
+        Ok((slug, repo, wiki))
     };
     Some(match name {
         "wikis" => config.and_then(|config| wikis(ctx, named, &config)),
@@ -160,17 +161,18 @@ fn called(
             Ok(found(&wiki, text(arguments, "query")?))
         }),
         "get_component" => config.and_then(|config| {
-            let (slug, _, wiki) = served(&config)?;
+            let (slug, repo, mut wiki) = served(&config)?;
+            wiki::staled(ctx.world, &repo, &mut wiki).map_err(|e| e.0)?;
             component(&slug, &wiki, text(arguments, "id")?)
         }),
         "read_anchor" => config.and_then(|config| {
-            let (slug, clone, wiki) = served(&config)?;
-            anchor(ctx, &slug, &clone, &wiki, arguments)
+            let (slug, repo, wiki) = served(&config)?;
+            anchor(ctx, &slug, &repo.path, &wiki, arguments)
         }),
         "ask" => config.and_then(|config| {
-            let (slug, clone, wiki) = served(&config)?;
+            let (slug, repo, wiki) = served(&config)?;
             let question = text(arguments, "question")?;
-            ask::ask(ctx, &config, &slug, &clone, &wiki, question)
+            ask::ask(ctx, &config, &slug, &repo.path, &wiki, question)
         }),
         _ => return None,
     })
@@ -260,6 +262,8 @@ fn component(slug: &str, wiki: &Value, id: &str) -> Result<Value, String> {
     if !parts.is_empty() {
         component.as_object_mut().map(|c| c.remove("files"));
     }
+    // What its claims' staleness is read from, already read.
+    component.as_object_mut().map(|c| c.remove("blobs"));
     component["components"] = json!(parts);
     Ok(component)
 }

@@ -1,4 +1,5 @@
-//! A Repo's Wiki, built from scratch by `wiki build`. Its code at
+//! A Repo's Wiki, built by `wiki build` from scratch, or with `--update`
+//! from the Wiki before it, asking only about what changed. Its code at
 //! `origin/<base>` is divided top-down, as know-the-map's hermeneut does:
 //! each part is one headless, read-only call of the `[wiki]` launch, and
 //! code checks every answer, sending each claim that fails back to the
@@ -8,7 +9,12 @@
 //!
 //! The loop runs each build as a Run in a herdr pane, one at a time across
 //! every Repo and outside every room, the others waiting in `wiki-queue.json`.
+//!
+//! Between builds, whoever serves a Wiki marks Stale each Interpretation
+//! citing a file whose blob at `origin/<base>` is not the one it was written
+//! against.
 
+use std::cmp::Reverse;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io;
 use std::path::Path;
@@ -88,7 +94,8 @@ struct Queue {
 /// its `wiki` switch on, once a day from the wiki hour and at once when the
 /// switch turns on, queueing it when it has none or its `origin/<base>`
 /// moved from its commit; then start the first queued while no wiki Run is
-/// open. A check that fails is said and tried again next tick. What it said.
+/// open, an Update once the Repo has a Wiki. A check that fails is said and
+/// tried again next tick. What it said.
 pub fn step(ctx: &Context, config: &Config) -> Result<Vec<String>, Refusal> {
     let mut said = close(ctx)?;
     let outcomes = load(&ctx.config_dir)?;
@@ -135,6 +142,8 @@ pub fn step(ctx: &Context, config: &Config) -> Result<Vec<String>, Refusal> {
     })?;
     if let Some(slug) = next {
         let repo = &config.repos[&slug];
+        // Once it has a Wiki, a Repo's is updated from it.
+        let update = (outcomes.get(&slug).and_then(Outcome::wiki)).map_or("", |_| " --update");
         let start = |run: &mut Run| {
             let workspace = (run.workspace).insert(
                 ctx.world
@@ -144,7 +153,7 @@ pub fn step(ctx: &Context, config: &Config) -> Result<Vec<String>, Refusal> {
             launch::open_tab(ctx.world, &mut run.launch, workspace, &repo.path, label)?;
             let pane = run.launch.pane.as_deref().expect("its tab is open");
             // Its shell exits with it, so a pane gone is a build ended.
-            let command = format!("nico-agent wiki build {slug}; exit");
+            let command = format!("nico-agent wiki build {slug}{update}; exit");
             Ok(ctx.world.herdr_pane_run(pane, &command)?)
         };
         let chosen = config.wiki.launch.clone();
@@ -263,12 +272,17 @@ pub fn shown(config_dir: &Path, runs: &[Run]) -> io::Result<Vec<Value>> {
         .collect())
 }
 
+/// The Repo's Base: its own, or its origin's default branch.
+fn base(world: &dyn World, repo: &Repo) -> WorldResult<String> {
+    match &repo.base {
+        Some(base) => Ok(base.clone()),
+        None => world.git_default_branch(&repo.path),
+    }
+}
+
 /// The Repo's Base, and the commit its `origin/<base>` is on, fetched.
 fn base_head(world: &dyn World, repo: &Repo) -> WorldResult<(String, String)> {
-    let base = match &repo.base {
-        Some(base) => base.clone(),
-        None => world.git_default_branch(&repo.path)?,
-    };
+    let base = base(world, repo)?;
     world.git_fetch(&repo.path, None)?;
     let head = world.git_rev(&repo.path, &format!("origin/{base}"))?;
     Ok((base, head))
@@ -297,7 +311,7 @@ impl Outcome {
 }
 
 /// A Wiki as the Bucket keeps it.
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Wiki {
     version: u32,
@@ -308,19 +322,19 @@ struct Wiki {
     components: Vec<Component>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 struct Target {
     repo: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 struct File {
     path: String,
     blob: String,
     lines: usize,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 struct Component {
     id: String,
     name: String,
@@ -329,15 +343,19 @@ struct Component {
     files: Vec<String>,
     interpretations: Vec<Interpretation>,
     relationships: Vec<Relationship>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     explainer: Option<Explainer>,
     gaps: Vec<Gap>,
+    /// The blob each file its Interpretations cite had when they were
+    /// written, where the Wiki's has moved on since: one an Update kept.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    blobs: BTreeMap<String, String>,
 }
 
 #[derive(Serialize, Deserialize)]
 struct Interpretation {
-    /// Its place among its Component's, from 1.
-    #[serde(skip_deserializing)]
+    /// Its place among its Component's, from 1; never the model's to say.
+    #[serde(default)]
     id: usize,
     kind: String,
     text: String,
@@ -379,17 +397,17 @@ struct Arrow {
     label: Option<String>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 struct Relationship {
     to: String,
     kind: String,
     description: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 struct Gap {
     paths: Vec<String>,
-    reason: &'static str,
+    reason: String,
 }
 
 /// What the model answers for a part, each claim read on its own.
@@ -450,22 +468,27 @@ struct Part {
     relationships: Vec<Relationship>,
 }
 
-/// `wiki build <owner/name>`: build the Repo's Wiki from scratch and keep it
-/// in the Bucket, writing how it went to `wikis.json` as the last act.
+/// `wiki build <owner/name> [--update]`: build the Repo's Wiki from scratch,
+/// or with `--update` from the one the Bucket holds, and keep it in the
+/// Bucket, writing how it went to `wikis.json` as the last act.
 pub fn build(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
-    let args = Args::parse("wiki build", args, &[])?;
+    let update = args.contains(&"--update");
+    let args: Vec<&str> = (args.iter().copied())
+        .filter(|a| *a != "--update")
+        .collect();
+    let args = Args::parse("wiki build", &args, &[])?;
     let slug = args.positionals(&["<owner/name>"])?[0];
     let config = config::load(&ctx.config_dir)?;
     let (slug, repo) = config
         .repo(slug)
         .ok_or_else(|| repo::not_configured(slug))?;
-    let built = built(ctx, &config, slug, repo);
+    let built = built(ctx, &config, slug, repo, update);
     let at = state::iso(ctx.world.now());
     let outcome = match &built {
         Ok(wiki) => {
             let mut gaps = BTreeMap::new();
             for gap in wiki.components.iter().flat_map(|c| &c.gaps) {
-                *gaps.entry(gap.reason.to_string()).or_default() += 1;
+                *gaps.entry(gap.reason.clone()).or_default() += 1;
             }
             Outcome::Built(Built {
                 at,
@@ -512,14 +535,61 @@ pub fn list(ctx: &Context) -> Result<Value, Refusal> {
     Ok(json!(wikis))
 }
 
-/// `GET /api/wiki/<id>`: the Wiki `id` names, as the Bucket holds it; none
-/// for an id no Repo has, or a Repo whose Wiki was never built.
+/// `GET /api/wiki/<id>`: the Wiki `id` names, as the Bucket holds it,
+/// marked against its Base; none for an id no Repo has, or a Repo whose
+/// Wiki was never built.
 pub fn get(ctx: &Context, id: &str) -> Result<Option<Value>, Refusal> {
     let config = config::load(&ctx.config_dir)?;
-    match config.repo(id) {
-        Some((slug, _)) => kept(ctx, &config, slug),
-        None => Ok(None),
+    let Some((slug, repo)) = config.repo(id) else {
+        return Ok(None);
+    };
+    let Some(mut wiki) = kept(ctx, &config, slug)? else {
+        return Ok(None);
+    };
+    staled(ctx.world, repo, &mut wiki)?;
+    Ok(Some(wiki))
+}
+
+/// Mark `wiki`, the Wiki of `repo` as the Bucket holds it, against the
+/// Repo's `origin/<base>` as its clone last fetched it: `stale` on each
+/// Interpretation citing a file whose blob there is not the one it was
+/// written against, with how many are, and how many commits the Wiki's is
+/// `behind` the Base.
+pub fn staled(world: &dyn World, repo: &Repo, wiki: &mut Value) -> WorldResult<()> {
+    let base = base(world, repo)?;
+    let head = format!("origin/{base}");
+    let now: HashMap<String, String> = (world.git_ls_tree_blobs(&repo.path, &head)?)
+        .into_iter()
+        .collect();
+    let commit = wiki["commit"].as_str().unwrap_or_default().to_string();
+    let behind = world.git_rev_count(&repo.path, &commit, &head)?;
+    let files: HashMap<String, Value> = (wiki["files"].as_array().into_iter().flatten())
+        .map(|f| {
+            (
+                f["path"].as_str().unwrap_or_default().into(),
+                f["blob"].clone(),
+            )
+        })
+        .collect();
+    let mut stale = 0;
+    for c in wiki["components"].as_array_mut().into_iter().flatten() {
+        let pins = c["blobs"].clone();
+        for i in c["interpretations"].as_array_mut().into_iter().flatten() {
+            let moved = (i["anchors"].as_array().into_iter().flatten()).any(|a| {
+                let path = a["path"].as_str().unwrap_or_default();
+                let written = pins.get(path).or(files.get(path)).and_then(Value::as_str);
+                written != now.get(path).map(String::as_str)
+            });
+            if moved {
+                i["stale"] = json!(true);
+                stale += 1;
+            }
+        }
     }
+    wiki["base"] = json!(base);
+    wiki["behind"] = json!(behind);
+    wiki["stale"] = json!(stale);
+    Ok(())
 }
 
 /// The Wiki of the Repo `slug` the Bucket holds.
@@ -537,13 +607,29 @@ fn kept(ctx: &Context, config: &Config, slug: &str) -> Result<Option<Value>, Ref
 }
 
 /// The Wiki of the Repo `slug`, built on a checkout of its Base, removed
-/// after, and kept in the Bucket.
-fn built(ctx: &Context, config: &Config, slug: &str, repo: &Repo) -> Result<Wiki, Refusal> {
+/// after, from the one the Bucket holds if `update` and it holds one, and
+/// kept in the Bucket.
+fn built(
+    ctx: &Context,
+    config: &Config,
+    slug: &str,
+    repo: &Repo,
+    update: bool,
+) -> Result<Wiki, Refusal> {
     let (world, call) = (ctx.world, headless(config, &WRITES)?);
-    let base = match &repo.base {
-        Some(base) => base.clone(),
-        None => world.git_default_branch(&repo.path)?,
+    let previous = match update {
+        true => kept(ctx, config, slug)?.map(serde_json::from_value::<Wiki>),
+        false => None,
     };
+    let previous = previous.transpose().map_err(|e| {
+        Refusal::new(
+            format!("the Wiki of {slug} in the Bucket does not read: {e}"),
+            vec![format!(
+                "Build it from scratch: nico-agent wiki build {slug}"
+            )],
+        )
+    })?;
+    let base = base(world, repo)?;
     world.git_fetch(&repo.path, None)?;
     let folder = ctx.config_dir.join("wiki").join(slug);
     // One build of a Wiki at a time: another would remove its checkout.
@@ -552,7 +638,7 @@ fn built(ctx: &Context, config: &Config, slug: &str, repo: &Repo) -> Result<Wiki
     // One a build that died left behind.
     world.git_worktree_remove(&repo.path, &dir)?;
     world.git_worktree_add(&repo.path, &dir, &format!("origin/{base}"))?;
-    let wiki = described(ctx, config, slug, &dir, &call);
+    let wiki = described(ctx, config, slug, &dir, &call, previous);
     let removed = world.git_worktree_remove(&repo.path, &dir);
     let wiki = wiki?;
     removed?;
@@ -580,7 +666,8 @@ struct Asked {
 }
 
 /// The Wiki of the code checked out in `dir`, its parts asked by `call`
-/// a depth at a time, each answer's failing claims sent back in rounds.
+/// a depth at a time, each answer's failing claims sent back in rounds; only
+/// those that changed since `previous`, when there is a Wiki before it.
 // shortcut: a slow part holds up the next depth's; pipeline the calls if builds run long.
 fn described(
     ctx: &Context,
@@ -588,6 +675,7 @@ fn described(
     slug: &str,
     dir: &str,
     call: &Headless,
+    previous: Option<Wiki>,
 ) -> Result<Wiki, Refusal> {
     let (world, budget) = (ctx.world, &config.wiki);
     let commit = world.git_rev(dir, "HEAD")?;
@@ -597,17 +685,38 @@ fn described(
         "building the Wiki of {slug} at {commit}: {} calls, {} deep, {} at once",
         budget.calls, budget.depth, budget.concurrency
     ));
-    let mut frontier = vec![Part {
-        id: INDEX.into(),
-        name: slug.into(),
-        parent: None,
-        summary: String::new(),
-        trail: slug.into(),
-        files: files.iter().map(|f| f.path.clone()).collect(),
-        depth: 0,
-        relationships: vec![],
-    }];
-    let (mut components, mut ids) = (vec![], HashSet::from([INDEX.to_string()]));
+    // Where each Component was in the Wiki before: one asked again keeps its place.
+    let mut places = HashMap::new();
+    let (mut components, mut frontier) = match previous {
+        Some(previous) => {
+            let was = previous.commit.clone();
+            let ids = previous.components.iter().map(|c| c.id.clone());
+            places.extend(ids.enumerate().map(|(n, id)| (id, n)));
+            let (components, parts) = updated(previous, &files);
+            world.log(&format!(
+                "updating it from {was}: {} part(s) copied or kept, {} to ask again",
+                components.len(),
+                parts.len()
+            ));
+            (components, parts)
+        }
+        None => (
+            vec![],
+            vec![Part {
+                id: INDEX.into(),
+                name: slug.into(),
+                parent: None,
+                summary: String::new(),
+                trail: slug.into(),
+                files: files.iter().map(|f| f.path.clone()).collect(),
+                depth: 0,
+                relationships: vec![],
+            }],
+        ),
+    };
+    let mut ids: HashSet<String> = (components.iter().map(|c| c.id.clone()))
+        .chain(frontier.iter().map(|p| p.id.clone()))
+        .collect();
     let mut calls_left = budget.calls;
     while !frontier.is_empty() {
         // Why each part goes unasked, if it does: the calls go to the first ones.
@@ -725,6 +834,8 @@ fn described(
         }
         frontier = next;
     }
+    // Stable: the new ones after, in the order they were asked, each after its parent.
+    components.sort_by_key(|c| places.get(&c.id).copied().unwrap_or(usize::MAX));
     Ok(Wiki {
         version: 1,
         target: Target { repo: slug.into() },
@@ -733,6 +844,128 @@ fn described(
         files,
         components,
     })
+}
+
+/// What an Update makes of `previous`, the Wiki before it, now that the
+/// code's files are `files`, top-down: a Component whose files kept their
+/// blobs is copied with its parts; the part a file added or removed sits
+/// under is asked again, its parts from scratch, as is a leaf whose files
+/// changed; any other, a parent whose parts changed, is kept with its
+/// claims. The Components it keeps, then the parts to ask.
+fn updated(previous: Wiki, files: &[File]) -> (Vec<Component>, Vec<Part>) {
+    let blobs = |files: &[File]| -> HashMap<String, String> {
+        (files.iter())
+            .map(|f| (f.path.clone(), f.blob.clone()))
+            .collect()
+    };
+    let (was, now) = (blobs(&previous.files), blobs(files));
+    let all = &previous.components;
+    let at: HashMap<&str, usize> = (all.iter().enumerate())
+        .map(|(i, c)| (c.id.as_str(), i))
+        .collect();
+    let parent = |i: usize| all[i].parent.as_deref().and_then(|p| at.get(p).copied());
+    // A parent comes before its parts.
+    let (mut depth, mut trail) = (vec![0u32; all.len()], vec![String::new(); all.len()]);
+    for (i, c) in all.iter().enumerate() {
+        (depth[i], trail[i]) = match parent(i) {
+            Some(p) => (depth[p] + 1, format!("{} > {}", trail[p], c.name)),
+            None => (0, c.name.clone()),
+        };
+    }
+    // The first of the deepest that `holds`, or the top one.
+    let deepest = |holds: &dyn Fn(&Component) -> bool| {
+        (0..all.len())
+            .filter(|&i| holds(&all[i]))
+            .min_by_key(|&i| Reverse(depth[i]))
+            .unwrap_or(0)
+    };
+    let (mut asked, mut added) = (HashSet::new(), vec![vec![]; all.len()]);
+    let mut new: Vec<&String> = now.keys().filter(|p| !was.contains_key(*p)).collect();
+    new.sort();
+    for path in new {
+        // It sits under the deepest part holding every file of its nearest folder.
+        let folders = (path.rmatch_indices('/'))
+            .map(|(n, _)| &path[..=n])
+            .chain([""]);
+        let near: Vec<&String> = folders
+            .map(|folder| {
+                was.keys()
+                    .filter(|p| p.starts_with(folder))
+                    .collect::<Vec<_>>()
+            })
+            .find(|near| !near.is_empty())
+            .unwrap_or_default();
+        let home = deepest(&|c| near.iter().all(|p| c.files.contains(p)));
+        asked.insert(home);
+        let mut up = Some(home);
+        while let Some(i) = up {
+            added[i].push(path.clone());
+            up = parent(i);
+        }
+    }
+    for path in was.keys().filter(|p| !now.contains_key(*p)) {
+        // The deepest part it was in that still has files.
+        let left = |c: &Component| c.files.iter().any(|f| now.contains_key(f));
+        asked.insert(deepest(&|c| c.files.contains(path) && left(c)));
+    }
+    #[derive(Clone, Copy, PartialEq)]
+    enum Fate {
+        Copied,
+        Kept,
+        Asked,
+        Gone,
+    }
+    let mut fates: Vec<Fate> = vec![];
+    let mut held = vec![];
+    for (i, c) in all.iter().enumerate() {
+        let files: Vec<String> = (c.files.iter())
+            .filter(|f| now.contains_key(*f))
+            .cloned()
+            .chain(added[i].drain(..))
+            .collect();
+        let unchanged = files == c.files && c.files.iter().all(|f| was.get(f) == now.get(f));
+        fates.push(match parent(i).map(|p| fates[p]) {
+            Some(Fate::Copied) => Fate::Copied,
+            Some(Fate::Asked | Fate::Gone) => Fate::Gone,
+            _ if asked.contains(&i) => Fate::Asked,
+            _ if unchanged => Fate::Copied,
+            _ if all.iter().any(|p| p.parent.as_ref() == Some(&c.id)) => Fate::Kept,
+            _ => Fate::Asked,
+        });
+        held.push(files);
+    }
+    let (mut components, mut parts) = (vec![], vec![]);
+    for (i, mut c) in previous.components.into_iter().enumerate() {
+        let files = std::mem::take(&mut held[i]);
+        match fates[i] {
+            Fate::Gone => {}
+            Fate::Asked => parts.push(Part {
+                id: c.id,
+                name: c.name,
+                parent: c.parent,
+                summary: c.overview,
+                trail: std::mem::take(&mut trail[i]),
+                files,
+                depth: depth[i],
+                relationships: c.relationships,
+            }),
+            Fate::Copied | Fate::Kept => {
+                // Pinned where it changed: the blob each cited file had when written.
+                let cited = (c.interpretations.iter()).flat_map(|i| &i.anchors);
+                let pins = cited
+                    .filter_map(|a| {
+                        let written = c.blobs.get(&a.path).or(was.get(&a.path))?;
+                        (now.get(&a.path) != Some(written))
+                            .then(|| (a.path.clone(), written.clone()))
+                    })
+                    .collect();
+                c.blobs = pins;
+                c.files = files;
+                components.push(c);
+            }
+        }
+    }
+    (components, parts)
 }
 
 /// Each file of the checkout in `dir`, by path, with its blob and line count.
@@ -906,7 +1139,7 @@ fn read(
         true => vec![],
         false => vec![Gap {
             paths: part.files.clone(),
-            reason,
+            reason: reason.into(),
         }],
     };
     let component = Component {
@@ -919,6 +1152,7 @@ fn read(
         relationships: part.relationships,
         explainer,
         gaps,
+        blobs: BTreeMap::new(),
     };
     (component, parts, dropped)
 }
@@ -1096,8 +1330,9 @@ fn gap(part: Part, reason: &'static str) -> Component {
     Component {
         gaps: vec![Gap {
             paths: part.files.clone(),
-            reason,
+            reason: reason.into(),
         }],
+        blobs: BTreeMap::new(),
         id: part.id,
         name: part.name,
         parent: part.parent,

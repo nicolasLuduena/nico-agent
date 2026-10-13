@@ -12,7 +12,7 @@
   import { clock } from "../time";
   import Reading from "./Reading.svelte";
   import Sheet from "./Sheet.svelte";
-  import { byKind, search, type Component, type Hit, type Listed, type Wiki } from "./wiki";
+  import { byKind, freshness, search, type Component, type Hit, type Listed, type Wiki } from "./wiki";
 
   let { project }: { project: Project } = $props();
 
@@ -161,7 +161,7 @@
           Describes <a href="https://github.com/{wiki.target.repo}/commit/{wiki.commit}" target="_blank" rel="noreferrer"
             >{wiki.commit.slice(0, 7)}</a
           >
-          · Built {clock(wiki.builtAt)}
+          · Built {clock(wiki.builtAt)} · {freshness(wiki)}
         </p>
       {/if}
       {#if open && toggles.length > 0}

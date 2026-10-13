@@ -9,12 +9,16 @@ export interface Listed {
   gaps: number;
 }
 
-/** A Wiki as `GET /api/wiki/<id>` answers it: the Bucket's `wiki.json`, only the fields the page reads. */
+/** A Wiki as `GET /api/wiki/<id>` answers it: the Bucket's `wiki.json`, only the fields the page reads, marked against its Repo's Base. */
 export interface Wiki {
   target: { repo: string };
   /** The commit it describes. */
   commit: string;
   builtAt: string;
+  /** The Repo's Base, how many commits its head is past `commit`, and how many Interpretations are `stale`. */
+  base: string;
+  behind: number;
+  stale: number;
   /** Its Component tree, by `parent`: the top one has none. */
   components: Component[];
 }
@@ -67,6 +71,8 @@ export interface Interpretation {
   kind: string;
   text: string;
   anchors: Anchor[];
+  /** A file it cites changed on the Base since it was written. */
+  stale?: true;
 }
 
 /** Lines of a file, 1-based and inclusive. */
@@ -97,6 +103,13 @@ export const REASONS: Record<Gap["reason"], string> = {
   depth: "Not explored: deeper than the build divides",
   unreadable: "Unreadable: an answer failed its checks",
 };
+
+/** How far behind its Base the Wiki is, and how many of its Interpretations are Stale, if any: the header's last words. */
+export function freshness(wiki: Pick<Wiki, "base" | "behind" | "stale">): string {
+  const count = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
+  const behind = wiki.behind === 0 ? `Up to date with ${wiki.base}` : `${count(wiki.behind, "commit")} behind ${wiki.base}`;
+  return wiki.stale === 0 ? behind : `${behind} · ${count(wiki.stale, "Interpretation")} Stale`;
+}
 
 /** The Anchor's lines on GitHub, at the commit the Wiki describes. */
 export function anchorUrl(wiki: Pick<Wiki, "target" | "commit">, a: Anchor): string {

@@ -305,6 +305,36 @@ fn get_component_gives_its_interpretations_relationships_sub_components_and_gaps
 }
 
 #[test]
+fn get_component_marks_stale_each_interpretation_citing_a_file_the_base_changed() {
+    let t = with_wikis();
+    let moved = "export const port = 8080;\nexport const serve = () => {};\n";
+    t.world
+        .add_tree_file("/src/api", "origin/main", "web/app.ts", moved);
+
+    let web = call(
+        &t,
+        &[],
+        "get_component",
+        json!({ "wiki": "acme/api", "id": "web-front" }),
+    );
+    let core = call(
+        &t,
+        &[],
+        "get_component",
+        json!({ "wiki": "acme/api", "id": "core" }),
+    );
+
+    assert_eq!(
+        web.unwrap()["interpretations"],
+        json!([{ "id": 1, "kind": "effect", "text": "The page serves on port 80.", "anchors": [{ "path": "web/app.ts", "start": 2, "end": 2 }], "stale": true }])
+    );
+    assert_eq!(
+        core.unwrap()["interpretations"],
+        json!([{ "id": 1, "kind": "invariant", "text": "Config is a unit struct.", "anchors": [{ "path": "src/config.rs", "start": 1, "end": 1 }] }])
+    );
+}
+
+#[test]
 fn read_anchor_reads_the_lines_at_the_wikis_commit_after_the_base_has_moved_and_writes_nothing() {
     let t = with_wikis();
     // The Base moves on past the Wiki's commit, abc1234, changing the file.

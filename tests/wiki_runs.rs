@@ -504,3 +504,25 @@ fn a_switch_turned_off_and_on_again_checks_its_wiki_at_once() {
         ]
     );
 }
+
+#[test]
+fn a_build_of_a_repo_that_has_a_wiki_is_an_update() {
+    let t = with_repos(ON);
+    both_built(&t);
+    t.world.advance(TO_1_50AM);
+    t.tick();
+    (t.world.heads.borrow_mut()).insert("/src/api origin/main".into(), "def5678".into());
+    t.world.advance(TICK);
+
+    let (_, calls) = calls_after(&t, || t.tick());
+
+    let runs: Vec<&String> = (calls.iter())
+        .filter(|c| c.starts_with("herdr pane run "))
+        .collect();
+    assert_eq!(runs.len(), 1, "{calls:?}");
+    assert!(
+        runs[0].ends_with(" nico-agent wiki build acme/api --update; exit"),
+        "{}",
+        runs[0]
+    );
+}

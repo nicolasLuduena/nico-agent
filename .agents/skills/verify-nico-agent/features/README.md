@@ -128,6 +128,11 @@ commands, and observable proof.
   kind with their Anchors on GitHub, the Relationship diagram and the Explainer clicked through,
   sub-Components and Gaps, a hash opening a Component, back and
   forward, light and dark at desk and phone width.
+- [Update a Wiki and see what is Stale](./wiki-update.md) covers `wiki build --update` asking only
+  about the part a changed file is in and dividing again only the part an added file sits under,
+  the rest copied in place, and an Interpretation whose file changed on the Base marked `stale` in
+  `GET /api/wiki/<id>` and the MCP's `get_component`, with the header's commits behind and Stale
+  count, until an Update asks it again (a kept parent's, until a build from scratch).
 - [Wiki builds from the loop](./wiki-runs.md) covers the `wiki` switch queueing a build at the next
   refresh, the build's start failing at herdr and its Run closed failed, `status`'s `wikis`, and
   the daily check of a Repo's Base: unmoved, moved (`drift base`) and once a day.

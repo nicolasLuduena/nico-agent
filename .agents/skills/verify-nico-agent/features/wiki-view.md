@@ -16,9 +16,9 @@ move between Components. serve answers the Wikis at `GET /api/wikis` and one at
 
 ## Sub-features
 
-- `wiki-routes` `GET /api/wikis` lists each Repo's built Wiki (`id`, `target`, `commit`, `builtAt`, `gaps` counted); `GET /api/wiki/<owner>/<name>` is the Bucket's `wiki.json`; a Wiki not built, or no Repo's, is `404` `{error: "<id> has no Wiki", help}`.
+- `wiki-routes` `GET /api/wikis` lists each Repo's built Wiki (`id`, `target`, `commit`, `builtAt`, `gaps` counted); `GET /api/wiki/<owner>/<name>` is the Bucket's `wiki.json` with `base`, `behind` and `stale` (see [wiki-update.md](./wiki-update.md)); a Wiki not built, or no Repo's, is `404` `{error: "<id> has no Wiki", help}`.
 - `wiki-empty` a Project with no Wiki built shows, in its Wiki view, `nico-agent wiki build <slug>` for each of its Repos.
-- `wiki-hash` a hash naming a Component opens the page on it: `combobox "Wiki"` holds the Wiki, the header says `Describes <sha> · Built HH:MM`, `navigation "Components"` holds the tree, and `article "<name>"` the Component.
+- `wiki-hash` a hash naming a Component opens the page on it: `combobox "Wiki"` holds the Wiki, the header says `Describes <sha> · Built HH:MM · Up to date with main` (how far behind and what is Stale: [wiki-update.md](./wiki-update.md)), `navigation "Components"` holds the tree, and `article "<name>"` the Component.
 - `wiki-anchor` each Anchor is a link to `https://github.com/<repo>/blob/<commit>/<path>#L<start>-L<end>`, named `<path> <lines>`.
 - `wiki-relationships` `region "Relationships"` draws the Component and each Component a Relationship joins it to, in both directions, each a `link "<from> <kind> <to>: <description>"` opening that Component; a Component no Relationship touches says `None: no Component of this Wiki uses it, and it uses none.`
 - `wiki-explainer` `region "Explainer"`, only on a Component with one, holds its title and one `button "Step <n>[, <lane>]: <caption>"` per step, each lane framed with its name; a step pressed shows its caption and its Anchor links under the drawing, pressed again hides them.

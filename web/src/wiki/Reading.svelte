@@ -69,7 +69,9 @@
       <ul class="rows">
         {#each interpretations as interpretation (interpretation.id)}
           <li class="interpretation" id="interpretation-{interpretation.id}" tabindex="-1">
-            <p>{@render line(spans(interpretation.text))}</p>
+            <p>
+              {#if interpretation.stale}<span class="label stale">Stale</span>{" "}{/if}{@render line(spans(interpretation.text))}
+            </p>
             <p class="anchors"><Anchors {wiki} anchors={interpretation.anchors} /></p>
           </li>
         {/each}
@@ -191,6 +193,11 @@
   .interpretation:focus {
     outline: 2px solid var(--focus);
     outline-offset: 4px;
+  }
+  /* A file it cites changed on the Base: said before the sentence, never hidden. */
+  .stale {
+    margin-right: 4px;
+    color: var(--ink-muted);
   }
   .anchors {
     display: flex;
