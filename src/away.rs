@@ -18,6 +18,7 @@ use crate::dispatch;
 use crate::faux_nico;
 use crate::launch::{self, AgentLaunch};
 use crate::state;
+use crate::wiki;
 use crate::world::{self, Agent, AgentState};
 
 pub const FILE: &str = "runs.json";
@@ -259,7 +260,7 @@ fn scan(ctx: &Context, config: &Config) -> Result<Vec<String>, Refusal> {
                 Some(base) => base.clone(),
                 None => ctx.world.git_default_branch(&repo.path)?,
             };
-            start_on_worktree(ctx, config, repo, &base, run, &text)
+            start_on_worktree(ctx, config, repo, &base, run, &text, &[])
         };
         said.push(start_run(
             ctx,
@@ -326,7 +327,7 @@ pub fn start_run(
 }
 
 /// Open a fresh worktree of the Repo at `base` and start the Run's agent
-/// there on `text`.
+/// there on `text`, given `wikis`.
 pub fn start_on_worktree(
     ctx: &Context,
     config: &Config,
@@ -334,6 +335,7 @@ pub fn start_on_worktree(
     base: &str,
     run: &mut Run,
     text: &str,
+    wikis: &[String],
 ) -> Result<(), Refusal> {
     let world = ctx.world;
     world.git_fetch(&repo.path, None)?;
@@ -344,11 +346,12 @@ pub fn start_on_worktree(
     let made = world.herdr_worktree_create(&repo.path, &branch, &base, &run.launch.agent)?;
     run.workspace = Some(made.workspace);
     run.worktree = Some(made.path.clone());
-    start(ctx, config, run, &made.path, &repo.path, text)
+    start(ctx, config, run, &made.path, &repo.path, text, wikis)
 }
 
 /// Start the Run's agent in a new tab of its workspace, working in `cwd` and
-/// trusting `repo_path`, and prompt it with `text`.
+/// trusting `repo_path`, with the wiki MCP serving `wikis` if any, and
+/// prompt it with `text`.
 fn start(
     ctx: &Context,
     config: &Config,
@@ -356,6 +359,7 @@ fn start(
     cwd: &str,
     repo_path: &str,
     text: &str,
+    wikis: &[String],
 ) -> Result<(), Refusal> {
     let harness = &config.harnesses[&run.launch.harness];
     let workspace = run.workspace.clone().expect("its workspace is open");
@@ -366,14 +370,15 @@ fn start(
         cwd,
         run.trigger.label(),
     )?;
-    let ready = launch::start(ctx.world, harness, &run.launch, repo_path)?;
+    let ready = launch::start(ctx.world, harness, &run.launch, repo_path, wikis)?;
     launch::get_ready(ctx.world, harness, &run.launch, cwd, ready)?;
     launch::prompt(ctx.world, harness, &run.launch.agent, text)
 }
 
 /// Start the morning agent, while `morning` is enabled, within the hour of
 /// `morning.hour` local time, once that day: a missed hour is a missed
-/// morning. It runs in a workspace on the config directory, with no worktree.
+/// morning. It runs in a workspace on the config directory, with no worktree,
+/// given the Wiki of each Repo with its `wiki` switch on and its Wiki built.
 fn morning(ctx: &Context, config: &Config) -> Result<Vec<String>, Refusal> {
     let now = ctx.world.now();
     let slot = last_slot(ctx, None, config.morning.hour);
@@ -391,15 +396,17 @@ fn morning(ctx: &Context, config: &Config) -> Result<Vec<String>, Refusal> {
     let since = last.map_or_else(|| state::iso(now - 24 * HOUR), |r| r.at.clone());
     let dir = ctx.config_dir.display().to_string();
     let sigil = &config.harnesses[&chosen.harness].sigil;
+    let (wikis, wiki_line) = wiki::given(&ctx.config_dir, config, &config.repos)?;
     let values = [
         ("sigil", sigil.as_str()),
         ("lastMorningAt", &since),
         ("configDir", &dir),
+        ("wikiLine", &wiki_line),
     ];
     let text = fill_in(&config.prompts.morning, &values);
     let said = start_run(ctx, Trigger::Morning, None, chosen, |run| {
         run.workspace = Some(ctx.world.herdr_workspace_create(&dir, &run.launch.agent)?);
-        start(ctx, config, run, &dir, &dir, &text)
+        start(ctx, config, run, &dir, &dir, &text, &wikis)
     })?;
     Ok(vec![said])
 }

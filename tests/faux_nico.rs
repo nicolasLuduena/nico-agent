@@ -336,3 +336,113 @@ fn faux_nico_ending_after_answering_tells_no_one_and_is_closed() {
         (&Value::Null, &json!("2026-09-30T12:20:00Z"))
     );
 }
+
+const BUCKET: &str = "/mnt/agents-land/nico-agent-bucket";
+
+/// What faux-nico's prompt gains from the Wiki of acme/api at abc1234.
+const WIKI_LINES: &str = " The Wiki of acme/api describes abc1234; where it and the code disagree, the code wins. The Wiki says what the code does, never what was decided: never answer from it.";
+
+/// The Wiki of `acme/api` built at abc1234 by `wiki build`, then its `wiki`
+/// switch set to `on` from the page.
+fn wiki_built(t: &Setup, on: bool) {
+    t.world.add_clone(BUCKET, &[]);
+    t.world
+        .add_tree_file("/src/api", "origin/main", "src/lib.rs", "pub fn run() {}\n");
+    (t.world.headless.borrow_mut()).push((
+        "## The part: acme/api".into(),
+        json!({ "kind": "leaf", "overview": "A small crate." }).to_string(),
+    ));
+    let ran = t.cli(&["wiki", "build", "acme/api", "--json"]);
+    assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
+    switch_wiki(t, on);
+}
+
+fn switch_wiki(t: &Setup, on: bool) {
+    let body = format!(r#"{{"wiki": {on}}}"#);
+    let (status, _) = t.send("PATCH", "/api/repo/acme/api/switches", &body);
+    assert_eq!(status, 200);
+}
+
+/// How the next tick started an agent and prompted it: what its launch
+/// carries. Not the build it starts of a Wiki switched on and never built.
+fn launched(t: &Setup) -> Vec<String> {
+    let (_, calls) = calls_after(t, || t.tick());
+    let starts = [
+        "herdr agent start ",
+        "herdr pane run ",
+        "herdr agent prompt ",
+    ];
+    (calls.into_iter())
+        .filter(|c| starts.iter().any(|s| c.starts_with(s)) && !c.contains("wiki build"))
+        .collect()
+}
+
+#[test]
+fn with_its_repo_s_wiki_built_and_on_faux_nico_starts_with_the_wiki_mcp_allowed_and_both_lines() {
+    let t = dispatched(ANSWER_ON);
+    wiki_built(&t, true);
+    ask(&t);
+
+    assert_eq!(
+        launched(&t),
+        [
+            r#"herdr agent start faux-nico-api-7 --kind claude --pane w2:p2 -- --mcp-config {"mcpServers":{"wiki":{"command":"nico-agent","args":["mcp","--wiki","acme/api"]}}} --allowedTools mcp__wiki__*"#.to_string(),
+            format!("{PROMPT}{WIKI_LINES}"),
+        ]
+    );
+}
+
+#[test]
+fn on_codex_the_wiki_mcp_is_a_config_override_with_its_tools_approved() {
+    let t = dispatched("switches = { answer = true }\nfaux_nico = { harness = \"codex\" }");
+    wiki_built(&t, true);
+    ask(&t);
+
+    let launched = launched(&t);
+
+    assert_eq!(
+        launched[0],
+        r#"herdr agent start faux-nico-api-7 --kind codex --pane w2:p2 -- -c projects={"/src/api"={trust_level="trusted"}} -c mcp_servers.wiki.command="nico-agent" -c mcp_servers.wiki.args=["mcp","--wiki","acme/api"] -c mcp_servers.wiki.default_tools_approval_mode="approve""#
+    );
+    assert!(launched[1].ends_with(WIKI_LINES), "{}", launched[1]);
+}
+
+#[test]
+fn on_opencode_the_wiki_mcp_is_a_local_server_in_the_config_it_is_given_with_its_model() {
+    let model = "opencode-go/kimi-k2";
+    let t = dispatched(&format!(
+        "switches = {{ answer = true }}\nfaux_nico = {{ harness = \"opencode\", model = \"{model}\" }}"
+    ));
+    wiki_built(&t, true);
+    ask(&t);
+
+    let launched = launched(&t);
+
+    let config = format!(
+        r#"{{"agents":{{"build":{{"model":"{model}"}}}},"mcp":{{"wiki":{{"command":["nico-agent","mcp","--wiki","acme/api"],"type":"local"}}}},"model":"{model}"}}"#
+    );
+    assert_eq!(
+        launched[0],
+        format!(
+            "herdr pane run w2:p2 env OPENCODE_CONFIG_CONTENT='{config}' opencode2 --standalone"
+        )
+    );
+    assert!(launched[1].ends_with(WIKI_LINES), "{}", launched[1]);
+}
+
+#[test]
+fn with_the_wiki_switch_off_or_no_wiki_built_faux_nico_gets_neither_the_mcp_nor_the_lines() {
+    let bare = [
+        "herdr agent start faux-nico-api-7 --kind claude --pane w2:p2 -- ".to_string(),
+        PROMPT.to_string(),
+    ];
+    let off = dispatched(ANSWER_ON);
+    wiki_built(&off, false);
+    ask(&off);
+    let unbuilt = dispatched(ANSWER_ON);
+    switch_wiki(&unbuilt, true);
+    ask(&unbuilt);
+
+    assert_eq!(launched(&off), bare);
+    assert_eq!(launched(&unbuilt), bare);
+}

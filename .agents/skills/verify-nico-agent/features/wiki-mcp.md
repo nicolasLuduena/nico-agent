@@ -9,7 +9,8 @@ through one call of the wiki model with no tools, keeping each sentence that cit
 of what was retrieved. A Wiki it does not serve, a missing Component or lines outside their file
 are tool errors, and it goes on answering. It writes nothing but the embeddings `ask` makes of a
 Wiki that lacks them. The user adds it to their own Claude Code with
-`claude mcp add wiki -- nico-agent mcp`.
+`claude mcp add wiki -- nico-agent mcp`; the loop gives it to faux-nico and the morning agent with
+their Repo's Wiki, its tools allowed on each Harness.
 
 ## Sub-features
 
@@ -20,11 +21,14 @@ Wiki that lacks them. The user adds it to their own Claude Code with
 - `mcp-errors` a Wiki not served (`--wiki` names another, no such Repo, or not built) is `isError` `no Wiki <id> is served here: ...`; lines outside the file and a file not at the commit are `isError`; an unknown tool is JSON-RPC `-32602`, an unknown method `-32601`, a batch `-32600`; `mcp` with a positional is exit `2`.
 - `mcp-read-only` answering changes nothing in the config dir or the Bucket, and calls no stub but `ask`'s `curl` to Ollama.
 - `mcp-claude` added to Claude Code, it is connected, its five `mcp__wiki__*` tools are listed, and `get_component` answers.
+- `mcp-launches` a launch given Wikis (faux-nico's and the morning agent's, of each Repo with its `wiki` switch on and its Wiki built) carries its Harness's `mcp_args` with `{mcpArgs}` `["mcp","--wiki","<owner/name>",...]`: claude `--mcp-config` and `--allowedTools mcp__wiki__*`, codex `-c mcp_servers.wiki.command`, `.args` and `.default_tools_approval_mode="approve"`; opencode an `mcp` entry `{"wiki":{"command":["nico-agent","mcp","--wiki",...],"type":"local"}}` in its `OPENCODE_CONFIG_CONTENT`. Started for real, each calls a wiki tool with no question in its pane.
 
 ## How to get to it (user POV)
 
 - The user adds it to their Claude Code once: `claude mcp add wiki -- nico-agent mcp` (`-s user`
   for every project); Claude Code starts it with each conversation and calls its tools.
+- The user turns a Repo's `wiki` switch on; once its Wiki is built, each faux-nico of the Repo and
+  each morning agent starts with the server, prompted with the commit the Wiki describes.
 
 ## Driving it with control-nico-agent
 
@@ -91,6 +95,41 @@ its answer's `result.content[0].text` is the tool's JSON, or its error with `isE
   overview and Interpretation, and the claim cited answers the question without its words.
   Exchange `02-again`, the same `ask`: one `/api/embed` request, the question's, not the Wiki's.
 
+- **In each Harness's launch.** Needs the user's herdr, and claude, codex and opencode2 logged in.
+  `E=.evidence/<issue>/wiki-mcp/launches`. In a run herdr is a stub, so the loop's own faux-nico or
+  morning start stops at its first herdr call: start each Harness by hand, in a herdr workspace of
+  your own on the run's `work/`, with the arguments the default config gives a launch serving
+  `verify/fixture`, as below. Make `nico-agent` the run's binary on its
+  scratch HOME for the pane only: a directory `$R/launch-bin` (`R=$(dirname "$VERIFY_HOME")`)
+  holding a `nico-agent` script `exec env HOME="$VERIFY_HOME" "$NICO_AGENT_BIN" "$@"`;
+  `herdr workspace create --cwd "$R/work" --no-focus`, and in each new tab's pane first `herdr pane
+  run <pane> "export PATH=$R/launch-bin:\$PATH"`. Each is prompted `Use the wiki MCP server: call
+  get_component with wiki "verify/fixture" and id "index", then reply with only its overview.`
+  (`herdr agent prompt <agent> '<text>' --wait`), and its screen kept with `herdr agent read
+  <agent> --source visible > "$E/<harness>.screen.txt"`:
+  - claude: `herdr agent start verify-claude --kind claude --pane <pane> -- --model haiku
+    --permission-mode default --mcp-config
+    '{"mcpServers":{"wiki":{"command":"nico-agent","args":["mcp","--wiki","verify/fixture"]}}}'
+    --allowedTools 'mcp__wiki__*'`, its folder trust answered with `herdr agent
+    send-keys verify-claude down enter` as the loop does: `Called wiki` and the overview, no `Do you
+    want to proceed?`. The control, without `--allowedTools mcp__wiki__*`, stops on `Do you want to
+    proceed?` (Escape it).
+  - codex: `herdr agent start verify-codex --kind codex --pane <pane> -- -c
+    'projects={"<$R/work>"={trust_level="trusted"}}' -c 'mcp_servers.wiki.command="nico-agent"' -c
+    'mcp_servers.wiki.args=["mcp","--wiki","verify/fixture"]' -c
+    'mcp_servers.wiki.default_tools_approval_mode="approve"'`: `Called
+    wiki.get_component` and the overview. The control, `default_tools_approval_mode="prompt"`,
+    stops on `Allow the wiki MCP server to run tool "get_component"?`.
+  - opencode: `herdr pane run <pane> "env
+    OPENCODE_CONFIG_CONTENT='{\"mcp\":{\"wiki\":{\"command\":[\"nico-agent\",\"mcp\",\"--wiki\",\"verify/fixture\"],\"type\":\"local\"}}}'
+    opencode2 --standalone"`, then `herdr agent rename <pane> verify-opencode`: `wiki.get_component` and the
+    overview. The user's TUI may accept every permission by itself (`"permissions": "autoaccept"`
+    in `~/.config/opencode/cli.json`), so its own default is shown headless too: `opencode2 run
+    --standalone -m opencode-go/deepseek-v4.1-flash --format json '<the prompt>'` in `$R/work` with
+    the same `OPENCODE_CONFIG_CONTENT` and `PATH`, no `--auto`, completes an `execute` tool call of
+    `tools.wiki.get_component` whose output is the Component.
+  Then `herdr workspace close <workspace>`.
+
 ## Gotchas
 
 - `run` passes its stdin to the binary: without `< file`, `mcp` waits on the terminal till EOF.
@@ -101,3 +140,6 @@ its answer's `result.content[0].text` is the tool's JSON, or its error with `isE
   real Ollama and model, outside a run.
 - The Claude Code step changes the user's own Claude config for the run's `work/` folder only:
   remove the server before `cleanup`, or `claude mcp get wiki` there keeps naming a deleted binary.
+- The launches step runs in the user's own herdr: close its workspace before `cleanup`, which
+  deletes the binary its panes' `nico-agent` points at. What the loop's own launches carry (the
+  switch off or the Wiki unbuilt adding nothing, the prompts' lines) is `cargo test`'s.

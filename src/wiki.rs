@@ -263,6 +263,25 @@ pub fn shown(config_dir: &Path, runs: &[Run]) -> io::Result<Vec<Value>> {
         .collect())
 }
 
+/// The Wikis faux-nico and morning are given of `repos`: each one's with its
+/// `wiki` switch on and its Wiki built, by slug, and what the `wiki` prompt
+/// says of them, one after another, for their `{wikiLine}`.
+pub fn given<'a>(
+    config_dir: &Path,
+    config: &Config,
+    repos: impl IntoIterator<Item = (&'a String, &'a Repo)>,
+) -> io::Result<(Vec<String>, String)> {
+    let outcomes = load(config_dir)?;
+    let (mut wikis, mut line) = (vec![], String::new());
+    for (slug, _) in repos.into_iter().filter(|(_, r)| r.switches.wiki) {
+        if let Some(Built { commit, .. }) = outcomes.get(slug).and_then(Outcome::wiki) {
+            line += &fill_in(&config.prompts.wiki, &[("repo", slug), ("sha", commit)]);
+            wikis.push(slug.clone());
+        }
+    }
+    Ok((wikis, line))
+}
+
 /// The Repo's Base, and the commit its `origin/<base>` is on, fetched.
 fn base_head(world: &dyn World, repo: &Repo) -> WorldResult<(String, String)> {
     let base = match &repo.base {

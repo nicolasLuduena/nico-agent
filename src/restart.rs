@@ -270,8 +270,8 @@ fn relaunch(
         .map_or(Ok(()), |tab| world.herdr_tab_close(&tab))
         .and_then(|()| launch::open_tab(world, launch, workspace, worktree, "implementer"));
     opened.map_err(|e| ("tab", e.into()))?;
-    let ready =
-        launch::start(world, harness, launch, &repo.path).map_err(|e| ("agent start", e.into()))?;
+    let ready = launch::start(world, harness, launch, &repo.path, &[])
+        .map_err(|e| ("agent start", e.into()))?;
     launch::get_ready(world, harness, launch, worktree, ready).map_err(|no| ("agent ready", no))?;
     launch::prompt(world, harness, &launch.agent, text).map_err(|no| ("prompt", no))
 }

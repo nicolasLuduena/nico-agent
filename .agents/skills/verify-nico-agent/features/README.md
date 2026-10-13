@@ -121,8 +121,9 @@ commands, and observable proof.
   `tools/list`, `wikis`, `find_component`, `get_component`, `read_anchor` and `ask` on a built
   Wiki, the lines read at the Wiki's commit after the Base moved, `--wiki` limiting what it serves,
   tool errors it goes on answering after, `ask` saying search is unavailable without Ollama and
-  answering for real with it, nothing written but `ask`'s embeddings, and the server added to
-  Claude Code.
+  answering for real with it, nothing written but `ask`'s embeddings, the server added to
+  Claude Code, and each Harness started with it as faux-nico and the morning agent are, calling a
+  wiki tool with no question in its pane.
 - [Read a Wiki on the page](./wiki-view.md) covers `GET /api/wikis` and `GET /api/wiki/<id>`, a
   Project tab's Map and Wiki views, the picker, the header, the Component tree, Interpretations by
   kind with their Anchors on GitHub, the Relationship diagram and the Explainer clicked through,
