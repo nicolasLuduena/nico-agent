@@ -79,7 +79,8 @@ fn failing(name: &str, said: String, help: String) -> Check {
     }
 }
 
-/// The Repo's checks, in order; those in its clone only when it is one.
+/// The Repo's checks, in order; those in its clone only when it is one,
+/// and its Verification skill only while it reviews: no Verdict needs it then.
 fn check(world: &dyn World, config: &Config, slug: &str, repo: &Repo) -> Vec<Check> {
     let path = &repo.path;
     let mut results = vec![match repo::clone_of(world, slug, path) {
@@ -112,7 +113,9 @@ fn check(world: &dyn World, config: &Config, slug: &str, repo: &Repo) -> Vec<Che
         });
         if let Some(base) = base {
             results.push(evidence(world, path, &base));
-            results.push(verification(world, path, &base));
+            if repo.switches.review {
+                results.push(verification(world, path, &base));
+            }
         }
     }
     results.push(skills(world, config, repo));
@@ -263,13 +266,14 @@ pub fn app_installed(world: &dyn World, slug: &str) -> WorldResult<bool> {
     Ok(repos.iter().any(|r| r.eq_ignore_ascii_case(slug)))
 }
 
+/// Whether the GitHub App is on the Repo; a Repo without it opens its PRs
+/// as the user, which is a choice, so only failing to tell is failing.
 fn bot(world: &dyn World, slug: &str) -> Check {
     match app_installed(world, slug) {
         Ok(true) => ok("bot", format!("the GitHub App is installed on {slug}")),
-        Ok(false) => failing(
+        Ok(false) => ok(
             "bot",
-            format!("the GitHub App is not installed on {slug}"),
-            format!("Install it on {slug}, or its PRs are opened as you, not the bot"),
+            format!("the GitHub App is not installed on {slug}, so its PRs are opened as you"),
         ),
         Err(e) => failing(
             "bot",

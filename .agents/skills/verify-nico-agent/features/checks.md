@@ -1,19 +1,20 @@
 # Readiness checks
 
 Each Repo's Readiness checks say what will break it before the loop hits it: its clone, a fetch that
-asks nothing, `.evidence/` ignored and a Verification skill on its Base's tip, the skills its steps'
-prompts name for their Harness, and the GitHub App on it. They run when serve starts, on Refresh and
+asks nothing, `.evidence/` ignored and, while Review is on, a Verification skill on its Base's tip,
+the skills its steps' prompts name for their Harness, and whether the GitHub App is on it (it passes
+without, saying its PRs are opened as you; only failing to ask fails). They run when serve starts, on Refresh and
 after a write to the Repo's or its Project's settings, never on a plain tick, and stop nothing. Each
 failing one is a `Check` row in the needs-you strip and an errata block in the tab's Readiness
 section, with its help; once the user does what the help says, the next run passes it.
 
 ## Sub-features
 
-- `checks-status` `status --json` and `GET /api/status` show per Repo `checks: {at, results: [{name, ok, said, help}]}`, in the order clone, fetch, evidence, verification, skills, bot; `checks.json` holds the same.
+- `checks-status` `status --json` and `GET /api/status` show per Repo `checks: {at, results: [{name, ok, said, help}]}`, in the order clone, fetch, evidence, verification (while Review is on), skills, bot; `checks.json` holds the same.
 - `checks-refresh` Refresh (CLI or button) runs them for every Repo; a Repo added by `repo add` has none until then.
 - `checks-strip` each failing one is a `Check <slug>: <said>` row in `region "Needs you"`, its help under it.
 - `checks-panel` the tab's `region "Readiness"` shows each failing one with its help, the passing ones folded under `N of M pass`, and `Unchanged since <time>`.
-- `checks-settings-write` a PATCH of the Repo's settings or switches checks it again: with Review off, the Reviewer's `verdict` skill is no longer asked for.
+- `checks-settings-write` a PATCH of the Repo's settings or switches checks it again: with Review off, the Reviewer's `verdict` skill is no longer asked for, and there is no verification check.
 - `checks-flip` a fixed one passes on the next run, and `at` moves only when a result changed.
 - `checks-fetch-base` the evidence and verification checks read the Base's tip after fetching it, so a fix pushed from elsewhere passes on Refresh.
 
@@ -53,13 +54,13 @@ Preconditions:
   `: > "$OUTSIDE_LOG"`; run `$C http --evidence "$E/05-review-off" PATCH /api/repo/verify/fixture/switches '{"review":false}'`:
   HTTP `200`; `$OUTSIDE_LOG` is one `ghbot api /installation/repositories ...` line. Run
   `$C run --evidence "$E/06-status-after-patch" -- status --json`: `skills` is ok (`each skill a
-  step names is installed for its Harness`), and `at` is now.
+  step names is installed for its Harness`), there is no `verification` check, and `at` is now.
 - **Fix pushed elsewhere.** Push `.evidence/` ignored to `main` from another clone:
   `P=$R/tmp/push; HOME=$R/home git clone -q https://github.com/verify/fixture.git "$P" && printf '.evidence/\n' > "$P/.gitignore" && HOME=$R/home git -C "$P" add .gitignore && HOME=$R/home git -C "$P" commit -qm "Ignore .evidence/" && HOME=$R/home git -C "$P" push -q origin HEAD:main`.
   `git -C "$FIXTURE_CLONE" rev-parse origin/main` is still the old tip. Run
   `$C page --evidence "$E/08-refresh" --click "button=Refresh" --gone ".evidence/ is not ignored on main"`:
   `ok` for both steps; `.requests.txt` has `POST /api/refresh -> 200`; the strip keeps the
-  verification and bot rows only; a `group` reading `4 of 6 pass`. `git -C "$FIXTURE_CLONE" rev-parse origin/main`
+  bot row only; a `group` reading `4 of 5 pass`. `git -C "$FIXTURE_CLONE" rev-parse origin/main`
   is now the pushed commit: the check fetched the Base first.
 - **Proof.** `$C run --evidence "$E/09-status-end" -- status --json`: `evidence` ok (`.evidence/ is
   ignored on main`). `$C state > "$E/state.after.txt"`, diff it against `state.before.txt`:
