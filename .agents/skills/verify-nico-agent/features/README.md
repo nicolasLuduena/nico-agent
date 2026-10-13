@@ -114,11 +114,14 @@ commands, and observable proof.
   a browser whose storage throws.
 - [Build a Repo's Wiki](./wiki-build.md) covers `wiki build` and its refusals, a failed call
   failing the build with why in `wikis.json`, each call a read-only `opencode2 run`, the Wiki
-  landing in the Bucket in one commit, and a claim failing a check dropped as a Gap.
+  landing in the Bucket in one commit, a claim failing a check dropped as a Gap, and the build
+  ending by embedding the Wiki through Ollama, or saying it could not.
 - [Serve Wikis to agents through the MCP](./wiki-mcp.md) covers `mcp` on stdio: the handshake,
-  `tools/list`, `wikis`, `find_component`, `get_component` and `read_anchor` on a built Wiki, the
-  lines read at the Wiki's commit after the Base moved, `--wiki` limiting what it serves, tool
-  errors it goes on answering after, nothing written, and the server added to Claude Code.
+  `tools/list`, `wikis`, `find_component`, `get_component`, `read_anchor` and `ask` on a built
+  Wiki, the lines read at the Wiki's commit after the Base moved, `--wiki` limiting what it serves,
+  tool errors it goes on answering after, `ask` saying search is unavailable without Ollama and
+  answering for real with it, nothing written but `ask`'s embeddings, and the server added to
+  Claude Code.
 - [Requests from other sites](./foreign-requests.md) covers the 403 serve answers a foreign or
   missing `Host` and a foreign or `null` `Origin` on a write, and the page, `localhost` and the
   tunnel answered as before.

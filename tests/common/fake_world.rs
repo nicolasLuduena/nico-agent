@@ -86,6 +86,8 @@ pub struct FakeWorld {
     /// What a headless call answers, by a line its prompt holds; a call
     /// whose prompt holds none of them fails.
     pub headless: RefCell<Vec<(String, String)>>,
+    /// What Ollama embeds each text as; one unset as `[0, 1]`.
+    pub embeddings: RefCell<HashMap<String, Vec<f32>>>,
     /// The lines stdin holds still, read in order; closed once they are read.
     pub stdin: RefCell<VecDeque<String>>,
     /// The lines written to stdout, in order.
@@ -136,6 +138,7 @@ impl Default for FakeWorld {
             shell_runs: Default::default(),
             utc_offset: Cell::new(0),
             headless: Default::default(),
+            embeddings: Default::default(),
             stdin: Default::default(),
             stdout: Default::default(),
             workspaces: Cell::new(0),
@@ -465,6 +468,20 @@ impl World for FakeWorld {
                     .ok_or_else(|| WorldError("no answer scripted for this prompt".into()))
             })
             .collect()
+    }
+
+    fn ollama_embed(
+        &self,
+        ollama: &str,
+        model: &str,
+        input: &[String],
+    ) -> WorldResult<Vec<Vec<f32>>> {
+        let body = serde_json::json!({ "model": model, "input": input });
+        self.call(format!("curl -X POST {ollama}/api/embed -d {body}"))?;
+        let embeddings = self.embeddings.borrow();
+        Ok((input.iter())
+            .map(|text| embeddings.get(text).cloned().unwrap_or(vec![0.0, 1.0]))
+            .collect())
     }
 
     fn shell(&self, cwd: &str, command: &str) -> WorldResult<(bool, String)> {

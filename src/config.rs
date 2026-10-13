@@ -52,12 +52,16 @@ hour = 7
 # Wiki builds. Repos' Wikis are updated daily at `hour`, local time. Each part
 # of the code is one headless, read-only call of `launch`: at most `calls` of
 # them a build, `concurrency` at once, dividing the code at most `depth` deep.
+# `ask` finds what a question is about by the embeddings of `embed_model`, from
+# the Ollama answering at `ollama`.
 [wiki]
 hour = 2
 launch = { harness = "opencode", model = "opencode-go/deepseek-v4.1-flash" }
 calls = 48
 depth = 7
 concurrency = 4
+embed_model = "nomic-embed-text"
+ollama = "http://127.0.0.1:11434"
 
 [prompts]
 implement = "{sigil}implement {issueUrl} as draft PR against {baseBranch}, saving its Evidence under {evidenceFolder}/ in the worktree and linking it to {bucketUrl}"
@@ -241,7 +245,7 @@ pub struct Morning {
     pub launch: Option<Launch>,
 }
 
-/// How Wikis are built: when, on what, and each build's budget.
+/// How Wikis are built (when, on what, and each build's budget) and searched.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Wiki {
@@ -259,6 +263,10 @@ pub struct Wiki {
     /// Calls a build makes at once.
     #[serde(deserialize_with = "positive")]
     pub concurrency: u32,
+    /// The Ollama model that embeds overviews, Interpretations and questions.
+    pub embed_model: String,
+    /// Where Ollama answers.
+    pub ollama: String,
 }
 
 /// In the order `as` numbers them: Sunday is 0.
