@@ -8,10 +8,10 @@ import type { Dispatch, Launch, Repo } from "../status";
 export function startingLaunch(repo: Repo, dispatches: Dispatch[], harness?: string): Launch {
   // Oldest first, as /api/status lists them.
   const used = dispatches.filter((d) => d.repo === repo.slug).map((d) => d.implementer).reverse();
-  const last = [...used, repo.implementer]
+  const last = [...used, repo.implementer.value]
     .filter((l) => l.harness in repo.harnesses)
     .find((l) => harness === undefined || l.harness === harness);
-  return last ? { harness: last.harness, model: last.model, effort: last.effort } : { harness: harness ?? repo.implementer.harness, model: null, effort: null };
+  return last ? { harness: last.harness, model: last.model, effort: last.effort } : { harness: harness ?? repo.implementer.value.harness, model: null, effort: null };
 }
 
 /** A model or Effort select's options: null (the default), then what the Harness takes, or only the one chosen when it takes any. */

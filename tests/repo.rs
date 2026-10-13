@@ -42,6 +42,7 @@ fn add_reads_the_remotes_and_list_shows_the_repo_with_defaults_filled_in() {
             "slug": "acme/api",
             "path": "/src/api",
             "linear": null,
+            "project": "acme/api",
             "room": 3,
             "base": null,
             "implementer": { "harness": "claude", "model": null, "effort": null },

@@ -9,7 +9,12 @@ these, not the synonyms under _Avoid_.
 Linear team. _Avoid_: provider, tracker integration.
 
 **Repo**: a GitHub repository nico-agent dispatches into, by slug and local
-clone path, with its Switches and launch defaults. _Avoid_: project.
+clone path, with its Switches and launch defaults.
+
+**Project**: Repos that work together: one tab and map, defaults its Repos
+inherit, Blockers honoured across them. A Repo belongs to at most one; one
+that names none is a Project of its own, named by its slug. _Avoid_:
+workspace (herdr's), group; Linear's is always written "Linear project".
 
 **Blocker**: an issue that must be resolved before another can start, as the
 Source's native dependency relation records it. _Avoid_: dependency.
@@ -80,8 +85,9 @@ provider.
 **Effort**: the Harness's reasoning level for a launch. _Avoid_: thinking
 budget.
 
-**Switch**: a per-Repo on/off for one automatic step: dispatch, stack,
-review, restart, flip to ready, faux-nico answers, gardening, quality-scan.
+**Switch**: a Repo's on/off, or its Project's default, for one automatic
+step: dispatch, stack, review, restart, flip to ready, faux-nico answers,
+gardening, quality-scan.
 _Avoid_: standing order, manual mode.
 
 **Close**: end a Dispatch, removing its worktree and workspace; the branch

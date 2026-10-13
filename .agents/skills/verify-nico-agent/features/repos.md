@@ -12,7 +12,7 @@ rm` stops the loop working one and says what stays. The first `repo add` also ma
 - `repo-add-not-clone` a path that is not a clone's top directory is refused (exit 1) with the `git clone` to run.
 - `repo-add-wrong-remote` a clone of another slug is refused (exit 1), naming its remotes.
 - `repo-add-usage` a bad slug, or no `--path`, is a bad invocation (exit 2) with the usage line.
-- `repo-list` lists each Repo with `path`, `room` 3, `implementer` claude, `reviewer` codex, and every switch.
+- `repo-list` lists each Repo with `path`, `project` (its slug, naming none), `room` 3, `implementer` claude, `reviewer` codex, and every switch.
 - `repo-rm` removes a Repo, keeping its clone (`stays`); a second `rm` is a no-op.
 - `repo-usage` `repo` with no subcommand is exit 2 with the three usage lines.
 
@@ -45,7 +45,7 @@ Preconditions:
 - **No path.** Run `$C run --evidence "$E/08-no-path" -- repo add verify/x --json`. Exit `2`,
   `error` `missing required flag --path`.
 - **List.** Run `$C run --evidence "$E/09-list" -- repo list --json`. Exit `0`, two Repos in
-  add order, each with `room` `3`, `implementer` `{"harness":"claude",...}`, `reviewer`
+  add order, each with `project` its own slug, `room` `3`, `implementer` `{"harness":"claude",...}`, `reviewer`
   `{"harness":"codex",...}`, `linear` `null`, `base` `null` and `switches` with `dispatch`,
   `stack`, `review`, `restart`, `flip` true and `answer`, `gardening`, `quality_scan` false.
 - **Remove.** Run `$C run --evidence "$E/10-rm" -- repo rm verify/second --json`. Exit `0`,

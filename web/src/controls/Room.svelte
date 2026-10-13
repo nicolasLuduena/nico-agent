@@ -8,7 +8,7 @@
   let { repo, status }: { repo: Repo; status: Status } = $props();
 
   // The PATCH's answer, until /api/status's next one.
-  let room = $derived(repo.room);
+  let room = $derived(repo.room.value);
   let saving = $state(false);
   let refused = $state<Sent | null>(null);
   let live = $derived(inFlight(repo, status.dispatches));

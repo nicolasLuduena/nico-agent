@@ -6,7 +6,7 @@ use toml_edit::{InlineTable, Item, Table, TableLike, value};
 use crate::args::Args;
 use crate::bucket;
 use crate::cli::{Context, Refusal, bad_invocation};
-use crate::config::{self, Linear, Switches};
+use crate::config::{self, Linear, SWITCHES, Switches};
 use crate::dispatch;
 
 pub fn add(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
@@ -142,24 +142,13 @@ pub fn list(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
         .map(|(slug, repo)| {
             let mut shown = serde_json::to_value(repo).expect("a Repo is plain data");
             shown["slug"] = json!(slug);
+            shown["project"] = json!(repo.project_name(slug));
             shown["reviewer"] = json!(config.reviewer(repo, &repo.implementer.harness));
             shown
         })
         .collect();
     Ok(json!({ "repos": repos }))
 }
-
-/// The switches the app shows and sets.
-const SWITCHES: [&str; 8] = [
-    "dispatch",
-    "stack",
-    "review",
-    "restart",
-    "flip",
-    "answer",
-    "gardening",
-    "quality_scan",
-];
 
 /// Write `set`, `{name: bool}`, to the switches of the Repo `slug` in the
 /// config, keeping the rest as written; the Repo's switches after.

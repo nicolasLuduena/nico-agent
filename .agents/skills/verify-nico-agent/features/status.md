@@ -2,9 +2,10 @@
 
 `status` shows per Repo what the loop may start (Ready, Stackable and waiting issues, from the
 Source's read), when that read was made, and every Dispatch with its Stage, its Agent state and its
-Verdict. It reads the Source only when its cached read is older than a tick, and shows the cache,
-however old, when the Source refuses or GitHub is paused. `GET /api/status` is the same answer from
-the cache alone, plus what the page shows beside each map.
+Verdict; and every Project, with each Repo's settings and where each comes from (see projects.md).
+It reads the Source only when its cached read is older than a tick, and shows the cache, however
+old, when the Source refuses or GitHub is paused. `GET /api/status` is the same answer from the
+cache alone, plus what the page shows beside each map.
 
 ## Sub-features
 
@@ -15,7 +16,8 @@ the cache alone, plus what the page shows beside each map.
 - `status-paused` a paused GitHub is asked nothing: `sources.github.paused_until` is set, an uncached Repo's `error` says when it is asked again.
 - `status-dispatches` each Dispatch with `stage` (`Failed`, `PR draft`, `Implementing`, `Verified`), `agent_state` `unknown` while herdr does not answer, `review` (see review.md), `verdict` and `pr`.
 - `status-runs` a Run its agent blocked shows `blocked_since` where status shows it: `repos[].last_scan`, the live Dispatch's `faux_nico`, `morning`.
-- `status-api` `GET /api/status` holds the command's `sources` and `dispatches`, and per Repo also `switches`, `room`, `implementer`, `reviewer`, `harnesses`, `prs_checked_at` and `github_paused_until`.
+- `status-settings` each Repo shows `room`, `base`, `implementer`, `reviewer`, `quality_scan`, `faux_nico` and each switch as `{value, from}`; `projects` lists a Project per Repo that names none, named by its slug.
+- `status-api` `GET /api/status` holds the command's `projects`, `sources` and `dispatches`, and per Repo also `harnesses`, `prs_checked_at` and `github_paused_until`.
 
 ## How to get to it (user POV)
 
@@ -31,8 +33,13 @@ Preconditions:
 - `E=.evidence/<issue>/status`.
 
 - **No read yet.** Run `$C run --evidence "$E/01-no-cache" -- status --json`. Exit `0`; `repos[0]`
-  is `{"error":"not authenticated with GitHub; run \`gh auth login\`","gardening":[],"read_at":null,"ready":[],"slug":"verify/fixture","stackable":[],"waiting":[]}`;
-  `dispatches` `[]`. `$OUTSIDE_LOG` gained `gh api user --jq .login`.
+  has `slug` `verify/fixture`, `error` `not authenticated with GitHub; run \`gh auth login\``,
+  `read_at` null and `ready`, `stackable`, `gardening`, `waiting` `[]`; its settings are each
+  `from` `default`: `room` `3`, `base` null, `implementer` claude, `reviewer` codex, `quality_scan`
+  and `faux_nico` claude, `switches` `dispatch`, `stack`, `review`, `restart`, `flip` true and
+  `answer`, `gardening`, `quality_scan` false. `projects` is
+  `[{"name":"verify/fixture","repos":["verify/fixture"],"defaults":{}}]`; `dispatches` `[]`.
+  `$OUTSIDE_LOG` gained `gh api user --jq .login`.
 - **Cached read.** Run `$C seed issues`, then `$C state > "$E/state.before.txt"` and `$C run --evidence "$E/02-cached" -- status --json`.
   Exit `0`; no `error`; `read_at` is the seed's; `ready` is `verify/fixture#1` "Verify: a Ready
   issue" `kind` `code` and `verify/fixture#5` "Verify: a Research issue" `kind` `research`;
@@ -50,11 +57,10 @@ Preconditions:
   `quality-scan-fixture`, `dispatches[2].faux_nico` agent `faux-nico-fixture-12` with `issue`
   `verify/fixture#12` and `asking` that Dispatch's `asking.since`, and `morning` agent `morning`;
   each with `blocked_since` the seed's time and `closed_at` null.
-- **API.** Run `$C http --evidence "$E/04-api" GET /api/status`. HTTP `200`; `dispatches` and
-  `sources` equal the command's; `repos[0]` adds `switches` (`dispatch`, `flip`, `restart`,
-  `review`, `stack` true; `answer`, `gardening`, `quality_scan` false), `room` `3`, `implementer` claude, `reviewer` codex, `harnesses`
-  (claude with its models and Efforts, codex and opencode null), `prs_checked_at` (the seeded PR's
-  `checked_at`) and `github_paused_until` null.
+- **API.** Run `$C http --evidence "$E/04-api" GET /api/status`. HTTP `200`; `projects`,
+  `dispatches` and `sources` equal the command's; `repos[0]` has the command's settings, each
+  `{value, from}`, and adds `harnesses` (claude with its models and Efforts, codex and opencode
+  null), `prs_checked_at` (the seeded PR's `checked_at`) and `github_paused_until` null.
 - **Stale read.** Run `$C drift stale`, then `$C run --evidence "$E/05-stale" -- status --json`.
   `repos[0].error` is the `gh auth login` refusal, `read_at` `2000-01-01T00:00:00Z`, and `ready` and
   `stackable` still hold the cached rows. `$OUTSIDE_LOG` gained one more `gh api user --jq .login`.

@@ -1,13 +1,16 @@
 //! `status`: per Repo, what the loop may start; and every Dispatch with its Stage.
 
-use serde_json::{Value, json};
+use std::collections::BTreeMap;
+
+use serde_json::{Map, Value, json};
 
 use crate::args::Args;
 use crate::away::{self, Run, Trigger};
 use crate::cli::{Context, Refusal, bad_invocation};
-use crate::config::{self, Config};
+use crate::config::{self, Config, Launch, Repo, SWITCHES};
 use crate::dispatch::{self, Dispatch};
 use crate::pause;
+use crate::repo;
 use crate::review;
 use crate::source;
 use crate::stage::{self, Prs, Stage};
@@ -96,6 +99,9 @@ pub fn shown(
         if let Some(scan) = away::last_scan(&runs, slug) {
             shown["last_scan"] = json!(scan);
         }
+        for (key, setting) in settings(config, slug, repo) {
+            shown[key] = setting;
+        }
         let harness = &repo.implementer.harness;
         if config.reviewer(repo, harness).harness == *harness {
             shown["warnings"] = json!([format!(
@@ -159,9 +165,78 @@ pub fn shown(
         });
         shown_dispatches.push(shown);
     }
-    let mut shown = json!({ "repos": repos, "sources": sources, "dispatches": shown_dispatches });
+    let mut projects: BTreeMap<&str, Vec<&str>> = (config.projects.keys())
+        .map(|name| (name.as_str(), vec![]))
+        .collect();
+    for (slug, repo) in &config.repos {
+        projects
+            .entry(repo.project_name(slug))
+            .or_default()
+            .push(slug);
+    }
+    let projects: Vec<Value> = (projects.into_iter())
+        .map(|(name, repos)| {
+            let defaults = config.projects.get(name).cloned().unwrap_or_default();
+            json!({ "name": name, "repos": repos, "defaults": defaults })
+        })
+        .collect();
+    let mut shown = json!({
+        "projects": projects, "repos": repos, "sources": sources, "dispatches": shown_dispatches,
+    });
     if let Some(morning) = away::last_morning(&runs) {
         shown["morning"] = json!(morning);
     }
     Ok(shown)
+}
+
+/// Each setting of the Repo `slug` as `{value, from}`, `from` the first of
+/// the Repo, its Project and the defaults that sets it.
+fn settings(config: &Config, slug: &str, repo: &Repo) -> Vec<(&'static str, Value)> {
+    let own = json!(repo.own);
+    let project = json!(config.projects.get(repo.project_name(slug)));
+    let setting = |keys: &[&str], value: Value| {
+        let sets = |layer: &Value| !keys.iter().fold(layer, |v, key| &v[key]).is_null();
+        let from = if sets(&own) {
+            "repo"
+        } else if sets(&project) {
+            "project"
+        } else {
+            "default"
+        };
+        json!({ "value": value, "from": from })
+    };
+    let switches = repo::shown(&repo.switches);
+    let switches: Map<String, Value> = (SWITCHES.iter())
+        .map(|name| {
+            (
+                name.to_string(),
+                setting(&["switches", name], switches[name].clone()),
+            )
+        })
+        .collect();
+    let launch = |launch: &Option<Launch>| json!(repo.or_implementer(launch));
+    vec![
+        ("room", setting(&["room"], json!(repo.room))),
+        ("base", setting(&["base"], json!(repo.base))),
+        (
+            "implementer",
+            setting(&["implementer"], json!(repo.implementer)),
+        ),
+        (
+            "reviewer",
+            setting(
+                &["reviewer"],
+                json!(config.reviewer(repo, &repo.implementer.harness)),
+            ),
+        ),
+        (
+            "quality_scan",
+            setting(&["quality_scan"], launch(&repo.quality_scan)),
+        ),
+        (
+            "faux_nico",
+            setting(&["faux_nico"], launch(&repo.faux_nico)),
+        ),
+        ("switches", Value::Object(switches)),
+    ]
 }

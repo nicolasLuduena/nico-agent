@@ -20,15 +20,21 @@ export interface Repo {
   /** Ready Gardening issues, kept out of `ready`. */
   gardening: Issue[];
   /** dispatch, stack, review, restart, flip, answer, gardening, quality_scan. */
-  switches: Record<string, boolean>;
+  switches: Record<string, Setting<boolean>>;
   /** How many Dispatches it may have In flight at once. */
-  room: number;
+  room: Setting<number>;
   /** The launch the loop dispatches on. */
-  implementer: Launch;
+  implementer: Setting<Launch>;
   /** Each configured Harness, with the models and Efforts it takes (null: any). */
   harnesses: Record<string, { models: string[] | null; efforts: string[] | null }>;
   /** Its last quality-scan's Run; none before the first. */
   last_scan?: Run;
+}
+
+/** A Repo's setting as it takes effect, and which of the Repo, its Project and the defaults sets it. */
+export interface Setting<T> {
+  value: T;
+  from: "repo" | "project" | "default";
 }
 
 /** One start of an agent of the loop's own: a quality-scan, a faux-nico or the morning agent. */
