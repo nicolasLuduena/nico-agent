@@ -45,6 +45,11 @@ fn interpretation(kind: &str, text: &str, path: &str, start: u64, end: u64) -> V
     json!({ "kind": kind, "text": text, "anchors": [{ "path": path, "start": start, "end": end }] })
 }
 
+/// A division's claim about how its Core and its web front work together.
+fn across() -> Value {
+    json!({ "kind": "role", "text": "The page serves run, the entry point.", "anchors": [{ "path": "src/lib.rs", "start": 4, "end": 4 }, { "path": "web/app.ts", "start": 1, "end": 1 }] })
+}
+
 /// The Wiki the Bucket holds.
 fn wiki(t: &Setup) -> Value {
     let files = t.world.files.borrow();
@@ -151,7 +156,7 @@ fn a_leaf_lands_in_the_bucket_as_one_commit_and_the_build_says_built() {
 #[test]
 fn a_division_and_its_leaves_land_as_one_wiki_of_components_with_their_relationships() {
     let t = with_repo("");
-    let entry = interpretation("role", "run is the entry point.", "src/lib.rs", 4, 4);
+    let entry = across();
     answer(
         &t,
         "acme/api",
@@ -628,6 +633,65 @@ fn a_component_outside_its_part_and_a_relationship_to_no_component_are_dropped_a
 }
 
 #[test]
+fn a_division_s_interpretation_anchored_only_in_one_component_s_files_is_sent_back_then_dropped() {
+    let t = with_repo("");
+    let in_core = json!({ "kind": "invariant", "text": "lib.rs declares config.", "anchors": [
+        { "path": "src/lib.rs", "start": 1, "end": 1 },
+        { "path": "src/config.rs", "start": 1, "end": 1 },
+    ] });
+    let in_web = interpretation("role", "The page exports serve.", "web/app.ts", 1, 1);
+    let division = json!({
+        "kind": "division",
+        "overview": "An API and its web front.",
+        "components": [
+            { "name": "Core", "summary": "The crate.", "files": ["src/lib.rs", "src/config.rs"] },
+            { "name": "Web front", "summary": "The page.", "files": ["web/app.ts"] },
+        ],
+        "interpretations": [in_core, across(), in_web],
+    });
+    answer(&t, "acme/api", division.clone());
+    corrected(&t, "acme/api", division);
+    for trail in ["acme/api > Core", "acme/api > Web front"] {
+        answer(&t, trail, json!({ "kind": "leaf", "overview": "A part." }));
+    }
+
+    let ran = t.cli(&["wiki", "build", "acme/api", "--json"]);
+
+    assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
+    let corrections: Vec<String> = (whole_headless_calls(&t).into_iter())
+        .filter(|c| c.contains("## Corrections to the part: acme/api\n"))
+        .collect();
+    assert_eq!(corrections.len(), 3);
+    let failed: Vec<(&str, &str)> = (corrections[0].lines())
+        .filter_map(|l| l.strip_prefix("- interpretation "))
+        .map(|l| {
+            (
+                l.split_once(' ').unwrap().0,
+                l.rsplit_once("}: ").unwrap().1,
+            )
+        })
+        .collect();
+    let about = |name: &str| {
+        format!(
+            "its Anchors all fall in the files of {name}, so it is about that Component, not how the division's Components work together"
+        )
+    };
+    assert_eq!(
+        failed,
+        [("1", about("Core").as_str()), ("3", &about("Web front"))]
+    );
+    assert_eq!(ran.json()["gaps"], json!({ "unreadable": 1 }));
+    let index = &wiki(&t)["components"][0];
+    let mut kept = across();
+    kept["id"] = json!(1);
+    assert_eq!(index["interpretations"], json!([kept]));
+    assert_eq!(
+        index["gaps"],
+        json!([{ "paths": ["src/config.rs", "src/lib.rs", "web/app.ts"], "reason": "unreadable" }])
+    );
+}
+
+#[test]
 fn an_answer_that_is_no_json_of_either_shape_leaves_its_part_a_gap_and_the_build_succeeds() {
     let t = with_repo("");
     answer(
@@ -967,7 +1031,7 @@ fn vectors(t: &Setup) -> Option<Value> {
 #[test]
 fn a_build_ends_by_embedding_every_overview_and_interpretation_through_ollama() {
     let t = with_repo("");
-    let entry = interpretation("role", "run is the entry point.", "src/lib.rs", 4, 4);
+    let entry = across();
     answer(
         &t,
         "acme/api",
@@ -1006,7 +1070,7 @@ fn a_build_ends_by_embedding_every_overview_and_interpretation_through_ollama() 
     assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
     let texts = [
         "An API and its web front.",
-        "run is the entry point.",
+        "The page serves run, the entry point.",
         "The crate's modules.",
         "Config is a unit struct.",
         "The page.",
@@ -1275,7 +1339,7 @@ fn built_then_moved(t: &Setup, files: &[(&str, Option<&str>)]) -> Value {
                 { "name": "Core", "summary": "The crate.", "files": ["src/lib.rs", "src/config.rs"] },
                 { "name": "Web", "summary": "The page.", "files": ["web/app.ts"] },
             ],
-            "interpretations": [interpretation("role", "run is the entry point.", "src/lib.rs", 4, 4)],
+            "interpretations": [across()],
         }),
     );
     let core = interpretation(
@@ -1353,6 +1417,8 @@ fn update_with_one_file_changed_asks_again_only_its_leaf_and_copies_every_other_
     let mut after = before.clone();
     after["commit"] = json!("def5678");
     after["files"][2]["blob"] = json!(blob(NEW_WEB));
+    // The top part, kept, cites web/app.ts too: pinned where it was written.
+    after["components"][0]["blobs"] = json!({ "web/app.ts": blob(WEB) });
     after["components"][2]["overview"] = json!("The page, moved.");
     after["components"][2]["interpretations"][0]["text"] = json!("The page serves on port 8080.");
     assert_eq!(wiki(&t), after);

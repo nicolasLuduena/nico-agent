@@ -48,18 +48,21 @@ Preconditions:
 - `E=.evidence/<issue>/wiki-view`; `mkdir -p "$E"`.
 - `$C run -- repo add verify/fixture --path "$FIXTURE_CLONE" --project shop --json`, the same for
   `verify/second` with `$SECOND_CLONE`, then `$C seed issues` and `$C seed issues second`.
+- `$C drift base docs/notes.md` and `$C drift base docs/guide.md`: the fixture holds `README.md` and
+  two docs, so a division's claim can cite more than one of its Components (see Gotchas).
 - `$C state > "$E/state.before.txt"`.
 
 - **Empty.** `$C page --evidence "$E/01-empty" --click link=Wiki --expect "No Wiki of shop yet"`:
   `paragraph` `nico-agent wiki build verify/fixture`, and the same for `verify/second`.
 - **Build.** `printf '\n[wiki]\ncalls = 7\n' >> "$CONFIG_DIR/config.toml"`: the top part, its three
   Components and Readme's three correction rounds, each answered with Readme's answer again, leave
-  none for Title. Write one answer per part: `$E/answer-fixture.json`, a division into `Readme`,
-  `Notes` and `Badge` (each `README.md`), with Relationships `Notes` `reads` `Readme` ("Notes quote
-  the README's title.") and `Readme` `uses` `Badge` ("The README shows the badge."), and a `role`
-  anchored at `README.md` `1`-`3`; `$E/answer-readme.json`, a division into `Title` (`README.md`)
-  with a `role` at `1`-`1`, an `invariant` at `3`-`3`, an `effect` at both, and a `postcondition`
-  at `2`-`9`; `$E/answer-notes.json` and `$E/answer-badge.json`, leaves with no Interpretations,
+  none for Title. Write one answer per part: `$E/answer-fixture.json`, a division into `Readme`
+  (`README.md`, `docs/notes.md`), `Notes` and `Badge` (each `README.md`), with Relationships
+  `Notes` `reads` `Readme` ("Notes quote the README's title.") and `Readme` `uses` `Badge` ("The
+  README shows the badge."), and a `role` "The fixture is described by its README." anchored at
+  `README.md` `1`-`3` and `docs/guide.md` `1`-`1`; `$E/answer-readme.json`, a division into `Title`
+  (`docs/notes.md`) with, in `README.md`, a `role` at `1`-`1`, an `invariant` at `3`-`3`, an
+  `effect` at both, and a `postcondition` at `2`-`9`; `$E/answer-notes.json` and `$E/answer-badge.json`, leaves with no Interpretations,
   overviews "Notes on the README." and "The badge the README shows."; `$E/answer-second.json`, a
   leaf with a `role` at `1`-`1` and an Explainer "How the README reads": step 1 "The title names
   the second fixture." at `1`-`1` and step 2 "A blank line ends the heading." at `2`-`2`, both in
@@ -79,7 +82,7 @@ Preconditions:
   with its Relationship, and `readme/title` (Gap `budget`); `GET /api/wiki/verify/second`'s `index`
   carries the `explainer`;
   `$C http --evidence "$E/06-unknown" GET /api/wiki/verify/nope` is `404`
-  `{"error":"verify/nope has no Wiki","help":["Ask for a Wiki /api/wikis lists, or build one: nico-agent wiki build <owner/name>"]}`.
+  `{"error":"verify/nope has no Wiki","help":["Ask for a Wiki /api/wikis lists, or build one: nico-agent wiki build <owner/name>[@<tag>[:<path>]]"]}`.
 - **By hash, light and dark.** `$C page --evidence "$E/07-hash-desk-light" --hash "#shop/wiki/verify%2Ffixture/readme" --expect "The title names the Repo"`:
   `article "Readme"` with regions `roles`, `invariants`, `effects` (no `postconditions`: dropped),
   `Components` with `link "Title"`, and `Gaps` with `Unreadable: an answer failed its checks`;
@@ -140,6 +143,9 @@ Preconditions:
 - `--expect` waits for visible text: a region's name (`Map of shop`) is not text; wait for a title on it.
 - An Anchor link opens github.com: read its URL from the ARIA snapshot, never click it in a run.
 - Seed each part's answer by its trail; one answer for every part divides again at every depth.
+- A division's Interpretation whose Anchors all fall in the files of one of its Components fails
+  its check: the top part's `role` cites `docs/guide.md`, in no Component, and Readme's cite
+  `README.md`, not in Title.
 - A Relationship link's name carries its description: click it by `link~<from> <kind> <to>`.
 - The Relationship diagram and the Explainer are laid out once the column has a width: `--expect`
   their text first, then read the snapshot.

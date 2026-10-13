@@ -20,7 +20,7 @@ its last act: built, with its Gaps by reason, or failed with why.
 - `wiki-read-only` each call is `opencode2 run --standalone -m <model> --format json <prompt>` with `OPENCODE_CONFIG_CONTENT` denying bash, edit, execute, external_directory, task, webfetch and websearch; on claude `claude -p --output-format json --json-schema <schema> --tools=Read,Grep,Glob --strict-mcp-config --permission-prompts none`, corrected with `--resume <session>`; on codex `codex exec --ignore-user-config -c sandbox_mode="read-only" --skip-git-repo-check --json --output-schema <config dir>/wiki/answer.schema.json`, corrected with `codex exec resume <session>` (a real build on either: [wiki-settings.md](./wiki-settings.md)).
 - `wiki-built` an answer lands as one Bucket commit `wiki <owner/name> <commit>`, served at `/bucket/wiki/<owner>/<name>/wiki.json`, its files with git's blobs and their line counts; `wikis.json` `built`.
 - `wiki-embed` after the Bucket commit, one `curl` POSTs every overview and Interpretation to `http://127.0.0.1:11434/api/embed` with `nomic-embed-text`; with Ollama unreachable, stderr says `could not embed the Wiki of <owner/name>, so ask embeds it first: ...`, the build is still `built` and the config dir holds no `wiki/<owner>/<name>/vectors.json`; with Ollama up, it does.
-- `wiki-gap` a claim failing a check (an Anchor past its file's end, an Explainer's arrow to a step it does not have) is sent back 3 times, each `opencode2 run ... -s <session>` continuing the first call's session; still failing, it is dropped, said on stderr, and its part a Gap `unreadable`; the build still succeeds.
+- `wiki-gap` a claim failing a check (an Anchor past its file's end, an Explainer's arrow to a step it does not have, a division's Interpretation whose Anchors all fall in the files of one of its Components) is sent back 3 times, each `opencode2 run ... -s <session>` continuing the first call's session; still failing, it is dropped, said on stderr, and its part a Gap `unreadable`; the build still succeeds.
 - `wiki-corrected` a claim the model corrects in its first round is kept: one correction call, no Gap.
 - `wiki-unread-reply` a correction that is no JSON keeps the answer before it, and the next round says so.
 
@@ -81,7 +81,18 @@ Preconditions:
   Exit `0`, `"gaps":{"unreadable":1}`, stderr as in **Built, with a Gap**. The `state` diff's four
   `opencode2 run` calls: the second's correction lists `interpretation 2` and `explainer 1` alone; the third's and
   fourth's start with `- your last reply: it is no JSON object of either shape, leaf or division, so the claims below are of the answer before it`
-  and then list them. Copy `$OUTSIDE_LOG` to `$E/outside.log`.
+  and then list them.
+- **A division's claim about one Component.** `$C seed correction none`. Write `$E/division.json`, a
+  division into `Readme` (`README.md`) with a `role` at `README.md` `1`-`1`, and `$E/readme.json`, a
+  leaf with a `role` at `1`-`1`. `$C seed answer "$E/division.json" "verify/fixture"`, `$C seed answer
+  "$E/readme.json" "verify/fixture > Readme"`, then `$C run --evidence "$E/09-division-claim" -- wiki build verify/fixture --json`.
+  Exit `0`, `"components":2`, `"gaps":{"unreadable":1}`; stderr says `verify/fixture: 1 claim(s) failed,
+  sent back (round 1 of 3, call 2 of 48)`, then rounds 2 and 3, then `verify/fixture: dropped
+  interpretation 1 {...}: its Anchors all fall in the files of Readme, so it is about that Component,
+  not how the division's Components work together` and `verify/fixture > Readme: asked (call 5 of 48)`.
+  `$C http --evidence "$E/10-bucket-division" GET /bucket/wiki/verify/fixture/wiki.json`: `index`
+  with no Interpretation and `gaps` `[{"paths":["README.md"],"reason":"unreadable"}]`, `readme` with
+  its `role`. Copy `$OUTSIDE_LOG` to `$E/outside.log`.
 
 ## Gotchas
 

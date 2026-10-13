@@ -40,7 +40,7 @@ fn with_wikis() -> Setup {
                 { "name": "Web front", "summary": "The page.", "files": ["web/app.ts"] },
             ],
             "relationships": [{ "from": "Web front", "to": "Core", "kind": "calls", "description": "It calls the API." }],
-            "interpretations": [interpretation("role", "run is the entry point.", "src/lib.rs", 4, 4)],
+            "interpretations": [{ "kind": "role", "text": "The page calls run, the entry point.", "anchors": [{ "path": "src/lib.rs", "start": 4, "end": 4 }, { "path": "web/app.ts", "start": 1, "end": 1 }] }],
         }),
     );
     answer(
@@ -265,7 +265,7 @@ fn get_component_gives_its_interpretations_relationships_sub_components_and_gaps
             "name": "acme/api",
             "parent": null,
             "overview": "An HTTP API and the web page in front of it.",
-            "interpretations": [{ "id": 1, "kind": "role", "text": "run is the entry point.", "anchors": [{ "path": "src/lib.rs", "start": 4, "end": 4 }] }],
+            "interpretations": [{ "id": 1, "kind": "role", "text": "The page calls run, the entry point.", "anchors": [{ "path": "src/lib.rs", "start": 4, "end": 4 }, { "path": "web/app.ts", "start": 1, "end": 1 }] }],
             "relationships": [],
             "gaps": [],
             "components": [
