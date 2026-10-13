@@ -9,6 +9,21 @@ export interface Status {
   morning_summary?: string | null;
   /** The last morning agent's Run; none before the first. */
   morning?: Run;
+  /** What every Wiki is built on. */
+  wiki_settings: WikiSettings;
+}
+
+/** `[wiki]` as it takes effect: when the loop checks each Repo's Wiki, the launch each part is asked of, a build's budget and the embedding model. */
+export interface WikiSettings {
+  /** Local time, 0 to 23. */
+  hour: number;
+  launch: Launch;
+  calls: number;
+  depth: number;
+  concurrency: number;
+  embed_model: string;
+  /** The Harnesses a Wiki builds on, with the models and Efforts each takes (null: any). */
+  harnesses: Repo["harnesses"];
 }
 
 /** The settings of a Repo, or the defaults of a Project, each as it takes effect. */

@@ -315,18 +315,150 @@ fn the_wiki_launch_s_effort_goes_with_its_model_and_its_harness_s_own_command_ru
 }
 
 #[test]
-fn a_wiki_launch_on_another_harness_fails_the_build_saying_only_opencode_builds_one() {
-    let t = with_repo("[wiki]\nlaunch = { harness = \"claude\" }");
+fn a_wiki_launch_on_a_harness_with_no_headless_form_fails_the_build_naming_those_with_one() {
+    let t = with_repo(
+        "[wiki]\nlaunch = { harness = \"aider\" }\n[harnesses.aider]\nlaunch_mode = \"pane-command\"\ncommand = \"aider\"\nsigil = \"/\"\nmodel_args = []\neffort_args = []",
+    );
 
     let ran = t.cli(&["wiki", "build", "acme/api", "--json"]);
 
     assert_eq!(ran.exit_code, 1);
     assert_eq!(
         ran.json()["error"],
-        "could not build the Wiki of acme/api: claude has no headless form: only opencode builds a Wiki"
+        "could not build the Wiki of acme/api: aider has no headless form: a Wiki builds on claude, codex or opencode"
     );
     assert_eq!(outcomes(&t)["acme/api"]["outcome"], "failed");
     assert!(!t.world.calls().iter().any(|c| c.contains(" worktree add ")));
+}
+
+/// A leaf whose second Interpretation runs past its file's end, then the
+/// same corrected: one call and one correction.
+fn corrected_once(t: &Setup) {
+    let kept = interpretation("role", "run is the entry point.", "src/lib.rs", 4, 4);
+    let past = interpretation("effect", "The page serves on port 80.", "web/app.ts", 2, 3);
+    let port = interpretation("effect", "The page serves on port 80.", "web/app.ts", 2, 2);
+    let leaf = |i: Vec<Value>| json!({ "kind": "leaf", "overview": "A small API.", "interpretations": i, "explainer": null });
+    answer(t, "acme/api", leaf(vec![kept.clone(), past]));
+    corrected(t, "acme/api", leaf(vec![kept, port]));
+}
+
+/// The headless calls made, each cut before its prompt, its JSON schema
+/// argument, if any, put aside as `<schema>`; and that schema.
+fn schema_aside(t: &Setup) -> (Vec<String>, Option<Value>) {
+    let mut schema = None;
+    let calls = (whole_headless_calls(t).into_iter())
+        .map(|call| {
+            let cut = [" You are writing", " ## Corrections"]
+                .iter()
+                .find_map(|at| call.split_once(at))
+                .expect("a prompt")
+                .0;
+            let words: Vec<String> = (cut.split(' '))
+                .map(|word| match serde_json::from_str::<Value>(word) {
+                    Ok(read @ Value::Object(_)) => {
+                        schema = Some(read);
+                        "<schema>".into()
+                    }
+                    _ => word.into(),
+                })
+                .collect();
+            words.join(" ")
+        })
+        .collect();
+    (calls, schema)
+}
+
+/// What every answer must hold, as a strict JSON schema: a leaf or a division.
+fn assert_is_the_answer_shape(schema: &Value) {
+    assert_eq!(schema["type"], "object");
+    assert_eq!(schema["additionalProperties"], false);
+    assert_eq!(
+        schema["properties"]["kind"]["enum"],
+        json!(["leaf", "division"])
+    );
+    let mut required: Vec<&str> = (schema["required"].as_array().unwrap().iter())
+        .map(|key| key.as_str().unwrap())
+        .collect();
+    required.sort();
+    assert_eq!(
+        required,
+        [
+            "components",
+            "explainer",
+            "interpretations",
+            "kind",
+            "overview",
+            "relationships"
+        ]
+    );
+}
+
+#[test]
+fn a_wiki_launch_on_claude_asks_each_part_with_claude_p_read_only_and_corrects_it_with_resume() {
+    let t = with_repo(
+        "[wiki]\nlaunch = { harness = \"claude\", model = \"sonnet\", effort = \"low\" }",
+    );
+    corrected_once(&t);
+
+    let ran = t.cli(&["wiki", "build", "acme/api", "--json"]);
+
+    assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
+    assert_eq!(ran.json()["gaps"], json!({}));
+    let dir = checkout(&t);
+    let claude = "claude -p --output-format json --json-schema <schema> --tools=Read,Grep,Glob --strict-mcp-config --permission-prompts none --model sonnet --effort low";
+    let (calls, schema) = schema_aside(&t);
+    assert_eq!(
+        calls,
+        [
+            format!("cd {dir} && env {claude}"),
+            format!("cd {dir} && env {claude} --resume ses_1"),
+        ]
+    );
+    assert_is_the_answer_shape(&schema.unwrap());
+    assert_eq!(
+        wiki(&t)["components"][0]["interpretations"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+}
+
+#[test]
+fn a_wiki_launch_on_codex_asks_each_part_with_codex_exec_read_only_and_corrects_it_with_exec_resume()
+ {
+    let t = with_repo(
+        "[wiki]\nlaunch = { harness = \"codex\", model = \"gpt-5.5\", effort = \"low\" }",
+    );
+    corrected_once(&t);
+
+    let ran = t.cli(&["wiki", "build", "acme/api", "--json"]);
+
+    assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
+    assert_eq!(ran.json()["gaps"], json!({}));
+    let dir = checkout(&t);
+    let file = t.config_dir.join("wiki/answer.schema.json");
+    let rest = format!(
+        "--ignore-user-config -c sandbox_mode=\"read-only\" --skip-git-repo-check --json --output-schema {} -m gpt-5.5 -c model_reasoning_effort=low",
+        file.display()
+    );
+    let (calls, _) = schema_aside(&t);
+    assert_eq!(
+        calls,
+        [
+            format!("cd {dir} && env codex exec {rest}"),
+            format!("cd {dir} && env codex exec resume ses_1 {rest}"),
+        ]
+    );
+    let schema = serde_json::from_str(&std::fs::read_to_string(file).unwrap()).unwrap();
+    assert_is_the_answer_shape(&schema);
+    assert_eq!(
+        wiki(&t)["components"][0]["interpretations"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
 }
 
 #[test]

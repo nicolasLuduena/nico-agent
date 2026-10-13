@@ -4,7 +4,8 @@
 (`--update`, from the Wiki before it, is [wiki-update.md](./wiki-update.md); `--continue`, filling
 its budget Gaps, [wiki-buttons.md](./wiki-buttons.md)): it checks the Repo out
 at `origin/<base>`, records each file's blob and line count, and asks the `[wiki]` launch about the
-code part by part, top-down, each part one headless, read-only `opencode2 run`. Code checks every
+code part by part, top-down, each part one headless, read-only call of its Harness: `opencode2
+run` by default, `claude -p` or `codex exec` when the launch is theirs. Code checks every
 answer: a claim that fails goes back to the model in the same session, by its id with what failed,
 up to 3 rounds, each a call of the budget; one still failing is dropped and its part recorded as a
 Gap. The Wiki lands in the Bucket in one commit at `wiki/<owner>/<name>/wiki.json`; then its
@@ -16,7 +17,7 @@ its last act: built, with its Gaps by reason, or failed with why.
 
 - `wiki-usage` `wiki` alone is exit 2 with the usage; a slug that is no Repo is exit 1 and writes no outcome.
 - `wiki-failed` a call that errors fails the build: exit 1 with why, `wikis.json` `failed` with it, nothing in the Bucket, the checkout gone.
-- `wiki-read-only` each call is `opencode2 run --standalone -m <model> --format json <prompt>` with `OPENCODE_CONFIG_CONTENT` denying bash, edit, execute, external_directory, task, webfetch and websearch.
+- `wiki-read-only` each call is `opencode2 run --standalone -m <model> --format json <prompt>` with `OPENCODE_CONFIG_CONTENT` denying bash, edit, execute, external_directory, task, webfetch and websearch; on claude `claude -p --output-format json --json-schema <schema> --tools=Read,Grep,Glob --strict-mcp-config --permission-prompts none`, corrected with `--resume <session>`; on codex `codex exec --ignore-user-config -c sandbox_mode="read-only" --skip-git-repo-check --json --output-schema <config dir>/wiki/answer.schema.json`, corrected with `codex exec resume <session>` (a real build on either: [wiki-settings.md](./wiki-settings.md)).
 - `wiki-built` an answer lands as one Bucket commit `wiki <owner/name> <commit>`, served at `/bucket/wiki/<owner>/<name>/wiki.json`, its files with git's blobs and their line counts; `wikis.json` `built`.
 - `wiki-embed` after the Bucket commit, one `curl` POSTs every overview and Interpretation to `http://127.0.0.1:11434/api/embed` with `nomic-embed-text`; with Ollama unreachable, stderr says `could not embed the Wiki of <owner/name>, so ask embeds it first: ...`, the build is still `built` and the config dir holds no `wiki/<owner>/<name>/vectors.json`; with Ollama up, it does.
 - `wiki-gap` a claim failing a check (an Anchor past its file's end, an Explainer's arrow to a step it does not have) is sent back 3 times, each `opencode2 run ... -s <session>` continuing the first call's session; still failing, it is dropped, said on stderr, and its part a Gap `unreadable`; the build still succeeds.

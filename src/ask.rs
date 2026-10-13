@@ -204,7 +204,7 @@ pub fn ask(
     let values = [("repo", slug), ("question", question), ("records", &shown)];
     let call = Headless {
         prompt: fill_in(PROMPT, &values),
-        ..wiki::headless(config, &["*"]).map_err(|no| no.error)?
+        ..wiki::headless(ctx, config, false, None).map_err(|no| no.error)?
     };
     let dir = ctx.config_dir.display().to_string();
     let answer = (world.harness_headless(&dir, &[call], 1).pop())

@@ -30,7 +30,7 @@
 </nav>
 
 {#if selection.view === "wiki"}
-  <WikiView {project} />
+  <WikiView {project} settings={status.wiki_settings} />
 {:else}
   <div class="work" class:open={selection.issue}>
     <ProjectMap {project} />

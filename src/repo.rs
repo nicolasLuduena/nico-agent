@@ -347,7 +347,7 @@ fn checked<'a>(
 
 /// Write each of `set`, [`checked`], to `table`, with the spacing and
 /// comment each was written with; null removes one.
-fn write(table: &mut dyn TableLike, set: &Map<String, Value>) {
+pub(crate) fn write(table: &mut dyn TableLike, set: &Map<String, Value>) {
     for (key, new) in set {
         match new {
             Value::Null => {
@@ -407,7 +407,7 @@ fn write(table: &mut dyn TableLike, set: &Map<String, Value>) {
 
 /// The table `key` of `table`, made when missing: its `[key]` header
 /// written only once it holds a key of its own.
-fn table_at<'t>(table: &'t mut dyn TableLike, key: &str) -> &'t mut dyn TableLike {
+pub(crate) fn table_at<'t>(table: &'t mut dyn TableLike, key: &str) -> &'t mut dyn TableLike {
     (table.entry(key))
         .or_insert_with(|| {
             let mut made = Table::new();

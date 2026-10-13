@@ -156,6 +156,7 @@ fn an_unknown_path_or_method_answers_404_with_the_routes_as_help() {
         "PATCH /api/repo/<owner/name>/switches {name: bool}: set the Repo's switches; null takes its Project's or the default",
         "PATCH /api/repo/<owner/name> {implementer, reviewer, room, base, project, install, switches}: set the Repo's own settings; null takes its Project's or the default",
         "PATCH /api/project/<name> {implementer, reviewer, room, base, switches}: set the Project's defaults for its Repos; null removes one",
+        "PATCH /api/wiki/settings {hour, launch, calls, depth, concurrency, embed_model}: set what every Wiki is built on; null takes the default",
         "POST /api/repo {slug, path, project}: `nico-agent repo add`",
         "DELETE /api/repo/<owner/name>: `nico-agent repo rm`, refused while the Repo has a Dispatch In flight",
         "GET /bucket/<path>: a file of the Bucket, where each Verdict's Evidence is kept, or a page of a folder's",
@@ -1224,4 +1225,157 @@ fn a_launch_written_as_its_own_table_keeps_its_header_and_comments() {
         config(&t),
         "[repos.\"acme/api\"]\npath = \"/src/api\"\n\n# codex is cheaper\n[repos.\"acme/api\".reviewer]\nharness = \"claude\" # for now\nmodel = \"opus\"\n"
     );
+}
+
+/// `serve` listening, on `acme/api`, its `[wiki]` written with comments.
+const WIKI_WRITTEN: &str = r#"[repos."acme/api"]
+path = "/src/api"
+
+# Wikis overnight, on the cheap model
+[wiki]
+hour = 3 # after the scan
+calls = 20
+"#;
+
+fn wiki_written() -> Setup {
+    let t = with_repo();
+    std::fs::write(t.config_dir.join("config.toml"), WIKI_WRITTEN).unwrap();
+    t.tick();
+    t
+}
+
+#[test]
+fn patch_wiki_settings_writes_wiki_keeping_the_user_s_comments_and_answers_every_wiki_s_settings() {
+    let t = wiki_written();
+
+    let set = t.send(
+        "PATCH",
+        "/api/wiki/settings",
+        r#"{
+            "hour": 4,
+            "launch": {"harness": "claude", "model": "sonnet", "effort": null},
+            "calls": null,
+            "depth": 5,
+            "concurrency": 2,
+            "embed_model": "mxbai-embed-large"
+        }"#,
+    );
+
+    assert_eq!(
+        config(&t),
+        "[repos.\"acme/api\"]\npath = \"/src/api\"\n\n# Wikis overnight, on the cheap model\n[wiki]\nhour = 4 # after the scan\nconcurrency = 2\ndepth = 5\nembed_model = \"mxbai-embed-large\"\nlaunch = { harness = \"claude\", model = \"sonnet\" }\n"
+    );
+    let settings = json!({
+        "hour": 4,
+        "launch": { "harness": "claude", "model": "sonnet", "effort": null },
+        "calls": 48,
+        "depth": 5,
+        "concurrency": 2,
+        "embed_model": "mxbai-embed-large",
+        "harnesses": {
+            "claude": {
+                "models": ["fable", "opus", "sonnet", "haiku"],
+                "efforts": ["low", "medium", "high", "xhigh", "max"],
+            },
+            "codex": { "models": null, "efforts": null },
+            "opencode": { "models": null, "efforts": null },
+        },
+    });
+    assert_eq!(set, (200, settings.clone()));
+    assert_eq!(t.get("/api/status").1["wiki_settings"], settings);
+}
+
+#[test]
+fn patch_wiki_settings_refuses_an_unknown_harness_with_help_or_a_bad_value_and_writes_nothing() {
+    let t = wiki_written();
+    let settings =
+        "Settings: hour, launch, calls, depth, concurrency, embed_model; null takes the default";
+    let builds = "Harnesses that build a Wiki: claude, codex, opencode";
+
+    let bodies = [
+        ("{}", "{} sets nothing", settings),
+        (
+            r#"{"ollama": "x"}"#,
+            "`ollama` is not a setting the page sets",
+            settings,
+        ),
+        (
+            r#"{"launch": {"harness": "pi"}}"#,
+            "unknown Harness `pi`",
+            builds,
+        ),
+        (
+            r#"{"launch": "claude"}"#,
+            "launch is {harness, model, effort}, not \"claude\"",
+            builds,
+        ),
+        (
+            r#"{"launch": {"harness": "claude", "model": "gpt-5"}}"#,
+            "unknown model `gpt-5` for claude",
+            "Valid models for claude: fable, opus, sonnet, haiku",
+        ),
+        (
+            r#"{"hour": 24}"#,
+            "hour is an hour from 0 to 23, not 24",
+            "hour is when the loop checks each Repo's Wiki against its Base, daily, local time",
+        ),
+        (
+            r#"{"calls": 0}"#,
+            "calls is a whole number of at least 1, not 0",
+            "calls is how many model calls a build may make",
+        ),
+        (
+            r#"{"depth": 1.5}"#,
+            "depth is a whole number of at least 1, not 1.5",
+            "depth is how deep a build divides the code",
+        ),
+        (
+            r#"{"concurrency": "4"}"#,
+            "concurrency is a whole number of at least 1, not \"4\"",
+            "concurrency is how many calls a build makes at once",
+        ),
+        (
+            r#"{"embed_model": " "}"#,
+            "embed_model is a model's name, not \" \"",
+            "embed_model is the Ollama model that embeds each Wiki for `ask`",
+        ),
+    ];
+    for (body, error, help) in bodies {
+        assert_eq!(
+            t.send("PATCH", "/api/wiki/settings", body),
+            (400, json!({ "error": error, "help": [help] })),
+            "{body}"
+        );
+    }
+    assert_eq!(config(&t), WIKI_WRITTEN);
+}
+
+#[test]
+fn patch_wiki_settings_refuses_a_harness_with_no_headless_form() {
+    let t = with_repo();
+    let written = "[repos.\"acme/api\"]\npath = \"/src/api\"\n\n[harnesses.aider]\nlaunch_mode = \"pane-command\"\ncommand = \"aider\"\nsigil = \"/\"\nmodel_args = []\neffort_args = []\n";
+    std::fs::write(t.config_dir.join("config.toml"), written).unwrap();
+    t.tick();
+
+    let refused = t.send(
+        "PATCH",
+        "/api/wiki/settings",
+        r#"{"launch": {"harness": "aider"}}"#,
+    );
+
+    assert_eq!(
+        refused,
+        (
+            400,
+            json!({
+                "error": "aider has no headless form: a Wiki builds on claude, codex or opencode",
+                "help": ["Harnesses that build a Wiki: claude, codex, opencode"],
+            })
+        )
+    );
+    assert_eq!(config(&t), written);
+    // The settings list only the Harnesses a Wiki builds on.
+    let harnesses = &t.get("/api/status").1["wiki_settings"]["harnesses"];
+    let names: Vec<&String> = harnesses.as_object().unwrap().keys().collect();
+    assert_eq!(names, ["claude", "codex", "opencode"]);
 }

@@ -310,7 +310,7 @@ pub trait World {
     // Harnesses
     /// Make each of `calls` in the folder `cwd`, with no input, up to
     /// `at_once` of them at a time: the last message each answered, and its
-    /// session, in order. opencode's `--format json` is read.
+    /// session, in order. opencode's, claude's and codex's JSON output is read.
     fn harness_headless(
         &self,
         cwd: &str,
@@ -957,9 +957,11 @@ fn first_line(stderr: &[u8], status: &std::process::ExitStatus) -> String {
         .map_or_else(|| status.to_string(), String::from)
 }
 
-/// Make one headless call of opencode in `cwd`: the text of its last
-/// message among the events `--format json` prints, with its session, or the
-/// error it reported among them.
+/// Make one headless call of a Harness in `cwd`: the text of its last
+/// message, with its session, or the error it reported, read from the JSON
+/// lines it printed: opencode's events (`--format json`), codex's (`--json`)
+/// or claude's one result (`--output-format json`), its structured output
+/// when a schema asked for one.
 fn headless(cwd: &str, call: &Headless) -> WorldResult<Answered> {
     let command = format!(
         "{} {}",
@@ -980,23 +982,44 @@ fn headless(cwd: &str, call: &Headless) -> WorldResult<Answered> {
     let events: Vec<Value> = (String::from_utf8_lossy(&ran.stdout).lines())
         .filter_map(|line| serde_json::from_str(line).ok())
         .collect();
-    let last = |kind: &str, text: &dyn Fn(&Value) -> &Value| {
-        (events.iter().rev())
-            .filter(|event| event["type"] == kind)
-            .find_map(|event| text(event).as_str().map(String::from))
-    };
-    if let Some(text) = last("text", &|event| &event["part"]["text"])
+    let last = |read: &dyn Fn(&Value) -> Option<String>| events.iter().rev().find_map(read);
+    let text = last(&|event| match event["type"].as_str()? {
+        "text" => event["part"]["text"].as_str().map(String::from),
+        // codex's other items are its commands, and its warnings.
+        "item.completed" if event["item"]["type"] == "agent_message" => {
+            event["item"]["text"].as_str().map(String::from)
+        }
+        "result" if event["is_error"] == false => match &event["structured_output"] {
+            Value::Null => event["result"].as_str().map(String::from),
+            output => Some(output.to_string()),
+        },
+        _ => None,
+    });
+    if let Some(text) = text
         && ran.status.success()
     {
-        // Every event names it.
-        let session = (events.iter().find_map(|event| event["sessionID"].as_str()))
+        let session = (events.iter())
+            .find_map(|event| {
+                (["sessionID", "thread_id", "session_id"].iter())
+                    .find_map(|key| event[key].as_str())
+            })
             .ok_or_else(|| WorldError(format!("`{command}` failed: it named no session")))?;
         let session = session.into();
         return Ok(Answered { text, session });
     }
-    let why = (last("error", &|event| &event["error"]["message"]))
-        .or_else(|| (!ran.status.success()).then(|| first_line(&ran.stderr, &ran.status)))
-        .unwrap_or_else(|| "it answered nothing".into());
+    let why = last(&|event| {
+        let why = match event["type"].as_str()? {
+            "error" => event["error"]["message"]
+                .as_str()
+                .or(event["message"].as_str()),
+            "turn.failed" => event["error"]["message"].as_str(),
+            "result" => event["result"].as_str(),
+            _ => None,
+        };
+        why.map(String::from)
+    })
+    .or_else(|| (!ran.status.success()).then(|| first_line(&ran.stderr, &ran.status)))
+    .unwrap_or_else(|| "it answered nothing".into());
     Err(WorldError(format!("`{command}` failed: {why}")))
 }
 

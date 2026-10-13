@@ -134,6 +134,10 @@ commands, and observable proof.
   the rest copied in place, and an Interpretation whose file changed on the Base marked `stale` in
   `GET /api/wiki/<id>` and the MCP's `get_component`, with the header's commits behind and Stale
   count, until an Update asks it again (a kept parent's, until a build from scratch).
+- [Set up Wikis from the page](./wiki-settings.md) covers the Wiki view's `Wiki settings` sheet
+  and `PATCH /api/wiki/settings`: the launch, hour, budget and embedding model of every Wiki, the
+  model a select or free text by Harness, `[wiki]` written with its comments kept, refusals inline
+  and by PATCH, `wiki_settings` in `GET /api/status`, and a real build on claude and on codex.
 - [Wiki builds from the loop](./wiki-runs.md) covers the `wiki` switch queueing a build at the next
   refresh, the build's start failing at herdr and its Run closed failed, `status`'s `wikis`, and
   the daily check of a Repo's Base: unmoved, moved (`drift base`) and once a day.
