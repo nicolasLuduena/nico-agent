@@ -1,7 +1,7 @@
 <script lang="ts">
   // A Component's Relationship diagram, laid out and drawn as the map is: what
   // uses it on the left, what it uses on the right, each arrow naming its kind.
-  // Another Component opens it.
+  // Another Component opens it. Shown only for a Component with one.
   import { layoutRelationships, LINE, type Related } from "./layout";
   import type { Component, Wiki } from "./wiki";
 
@@ -49,8 +49,6 @@
         {/if}
       {/each}
     </svg>
-  {:else if drawn}
-    <p class="none">None: no Component of this Wiki uses it, and it uses none.</p>
   {/if}
 </div>
 
@@ -60,9 +58,6 @@
     display: block;
     max-width: 100%;
     height: auto;
-  }
-  .none {
-    color: var(--ink-muted);
   }
   /* A blocker's line on the map: a route between its stops. */
   .arrow {

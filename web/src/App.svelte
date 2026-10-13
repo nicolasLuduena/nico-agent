@@ -8,7 +8,7 @@
   import { flash } from "./motion";
   import NeedsYou from "./NeedsYou.svelte";
   import ProjectTab from "./ProjectTab.svelte";
-  import { hash, route } from "./route";
+  import { hash, movedTo, route } from "./route";
   import { selection } from "./selection.svelte";
   import type { Status } from "./status";
   import { needsYou } from "./strip";
@@ -19,7 +19,10 @@
   let failure = $state<string | null>(null);
 
   // The hash selects as a link opens the page, and as back and forward move through it; the selection writes it back.
+  // An old link to a Wiki's Component on the Board opens its page instead.
   function follow() {
+    const to = movedTo(location.hash);
+    if (to) return location.replace(to);
     const at = route(location.hash);
     if (at.project !== selection.project) selection.issue = null;
     Object.assign(selection, at);
@@ -56,7 +59,7 @@
   function show(i: number) {
     const libraries = i === projects.length;
     const view = libraries ? "libraries" : selection.view === "libraries" ? "map" : selection.view;
-    Object.assign(selection, { project: libraries ? null : projects[i].name, view, wiki: null, component: null, issue: null });
+    Object.assign(selection, { project: libraries ? null : projects[i].name, view, issue: null });
   }
 
   /** The read times flash once when a read moves them, not when another Project's tab shows its own. */

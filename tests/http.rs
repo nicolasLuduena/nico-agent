@@ -144,6 +144,7 @@ fn an_unknown_path_or_method_answers_404_with_the_routes_as_help() {
 
     let help = json!([
         "GET /: the app",
+        "GET /wiki/<id>: the app at the Wiki's page, its Component in the fragment",
         "GET /api/status: the status of every Repo and Dispatch",
         "GET /api/map/<project>: the issues of the Project's Repos and how they block and stack on each other",
         "GET /api/node/<issue>: the issue's Dispatch, its restarts, its Verdict's findings and its Evidence",
@@ -229,6 +230,34 @@ fn the_app_is_served_at_slash_from_the_binary_with_every_file_it_loads() {
         (200, "font/woff2", &b"wOF2"[..])
     );
     assert_eq!(fetch(&t, "/assets/nothing.js").0, 404);
+}
+
+#[test]
+fn a_wiki_s_page_is_the_app_at_wiki_slash_its_id_a_repo_s_a_library_version_s_or_one_never_built() {
+    let t = with_repo();
+    t.tick();
+    let app = fetch(&t, "/");
+
+    for path in [
+        "/wiki/acme/api",
+        "/wiki/Effect-TS/effect@effect@3.17.0:packages/effect",
+        "/wiki/nobody/nothing",
+    ] {
+        let (status, kind, page) = fetch(&t, path);
+        assert_eq!((status, kind.as_str()), (200, app.1.as_str()), "{path}");
+        assert!(page == app.2, "{path} answers another page than /");
+    }
+    let tunnel = config(&t) + "\n[bucket]\nurl = \"https://nico.example.com/\"\n";
+    std::fs::write(t.config_dir.join("config.toml"), tunnel).unwrap();
+    let headers = [("host", "nico.example.com")];
+    let Answer::Whole(through) = t.request_with("GET", "/wiki/acme/api", &headers, "") else {
+        panic!("GET /wiki/acme/api answered with a stream");
+    };
+    assert_eq!(through.status, 200);
+    assert!(
+        through.body == app.2,
+        "the tunnel's host answers another page"
+    );
 }
 
 const CHANGED: &str = "event: changed\ndata: {}\n\n";

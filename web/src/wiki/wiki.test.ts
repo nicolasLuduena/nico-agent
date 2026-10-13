@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { anchorUrl, freshness, libraryId, progressed, search, unexplored } from "./wiki";
+import { anchorUrl, cited, freshness, gist, libraryId, named, next, progressed, search, trail, unexplored } from "./wiki";
 
 test("an Anchor opens GitHub at the Wiki's commit, at its lines, its path escaped", () => {
   const wiki = { target: { repo: "acme/api" }, commit: "abc1234" };
@@ -68,4 +68,56 @@ test("a build's progress counts its calls and depth against its budget, then its
   expect(progressed(progress)).toEqual(["Call 17 of 48", "depth 2 of 7", "15 parts asked, 2 sent back", "3 Gaps"]);
   expect(progressed({ ...progress, made: 1, reached: 0, asked: 1, sent_back: 0, gaps: 0 })).toEqual(["Call 1 of 48", "depth 0 of 7", "1 part asked, none sent back", "no Gap"]);
   expect(progressed({ ...progress, gaps: 1 })[3]).toBe("1 Gap");
+});
+
+/** thoth's tree, as the build wrote it: each Component after its parent, siblings in order. */
+const tree = {
+  components: [
+    { ...component("index", "txpipe-shop/thoth", ""), parent: null },
+    { ...component("core", "packages/core", ""), parent: "index" },
+    { ...component("contracts", "packages/contracts", ""), parent: "index" },
+    { ...component("registry", "attestor_registry", ""), parent: "contracts" },
+    { ...component("attestation", "attestation", ""), parent: "contracts" },
+    { ...component("zk-tls", "packages/zk-tls", ""), parent: "index" },
+  ],
+};
+const at = (id: string) => tree.components.find((c) => c.id === id)!;
+
+test("a Component's trail is each Component above it, from the top down; the top one has none", () => {
+  expect(trail(tree, at("registry")).map((c) => c.name)).toEqual(["txpipe-shop/thoth", "packages/contracts"]);
+  expect(trail(tree, at("index"))).toEqual([]);
+});
+
+test("the next Component is the tree's next in reading order: its first part, else its next sibling, else its parent's", () => {
+  const order = ["index", "core", "contracts", "registry", "attestation", "zk-tls"];
+  expect(order.map((id) => next(tree, at(id))?.id ?? null)).toEqual([...order.slice(1), null]);
+});
+
+const anchor = (path: string, start = 1, end = 2) => ({ path, start, end });
+
+test("a Component whose every Anchor, its Explainer's too, is in one file cites that file; one citing two, or none, cites no one file", () => {
+  const one = { ...component("registry", "attestor_registry", ""), interpretations: [
+    { id: 1, kind: "role", text: "", anchors: [anchor("packages/contracts/attestor_registry.compact", 52, 78)] },
+    { id: 2, kind: "invariant", text: "", anchors: [anchor("packages/contracts/attestor_registry.compact", 3, 3)] },
+  ] };
+  expect(cited(one)).toBe("packages/contracts/attestor_registry.compact");
+  const step = { n: 1, caption: "", anchors: [anchor("packages/contracts/attestation.compact")] };
+  expect(cited({ ...one, explainer: { title: "", steps: [step], arrows: [] } })).toBeNull();
+  expect(cited(component("index", "acme/api", ""))).toBeNull();
+});
+
+test("a sub-Component's gist is its overview's first sentence, whole, even past a dotted name or an abbreviation", () => {
+  expect(gist("@thoth/core is the keyless claim law: the shape, and its hashes. It declares three entry points.")).toBe(
+    "@thoth/core is the keyless claim law: the shape, and its hashes.",
+  );
+  expect(gist("Start at `src/index.ts`, e.g. for the types. Then `src/claim.ts`.")).toBe("Start at `src/index.ts`, e.g. for the types.");
+  expect(gist("Serves the API? Yes.\n\nMore.")).toBe("Serves the API?");
+  expect(gist("One sentence with no stop")).toBe("One sentence with no stop");
+  expect(gist("- a list item first. Then more.")).toBe("a list item first.");
+  expect(gist("")).toBe("");
+});
+
+test("each cited file is named by its file's name, with as many of its folders as tell it from another of that name", () => {
+  const paths = ["packages/zk-tls/src/client/index.ts", "packages/zk-tls/src/index.ts", "packages/zk-tls/src/client/collect.ts", "packages/core/src/index.ts", "README.md"];
+  expect(paths.map(named(paths))).toEqual(["client/index.ts", "zk-tls/src/index.ts", "collect.ts", "core/src/index.ts", "README.md"]);
 });

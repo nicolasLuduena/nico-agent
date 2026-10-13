@@ -125,15 +125,17 @@ commands, and observable proof.
   Claude Code, and each Harness started with it as faux-nico and the morning agent are, calling a
   wiki tool with no question in its pane, and an Implementer given a linked Library version's Wiki
   calling `find_component` on it.
-- [Read a Wiki on the page](./wiki-view.md) covers `GET /api/wikis` and `GET /api/wiki/<id>`, a
-  Project tab's Map and Wiki views, the picker, the header, the Component tree, Interpretations by
-  kind with their Anchors on GitHub, the Relationship diagram and the Explainer clicked through,
-  sub-Components and Gaps, a hash opening a Component, back and
-  forward, light and dark at desk and phone width.
+- [Read a Wiki on its page](./wiki-view.md) covers `GET /wiki/<id>` answering the app,
+  `GET /api/wikis` and `GET /api/wiki/<id>`, a Project tab's Wiki view listing its Wikis, each
+  Wiki's page (`/wiki/<id>#<component>`): its masthead, the Component tree, the Component's trail,
+  Interpretations as one list with their kinds and their Anchors set quietly, the Relationship diagram
+  and the Explainer clicked through, sub-Components, Gaps and Next, an old Board link and an
+  unknown id, back and forward, search, the outline, the sheets, light and dark at desk and phone
+  width, through the tunnel, and a real Wiki seeded with `seed wiki`.
 - [Update a Wiki and see what is Stale](./wiki-update.md) covers `wiki build --update` asking only
   about the part a changed file is in and dividing again only the part an added file sits under,
   the rest copied in place, and an Interpretation whose file changed on the Base marked `stale` in
-  `GET /api/wiki/<id>` and the MCP's `get_component`, with the header's commits behind and Stale
+  `GET /api/wiki/<id>` and the MCP's `get_component`, with the page's commits behind and Stale
   count, until an Update asks it again (a kept parent's, until a build from scratch).
 - [Set up Wikis from the page](./wiki-settings.md) covers the Wiki view's `Wiki settings` sheet
   and `PATCH /api/wiki/settings`: the launch, hour, budget and embedding model of every Wiki, the
@@ -143,14 +145,14 @@ commands, and observable proof.
 - [Wiki builds from the loop](./wiki-runs.md) covers the `wiki` switch queueing a build at the next
   refresh, the build's start failing at herdr and its Run closed failed, `status`'s `wikis`, and
   the daily check of a Repo's Base: unmoved, moved (`drift base`) and once a day.
-- [Update, Rebuild and Continue a Wiki from the page](./wiki-buttons.md) covers the Wiki header's
+- [Update, Rebuild and Continue a Wiki from the page](./wiki-buttons.md) covers a Wiki's page's masthead:
   build state (`BUILDING`, `QUEUED`, `Last build failed`) and its Update, Rebuild and Continue
   buttons, each `POST /api/wiki/<id>/update|rebuild|continue` queueing its build first even with
   the switch off, `GET /api/wikis`' `state`, `pane`, `why`, `budget` and `calls`, `wiki build
   --continue` asking only the budget Gaps at the Wiki's commit, and the refusals.
 - [A Wiki build's progress on the page](./wiki-progress.md) covers `wiki/<folder>/progress.json`
   while a build runs and gone after, `progress` in `status`'s `wikis` and `GET /api/wikis` only
-  while its Run is open, the header's calls, depth, parts, Gaps and the parts asked now (two at once)
+  while its Run is open, the page's calls, depth, parts, Gaps and the parts asked now (two at once)
   moving without a Refresh on a desk and a phone (`seed pace`), and a Wiki never built listed and headed while
   its first build waits, runs or failed.
 - [Library Wikis](./library-wikis.md) covers a Library version linked or added in `config.toml`
@@ -161,7 +163,7 @@ commands, and observable proof.
 - [Libraries on the page](./library-links.md) covers a Repo's Libraries section linking and
   unlinking versions through `PATCH /api/repo/<slug>`, queued at once, the Libraries tab adding and
   removing the versions no Repo links (`POST /api/libraries`, `DELETE /api/libraries/<id>`, the
-  Wiki's removal one Bucket commit), the refusal of a linked one, and the Wiki picker listing
+  Wiki's removal one Bucket commit), the refusal of a linked one, and the Wiki view listing
   linked Library Wikis beside the Repos'.
 - [Requests from other sites](./foreign-requests.md) covers the 403 serve answers a foreign or
   missing `Host` and a foreign or `null` `Origin` on a write, and the page, `localhost` and the

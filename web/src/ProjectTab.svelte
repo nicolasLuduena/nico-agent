@@ -1,5 +1,6 @@
 <script lang="ts">
-  // One Project's tab, its map or its Wiki view (wiki/). The map on the left;
+  // One Project's tab, its map or its Wiki view, the list of its Wikis
+  // (wiki/), each read on its own page. The map on the left;
   // on the right its defaults, unless it is a Repo's own, then a panel per
   // Repo with its switches, settings and Dispatch form (controls/), or the
   // open node's panel (#253, map/).
@@ -26,7 +27,7 @@
   {#each [["map", "Map"], ["wiki", "Wiki"]] as const as [view, name] (view)}
     <a
       class="label"
-      href={hash({ project: project.name, view, wiki: null, component: null })}
+      href={hash({ project: project.name, view })}
       aria-current={selection.view === view ? "page" : undefined}>{name}</a
     >
   {/each}

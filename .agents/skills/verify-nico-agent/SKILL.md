@@ -61,6 +61,8 @@ $C seed answer <file>|none [<part>]  # what the wiki model (the opencode2 stub) 
                                 # with <part>, a trail such as `verify/fixture > Readme`, only the calls about it
 $C seed correction <file>|none  # what the wiki model answers each correction (a call with -s): <file>'s text, or none
 $C seed pace <seconds>|none     # how long the wiki model takes over each call before it answers, or none: a build to watch
+$C seed wiki <wiki.json> <clone>  # a Repo's Wiki built elsewhere committed to the Bucket, and that Repo cloned from
+                                # <clone> for `repo add`: a real Wiki to read on its page; prints {repo, clone, commit}
 $C drift push <n>|stale|pause   # what GitHub would change: a new PR head, an old read, a rate limit
 $C drift below merged|closed    # ... or the PR below a Stacked dispatch merged or closed unmerged
 $C drift base [<file>]          # ... or verify/fixture's Base moved on by a merge rewriting README.md (or <file>), fetched into its clone
@@ -69,7 +71,7 @@ $C state                        # fingerprint: config dir files, Dispatches, Ver
 $C run [--evidence PREFIX] -- <nico-agent args...>       # the CLI in the scratch HOME; exit code is the CLI's
 $C http [--evidence PREFIX] [--header 'NAME: VALUE']... <METHOD> <PATH> [BODY]
                                 # ask serve, as the page does (or with other headers); exit 1 on 4xx/5xx
-$C page [--tunnel] [--evidence PREFIX] [--width PX] [--storage FILE|none] [--hash HASH] [--within ROLE=NAME|page | --click ROLE=NAME | --click ROLE~NAME | --press KEY | --type TEXT
+$C page [--tunnel] [--evidence PREFIX] [--width PX] [--scheme light|dark] [--storage FILE|none] [--path PATH] [--hash HASH] [--within ROLE=NAME|page | --click ROLE=NAME | --click ROLE~NAME | --press KEY | --type TEXT
         | --expect TEXT | --gone TEXT | --wait SECONDS | --history back|forward | --mode pass|502|signed-out]...
                                 # open the page (through the tunnel stand-in), act in order, capture
 $C tunnel start|pass|502|signed-out   # a stand-in for cloudflared and Access in front of serve; $TUNNEL_URL, $TUNNEL_LOG
@@ -80,7 +82,7 @@ $C cleanup                      # stop what the run started, remove the run dir;
 writes `.cmd` (each `--header` in brackets first), `.stdout` (the body), `.stderr`, `.exit` (the
 HTTP status) and `.headers`; `page
 --evidence` writes `.cmd`, `.aria.txt`, `.png` (the whole page), `.view.png` (the window, as scrolled),
-`.view.txt` (where the window is scrolled, the page's width against the window's, and what has focus),
+`.view.txt` (the page's address, where the window is scrolled, the page's width against the window's, and what has focus),
 `.requests.txt` and `.console.txt`. Each still prints
 what it captured, so a recipe can record and inspect at once. `page` steps: `--click tab=verify/second`
 clicks the element of that ARIA role whose accessible name is exactly the text, `--click
@@ -91,8 +93,10 @@ page again, `--press ArrowRight` a key, `--type
 dev` text into what has focus,
 `--expect "Source not read yet"` waits for the text, `--gone TEXT` up to a minute for it to go,
 `--wait 120` lets two minutes pass, `--history back` (or `forward`) is the browser's Back (or
-Forward) button, and `--mode 502` switches the tunnel stand-in (with `--tunnel` only). `--hash
-"#shop/wiki/verify%2Ffixture"` opens the page at that hash, as a link to it does. Each `page` is a new browser with nothing stored: `--storage FILE` starts it with the
+Forward) button, and `--mode 502` switches the tunnel stand-in (with `--tunnel` only). `--path
+/wiki/verify/fixture` opens a Wiki's page instead of the Board at `/`, and `--hash "#readme"` (or
+`"#shop/wiki"` on the Board) at that fragment, as a link to it does; `--scheme dark` is a browser
+whose system colours are dark, which the theme System follows (the Wiki's page has no theme switch). Each `page` is a new browser with nothing stored: `--storage FILE` starts it with the
 storage `FILE` holds (none the first time) and saves it back at the end, so the next `page` with
 the same `FILE` is a reload in the same browser; `--storage none` is a browser whose `localStorage`
 throws, as one blocking the site's data does. `page` prints `ok` or `FAIL` per step and exits 1 on
@@ -233,20 +237,23 @@ unknown path's `help`, and on the page the ARIA roles and names: `tablist "Proje
 "<slug>"` per Repo, each holding `switch "Dispatch"` (and `Faux-nico answers`,
 `Flip to ready`, `Gardening`, `Quality-scan`, `Restart`, `Review`, `Stack`, `Wiki`), `spinbutton "Room"`,
 `navigation "View"` with `link "Map"` and `link "Wiki"` (the
-Wiki view: `combobox "Wiki"`, `searchbox "Search this Wiki"` with, while it holds words, a `status`
-`N found` and `navigation "Found"` with a `link` per hit in place of `navigation "Components"` with
-a `link` per Component, `button "Update"`, `button "Rebuild"` and, while the budget left Gaps,
-`button "Continue +N calls"` under the header, `article "<Component>"` with a `region` per kind of Interpretation,
-`"Components"` and `"Gaps"`, `navigation "Outline"` with a `button` per head; under 1080px
-`button "Outline"`, under 720px `button "Components"` too, each opening its sheet with `button
-"Close"`; `button "Wiki settings"` opening `region "Settings for every Wiki"` with `combobox
+Wiki view: `button "Wiki settings"` opening `region "Settings for every Wiki"` with `combobox
 "Harness"`, `combobox` or `textbox` `"Model"` and `"Effort"`, `spinbutton "Hour"`, `"Calls"`,
-`"Depth"` and `"Calls at once"`, and `textbox "Embedding model"`), `region "Dispatch"` with `button "Dispatch"` (a Repo's only), `region "Readiness"` with a `group` reading `N of M pass` (a Repo's only), `region "Map of <project>"`, `region "Settings"` with
+`"Depth"` and `"Calls at once"`, and `textbox "Embedding model"`, then `list "Wikis"` with a `link
+"<id>"` per Wiki to its page), `region "Dispatch"` with `button "Dispatch"` (a Repo's only), `region "Readiness"` with a `group` reading `N of M pass` (a Repo's only), `region "Map of <project>"`, `region "Settings"` with
 `combobox "Implementer Harness"` (and `model`, `Effort`, and the same for `Reviewer`), `textbox
 "Base"`, `combobox "Project"` (a Repo's only), `region "Libraries"` with `button "Unlink <id>"` per version and `form "Link a Library"` (`textbox "Library"`, `textbox "Tag"`, `textbox "Subfolder"`, `button "Link"`) (a Repo's only), `region "Install"` with `textbox "Install"` (a Repo's only), `button "Use the default <Setting>"` or `"Use the
 Project's <Setting>"`, `button "Remove <slug>…"`; a `--click` takes the first match, which is the
 Project's defaults before any Repo's, `region "Add a Repo"` with `textbox "Repo"`, `textbox "Its
-clone"`, `combobox "Its Project"` and `button "Add"`. `run` executes with the run's `work/` as cwd: pass absolute paths (`--findings`).
+clone"`, `combobox "Its Project"` and `button "Add"`. A Wiki's page (`--path /wiki/<id>`): `banner`
+with `link "Board"`, the id, its build and `button "Update"`, `button "Rebuild"` and, while the
+budget left Gaps, `button "Continue +N calls"`; `searchbox "Search this Wiki"` with, while it holds
+words, a `status` `N found` and `navigation "Found"` with a `link` per hit in place of `navigation
+"Components"` with a `link` per Component; `article "<Component>"` with `navigation "Trail"`,
+`heading` level 1, a `region` per section it has (`"Interpretations"`, `"Relationships"`,
+`"Explainer"`, `"Components"`, `"Gaps"`) and `link "Next <name>"`; `navigation "Outline"` with a
+`button` per head; under 1080px `button "Outline"`, under 720px `button "Components"` too, each
+opening its sheet with `button "Close"`. `run` executes with the run's `work/` as cwd: pass absolute paths (`--findings`).
 
 Recipes per feature are in [`features/`](features/README.md); drive the ones the change touches,
 and every entry point the feature file lists, not just the convenient one.

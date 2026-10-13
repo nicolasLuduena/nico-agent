@@ -1,4 +1,4 @@
-import { spans } from "../markdown";
+import { firstText, spans } from "../markdown";
 import type { WikiState } from "../status";
 
 /** A GitHub repository at a tag, its Wiki covering only the subfolder `path`, when set. */
@@ -163,9 +163,14 @@ export function freshness(wiki: Pick<Wiki, "base" | "behind" | "stale">): string
   return wiki.stale === 0 ? behind : `${behind} · ${count(wiki.stale, "Interpretation")} Stale`;
 }
 
+/** The file at `path` on GitHub, at the commit the Wiki describes. */
+export function fileUrl(wiki: Pick<Wiki, "target" | "commit">, path: string): string {
+  return `https://github.com/${wiki.target.repo}/blob/${wiki.commit}/${path.split("/").map(encodeURIComponent).join("/")}`;
+}
+
 /** The Anchor's lines on GitHub, at the commit the Wiki describes. */
 export function anchorUrl(wiki: Pick<Wiki, "target" | "commit">, a: Anchor): string {
-  return `https://github.com/${wiki.target.repo}/blob/${wiki.commit}/${a.path.split("/").map(encodeURIComponent).join("/")}#L${a.start}-L${a.end}`;
+  return `${fileUrl(wiki, a.path)}#L${a.start}-L${a.end}`;
 }
 
 /** Where `search` found its words: a Component by its name or overview, or one of its Interpretations. */
@@ -198,4 +203,54 @@ export function search(wiki: Pick<Wiki, "components">, query: string): Hit[] {
 /** What Continue asks about, before its button: "6 parts not explored (budget)". */
 export function unexplored(budget: number): string {
   return `${budget} part${budget === 1 ? "" : "s"} not explored (budget)`;
+}
+
+/** The Components above `component`, from the top one down. */
+export function trail(wiki: Pick<Wiki, "components">, component: Component): Component[] {
+  const above = wiki.components.find((c) => c.id === component.parent);
+  return above ? [...trail(wiki, above), above] : [];
+}
+
+/** The Component after `component` in the tree's reading order, as a book is read: its first part, else the next part of it or of a Component above it. */
+export function next(wiki: Pick<Wiki, "components">, component: Component): Component | null {
+  const parts = (parent: string | null) => wiki.components.filter((c) => c.parent === parent);
+  const first = parts(component.id)[0];
+  if (first) return first;
+  for (let at: Component | undefined = component; at; at = wiki.components.find((c) => c.id === at?.parent)) {
+    const siblings = parts(at.parent);
+    const after = siblings[siblings.indexOf(at) + 1];
+    if (after) return after;
+  }
+  return null;
+}
+
+/** Each file the Anchors of `component` cite, its Explainer's too, once. */
+export function citedFiles(component: Component): string[] {
+  const anchors = [...component.interpretations, ...(component.explainer?.steps ?? [])].flatMap((x) => x.anchors);
+  return [...new Set(anchors.map((a) => a.path))];
+}
+
+/** The one file every Anchor of `component` cites, its Explainer's too; null when they cite more, or none. */
+export function cited(component: Component): string | null {
+  const files = citedFiles(component);
+  return files.length === 1 ? files[0] : null;
+}
+
+/** A namer of each of `paths`: its file's name, with as many of its folders as tell it from another of `paths` of that name. */
+export function named(paths: string[]): (path: string) => string {
+  return (path) => {
+    const parts = path.split("/");
+    const ending = (p: string, n: number) => p.split("/").slice(-n).join("/");
+    let n = 1;
+    while (n < parts.length && paths.some((p) => p !== path && ending(p, n) === ending(path, n))) n++;
+    return ending(path, n);
+  };
+}
+
+/** The first sentence of `overview`'s first line, its Markdown kept, a list item's marker dropped: a sub-Component's gist. */
+export function gist(overview: string): string {
+  const text = firstText(overview);
+  // A stop ends it before a space and a word not in lower case: not `index.ts`, nor `e.g. the`.
+  const end = /[.!?](?=\s+[^\sa-z])/.exec(text);
+  return end ? text.slice(0, end.index + 1) : text;
 }
