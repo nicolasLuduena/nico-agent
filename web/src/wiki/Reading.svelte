@@ -1,10 +1,13 @@
 <script lang="ts">
   // The open Component of a Wiki, in a reading column: its overview, its
   // Interpretations by kind, each with its Anchors on GitHub, its
-  // sub-Components and its Gaps.
+  // Relationship diagram, its Explainer, its sub-Components and its Gaps.
   import { blocks, firstLine, spans, type Span } from "../markdown";
   import { flash } from "../motion";
-  import { anchorUrl, byKind, REASONS, type Component, type Hit, type Wiki } from "./wiki";
+  import Anchors from "./Anchors.svelte";
+  import Explainer from "./Explainer.svelte";
+  import Relationships from "./Relationships.svelte";
+  import { byKind, REASONS, type Component, type Hit, type Wiki } from "./wiki";
 
   let {
     wiki,
@@ -67,18 +70,26 @@
         {#each interpretations as interpretation (interpretation.id)}
           <li class="interpretation" id="interpretation-{interpretation.id}" tabindex="-1">
             <p>{@render line(spans(interpretation.text))}</p>
-            <p class="anchors">
-              {#each interpretation.anchors as a, n (n)}
-                <a href={anchorUrl(wiki, a)} target="_blank" rel="noreferrer"
-                  >{a.path} <span class="lines">{a.start === a.end ? a.start : `${a.start}–${a.end}`}</span></a
-                >
-              {/each}
-            </p>
+            <p class="anchors"><Anchors {wiki} anchors={interpretation.anchors} /></p>
           </li>
         {/each}
       </ul>
     </section>
   {/each}
+
+  <section aria-labelledby="relationships">
+    <h3 id="relationships" class="label" tabindex="-1">Relationships</h3>
+    <Relationships {wiki} {component} {link} />
+  </section>
+
+  {#if component.explainer}
+    <section aria-labelledby="explainer">
+      <h3 id="explainer" class="label" tabindex="-1">Explainer</h3>
+      {#key component.id}
+        <Explainer {wiki} explainer={component.explainer} />
+      {/key}
+    </section>
+  {/if}
 
   {#if parts.length > 0}
     <section aria-labelledby="parts">
@@ -187,20 +198,6 @@
     justify-content: flex-end;
     align-content: start;
     gap: 4px;
-  }
-  .anchors a {
-    display: inline-flex;
-    gap: 4px;
-    padding: 0 4px;
-    border: 1px solid var(--hairline);
-    border-radius: 2px;
-    text-decoration: none;
-  }
-  .anchors a:hover {
-    border-color: var(--live);
-  }
-  .lines {
-    font-weight: 600;
   }
   /* A sub-Component's name, then the first line of its overview, on one line. */
   .part {

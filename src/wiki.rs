@@ -45,6 +45,8 @@ const KINDS: [&str; 5] = [
     "role",
 ];
 const RELATIONSHIPS: [&str; 4] = ["uses", "calls", "reads", "writes"];
+/// The most steps an Explainer has.
+const MOST_STEPS: usize = 8;
 
 /// How many times a part's failing claims go back to the model.
 const ROUNDS: u32 = 3;
@@ -327,6 +329,8 @@ struct Component {
     files: Vec<String>,
     interpretations: Vec<Interpretation>,
     relationships: Vec<Relationship>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    explainer: Option<Explainer>,
     gaps: Vec<Gap>,
 }
 
@@ -346,6 +350,33 @@ pub struct Anchor {
     pub path: String,
     pub start: usize,
     pub end: usize,
+}
+
+/// A leaf's walkthrough: steps numbered from 1 in order, each citing
+/// Anchors, and arrows between them by number.
+#[derive(Serialize, Deserialize)]
+struct Explainer {
+    title: String,
+    steps: Vec<Step>,
+    #[serde(default)]
+    arrows: Vec<Arrow>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct Step {
+    n: usize,
+    caption: String,
+    anchors: Vec<Anchor>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    lane: Option<String>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct Arrow {
+    from: usize,
+    to: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    label: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -373,6 +404,8 @@ struct Answer {
     relationships: Vec<Value>,
     #[serde(default)]
     interpretations: Vec<Value>,
+    #[serde(default)]
+    explainer: Option<Value>,
 }
 
 /// A Component a division names.
@@ -400,6 +433,7 @@ struct Checked {
     interpretations: Vec<Interpretation>,
     named: Vec<Named>,
     said: Vec<Said>,
+    explainer: Option<Explainer>,
 }
 
 /// A part of the code still to describe.
@@ -780,10 +814,11 @@ Its files, by repo-relative path, with their line counts:
 - An Anchor is lines of a listed file, 1-based and inclusive: start <= end <= the file's line count.
 - A division's Components share out the part's files, each listed file in at most one; a Component's summary is one or two sentences. When docs or assets force a division, group them into one Component.
 - A Relationship goes from one Component of your division to another, named as you named them, of one kind: uses, calls, reads or writes.
+- A leaf may carry one Explainer, when how something in it works is best walked through in order: a title, at most 8 steps numbered from 1, each a one-sentence caption citing at least one Anchor, with an optional lane naming where the step happens, and arrows from step to step by number, each with an optional label. Leave it out otherwise.
 
 Answer with one JSON object and nothing else, in one of two shapes:
 
-{"kind": "leaf", "overview": "...", "interpretations": [{"kind": "role", "text": "...", "anchors": [{"path": "...", "start": 1, "end": 2}]}]}
+{"kind": "leaf", "overview": "...", "interpretations": [{"kind": "role", "text": "...", "anchors": [{"path": "...", "start": 1, "end": 2}]}], "explainer": {"title": "...", "steps": [{"n": 1, "caption": "...", "anchors": [{"path": "...", "start": 1, "end": 2}], "lane": "..."}], "arrows": [{"from": 1, "to": 2, "label": "..."}]}}
 
 {"kind": "division", "overview": "...", "components": [{"name": "...", "summary": "...", "files": ["..."]}], "relationships": [{"from": "...", "to": "...", "kind": "uses", "description": "..."}], "interpretations": [{"kind": "invariant", "text": "...", "anchors": [{"path": "...", "start": 1, "end": 2}]}]}
 "#;
@@ -836,6 +871,7 @@ fn read(
         mut interpretations,
         named,
         said,
+        explainer,
     }) = checked
     else {
         return (gap(part, reason), vec![], dropped);
@@ -881,6 +917,7 @@ fn read(
         files: part.files,
         interpretations,
         relationships: part.relationships,
+        explainer,
         gaps,
     };
     (component, parts, dropped)
@@ -912,24 +949,36 @@ fn checked(
                     KINDS.join(", ")
                 ));
             }
-            if i.anchors.is_empty() {
-                return Some("it cites no Anchor".into());
-            }
-            (i.anchors.iter()).find_map(|a| match lines.get(a.path.as_str()) {
-                Some(&n) => (a.start < 1 || a.start > a.end || a.end > n).then(|| {
-                    format!(
-                        "lines {}-{} are not inside {} ({n} lines)",
-                        a.start, a.end, a.path
-                    )
-                }),
-                None => Some(format!("{} is not a file of the Repo", a.path)),
-            })
+            unanchored(&i.anchors, lines)
         },
     );
-    let division = match answer.kind.as_str() {
-        "division" => &answer.components[..],
-        _ => &[],
+    let (division, explainer) = match answer.kind.as_str() {
+        "division" => (&answer.components[..], &[][..]),
+        _ => (&[][..], answer.explainer.as_slice()),
     };
+    let explainer = claims("explainer", explainer, &mut dropped, |e: &Explainer| {
+        let steps = e.steps.len();
+        if steps == 0 || steps > MOST_STEPS {
+            return Some(format!("it has {steps} steps, not 1 to {MOST_STEPS}"));
+        }
+        if (e.steps.iter().enumerate()).any(|(i, s)| s.n != i + 1) {
+            return Some(format!("its steps are not numbered 1 to {steps} in order"));
+        }
+        if let Some(why) = (e.steps.iter())
+            .find_map(|s| unanchored(&s.anchors, lines).map(|why| format!("step {}: {why}", s.n)))
+        {
+            return Some(why);
+        }
+        (e.arrows.iter())
+            .find(|a| ![a.from, a.to].iter().all(|n| (1..=steps).contains(n)))
+            .map(|a| {
+                format!(
+                    "its arrow {} to {} is not between two of its steps",
+                    a.from, a.to
+                )
+            })
+    })
+    .pop();
     let named = claims("component", division, &mut dropped, |c: &Named| {
         let outside = c.files.iter().find(|f| !in_part.contains(f.as_str()));
         match (c.files.is_empty(), outside) {
@@ -958,6 +1007,7 @@ fn checked(
         interpretations,
         named,
         said,
+        explainer,
     };
     (Some(checked), dropped)
 }
@@ -988,6 +1038,23 @@ fn unique(parent: &str, name: &str, ids: &mut HashSet<String>) -> String {
         .expect("some number is free");
     ids.insert(id.clone());
     id
+}
+
+/// Why a claim citing `anchors` rests on no real lines: it cites none, or
+/// one not inside a file of the Repo, as `lines` counts them.
+fn unanchored(anchors: &[Anchor], lines: &HashMap<&str, usize>) -> Option<String> {
+    if anchors.is_empty() {
+        return Some("it cites no Anchor".into());
+    }
+    (anchors.iter()).find_map(|a| match lines.get(a.path.as_str()) {
+        Some(&n) => (a.start < 1 || a.start > a.end || a.end > n).then(|| {
+            format!(
+                "lines {}-{} are not inside {} ({n} lines)",
+                a.start, a.end, a.path
+            )
+        }),
+        None => Some(format!("{} is not a file of the Repo", a.path)),
+    })
 }
 
 /// The answer in `text`, its one JSON object, fenced or not.
@@ -1038,6 +1105,7 @@ fn gap(part: Part, reason: &'static str) -> Component {
         files: part.files,
         interpretations: vec![],
         relationships: part.relationships,
+        explainer: None,
     }
 }
 

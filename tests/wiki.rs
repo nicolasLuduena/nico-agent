@@ -972,3 +972,149 @@ fn serve_answers_each_built_wiki_and_a_wiki_by_its_id_and_404s_one_it_has_not() 
         )
     );
 }
+
+fn step(n: u64, caption: &str, path: &str, start: u64, end: u64) -> Value {
+    json!({ "n": n, "caption": caption, "anchors": [{ "path": path, "start": start, "end": end }] })
+}
+
+#[test]
+fn a_leaf_s_explainer_lands_on_its_component_and_a_division_s_is_not_asked_for() {
+    let t = with_repo("");
+    let explainer = json!({
+        "title": "How the crate starts",
+        "steps": [
+            { "n": 1, "caption": "lib.rs declares the modules.", "anchors": [{ "path": "src/lib.rs", "start": 1, "end": 2 }], "lane": "Crate" },
+            { "n": 2, "caption": "run starts it.", "anchors": [{ "path": "src/lib.rs", "start": 4, "end": 4 }], "lane": "Crate" },
+            step(3, "Config is read.", "src/config.rs", 1, 1),
+        ],
+        "arrows": [{ "from": 1, "to": 2, "label": "then" }, { "from": 2, "to": 3 }],
+    });
+    answer(
+        &t,
+        "acme/api",
+        json!({
+            "kind": "division",
+            "overview": "An API.",
+            "components": [
+                { "name": "Core", "summary": "The crate.", "files": ["src/lib.rs", "src/config.rs"] },
+                { "name": "Web", "summary": "The page.", "files": ["web/app.ts"] },
+            ],
+            "explainer": explainer,
+        }),
+    );
+    answer(
+        &t,
+        "acme/api > Core",
+        json!({ "kind": "leaf", "overview": "The crate.", "explainer": explainer }),
+    );
+    answer(
+        &t,
+        "acme/api > Web",
+        json!({ "kind": "leaf", "overview": "The page.", "explainer": null }),
+    );
+
+    let ran = t.cli(&["wiki", "build", "acme/api", "--json"]);
+
+    assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
+    assert_eq!(ran.json()["gaps"], json!({}));
+    let components = wiki(&t)["components"].clone();
+    assert_eq!(components[1]["explainer"], explainer);
+    assert_eq!(components[1]["gaps"], json!([]));
+    assert!(components[0].get("explainer").is_none());
+    assert!(components[2].get("explainer").is_none());
+    // A leaf's prompt asks for one.
+    let asked = (t.world.calls().into_iter())
+        .find(|c| c.contains("## The part: acme/api > Core\n"))
+        .unwrap();
+    assert!(asked.contains("\"explainer\": {\"title\": "), "{asked}");
+}
+
+#[test]
+fn an_explainer_citing_no_real_anchor_with_an_arrow_to_no_step_or_over_8_steps_is_dropped_as_a_gap()
+{
+    let t = with_repo("");
+    let parts = [
+        (
+            "Past the end",
+            vec![step(1, "Past the end.", "src/lib.rs", 4, 5)],
+            json!([]),
+        ),
+        (
+            "Unanchored",
+            vec![json!({ "n": 1, "caption": "No Anchor.", "anchors": [] })],
+            json!([]),
+        ),
+        (
+            "Missing step",
+            vec![
+                step(1, "One.", "src/lib.rs", 1, 1),
+                step(2, "Two.", "src/lib.rs", 2, 2),
+            ],
+            json!([{ "from": 1, "to": 2 }, { "from": 2, "to": 3 }]),
+        ),
+        (
+            "Nine steps",
+            (1..=9)
+                .map(|n| step(n, "A step.", "src/lib.rs", 1, 1))
+                .collect(),
+            json!([]),
+        ),
+        (
+            "Out of order",
+            vec![
+                step(2, "Two.", "src/lib.rs", 2, 2),
+                step(1, "One.", "src/lib.rs", 1, 1),
+            ],
+            json!([]),
+        ),
+    ];
+    let components: Vec<Value> = (parts.iter())
+        .map(|(name, _, _)| json!({ "name": name, "summary": "A part.", "files": ["src/lib.rs"] }))
+        .collect();
+    answer(
+        &t,
+        "acme/api",
+        json!({ "kind": "division", "overview": "An API.", "components": components }),
+    );
+    let kept = interpretation("role", "run is the entry point.", "src/lib.rs", 4, 4);
+    for (name, steps, arrows) in &parts {
+        let explainer = json!({ "title": name, "steps": steps, "arrows": arrows });
+        let leaf = json!({ "kind": "leaf", "overview": "A part.", "interpretations": [kept], "explainer": explainer });
+        answer(&t, &format!("acme/api > {name}"), leaf.clone());
+        corrected(&t, &format!("acme/api > {name}"), leaf);
+    }
+
+    let ran = t.cli(&["wiki", "build", "acme/api", "--json"]);
+
+    assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
+    assert_eq!(ran.json()["gaps"], json!({ "unreadable": 5 }));
+    let components = wiki(&t)["components"].clone();
+    for leaf in &components.as_array().unwrap()[1..] {
+        assert!(leaf.get("explainer").is_none(), "{leaf}");
+        assert_eq!(leaf["interpretations"].as_array().unwrap().len(), 1);
+        assert_eq!(
+            leaf["gaps"],
+            json!([{ "paths": ["src/lib.rs"], "reason": "unreadable" }])
+        );
+    }
+    let logged = t.world.logged();
+    for (part, why) in [
+        (
+            "Past the end",
+            "step 1: lines 4-5 are not inside src/lib.rs (4 lines)",
+        ),
+        ("Unanchored", "step 1: it cites no Anchor"),
+        (
+            "Missing step",
+            "its arrow 2 to 3 is not between two of its steps",
+        ),
+        ("Nine steps", "it has 9 steps, not 1 to 8"),
+        ("Out of order", "its steps are not numbered 1 to 2 in order"),
+    ] {
+        assert!(
+            (logged.iter())
+                .any(|l| l.contains(&format!("acme/api > {part}: dropped")) && l.ends_with(why)),
+            "{part}: {logged:?}"
+        );
+    }
+}

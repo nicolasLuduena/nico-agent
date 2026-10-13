@@ -85,6 +85,8 @@
       ? [
           { id: "component-name", name: open.name, count: null },
           ...byKind(open).map((k) => ({ id: `kind-${k.kind}`, name: `${k.kind[0].toUpperCase()}${k.kind.slice(1)}s`, count: k.interpretations.length })),
+          { id: "relationships", name: "Relationships", count: null },
+          ...(open.explainer ? [{ id: "explainer", name: "Explainer", count: open.explainer.steps.length }] : []),
           ...(parts.length > 0 ? [{ id: "parts", name: "Components", count: parts.length }] : []),
           ...(open.gaps.length > 0 ? [{ id: "gaps", name: "Gaps", count: open.gaps.length }] : []),
         ]

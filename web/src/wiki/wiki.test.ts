@@ -14,6 +14,7 @@ const component = (id: string, name: string, overview: string, interpretations: 
   overview,
   interpretations: interpretations.map((text, n) => ({ id: n + 1, kind: "role", text, anchors: [] })),
   gaps: [],
+  relationships: [],
 });
 
 test("search finds every word, case aside, in a Component's name or overview, then in its Interpretations", () => {
