@@ -30,8 +30,8 @@ const ROUTES: &[(&str, &str)] = &[
     ("GET /", "the app"),
     ("GET /api/status", "the status of every Repo and Dispatch"),
     (
-        "GET /api/map/<owner/name>",
-        "the Repo's issues and how they block and stack on each other",
+        "GET /api/map/<project>",
+        "the issues of the Project's Repos and how they block and stack on each other",
     ),
     (
         "GET /api/node/<issue>",
@@ -81,10 +81,14 @@ pub fn answer(ctx: &Context, port: u16, request: &HttpRequest) -> Answer {
     match (request.method.as_str(), path) {
         ("GET", "/api/status") => reply(status(ctx)),
         ("GET", "/api/events") => events(ctx),
-        ("GET", path) if let Some(slug) = path.strip_prefix("/api/map/") => {
-            let slug = unescaped(slug);
-            let help = "Ask for a Repo /api/status lists";
-            found(map::map(ctx, &slug), format!("{slug} is not a Repo"), help)
+        ("GET", path) if let Some(name) = path.strip_prefix("/api/map/") => {
+            let name = unescaped(name);
+            let help = "Ask for a Project /api/status lists";
+            found(
+                map::map(ctx, &name),
+                format!("{name} is not a Project"),
+                help,
+            )
         }
         ("GET", path) if let Some(issue) = path.strip_prefix("/api/node/") => {
             // `owner/repo#N`, its `#` escaped.

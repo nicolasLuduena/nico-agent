@@ -54,14 +54,14 @@ Preconditions:
   nico-agent serve; reconnecting." --wait 5 --mode pass --gone "Lost nico-agent serve"`. `ok` for
   every step; `.requests.txt` has the first `GET /api/events -> 200`, then three `GET /api/events
   -> 502` lines, each with a `GET /api/status -> 502`, then `GET /api/events -> 200` and the refetches `GET
-  /api/status -> 200` and `GET /api/map/verify/fixture -> 200`. `$TUNNEL_LOG` shows the browser's own
+  /api/status -> 200` and `GET /api/map/verify%2Ffixture -> 200`. `$TUNNEL_LOG` shows the browser's own
   retry about 3 s after the cut, then the page's new streams 1 s, 2 s and 4 s after each 502, the
   last one opening.
 - **Signed out.** Run `$C page --tunnel --evidence "$E/05-signed-out" --mode signed-out --click
   "button=Refresh" --expect "Signed out; reload to sign in again." --wait 40 --expect "Signed out;
   reload to sign in again."`. `ok` for every step; under `Refresh` an alert says `Could not reach
   nico-agent serve.`; `.requests.txt` has `POST /api/refresh -> 302`, the refetches `GET
-  /api/status -> 302` and `GET /api/map/verify/fixture -> 302`, and no `/api/events` after the first;
+  /api/status -> 302` and `GET /api/map/verify%2Ffixture -> 302`, and no `/api/events` after the first;
   `$TUNNEL_LOG` has that stream `closed by the page`.
 - **Signed out on a reconnect.** Run `$C tunnel pass`, then `$C page --tunnel --evidence
   "$E/06-signed-out-on-reconnect" --mode 502 --expect "Lost nico-agent serve; reconnecting." --wait

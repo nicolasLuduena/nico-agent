@@ -144,7 +144,7 @@ fn an_unknown_path_or_method_answers_404_with_the_routes_as_help() {
     let help = json!([
         "GET /: the app",
         "GET /api/status: the status of every Repo and Dispatch",
-        "GET /api/map/<owner/name>: the Repo's issues and how they block and stack on each other",
+        "GET /api/map/<project>: the issues of the Project's Repos and how they block and stack on each other",
         "GET /api/node/<issue>: the issue's Dispatch, its restarts, its Verdict's findings and its Evidence",
         "GET /api/events: a stream of `changed`, sent when state or an Agent state changes, and a keepalive comment otherwise",
         "POST /api/dispatch {issue, harness, model, effort}: `nico-agent dispatch` of the issue",
@@ -883,12 +883,15 @@ fn patch_repo_writes_only_the_named_settings_keeping_the_user_s_comments_and_ans
             assert_eq!(&shown[key], setting, "{key}");
         }
     }
+    let projects: Vec<_> = (status["projects"].as_array().unwrap().iter())
+        .map(|p| (&p["name"], &p["repos"], &p["defaults"]))
+        .collect();
     assert_eq!(
-        status["projects"],
-        json!([
-            { "name": "acme/api", "repos": ["acme/api"], "defaults": {} },
-            { "name": "shop", "repos": ["acme/web"], "defaults": {} },
-        ])
+        projects,
+        [
+            (&json!("acme/api"), &json!(["acme/api"]), &json!({})),
+            (&json!("shop"), &json!(["acme/web"]), &json!({})),
+        ]
     );
 }
 
@@ -978,23 +981,21 @@ fn patch_project_writes_its_defaults_which_its_repos_take_and_null_removes_one()
     let own = mine.send("PATCH", "/api/project/acme%2Fapi", r#"{"base": "dev"}"#);
 
     assert_eq!(
-        set,
+        (set.0, &set.1["name"], &set.1["defaults"]),
         (
             200,
-            json!({ "name": "shop", "defaults": {
+            &json!("shop"),
+            &json!({
                 "room": 5,
                 "implementer": { "harness": "codex", "model": null, "effort": null },
                 "switches": { "review": false, "gardening": true },
-            } })
+            })
         )
     );
     assert_eq!(removed.1["defaults"]["room"], json!(null));
     assert_eq!(
-        own,
-        (
-            200,
-            json!({ "name": "acme/api", "defaults": { "base": "dev" } })
-        )
+        (own.0, &own.1["name"], &own.1["defaults"]),
+        (200, &json!("acme/api"), &json!({ "base": "dev" }))
     );
     assert_eq!(
         config(&t),
@@ -1020,6 +1021,43 @@ fn patch_project_writes_its_defaults_which_its_repos_take_and_null_removes_one()
         shown["switches"]["gardening"],
         json!({ "value": true, "from": "project" })
     );
+}
+
+#[test]
+fn a_project_shows_each_setting_from_itself_or_the_default_and_patch_project_answers_them() {
+    let t = in_shop();
+    let shop = |status: serde_json::Value| {
+        let projects = status["projects"].as_array().unwrap().clone();
+        projects.into_iter().find(|p| p["name"] == "shop").unwrap()
+    };
+    let before = shop(t.get("/api/status").1);
+
+    let set = t.send(
+        "PATCH",
+        "/api/project/shop",
+        r#"{"room": null, "base": "dev"}"#,
+    );
+
+    let setting = |value: serde_json::Value, from: &str| json!({ "value": value, "from": from });
+    let launch = |harness: &str| json!({ "harness": harness, "model": null, "effort": null });
+    assert_eq!(before["room"], setting(json!(4), "project"));
+    assert_eq!(before["base"], setting(json!(null), "default"));
+    assert_eq!(before["implementer"], setting(launch("claude"), "default"));
+    // The default Reviewer: another Harness than the Implementer's.
+    assert_eq!(before["reviewer"], setting(launch("codex"), "default"));
+    assert_eq!(
+        before["switches"]["review"],
+        setting(json!(false), "project")
+    );
+    assert_eq!(before["switches"]["stack"], setting(json!(true), "default"));
+    assert_eq!(set.0, 200, "{}", set.1);
+    assert_eq!(set.1["room"], setting(json!(3), "default"));
+    assert_eq!(set.1["base"], setting(json!("dev"), "project"));
+    // The answer is the Project as status shows it.
+    let after = shop(t.get("/api/status").1);
+    for (key, answered) in set.1.as_object().unwrap() {
+        assert_eq!(&after[key], answered, "{key}");
+    }
 }
 
 #[test]

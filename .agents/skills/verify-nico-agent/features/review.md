@@ -3,7 +3,7 @@
 Every live Dispatch whose PR is PR draft or Verified shows where its review stands for the PR's
 head: off for the Repo, a Verdict passed or failed, a Reviewer working or stopped without a
 Verdict, its start failing and tried again, given up on, or waiting for the next tick. `status`
-and `/api/status`, `/api/map/<slug>` and `/api/node/<issue>` carry it as `review`; the map's PR
+and `/api/status`, `/api/map/<project>` and `/api/node/<issue>` carry it as `review`; the map's PR
 draft node shows it as a short line under its Stage, the node's panel as the **Review** section,
 and a review given up on or stopped is a row of the needs-you strip with the command that records
 a Verdict by hand.

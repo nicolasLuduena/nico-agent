@@ -51,7 +51,7 @@ $C launch [--no-build]          # build, make the scratch HOME, fixtures and con
 $C restart                      # stop serve and start it again on the same HOME and port, as a reboot would
 $C doctor                       # read-only health check of this run
 . "$($C env)"                   # this run's paths: $FIXTURE_CLONE, $SECOND_CLONE, $CONFIG_DIR, $BUCKET, $URL, $OUTSIDE_LOG
-$C seed issues                  # a fresh read of verify/fixture's issues, as the Source would cache it
+$C seed issues [second]         # a fresh read of verify/fixture's issues (or verify/second's), as the Source would cache it
 $C seed dispatch <n> pr|asking|stacked  # a Dispatch of verify/fixture#<n> as the loop records one; prints JSON
 $C seed run quality-scan|morning|faux-nico <n>  # a Run of the loop's own agent, blocked; prints JSON
 $C seed morning <file>|none     # the Morning summary the morning agent leaves: <file> as morning.md, or none
@@ -61,7 +61,7 @@ $C state                        # fingerprint: config dir files, Dispatches, Ver
 $C run [--evidence PREFIX] -- <nico-agent args...>       # the CLI in the scratch HOME; exit code is the CLI's
 $C http [--evidence PREFIX] [--header 'NAME: VALUE']... <METHOD> <PATH> [BODY]
                                 # ask serve, as the page does (or with other headers); exit 1 on 4xx/5xx
-$C page [--tunnel] [--evidence PREFIX] [--width PX] [--storage FILE|none] [--click ROLE=NAME | --click ROLE~NAME | --press KEY | --type TEXT | --expect TEXT
+$C page [--tunnel] [--evidence PREFIX] [--width PX] [--storage FILE|none] [--within ROLE=NAME|page | --click ROLE=NAME | --click ROLE~NAME | --press KEY | --type TEXT | --expect TEXT
         | --gone TEXT | --wait SECONDS | --mode pass|502|signed-out]...
                                 # open the page (through the tunnel stand-in), act in order, capture
 $C tunnel start|pass|502|signed-out   # a stand-in for cloudflared and Access in front of serve; $TUNNEL_URL, $TUNNEL_LOG
@@ -74,7 +74,10 @@ HTTP status) and `.headers`; `page
 --evidence` writes `.cmd`, `.aria.txt`, `.png`, `.requests.txt` and `.console.txt`. Each still prints
 what it captured, so a recipe can record and inspect at once. `page` steps: `--click tab=verify/second`
 clicks the element of that ARIA role whose accessible name is exactly the text, `--click
-"button~Failed verify/fixture #1"` one whose name contains it, `--press ArrowRight` a key, `--type
+"button~Failed verify/fixture #1"` one whose name contains it, `--within "region=verify/fixture"` makes
+every later `--click` look only inside that element (a Repo's panel on a Project's tab, whose
+controls share their names with the Project's and the other Repos'), `--within page` the whole
+page again, `--press ArrowRight` a key, `--type
 dev` text into what has focus,
 `--expect "Source not read yet"` waits for the text, `--gone TEXT` up to a minute for it to go,
 `--wait 120` lets two minutes pass, and `--mode 502` switches the tunnel stand-in (with `--tunnel`
@@ -167,6 +170,9 @@ What the fixtures hold:
   `#1`, no PR), `#4` "Verify: assigned to someone else" (assignee `someone-else`), `#5` "Verify: a
   Research issue" (Ready, `research`), `#6` "Verify: stacks on #9 PR" (Stackable on PR #109, head
   `agent/fixture-9`, which the fixture's origin does not have). The user is `verify-nico`.
+  `seed issues second` caches, read now, `verify/second#1` "Verify: waits on fixture #1"
+  (unresolved Blocker `verify/fixture#1`, a Blocker in another Repo) and `#2` "Verify: waits on an
+  outside issue" (unresolved Blocker `verify/outside#7` "Verify: an outside Blocker", in no Repo).
 - `seed dispatch <n> pr` records Dispatch `verify/fixture#<n>` "Verify: seeded Dispatch <n>" with
   every step done, in a worktree `worktrees/fixture-<n>` on `agent/fixture-<n>` holding
   `.evidence/<n>/proof.txt`, and its draft PR `https://github.com/verify/fixture/pull/<100+n>` open
@@ -188,13 +194,16 @@ What the fixtures hold:
 
 Stable handles are the command words and flags (`--path`, `--json`, `--harness`, `--model`,
 `--effort`, `--sha`, `--findings`), the exit codes, the JSON field names, the routes in `GET` of an
-unknown path's `help`, and on the page the ARIA roles and names: `tablist "Repos"` with one `tab`
-per Repo, `region "Needs you"`, `button "Refresh"`, `switch "Dispatch"` (and `Faux-nico answers`,
+unknown path's `help`, and on the page the ARIA roles and names: `tablist "Projects"` with one
+`tab` per Project (a Repo with none is its own, named by its slug), `region "Needs you"`, `button
+"Refresh"`, a `region "<project>"` of its defaults unless it is a Repo's own, then a `region
+"<slug>"` per Repo, each holding `switch "Dispatch"` (and `Faux-nico answers`,
 `Flip to ready`, `Gardening`, `Quality-scan`, `Restart`, `Review`, `Stack`), `spinbutton "Room"`,
-`region "Dispatch"` with `button "Dispatch"`, `region "Map of <slug>"`, `region "Settings"` with
+`region "Dispatch"` with `button "Dispatch"` (a Repo's only), `region "Map of <project>"`, `region "Settings"` with
 `combobox "Implementer Harness"` (and `model`, `Effort`, and the same for `Reviewer`), `textbox
-"Base"`, `combobox "Project"`, `button "Use the default <Setting>"` or `"Use the Project's
-<Setting>"`, `button "Remove <slug>…"`, `region "Add a Repo"` with `textbox "Repo"`, `textbox "Its
+"Base"`, `combobox "Project"` (a Repo's only), `button "Use the default <Setting>"` or `"Use the
+Project's <Setting>"`, `button "Remove <slug>…"`; a `--click` takes the first match, which is the
+Project's defaults before any Repo's, `region "Add a Repo"` with `textbox "Repo"`, `textbox "Its
 clone"`, `combobox "Its Project"` and `button "Add"`. `run` executes with the run's `work/` as cwd: pass absolute paths (`--findings`).
 
 Recipes per feature are in [`features/`](features/README.md); drive the ones the change touches,

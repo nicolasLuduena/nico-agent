@@ -210,14 +210,13 @@ pub fn set(ctx: &Context, slug: &str, set: &Value) -> Result<Value, Refusal> {
     let config = config::load(&ctx.config_dir)?;
     let (slug, repo) = config.repo(&slug).ok_or_else(|| not_configured(&slug))?;
     let mut shown = json!({ "slug": slug });
-    for (key, setting) in status::settings(&config, slug, repo) {
-        shown[key] = setting;
-    }
+    status::settings(&mut shown, &config, slug, repo);
     Ok(shown)
 }
 
 /// Write `set`, `{setting: value}` of [`PROJECT_SETTINGS`], to the defaults
-/// of the Project `name`, as [`set`] does a Repo's; its name and defaults after.
+/// of the Project `name`, as [`set`] does a Repo's; its name, defaults and
+/// settings after, as `status` shows them.
 pub fn set_project(ctx: &Context, name: &str, set: &Value) -> Result<Value, Refusal> {
     config::edit(&ctx.config_dir, |config, doc| {
         let mut names: Vec<&str> = config.projects.keys().map(String::as_str).collect();
@@ -236,7 +235,9 @@ pub fn set_project(ctx: &Context, name: &str, set: &Value) -> Result<Value, Refu
         Ok(())
     })??;
     let config = config::load(&ctx.config_dir)?;
-    Ok(json!({ "name": name, "defaults": config.projects.get(name) }))
+    let mut shown = json!({ "name": name, "defaults": config.projects.get(name) });
+    status::settings(&mut shown, &config, name, &config.project(name));
+    Ok(shown)
 }
 
 /// `set` as an object of some of `keys`, each null or a value the config

@@ -4,24 +4,25 @@ serve's page opens on the needs-you strip, across Repos: every Implementer Askin
 question), every agent of the loop's own herdr reports blocked (a faux-nico, a quality-scan, the
 morning agent), every Failed Dispatch, every PR whose review was given up on or stopped, every
 Verified PR to merge, and a paused GitHub; "Nothing needs
-you" when there is none. Under it, one tab per Repo shows that Repo's map, read times, switches and
-Dispatch form; arrow keys move between tabs, and at phone width the tabs become one select named
-Repo. A strip row opens its Repo's tab with the node's panel.
+you" when there is none. Under it, one tab per Project (a Repo naming none is its own, named by its
+slug) shows its map, read times, and each Repo's switches and Dispatch form (see project-tabs for a
+Project of several Repos); arrow keys move between tabs, and at phone width the tabs become one
+select named Project. A strip row opens its Repo's Project's tab with the node's panel.
 
 ## Sub-features
 
-- `page-empty` with no Repo: the strip says `Nothing needs you` and the page says `No Repo yet. Add one with nico-agent repo add <owner/name> --path <clone>.`
-- `tabs-one-per-repo` `tablist "Repos"` has a `tab` per Repo in config order, the first selected, its `tabpanel` named after it.
-- `tabs-click` clicking a tab selects it and shows that Repo's map, read times and controls.
+- `page-empty` with no Repo: the strip says `Nothing needs you` and the page says `No Repo yet. Add one here, or with nico-agent repo add <owner/name> --path <clone>.`
+- `tabs-one-per-project` `tablist "Projects"` has a `tab` per Project with a Repo, by name, the first selected, its `tabpanel` named after it.
+- `tabs-click` clicking a tab selects it and shows that Project's map, read times and controls.
 - `tabs-keys` ArrowRight, ArrowLeft, Home and End move the selection (wrapping) and focus.
-- `tabs-phone` under 720px the tablist is replaced by `combobox "Repo"` with an option per Repo.
+- `tabs-phone` under 720px the tablist is replaced by `combobox "Project"` with an option per Project.
 - `strip-asking` an Asking Implementer is a row `Asking <repo> #<n> <question> <since>`.
 - `strip-blocked` a blocked Run is a row `Blocked <agent> <since>`, under `<repo> #<n>` for a faux-nico, whose row opens its Dispatch's node.
 - `strip-failed` a Failed Dispatch is a row `Failed <repo> #<n> <title> <updated>`.
 - `strip-review` a review given up on or stopped is a row `Review <repo> #<n> <where it stands>: review it by hand with nico-agent verdict ...` (see review.md).
 - `strip-verified` a Verified PR is a row `Verified <repo> #<n> <title> <verdict time>`.
 - `strip-paused` a paused GitHub is a row `Paused GitHub until <time>`, with nothing to open.
-- `strip-open` clicking a row selects its Repo's tab and opens that node's panel (`GET /api/node/<issue>`).
+- `strip-open` clicking a row selects its Repo's Project's tab and opens that node's panel (`GET /api/node/<issue>`).
 
 ## How to get to it (user POV)
 
@@ -37,7 +38,7 @@ Preconditions:
 - **Empty.** Run `$C page --evidence "$E/01-empty" --expect "No Repo yet"`. The ARIA snapshot has
   `region "Needs you"` with `paragraph: Nothing needs you` and no `tablist`.
 - **Two Repos.** Run `$C run -- repo add verify/fixture --path "$FIXTURE_CLONE" --json`, `$C run -- repo add verify/second --path "$SECOND_CLONE" --json`
-  and `$C seed issues`, then `$C page --evidence "$E/02-tabs"`. `tablist "Repos"` has `tab
+  and `$C seed issues`, then `$C page --evidence "$E/02-tabs"`. `tablist "Projects"` has `tab
   "verify/fixture" [selected]` and `tab "verify/second"`; `tabpanel "verify/fixture"` holds `region
   "Map of verify/fixture"` with node buttons `#1, Verify: a Ready issue, Ready`, `#3, Verify: waits
   on #1, Waiting`, `#4, Verify: assigned to someone else, Waiting`, `#5, Verify: a Research issue,
@@ -45,11 +46,11 @@ Preconditions:
   (no `#2`: not labelled); the paragraph reads `Source read <time> · PRs not checked yet`.
 - **Click a tab.** Run `$C page --evidence "$E/03-click" --click "tab=verify/second" --expect "Source not read yet"`.
   `tab "verify/second" [selected]`; `tabpanel "verify/second"` with `Nothing on this map`;
-  `.requests.txt` has `GET /api/map/verify/second -> 200`.
+  `.requests.txt` has `GET /api/map/verify%2Fsecond -> 200`.
 - **Keys.** Run `$C page --evidence "$E/04-keys" --click "tab=verify/fixture" --press ArrowRight`:
   `tab "verify/second" [selected]`. Then `--click "tab=verify/second" --press ArrowRight`
   (`05-keys-wrap`): `tab "verify/fixture" [selected]`.
-- **Phone.** Run `$C page --evidence "$E/06-phone" --width 390`. No `tablist`; `combobox "Repo"`
+- **Phone.** Run `$C page --evidence "$E/06-phone" --width 390`. No `tablist`; `combobox "Project"`
   with `option "verify/fixture" [selected]` and `option "verify/second"`; the screenshot is one column.
 - **Fill the strip.** Run `$C run -- dispatch verify/fixture#1 --json` (Failed at worktree),
   `$C seed dispatch 10 pr > "$E/seed10.json"`, `$C run -- verdict verify/fixture#10 pass --sha "$(jq -r .head "$E/seed10.json")" --json`,

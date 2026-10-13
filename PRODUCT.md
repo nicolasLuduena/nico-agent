@@ -35,9 +35,10 @@ it binds the rebuild.
 - **Any Harness.** claude, codex, opencode, each with its launch mode. The
   Reviewer runs on a different Harness than the Implementer by default,
   chosen per Repo.
-- **A map per Repo.** A node per issue with its kind (code or research) and
-  state (Ready, Implementing, PR draft, Verified, Merged); edges for
-  Blockers; a stacked PR drawn to the PR it targets. A needs-you strip across
+- **A map per Project.** A node per issue of its Repos with its kind (code
+  or research), state (Ready, Implementing, PR draft, Verified, Merged) and,
+  when the Project has more than one, its Repo; edges for Blockers, across
+  its Repos too; a stacked PR drawn to the PR it targets. A needs-you strip across
   Repos on top: Asking, failed twice, Verified PRs to merge. The morning
   summary renders first each day. A Refresh button is the one way to ask
   GitHub again.
