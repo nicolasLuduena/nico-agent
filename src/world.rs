@@ -17,7 +17,7 @@ use std::thread;
 use std::time::{Duration, SystemTime};
 
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Value, json};
 
 /// The label that offers an issue to the loop.
 pub const READY_LABEL: &str = "ready-for-agent";
@@ -309,6 +309,16 @@ pub trait World {
         at_once: usize,
     ) -> Vec<WorldResult<String>>;
 
+    // Ollama
+    /// The embedding of each of `input`, in order, by the `model` of the
+    /// Ollama answering at `ollama`, through its `/api/embed`.
+    fn ollama_embed(
+        &self,
+        ollama: &str,
+        model: &str,
+        input: &[String],
+    ) -> WorldResult<Vec<Vec<f32>>>;
+
     // shell
     /// Run `command` with `sh -c` in the folder `cwd`, with no input, showing
     /// what it prints on stderr as it prints it, so stdout stays the
@@ -429,6 +439,12 @@ pub trait World {
     /// Answer HTTP on 127.0.0.1:`port` with `handler`, a thread per request,
     /// while this thread goes on; fails when the port cannot be taken.
     fn listen(&self, port: u16, handler: Handler) -> WorldResult<()>;
+
+    // stdio
+    /// The next line on stdin, without its line ending; `None` once stdin is closed.
+    fn read_line(&self) -> WorldResult<Option<String>>;
+    /// Write `line` and a newline to stdout, at once.
+    fn write_line(&self, line: &str) -> WorldResult<()>;
 
     // log
     /// Write a line to `serve`'s log: stderr, which journald keeps for a service.
@@ -1199,6 +1215,36 @@ impl World for RealWorld {
         answered.sort_by_key(|(i, _)| *i);
         answered.into_iter().map(|(_, answer)| answer).collect()
     }
+    fn ollama_embed(
+        &self,
+        ollama: &str,
+        model: &str,
+        input: &[String],
+    ) -> WorldResult<Vec<Vec<f32>>> {
+        #[derive(Deserialize)]
+        struct Embedded {
+            embeddings: Vec<Vec<f32>>,
+        }
+        let url = format!("{}/api/embed", ollama.trim_end_matches('/'));
+        let response = curl(&HttpRequest {
+            method: "POST".into(),
+            url: url.clone(),
+            headers: vec![("Content-Type".into(), "application/json".into())],
+            body: json!({ "model": model, "input": input }).to_string(),
+        })?;
+        if response.status != 200 {
+            let said = String::from_utf8_lossy(&response.body);
+            let status = response.status;
+            return Err(WorldError(format!(
+                "{url} answered {status}: {}",
+                said.trim()
+            )));
+        }
+        let read: Embedded = (serde_json::from_slice(&response.body).ok())
+            .filter(|read: &Embedded| read.embeddings.len() == input.len())
+            .ok_or_else(|| invalid(&url))?;
+        Ok(read.embeddings)
+    }
     fn shell(&self, cwd: &str, command: &str) -> WorldResult<(bool, String)> {
         let failed = |e: io::Error| WorldError(format!("could not run `{command}` in {cwd}: {e}"));
         let (mut reader, writer) = io::pipe().map_err(failed)?;
@@ -1692,6 +1738,24 @@ impl World for RealWorld {
             }
         });
         Ok(())
+    }
+    fn read_line(&self) -> WorldResult<Option<String>> {
+        let mut line = vec![];
+        match io::stdin().lock().read_until(b'\n', &mut line) {
+            Ok(0) => Ok(None),
+            // Bytes that are no UTF-8 make a line that does not parse, not a read that fails.
+            Ok(_) => Ok(Some(
+                String::from_utf8_lossy(&line)
+                    .trim_end_matches(['\n', '\r'])
+                    .into(),
+            )),
+            Err(e) => Err(WorldError(format!("could not read stdin: {e}"))),
+        }
+    }
+    fn write_line(&self, line: &str) -> WorldResult<()> {
+        let mut out = io::stdout().lock();
+        (writeln!(out, "{line}").and_then(|()| out.flush()))
+            .map_err(|e| WorldError(format!("could not write stdout: {e}")))
     }
     fn log(&self, line: &str) {
         eprintln!("{line}");

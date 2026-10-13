@@ -8,7 +8,7 @@ description: "Drive nico-agent the way its user and its agents do — the CLI (`
 nico-agent is one Rust binary with two user surfaces, and this skill drives both:
 
 - **The CLI**, what outsiders call: `repo add|rm|list`, `status`, `dispatch`, `verdict`, `refresh`,
-  `install`, `wiki build`.
+  `install`, `wiki build`, and `mcp`, an MCP server on stdio fed by `run`'s stdin.
   Every command prints one JSON object with `--json`; exit `0` is an answer, `1` a refusal the user
   can act on, `2` a bad invocation, each refusal as `{error, help}`.
 - **serve's page**, the Svelte app `serve` embeds and answers on `127.0.0.1:<port>`, with the
@@ -60,6 +60,7 @@ $C seed answer <file>|none [<part>]  # what the wiki model (the opencode2 stub) 
                                 # with <part>, a trail such as `verify/fixture > Readme`, only the calls about it
 $C drift push <n>|stale|pause   # what GitHub would change: a new PR head, an old read, a rate limit
 $C drift below merged|closed    # ... or the PR below a Stacked dispatch merged or closed unmerged
+$C drift base                   # ... or verify/fixture's Base moved on by a merge, fetched into its clone
 $C state                        # fingerprint: config dir files, Dispatches, Verdicts, Bucket log, outside calls
 $C run [--evidence PREFIX] -- <nico-agent args...>       # the CLI in the scratch HOME; exit code is the CLI's
 $C http [--evidence PREFIX] [--header 'NAME: VALUE']... <METHOD> <PATH> [BODY]
@@ -202,7 +203,9 @@ What the fixtures hold:
 - `drift push <n>` commits to the seeded worktree and moves the PR's `head_sha`, as a push would;
   `drift stale` dates the cached read 2000-01-01, so the next `status` or `dispatch` asks GitHub;
   `drift pause` writes GitHub paused for an hour, as a rate limit does; `drift below merged|closed`
-  makes PR #109 final, merged or closed unmerged, as GitHub would say.
+  makes PR #109 final, merged or closed unmerged, as GitHub would say; `drift base` pushes a commit
+  rewriting `README.md` to verify/fixture's `main` and fetches it, as a merge and the loop's next
+  fetch would, printing `{base, old, head}`.
 
 Stable handles are the command words and flags (`--path`, `--json`, `--harness`, `--model`,
 `--effort`, `--sha`, `--findings`), the exit codes, the JSON field names, the routes in `GET` of an

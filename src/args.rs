@@ -1,16 +1,14 @@
 //! A command's arguments: positionals, and flags as `--name value` or
-//! `--name=value`. A value may start with `--`, but the `value` of
-//! `--name value` is never one of the command's own flags. Anything off is a
-//! bad invocation (exit 2).
-
-use std::collections::HashMap;
+//! `--name=value`, a flag given twice keeping both. A value may start with
+//! `--`, but the `value` of `--name value` is never one of the command's own
+//! flags. Anything off is a bad invocation (exit 2).
 
 use crate::cli::{Refusal, bad_invocation};
 
 pub struct Args<'a> {
     command: &'a str,
     positionals: Vec<&'a str>,
-    flags: HashMap<&'a str, &'a str>,
+    flags: Vec<(&'a str, &'a str)>,
 }
 
 impl<'a> Args<'a> {
@@ -19,7 +17,7 @@ impl<'a> Args<'a> {
         let mut parsed = Args {
             command,
             positionals: vec![],
-            flags: HashMap::new(),
+            flags: vec![],
         };
         let mut rest = args.iter().copied().peekable();
         let own_flag = |arg: &str| flags.contains(&arg.split_once('=').map_or(arg, |(n, _)| n));
@@ -43,7 +41,7 @@ impl<'a> Args<'a> {
                 .or_else(|| rest.next_if(|next| !own_flag(next)))
                 .filter(|v| !v.is_empty())
             {
-                Some(value) => parsed.flags.insert(name, value),
+                Some(value) => parsed.flags.push((name, value)),
                 None => return Err(bad_invocation(format!("{name} needs a value"), command)),
             };
         }
@@ -73,7 +71,16 @@ impl<'a> Args<'a> {
         Ok(&self.positionals)
     }
 
+    /// The flag's value; the last one, when it is given more than once.
     pub fn flag(&self, name: &str) -> Option<&'a str> {
-        self.flags.get(name).copied()
+        self.all(name).pop()
+    }
+
+    /// Each value the flag is given, in order.
+    pub fn all(&self, name: &str) -> Vec<&'a str> {
+        (self.flags.iter())
+            .filter(|(flag, _)| *flag == name)
+            .map(|(_, value)| *value)
+            .collect()
     }
 }

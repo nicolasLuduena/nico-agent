@@ -203,6 +203,14 @@ impl World for Guarded<'_> {
     ) -> Vec<WorldResult<String>> {
         self.world.harness_headless(cwd, calls, at_once)
     }
+    fn ollama_embed(
+        &self,
+        ollama: &str,
+        model: &str,
+        input: &[String],
+    ) -> WorldResult<Vec<Vec<f32>>> {
+        self.world.ollama_embed(ollama, model, input)
+    }
     fn shell(&self, cwd: &str, command: &str) -> WorldResult<(bool, String)> {
         self.world.shell(cwd, command)
     }
@@ -293,6 +301,12 @@ impl World for Guarded<'_> {
     }
     fn notify(&self, title: &str, body: &str) -> WorldResult<()> {
         self.world.notify(title, body)
+    }
+    fn read_line(&self) -> WorldResult<Option<String>> {
+        self.world.read_line()
+    }
+    fn write_line(&self, line: &str) -> WorldResult<()> {
+        self.world.write_line(line)
     }
     fn log(&self, line: &str) {
         self.world.log(line)

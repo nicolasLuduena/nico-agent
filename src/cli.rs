@@ -5,6 +5,7 @@ use serde_json::{Value, json};
 use crate::answer;
 use crate::dispatch;
 use crate::install;
+use crate::mcp;
 use crate::pause;
 use crate::refresh;
 use crate::repo;
@@ -90,6 +91,10 @@ const COMMANDS: &[(&str, &str)] = &[
         "build the Repo's Wiki from scratch at origin/<base>, one headless call of the [wiki] launch per part of its code, and keep it in the Bucket",
     ),
     (
+        "nico-agent mcp [--wiki <owner/name>]...",
+        "serve the Wikis named, or every one, to an agent as an MCP server on stdio: `claude mcp add wiki -- nico-agent mcp`",
+    ),
+    (
         "nico-agent serve",
         "check every Repo's readiness, then run the loop: a tick now and every tick_minutes",
     ),
@@ -128,6 +133,7 @@ pub fn run(argv: &[String], ctx: &Context) -> Output {
         ["serve", args @ ..] => serve::serve(args, ctx),
         ["refresh", args @ ..] => refresh::refresh(args, ctx),
         ["wiki", "build", args @ ..] => wiki::build(args, ctx),
+        ["mcp", args @ ..] => mcp::mcp(args, ctx),
         ["repo", ..] => Err(bad_invocation(
             "`repo` needs a subcommand: add, rm or list".into(),
             "repo",
@@ -140,6 +146,11 @@ pub fn run(argv: &[String], ctx: &Context) -> Output {
         [word, ..] => Err(bad_invocation(format!("unknown command `{word}`"), "")),
     };
     match answer {
+        // `mcp`: stdout was the protocol's, and ends with its last answer.
+        Ok(Value::Null) => Output {
+            stdout: String::new(),
+            exit_code: 0,
+        },
         Ok(answer) => Output {
             stdout: render(&answer, json),
             exit_code: 0,

@@ -2,8 +2,8 @@
 //! `origin/<base>` is divided top-down, as know-the-map's hermeneut does:
 //! each part is one headless, read-only call of the `[wiki]` launch, and
 //! code checks every answer, dropping each claim that fails and recording
-//! its part as a Gap. The Wiki lands in the Bucket in one commit; the
-//! build's outcome in `wikis.json`, last.
+//! its part as a Gap. The Wiki lands in the Bucket in one commit, then its
+//! records are embedded for `ask`; the build's outcome in `wikis.json`, last.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io;
@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::args::Args;
+use crate::ask;
 use crate::bucket;
 use crate::cli::{Context, Refusal};
 use crate::config::{self, Config, Repo, fill_in};
@@ -101,10 +102,10 @@ struct Interpretation {
 
 /// Lines of a file, 1-based and inclusive.
 #[derive(Serialize, Deserialize)]
-struct Anchor {
-    path: String,
-    start: usize,
-    end: usize,
+pub struct Anchor {
+    pub path: String,
+    pub start: usize,
+    pub end: usize,
 }
 
 #[derive(Serialize)]
@@ -255,7 +256,7 @@ fn kept(ctx: &Context, config: &Config, slug: &str) -> Result<Option<Value>, Ref
 /// The Wiki of the Repo `slug`, built on a checkout of its Base, removed
 /// after, and kept in the Bucket.
 fn built(ctx: &Context, config: &Config, slug: &str, repo: &Repo) -> Result<Wiki, Refusal> {
-    let (world, call) = (ctx.world, headless(config)?);
+    let (world, call) = (ctx.world, headless(config, &WRITES)?);
     let base = match &repo.base {
         Some(base) => base.clone(),
         None => world.git_default_branch(&repo.path)?,
@@ -274,6 +275,13 @@ fn built(ctx: &Context, config: &Config, slug: &str, repo: &Repo) -> Result<Wiki
     removed?;
     let message = format!("wiki {slug} {}", wiki.commit);
     bucket::keep_wiki(ctx, config, slug, &state::text(&wiki), &message)?;
+    let kept = serde_json::to_value(&wiki).expect("a Wiki is plain data");
+    if let Err(no) = ask::embedded(ctx, config, slug, &kept) {
+        let why = no.error;
+        world.log(&format!(
+            "could not embed the Wiki of {slug}, so ask embeds it first: {why}"
+        ));
+    }
     Ok(wiki)
 }
 
@@ -380,10 +388,22 @@ fn files(world: &dyn World, dir: &str) -> WorldResult<Vec<File>> {
     Ok(files)
 }
 
-/// The `[wiki]` launch's headless, read-only call, its prompt to fill in:
-/// opencode's `run`, on a server of its own, so that the config denying
-/// every write is the one it runs on.
-fn headless(config: &Config) -> Result<Headless, Refusal> {
+/// The tools a part's call may not use: every one that writes or leaves its
+/// folder. `execute` reaches the user's own MCP servers, some of which write.
+const WRITES: [&str; 7] = [
+    "edit",
+    "bash",
+    "webfetch",
+    "websearch",
+    "task",
+    "external_directory",
+    "execute",
+];
+
+/// The `[wiki]` launch's headless call, its prompt to fill in, with the
+/// tools `denied` (`*` for every one): opencode's `run`, on a server of its
+/// own, so that the config denying them is the one it runs on.
+pub fn headless(config: &Config, denied: &[&str]) -> Result<Headless, Refusal> {
     let launch = &config.wiki.launch;
     let command = (launch.harness == "opencode")
         .then(|| config.harnesses[&launch.harness].command.clone())
@@ -403,16 +423,6 @@ fn headless(config: &Config) -> Result<Headless, Refusal> {
         args.extend(["-m".into(), model]);
     }
     args.extend(["--format".into(), "json".into()]);
-    // `execute` reaches the user's own MCP servers, some of which write.
-    let denied = [
-        "edit",
-        "bash",
-        "webfetch",
-        "websearch",
-        "task",
-        "external_directory",
-        "execute",
-    ];
     let permission: serde_json::Map<String, Value> = (denied.iter())
         .map(|tool| (tool.to_string(), json!("deny")))
         .collect();
