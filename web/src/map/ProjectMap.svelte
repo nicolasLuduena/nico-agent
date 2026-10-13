@@ -322,7 +322,7 @@
               >
             {/if}
             {#if a}<circle class="agent {a}" cx="231" cy="71" r="4" />{/if}
-            {#if n.line}<text class="review" x="32" y="98" use:fit_text={[n.line, 236]}></text>{/if}
+            {#if n.line}<text class="line" x="32" y="98" use:fit_text={[n.line, 236]}></text>{/if}
           </g>
         {/each}
       </g>
@@ -475,7 +475,7 @@
   }
   .unknown,
   .draft,
-  .review {
+  .line {
     fill: var(--ink-muted);
   }
   .pr {
@@ -525,7 +525,7 @@
   .selected .repo,
   .selected .unknown,
   .selected .draft,
-  .selected .review {
+  .selected .line {
     fill: var(--reversed-ink);
   }
   .selected .agent.working,

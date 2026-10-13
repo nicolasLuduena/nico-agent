@@ -7,7 +7,7 @@ until the Project sets it and editable there, then one panel per Repo with its R
 room, switches, settings, Install and Remove. A default set on the tab reaches every Repo that does not set
 it. With more than one Repo, each node names its Repo after its number; a Blocker outside the
 Project stays a node with no Stage. A Waiting node says why under its Stage and in its panel: an
-issue blocked by an issue in another Repo of its Project waits on it to close and, when that Repo
+issue whose Blocker is in another Repo of its Project waits on it to close and, when that Repo
 has an Install, on that Install to run after the close; it is never stacked on it. `GET
 /api/map/<project>` answers the map, the name percent-decoded.
 

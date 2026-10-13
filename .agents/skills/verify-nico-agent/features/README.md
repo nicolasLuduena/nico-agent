@@ -25,8 +25,9 @@ recipe.
 - Run page actions through `$C page`, by ARIA role and accessible name; `ROLE~NAME` only where the
   name carries a time (strip rows).
 - Change outside state only through `$C seed` and `$C drift`; read state through `$C state`.
-- Use the issue numbers the fixtures give: 1 to 6 from `seed issues`, verify/second's 1 and 2
-  from `seed issues second`, above 6 for `seed dispatch`.
+- Use the issue numbers the fixtures give: 1 to 6 from `seed issues`, verify/second's 1 to 3
+  from `seed issues second`, above 6 for `seed dispatch` (not 20: `seed issues second`'s closed
+  Blocker).
 - Do not remove proof artifacts during cleanup.
 
 ## Proof and skip reporting
@@ -77,8 +78,8 @@ commands, and observable proof.
   and Paused rows (its Check rows are in [checks.md](./checks.md)).
 - [A tab and a map per Project](./project-tabs.md) covers a Project of two Repos on the page: one
   tab, `GET /api/map/<project>` with nodes from both, each naming its Repo, a Blocker edge across
-  them and an outside Blocker with no Stage, a Waiting node saying why, an issue blocked across
-  Repos waiting on its Blocker to close and then on that Repo's Install, the Project's defaults
+  them and an outside Blocker with no Stage, a Waiting node saying why, an issue waiting on a
+  Blocker in another Repo to close and then on that Repo's Install, the Project's defaults
   edited on the tab reaching every Repo that does not set its own, the phone select and a strip row
   opening the Project's tab.
 - [Where each PR's review stands](./review.md) covers `review` in `status` and the page: the node's

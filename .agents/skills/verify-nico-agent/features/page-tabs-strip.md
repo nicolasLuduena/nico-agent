@@ -41,8 +41,8 @@ Preconditions:
   and `$C seed issues`, then `$C page --evidence "$E/02-tabs"`. `tablist "Projects"` has `tab
   "verify/fixture" [selected]` and `tab "verify/second"`; `tabpanel "verify/fixture"` holds `region
   "Map of verify/fixture"` with node buttons `#1, Verify: a Ready issue, Ready`, `#3, Verify: waits
-  on #1, Waiting, waits on verify/fixture#1 to close`, `#4, Verify: assigned to someone else, Waiting`, `#5, Verify: a Research issue,
-  Ready`, `#6, Verify: stacks on #9 PR, Stackable` and `#9, Verify: a Blocker in review, Blocker`
+  on #1, Waiting, waits on verify/fixture#1 to close`, `#4, Verify: assigned to someone else,
+  Waiting`, `#5, Verify: a Research issue, Ready`, `#6, Verify: stacks on #9 PR, Stackable` and `#9, Verify: a Blocker in review, Blocker`
   (no `#2`: not labelled); the paragraph reads `Source read <time> · PRs not checked yet`.
 - **Click a tab.** Run `$C page --evidence "$E/03-click" --click "tab=verify/second" --expect "Source not read yet"`.
   `tab "verify/second" [selected]`; `tabpanel "verify/second"` with `Nothing on this map`;

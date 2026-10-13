@@ -470,7 +470,7 @@ fn waiting(t: &Setup, index: usize) -> Vec<String> {
 }
 
 #[test]
-fn an_issue_blocked_in_another_repo_of_its_project_waits_on_its_close_then_on_its_install_then_is_ready()
+fn an_issue_whose_blocker_is_in_another_repo_of_its_project_waits_on_its_close_then_on_its_install_then_is_ready()
  {
     let t = in_a_project(Some("make install"));
     t.world.add_issue(
@@ -510,7 +510,7 @@ fn an_issue_blocked_in_another_repo_of_its_project_waits_on_its_close_then_on_it
 }
 
 #[test]
-fn an_issue_blocked_in_another_repo_of_its_project_with_no_install_is_ready_on_its_close_and_never_stacked()
+fn an_issue_whose_blocker_is_in_another_repo_of_its_project_with_no_install_is_ready_on_its_close_and_never_stacked()
  {
     let t = in_a_project(None);
     t.world.add_issue(

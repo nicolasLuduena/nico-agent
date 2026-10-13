@@ -197,12 +197,12 @@ Flat, like the printed sheet. Depth is drawn with rules, never with blur. The on
 
 Structure is square (`rounded.none`): nodes, the band, tabs, the panel, the sheet. Controls (buttons, inputs, selects, toggles) get `rounded.control` (2px) so they read as pressable.
 
-**Node** (248×88px, `hairline` frame, `surface` fill), three rows, and a fourth while it is PR draft:
+**Node** (248×88px, `hairline` frame, `surface` fill), three rows, and a fourth while it is PR draft or Waiting:
 
 1. The issue number (`number`) on the left, followed, when the Project has more than one Repo, by its Repo's name (`strong`, `ink-muted`, ellipsized); `RESEARCH` (`label`, `ink-muted`) on the right for a research issue, and nothing for code, which nearly every node is. The panel names the kind either way.
 2. The title (`body`), one line, ellipsized.
 3. The Stage cell: a 14px mark in a fixed cell, then the Stage word (`strong`), in its mark's colour when that is a working one (Implementing and PR draft `live`, Verified `verified`, Failed `failed`), like a departures board's status column, and in `ink` for every other Stage. The panel's Stage word does the same; the selected node reverses it with the rest. On the right, the Agent state mark (an 8px dot: `live` filled = working, hollow = idle, `signal` = Asking, none = no agent) and the PR number with "draft" when it is one.
-4. Under the Stage word, where its review stands (`body`, `ink-muted`): `reviewing`, `review off`, `review gave up`, … The node is 22px taller for it.
+4. Under the Stage word, where its review stands (`body`, `ink-muted`): `reviewing`, `review off`, `review gave up`, …; while Waiting, why, without its own key (`waits on acme/web#1 to close`), ellipsized. The node is 22px taller for it.
 
 **Stage marks** (shape carries the state; colour repeats it, and the Stage word repeats the working colours):
 
@@ -229,7 +229,7 @@ A node that needs you carries a 4px `signal` flag across its top edge.
 
 **Tabs:** text tabs on a hairline baseline, each Project's name set in `head` (it heads the work below it), 24px apart with no side padding, so the first aligns with the gutter and the underline is as wide as the name. The active tab is `ink` with a 3px `rule` underline; the others are `ink-muted`.
 
-**Panel and sheet:** the `head` title with a `#number` link to the issue (`#number name`, its Repo's, when the Project has more than one), then sections separated by hairlines, each with a `label` head: PR (link, draft flag), Failure when the Dispatch Failed (the error in `strong` on the errata rule, then the step it stopped at), Restarts (rows of time, then reason), Review (where the review stands, in a line, unless a Verdict on the head says it; then the Verdict: the result word in its colour, the sha in tabular figures, the time, then the findings text wrapped at a 70-character measure), Evidence (one link per file, under `/bucket/`). Opening it moves focus to its title; closing it returns focus to the node or strip row that opened it.
+**Panel and sheet:** the `head` title with a `#number` link to the issue (`#number name`, its Repo's, when the Project has more than one), then sections separated by hairlines, each with a `label` head: PR (link, draft flag), then for a Waiting issue why it waits, whole (`body`, no head), Failure when the Dispatch Failed (the error in `strong` on the errata rule, then the step it stopped at), Restarts (rows of time, then reason), Review (where the review stands, in a line, unless a Verdict on the head says it; then the Verdict: the result word in its colour, the sha in tabular figures, the time, then the findings text wrapped at a 70-character measure), Evidence (one link per file, under `/bucket/`). Opening it moves focus to its title; closing it returns focus to the node or strip row that opened it.
 
 ## Components
 

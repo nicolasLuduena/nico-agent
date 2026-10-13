@@ -169,6 +169,8 @@ pub fn repo_in<'c>(config: &'c Config, slug: &str, key: &str) -> Option<&'c Stri
     let (found, _) = match github_ref(key) {
         Some((of, _)) => repos.find(|(s, _)| s.eq_ignore_ascii_case(of)),
         None => {
+            // shortcut: a Repo whose `linear.team` is the team's name or id places
+            // none; match those too once a Repo is set so.
             let (team, _) = key.rsplit_once('-')?;
             repos.find(|(_, r)| r.linear.as_ref().is_some_and(|l| l.team == team))
         }
@@ -346,7 +348,7 @@ pub fn readiness(read: &Read, dispatches: &[Dispatch], prs: &Prs) -> Readiness {
                 base: Some(pr.head_branch.clone()),
                 ..row
             }),
-            Start::Waits(reason) | Start::Split(reason) => readiness.waiting.push(Row {
+            Start::Waits(reason) => readiness.waiting.push(Row {
                 reason: Some(reason),
                 ..row
             }),
@@ -361,10 +363,9 @@ pub enum Start<'a> {
     Ready,
     /// On the one branch its unresolved Blockers' open PRs sit on: Stackable.
     Stacked(&'a BlockerPr),
-    /// An unresolved Blocker has no open PR here: why it waits.
+    /// An unresolved Blocker has no open PR here, or their open PRs sit on
+    /// several branches: why it waits.
     Waits(String),
-    /// Their open PRs sit on several branches: why it waits.
-    Split(String),
 }
 
 pub fn start(issue: &Issue) -> Start<'_> {
@@ -391,7 +392,7 @@ pub fn start(issue: &Issue) -> Start<'_> {
         return Start::Stacked(prs[0]);
     }
     let urls: Vec<&str> = prs.iter().map(|p| p.url.as_str()).collect();
-    Start::Split(format!(
+    Start::Waits(format!(
         "{} waits for its Blockers' open PRs {} to merge down to one; they sit on different branches",
         issue.key,
         urls.join(", ")
@@ -436,7 +437,7 @@ pub fn why_not_ready(read: &Read, key: &str) -> Option<String> {
     };
     why_not_startable(issue, &read.user).or_else(|| match start(issue) {
         Start::Ready | Start::Stacked(_) => None,
-        Start::Waits(reason) | Start::Split(reason) => Some(reason),
+        Start::Waits(reason) => Some(reason),
     })
 }
 

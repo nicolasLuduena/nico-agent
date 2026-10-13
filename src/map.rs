@@ -148,21 +148,21 @@ pub fn map(ctx: &Context, name: &str) -> Result<Option<Value>, Refusal> {
             .or_else(|| held.get(key).copied())
             .or_else(|| source::repo_in(&config, slugs.first()?, key).map(String::as_str));
         let mut node = json!({
-                "key": key,
-                "repo": repo,
-                "title": title,
-                "url": url,
-                "kind": if research { "research" } else { "code" },
-                "stage": stage,
-                "agent_state": shown["agent_state"],
-                "pr": pr,
-                "review": shown["review"],
-                "verdict": if verdict.is_null() { Value::Null } else {
-                    json!({ "result": verdict["result"], "sha": verdict["sha"], "at": verdict["at"] })
-                },
-                "restarts": d.map_or(0, |d| d.restarts.len()),
-                "created_at": issue.map(|i| &i.created_at),
-                "merged_at": d.and_then(merged_at),
+            "key": key,
+            "repo": repo,
+            "title": title,
+            "url": url,
+            "kind": if research { "research" } else { "code" },
+            "stage": stage,
+            "agent_state": shown["agent_state"],
+            "pr": pr,
+            "review": shown["review"],
+            "verdict": if verdict.is_null() { Value::Null } else {
+                json!({ "result": verdict["result"], "sha": verdict["sha"], "at": verdict["at"] })
+            },
+            "restarts": d.map_or(0, |d| d.restarts.len()),
+            "created_at": issue.map(|i| &i.created_at),
+            "merged_at": d.and_then(merged_at),
         });
         // Why a Waiting node waits, as `status` says it.
         if let Some(waiting) = row("waiting", key).filter(|_| stage == "Waiting") {
