@@ -210,10 +210,12 @@ pub fn ask(
         ..wiki::headless(ctx, config, false, None).map_err(|no| no.error)?
     };
     let dir = ctx.config_dir.display().to_string();
-    let answer = (world.harness_headless(&dir, &[call], 1).pop())
-        .expect("an answer to the call")
-        .map_err(|e| e.0)?
-        .text;
+    let answer = (world
+        .harness_headless(&dir, &[call], 1, &mut |_, _| {})
+        .pop())
+    .expect("an answer to the call")
+    .map_err(|e| e.0)?
+    .text;
     let sentences = parsed(&answer).ok_or_else(|| {
         format!("the wiki model's answer does not read, so use find_component: {answer}")
     })?;

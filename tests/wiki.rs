@@ -905,7 +905,7 @@ fn progress_seen_during(t: &Setup, prefix: &str) -> std::rc::Rc<std::cell::RefCe
 }
 
 #[test]
-fn while_a_build_runs_its_progress_file_holds_its_counts_after_each_call_and_after_it_none() {
+fn while_a_build_runs_its_progress_file_counts_each_call_as_it_starts_and_after_it_none() {
     let t = with_repo("[wiki]\ncalls = 3");
     let core = json!({ "name": "Core", "summary": "The crate.", "files": ["src/lib.rs", "src/config.rs"] });
     let web = json!({ "name": "Web", "summary": "The page.", "files": ["web/app.ts"] });
@@ -931,37 +931,36 @@ fn while_a_build_runs_its_progress_file_holds_its_counts_after_each_call_and_aft
     let ran = t.cli(&["wiki", "build", "acme/api", "--json"]);
 
     assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
-    let progress = |made: u64, reached: u64, asked: u64, asking: &str| {
-        json!({
-            "at": "2026-09-30T12:00:00Z",
-            "calls": 3,
-            "made": made,
-            "depth": 7,
-            "reached": reached,
-            "asked": asked,
-            "sent_back": made.min(2) - 1,
-            "gaps": 0,
-            "asking": asking,
-        })
-    };
+    let progress =
+        |made: u64, reached: u64, asked: u64, sent_back: u64, gaps: u64, now: &[&str]| {
+            json!({
+                "at": "2026-09-30T12:00:00Z",
+                "calls": 3,
+                "made": made,
+                "depth": 7,
+                "reached": reached,
+                "asked": asked,
+                "sent_back": sent_back,
+                "gaps": gaps,
+                "now": now,
+            })
+        };
     assert_eq!(
         *seen.borrow(),
         [
-            progress(1, 0, 1, "acme/api"),
-            progress(2, 0, 1, "acme/api"),
-            progress(3, 1, 2, "acme/api > Core"),
+            progress(1, 0, 1, 0, 0, &["acme/api"]),
+            progress(2, 0, 1, 1, 0, &["acme/api"]),
+            progress(3, 1, 2, 1, 0, &["acme/api > Core"]),
         ]
     );
-    // Web, past the calls, is a Gap once the last call answered.
-    let mut last = progress(3, 1, 2, "acme/api > Core");
-    last["gaps"] = json!(1);
-    assert_eq!(*at_commit.borrow(), [last]);
+    // Its last call answered, and Web, past the calls, a Gap.
+    assert_eq!(*at_commit.borrow(), [progress(3, 1, 2, 1, 1, &[])]);
     assert!(!t.config_dir.join("wiki/acme/api/progress.json").exists());
     assert_eq!(ran.json()["gaps"], json!({ "budget": 1 }));
 }
 
 #[test]
-fn a_build_that_fails_leaves_no_progress_file() {
+fn a_depth_s_calls_count_one_by_one_and_a_build_that_fails_leaves_no_progress_file() {
     let t = with_repo("");
     divided(&t);
     answer(
@@ -975,8 +974,17 @@ fn a_build_that_fails_leaves_no_progress_file() {
 
     // Web has no answer scripted: its call errors, and the build fails.
     assert_eq!(ran.exit_code, 1, "{}", ran.stdout);
-    assert_eq!(seen.borrow().len(), 3);
-    assert_eq!(seen.borrow()[2]["asking"], "acme/api > Web");
+    let counts: Vec<(Value, Value)> = (seen.borrow().iter())
+        .map(|p| (p["made"].clone(), p["now"].clone()))
+        .collect();
+    assert_eq!(
+        counts,
+        [
+            (json!(1), json!(["acme/api"])),
+            (json!(2), json!(["acme/api > Core"])),
+            (json!(3), json!(["acme/api > Web"])),
+        ]
+    );
     assert!(!t.config_dir.join("wiki/acme/api/progress.json").exists());
 }
 

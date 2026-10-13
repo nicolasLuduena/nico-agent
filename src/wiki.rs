@@ -37,7 +37,7 @@ use crate::install::base;
 use crate::launch;
 use crate::repo;
 use crate::state;
-use crate::world::{Answered, Headless, World, WorldResult};
+use crate::world::{Answered, Called, Headless, World, WorldResult};
 
 /// Each Wiki's last build, by its id: a Repo's slug, or a Library version's.
 pub const FILE: &str = "wikis.json";
@@ -91,13 +91,13 @@ pub struct Built {
 }
 
 /// How far a build has got, in `wiki/<folder>/progress.json` beside its
-/// `build.lock`: written after each call and each Gap, removed once the
-/// build ends, built or failed.
+/// `build.lock`: written as it starts, as each call starts and answers and
+/// at each Gap, removed once the build ends, built or failed.
 #[derive(Default, Serialize, Deserialize)]
 struct Progress {
-    /// When the build started.
+    /// When the build started; as `status` shows it, when its Run did.
     at: String,
-    /// The calls it may make, and those it made.
+    /// The calls it may make, and those it started.
     calls: u32,
     made: u32,
     /// How deep it may divide, and the deepest part it asked.
@@ -107,13 +107,44 @@ struct Progress {
     asked: usize,
     sent_back: usize,
     gaps: usize,
-    /// The trail of the part asked last.
-    asking: String,
+    /// The trails of the parts asked now, each till its call answers.
+    now: Vec<String>,
 }
 
 impl Progress {
-    fn keep(&self, file: &Path) -> io::Result<()> {
-        state::update(file, |_| Ok::<_, io::Error>((state::text(self), ())))
+    /// Count `called`, a call about `part` in its correction round `round`
+    /// (0: its first ask), and keep it: started, a call made, its part asked
+    /// or sent back, and asked now; answered, asked no more.
+    fn told(&mut self, file: &Path, called: Called, part: &Part, round: u32) {
+        match called {
+            Called::Started => {
+                self.made += 1;
+                match round {
+                    0 => self.asked += 1,
+                    // One sent back again in a later round was counted in its first.
+                    1 => self.sent_back += 1,
+                    _ => {}
+                }
+                self.reached = self.reached.max(part.depth);
+                self.now.push(part.trail.clone());
+            }
+            Called::Answered => self.now.retain(|trail| *trail != part.trail),
+        }
+        self.keep(file);
+    }
+
+    fn keep(&self, file: &Path) {
+        // A build never fails for its progress: it is only shown.
+        let _ = state::update(file, |_| Ok::<_, io::Error>((state::text(self), ())));
+    }
+}
+
+/// A build's [`Progress`] file, removed however the build ends.
+struct Removed(PathBuf);
+
+impl Drop for Removed {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.0);
     }
 }
 
@@ -751,8 +782,6 @@ pub fn build(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
     let of = named(ctx, &config, id)?;
     let how = how.first().map(|how| &how[2..]);
     let (id, built) = (&of.id(), built(ctx, &config, &of, how));
-    // One left behind never shows: its Run closes on the outcome, and the next build's is newer.
-    let _ = fs::remove_file(of.progress(&ctx.config_dir));
     let at = state::iso(ctx.world.now());
     let outcome = match &built {
         Ok(wiki) => {
@@ -1117,6 +1146,8 @@ fn built(ctx: &Context, config: &Config, of: &Of, how: Option<&str>) -> Result<W
     let folder = ctx.config_dir.join("wiki").join(of.folder());
     // One build of a Wiki at a time: another would remove its checkout.
     let _building = state::lock(&folder.join("build"))?;
+    // Dropped first, so removed while the lock is still held; one a build that died left is older than its next Run.
+    let _progress = Removed(of.progress(&ctx.config_dir));
     let dir = folder.join("checkout").display().to_string();
     // One a build that died left behind.
     world.git_worktree_remove(&clone, &dir)?;
@@ -1234,38 +1265,41 @@ fn described(
         depth: budget.depth,
         ..Progress::default()
     };
+    progress.keep(&file);
     while !frontier.is_empty() {
         // Why each part goes unasked, if it does: the calls go to the first ones.
-        let mut unasked: Vec<Option<&'static str>> = vec![];
-        for part in &frontier {
-            unasked.push(if part.depth > budget.depth {
-                Some("depth")
-            } else if calls_left == 0 {
-                Some("budget")
-            } else {
-                calls_left -= 1;
-                let call = budget.calls - calls_left;
-                world.log(&format!(
-                    "{}: asked (call {call} of {})",
-                    part.trail, budget.calls
-                ));
-                progress.made = call;
-                progress.asked += 1;
-                progress.reached = progress.reached.max(part.depth);
-                progress.asking = part.trail.clone();
-                progress.keep(&file)?;
-                None
-            });
-        }
-        let calls: Vec<Headless> = (frontier.iter().zip(&unasked))
+        let unasked: Vec<Option<&'static str>> = (frontier.iter())
+            .map(|part| {
+                if part.depth > budget.depth {
+                    Some("depth")
+                } else if calls_left == 0 {
+                    Some("budget")
+                } else {
+                    calls_left -= 1;
+                    let call = budget.calls - calls_left;
+                    world.log(&format!(
+                        "{}: asked (call {call} of {})",
+                        part.trail, budget.calls
+                    ));
+                    None
+                }
+            })
+            .collect();
+        let called: Vec<&Part> = (frontier.iter().zip(&unasked))
             .filter(|(_, unasked)| unasked.is_none())
-            .map(|(part, _)| Headless {
+            .map(|(part, _)| part)
+            .collect();
+        let calls: Vec<Headless> = (called.iter())
+            .map(|part| Headless {
                 prompt: prompt(id, part, &lines),
                 ..call.clone()
             })
             .collect();
         let at_once = budget.concurrency as usize;
-        let mut answers = world.harness_headless(dir, &calls, at_once).into_iter();
+        let mut told = |i, c| progress.told(&file, c, called[i], 0);
+        let mut answers = world
+            .harness_headless(dir, &calls, at_once, &mut told)
+            .into_iter();
         let mut asked = vec![];
         for (part, unasked) in frontier.drain(..).zip(unasked) {
             let answered = match unasked {
@@ -1302,11 +1336,6 @@ fn described(
                     budget.calls - calls_left,
                     budget.calls
                 ));
-                progress.made = budget.calls - calls_left;
-                // Only one sent back in a round is sent back in the next.
-                progress.sent_back += usize::from(round == 1);
-                progress.asking = a.part.trail.clone();
-                progress.keep(&file)?;
                 if a.unread {
                     failed.insert(0, "your last reply: it is no JSON object of either shape, leaf or division, so the claims below are of the answer before it".into());
                 }
@@ -1322,7 +1351,8 @@ fn described(
                 break;
             }
             let (which, corrections): (Vec<usize>, Vec<Headless>) = sent.into_iter().unzip();
-            let replies = world.harness_headless(dir, &corrections, at_once);
+            let mut told = |j: usize, c| progress.told(&file, c, &asked[which[j]].part, round);
+            let replies = world.harness_headless(dir, &corrections, at_once, &mut told);
             for (i, reply) in which.into_iter().zip(replies) {
                 let (reply, a) = (reply?, &mut asked[i]);
                 let answered = a.answered.as_mut().expect("sent back");
@@ -1345,14 +1375,14 @@ fn described(
                 world.log(&format!("{}: not asked ({reason}), a Gap", part.trail));
                 components.push(gap(part, reason));
                 progress.gaps += 1;
-                progress.keep(&file)?;
+                progress.keep(&file);
                 continue;
             };
             let trail = part.trail.clone();
             let (component, parts, dropped) = read(part, &answered.text, &lines, &mut ids, reason);
             if !component.gaps.is_empty() {
                 progress.gaps += component.gaps.len();
-                progress.keep(&file)?;
+                progress.keep(&file);
             }
             for why in &dropped {
                 world.log(&format!("{trail}: dropped {why}"));

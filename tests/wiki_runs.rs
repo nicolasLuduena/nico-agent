@@ -732,16 +732,21 @@ fn a_build_a_button_queued_at_the_wiki_hour_leaves_its_base_check_till_it_is_bui
     );
 }
 
+/// The progress of a build of `acme/api` started at `at`, half-way
+/// through its calls.
+fn half_way_progress(at: &str) -> Value {
+    json!({
+        "at": at, "calls": 48, "made": 17, "depth": 7, "reached": 2,
+        "asked": 15, "sent_back": 2, "gaps": 1, "now": ["acme/api > Core", "acme/api > Web"],
+    })
+}
+
 /// The build of `acme/api` started at `at`, half-way through its calls, as
 /// `nico-agent wiki build` keeps its progress while it runs.
 fn half_way(t: &Setup, at: &str) {
-    let progress = json!({
-        "at": at, "calls": 48, "made": 17, "depth": 7, "reached": 2,
-        "asked": 15, "sent_back": 2, "gaps": 1, "asking": "acme/api > Core",
-    });
     let file = t.config_dir.join("wiki/acme/api/progress.json");
     std::fs::create_dir_all(file.parent().unwrap()).unwrap();
-    std::fs::write(file, progress.to_string()).unwrap();
+    std::fs::write(file, half_way_progress(at).to_string()).unwrap();
 }
 
 #[test]
@@ -755,11 +760,7 @@ fn a_building_wiki_shows_its_builds_progress_from_its_runs_start_and_a_queued_on
 
     assert_eq!(
         shown[0]["progress"],
-        json!({
-            "at": "2026-09-30T12:00:00Z",
-            "calls": 48, "made": 17, "depth": 7, "reached": 2,
-            "asked": 15, "sent_back": 2, "gaps": 1, "asking": "acme/api > Core",
-        })
+        half_way_progress("2026-09-30T12:00:00Z")
     );
     assert_eq!(
         (&shown[1]["state"], &shown[1]["progress"]),
@@ -821,11 +822,7 @@ fn the_wikis_listed_hold_one_not_built_yet_while_queued_building_with_its_progre
             "progress": progress,
         })
     };
-    let progress = json!({
-        "at": "2026-09-30T12:00:00Z",
-        "calls": 48, "made": 17, "depth": 7, "reached": 2,
-        "asked": 15, "sent_back": 2, "gaps": 1, "asking": "acme/api > Core",
-    });
+    let progress = half_way_progress("2026-09-30T12:00:00Z");
     assert_eq!(
         building,
         (

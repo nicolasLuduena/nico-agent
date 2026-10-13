@@ -150,8 +150,8 @@ commands, and observable proof.
   --continue` asking only the budget Gaps at the Wiki's commit, and the refusals.
 - [A Wiki build's progress on the page](./wiki-progress.md) covers `wiki/<folder>/progress.json`
   while a build runs and gone after, `progress` in `status`'s `wikis` and `GET /api/wikis` only
-  while its Run is open, the header's calls, depth, parts, Gaps and part asked moving without a
-  Refresh on a desk and a phone (`seed pace`), and a Wiki never built listed and headed while
+  while its Run is open, the header's calls, depth, parts, Gaps and the parts asked now (two at once)
+  moving without a Refresh on a desk and a phone (`seed pace`), and a Wiki never built listed and headed while
   its first build waits, runs or failed.
 - [Library Wikis](./library-wikis.md) covers a Library version linked or added in `config.toml`
   queued at the next refresh, built once at its tag (`drift tag`) from a bare clone in the config

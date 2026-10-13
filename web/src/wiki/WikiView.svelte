@@ -205,12 +205,12 @@
             >
           {/if}
         </div>
-        {#if picked.state === "building" && picked.progress}
+        {#if picked.progress}
           <p class="progress">
             <span>
               {#each progressed(picked.progress) as segment, n (n)}{n > 0 ? " · " : ""}<span class="whole">{segment}</span>{/each}
             </span>
-            <span class="muted asking">Asking {picked.progress.asking}</span>
+            {#if picked.progress.now.length > 0}<span class="muted now">Now on {picked.progress.now.join(", ")}</span>{/if}
           </p>
         {/if}
         {#if sent && !sent.ok}
@@ -363,7 +363,7 @@
   .refused {
     flex-basis: 100%;
   }
-  /* The counts, then the part asked last, on their own line under the state and the buttons. */
+  /* The counts, then the parts asked now, on their own line under the state and the buttons. */
   .progress {
     display: flex;
     flex-basis: 100%;
@@ -374,7 +374,7 @@
   .whole {
     white-space: nowrap;
   }
-  .asking {
+  .now {
     min-width: 0;
     overflow-wrap: anywhere;
   }

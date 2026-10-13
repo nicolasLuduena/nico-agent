@@ -64,7 +64,7 @@ test("a Library version's Wiki is named by its slug and tag, then its subfolder 
 });
 
 test("a build's progress counts its calls and depth against its budget, then its parts, those sent back and its Gaps", () => {
-  const progress = { at: "2026-09-30T12:00:00Z", calls: 48, made: 17, depth: 7, reached: 2, asked: 15, sent_back: 2, gaps: 3, asking: "acme/api > Core" };
+  const progress = { at: "2026-09-30T12:00:00Z", calls: 48, made: 17, depth: 7, reached: 2, asked: 15, sent_back: 2, gaps: 3, now: ["acme/api > Core"] };
   expect(progressed(progress)).toEqual(["Call 17 of 48", "depth 2 of 7", "15 parts asked, 2 sent back", "3 Gaps"]);
   expect(progressed({ ...progress, made: 1, reached: 0, asked: 1, sent_back: 0, gaps: 0 })).toEqual(["Call 1 of 48", "depth 0 of 7", "1 part asked, none sent back", "no Gap"]);
   expect(progressed({ ...progress, gaps: 1 })[3]).toBe("1 Gap");

@@ -36,11 +36,11 @@ export interface Listed {
   state: "built" | "building" | "queued" | "failed";
   pane: string | null;
   why: string | null;
-  /** How far the build its Run runs has got; null but while one is open and has made a call. */
+  /** How far the build its Run runs has got; null but while one is open and its build has started. */
   progress: Progress | null;
 }
 
-/** A build's progress: when its Run started, the calls it `made` of its `calls`, the deepest part it `reached` of its `depth`, the parts asked, those sent back for a correction round, the Gaps so far, and the part `asking` last, by its trail. */
+/** A build's progress: when its Run started, the calls it `made` (started) of its `calls`, the deepest part it `reached` of its `depth`, the parts asked, those sent back for a correction round, the Gaps so far, and the parts asked `now`, by their trails. */
 export interface Progress {
   at: string;
   calls: number;
@@ -50,7 +50,7 @@ export interface Progress {
   asked: number;
   sent_back: number;
   gaps: number;
-  asking: string;
+  now: string[];
 }
 
 /** A build's progress, a line of segments the page keeps whole: "Call 17 of 48", "depth 2 of 7", "15 parts asked, 2 sent back", "3 Gaps". */
