@@ -68,10 +68,14 @@ ollama = "http://127.0.0.1:11434"
 [prompts]
 implement = "{sigil}implement {issueUrl} as draft PR against {baseBranch}, saving its Evidence under {evidenceFolder}/ in the worktree and linking it to {bucketUrl}"
 research = "{sigil}research {issueUrl}; write the findings with sources to one Markdown file under docs/research/ and open it as a draft PR against {baseBranch}"
-faux_nico = '{sigil}faux-nico {issueUrl}: the Implementer asks "{question}". Read PRODUCT.md, the issue and its parent. Answer with nico-agent answer {issue} --text "..." --by faux-nico only when they settle it; otherwise end your turn without answering.'
+faux_nico = '{sigil}faux-nico {issueUrl}: the Implementer asks "{question}". Read PRODUCT.md, the issue and its parent. Answer with nico-agent answer {issue} --text "..." --by faux-nico only when they settle it; otherwise end your turn without answering.{wikiLine}'
 review = "{sigil}verdict {prUrl} for {issueUrl}: re-run the repo's verification skill under .agents/skills/verify-*/ against the PR's head, saving its Evidence under {evidenceFolder}/, and record the result with nico-agent verdict {issue} pass|fail --sha {headSha} --findings <file>"
 quality_scan = "{sigil}quality-scan {repoSlug}"
-morning = "{sigil}morning: the night is in nico-agent status --json --since {lastMorningAt}. Write the summary to {configDir}/morning.md, with one line on the Wikis its `wikis` lists built or failed since then."
+morning = "{sigil}morning: the night is in nico-agent status --json --since {lastMorningAt}. Write the summary to {configDir}/morning.md, with one line on the Wikis its `wikis` lists built or failed since then.{wikiLine}"
+# faux_nico's and morning's `{wikiLine}`: `wiki` for each Wiki they are given,
+# then faux_nico_wiki for faux-nico's; nothing when they are given none.
+wiki = " The Wiki of {repo} describes {sha}; where it and the code disagree, the code wins."
+faux_nico_wiki = " The Wiki says what the code does, never what was decided: never answer from it."
 # Appended to implement and research, as is, when the GitHub App is installed on the Repo.
 bot_suffix = ", opened with `ghbot pr create` (not `gh`); end every commit message with the trailer `Co-authored-by: nicolasluduena-coding-agent[bot] <324920906+nicolasluduena-coding-agent[bot]@users.noreply.github.com>`"
 
@@ -93,6 +97,7 @@ models = ["fable", "opus", "sonnet", "haiku"]
 efforts = ["low", "medium", "high", "xhigh", "max"]
 trust_prompt = { text = "Yes, I trust this folder", keys = ["down", "enter"] }
 skill_dirs = ["~/.claude/skills", ".claude/skills"]
+mcp_args = ["--mcp-config", '{"mcpServers":{"wiki":{"command":"nico-agent","args":{mcpArgs}}}}', "--allowedTools", "mcp__wiki__*"]
 
 [harnesses.codex]
 launch_mode = "herdr-kind"
@@ -108,9 +113,15 @@ trust_args = ["-c", 'projects={"{repoPath}"={trust_level="trusted"}}']
 startup_questions = ["Hooks need review", "review before"]
 # ~/.codex/skills is where its skill installer still puts them.
 skill_dirs = ["~/.codex/skills", "~/.agents/skills", ".agents/skills"]
+# The wiki MCP's tools approved outright, so no call waits on the user.
+mcp_args = [
+  "-c", 'mcp_servers.wiki.command="nico-agent"', "-c", "mcp_servers.wiki.args={mcpArgs}",
+  "-c", 'mcp_servers.wiki.default_tools_approval_mode="approve"',
+]
 
 # Its TUI takes no model or Effort flag: the model goes in
-# OPENCODE_CONFIG_CONTENT and the Effort in its variant file.
+# OPENCODE_CONFIG_CONTENT and the Effort in its variant file, and the wiki
+# MCP there too, whose tools it allows by default.
 [harnesses.opencode]
 launch_mode = "pane-command"
 command = "opencode2"
@@ -351,6 +362,12 @@ pub struct Harness {
     pub trust_args: Vec<String>,
     #[serde(default)]
     pub extra_args: Vec<String>,
+    /// What adds the wiki MCP to a launch given Wikis, its tools allowed:
+    /// each with `{mcpArgs}` filled in, `nico-agent mcp`'s arguments serving
+    /// them as a JSON array. A `pane-command` one (opencode) has the MCP in
+    /// its `OPENCODE_CONFIG_CONTENT` instead.
+    #[serde(default)]
+    pub mcp_args: Vec<String>,
     /// The models and Efforts it takes; unset, any.
     pub models: Option<Vec<String>>,
     pub efforts: Option<Vec<String>>,
@@ -391,6 +408,8 @@ pub struct Prompts {
     pub review: String,
     pub quality_scan: String,
     pub morning: String,
+    pub wiki: String,
+    pub faux_nico_wiki: String,
     pub bot_suffix: String,
     pub restart: RestartPrompts,
 }

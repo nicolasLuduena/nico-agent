@@ -409,7 +409,9 @@ fn run_step(
                 "implementer",
             )?;
         }
-        "agent start" => *ready = launch::start(world, harness, &record.implementer, &repo.path)?,
+        "agent start" => {
+            *ready = launch::start(world, harness, &record.implementer, &repo.path, &[])?
+        }
         "agent ready" => {
             let worktree = record.worktree.as_ref().expect(made);
             launch::get_ready(world, harness, &record.implementer, worktree, *ready)?;

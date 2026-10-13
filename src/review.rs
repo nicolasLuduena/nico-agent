@@ -220,7 +220,7 @@ fn start(
     );
     let harness = &config.harnesses[&reviewer.harness];
     launch::open_tab(ctx.world, reviewer, workspace, worktree, "reviewer")?;
-    let ready = launch::start(ctx.world, harness, reviewer, repo_path)?;
+    let ready = launch::start(ctx.world, harness, reviewer, repo_path, &[])?;
     launch::get_ready(ctx.world, harness, reviewer, worktree, ready)?;
     let values = [
         ("sigil", harness.sigil.as_str()),

@@ -80,19 +80,21 @@ pub fn open_tab(
     Ok(())
 }
 
-/// Start the Harness in the agent's pane, trusting `repo_path` (the clone):
-/// whether herdr found it ready for its prompt.
+/// Start the Harness in the agent's pane, trusting `repo_path` (the clone),
+/// with the wiki MCP serving `wikis` if any: whether herdr found it ready
+/// for its prompt.
 pub fn start(
     world: &dyn World,
     harness: &Harness,
     launch: &AgentLaunch,
     repo_path: &str,
+    wikis: &[String],
 ) -> WorldResult<bool> {
     let pane = launch
         .pane
         .as_deref()
         .expect("the tab step opened its pane");
-    let args = args(harness, launch, repo_path);
+    let args = args(harness, launch, repo_path, wikis);
     match harness.launch_mode {
         LaunchMode::HerdrKind => {
             let kind = harness.kind.as_deref().expect("config requires a kind");
@@ -102,7 +104,7 @@ pub fn start(
             if let (Some(file), Some(model)) = (&harness.variant_file, &launch.model) {
                 world.opencode_save_variant(file, model, launch.effort.as_deref())?;
             }
-            world.herdr_pane_run(pane, &pane_command(harness, launch, &args))?;
+            world.herdr_pane_run(pane, &pane_command(harness, launch, &args, wikis))?;
             Ok(false)
         }
     }
@@ -190,13 +192,16 @@ fn flat(text: &str) -> String {
     text.split_whitespace().collect()
 }
 
-/// The model and Effort arguments of those set, then the trust and extra ones, filled in.
-fn args(harness: &Harness, launch: &AgentLaunch, repo_path: &str) -> Vec<String> {
+/// The model and Effort arguments of those set, then the trust and extra
+/// ones, and the MCP ones when given Wikis, filled in.
+fn args(harness: &Harness, launch: &AgentLaunch, repo_path: &str, wikis: &[String]) -> Vec<String> {
     let (model, effort) = (&launch.model, &launch.effort);
+    let mcp = json!(mcp_args(wikis)).to_string();
     let values = [
         ("model", model.as_deref().unwrap_or_default()),
         ("effort", effort.as_deref().unwrap_or_default()),
         ("repoPath", repo_path),
+        ("mcpArgs", &mcp),
     ];
     let set = |args: &[String], is_set: bool| if is_set { args.to_vec() } else { vec![] };
     [
@@ -204,6 +209,7 @@ fn args(harness: &Harness, launch: &AgentLaunch, repo_path: &str) -> Vec<String>
         set(&harness.effort_args, effort.is_some()),
         harness.trust_args.clone(),
         harness.extra_args.clone(),
+        set(&harness.mcp_args, !wikis.is_empty()),
     ]
     .concat()
     .iter()
@@ -211,10 +217,22 @@ fn args(harness: &Harness, launch: &AgentLaunch, repo_path: &str) -> Vec<String>
     .collect()
 }
 
+/// `nico-agent mcp`'s arguments serving `wikis`.
+fn mcp_args(wikis: &[String]) -> Vec<&str> {
+    let named = wikis.iter().flat_map(|wiki| ["--wiki", wiki]);
+    ["mcp"].into_iter().chain(named).collect()
+}
+
 /// opencode's command line, as on `main`: the model with the Effort as its
 /// variant in `OPENCODE_CONFIG_CONTENT`, for the build agent too (which keeps
-/// its own otherwise), then its own private server and `args`.
-fn pane_command(harness: &Harness, launch: &AgentLaunch, args: &[String]) -> String {
+/// its own otherwise), and the wiki MCP when given Wikis, then its own
+/// private server and `args`.
+fn pane_command(
+    harness: &Harness,
+    launch: &AgentLaunch,
+    args: &[String],
+    wikis: &[String],
+) -> String {
     let command = harness
         .command
         .as_deref()
@@ -224,12 +242,20 @@ fn pane_command(harness: &Harness, launch: &AgentLaunch, args: &[String]) -> Str
         .chain(args.iter().map(String::as_str))
         .map(shell_word)
         .collect();
+    let mut config = json!({});
     if let Some(model) = &launch.model {
         let model = launch
             .effort
             .as_ref()
             .map_or(model.clone(), |effort| format!("{model}#{effort}"));
-        let config = json!({ "model": model, "agents": { "build": { "model": model } } });
+        config["model"] = json!(model);
+        config["agents"] = json!({ "build": { "model": model } });
+    }
+    if !wikis.is_empty() {
+        let command = [vec!["nico-agent"], mcp_args(wikis)].concat();
+        config["mcp"] = json!({ "wiki": { "type": "local", "command": command } });
+    }
+    if config != json!({}) {
         words.insert(
             0,
             format!(

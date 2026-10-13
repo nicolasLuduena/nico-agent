@@ -1,6 +1,7 @@
 //! faux-nico: behind a Repo's `answer` switch, a fresh agent started for each
 //! new Asking, in a worktree of the Repo at the Dispatch's Base, prompted to
-//! answer it with `answer` only when the Repo's docs settle it. Each is a Run,
+//! answer it with `answer` only when the Repo's docs settle it, given the
+//! Repo's Wiki when its `wiki` switch is on and it is built. Each is a Run,
 //! closed as any; when it ends with its Dispatch still Asking, the user is told.
 
 use std::io;
@@ -10,6 +11,7 @@ use crate::away::{self, Run, Trigger};
 use crate::cli::{Context, Refusal};
 use crate::config::{Config, fill_in};
 use crate::dispatch::{self, Dispatch};
+use crate::wiki;
 
 /// Tell the user of each Asking a faux-nico of `ended`, the Runs the tick
 /// just closed, left unanswered. Then start a faux-nico for each Dispatch
@@ -41,15 +43,21 @@ pub fn step(ctx: &Context, config: &Config, ended: &[Run]) -> Result<Vec<String>
         };
         let chosen = repo.or_implementer(&repo.faux_nico);
         let sigil = &config.harnesses[&chosen.harness].sigil;
+        let (wikis, mut wiki_line) = wiki::given(&ctx.config_dir, config, [(&d.repo, &repo)])?;
+        if !wikis.is_empty() {
+            wiki_line += &config.prompts.faux_nico_wiki;
+        }
         let values = [
             ("sigil", sigil.as_str()),
             ("issueUrl", &d.url),
             ("question", &asking.question),
             ("issue", &d.issue),
+            ("wikiLine", &wiki_line),
         ];
         let text = fill_in(&config.prompts.faux_nico, &values);
-        let start =
-            |run: &mut Run| away::start_on_worktree(ctx, config, &repo, &d.base, run, &text);
+        let start = |run: &mut Run| {
+            away::start_on_worktree(ctx, config, &repo, &d.base, run, &text, &wikis)
+        };
         said.push(away::start_run(ctx, trigger, Some(&d.repo), chosen, start)?);
     }
     Ok(said)
