@@ -12,7 +12,7 @@ use serde_json::{Value, json};
 use crate::cli::{Context, Refusal};
 use crate::config::{Config, fill_in};
 use crate::state;
-use crate::wiki::{self, Anchor};
+use crate::wiki::{self, Anchor, Of};
 use crate::world::Headless;
 
 /// The embeddings of a Wiki's records, in its folder in the config directory.
@@ -102,16 +102,17 @@ fn records(wiki: &Value) -> Vec<Record<'_>> {
         .collect()
 }
 
-/// Each record of `wiki`, the Wiki of `slug`, with its embedding: those the
-/// config directory lacks embedded through Ollama now, and kept there.
+/// Each record of `wiki`, the Wiki kept in the folder `folder`, with its
+/// embedding: those the config directory lacks embedded through Ollama now,
+/// and kept there.
 pub fn embedded<'a>(
     ctx: &Context,
     config: &Config,
-    slug: &str,
+    folder: &str,
     wiki: &'a Value,
 ) -> Result<Vec<(Record<'a>, Vec<f32>)>, Refusal> {
     let (records, model) = (records(wiki), &config.wiki.embed_model);
-    let file = ctx.config_dir.join("wiki").join(slug).join(VECTORS);
+    let file = ctx.config_dir.join("wiki").join(folder).join(VECTORS);
     // Under its lock: two asks at once embed a Wiki once.
     let vectors = state::update(&file, |text| {
         // One that does not read is made again, as a missing one is.
@@ -145,20 +146,18 @@ pub fn embedded<'a>(
         .collect())
 }
 
-/// What `ask` answers `question` with from `wiki`, the Wiki of `slug`, whose
-/// Repo's clone is `clone`: the sentences of the wiki model's answer that
-/// cite only Anchors of the records closest to the question, and the
-/// Interpretations they cite.
+/// What `ask` answers `question` with from `wiki`, the Wiki `of`: the
+/// sentences of the wiki model's answer that cite only Anchors of the
+/// records closest to the question, and the Interpretations they cite.
 pub fn ask(
     ctx: &Context,
     config: &Config,
-    slug: &str,
-    clone: &str,
+    of: &Of,
     wiki: &Value,
     question: &str,
 ) -> Result<Value, String> {
-    let world = ctx.world;
-    let records = embedded(ctx, config, slug, wiki).map_err(|_| UNAVAILABLE.to_string())?;
+    let (world, slug, clone) = (ctx.world, &of.id(), &of.clone(&ctx.config_dir));
+    let records = embedded(ctx, config, &of.folder(), wiki).map_err(|_| UNAVAILABLE.to_string())?;
     let (ollama, model) = (&config.wiki.ollama, &config.wiki.embed_model);
     let asked = (world.ollama_embed(ollama, model, &[question.into()]).ok())
         .and_then(|mut asked| asked.pop())
@@ -201,7 +200,11 @@ pub fn ask(
         }
     }
     // The records last: code they quote is never taken for a placeholder.
-    let values = [("repo", slug), ("question", question), ("records", &shown)];
+    let values = [
+        ("repo", slug.as_str()),
+        ("question", question),
+        ("records", &shown),
+    ];
     let call = Headless {
         prompt: fill_in(PROMPT, &values),
         ..wiki::headless(config, &["*"]).map_err(|no| no.error)?

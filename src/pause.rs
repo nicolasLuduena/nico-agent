@@ -195,6 +195,9 @@ impl World for Guarded<'_> {
     fn git_ls_tree_blobs(&self, path: &str, rev: &str) -> WorldResult<Vec<(String, String)>> {
         self.world.git_ls_tree_blobs(path, rev)
     }
+    fn git_fetch_tag(&self, path: &str, url: &str, tag: &str) -> WorldResult<()> {
+        self.world.git_fetch_tag(path, url, tag)
+    }
     fn harness_headless(
         &self,
         cwd: &str,

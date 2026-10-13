@@ -450,6 +450,29 @@ impl World for FakeWorld {
             .collect())
     }
 
+    /// The files at the tag in `tree`, under `url`, are the bare repo's at
+    /// the tag from now on; a tag `url` lacks fails as git's fetch does.
+    fn git_fetch_tag(&self, path: &str, url: &str, tag: &str) -> WorldResult<()> {
+        let refspec = format!("+refs/tags/{tag}:refs/tags/{tag}");
+        let fetch = format!("fetch --quiet --depth 1 {url} {refspec}");
+        self.call(format!(
+            "git init --bare --quiet {path} && git -C {path} {fetch}"
+        ))?;
+        let at = format!("{url} refs/tags/{tag}:");
+        let fetched: Vec<(String, String)> = (self.tree.borrow().iter())
+            .filter_map(|(key, text)| Some((key.strip_prefix(&at)?.to_string(), text.clone())))
+            .collect();
+        if fetched.is_empty() {
+            return Err(WorldError(format!(
+                "`git {fetch}` failed in {path}: fatal: couldn't find remote ref refs/tags/{tag}"
+            )));
+        }
+        for (file, text) in fetched {
+            self.add_tree_file(path, &format!("refs/tags/{tag}"), &file, &text);
+        }
+        Ok(())
+    }
+
     /// One at a time, each answered as `headless` scripts it.
     fn harness_headless(
         &self,

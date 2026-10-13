@@ -1,5 +1,6 @@
-//! A Repo's Wiki, built from scratch by `wiki build`. Its code at
-//! `origin/<base>` is divided top-down, as know-the-map's hermeneut does:
+//! A Repo's or a Library version's Wiki, built from scratch by `wiki build`.
+//! Its code, a Repo's at `origin/<base>` or a Library version's at its tag
+//! under its subfolder, is divided top-down, as know-the-map's hermeneut does:
 //! each part is one headless, read-only call of the `[wiki]` launch, and
 //! code checks every answer, sending each claim that fails back to the
 //! model in the same session, up to 3 rounds, then dropping it and recording
@@ -7,7 +8,7 @@
 //! records are embedded for `ask`; the build's outcome in `wikis.json`, last.
 //!
 //! The loop runs each build as a Run in a herdr pane, one at a time across
-//! every Repo and outside every room, the others waiting in `wiki-queue.json`.
+//! every Wiki and outside every room, the others waiting in `wiki-queue.json`.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io;
@@ -22,16 +23,16 @@ use crate::ask;
 use crate::away::{self, Run, Trigger};
 use crate::bucket;
 use crate::cli::{Context, Refusal};
-use crate::config::{self, Config, Repo, fill_in};
+use crate::config::{self, Config, Library, Repo, fill_in};
 use crate::launch;
 use crate::repo;
 use crate::state;
 use crate::world::{Answered, Headless, World, WorldResult};
 
-/// Each Wiki's last build, by its id: a Repo's slug.
+/// Each Wiki's last build, by its id: a Repo's slug, or a Library version's.
 pub const FILE: &str = "wikis.json";
 
-/// The Wikis waiting for a build, and when each Repo's was last checked.
+/// The Wikis waiting for a build, and when each one was last checked.
 const QUEUE: &str = "wiki-queue.json";
 
 /// The id of a Wiki's top Component: the whole of its code.
@@ -79,16 +80,18 @@ pub struct Built {
 struct Queue {
     /// By id, in the order they start.
     waiting: Vec<String>,
-    /// When each Repo's Wiki was last checked against its Base, by slug.
+    /// When each Wiki was last checked: a Repo's against its Base, a Library
+    /// version's for having none, by id.
     #[serde(default)]
     checked: BTreeMap<String, String>,
 }
 
-/// Close the wiki Run whose build ended; check the Wiki of each Repo with
-/// its `wiki` switch on, once a day from the wiki hour and at once when the
-/// switch turns on, queueing it when it has none or its `origin/<base>`
-/// moved from its commit; then start the first queued while no wiki Run is
-/// open. A check that fails is said and tried again next tick. What it said.
+/// Close the wiki Run whose build ended; check each Wiki the loop builds
+/// (a Repo's with its `wiki` switch on, and each Library version's) once a
+/// day from the wiki hour and at once when it first is one, queueing it when
+/// it has none or, a Repo's, when its `origin/<base>` moved from its commit;
+/// then start the first queued while no wiki Run is open. A check that fails
+/// is said and tried again next tick. What it said.
 pub fn step(ctx: &Context, config: &Config) -> Result<Vec<String>, Refusal> {
     let mut said = close(ctx)?;
     let outcomes = load(&ctx.config_dir)?;
@@ -97,54 +100,64 @@ pub fn step(ctx: &Context, config: &Config) -> Result<Vec<String>, Refusal> {
     let queue: Queue = state::load(&ctx.config_dir.join(QUEUE))?;
     let slot = state::iso(away::last_slot(ctx, None, config.wiki.hour));
     let (mut queued, mut checked) = (vec![], vec![]);
-    for (slug, repo) in config.repos.iter().filter(|(_, r)| r.switches.wiki) {
-        let due = queue.checked.get(slug).is_none_or(|at| *at < slot);
-        let why = match outcomes.get(slug).and_then(Outcome::wiki) {
+    for of in every(config).into_iter().filter(Of::looped) {
+        let id = of.id();
+        let due = queue.checked.get(&id).is_none_or(|at| *at < slot);
+        let why = match (outcomes.get(&id).and_then(Outcome::wiki), &of) {
             // Checked today, or its build in hand is today's.
-            _ if !due || queue.waiting.contains(slug) || open == Some(slug) => None,
-            None => Some("it has none".into()),
-            Some(Built { commit, .. }) => match base_head(ctx.world, repo) {
-                Err(e) => {
-                    said.push(format!("could not check {slug}'s Base for its Wiki: {e}"));
-                    continue;
+            _ if !due || queue.waiting.contains(&id) || open == Some(&id) => None,
+            (None, _) => Some("it has none".into()),
+            // A tag never moves: a Library version's Wiki is built once.
+            (Some(_), Of::Library(_)) => None,
+            (Some(Built { commit, .. }), Of::Repo(slug, repo)) => {
+                match base_head(ctx.world, repo) {
+                    Err(e) => {
+                        said.push(format!("could not check {slug}'s Base for its Wiki: {e}"));
+                        continue;
+                    }
+                    Ok((_, head)) if head == *commit => None,
+                    Ok((base, head)) => {
+                        Some(format!("origin/{base} moved from {commit} to {head}"))
+                    }
                 }
-                Ok((_, head)) if head == *commit => None,
-                Ok((base, head)) => Some(format!("origin/{base} moved from {commit} to {head}")),
-            },
+            }
         };
-        queued.extend(why.map(|why| (slug, why)));
+        queued.extend(why.map(|why| (id.clone(), why)));
         if due {
-            checked.push(slug);
+            checked.push(id);
         }
     }
     let now = state::iso(ctx.world.now());
     let next = update_queue(&ctx.config_dir, |queue| {
-        // Off, a Repo's Wiki is built no more: one waiting waits no longer,
-        // and its check is forgotten, so it is checked once the switch is on.
-        let on = |id: &String| config.repos.get(id).is_some_and(|r| r.switches.wiki);
+        // A Repo's switched off, or a Library version no longer linked nor
+        // added, is built no more: one waiting waits no longer, and its check
+        // is forgotten, so it is checked once it is one again.
+        let on = |id: &String| of(config, id).is_some_and(|of| of.looped());
         queue.waiting.retain(on);
         queue.checked.retain(|id, _| on(id));
-        for (slug, why) in queued {
-            queue.waiting.push(slug.clone());
-            said.push(format!("{slug}: wiki queued, {why}"));
+        for (id, why) in queued {
+            said.push(format!("{id}: wiki queued, {why}"));
+            queue.waiting.push(id);
         }
-        for slug in checked {
-            queue.checked.insert(slug.clone(), now.clone());
+        for id in checked {
+            queue.checked.insert(id, now.clone());
         }
         (open.is_none() && !queue.waiting.is_empty()).then(|| queue.waiting.remove(0))
     })?;
     if let Some(slug) = next {
-        let repo = &config.repos[&slug];
+        let cwd = match of(config, &slug).expect("only a Wiki the loop builds waits") {
+            Of::Repo(_, repo) => repo.path.clone(),
+            // No clone of its own till its build fetches one.
+            Of::Library(_) => ctx.config_dir.display().to_string(),
+        };
         let start = |run: &mut Run| {
-            let workspace = (run.workspace).insert(
-                ctx.world
-                    .herdr_workspace_create(&repo.path, &run.launch.agent)?,
-            );
+            let workspace =
+                (run.workspace).insert(ctx.world.herdr_workspace_create(&cwd, &run.launch.agent)?);
             let label = run.trigger.label();
-            launch::open_tab(ctx.world, &mut run.launch, workspace, &repo.path, label)?;
+            launch::open_tab(ctx.world, &mut run.launch, workspace, &cwd, label)?;
             let pane = run.launch.pane.as_deref().expect("its tab is open");
             // Its shell exits with it, so a pane gone is a build ended.
-            let command = format!("nico-agent wiki build {slug}; exit");
+            let command = format!("nico-agent wiki build {}; exit", launch::shell_word(&slug));
             Ok(ctx.world.herdr_pane_run(pane, &command)?)
         };
         let chosen = config.wiki.launch.clone();
@@ -168,7 +181,10 @@ fn close(ctx: &Context) -> Result<Vec<String>, Refusal> {
     let Some(run) = open_run(&runs) else {
         return Ok(vec![]);
     };
-    let id = run.repo.as_deref().expect("a wiki Run is of a Repo");
+    let id = run
+        .repo
+        .as_deref()
+        .expect("a wiki Run is of a Wiki, by its id");
     // Asked first: a pane gone is a build exited, its outcome written if any.
     let gone = match (&run.failure, &run.launch.pane) {
         (None, Some(pane)) => match ctx.world.herdr_pane_exists(pane) {
@@ -239,7 +255,7 @@ pub fn shown(config_dir: &Path, runs: &[Run]) -> io::Result<Vec<Value>> {
             };
             let mut shown = json!({
                 "wiki": id,
-                "target": { "repo": id },
+                "target": Target::of(id),
                 "state": state,
                 "commit": null,
                 "built_at": null,
@@ -308,9 +324,100 @@ struct Wiki {
     components: Vec<Component>,
 }
 
+/// What a Wiki is of: a Repo, or a Library version at its tag and subfolder.
 #[derive(Serialize)]
 struct Target {
     repo: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tag: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    path: Option<String>,
+}
+
+impl Target {
+    /// What the Wiki `id` is of, read back as [`Library::id`] writes it.
+    fn of(id: &str) -> Target {
+        let (repo, version) = id.split_once('@').unwrap_or((id, ""));
+        let (tag, path) = match version.split_once(':') {
+            Some((tag, path)) => (tag, Some(path.into())),
+            None => (version, None),
+        };
+        let tag = (!tag.is_empty()).then(|| tag.into());
+        Target {
+            repo: repo.into(),
+            tag,
+            path,
+        }
+    }
+}
+
+/// A Wiki the config names: a Repo's, of its code at its Base, or a Library
+/// version's, of its code at its tag under its subfolder.
+pub enum Of<'a> {
+    Repo(&'a str, &'a Repo),
+    Library(&'a Library),
+}
+
+impl Of<'_> {
+    /// Whether the loop builds it: a Repo's with its `wiki` switch on, and
+    /// every Library version's.
+    fn looped(&self) -> bool {
+        match self {
+            Of::Repo(_, repo) => repo.switches.wiki,
+            Of::Library(_) => true,
+        }
+    }
+
+    /// Its id: the Repo's slug, or the Library version's.
+    pub fn id(&self) -> String {
+        match self {
+            Of::Repo(slug, _) => slug.to_string(),
+            Of::Library(library) => library.id(),
+        }
+    }
+
+    /// Where it is kept, under `wiki/` in the Bucket and in the config
+    /// directory: the Repo's slug, or `<owner/name>/<tag>[/<path>]`, the
+    /// tag's `%` and `/` escaped so that it is one folder.
+    // shortcut: a tag named as a Repo's own files there (`checkout`, `vectors.json`) shares them; escape such a tag if one is ever used.
+    pub fn folder(&self) -> String {
+        match self {
+            Of::Repo(slug, _) => slug.to_string(),
+            Of::Library(Library { repo, tag, path }) => {
+                let tag = tag.replace('%', "%25").replace('/', "%2F");
+                let path = path.as_ref().map_or(String::new(), |p| format!("/{p}"));
+                format!("{repo}/{tag}{path}")
+            }
+        }
+    }
+
+    /// The clone holding its commits: the Repo's, or the Library's bare one,
+    /// cached in the config directory for every version of it.
+    pub fn clone(&self, config_dir: &Path) -> String {
+        match self {
+            Of::Repo(_, repo) => repo.path.clone(),
+            Of::Library(library) => {
+                let clone = config_dir.join("libraries").join(&library.repo);
+                format!("{}.git", clone.display())
+            }
+        }
+    }
+}
+
+/// The Wiki `id` names, if the config has it: a Repo's by its slug, in any
+/// casing, or a Library version's by its id.
+pub fn of<'a>(config: &'a Config, id: &str) -> Option<Of<'a>> {
+    match config.repo(id) {
+        Some((slug, repo)) => Some(Of::Repo(slug, repo)),
+        None => config.libraries().remove(id).map(Of::Library),
+    }
+}
+
+/// Every Wiki the config names: each Repo's, then each Library version's.
+pub fn every(config: &Config) -> Vec<Of<'_>> {
+    let repos = (config.repos.iter()).map(|(slug, repo)| Of::Repo(slug, repo));
+    let libraries = config.libraries().into_values().map(Of::Library);
+    repos.chain(libraries).collect()
 }
 
 #[derive(Serialize)]
@@ -450,16 +557,24 @@ struct Part {
     relationships: Vec<Relationship>,
 }
 
-/// `wiki build <owner/name>`: build the Repo's Wiki from scratch and keep it
-/// in the Bucket, writing how it went to `wikis.json` as the last act.
+/// `wiki build <wiki>`: build the Wiki of a Repo or a Library version from
+/// scratch and keep it in the Bucket, writing how it went to `wikis.json` as
+/// the last act.
 pub fn build(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
     let args = Args::parse("wiki build", args, &[])?;
-    let slug = args.positionals(&["<owner/name>"])?[0];
+    let id = args.positionals(&["<owner/name>"])?[0];
     let config = config::load(&ctx.config_dir)?;
-    let (slug, repo) = config
-        .repo(slug)
-        .ok_or_else(|| repo::not_configured(slug))?;
-    let built = built(ctx, &config, slug, repo);
+    let of = of(&config, id).ok_or_else(|| match id.contains('@') {
+        true => Refusal::new(
+            format!("{id} is no Library version a Repo links or [wiki] adds"),
+            vec![format!(
+                "Link it in a Repo's `libraries`, or add it to `libraries` under [wiki], in {}",
+                ctx.config_dir.join(config::FILE).display()
+            )],
+        ),
+        false => repo::not_configured(id),
+    })?;
+    let (id, built) = (&of.id(), built(ctx, &config, &of));
     let at = state::iso(ctx.world.now());
     let outcome = match &built {
         Ok(wiki) => {
@@ -480,29 +595,30 @@ pub fn build(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
             built: None,
         },
     };
-    keep(&ctx.config_dir, slug, &outcome)?;
+    keep(&ctx.config_dir, id, &outcome)?;
     let mut said = serde_json::to_value(&outcome).expect("an outcome is plain data");
-    said["wiki"] = json!(slug);
+    said["wiki"] = json!(id);
     built.map(|_| said).map_err(|no| Refusal {
-        error: format!("could not build the Wiki of {slug}: {}", no.error),
+        error: format!("could not build the Wiki of {id}: {}", no.error),
         ..no
     })
 }
 
-/// `GET /api/wikis`: each Repo's Wiki the Bucket holds, by its id, with the
-/// commit it describes, when it was built and how many Gaps it has.
+/// `GET /api/wikis`: each Wiki the Bucket holds of a Repo or a Library
+/// version, by its id, with the commit it describes, when it was built and
+/// how many Gaps it has.
 pub fn list(ctx: &Context) -> Result<Value, Refusal> {
     let config = config::load(&ctx.config_dir)?;
     let mut wikis = vec![];
-    for slug in config.repos.keys() {
-        let Some(wiki) = kept(ctx, &config, slug)? else {
+    for of in every(&config) {
+        let Some(wiki) = kept(ctx, &config, &of)? else {
             continue;
         };
         let gaps: usize = (wiki["components"].as_array().into_iter().flatten())
             .filter_map(|c| c["gaps"].as_array().map(Vec::len))
             .sum();
         wikis.push(json!({
-            "id": slug,
+            "id": of.id(),
             "target": wiki["target"],
             "commit": wiki["commit"],
             "builtAt": wiki["builtAt"],
@@ -513,56 +629,68 @@ pub fn list(ctx: &Context) -> Result<Value, Refusal> {
 }
 
 /// `GET /api/wiki/<id>`: the Wiki `id` names, as the Bucket holds it; none
-/// for an id no Repo has, or a Repo whose Wiki was never built.
+/// for an id the config does not name, or a Wiki never built.
 pub fn get(ctx: &Context, id: &str) -> Result<Option<Value>, Refusal> {
     let config = config::load(&ctx.config_dir)?;
-    match config.repo(id) {
-        Some((slug, _)) => kept(ctx, &config, slug),
+    match of(&config, id) {
+        Some(of) => kept(ctx, &config, &of),
         None => Ok(None),
     }
 }
 
-/// The Wiki of the Repo `slug` the Bucket holds.
-fn kept(ctx: &Context, config: &Config, slug: &str) -> Result<Option<Value>, Refusal> {
-    let Some(text) = bucket::wiki(ctx.world, config, slug)? else {
+/// The Wiki `of` the Bucket holds.
+fn kept(ctx: &Context, config: &Config, of: &Of) -> Result<Option<Value>, Refusal> {
+    let Some(text) = bucket::wiki(ctx.world, config, &of.folder())? else {
         return Ok(None);
     };
+    let id = of.id();
     let wiki = serde_json::from_slice(&text).map_err(|e| {
         Refusal::new(
-            format!("the Wiki of {slug} in the Bucket is not JSON: {e}"),
-            vec![format!("Build it again: nico-agent wiki build {slug}")],
+            format!("the Wiki of {id} in the Bucket is not JSON: {e}"),
+            vec![format!("Build it again: nico-agent wiki build {id}")],
         )
     })?;
     Ok(Some(wiki))
 }
 
-/// The Wiki of the Repo `slug`, built on a checkout of its Base, removed
-/// after, and kept in the Bucket.
-fn built(ctx: &Context, config: &Config, slug: &str, repo: &Repo) -> Result<Wiki, Refusal> {
+/// The Wiki `of`, built on a checkout of a Repo's Base or a Library
+/// version's tag, removed after, and kept in the Bucket.
+fn built(ctx: &Context, config: &Config, of: &Of) -> Result<Wiki, Refusal> {
     let (world, call) = (ctx.world, headless(config, &WRITES)?);
-    let base = match &repo.base {
-        Some(base) => base.clone(),
-        None => world.git_default_branch(&repo.path)?,
+    let (id, clone) = (&of.id(), of.clone(&ctx.config_dir));
+    let rev = match of {
+        Of::Repo(_, repo) => {
+            let base = match &repo.base {
+                Some(base) => base.clone(),
+                None => world.git_default_branch(&repo.path)?,
+            };
+            world.git_fetch(&clone, None)?;
+            format!("origin/{base}")
+        }
+        Of::Library(Library { repo, tag, .. }) => {
+            let url = format!("https://github.com/{repo}.git");
+            world.git_fetch_tag(&clone, &url, tag)?;
+            format!("refs/tags/{tag}")
+        }
     };
-    world.git_fetch(&repo.path, None)?;
-    let folder = ctx.config_dir.join("wiki").join(slug);
+    let folder = ctx.config_dir.join("wiki").join(of.folder());
     // One build of a Wiki at a time: another would remove its checkout.
     let _building = state::lock(&folder.join("build"))?;
     let dir = folder.join("checkout").display().to_string();
     // One a build that died left behind.
-    world.git_worktree_remove(&repo.path, &dir)?;
-    world.git_worktree_add(&repo.path, &dir, &format!("origin/{base}"))?;
-    let wiki = described(ctx, config, slug, &dir, &call);
-    let removed = world.git_worktree_remove(&repo.path, &dir);
+    world.git_worktree_remove(&clone, &dir)?;
+    world.git_worktree_add(&clone, &dir, &rev)?;
+    let wiki = described(ctx, config, of, &dir, &call);
+    let removed = world.git_worktree_remove(&clone, &dir);
     let wiki = wiki?;
     removed?;
-    let message = format!("wiki {slug} {}", wiki.commit);
-    bucket::keep_wiki(ctx, config, slug, &state::text(&wiki), &message)?;
+    let message = format!("wiki {id} {}", wiki.commit);
+    bucket::keep_wiki(ctx, config, &of.folder(), &state::text(&wiki), &message)?;
     let kept = serde_json::to_value(&wiki).expect("a Wiki is plain data");
-    if let Err(no) = ask::embedded(ctx, config, slug, &kept) {
+    if let Err(no) = ask::embedded(ctx, config, &of.folder(), &kept) {
         let why = no.error;
         world.log(&format!(
-            "could not embed the Wiki of {slug}, so ask embeds it first: {why}"
+            "could not embed the Wiki of {id}, so ask embeds it first: {why}"
         ));
     }
     Ok(wiki)
@@ -585,24 +713,28 @@ struct Asked {
 fn described(
     ctx: &Context,
     config: &Config,
-    slug: &str,
+    of: &Of,
     dir: &str,
     call: &Headless,
 ) -> Result<Wiki, Refusal> {
-    let (world, budget) = (ctx.world, &config.wiki);
+    let (world, budget, id) = (ctx.world, &config.wiki, &of.id());
     let commit = world.git_rev(dir, "HEAD")?;
-    let files = files(world, dir)?;
+    let under = match of {
+        Of::Library(library) => library.path.as_deref(),
+        Of::Repo(..) => None,
+    };
+    let files = files(world, dir, under)?;
     let lines: HashMap<&str, usize> = (files.iter()).map(|f| (f.path.as_str(), f.lines)).collect();
     world.log(&format!(
-        "building the Wiki of {slug} at {commit}: {} calls, {} deep, {} at once",
+        "building the Wiki of {id} at {commit}: {} calls, {} deep, {} at once",
         budget.calls, budget.depth, budget.concurrency
     ));
     let mut frontier = vec![Part {
         id: INDEX.into(),
-        name: slug.into(),
+        name: id.clone(),
         parent: None,
         summary: String::new(),
-        trail: slug.into(),
+        trail: id.clone(),
         files: files.iter().map(|f| f.path.clone()).collect(),
         depth: 0,
         relationships: vec![],
@@ -631,7 +763,7 @@ fn described(
         let calls: Vec<Headless> = (frontier.iter().zip(&unasked))
             .filter(|(_, unasked)| unasked.is_none())
             .map(|(part, _)| Headless {
-                prompt: prompt(slug, part, &lines),
+                prompt: prompt(id, part, &lines),
                 ..call.clone()
             })
             .collect();
@@ -727,7 +859,7 @@ fn described(
     }
     Ok(Wiki {
         version: 1,
-        target: Target { repo: slug.into() },
+        target: Target::of(id),
         commit,
         built_at: state::iso(world.now()),
         files,
@@ -735,10 +867,14 @@ fn described(
     })
 }
 
-/// Each file of the checkout in `dir`, by path, with its blob and line count.
-fn files(world: &dyn World, dir: &str) -> WorldResult<Vec<File>> {
+/// Each file of the checkout in `dir`, under the folder `under` if one, by
+/// its path from the checkout's root, with its blob and line count.
+fn files(world: &dyn World, dir: &str, under: Option<&str>) -> WorldResult<Vec<File>> {
     let mut files = vec![];
     for (path, blob) in world.git_ls_tree_blobs(dir, "HEAD")? {
+        if under.is_some_and(|under| !path.starts_with(&format!("{under}/"))) {
+            continue;
+        }
         let held = world
             .read_file(&format!("{dir}/{path}"))?
             .unwrap_or_default();
@@ -1041,7 +1177,7 @@ fn unique(parent: &str, name: &str, ids: &mut HashSet<String>) -> String {
 }
 
 /// Why a claim citing `anchors` rests on no real lines: it cites none, or
-/// one not inside a file of the Repo, as `lines` counts them.
+/// one not inside a file of the Wiki, as `lines` counts them.
 fn unanchored(anchors: &[Anchor], lines: &HashMap<&str, usize>) -> Option<String> {
     if anchors.is_empty() {
         return Some("it cites no Anchor".into());
@@ -1053,7 +1189,7 @@ fn unanchored(anchors: &[Anchor], lines: &HashMap<&str, usize>) -> Option<String
                 a.start, a.end, a.path
             )
         }),
-        None => Some(format!("{} is not a file of the Repo", a.path)),
+        None => Some(format!("{} is not one of the Wiki's files", a.path)),
     })
 }
 

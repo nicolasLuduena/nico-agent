@@ -304,6 +304,10 @@ pub trait World {
     /// Each file at `rev` in the clone at `path`, every folder down, as its
     /// path and its blob; no symlink nor submodule.
     fn git_ls_tree_blobs(&self, path: &str, rev: &str) -> WorldResult<Vec<(String, String)>>;
+    /// Fetch the tag `tag` of `url`, its commit alone, into the bare repo at
+    /// `path`, made first if missing: one kept across fetches, with the
+    /// user's own git credentials.
+    fn git_fetch_tag(&self, path: &str, url: &str, tag: &str) -> WorldResult<()>;
 
     // Harnesses
     /// Make each of `calls` in the folder `cwd`, with no input, up to
@@ -1198,6 +1202,14 @@ impl World for RealWorld {
                 }
             })
             .collect())
+    }
+    fn git_fetch_tag(&self, path: &str, url: &str, tag: &str) -> WorldResult<()> {
+        fs::create_dir_all(path).map_err(|e| WorldError(format!("could not make {path}: {e}")))?;
+        // Again on a bare repo, it only says so: its objects stay.
+        git_ok(path, &["init", "--bare", "--quiet"])?;
+        let refspec = format!("+refs/tags/{tag}:refs/tags/{tag}");
+        let fetch = ["fetch", "--quiet", "--depth", "1", url, &refspec];
+        git_env(path, &fetch, &[BATCH_SSH]).map(drop)
     }
     fn harness_headless(
         &self,

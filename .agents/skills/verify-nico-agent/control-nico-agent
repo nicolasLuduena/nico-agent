@@ -22,7 +22,7 @@
 #                                 such as `verify/fixture > Docs`, only the calls asking about that part
 #   seed correction <file>|none   what the wiki model answers each correction (a call with -s): <file>'s text,
 #                                 or none (then the answer for its part)
-#   drift push <n>|stale|pause|below merged|closed|base
+#   drift push <n>|stale|pause|below merged|closed|base|tag <tag>
 #                                 what GitHub would change: a new PR head, an old read, a rate limit,
 #                                 the PR below a Stacked dispatch merged or closed unmerged,
 #                                 verify/fixture's Base moved on (and fetched)
@@ -576,15 +576,40 @@ cmd_drift() {
       head="$(fgit "$FIXTURE_CLONE" rev-parse origin/main)"
       jq -n --arg old "$old" --arg head "$head" '{ base: "main", old: $old, head: $head }'
       ;;
-    *) die "drift: usage: drift push <n> | drift stale | drift pause | drift below merged|closed | drift base" ;;
+    # A tag pushed to verify/second on GitHub, as a Library's release: a commit off its main,
+    # which stays where it was, adding lib/greet.sh and lib/README.md under the subfolder lib/.
+    tag)
+      local tag="${2:-}" work="$RUN_DIR/fixture/second-tag" commit
+      [ -n "$tag" ] || die "drift: usage: drift tag <tag>"
+      rm -rf "$work"
+      fgit "$RUN_DIR/fixture" clone --quiet "$RUN_DIR/fixture/${SECOND#*/}.git" "$work"
+      mkdir -p "$work/lib"
+      printf '#!/bin/sh\n# Greets whoever is named, %s.\ngreet() {\n  echo "hello, $1"\n}\n' "$tag" > "$work/lib/greet.sh"
+      printf '# lib\n\nThe greeting library, %s.\n' "$tag" > "$work/lib/README.md"
+      fgit "$work" add lib
+      fgit "$work" commit --quiet -m "fixture: release $tag"
+      fgit "$work" tag "$tag"
+      fgit "$work" push --quiet origin "refs/tags/$tag"
+      commit="$(fgit "$work" rev-parse HEAD)"
+      rm -rf "$work"
+      jq -n --arg slug "$SECOND" --arg tag "$tag" --arg commit "$commit" '{ repo: $slug, tag: $tag, commit: $commit }'
+      ;;
+    *) die "drift: usage: drift push <n> | drift stale | drift pause | drift below merged|closed | drift base | drift tag <tag>" ;;
   esac
 }
 
 cmd_state() {
   load_run
   echo "# config dir: $CONFIG_DIR"
-  echo "## files (sha256; locks and temp files left out)"
-  (cd "$CONFIG_DIR" && find . -type f ! -name '*.lock' ! -name '*.tmp' | sort | xargs -r sha256sum)
+  echo "## files (sha256; locks, temp files and the Library clones' insides left out)"
+  (cd "$CONFIG_DIR" && find . -path ./libraries -prune -o -type f ! -name '*.lock' ! -name '*.tmp' -print | sort | xargs -r sha256sum)
+  echo "## Library clones: each one's tags and worktrees"
+  local clone
+  for clone in "$CONFIG_DIR"/libraries/*/*.git; do
+    [ -d "$clone" ] || continue
+    echo "${clone#"$CONFIG_DIR"/}: tags $(git -C "$clone" tag | sort | tr '\n' ' ')"
+    git -C "$clone" worktree list
+  done
   echo "## config.toml"
   cat "$CONFIG_DIR/config.toml"
   echo "## dispatches.json (issue, steps done, failure, pr, asking, closed)"

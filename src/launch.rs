@@ -242,7 +242,7 @@ fn pane_command(harness: &Harness, launch: &AgentLaunch, args: &[String]) -> Str
 }
 
 /// `word` as one POSIX shell word: as is when plain, else single-quoted.
-fn shell_word(word: &str) -> String {
+pub fn shell_word(word: &str) -> String {
     let plain = !word.is_empty()
         && word
             .chars()

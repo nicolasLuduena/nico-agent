@@ -44,11 +44,11 @@ const ROUTES: &[(&str, &str)] = &[
     ),
     (
         "GET /api/wikis",
-        "each Repo's Wiki, with the commit it describes, when it was built and its Gaps",
+        "each Wiki of a Repo or a Library version, with the commit it describes, when it was built and its Gaps",
     ),
     (
         "GET /api/wiki/<id>",
-        "the Wiki, a Repo's by its slug: its Components, Interpretations, Anchors and Gaps",
+        "the Wiki, a Repo's by its slug or a Library version's as owner/name@tag[:path]: its Components, Interpretations, Anchors and Gaps",
     ),
     (
         "POST /api/dispatch {issue, harness, model, effort}",
@@ -112,8 +112,7 @@ pub fn answer(ctx: &Context, port: u16, request: &HttpRequest) -> Answer {
         ("GET", "/api/wikis") => reply(wiki::list(ctx)),
         ("GET", path) if let Some(id) = path.strip_prefix("/api/wiki/") => {
             let id = unescaped(id);
-            let help =
-                "Ask for a Wiki /api/wikis lists, or build one: nico-agent wiki build <owner/name>";
+            let help = "Ask for a Wiki /api/wikis lists, or build one: nico-agent wiki build <owner/name>[@<tag>[:<path>]]";
             found(wiki::get(ctx, &id), format!("{id} has no Wiki"), help)
         }
         ("GET", path) if let Some((_, kind, bytes)) = APP.iter().find(|(p, ..)| *p == path) => {

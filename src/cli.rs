@@ -87,11 +87,11 @@ const COMMANDS: &[(&str, &str)] = &[
         "show per Repo the Ready and Stackable issues, every Dispatch and every Wiki; with --since, what merged, Closed, was answered and was scanned after it",
     ),
     (
-        "nico-agent wiki build <owner/name>",
-        "build the Repo's Wiki from scratch at origin/<base>, one headless call of the [wiki] launch per part of its code, and keep it in the Bucket",
+        "nico-agent wiki build <owner/name>[@<tag>[:<path>]]",
+        "build the Wiki of the Repo from scratch at origin/<base>, or of the Library version at its tag under its subfolder, one headless call of the [wiki] launch per part of its code, and keep it in the Bucket",
     ),
     (
-        "nico-agent mcp [--wiki <owner/name>]...",
+        "nico-agent mcp [--wiki <owner/name>[@<tag>[:<path>]]]...",
         "serve the Wikis named, or every one, to an agent as an MCP server on stdio: `claude mcp add wiki -- nico-agent mcp`",
     ),
     (
