@@ -81,7 +81,7 @@ export interface Component {
   parent: string | null;
   /** Markdown, at most about 5 sentences. */
   overview: string;
-  /** The names its text uses, defined; none on a Wiki built before Components had them. */
+  /** The names its text uses, each with what it stands for; none on a Wiki built before Components had them. */
   terms?: Term[];
   interpretations: Interpretation[];
   /** What it uses, calls, reads or writes; what does so to it is in the other Components' own. */
@@ -190,7 +190,7 @@ export interface Hit {
   component: Component;
   term: Term | null;
   interpretation: Interpretation | null;
-  /** The text found, the overview, the Term's name and meaning or the Interpretation's, as the page shows it: without its Markdown marks. */
+  /** The text found, the overview, the Term's meaning or the Interpretation's, as the page shows it: without its Markdown marks. */
   text: string;
 }
 
@@ -208,7 +208,7 @@ export function search(wiki: Pick<Wiki, "components">, query: string): Hit[] {
       .map((c) => ({ component: c, term: null, interpretation: null, text: shown(c.overview) }))
       .filter((h) => holds(`${h.component.name}\n${h.text}`)),
     ...wiki.components.flatMap((c) =>
-      (c.terms ?? []).map((t) => ({ component: c, term: t, interpretation: null, text: `${t.name}: ${shown(t.meaning)}` })).filter((h) => holds(h.text)),
+      (c.terms ?? []).map((t) => ({ component: c, term: t, interpretation: null, text: shown(t.meaning) })).filter((h) => holds(`${h.term.name}\n${h.text}`)),
     ),
     ...wiki.components.flatMap((c) =>
       c.interpretations.map((i) => ({ component: c, term: null, interpretation: i, text: shown(i.text) })).filter((h) => holds(h.text)),
@@ -235,7 +235,7 @@ export function outline(component: Component, related: boolean, parts: number): 
   ];
 }
 
-/** A Term's name cut where a line may break inside it, a code name never mid-word: before a capital after a lower-case letter or digit, and after `_`, `.`, `/` or `::`. */
+/** A Term's name cut where a line may break inside it, besides after a hyphen: before a capital after a lower-case letter or digit, and after `_`, `.`, `/` or `::`. */
 export function seams(name: string): string[] {
   return name.split(/(?<=[a-z0-9])(?=[A-Z])|(?<=[_./]|::)/);
 }

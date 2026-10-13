@@ -17,7 +17,7 @@ use crate::wiki::{self, Of};
 /// The MCP versions it speaks, the latest last.
 const VERSIONS: [&str; 4] = ["2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25"];
 
-const INSTRUCTIONS: &str = "The Wikis of the user's Repos and of the Library versions they use: what each one's code does as of one commit, as a tree of Components whose every claim (an Interpretation) cites the lines it rests on (its Anchors), each Component defining the names its text uses (its Terms). Ask here before reading a Repo's code: `wikis` lists them, `find_component` finds a Component by words, `get_component` reads one, the top one being `index`, `read_anchor` reads the lines a claim cites, and `ask` answers a question in a few sentences, each citing lines. Where a Wiki and the code disagree, the code wins.";
+const INSTRUCTIONS: &str = "The Wikis of the user's Repos and of the Library versions they use: what each one's code does as of one commit, as a tree of Components whose every claim (an Interpretation) cites the lines it rests on (its Anchors), each Component saying what the names its text uses stand for (its Terms). Ask here before reading a Repo's code: `wikis` lists them, `find_component` finds a Component by words, `get_component` reads one, the top one being `index`, `read_anchor` reads the lines a claim cites, and `ask` answers a question in a few sentences, each citing lines. Where a Wiki and the code disagree, the code wins.";
 
 /// `mcp [--wiki <wiki>]...`: answer each request on stdin till it
 /// closes, serving the Wikis named, or every one.
@@ -240,14 +240,14 @@ fn found(wiki: &Value, query: &str) -> Value {
     let mut found: Vec<(usize, &Value)> = (components(wiki).iter())
         .filter_map(|c| {
             let terms = (c["terms"].as_array().into_iter().flatten()).map(|t| lower(t, "name"));
-            let name = [lower(c, "name")]
+            let names = [lower(c, "name")]
                 .into_iter()
                 .chain(terms)
                 .collect::<Vec<_>>()
                 .join("\n");
             let overview = lower(c, "overview");
             let score = (words.iter())
-                .map(|w| 2 * usize::from(name.contains(w)) + usize::from(overview.contains(w)))
+                .map(|w| 2 * usize::from(names.contains(w)) + usize::from(overview.contains(w)))
                 .sum();
             (score > 0).then_some((score, c))
         })

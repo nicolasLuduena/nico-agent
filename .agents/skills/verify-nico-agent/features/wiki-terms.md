@@ -4,7 +4,7 @@ A wiki build asks each part for its Terms beside its Interpretations, in both sh
 a name the part's overview, Interpretations, Explainer or Relationships use that a newcomer could
 not know, with one sentence of what it stands for, citing the lines that declare it. Code checks
 each one: a Term whose name the Component's text never uses (case aside), whose name is not in the
-lines it cites, or whose Anchors are not real lines goes back to the model in the correction round,
+lines it cites (as written), or whose Anchors are not real lines goes back to the model in the correction round,
 by its id with what failed, as a failing Interpretation does. Terms have no cap and never count
 against the Interpretations. On a Wiki's page, a Component with Terms shows a `Terms` section after
 its overview and before its Interpretations, each name in the margin where a kind goes (above its
@@ -76,15 +76,17 @@ Preconditions:
   `3 found`, the Component's hit first, then the `fixture` and `verify/fixture` Terms', each `TERM`.
 - **Through the MCP.** Exchange `10-mcp` (`initialize`, `notifications/initialized`, `get_component`
   `{"wiki":"verify/fixture","id":"index"}`, `find_component` `{"wiki":"verify/fixture","query":"agent"}`):
-  `instructions` say `each Component defining the names its text uses (its Terms)`; `index` with
+  `instructions` say `each Component saying what the names its text uses stand for (its Terms)`; `index` with
   the three `terms`; `find_component` `[{"id":"index",...}]`, found by `verify-nico-agent` alone.
 - **Stale.** `$C drift base` (README.md rewritten). `$C http --evidence "$E/12-wiki-stale" GET /api/wiki/verify/fixture`:
   each Term `"stale": true`, the Wiki `"stale":1` (its one Interpretation), `"behind":1`.
   `13-stale-desk-light` and `14-stale-phone-dark` as above: each `definition` reads `Stale <meaning>`.
   Exchange `15-mcp-stale`: `get_component`'s `terms` each `"stale": true`.
-- **No Terms.** `$C run -- repo add verify/second --path "$SECOND_CLONE" --json`; seed a leaf answer
-  with no `terms` for `"verify/second"` and build it (`16-build-no-terms`): the Bucket's
-  `wiki/verify/second/wiki.json` has no `terms` key. `$C page --evidence "$E/17-no-terms-page" --path /wiki/verify/second --expect "The README names the second fixture"`:
+- **No Terms.** `$C run -- repo add verify/second --path "$SECOND_CLONE" --json`; write
+  `$E/answer-second.json`, a leaf with overview "The second fixture.", a `role` "The README names the
+  second fixture." at `README.md` `1`-`1` and no `terms`; `$C seed answer "$E/answer-second.json" "verify/second"`;
+  `$C run --evidence "$E/16-build-no-terms" -- wiki build verify/second --json` is `built`, and
+  `git -C "$BUCKET" show HEAD:wiki/verify/second/wiki.json` has no `terms` key. `$C page --evidence "$E/17-no-terms-page" --path /wiki/verify/second --expect "The README names the second fixture"`:
   no `region "Terms"`, the outline `button "verify/second"` and `button "Interpretations 1"` only.
   Exchange `18-mcp-no-terms`: `get_component` and `find_component` `{"query":"second"}` answer.
 - **After.** `$C state`'s diff: `wikis.json` and the Bucket commits of the builds; the page, the
@@ -92,13 +94,13 @@ Preconditions:
 
 ## Gotchas
 
-- A Term's name must be in the text and in the lines it cites, case aside, as a substring: the
-  fixture's `README.md` holds only `verify/fixture`, `verify-nico-agent` and `fixture`, so a Term
-  for any other word fails.
+- A Term's name must be in the text (case aside) and in the lines it cites (as written), as a
+  substring: the fixture's `README.md` holds only `verify/fixture`, `verify-nico-agent` and
+  `fixture`, so a Term for any other word fails.
 - `find_component` matches words, split at anything not a letter or digit: `verify-nico-agent` is
   found by `agent`, never by `verify-nico-agent` as one word.
 - A Term's hit is named `<Component> Term <name>: <meaning>`; click it by `link~<words of its meaning>`.
-- The fixture holds no long code name, so a name breaking only at its seams (`InstallationToken|Cache`,
-  `wiki_|build_|budget_|calls`) in the margin is the web tests' (`seams` in `wiki.test.ts`), not this recipe's.
+- The fixture holds no long code name, so a name breaking at its seams in the margin
+  (`InstallationToken|Cache`, `wiki_|build_|budget_|calls`) is covered by the web tests, not this recipe.
 - The Wiki's `stale` counts Interpretations only, so the masthead's `N Interpretations Stale` leaves
   Stale Terms out.

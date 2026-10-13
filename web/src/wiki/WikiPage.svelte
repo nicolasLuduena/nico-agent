@@ -219,7 +219,7 @@
                         {#if hit.interpretation}<span class="label">{hit.interpretation.kind}</span>{:else if hit.term}<span class="label">Term</span>{/if}</span
                       >
                       <span class="text"
-                        >{#if hit.term}<b>{hit.term.name}</b>{hit.text.slice(hit.term.name.length)}{:else}{hit.text}{/if}</span
+                        >{#if hit.term}<b>{hit.term.name}</b>:{" "}{/if}{hit.text}</span
                       >
                     </a>
                   </li>

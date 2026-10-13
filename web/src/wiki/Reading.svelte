@@ -312,7 +312,7 @@
     color: var(--ink-muted);
     font-size: 14px;
   }
-  /* A Term's name, where a claim's kind goes: the word before what it stands for, broken at its seams first. */
+  /* A Term's name, where a claim's kind goes: the word before what it stands for, broken at its seams, mid-word only as a last resort. */
   .term {
     font-weight: 600;
   }

@@ -124,11 +124,11 @@ test("each cited file is named by its file's name, with as many of its folders a
 
 const term = (name: string, meaning: string, path = "packages/core/src/claim.ts") => ({ name, meaning, anchors: [anchor(path, 31, 31)] });
 
-test("search finds a Term by its name or meaning, after the Components and before the Interpretations, its text the name then the meaning", () => {
+test("search finds a Term by its name or meaning, after the Components and before the Interpretations, its text the meaning", () => {
   const claim = { ...component("claim", "@thoth/core/claim", "The claim's header.", ["The header hashes appId first."]), terms: [term("appId", "The **app** a claim is made for."), term("holder", "Who holds the claim.")] };
   const wiki = { components: [component("index", "thoth", "Claims, attested."), claim] };
   expect(search(wiki, "appid").map((h) => [h.component.id, h.term?.name ?? null, h.interpretation?.id ?? null, h.text])).toEqual([
-    ["claim", "appId", null, "appId: The app a claim is made for."],
+    ["claim", "appId", null, "The app a claim is made for."],
     ["claim", null, 1, "The header hashes appId first."],
   ]);
   expect(search(wiki, "who holds").map((h) => h.term?.name)).toEqual(["holder"]);

@@ -2020,8 +2020,9 @@ fn checked(
             text + "\n" + &more.to_lowercase()
         });
     let terms = claims("term", &answer.terms, &mut dropped, |t: &Term| {
-        let (name, called) = (&t.name, t.name.to_lowercase());
-        if called.is_empty() || !text.contains(&called) {
+        let name = &t.name;
+        // Used case aside; declared as written.
+        if name.is_empty() || !text.contains(&name.to_lowercase()) {
             return Some(format!(
                 "{name} is not used in this Component's text, so it is no Term"
             ));
@@ -2030,7 +2031,7 @@ fn checked(
             let declared = (t.anchors.iter()).any(|a| {
                 let cited = code[a.path.as_str()].text.lines();
                 let cited: Vec<&str> = cited.skip(a.start - 1).take(a.end + 1 - a.start).collect();
-                cited.join("\n").to_lowercase().contains(&called)
+                cited.join("\n").contains(name.as_str())
             });
             (!declared)
                 .then(|| format!("{name} is not in the lines it cites, which must declare it"))

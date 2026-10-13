@@ -1473,15 +1473,16 @@ fn a_term_its_text_never_uses_or_its_lines_never_declare_is_sent_back_and_correc
             "terms": terms,
         })
     };
-    // Used only in an Interpretation, and in lines that say it in another case.
+    // Used only in an Interpretation.
     let config = term(
-        "config",
+        "Config",
         "The settings the API runs with.",
         "src/config.rs",
         1,
         1,
     );
     let router = term("Router", "Where requests go.", "src/lib.rs", 1, 2);
+    // Used in another case: the text is read case aside, the lines as written.
     let run = |line| term("run", "The API's entry point.", "src/lib.rs", line, line);
     let web = |path, start, end| term("web", "The page in front of the API.", path, start, end);
     let (wrong_run, wrong_web) = (run(1), web("web/app.ts", 2, 3));
