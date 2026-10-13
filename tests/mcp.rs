@@ -52,18 +52,20 @@ fn with_wikis() -> Setup {
             "interpretations": [interpretation("invariant", "Config is a unit struct.", "src/config.rs", 1, 1)],
         }),
     );
-    answer(
-        &t,
-        "acme/api > Web front",
-        json!({
-            "kind": "leaf",
-            "overview": "The web page, served on port 80.",
-            "interpretations": [
-                interpretation("effect", "The page serves on port 80.", "web/app.ts", 2, 2),
-                interpretation("role", "Past the end.", "web/app.ts", 2, 9),
-            ],
-        }),
-    );
+    let web_front = json!({
+        "kind": "leaf",
+        "overview": "The web page, served on port 80.",
+        "interpretations": [
+            interpretation("effect", "The page serves on port 80.", "web/app.ts", 2, 2),
+            interpretation("role", "Past the end.", "web/app.ts", 2, 9),
+        ],
+    });
+    answer(&t, "acme/api > Web front", web_front.clone());
+    // Each correction answers the same, so "Past the end." is dropped: a Gap.
+    (t.world.headless.borrow_mut()).push((
+        "## Corrections to the part: acme/api > Web front".into(),
+        web_front.to_string(),
+    ));
     answer(
         &t,
         "acme/web",

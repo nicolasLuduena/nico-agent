@@ -330,32 +330,48 @@ fn a_wiki_launch_on_another_harness_fails_the_build_saying_only_opencode_builds_
 }
 
 #[test]
-fn each_interpretation_failing_a_check_is_dropped_and_its_part_recorded_as_a_gap() {
+fn each_interpretation_still_failing_a_check_after_its_third_round_is_dropped_and_its_part_a_gap() {
     let t = with_repo("");
     let kept = interpretation("postcondition", "run returns nothing.", "src/lib.rs", 4, 4);
     let unanchored = json!({ "kind": "role", "text": "No Anchor.", "anchors": [] });
-    answer(
-        &t,
-        "acme/api",
-        json!({
-            "kind": "leaf",
-            "overview": "A small API.",
-            "interpretations": [
-                interpretation("other", "Not one of the five kinds.", "src/lib.rs", 1, 1),
-                unanchored,
-                interpretation("role", "Past its file's end.", "web/app.ts", 2, 3),
-                interpretation("role", "From line 0.", "web/app.ts", 0, 1),
-                interpretation("role", "Ends before it starts.", "src/lib.rs", 3, 2),
-                interpretation("role", "In no file of the tree.", "src/main.rs", 1, 1),
-                json!({ "kind": "role", "text": "Its anchors do not read." }),
-                kept.clone(),
-            ],
-        }),
-    );
+    let leaf = json!({
+        "kind": "leaf",
+        "overview": "A small API.",
+        "interpretations": [
+            interpretation("other", "Not one of the five kinds.", "src/lib.rs", 1, 1),
+            unanchored,
+            interpretation("role", "Past its file's end.", "web/app.ts", 2, 3),
+            interpretation("role", "From line 0.", "web/app.ts", 0, 1),
+            interpretation("role", "Ends before it starts.", "src/lib.rs", 3, 2),
+            interpretation("role", "In no file of the tree.", "src/main.rs", 1, 1),
+            json!({ "kind": "role", "text": "Its anchors do not read." }),
+            kept.clone(),
+        ],
+    });
+    answer(&t, "acme/api", leaf.clone());
+    corrected(&t, "acme/api", leaf);
 
     let ran = t.cli(&["wiki", "build", "acme/api", "--json"]);
 
     assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
+    // Asked once, then three rounds in the session the first answer opened.
+    let calls = whole_headless_calls(&t);
+    assert_eq!(calls.len(), 4);
+    for correction in &calls[1..] {
+        assert!(
+            correction.contains(" --format json -s ses_1 ## Corrections to the part: acme/api\n"),
+            "{correction}"
+        );
+    }
+    let failed: Vec<&str> = (calls[1].lines())
+        .filter_map(|l| l.strip_prefix("- interpretation "))
+        .map(|l| l.split_once(' ').unwrap().0)
+        .collect();
+    assert_eq!(failed, ["1", "2", "3", "4", "5", "6", "7"]);
+    assert!(calls[1].contains(
+        ": its kind `other` is not one of invariant, precondition, postcondition, effect, role\n"
+    ));
+    assert!(calls[1].contains(": src/main.rs is not a file of the Repo\n"));
     assert_eq!(ran.json()["gaps"], json!({ "unreadable": 1 }));
     let index = &wiki(&t)["components"][0];
     let mut numbered = kept;
@@ -368,27 +384,81 @@ fn each_interpretation_failing_a_check_is_dropped_and_its_part_recorded_as_a_gap
     assert_eq!(outcomes(&t)["acme/api"]["gaps"], json!({ "unreadable": 1 }));
 }
 
+/// What the part whose prompt names `trail` answers each correction.
+fn corrected(t: &Setup, trail: &str, answer: Value) {
+    (t.world.headless.borrow_mut()).push((
+        format!("## Corrections to the part: {trail}"),
+        answer.to_string(),
+    ));
+}
+
+/// The headless calls made, whole.
+fn whole_headless_calls(t: &Setup) -> Vec<String> {
+    let dir = checkout(t);
+    (t.world.calls().into_iter())
+        .filter(|c| c.starts_with(&format!("cd {dir} && ")))
+        .collect()
+}
+
 #[test]
-fn a_component_outside_its_part_and_a_relationship_to_no_component_are_dropped_as_a_gap() {
+fn a_claim_corrected_in_its_first_round_is_kept_in_the_same_session_and_leaves_no_gap() {
     let t = with_repo("");
+    let kept = interpretation("role", "run is the entry point.", "src/lib.rs", 4, 4);
+    let past = interpretation("effect", "The page serves on port 80.", "web/app.ts", 2, 3);
     answer(
         &t,
         "acme/api",
-        json!({
-            "kind": "division",
-            "overview": "An API.",
-            "components": [
-                { "name": "Core", "summary": "The crate.", "files": ["src/lib.rs", "src/config.rs"] },
-                { "name": "Docs", "summary": "Not in the tree.", "files": ["README.md"] },
-                { "name": "Empty", "summary": "No files.", "files": [] },
-            ],
-            "relationships": [
-                { "from": "Core", "to": "Docs", "kind": "uses", "description": "A dropped Component." },
-                { "from": "Core", "to": "Web", "kind": "uses", "description": "No such Component." },
-                { "from": "Core", "to": "Core", "kind": "owns", "description": "No such kind." },
-            ],
-        }),
+        json!({ "kind": "leaf", "overview": "A small API.", "interpretations": [kept.clone(), past] }),
     );
+    let port = interpretation("effect", "The page serves on port 80.", "web/app.ts", 2, 2);
+    corrected(
+        &t,
+        "acme/api",
+        json!({ "kind": "leaf", "overview": "A small API.", "interpretations": [kept.clone(), port.clone()] }),
+    );
+
+    let ran = t.cli(&["wiki", "build", "acme/api", "--json"]);
+
+    assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
+    assert_eq!(ran.json()["gaps"], json!({}));
+    let index = &wiki(&t)["components"][0];
+    let numbered = |mut i: Value, id: u64| {
+        i["id"] = json!(id);
+        i
+    };
+    assert_eq!(
+        index["interpretations"],
+        json!([numbered(kept, 1), numbered(port, 2)])
+    );
+    assert_eq!(index["gaps"], json!([]));
+    let dir = checkout(&t);
+    assert_eq!(
+        whole_headless_calls(&t)[1..],
+        [format!(
+            "cd {dir} && env {READ_ONLY} opencode2 run --standalone -m opencode-go/deepseek-v4.1-flash --format json -s ses_1 ## Corrections to the part: acme/api\n\nThese claims of your last answer failed their checks, each by its id:\n\n- interpretation 2 {{\"anchors\":[{{\"end\":3,\"path\":\"web/app.ts\",\"start\":2}}],\"kind\":\"effect\",\"text\":\"The page serves on port 80.\"}}: lines 2-3 are not inside web/app.ts (2 lines)\n\nCorrect each one, reading again the lines it cites, and answer again with the whole JSON object in the same shape, every other claim as it was."
+        )]
+    );
+}
+
+#[test]
+fn a_component_outside_its_part_and_a_relationship_to_no_component_are_dropped_as_a_gap() {
+    let t = with_repo("");
+    let division = json!({
+        "kind": "division",
+        "overview": "An API.",
+        "components": [
+            { "name": "Core", "summary": "The crate.", "files": ["src/lib.rs", "src/config.rs"] },
+            { "name": "Docs", "summary": "Not in the tree.", "files": ["README.md"] },
+            { "name": "Empty", "summary": "No files.", "files": [] },
+        ],
+        "relationships": [
+            { "from": "Core", "to": "Docs", "kind": "uses", "description": "A dropped Component." },
+            { "from": "Core", "to": "Web", "kind": "uses", "description": "No such Component." },
+            { "from": "Core", "to": "Core", "kind": "owns", "description": "No such kind." },
+        ],
+    });
+    answer(&t, "acme/api", division.clone());
+    corrected(&t, "acme/api", division);
     answer(
         &t,
         "acme/api > Core",
@@ -403,6 +473,20 @@ fn a_component_outside_its_part_and_a_relationship_to_no_component_are_dropped_a
         .map(|c| c["name"].as_str().unwrap())
         .collect();
     assert_eq!(names, ["acme/api", "Core"]);
+    let failed: Vec<String> = (whole_headless_calls(&t)[1].lines())
+        .filter_map(|l| l.strip_prefix("- "))
+        .map(|l| l.split(' ').take(2).collect::<Vec<_>>().join(" "))
+        .collect();
+    assert_eq!(
+        failed,
+        [
+            "component 2",
+            "component 3",
+            "relationship 1",
+            "relationship 2",
+            "relationship 3"
+        ]
+    );
     assert_eq!(components[1]["relationships"], json!([]));
     assert_eq!(
         components[0]["gaps"],
@@ -430,6 +514,10 @@ fn an_answer_that_is_no_json_of_either_shape_leaves_its_part_a_gap_and_the_build
         "## The part: acme/api > Core".into(),
         "I could not decide.".into(),
     ));
+    (t.world.headless.borrow_mut()).push((
+        "## Corrections to the part: acme/api > Core".into(),
+        "Still nothing.".into(),
+    ));
     // Fenced, it reads; a leaf's Components are no division.
     let web = json!({
         "kind": "leaf",
@@ -454,6 +542,52 @@ fn an_answer_that_is_no_json_of_either_shape_leaves_its_part_a_gap_and_the_build
     );
     assert_eq!(components[2]["overview"], "The page.");
     assert_eq!(components[2]["gaps"], json!([]));
+    let corrections: Vec<String> = (whole_headless_calls(&t).into_iter())
+        .filter(|c| c.contains("## Corrections to the part: acme/api > Core\n"))
+        .collect();
+    assert_eq!(corrections.len(), 3);
+    assert!(
+        corrections[0]
+            .contains("\n- the answer: it is no JSON object of either shape, leaf or division\n")
+    );
+}
+
+#[test]
+fn a_correction_that_does_not_read_leaves_the_last_answer_that_did() {
+    let t = with_repo("");
+    let kept = interpretation("role", "run is the entry point.", "src/lib.rs", 4, 4);
+    let past = interpretation("role", "Past its file's end.", "web/app.ts", 2, 3);
+    answer(
+        &t,
+        "acme/api",
+        json!({ "kind": "leaf", "overview": "A small API.", "interpretations": [kept.clone(), past] }),
+    );
+    (t.world.headless.borrow_mut()).push((
+        "## Corrections to the part: acme/api".into(),
+        "I cannot find those lines.".into(),
+    ));
+
+    let ran = t.cli(&["wiki", "build", "acme/api", "--json"]);
+
+    assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
+    assert_eq!(whole_headless_calls(&t).len(), 4);
+    // Each round sends back the claim of the answer that read, saying the reply did not.
+    let calls = whole_headless_calls(&t);
+    let unread = "\n- your last reply: it is no JSON object of either shape, leaf or division, so the claims below are of the answer before it\n- interpretation 2 {";
+    assert!(!calls[1].contains("your last reply"));
+    assert!(calls[2].contains(unread), "{}", calls[2]);
+    assert!(calls[3].contains(unread));
+    let index = &wiki(&t)["components"][0];
+    let mut numbered = kept;
+    numbered["id"] = json!(1);
+    assert_eq!(
+        (index["overview"].clone(), index["interpretations"].clone()),
+        (json!("A small API."), json!([numbered]))
+    );
+    assert_eq!(
+        index["gaps"],
+        json!([{ "paths": ["src/config.rs", "src/lib.rs", "web/app.ts"], "reason": "unreadable" }])
+    );
 }
 
 /// The top part of `acme/api` divided into Core and Web.
@@ -506,6 +640,80 @@ fn a_part_reached_once_calls_are_spent_is_a_budget_gap_and_the_build_still_succe
         json!([{ "paths": ["web/app.ts"], "reason": "budget" }])
     );
     assert_eq!(outcomes(&t)["acme/api"]["outcome"], "built");
+}
+
+#[test]
+fn a_correction_round_is_a_call_of_the_budget_and_leaves_fewer_for_the_parts_below() {
+    let t = with_repo("[wiki]\ncalls = 3");
+    let core = json!({ "name": "Core", "summary": "The crate.", "files": ["src/lib.rs", "src/config.rs"] });
+    let web = json!({ "name": "Web", "summary": "The page.", "files": ["web/app.ts"] });
+    let calls = |to: &str| json!({ "from": "Web", "to": to, "kind": "calls", "description": "It calls the API." });
+    answer(
+        &t,
+        "acme/api",
+        json!({ "kind": "division", "overview": "An API.", "components": [core, web], "relationships": [calls("Server")] }),
+    );
+    corrected(
+        &t,
+        "acme/api",
+        json!({ "kind": "division", "overview": "An API.", "components": [core, web], "relationships": [calls("Core")] }),
+    );
+    answer(
+        &t,
+        "acme/api > Core",
+        json!({ "kind": "leaf", "overview": "The crate's modules." }),
+    );
+
+    let ran = t.cli(&["wiki", "build", "acme/api", "--json"]);
+
+    assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
+    assert_eq!(whole_headless_calls(&t).len(), 3);
+    assert_eq!(ran.json()["gaps"], json!({ "budget": 1 }));
+    let components = wiki(&t)["components"].clone();
+    assert_eq!(components[0]["gaps"], json!([]));
+    assert_eq!(
+        components[2]["relationships"],
+        json!([{ "to": "core", "kind": "calls", "description": "It calls the API." }])
+    );
+    assert_eq!(
+        components[2]["gaps"],
+        json!([{ "paths": ["web/app.ts"], "reason": "budget" }])
+    );
+    let logged = t.world.logged();
+    for line in [
+        "acme/api: asked (call 1 of 3)",
+        "acme/api: 1 claim(s) failed, sent back (round 1 of 3, call 2 of 3)",
+        "acme/api > Core: asked (call 3 of 3)",
+    ] {
+        assert!(
+            logged.iter().any(|l| l.ends_with(line)),
+            "{line}: {logged:?}"
+        );
+    }
+}
+
+#[test]
+fn a_claim_still_failing_when_the_calls_are_spent_is_dropped_and_its_part_a_budget_gap() {
+    let t = with_repo("[wiki]\ncalls = 2");
+    let leaf = json!({
+        "kind": "leaf",
+        "overview": "A small API.",
+        "interpretations": [interpretation("role", "Past its file's end.", "web/app.ts", 2, 3)],
+    });
+    answer(&t, "acme/api", leaf.clone());
+    corrected(&t, "acme/api", leaf);
+
+    let ran = t.cli(&["wiki", "build", "acme/api", "--json"]);
+
+    assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
+    assert_eq!(whole_headless_calls(&t).len(), 2);
+    assert_eq!(ran.json()["gaps"], json!({ "budget": 1 }));
+    let index = &wiki(&t)["components"][0];
+    assert_eq!(index["interpretations"], json!([]));
+    assert_eq!(
+        index["gaps"],
+        json!([{ "paths": ["src/config.rs", "src/lib.rs", "web/app.ts"], "reason": "budget" }])
+    );
 }
 
 #[test]
@@ -722,11 +930,10 @@ fn a_failed_embedding_leaves_the_wiki_built_without_its_vectors_on_the_ollama_co
 fn serve_answers_each_built_wiki_and_a_wiki_by_its_id_and_404s_one_it_has_not() {
     let t = with_repo("");
     let past_the_end = interpretation("role", "Past the end.", "src/lib.rs", 1, 9);
-    answer(
-        &t,
-        "acme/api",
-        json!({ "kind": "leaf", "overview": "A small API.", "interpretations": [past_the_end] }),
-    );
+    let leaf =
+        json!({ "kind": "leaf", "overview": "A small API.", "interpretations": [past_the_end] });
+    answer(&t, "acme/api", leaf.clone());
+    corrected(&t, "acme/api", leaf);
     t.cli(&["wiki", "build", "acme/api", "--json"]);
     let config = std::fs::read_to_string(t.config_dir.join("config.toml")).unwrap();
     let web = "[repos.\"acme/web\"]\npath = \"/src/web\"\n";

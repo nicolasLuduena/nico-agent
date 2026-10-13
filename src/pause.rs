@@ -8,7 +8,7 @@ use std::time::{Duration, SystemTime};
 
 use crate::state;
 use crate::world::{
-    Agent, GitHubIssue, Handler, Headless, HttpRequest, LinearIssue, PullRequest,
+    Agent, Answered, GitHubIssue, Handler, Headless, HttpRequest, LinearIssue, PullRequest,
     PullRequestActivity, Tab, Worktree, World, WorldError, WorldResult,
 };
 
@@ -200,7 +200,7 @@ impl World for Guarded<'_> {
         cwd: &str,
         calls: &[Headless],
         at_once: usize,
-    ) -> Vec<WorldResult<String>> {
+    ) -> Vec<WorldResult<Answered>> {
         self.world.harness_headless(cwd, calls, at_once)
     }
     fn ollama_embed(

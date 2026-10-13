@@ -1,7 +1,8 @@
 //! A Repo's Wiki, built from scratch by `wiki build`. Its code at
 //! `origin/<base>` is divided top-down, as know-the-map's hermeneut does:
 //! each part is one headless, read-only call of the `[wiki]` launch, and
-//! code checks every answer, dropping each claim that fails and recording
+//! code checks every answer, sending each claim that fails back to the
+//! model in the same session, up to 3 rounds, then dropping it and recording
 //! its part as a Gap. The Wiki lands in the Bucket in one commit, then its
 //! records are embedded for `ask`; the build's outcome in `wikis.json`, last.
 //!
@@ -25,7 +26,7 @@ use crate::config::{self, Config, Repo, fill_in};
 use crate::launch;
 use crate::repo;
 use crate::state;
-use crate::world::{Headless, World, WorldResult};
+use crate::world::{Answered, Headless, World, WorldResult};
 
 /// Each Wiki's last build, by its id: a Repo's slug.
 pub const FILE: &str = "wikis.json";
@@ -44,6 +45,9 @@ const KINDS: [&str; 5] = [
     "role",
 ];
 const RELATIONSHIPS: [&str; 4] = ["uses", "calls", "reads", "writes"];
+
+/// How many times a part's failing claims go back to the model.
+const ROUNDS: u32 = 3;
 
 /// How a build ended, as `wikis.json` keeps it: `"outcome": "built"`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -390,6 +394,14 @@ struct Said {
     description: String,
 }
 
+/// The claims of an answer that pass every check.
+struct Checked {
+    overview: String,
+    interpretations: Vec<Interpretation>,
+    named: Vec<Named>,
+    said: Vec<Said>,
+}
+
 /// A part of the code still to describe.
 struct Part {
     id: String,
@@ -522,8 +534,19 @@ fn built(ctx: &Context, config: &Config, slug: &str, repo: &Repo) -> Result<Wiki
     Ok(wiki)
 }
 
+/// A part of a depth, its answer if it was asked.
+struct Asked {
+    part: Part,
+    /// Its first answer's session, with its last answer that reads.
+    answered: Option<Answered>,
+    /// Why it is a Gap, if it is: unasked, or a claim still failing.
+    reason: &'static str,
+    /// Whether its last reply did not read, its answer the one before.
+    unread: bool,
+}
+
 /// The Wiki of the code checked out in `dir`, its parts asked by `call`
-/// a depth at a time.
+/// a depth at a time, each answer's failing claims sent back in rounds.
 // shortcut: a slow part holds up the next depth's; pipeline the calls if builds run long.
 fn described(
     ctx: &Context,
@@ -580,16 +603,85 @@ fn described(
             .collect();
         let at_once = budget.concurrency as usize;
         let mut answers = world.harness_headless(dir, &calls, at_once).into_iter();
-        let mut next = vec![];
+        let mut asked = vec![];
         for (part, unasked) in frontier.drain(..).zip(unasked) {
-            if let Some(reason) = unasked {
+            let answered = match unasked {
+                Some(_) => None,
+                None => Some(answers.next().expect("an answer to each call")?),
+            };
+            let reason = unasked.unwrap_or("unreadable");
+            asked.push(Asked {
+                part,
+                answered,
+                reason,
+                unread: false,
+            });
+        }
+        for round in 1..=ROUNDS {
+            let mut sent = vec![];
+            for (i, a) in asked.iter_mut().enumerate() {
+                let Some(answered) = &a.answered else {
+                    continue;
+                };
+                let (_, mut failed) = checked(&a.part, &answered.text, &lines);
+                if failed.is_empty() {
+                    continue;
+                }
+                if calls_left == 0 {
+                    a.reason = "budget";
+                    continue;
+                }
+                calls_left -= 1;
+                world.log(&format!(
+                    "{}: {} claim(s) failed, sent back (round {round} of {ROUNDS}, call {} of {})",
+                    a.part.trail,
+                    failed.len(),
+                    budget.calls - calls_left,
+                    budget.calls
+                ));
+                if a.unread {
+                    failed.insert(0, "your last reply: it is no JSON object of either shape, leaf or division, so the claims below are of the answer before it".into());
+                }
+                let resumed = ["-s".into(), answered.session.clone()];
+                sent.push((
+                    i,
+                    Headless {
+                        args: [&call.args[..], &resumed].concat(),
+                        prompt: correction(&a.part, &failed),
+                        ..call.clone()
+                    },
+                ));
+            }
+            if sent.is_empty() {
+                break;
+            }
+            let (which, corrections): (Vec<usize>, Vec<Headless>) = sent.into_iter().unzip();
+            let replies = world.harness_headless(dir, &corrections, at_once);
+            for (i, reply) in which.into_iter().zip(replies) {
+                let (reply, a) = (reply?, &mut asked[i]);
+                let answered = a.answered.as_mut().expect("sent back");
+                // A reply that does not read leaves the last answer that did.
+                a.unread = parsed(&reply.text).is_none() && parsed(&answered.text).is_some();
+                if !a.unread {
+                    answered.text = reply.text;
+                }
+            }
+        }
+        let mut next = vec![];
+        for Asked {
+            part,
+            answered,
+            reason,
+            ..
+        } in asked
+        {
+            let Some(answered) = answered else {
                 world.log(&format!("{}: not asked ({reason}), a Gap", part.trail));
                 components.push(gap(part, reason));
                 continue;
-            }
-            let answer = answers.next().expect("an answer to each call")?;
+            };
             let trail = part.trail.clone();
-            let (component, parts, dropped) = read(part, &answer, &lines, &mut ids);
+            let (component, parts, dropped) = read(part, &answered.text, &lines, &mut ids, reason);
             for why in &dropped {
                 world.log(&format!("{trail}: dropped {why}"));
             }
@@ -718,70 +810,39 @@ fn prompt(slug: &str, part: &Part, lines: &HashMap<&str, usize>) -> String {
     fill_in(PROMPT, &values)
 }
 
+/// What the model is asked to correct of its answer about `part`: each
+/// claim that `failed`, by its id, with what failed.
+fn correction(part: &Part, failed: &[String]) -> String {
+    let failed: String = failed.iter().map(|why| format!("- {why}\n")).collect();
+    format!(
+        "## Corrections to the part: {}\n\nThese claims of your last answer failed their checks, each by its id:\n\n{failed}\nCorrect each one, reading again the lines it cites, and answer again with the whole JSON object in the same shape, every other claim as it was.",
+        part.trail
+    )
+}
+
 /// The Component `part` makes of the model's `answer`, the parts its
 /// division opens, each named by an id not in `ids`, and why each claim that
-/// failed a check was dropped: the part is then a Gap, unreadable.
+/// failed a check was dropped: the part is then a Gap for `reason`.
 fn read(
     part: Part,
     answer: &str,
     lines: &HashMap<&str, usize>,
     ids: &mut HashSet<String>,
+    reason: &'static str,
 ) -> (Component, Vec<Part>, Vec<String>) {
-    let Some(answer) = parsed(answer) else {
-        return (gap(part, "unreadable"), vec![], vec!["its answer".into()]);
+    let (checked, dropped) = checked(&part, answer, lines);
+    let Some(Checked {
+        overview,
+        mut interpretations,
+        named,
+        said,
+    }) = checked
+    else {
+        return (gap(part, reason), vec![], dropped);
     };
-    let in_part: HashSet<&str> = part.files.iter().map(String::as_str).collect();
-    let mut dropped = vec![];
-    let mut interpretations = claims(
-        &answer.interpretations,
-        &mut dropped,
-        |i: &Interpretation| {
-            if !KINDS.contains(&i.kind.as_str()) {
-                return Some(format!(
-                    "its kind `{}` is not one of {}",
-                    i.kind,
-                    KINDS.join(", ")
-                ));
-            }
-            if i.anchors.is_empty() {
-                return Some("it cites no Anchor".into());
-            }
-            (i.anchors.iter()).find_map(|a| match lines.get(a.path.as_str()) {
-                Some(&n) => (a.start < 1 || a.start > a.end || a.end > n).then(|| {
-                    format!(
-                        "lines {}-{} are not inside {} ({n} lines)",
-                        a.start, a.end, a.path
-                    )
-                }),
-                None => Some(format!("{} is not a file of the Repo", a.path)),
-            })
-        },
-    );
     for (n, interpretation) in interpretations.iter_mut().enumerate() {
         interpretation.id = n + 1;
     }
-    let division = match answer.kind.as_str() {
-        "division" => &answer.components[..],
-        _ => &[],
-    };
-    let named = claims(division, &mut dropped, |c: &Named| {
-        let outside = c.files.iter().find(|f| !in_part.contains(f.as_str()));
-        match (c.files.is_empty(), outside) {
-            (true, _) => Some("it has no files".into()),
-            (_, Some(f)) => Some(format!("{f} is not one of the part's files")),
-            _ => None,
-        }
-    });
-    let said = claims(&answer.relationships, &mut dropped, |r: &Said| {
-        if !RELATIONSHIPS.contains(&r.kind.as_str()) {
-            let kinds = RELATIONSHIPS.join(", ");
-            return Some(format!("its kind `{}` is not one of {kinds}", r.kind));
-        }
-        [&r.from, &r.to]
-            .into_iter()
-            .find(|name| !named.iter().any(|c| c.name == **name))
-            .map(|name| format!("{name} is not a Component of the division"))
-    });
     let mut parts: Vec<Part> = (named.into_iter())
         .map(|c| Part {
             id: unique(&part.id, &c.name, ids),
@@ -809,20 +870,96 @@ fn read(
         true => vec![],
         false => vec![Gap {
             paths: part.files.clone(),
-            reason: "unreadable",
+            reason,
         }],
     };
     let component = Component {
         id: part.id,
         name: part.name,
         parent: part.parent,
-        overview: answer.overview,
+        overview,
         files: part.files,
         interpretations,
         relationships: part.relationships,
         gaps,
     };
     (component, parts, dropped)
+}
+
+/// The claims of the model's `answer` about `part` that pass every check,
+/// none when it is no answer of either shape, and why each other one
+/// failed, by its id.
+fn checked(
+    part: &Part,
+    answer: &str,
+    lines: &HashMap<&str, usize>,
+) -> (Option<Checked>, Vec<String>) {
+    let Some(answer) = parsed(answer) else {
+        let why = "the answer: it is no JSON object of either shape, leaf or division";
+        return (None, vec![why.into()]);
+    };
+    let in_part: HashSet<&str> = part.files.iter().map(String::as_str).collect();
+    let mut dropped = vec![];
+    let interpretations = claims(
+        "interpretation",
+        &answer.interpretations,
+        &mut dropped,
+        |i: &Interpretation| {
+            if !KINDS.contains(&i.kind.as_str()) {
+                return Some(format!(
+                    "its kind `{}` is not one of {}",
+                    i.kind,
+                    KINDS.join(", ")
+                ));
+            }
+            if i.anchors.is_empty() {
+                return Some("it cites no Anchor".into());
+            }
+            (i.anchors.iter()).find_map(|a| match lines.get(a.path.as_str()) {
+                Some(&n) => (a.start < 1 || a.start > a.end || a.end > n).then(|| {
+                    format!(
+                        "lines {}-{} are not inside {} ({n} lines)",
+                        a.start, a.end, a.path
+                    )
+                }),
+                None => Some(format!("{} is not a file of the Repo", a.path)),
+            })
+        },
+    );
+    let division = match answer.kind.as_str() {
+        "division" => &answer.components[..],
+        _ => &[],
+    };
+    let named = claims("component", division, &mut dropped, |c: &Named| {
+        let outside = c.files.iter().find(|f| !in_part.contains(f.as_str()));
+        match (c.files.is_empty(), outside) {
+            (true, _) => Some("it has no files".into()),
+            (_, Some(f)) => Some(format!("{f} is not one of the part's files")),
+            _ => None,
+        }
+    });
+    let said = claims(
+        "relationship",
+        &answer.relationships,
+        &mut dropped,
+        |r: &Said| {
+            if !RELATIONSHIPS.contains(&r.kind.as_str()) {
+                let kinds = RELATIONSHIPS.join(", ");
+                return Some(format!("its kind `{}` is not one of {kinds}", r.kind));
+            }
+            [&r.from, &r.to]
+                .into_iter()
+                .find(|name| !named.iter().any(|c| c.name == **name))
+                .map(|name| format!("{name} is not a Component of the division"))
+        },
+    );
+    let checked = Checked {
+        overview: answer.overview,
+        interpretations,
+        named,
+        said,
+    };
+    (Some(checked), dropped)
 }
 
 /// The id of the Component `name` under `parent`'s: their names' slugs
@@ -863,14 +1000,16 @@ fn parsed(text: &str) -> Option<Answer> {
 }
 
 /// Each claim of `raw` that reads as a `T` and passes `check`, which says
-/// what is wrong with one; why each other one was dropped, onto `dropped`.
+/// what is wrong with one; why each other one was dropped, onto `dropped`,
+/// by its id: `name` and its place among them, from 1.
 fn claims<T: DeserializeOwned>(
+    name: &str,
     raw: &[Value],
     dropped: &mut Vec<String>,
     check: impl Fn(&T) -> Option<String>,
 ) -> Vec<T> {
-    (raw.iter())
-        .filter_map(|claim| {
+    (raw.iter().enumerate())
+        .filter_map(|(n, claim)| {
             let problem = match serde_json::from_value::<T>(claim.clone()) {
                 Ok(read) => match check(&read) {
                     None => return Some(read),
@@ -878,7 +1017,7 @@ fn claims<T: DeserializeOwned>(
                 },
                 Err(e) => format!("it does not read: {e}"),
             };
-            dropped.push(format!("{claim}: {problem}"));
+            dropped.push(format!("{name} {} {claim}: {problem}", n + 1));
             None
         })
         .collect()

@@ -239,6 +239,13 @@ pub struct Headless {
     pub prompt: String,
 }
 
+/// What a headless call answered, and the session to correct it in.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Answered {
+    pub text: String,
+    pub session: String,
+}
+
 /// What `serve` answers a request with.
 pub enum Answer {
     /// One response, sent whole.
@@ -300,14 +307,14 @@ pub trait World {
 
     // Harnesses
     /// Make each of `calls` in the folder `cwd`, with no input, up to
-    /// `at_once` of them at a time: the last message each answered, in order.
-    /// opencode's `--format json` is read.
+    /// `at_once` of them at a time: the last message each answered, and its
+    /// session, in order. opencode's `--format json` is read.
     fn harness_headless(
         &self,
         cwd: &str,
         calls: &[Headless],
         at_once: usize,
-    ) -> Vec<WorldResult<String>>;
+    ) -> Vec<WorldResult<Answered>>;
 
     // Ollama
     /// The embedding of each of `input`, in order, by the `model` of the
@@ -949,9 +956,9 @@ fn first_line(stderr: &[u8], status: &std::process::ExitStatus) -> String {
 }
 
 /// Make one headless call of opencode in `cwd`: the text of its last
-/// message among the events `--format json` prints, or the error it
-/// reported among them.
-fn headless(cwd: &str, call: &Headless) -> WorldResult<String> {
+/// message among the events `--format json` prints, with its session, or the
+/// error it reported among them.
+fn headless(cwd: &str, call: &Headless) -> WorldResult<Answered> {
     let command = format!(
         "{} {}",
         call.command,
@@ -979,7 +986,11 @@ fn headless(cwd: &str, call: &Headless) -> WorldResult<String> {
     if let Some(text) = last("text", &|event| &event["part"]["text"])
         && ran.status.success()
     {
-        return Ok(text);
+        // Every event names it.
+        let session = (events.iter().find_map(|event| event["sessionID"].as_str()))
+            .ok_or_else(|| WorldError(format!("`{command}` failed: it named no session")))?;
+        let session = session.into();
+        return Ok(Answered { text, session });
     }
     let why = (last("error", &|event| &event["error"]["message"]))
         .or_else(|| (!ran.status.success()).then(|| first_line(&ran.stderr, &ran.status)))
@@ -1193,9 +1204,9 @@ impl World for RealWorld {
         cwd: &str,
         calls: &[Headless],
         at_once: usize,
-    ) -> Vec<WorldResult<String>> {
+    ) -> Vec<WorldResult<Answered>> {
         let next = AtomicUsize::new(0);
-        let mut answered: Vec<(usize, WorldResult<String>)> = thread::scope(|scope| {
+        let mut answered: Vec<(usize, WorldResult<Answered>)> = thread::scope(|scope| {
             let workers: Vec<_> = (0..at_once.clamp(1, calls.len().max(1)))
                 .map(|_| {
                     scope.spawn(|| {
