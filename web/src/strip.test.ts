@@ -3,6 +3,7 @@ import type { Dispatch, Repo, Run, Status } from "./status";
 import { needsYou } from "./strip";
 
 const status = (dispatches: Partial<Dispatch>[], githubPausedUntil: string | null = null): Status => ({
+  projects: [],
   repos: [],
   sources: { github: { paused_until: githubPausedUntil }, linear: { paused_until: null } },
   dispatches: dispatches.map((d) => ({

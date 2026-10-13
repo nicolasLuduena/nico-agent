@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // page.mjs — open serve's page in headless Chromium, act on it as a user does, capture what it shows.
 // Called by `control-nico-agent page`, which passes the run's URL first and sets VERIFY_PLAYWRIGHT:
-//   page.mjs <url> [--evidence PREFIX] [--width PX] [--storage FILE|none] [--click ROLE=NAME | --click ROLE~NAME | --press KEY | --expect TEXT
+//   page.mjs <url> [--evidence PREFIX] [--width PX] [--storage FILE|none] [--click ROLE=NAME | --click ROLE~NAME | --press KEY | --type TEXT | --expect TEXT
 //            | --gone TEXT | --wait SECONDS | --mode pass|502|signed-out]...
 // --storage FILE starts the browser with the storage FILE holds and saves it back after the last step, so
 // another call opens the page again as this browser would; --storage none is a browser whose localStorage throws.
@@ -30,6 +30,7 @@ for (let i = 0; i < argv.length; i++) {
   else if (flag === "--storage") storage = value;
   else if (flag === "--click" && /^[a-z]+[=~]/.test(value)) steps.push({ click: value });
   else if (flag === "--press") steps.push({ press: value });
+  else if (flag === "--type") steps.push({ type: value });
   else if (flag === "--expect") steps.push({ expect: value });
   else if (flag === "--gone") steps.push({ gone: value });
   else if (flag === "--wait" && Number(value) >= 0) steps.push({ wait: Number(value) });
@@ -38,7 +39,7 @@ for (let i = 0; i < argv.length; i++) {
 }
 
 function usage(why) {
-  console.error(`page: ${why}\nusage: page [--evidence PREFIX] [--width PX] [--storage FILE|none] [--click ROLE=NAME | --click ROLE~NAME | --press KEY | --expect TEXT | --gone TEXT | --wait SECONDS | --mode pass|502|signed-out]...`);
+  console.error(`page: ${why}\nusage: page [--evidence PREFIX] [--width PX] [--storage FILE|none] [--click ROLE=NAME | --click ROLE~NAME | --press KEY | --type TEXT | --expect TEXT | --gone TEXT | --wait SECONDS | --mode pass|502|signed-out]...`);
   process.exit(2);
 }
 
@@ -89,6 +90,9 @@ try {
         await page.getByRole(role, { name, exact: how === "=" }).first().click({ timeout: 10000 });
       } else if (step.press) {
         await page.keyboard.press(step.press);
+      } else if (step.type !== undefined) {
+        // Into what has focus, a key per character, as typed.
+        await page.keyboard.type(step.type);
       } else if (step.gone) {
         // Long enough for a reconnect's backoff.
         await page.getByText(step.gone, { exact: false }).first().waitFor({ state: "hidden", timeout: 60000 });

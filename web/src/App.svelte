@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import AddRepo from "./controls/AddRepo.svelte";
   import Refresh from "./controls/Refresh.svelte";
   import { watch } from "./live";
   import Morning from "./Morning.svelte";
@@ -111,8 +112,9 @@
         <RepoTab {repo} {status} />
       </div>
     {:else}
-      <p class="none">No Repo yet. Add one with <code>nico-agent repo add &lt;owner/name&gt; --path &lt;clone&gt;</code>.</p>
+      <p class="none">No Repo yet. Add one here, or with <code>nico-agent repo add &lt;owner/name&gt; --path &lt;clone&gt;</code>.</p>
     {/if}
+    <AddRepo {status} />
   {:else if !failure}
     <p class="none">Reading nico-agent…</p>
   {/if}

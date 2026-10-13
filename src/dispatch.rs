@@ -601,6 +601,13 @@ fn launch_of(config: &Config, repo: &Repo, flags: Flags) -> Result<Launch, Refus
         model: pick(flags.model, &default.model),
         effort: pick(flags.effort, &default.effort),
     };
+    check(config, &launch)?;
+    Ok(launch)
+}
+
+/// Refused (exit 2) unless `launch`'s Harness is configured and takes its model and Effort.
+pub fn check(config: &Config, launch: &Launch) -> Result<(), Refusal> {
+    let name = &launch.harness;
     let bad = |error: String, help: String| Refusal {
         error,
         help: vec![help],
@@ -627,7 +634,7 @@ fn launch_of(config: &Config, repo: &Repo, flags: Flags) -> Result<Launch, Refus
             ));
         }
     }
-    Ok(launch)
+    Ok(())
 }
 
 /// Its workspace's label: `<repo name>#<n>`, or `<repo name>:<BLE-12>` for Linear.

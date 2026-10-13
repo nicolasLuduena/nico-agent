@@ -1,30 +1,33 @@
 <script lang="ts">
-  // The switches /api/status shows of the Repo, each written to config.toml on toggle.
-  import type { Repo } from "../status";
+  // The switches /api/status shows of the Repo, each written to config.toml on
+  // toggle; one the Repo sets goes back to its Project's or the default.
+  import type { Project, Repo } from "../status";
+  import From from "./From.svelte";
   import Refused from "./Refused.svelte";
-  import { send, type Sent } from "./send";
+  import { patch, type Sent } from "./send";
+  import { unset } from "./settings";
 
-  let { repo }: { repo: Repo } = $props();
+  let { repo, project }: { repo: Repo; project: Project | undefined } = $props();
 
   /** A switch's name as the Glossary says it, capitalised. */
   const said: Record<string, string> = { flip: "Flip to ready", answer: "Faux-nico answers", quality_scan: "Quality-scan" };
   const label = (name: string) => said[name] ?? name[0].toUpperCase() + name.slice(1);
 
   // The PATCH's answer, until /api/status's next one.
-  let switches = $derived(Object.fromEntries(Object.entries(repo.switches).map(([name, on]) => [name, on.value])));
-  const on = $derived(Object.values(switches).filter(Boolean).length);
+  let switches = $derived(repo.switches);
+  const on = $derived(Object.values(switches).filter((s) => s.value).length);
   let saving = $state<Record<string, boolean>>({});
   let refused = $state<Sent | null>(null);
 
-  async function toggle(name: string, input: HTMLInputElement) {
+  async function save(name: string, body: Record<string, unknown>, input?: HTMLInputElement) {
     saving[name] = true;
     refused = null;
-    const sent = await send("PATCH", `/api/repo/${repo.slug}/switches`, { [name]: input.checked });
+    const sent = await patch(repo.slug, body);
     saving[name] = false;
     if (sent.ok) switches = sent.answer.switches;
     else {
       refused = sent;
-      input.checked = switches[name];
+      if (input) input.checked = switches[name].value;
     }
   }
 </script>
@@ -39,17 +42,24 @@
     <ul>
       {#each Object.keys(switches) as name (name)}
         <li>
-          <label>
-            <span>{label(name)}</span>
-            <input
-              type="checkbox"
-              role="switch"
-              checked={switches[name]}
-              disabled={saving[name]}
-              aria-busy={saving[name]}
-              onchange={(e) => toggle(name, e.currentTarget)}
-            />
-          </label>
+          <label for="switch-{name}">{label(name)}</label>
+          <From
+            setting={switches[name]}
+            {project}
+            keys={["switches", name]}
+            name={label(name)}
+            busy={saving[name]}
+            onundo={() => save(name, unset(["switches", name]))}
+          />
+          <input
+            id="switch-{name}"
+            type="checkbox"
+            role="switch"
+            checked={switches[name].value}
+            disabled={saving[name]}
+            aria-busy={saving[name]}
+            onchange={(e) => save(name, { switches: { [name]: e.currentTarget.checked } }, e.currentTarget)}
+          />
         </li>
       {/each}
     </ul>
@@ -75,12 +85,15 @@
   li + li {
     border-top: 1px solid var(--hairline);
   }
-  label {
+  li {
     display: flex;
-    justify-content: space-between;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 12px;
+    gap: 4px 12px;
     min-height: 40px;
+  }
+  label {
+    margin-right: auto;
     font-weight: 600;
     cursor: pointer;
   }

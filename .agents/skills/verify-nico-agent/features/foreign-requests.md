@@ -3,15 +3,15 @@
 serve answers only requests on its own host: `127.0.0.1:<port>`, `localhost:<port>`, or the host
 of `bucket.url` when it is set (the tunnel's). Any other `Host`, or none, is refused with 403
 `{error, help}` on every path, so another site's page in the user's browser, or one whose name
-rebinds to 127.0.0.1, reads nothing. A POST or PATCH whose `Origin` (`null` too) is not the
+rebinds to 127.0.0.1, reads nothing. A POST, PATCH or DELETE whose `Origin` (`null` too) is not the
 request's own host is refused the same way, whatever its Content-Type, so such a page cannot
-refresh, dispatch or turn a Switch off. A refused request asks nothing outside and writes nothing. The page on serve or behind
+refresh, dispatch, turn a Switch off or remove a Repo. A refused request asks nothing outside and writes nothing. The page on serve or behind
 the tunnel, and curl (no `Origin`), are answered as before.
 
 ## Sub-features
 
 - `foreign-host` a `Host` not serve's answers 403 `Host <host> is not serve's`, none `the request names no Host`; `help` names the hosts serve answers, the tunnel's only as `bucket.url's host`.
-- `foreign-origin` `POST /api/refresh`, `POST /api/dispatch` and `PATCH /api/repo/<slug>/switches` with another site's or a `null` `Origin` answer 403 `Origin <origin> is not the request's Host`.
+- `foreign-origin` `POST /api/refresh`, `POST /api/dispatch`, `DELETE /api/repo/<slug>` and `PATCH /api/repo/<slug>/switches` with another site's or a `null` `Origin` answer 403 `Origin <origin> is not the request's Host`.
 - `own-hosts` the same requests on `localhost:<port>` from a page there answer as on `127.0.0.1:<port>`.
 - `page` the page on serve, and behind the tunnel once `bucket.url` names it, has its Refresh and switches answered.
 
@@ -37,7 +37,8 @@ Preconditions:
   `error` `the request names no Host`.
 - **Foreign Origin.** Run `$C http --evidence "$E/04-origin-refresh" --header "Origin: https://evil.example" POST /api/refresh`,
   `$C http --evidence "$E/05-origin-dispatch" --header "Origin: null" POST /api/dispatch '{"issue":"verify/fixture#1"}'`
-  and `$C http --evidence "$E/06-origin-switches" --header "Origin: https://evil.example" PATCH /api/repo/verify/fixture/switches '{"review":false}'`.
+  `$C http --evidence "$E/06-origin-switches" --header "Origin: https://evil.example" PATCH /api/repo/verify/fixture/switches '{"review":false}'`
+  and `$C http --evidence "$E/06-origin-delete" --header "Origin: https://evil.example" DELETE /api/repo/verify/fixture`.
   Each HTTP `403`, `{"error":"Origin <origin> is not the request's Host","help":["Send it from the app serve answers, or with no Origin"]}`.
   `$C http --evidence "$E/07-text-plain-dispatch" --header "Origin: http://evil.example" --header "Content-Type: text/plain" POST /api/dispatch '{"issue":"verify/fixture#1"}'`,
   the body a `no-cors` `fetch` sends, answers the same `403`.
@@ -49,8 +50,8 @@ Preconditions:
   `ok` for both steps; `.requests.txt` has `POST /api/refresh -> 200` (the browser sent serve's own `Origin`).
 - **Behind the tunnel.** Run `$C tunnel start`, `. "$($C env)"` and
   `grep -A2 '^\[bucket\]' "$CONFIG_DIR/config.toml" > "$E/10-tunnel.config.txt"`: `[bucket]` now has
-  `url = "$TUNNEL_URL"`. Run `$C page --tunnel --evidence "$E/11-tunnel-page" --click "switch=Review" --click "button=Refresh" --expect "Failed"`.
-  `ok` for every step; `.requests.txt` and `$TUNNEL_LOG` have `PATCH /api/repo/verify/fixture/switches -> 200`
+  `url = "$TUNNEL_URL"`. Run `$C page --tunnel --evidence "$E/11-tunnel-page" --click "region=Switches" --click "switch=Review" --click "button=Refresh" --expect "Failed"`.
+  `ok` for every step; `.requests.txt` and `$TUNNEL_LOG` have `PATCH /api/repo/verify/fixture -> 200`
   and `POST /api/refresh -> 200`. `$C http --evidence "$E/12-tunnel-host-foreign-origin" --header "Host: ${TUNNEL_URL#http://}" --header "Origin: https://evil.example" POST /api/refresh`
   answers `403`: the tunnel's host is serve's, another site's page still is not.
 - **Proof.** `$C state > "$E/state.after.txt"`; copy `$OUTSIDE_LOG` to `$E/outside.log` and `$TUNNEL_LOG` to `$E/tunnel.log`.

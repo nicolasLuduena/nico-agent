@@ -1,18 +1,21 @@
-//! `repo add|rm|list`: which Repos the loop works, kept in `config.toml`.
+//! `repo add|rm|list`: which Repos the loop works, kept in `config.toml`;
+//! and the settings the page writes there, a Repo's own and a Project's.
 
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 use toml_edit::{InlineTable, Item, Table, TableLike, value};
 
 use crate::args::Args;
 use crate::bucket;
 use crate::cli::{Context, Refusal, bad_invocation};
-use crate::config::{self, Linear, SWITCHES, Switches};
+use crate::config::{self, Config, Launch, Linear, SWITCHES, Switches};
 use crate::dispatch;
+use crate::status;
 
 pub fn add(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
     const ADD: &str = "repo add";
     let flags = [
         "--path",
+        "--project",
         "--linear-team",
         "--linear-project",
         "--linear-label",
@@ -29,6 +32,13 @@ pub fn add(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
         .flag("--path")
         .ok_or_else(|| bad_invocation("missing required flag --path".into(), ADD))?;
     let path = std::path::absolute(path)?.display().to_string();
+    let project = args.flag("--project");
+    if let Some(project) = project.filter(|p| !is_name(p)) {
+        return Err(bad_invocation(
+            format!("`{project}` is not a Project's name"),
+            ADD,
+        ));
+    }
     let linear = match (
         args.flag("--linear-team"),
         args.flag("--linear-project"),
@@ -72,30 +82,20 @@ pub fn add(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
     config::edit(&ctx.config_dir, |config, doc| {
         let (slug, done) = match config.repo(slug) {
             Some((slug, repo))
-                if repo.path == path && (linear.is_none() || repo.linear == linear) =>
+                if repo.path == path
+                    && (linear.is_none() || repo.linear == linear)
+                    && (project.is_none() || repo.project.as_deref() == project) =>
             {
                 return json!({ "repo": format!("{slug} already added (no-op)"), "path": path });
             }
             Some((slug, _)) => (slug.clone(), "updated"),
             None => (slug.to_string(), "added"),
         };
-        let repos = doc
-            .entry("repos")
-            .or_insert_with(|| {
-                let mut repos = Table::new();
-                repos.set_implicit(true);
-                Item::Table(repos)
-            })
-            .as_table_like_mut()
-            .expect("load read repos as a table");
-        if repos.get(&slug).is_none() {
-            repos.insert(&slug, Item::Table(Table::new()));
-        }
-        let repo = repos
-            .get_mut(&slug)
-            .and_then(Item::as_table_like_mut)
-            .expect("load read each Repo as a table");
+        let repo = table_at(table_at(doc.as_table_mut(), "repos"), &slug);
         repo.insert("path", value(&path));
+        if let Some(project) = project {
+            repo.insert("project", value(project));
+        }
         if let Some(linear) = &linear {
             let mut selector = InlineTable::new();
             selector.insert("team", linear.team.as_str().into());
@@ -133,6 +133,25 @@ pub fn rm(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
     })
 }
 
+/// `repo rm <slug>` as the page asks it: refused while the Repo has a
+/// Dispatch In flight, where the command keeps it In flight till Closed.
+pub fn rm_idle(ctx: &Context, slug: &str) -> Result<Value, Refusal> {
+    let dispatches = dispatch::load(&ctx.config_dir)?;
+    let in_flight: Vec<&str> = (dispatches.iter())
+        .filter(|d| d.closed_at.is_none() && d.repo.eq_ignore_ascii_case(slug))
+        .map(|d| d.issue.as_str())
+        .collect();
+    if !in_flight.is_empty() {
+        return Err(Refusal::new(
+            format!("{slug} has a Dispatch In flight: {}", in_flight.join(", ")),
+            vec![format!(
+                "Remove it once each is Closed, or run `nico-agent repo rm {slug}`, which keeps them In flight till they are Closed"
+            )],
+        ));
+    }
+    rm(&[slug], ctx)
+}
+
 pub fn list(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
     Args::parse("repo list", args, &[])?.positionals(&[])?;
     let config = config::load(&ctx.config_dir)?;
@@ -150,82 +169,232 @@ pub fn list(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
     Ok(json!({ "repos": repos }))
 }
 
-/// Write `set`, `{name: bool}`, to the switches of the Repo `slug` in the
-/// config, keeping the rest as written; the Repo's switches after.
+/// What `PATCH /api/repo/<slug>` sets; null takes the Project's or the default.
+const SETTINGS: [&str; 6] = [
+    "implementer",
+    "reviewer",
+    "room",
+    "base",
+    "project",
+    "switches",
+];
+/// What `PATCH /api/project/<name>` sets: a Repo's, but `project`.
+const PROJECT_SETTINGS: [&str; 5] = ["implementer", "reviewer", "room", "base", "switches"];
+
+/// Write `set`, `{name: bool}`, to the switches of the Repo `slug` as
+/// [`set`] does; the Repo's switches after.
 pub fn switches(ctx: &Context, slug: &str, set: &Value) -> Result<Value, Refusal> {
-    let bad = |error: String| Refusal {
-        error,
-        help: vec![format!("Switches: {}", SWITCHES.join(", "))],
-        exit_code: 2,
-    };
-    let set =
-        (set.as_object()).ok_or_else(|| bad(format!("{set} is not an object of switches")))?;
-    for (name, on) in set {
-        if !SWITCHES.contains(&name.as_str()) {
-            return Err(bad(format!("`{name}` is not a switch")));
-        }
-        if !on.is_boolean() {
-            return Err(bad(format!("{name} is true or false, not {on}")));
-        }
-    }
-    config::edit(&ctx.config_dir, |config, doc| {
-        let Some((slug, repo)) = config.repo(slug) else {
-            return Err(not_configured(slug));
-        };
-        let switches = doc["repos"][slug.as_str()]
-            .as_table_like_mut()
-            .expect("load read each Repo as a table")
-            .entry("switches")
-            .or_insert(value(InlineTable::new()))
-            .as_table_like_mut()
-            .expect("load read switches as a table");
-        let mut shown = shown(&repo.switches);
-        for (name, on) in set {
-            shown[name] = on.clone();
-            set_kept(switches, name, on.as_bool().expect("checked above").into());
-        }
-        Ok(json!({ "switches": shown }))
-    })?
+    let shown = self::set(ctx, slug, &json!({ "switches": set }))?;
+    let switches: Map<String, Value> = (shown["switches"].as_object().into_iter().flatten())
+        .map(|(name, setting)| (name.clone(), setting["value"].clone()))
+        .collect();
+    Ok(json!({ "switches": switches }))
 }
 
-/// Write `set`, `{"room": n}`, to the room of the Repo `slug` in the config,
-/// keeping the rest as written; the Repo's slug and room after.
-pub fn room(ctx: &Context, slug: &str, set: &Value) -> Result<Value, Refusal> {
-    let bad = |error: String| Refusal {
-        error,
-        help: vec![
-            "room is how many Dispatches the Repo may have In flight at once, \
-             a whole number of at least 1"
-                .into(),
-        ],
-        exit_code: 2,
-    };
-    let set = (set.as_object())
-        .filter(|set| set.contains_key("room"))
-        .ok_or_else(|| bad(format!("{set} sets no room")))?;
-    if let Some(name) = set.keys().find(|name| *name != "room") {
-        return Err(bad(format!("`{name}` is not a setting the page sets")));
-    }
-    // A room past u32 would leave config.toml unreadable.
-    let room = (set["room"].as_u64())
-        .and_then(|room| u32::try_from(room).ok())
-        .filter(|room| *room >= 1)
-        .ok_or_else(|| {
-            bad(format!(
-                "room is a whole number of at least 1, not {}",
-                set["room"]
-            ))
-        })?;
-    config::edit(&ctx.config_dir, |config, doc| {
+/// Write `set`, `{setting: value}` of [`SETTINGS`], to the Repo `slug` in the
+/// config, keeping the rest as written; null removes the Repo's own value,
+/// a switch's its own switch. The Repo's slug and settings after, as
+/// `status` shows them.
+pub fn set(ctx: &Context, slug: &str, set: &Value) -> Result<Value, Refusal> {
+    let slug = config::edit(&ctx.config_dir, |config, doc| {
         let Some((slug, _)) = config.repo(slug) else {
             return Err(not_configured(slug));
         };
+        let set = checked(config, set, &SETTINGS)?;
         let repo = doc["repos"][slug.as_str()]
             .as_table_like_mut()
             .expect("load read each Repo as a table");
-        set_kept(repo, "room", i64::from(room).into());
-        Ok(json!({ "slug": slug, "room": room }))
-    })?
+        write(repo, set);
+        Ok(slug.clone())
+    })??;
+    let config = config::load(&ctx.config_dir)?;
+    let (slug, repo) = config.repo(&slug).ok_or_else(|| not_configured(&slug))?;
+    let mut shown = json!({ "slug": slug });
+    for (key, setting) in status::settings(&config, slug, repo) {
+        shown[key] = setting;
+    }
+    Ok(shown)
+}
+
+/// Write `set`, `{setting: value}` of [`PROJECT_SETTINGS`], to the defaults
+/// of the Project `name`, as [`set`] does a Repo's; its name and defaults after.
+pub fn set_project(ctx: &Context, name: &str, set: &Value) -> Result<Value, Refusal> {
+    config::edit(&ctx.config_dir, |config, doc| {
+        let mut names: Vec<&str> = config.projects.keys().map(String::as_str).collect();
+        names.extend((config.repos.iter()).map(|(slug, repo)| repo.project_name(slug)));
+        if !names.contains(&name) {
+            names.sort();
+            names.dedup();
+            let help = vec![format!("Projects: {}", names.join(", "))];
+            return Err(Refusal::new(format!("{name} is not a Project"), help));
+        }
+        let set = checked(config, set, &PROJECT_SETTINGS)?;
+        write(
+            table_at(table_at(doc.as_table_mut(), "projects"), name),
+            set,
+        );
+        Ok(())
+    })??;
+    let config = config::load(&ctx.config_dir)?;
+    Ok(json!({ "name": name, "defaults": config.projects.get(name) }))
+}
+
+/// `set` as an object of some of `keys`, each null or a value the config
+/// holds; else a bad request.
+fn checked<'a>(
+    config: &Config,
+    set: &'a Value,
+    keys: &[&str],
+) -> Result<&'a Map<String, Value>, Refusal> {
+    let bad = |error: String, help: String| Refusal {
+        error,
+        help: vec![help],
+        exit_code: 2,
+    };
+    let settings = || {
+        format!(
+            "Settings: {}; null takes the Project's or the default",
+            keys.join(", ")
+        )
+    };
+    let set = (set.as_object())
+        .filter(|set| !set.is_empty())
+        .ok_or_else(|| bad(format!("{set} sets nothing"), settings()))?;
+    let switches = || format!("Switches: {}", SWITCHES.join(", "));
+    for (key, new) in set {
+        match (key.as_str(), new) {
+            (key, _) if !keys.contains(&key) => {
+                return Err(bad(
+                    format!("`{key}` is not a setting the page sets"),
+                    settings(),
+                ));
+            }
+            (_, Value::Null) => {}
+            // A room past u32 would leave config.toml unreadable.
+            ("room", room)
+                if room
+                    .as_u64()
+                    .and_then(|r| u32::try_from(r).ok())
+                    .is_some_and(|r| r >= 1) => {}
+            ("room", room) => {
+                let help = "room is how many Dispatches the Repo may have In flight at once, \
+                            a whole number of at least 1";
+                return Err(bad(
+                    format!("room is a whole number of at least 1, not {room}"),
+                    help.into(),
+                ));
+            }
+            ("base" | "project", Value::String(name)) if is_name(name) => {}
+            ("base" | "project", other) => {
+                let help = match key.as_str() {
+                    "base" => "base is the branch a Dispatch starts from unless stacked",
+                    _ => "project is the name of the Project the Repo joins",
+                };
+                return Err(bad(format!("{key} is a name, not {other}"), help.into()));
+            }
+            ("switches", Value::Object(set)) => {
+                for (name, on) in set {
+                    if !SWITCHES.contains(&name.as_str()) {
+                        return Err(bad(format!("`{name}` is not a switch"), switches()));
+                    }
+                    if !(on.is_boolean() || on.is_null()) {
+                        return Err(bad(
+                            format!("{name} is true or false, not {on}"),
+                            switches(),
+                        ));
+                    }
+                }
+            }
+            ("switches", other) => {
+                return Err(bad(
+                    format!("{other} is not an object of switches"),
+                    switches(),
+                ));
+            }
+            (_, launch) => {
+                let names: Vec<&str> = config.harnesses.keys().map(String::as_str).collect();
+                let launch: Launch = serde_json::from_value(launch.clone()).map_err(|_| {
+                    let error = format!("{key} is {{harness, model, effort}}, not {launch}");
+                    bad(error, format!("Harnesses: {}", names.join(", ")))
+                })?;
+                dispatch::check(config, &launch)?;
+            }
+        }
+    }
+    Ok(set)
+}
+
+/// Write each of `set`, [`checked`], to `table`, with the spacing and
+/// comment each was written with; null removes one.
+fn write(table: &mut dyn TableLike, set: &Map<String, Value>) {
+    for (key, new) in set {
+        match new {
+            Value::Null => {
+                table.remove(key);
+            }
+            Value::Object(set) if key == "switches" => {
+                let switches = table
+                    .entry(key)
+                    .or_insert(value(InlineTable::new()))
+                    .as_table_like_mut()
+                    .expect("load read switches as a table");
+                for (name, on) in set {
+                    match on.as_bool() {
+                        Some(on) => set_kept(switches, name, on.into()),
+                        None => {
+                            switches.remove(name);
+                        }
+                    }
+                }
+                if switches.is_empty() {
+                    table.remove(key);
+                }
+            }
+            Value::Object(_) => {
+                let launch: Launch = serde_json::from_value(new.clone()).expect("checked above");
+                let fields = [("model", launch.model), ("effort", launch.effort)];
+                // One written as its own `[...]` table keeps its header and comments.
+                if let Some(written) = table.get_mut(key).and_then(Item::as_table_mut) {
+                    set_kept(written, "harness", launch.harness.into());
+                    for (field, set) in fields {
+                        match set {
+                            Some(set) => set_kept(written, field, set.into()),
+                            None => {
+                                written.remove(field);
+                            }
+                        }
+                    }
+                    continue;
+                }
+                let mut written = InlineTable::new();
+                written.insert("harness", launch.harness.into());
+                for (field, set) in fields {
+                    if let Some(set) = set {
+                        written.insert(field, set.into());
+                    }
+                }
+                set_kept(table, key, written.into());
+            }
+            Value::Number(room) => {
+                set_kept(table, key, room.as_i64().expect("checked above").into())
+            }
+            Value::String(name) => set_kept(table, key, name.as_str().into()),
+            Value::Bool(_) | Value::Array(_) => unreachable!("checked above"),
+        }
+    }
+}
+
+/// The table `key` of `table`, made when missing: its `[key]` header
+/// written only once it holds a key of its own.
+fn table_at<'t>(table: &'t mut dyn TableLike, key: &str) -> &'t mut dyn TableLike {
+    (table.entry(key))
+        .or_insert_with(|| {
+            let mut made = Table::new();
+            made.set_implicit(true);
+            Item::Table(made)
+        })
+        .as_table_like_mut()
+        .expect("load read it as a table")
 }
 
 /// Set `key` of `table` to `new`, with the spacing and comment it was written with.
@@ -257,6 +426,11 @@ pub fn shown(switches: &Switches) -> Value {
     (SWITCHES.iter())
         .map(|name| (*name, all[name].clone()))
         .collect()
+}
+
+/// A Base's or Project's name: not empty, nor starting or ending in a space.
+fn is_name(text: &str) -> bool {
+    !text.is_empty() && text.trim() == text
 }
 
 /// `owner/name`, each part letters, digits, `_`, `.` or `-`.

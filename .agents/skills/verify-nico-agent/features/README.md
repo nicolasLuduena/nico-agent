@@ -56,8 +56,9 @@ commands, and observable proof.
 
 ## Features
 
-- [Add, remove and list Repos](./repos.md) covers `repo add|rm|list`, their refusals and no-ops,
-  and the Bucket `repo add` makes.
+- [Add, remove and list Repos](./repos.md) covers `repo add|rm|list` (`--project` too), their
+  refusals and no-ops, the Bucket `repo add` makes, and the page's Add a Repo and Remove, through
+  `POST /api/repo` and `DELETE /api/repo/<slug>`, refused while a Dispatch is In flight.
 - [Projects](./projects.md) covers `projects.<name>` and a Repo's `project` in `config.toml`:
   defaults its Repos inherit, `repo list`'s `project`, `status`'s `projects` and `{value, from}`
   per setting, the page's effective Room and switches, and a bad Project refused at its line.
@@ -74,6 +75,10 @@ commands, and observable proof.
 - [Where each PR's review stands](./review.md) covers `review` in `status` and the page: the node's
   line under a PR draft Stage, the panel's Review section, and the strip's Review row for a review
   given up on.
+- [Settings](./settings.md) covers the Settings section of a Repo's tab (Implementer and Reviewer
+  launches, Base, Project), each setting's `default`/`project` tag and its Use the default (or the
+  Project's), `PATCH /api/repo/<slug>` and `PATCH /api/project/<name>`, their refusals, and a launch
+  set on the page surviving a restart of serve.
 - [Switches](./switches.md) covers `PATCH /api/repo/<slug>/switches`, the page's toggles, what is
   written to `config.toml`, and the loop obeying a switch turned off.
 - [Room](./room.md) covers `PATCH /api/repo/<slug>` with `{room}`, the page's Room input and its

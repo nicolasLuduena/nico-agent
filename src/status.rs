@@ -191,7 +191,7 @@ pub fn shown(
 
 /// Each setting of the Repo `slug` as `{value, from}`, `from` the first of
 /// the Repo, its Project and the defaults that sets it.
-fn settings(config: &Config, slug: &str, repo: &Repo) -> Vec<(&'static str, Value)> {
+pub fn settings(config: &Config, slug: &str, repo: &Repo) -> Vec<(&'static str, Value)> {
     let own = json!(repo.own);
     let project = json!(config.projects.get(repo.project_name(slug)));
     let setting = |keys: &[&str], value: Value| {

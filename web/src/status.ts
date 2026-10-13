@@ -1,5 +1,7 @@
 /** What `GET /api/status` answers: `status --json`, plus per Repo what the page shows beside its map. Only the fields the page reads so far. */
 export interface Status {
+  /** Each Project: a Repo naming none is its own, named by its slug. */
+  projects: Project[];
   repos: Repo[];
   sources: { github: { paused_until: string | null }; linear: { paused_until: string | null } };
   dispatches: Dispatch[];
@@ -23,12 +25,25 @@ export interface Repo {
   switches: Record<string, Setting<boolean>>;
   /** How many Dispatches it may have In flight at once. */
   room: Setting<number>;
+  /** The branch a Dispatch starts from unless stacked; null, origin's default branch. */
+  base: Setting<string | null>;
   /** The launch the loop dispatches on. */
   implementer: Setting<Launch>;
+  /** The launch its Reviewers start on. */
+  reviewer: Setting<Launch>;
   /** Each configured Harness, with the models and Efforts it takes (null: any). */
   harnesses: Record<string, { models: string[] | null; efforts: string[] | null }>;
   /** Its last quality-scan's Run; none before the first. */
   last_scan?: Run;
+}
+
+/** Repos that work together, and the defaults they take where they set none. */
+export interface Project {
+  name: string;
+  /** The slugs of its Repos. */
+  repos: string[];
+  /** What it sets, as config.toml writes it: e.g. `{room: 4, switches: {review: false}}`. */
+  defaults: Record<string, any>;
 }
 
 /** A Repo's setting as it takes effect, and which of the Repo, its Project and the defaults sets it. */
