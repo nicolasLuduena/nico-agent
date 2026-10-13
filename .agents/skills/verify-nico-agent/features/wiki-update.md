@@ -37,9 +37,10 @@ Preconditions:
 - `$C run -- repo add verify/fixture --path "$FIXTURE_CLONE" --project shop --json`, then
   `$C drift base docs/notes.md`: the fixture holds `README.md` and `docs/notes.md`.
 - Answers seeded by trail: `verify/fixture`, a division into `Readme` (`README.md`) and `Docs`
-  (`docs/notes.md`), `Docs` `reads` `Readme`, with a `role` at `README.md` `1`-`1`; `verify/fixture >
-  Readme`, a leaf with a `role` at `1`-`1` and an `invariant` at `3`-`3`; `verify/fixture > Docs`, a
-  leaf with a `role` at `docs/notes.md` `3`-`3`. `$C run --evidence "$E/01-build" -- wiki build
+  (`docs/notes.md`), `Docs` `reads` `Readme`, with a `role` at `README.md` `1`-`1` and
+  `docs/notes.md` `1`-`1` (one at `README.md` alone would be about Readme, and fail its check);
+  `verify/fixture > Readme`, a leaf with a `role` at `1`-`1` and an `invariant` at `3`-`3`;
+  `verify/fixture > Docs`, a leaf with a `role` at `docs/notes.md` `3`-`3`. `$C run --evidence "$E/01-build" -- wiki build
   verify/fixture --json` is `built`, `"components":3`.
 - `$C state > "$E/state.before.txt"`.
 

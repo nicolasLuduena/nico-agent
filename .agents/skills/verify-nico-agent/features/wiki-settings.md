@@ -19,6 +19,7 @@ shows inline in the sheet, and the field goes back to what is set.
 - `wiki-settings-refused` a bad value is a `400` `{error, help}` and writes nothing: on the page an `alert` under the sheet (`hour is an hour from 0 to 23, not 24`) and the field back to what is set; by `PATCH`, an unknown Harness is ``unknown Harness `pi` `` with `Harnesses that build a Wiki: claude, codex, opencode`, a key it does not set `` `ollama` is not a setting the page sets ``.
 - `wiki-settings-kept` after `restart`, `GET /api/status`'s `wiki_settings` and the sheet show what was saved.
 - `wiki-build-harness` a real `wiki build` on claude, or on codex, set from the sheet, builds the Wiki into the Bucket (outside a run's stubs: see Gotchas).
+- `wiki-build-real` a real `wiki build` on the default launch and budget (opencode, `opencode-go/deepseek-v4.1-flash`, 48 calls) builds the Wiki the prompt asks for. It divides only along the units the repo declares (a package or crate by its manifest, a module by its language or package, a skill by its `SKILL.md`, a plugin by its manifest) and the folders grouping them, at the first folder level where the units split apart (a folder holding every unit is no level of its own); a part that is one unit declaring none inside it is a leaf (a package with modules divides into them). In a code repo no Component is docs, agent instructions or skills, fixtures, config or tests (tests go with the unit they test), and those files are in no Component, with no call and no Gap; in a skills repo each skill is a Component. An overview is at most 3 sentences, the root's naming its units; a leaf has at most 5 Interpretations, a division at most 3, each about how its Components work together; an Interpretation is one sentence of at most 25 words, no list of identifiers; a leaf's Explainer walks a flow its Interpretations don't state.
 
 ## How to get to it (user POV)
 
@@ -74,3 +75,9 @@ Preconditions:
   default model, not the user's, unless the launch names one. codex's build writes its answer schema to
   `wiki/answer.schema.json` in the config dir.
 - `curl` is offline in a run, so such a build says it could not embed the Wiki, and is still built.
+- `wiki-build-real` of another Repo, on opencode, needs opencode's credentials: drive it outside a
+  run as [library-wikis.md](./library-wikis.md)'s Gotchas say (`HOME` a scratch dir, the real XDG
+  dirs, `GIT_CONFIG_GLOBAL` the user's), its config naming a scratch `bucket.path`, then `repo add`
+  a clone of it and `wiki build` it. The build reads `origin/<base>`, the Base being the branch
+  `origin/HEAD` names: a clone of a local clone follows the branch that one has checked out, so
+  `git remote set-head origin main` first.

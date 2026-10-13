@@ -1628,22 +1628,43 @@ const PROMPT: &str = r#"You are writing one part of the Wiki of {repo}: what its
 Its files, by repo-relative path, with their line counts:
 
 {files}
-{context}Read the files you need, then answer whether this part is one piece of code (a leaf) or divides into Components (a division).
+{context}Read the files you need, then answer whether this part is one unit (a leaf) or divides into Components (a division).
 
-- Spend your reads on code: its invariants, contracts, effects and control flow. Docs, assets, lockfiles and generated files need only a glance.
-- Read only files from the list, and read a file before claiming anything about it. Write each path exactly as listed.
-- An overview is plain prose of at most 5 sentences on what the part is for and how it works.
-- An Interpretation is one sentence claiming one thing, of one kind: invariant, precondition, postcondition, effect or role. It cites at least one Anchor.
-- An Anchor is lines of a listed file, 1-based and inclusive: start <= end <= the file's line count.
-- A division's Components share out the part's files, each listed file in at most one; a Component's summary is one or two sentences. When docs or assets force a division, group them into one Component.
+What the Wiki covers:
+
+- The root, the whole repo, decides what the repo is for, and every Component is about that. Everything else is left out of every Component, and never asked about.
+- In a code repo, that leaves out its docs, agent instructions and skills, fixtures and config. In a repo of skills or plugins, they are what it is for, so each skill or plugin is a Component.
+- Tests go in the Component of the unit they test, when they test one, and are never a Component of their own.
+
+Where to divide:
+
+- A part divides only along the units the repo declares, and the folders that hold them:
+  - a package or crate, declared by its own manifest (a workspace member's package.json, a Cargo.toml)
+  - a module, declared by the language or the package (a Rust mod, a Compact module, a package.json exports subpath)
+  - a skill, declared by its SKILL.md, or a plugin, declared by its manifest
+- A division's Components are the part's units, or the folders that group them, at the first folder level where its units split apart: a folder holding all of them is no Component of its own, and one holding several is a Component, its units under it.
+- A part that is one declared unit, declaring none inside it, is a leaf, however big it is.
+- A division's Components share out the part's files, each listed file in at most one; a file in none is left out. A Component's summary is one or two sentences.
 - A Relationship goes from one Component of your division to another, named as you named them, of one kind: uses, calls, reads or writes.
-- A leaf may carry one Explainer, when how something in it works is best walked through in order: a title, at most 8 steps numbered from 1, each a one-sentence caption citing at least one Anchor, with an optional lane naming where the step happens, and arrows from step to step by number, each with an optional label. Leave it out otherwise.
+
+How much to write: each limit below is the most, not a target. Write less whenever less is enough.
+
+- Spend your reads on code: its invariants, contracts, effects and control flow. Lockfiles and generated files need only a glance.
+- Read only files from the list, and read a file before claiming anything about it. Write each path exactly as listed.
+- An overview is plain prose of at most 3 sentences: what the part is for, and where to start reading it. The root's names its units and how they work together.
+- An Interpretation is one plain sentence of at most 25 words, claiming one thing, of one kind: invariant, precondition, postcondition, effect or role. It is not a list of identifiers joined by semicolons or dashes. It cites at least one Anchor.
+- A leaf has at most 5 Interpretations: the ones a newcomer most needs, or would most likely get wrong.
+- A division has at most 3 Interpretations, each about how its Components work together. One whose Anchors all fall in the files of one Component is about that Component, and fails.
+- An Anchor is lines of a listed file, 1-based and inclusive: start <= end <= the file's line count.
+- Most leaves have no Explainer. A leaf has one only for a flow, in order, that its Interpretations don't already state, and its steps don't restate them: a title, at most 8 steps numbered from 1, each a one-sentence caption citing at least one Anchor, with an optional lane naming where the step happens, and arrows from step to step by number, each with an optional label.
 
 Answer with one JSON object and nothing else, in one of two shapes:
 
-{"kind": "leaf", "overview": "...", "interpretations": [{"kind": "role", "text": "...", "anchors": [{"path": "...", "start": 1, "end": 2}]}], "explainer": {"title": "...", "steps": [{"n": 1, "caption": "...", "anchors": [{"path": "...", "start": 1, "end": 2}], "lane": "..."}], "arrows": [{"from": 1, "to": 2, "label": "..."}]}}
+{"kind": "leaf", "overview": "...", "interpretations": [{"kind": "role", "text": "...", "anchors": [{"path": "...", "start": 1, "end": 2}]}], "explainer": null}
 
 {"kind": "division", "overview": "...", "components": [{"name": "...", "summary": "...", "files": ["..."]}], "relationships": [{"from": "...", "to": "...", "kind": "uses", "description": "..."}], "interpretations": [{"kind": "invariant", "text": "...", "anchors": [{"path": "...", "start": 1, "end": 2}]}]}
+
+A leaf that has an Explainer gives it in place of null: {"title": "...", "steps": [{"n": 1, "caption": "...", "anchors": [{"path": "...", "start": 1, "end": 2}], "lane": "..."}], "arrows": [{"from": 1, "to": 2, "label": "..."}]}
 "#;
 
 /// What the model is asked of `part`.
@@ -1656,7 +1677,7 @@ fn prompt(slug: &str, part: &Part, lines: &HashMap<&str, usize>) -> String {
             "This part is the Component \"{}\" of {above}, described as: {}\n\n",
             part.name, part.summary
         ),
-        None => String::new(),
+        None => format!("This part is the root: the whole of {slug}.\n\n"),
     };
     // The files last: a path is never taken for a placeholder.
     let values = [
@@ -1760,6 +1781,25 @@ fn checked(
         return (None, vec![why.into()]);
     };
     let in_part: HashSet<&str> = part.files.iter().map(String::as_str).collect();
+    let (division, explainer) = match answer.kind.as_str() {
+        "division" => (&answer.components[..], &[][..]),
+        _ => (&[][..], answer.explainer.as_slice()),
+    };
+    // Read before the Interpretations, which a division's are held to; listed after them.
+    let mut dropped_components = vec![];
+    let named = claims(
+        "component",
+        division,
+        &mut dropped_components,
+        |c: &Named| {
+            let outside = c.files.iter().find(|f| !in_part.contains(f.as_str()));
+            match (c.files.is_empty(), outside) {
+                (true, _) => Some("it has no files".into()),
+                (_, Some(f)) => Some(format!("{f} is not one of the part's files")),
+                _ => None,
+            }
+        },
+    );
     let mut dropped = vec![];
     let interpretations = claims(
         "interpretation",
@@ -1773,13 +1813,17 @@ fn checked(
                     KINDS.join(", ")
                 ));
             }
-            unanchored(&i.anchors, lines)
+            unanchored(&i.anchors, lines).or_else(|| {
+                let within = |c: &&Named| (i.anchors.iter()).all(|a| c.files.contains(&a.path));
+                named.iter().find(within).map(|c| {
+                    format!(
+                        "its Anchors all fall in the files of {}, so it is about that Component, not how the division's Components work together",
+                        c.name
+                    )
+                })
+            })
         },
     );
-    let (division, explainer) = match answer.kind.as_str() {
-        "division" => (&answer.components[..], &[][..]),
-        _ => (&[][..], answer.explainer.as_slice()),
-    };
     let explainer = claims("explainer", explainer, &mut dropped, |e: &Explainer| {
         let steps = e.steps.len();
         if steps == 0 || steps > MOST_STEPS {
@@ -1803,14 +1847,7 @@ fn checked(
             })
     })
     .pop();
-    let named = claims("component", division, &mut dropped, |c: &Named| {
-        let outside = c.files.iter().find(|f| !in_part.contains(f.as_str()));
-        match (c.files.is_empty(), outside) {
-            (true, _) => Some("it has no files".into()),
-            (_, Some(f)) => Some(format!("{f} is not one of the part's files")),
-            _ => None,
-        }
-    });
+    dropped.append(&mut dropped_components);
     let said = claims(
         "relationship",
         &answer.relationships,

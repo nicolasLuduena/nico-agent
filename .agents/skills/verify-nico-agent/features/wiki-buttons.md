@@ -33,7 +33,8 @@ Preconditions:
 - `$C run -- repo add verify/fixture --path "$FIXTURE_CLONE" --project shop --json`, then
   `printf '\n[wiki]\ncalls = 2\n' >> "$CONFIG_DIR/config.toml"`.
 - Answers: `$E/answer-fixture.json`, a division into `Readme` and `Notes` (each `README.md`) with
-  a `role` at `1`-`1`; `$E/answer-readme.json` and `$E/answer-notes.json`, leaves, Notes' overview
+  no Interpretation (one citing `README.md` alone would be about one of them, and fail its
+  check); `$E/answer-readme.json` and `$E/answer-notes.json`, leaves, Notes' overview
   "Notes on the README, filled in by Continue." with a `role` at `3`-`3`. Seed the first two:
   `$C seed answer "$E/answer-fixture.json" "verify/fixture"`, `$C seed answer
   "$E/answer-readme.json" "verify/fixture > Readme"`.
