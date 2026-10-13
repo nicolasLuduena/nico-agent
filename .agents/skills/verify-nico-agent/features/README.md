@@ -132,6 +132,11 @@ commands, and observable proof.
   and the Explainer clicked through, sub-Components, Gaps and Next, an old Board link and an
   unknown id, back and forward, search, the outline, the sheets, light and dark at desk and phone
   width, through the tunnel, and a real Wiki seeded with `seed wiki`.
+- [Define the names a Wiki's text uses, as Terms](./wiki-terms.md) covers a build asking each part
+  for its Terms, a Term its text never uses, not in the lines it cites or past its file's end sent
+  back and corrected, the page's `Terms` section before the Interpretations at desk and phone, light
+  and dark, the outline's `Terms` and search's `TERM` hits, a Stale Term on the page, the route and
+  `get_component`, `find_component` by a Term's name, and a Wiki with no Terms reading as before.
 - [Update a Wiki and see what is Stale](./wiki-update.md) covers `wiki build --update` asking only
   about the part a changed file is in and dividing again only the part an added file sits under,
   the rest copied in place, and an Interpretation whose file changed on the Base marked `stale` in

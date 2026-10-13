@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { anchorUrl, cited, freshness, gist, libraryId, named, next, progressed, search, trail, unexplored } from "./wiki";
+import { anchorUrl, cited, freshness, gist, libraryId, named, next, outline, progressed, search, seams, trail, unexplored } from "./wiki";
 
 test("an Anchor opens GitHub at the Wiki's commit, at its lines, its path escaped", () => {
   const wiki = { target: { repo: "acme/api" }, commit: "abc1234" };
@@ -120,4 +120,43 @@ test("a sub-Component's gist is its overview's first sentence, whole, even past 
 test("each cited file is named by its file's name, with as many of its folders as tell it from another of that name", () => {
   const paths = ["packages/zk-tls/src/client/index.ts", "packages/zk-tls/src/index.ts", "packages/zk-tls/src/client/collect.ts", "packages/core/src/index.ts", "README.md"];
   expect(paths.map(named(paths))).toEqual(["client/index.ts", "zk-tls/src/index.ts", "collect.ts", "core/src/index.ts", "README.md"]);
+});
+
+const term = (name: string, meaning: string, path = "packages/core/src/claim.ts") => ({ name, meaning, anchors: [anchor(path, 31, 31)] });
+
+test("search finds a Term by its name or meaning, after the Components and before the Interpretations, its text the name then the meaning", () => {
+  const claim = { ...component("claim", "@thoth/core/claim", "The claim's header.", ["The header hashes appId first."]), terms: [term("appId", "The **app** a claim is made for."), term("holder", "Who holds the claim.")] };
+  const wiki = { components: [component("index", "thoth", "Claims, attested."), claim] };
+  expect(search(wiki, "appid").map((h) => [h.component.id, h.term?.name ?? null, h.interpretation?.id ?? null, h.text])).toEqual([
+    ["claim", "appId", null, "appId: The app a claim is made for."],
+    ["claim", null, 1, "The header hashes appId first."],
+  ]);
+  expect(search(wiki, "who holds").map((h) => h.term?.name)).toEqual(["holder"]);
+});
+
+test("a Component's outline is its name, then its Terms before its Interpretations, then each other section it shows, with how many each holds", () => {
+  const claim = { ...component("claim", "@thoth/core/claim", "", ["The header hashes appId first."]), terms: [term("appId", ""), term("holder", "")] };
+  expect(outline(claim, true, 2).map((h) => [h.id, h.name, h.count])).toEqual([
+    ["component-name", "@thoth/core/claim", null],
+    ["head-terms", "Terms", 2],
+    ["head-interpretations", "Interpretations", 1],
+    ["head-relationships", "Relationships", null],
+    ["head-parts", "Components", 2],
+  ]);
+  // A Wiki built before Components had Terms has none to list.
+  expect(outline(component("index", "thoth", ""), false, 0).map((h) => h.name)).toEqual(["thoth"]);
+});
+
+test("the files a Component cites count its Terms' Anchors too", () => {
+  const one = { ...component("claim", "@thoth/core/claim", ""), terms: [term("appId", "")] };
+  expect(cited(one)).toBe("packages/core/src/claim.ts");
+  expect(cited({ ...one, terms: [...one.terms, term("Claim", "", "packages/contracts/attestation.compact")] })).toBeNull();
+});
+
+test("a Term's name breaks only at its seams: between a word and a capital, and after _ . / or ::", () => {
+  expect(seams("InstallationTokenCache")).toEqual(["Installation", "Token", "Cache"]);
+  expect(seams("wiki_build_budget_calls")).toEqual(["wiki_", "build_", "budget_", "calls"]);
+  expect(seams("@thoth/core::Claim.appId")).toEqual(["@thoth/", "core::", "Claim.", "app", "Id"]);
+  expect(seams("header")).toEqual(["header"]);
+  expect(seams("URL")).toEqual(["URL"]);
 });

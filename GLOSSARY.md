@@ -166,15 +166,20 @@ version a Repo uses instead of reading the whole library. _Avoid_:
 dependency, package, external repo.
 
 **Component**: a named part of a Wiki's code, with an overview, its files,
-its Interpretations and its sub-Components. One page of the Wiki. _Avoid_:
-module, section, page.
+its Terms, its Interpretations and its sub-Components. One page of the Wiki.
+_Avoid_: module, section, page.
 
 **Interpretation**: a one-sentence claim about a Component, of one kind
 (invariant, precondition, postcondition, effect, role), citing at least one
 Anchor. _Avoid_: note, insight, fact.
 
+**Term**: a name a Component's text uses that its code declares or gives its
+own sense (a field, a type, a parameter, a word like "header"), with one
+sentence of what it stands for, citing the lines that declare it. _Avoid_:
+definition, glossary entry, field.
+
 **Anchor**: a path and a line range at the Wiki's commit, the lines an
-Interpretation cites. _Avoid_: evidence (that is a verification run's),
+Interpretation or a Term cites. _Avoid_: evidence (that is a verification run's),
 reference, citation.
 
 **Relationship**: one Component using, calling, reading or writing another.
@@ -188,14 +193,14 @@ numbered steps in order, each a one-sentence caption citing Anchors. At
 most one per Component. _Avoid_: diagram,
 illustration, figure.
 
-**Stale**: an Interpretation of a Repo's Wiki whose anchored file changed on
+**Stale**: an Interpretation or a Term of a Repo's Wiki whose anchored file changed on
 the base since it was written; shown as such, never hidden, until a wiki
 build asks about its part again. _Avoid_: outdated, invalid.
 
 **Update**: a wiki build of a Repo's Wiki from the one before it, asking
 again only about the parts whose files changed and copying the rest; a
-parent whose parts changed keeps its Interpretations, Stale where they
-are. _Avoid_: refresh, incremental build.
+parent whose parts changed keeps its Interpretations and Terms, Stale
+where they are. _Avoid_: refresh, incremental build.
 
 **Rebuild**: a wiki build of a Wiki from nothing, as its first one is,
 asked for by the user. _Avoid_: reset, regenerate.

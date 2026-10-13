@@ -81,6 +81,8 @@ export interface Component {
   parent: string | null;
   /** Markdown, at most about 5 sentences. */
   overview: string;
+  /** The names its text uses, defined; none on a Wiki built before Components had them. */
+  terms?: Term[];
   interpretations: Interpretation[];
   /** What it uses, calls, reads or writes; what does so to it is in the other Components' own. */
   relationships: Relationship[];
@@ -122,6 +124,16 @@ export interface Interpretation {
   id: number;
   kind: string;
   text: string;
+  anchors: Anchor[];
+  /** A file it cites changed on the Base since it was written. */
+  stale?: true;
+}
+
+/** A name a Component's text uses, with what it stands for, citing the lines that declare it. */
+export interface Term {
+  name: string;
+  /** One sentence. */
+  meaning: string;
   anchors: Anchor[];
   /** A file it cites changed on the Base since it was written. */
   stale?: true;
@@ -173,15 +185,16 @@ export function anchorUrl(wiki: Pick<Wiki, "target" | "commit">, a: Anchor): str
   return `${fileUrl(wiki, a.path)}#L${a.start}-L${a.end}`;
 }
 
-/** Where `search` found its words: a Component by its name or overview, or one of its Interpretations. */
+/** Where `search` found its words: a Component by its name or overview, or one of its Terms or Interpretations. */
 export interface Hit {
   component: Component;
+  term: Term | null;
   interpretation: Interpretation | null;
-  /** The text found, the overview or the Interpretation's, as the page shows it: without its Markdown marks. */
+  /** The text found, the overview, the Term's name and meaning or the Interpretation's, as the page shows it: without its Markdown marks. */
   text: string;
 }
 
-/** Every Component whose name or overview holds each word of `query`, case aside, then every Interpretation that does, in the Wiki's order; each read as the page shows it. */
+/** Every Component whose name or overview holds each word of `query`, case aside, then every Term whose name and meaning do, then every Interpretation that does, in the Wiki's order; each read as the page shows it. */
 export function search(wiki: Pick<Wiki, "components">, query: string): Hit[] {
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
   if (words.length === 0) return [];
@@ -192,10 +205,13 @@ export function search(wiki: Pick<Wiki, "components">, query: string): Hit[] {
       .join("");
   return [
     ...wiki.components
-      .map((c) => ({ component: c, interpretation: null, text: shown(c.overview) }))
+      .map((c) => ({ component: c, term: null, interpretation: null, text: shown(c.overview) }))
       .filter((h) => holds(`${h.component.name}\n${h.text}`)),
     ...wiki.components.flatMap((c) =>
-      c.interpretations.map((i) => ({ component: c, interpretation: i, text: shown(i.text) })).filter((h) => holds(h.text)),
+      (c.terms ?? []).map((t) => ({ component: c, term: t, interpretation: null, text: `${t.name}: ${shown(t.meaning)}` })).filter((h) => holds(h.text)),
+    ),
+    ...wiki.components.flatMap((c) =>
+      c.interpretations.map((i) => ({ component: c, term: null, interpretation: i, text: shown(i.text) })).filter((h) => holds(h.text)),
     ),
   ];
 }
@@ -203,6 +219,25 @@ export function search(wiki: Pick<Wiki, "components">, query: string): Hit[] {
 /** What Continue asks about, before its button: "6 parts not explored (budget)". */
 export function unexplored(budget: number): string {
   return `${budget} part${budget === 1 ? "" : "s"} not explored (budget)`;
+}
+
+/** The heads the page gives ids, for the outline: the Component's name, then each section it shows, with how many it holds; `related` when a Relationship joins it to another Component, either way, and `parts` how many sub-Components it has. */
+export function outline(component: Component, related: boolean, parts: number): { id: string; name: string; count: number | null }[] {
+  const terms = component.terms ?? [];
+  return [
+    { id: "component-name", name: component.name, count: null },
+    ...(terms.length > 0 ? [{ id: "head-terms", name: "Terms", count: terms.length }] : []),
+    ...(component.interpretations.length > 0 ? [{ id: "head-interpretations", name: "Interpretations", count: component.interpretations.length }] : []),
+    ...(related ? [{ id: "head-relationships", name: "Relationships", count: null }] : []),
+    ...(component.explainer ? [{ id: "head-explainer", name: "Explainer", count: component.explainer.steps.length }] : []),
+    ...(parts > 0 ? [{ id: "head-parts", name: "Components", count: parts }] : []),
+    ...(component.gaps.length > 0 ? [{ id: "head-gaps", name: "Gaps", count: component.gaps.length }] : []),
+  ];
+}
+
+/** A Term's name cut where a line may break inside it, a code name never mid-word: before a capital after a lower-case letter or digit, and after `_`, `.`, `/` or `::`. */
+export function seams(name: string): string[] {
+  return name.split(/(?<=[a-z0-9])(?=[A-Z])|(?<=[_./]|::)/);
 }
 
 /** The Components above `component`, from the top one down. */
@@ -224,9 +259,9 @@ export function next(wiki: Pick<Wiki, "components">, component: Component): Comp
   return null;
 }
 
-/** Each file the Anchors of `component` cite, its Explainer's too, once. */
+/** Each file the Anchors of `component` cite, its Terms' and its Explainer's too, once. */
 export function citedFiles(component: Component): string[] {
-  const anchors = [...component.interpretations, ...(component.explainer?.steps ?? [])].flatMap((x) => x.anchors);
+  const anchors = [...(component.terms ?? []), ...component.interpretations, ...(component.explainer?.steps ?? [])].flatMap((x) => x.anchors);
   return [...new Set(anchors.map((a) => a.path))];
 }
 

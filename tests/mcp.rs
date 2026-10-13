@@ -41,6 +41,7 @@ fn with_wikis() -> Setup {
             ],
             "relationships": [{ "from": "Web front", "to": "Core", "kind": "calls", "description": "It calls the API." }],
             "interpretations": [{ "kind": "role", "text": "The page calls run, the entry point.", "anchors": [{ "path": "src/lib.rs", "start": 4, "end": 4 }, { "path": "web/app.ts", "start": 1, "end": 1 }] }],
+            "terms": [{ "name": "run", "meaning": "The crate's entry point.", "anchors": [{ "path": "src/lib.rs", "start": 4, "end": 4 }] }],
         }),
     );
     answer(
@@ -235,7 +236,27 @@ fn find_component_lists_the_components_whose_name_or_overview_match_best_first()
 }
 
 #[test]
-fn get_component_gives_its_interpretations_relationships_sub_components_and_gaps() {
+fn find_component_finds_a_component_by_one_of_its_terms_names_as_by_its_own() {
+    let t = with_wikis();
+
+    let found = call(
+        &t,
+        &[],
+        "find_component",
+        json!({ "wiki": "acme/api", "query": "run" }),
+    );
+
+    // Only the top part's Term holds it.
+    assert_eq!(
+        found,
+        Ok(
+            json!([{ "id": "index", "name": "acme/api", "overview": "An HTTP API and the web page in front of it." }])
+        )
+    );
+}
+
+#[test]
+fn get_component_gives_its_terms_interpretations_relationships_sub_components_and_gaps() {
     let t = with_wikis();
 
     let index = call(
@@ -265,6 +286,7 @@ fn get_component_gives_its_interpretations_relationships_sub_components_and_gaps
             "name": "acme/api",
             "parent": null,
             "overview": "An HTTP API and the web page in front of it.",
+            "terms": [{ "name": "run", "meaning": "The crate's entry point.", "anchors": [{ "path": "src/lib.rs", "start": 4, "end": 4 }] }],
             "interpretations": [{ "id": 1, "kind": "role", "text": "The page calls run, the entry point.", "anchors": [{ "path": "src/lib.rs", "start": 4, "end": 4 }, { "path": "web/app.ts", "start": 1, "end": 1 }] }],
             "relationships": [],
             "gaps": [],

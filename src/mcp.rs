@@ -17,7 +17,7 @@ use crate::wiki::{self, Of};
 /// The MCP versions it speaks, the latest last.
 const VERSIONS: [&str; 4] = ["2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25"];
 
-const INSTRUCTIONS: &str = "The Wikis of the user's Repos and of the Library versions they use: what each one's code does as of one commit, as a tree of Components whose every claim (an Interpretation) cites the lines it rests on (its Anchors). Ask here before reading a Repo's code: `wikis` lists them, `find_component` finds a Component by words, `get_component` reads one, the top one being `index`, `read_anchor` reads the lines a claim cites, and `ask` answers a question in a few sentences, each citing lines. Where a Wiki and the code disagree, the code wins.";
+const INSTRUCTIONS: &str = "The Wikis of the user's Repos and of the Library versions they use: what each one's code does as of one commit, as a tree of Components whose every claim (an Interpretation) cites the lines it rests on (its Anchors), each Component defining the names its text uses (its Terms). Ask here before reading a Repo's code: `wikis` lists them, `find_component` finds a Component by words, `get_component` reads one, the top one being `index`, `read_anchor` reads the lines a claim cites, and `ask` answers a question in a few sentences, each citing lines. Where a Wiki and the code disagree, the code wins.";
 
 /// `mcp [--wiki <wiki>]...`: answer each request on stdin till it
 /// closes, serving the Wikis named, or every one.
@@ -106,13 +106,13 @@ fn tools() -> Value {
         ),
         tool(
             "find_component",
-            "Find the Components of a Wiki whose name or overview hold the query's words, best first: each one's id, name and overview.",
+            "Find the Components of a Wiki whose name, overview or Terms' names hold the query's words, best first: each one's id, name and overview.",
             json!({ "wiki": wiki, "query": { "type": "string", "description": "Words to look for." } }),
             &["wiki", "query"],
         ),
         tool(
             "get_component",
-            "Read a Component of a Wiki: its overview, its Interpretations (one-sentence claims, each an invariant, precondition, postcondition, effect or role, citing Anchors: a path and lines, 1-based and inclusive; one `stale` cites a file that changed on the Repo's Base since it was written, so check it in the code), its Relationships (`to` what it uses, `from` what uses it), its sub-Components and its Gaps; a leaf's files too. `index` is a Wiki's top Component.",
+            "Read a Component of a Wiki: its overview, its Terms (each a name its text uses, with what it stands for, citing the lines that declare it), its Interpretations (one-sentence claims, each an invariant, precondition, postcondition, effect or role, citing Anchors: a path and lines, 1-based and inclusive; an Interpretation or Term `stale` cites a file that changed on the Repo's Base since it was written, so check it in the code), its Relationships (`to` what it uses, `from` what uses it), its sub-Components and its Gaps; a leaf's files too. `index` is a Wiki's top Component.",
             json!({ "wiki": wiki, "id": { "type": "string", "description": "The Component's id, as find_component or a parent gives it." } }),
             &["wiki", "id"],
         ),
@@ -228,8 +228,9 @@ fn wikis(ctx: &Context, named: &[&str], config: &Config) -> Result<Value, String
     Ok(json!(wikis))
 }
 
-/// The Components of `wiki` whose name or overview hold the words of
-/// `query`: a word in the name counts twice, one in the overview once.
+/// The Components of `wiki` whose name, overview or Terms' names hold the
+/// words of `query`: a word in the name or a Term's counts twice, one in
+/// the overview once.
 fn found(wiki: &Value, query: &str) -> Value {
     let query = query.to_lowercase();
     let words: Vec<&str> = (query.split(|c: char| !c.is_alphanumeric()))
@@ -238,7 +239,13 @@ fn found(wiki: &Value, query: &str) -> Value {
     let lower = |c: &Value, key: &str| c[key].as_str().unwrap_or_default().to_lowercase();
     let mut found: Vec<(usize, &Value)> = (components(wiki).iter())
         .filter_map(|c| {
-            let (name, overview) = (lower(c, "name"), lower(c, "overview"));
+            let terms = (c["terms"].as_array().into_iter().flatten()).map(|t| lower(t, "name"));
+            let name = [lower(c, "name")]
+                .into_iter()
+                .chain(terms)
+                .collect::<Vec<_>>()
+                .join("\n");
+            let overview = lower(c, "overview");
             let score = (words.iter())
                 .map(|w| 2 * usize::from(name.contains(w)) + usize::from(overview.contains(w)))
                 .sum();

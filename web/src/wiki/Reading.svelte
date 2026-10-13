@@ -1,7 +1,8 @@
 <script lang="ts">
   // The open Component of a Wiki, set for reading: its trail, its name,
-  // its overview, its Interpretations in the build's order, each with its
-  // kind in the margin and its Anchors quietly under it, then whichever of
+  // its overview, its Terms, each with its name in the margin, before the
+  // claims that use them, its Interpretations in the build's order, each
+  // with its kind in the margin and its Anchors quietly under it, then whichever of
   // its Relationship diagram, its Explainer, its sub-Components and its Gaps
   // it has, and the next Component in the tree's order.
   import { blocks, spans, type Span } from "../markdown";
@@ -9,7 +10,7 @@
   import Anchors from "./Anchors.svelte";
   import Explainer from "./Explainer.svelte";
   import Relationships from "./Relationships.svelte";
-  import { cited, citedFiles, fileUrl, gist, named, next, REASONS, trail, type Component, type Hit, type Wiki } from "./wiki";
+  import { cited, citedFiles, fileUrl, gist, named, next, REASONS, seams, trail, type Component, type Hit, type Wiki } from "./wiki";
 
   let {
     wiki,
@@ -30,13 +31,14 @@
   } = $props();
 
   const above = $derived(trail(wiki, component));
+  const terms = $derived(component.terms ?? []);
   const after = $derived(next(wiki, component));
   /** The one file its Anchors cite, said once above them; else each Anchor names its file. */
   const file = $derived(cited(component));
   const name = $derived(file ? null : named(citedFiles(component)));
 
   // Another Component opened takes focus to its name, which scrolls it into view; the first one shown does not.
-  // A search hit, once its Component shows, scrolls to its Interpretation, focuses it and flashes it, once.
+  // A search hit, once its Component shows, scrolls to its Term or Interpretation, focuses it and flashes it, once.
   let heading: HTMLElement;
   let shown: string | undefined;
   let followed: Hit | null = null;
@@ -44,7 +46,10 @@
     const id = component.id;
     if (found && found !== followed && found.component.id === id) {
       followed = found;
-      const row = found.interpretation && document.getElementById(`interpretation-${found.interpretation.id}`);
+      const term = found.term && (found.component.terms ?? []).indexOf(found.term) + 1;
+      const row = found.interpretation
+        ? document.getElementById(`interpretation-${found.interpretation.id}`)
+        : term && document.getElementById(`term-${term}`);
       if (row) {
         row.scrollIntoView({ block: "center" });
         row.focus({ preventScroll: true });
@@ -88,6 +93,25 @@
         {/if}
       {/each}
     </div>
+
+    {#if terms.length > 0}
+      <section aria-labelledby="head-terms">
+        <h2 id="head-terms" class="label" tabindex="-1">Terms</h2>
+        <dl class="claims">
+          {#each terms as term, n (n)}
+            <div class="claim" id="term-{n + 1}" tabindex="-1">
+              <dt class="term">{#each seams(term.name) as part, i (i)}{#if i > 0}<wbr />{/if}{part}{/each}</dt>
+              <dd class="said">
+                <p>
+                  {#if term.stale}<span class="label stale">Stale</span>{" "}{/if}{@render line(spans(term.meaning))}
+                </p>
+                <p class="cites"><Anchors {wiki} anchors={term.anchors} {name} /></p>
+              </dd>
+            </div>
+          {/each}
+        </dl>
+      </section>
+    {/if}
 
     {#if component.interpretations.length > 0}
       <section aria-labelledby="head-interpretations">
@@ -268,7 +292,7 @@
     padding: 0;
     list-style: none;
   }
-  .claims > li,
+  .claims > *,
   .rows > li {
     padding: 12px 0;
     border-top: 1px solid var(--hairline);
@@ -288,12 +312,22 @@
     color: var(--ink-muted);
     font-size: 14px;
   }
+  /* A Term's name, where a claim's kind goes: the word before what it stands for, broken at its seams first. */
+  .term {
+    font-weight: 600;
+  }
+  dd {
+    margin: 0;
+  }
   @container (width >= 600px) {
     .inner {
       --margin: 144px;
     }
     .claim {
       grid-template-columns: var(--margin) minmax(0, 1fr);
+    }
+    .term {
+      padding-right: 16px;
     }
   }
   /* A search hit keeps its focus ring until focus moves on, so the eye finds it. */
