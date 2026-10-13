@@ -24,7 +24,7 @@ const ISSUES_QUERY: &str = "query($filter: IssueFilter!, $cursor: String) {
       id identifier title url branchName createdAt team { id key name } project { id name }
       state { type } assignee { id }
       labels(first: 100) { nodes { name } pageInfo { hasNextPage endCursor } }
-      inverseRelations(first: 100) { nodes { type issue { identifier title state { type } } } pageInfo { hasNextPage endCursor } }
+      inverseRelations(first: 100) { nodes { type issue { identifier title state { type } completedAt canceledAt } } pageInfo { hasNextPage endCursor } }
       children(first: 1) { nodes { id } }
     }
     pageInfo { hasNextPage endCursor }
@@ -68,10 +68,13 @@ struct RelationNode {
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct RelatedNode {
     identifier: String,
     title: String,
     state: StateNode,
+    completed_at: Option<String>,
+    canceled_at: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -146,7 +149,7 @@ fn to_issue(world: &RealWorld, node: IssueNode) -> WorldResult<LinearIssue> {
         &node.id,
         "inverseRelations",
         node.inverse_relations,
-        "type issue { identifier title state { type } }",
+        "type issue { identifier title state { type } completedAt canceledAt }",
     )?;
     Ok(LinearIssue {
         identifier: node.identifier,
@@ -167,6 +170,7 @@ fn to_issue(world: &RealWorld, node: IssueNode) -> WorldResult<LinearIssue> {
                 identifier: r.issue.identifier,
                 title: r.issue.title,
                 state: r.issue.state.kind,
+                closed_at: r.issue.completed_at.or(r.issue.canceled_at),
             })
             .collect(),
         has_sub_issues: !node.children.nodes.is_empty(),

@@ -17,7 +17,9 @@ that names none is a Project of its own, named by its slug. _Avoid_:
 workspace (herdr's), group; Linear's is always written "Linear project".
 
 **Blocker**: an issue that must be resolved before another can start, as the
-Source's native dependency relation records it. _Avoid_: dependency.
+Source's native dependency relation records it. One in another Repo of the
+Project is resolved once closed and, when that Repo has an Install, installed
+since; it is never stacked on. _Avoid_: dependency.
 
 **Ready**: an open, unstarted issue labelled `ready-for-agent`, unassigned or
 assigned only to the user, whose Blockers are all resolved. _Avoid_:

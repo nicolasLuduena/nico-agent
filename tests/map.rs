@@ -37,6 +37,7 @@ fn block(t: &Setup, issue: u64, blockers: &[u64]) {
             number,
             title: format!("Blocker {number}"),
             state: IssueState::Open,
+            closed_at: None,
         })
         .collect();
 }
@@ -320,6 +321,7 @@ fn a_project_s_map_holds_every_repo_s_nodes_each_naming_its_repo_with_blocker_ed
         number,
         title: format!("Blocker {number}"),
         state: IssueState::Open,
+        closed_at: None,
     };
     t.world.add_issue(
         "acme/web",
@@ -391,4 +393,83 @@ fn a_project_s_map_holds_every_repo_s_nodes_each_naming_its_repo_with_blocker_ed
     assert_eq!(keys(&own), ["acme/cli#4"]);
     assert_eq!(node(&own, "acme/cli#4")["repo"], "acme/cli");
     assert_eq!(node(&own, "acme/cli#4")["stage"], "Ready");
+}
+
+#[test]
+fn a_node_waiting_on_a_blocker_in_another_repo_says_why_with_an_edge_from_it_till_it_is_installed()
+{
+    let t = setup();
+    std::fs::create_dir_all(&t.config_dir).unwrap();
+    let config = "[repos.\"acme/api\"]\npath = \"/src/api\"\nproject = \"acme shop\"\nlinear = { team = \"BLE\" }\nswitches = { dispatch = false }\n\n\
+                  [repos.\"acme/web\"]\npath = \"/src/web\"\nproject = \"acme shop\"\nlinear = { team = \"WEB\" }\ninstall = \"make install\"\nswitches = { dispatch = false }\n";
+    std::fs::write(t.config_dir.join("config.toml"), config).unwrap();
+    t.world.add_issue(
+        "acme/api",
+        nico_agent::world::GitHubIssue {
+            blockers: vec![GitHubBlocker {
+                slug: "acme/web".into(),
+                number: 1,
+                title: "Blocker 1".into(),
+                state: IssueState::Closed,
+                closed_at: Some("2026-09-30T11:00:00Z".into()),
+            }],
+            ..github_issue("acme/api", 3)
+        },
+    );
+    let mut linear = common::linear_issue("BLE-2");
+    linear.blockers = vec![nico_agent::world::LinearBlocker {
+        identifier: "WEB-5".into(),
+        title: "Blocker WEB-5".into(),
+        state: "completed".into(),
+        closed_at: Some("2026-09-30T11:00:00.000Z".into()),
+    }];
+    t.world.add_linear_issue(linear);
+    t.tick();
+
+    let (status, map) = t.get("/api/map/acme%20shop");
+
+    assert_eq!(status, 200, "{map}");
+    let shown = |key: &str| {
+        let n = node(&map, key);
+        (
+            n["stage"].clone(),
+            n["repo"].clone(),
+            n.get("waits").cloned(),
+        )
+    };
+    assert_eq!(
+        shown("acme/api#3"),
+        (
+            json!("Waiting"),
+            json!("acme/api"),
+            Some(json!(
+                "acme/api#3 waits on acme/web#1 to be installed in acme/web"
+            ))
+        )
+    );
+    assert_eq!(
+        shown("BLE-2"),
+        (
+            json!("Waiting"),
+            json!("acme/api"),
+            Some(json!("BLE-2 waits on WEB-5 to be installed in acme/web"))
+        )
+    );
+    assert_eq!(shown("acme/web#1"), (json!(null), json!("acme/web"), None));
+    assert_eq!(shown("WEB-5"), (json!(null), json!("acme/web"), None));
+    assert_eq!(
+        map["edges"],
+        json!([
+            { "from": "acme/web#1", "to": "acme/api#3", "kind": "blocker" },
+            { "from": "WEB-5", "to": "BLE-2", "kind": "blocker" },
+        ])
+    );
+
+    assert_eq!(t.cli(&["install", "acme/web"]).exit_code, 0);
+    let (_, map) = t.get("/api/map/acme%20shop");
+
+    assert_eq!(keys(&map), ["BLE-2", "acme/api#3"]);
+    assert_eq!(node(&map, "acme/api#3")["stage"], "Ready");
+    assert_eq!(node(&map, "acme/api#3").get("waits"), None);
+    assert_eq!(map["edges"], json!([]));
 }

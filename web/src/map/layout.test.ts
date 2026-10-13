@@ -137,4 +137,21 @@ describe("the map's layout", () => {
       ["acme/api#24", null, 88, false],
     ]);
   });
+
+  it("gives a Waiting node a row under its Stage saying what it waits on, without its own key", () => {
+    const drawn = layout({
+      nodes: [
+        node("acme/api#3", { stage: "Waiting", waits: "acme/api#3 waits on acme/web#1 to be installed in acme/web" }),
+        node("acme/api#4", { stage: "Waiting", waits: "acme/api#4's PR https://github.com/acme/api/pull/9 was closed unmerged" }),
+        node("acme/api#5", { stage: "Waiting" }),
+      ],
+      edges: [],
+    });
+
+    expect(drawn.nodes.map((n) => [n.key, n.line, n.height])).toEqual([
+      ["acme/api#3", "waits on acme/web#1 to be installed in acme/web", 110],
+      ["acme/api#4", "acme/api#4's PR https://github.com/acme/api/pull/9 was closed unmerged", 110],
+      ["acme/api#5", null, 88],
+    ]);
+  });
 });

@@ -11,7 +11,7 @@ cache alone, plus what the page shows beside each map.
 
 - `status-no-cache` with no read yet and GitHub refusing, the Repo shows `read_at` null, empty lists and the refusal as `error`.
 - `status-cached` a fresh cached read is shown without asking GitHub: Ready `#1` (code) and `#5` (research), Stackable `#6` with `base` `agent/fixture-9`.
-- `status-not-ready` issues not labelled, waiting on a Blocker without PR, or assigned to someone else are in no list (`gardening`, the Ready `gardening` issues, is empty: the fixture has none).
+- `status-not-ready` an issue waiting on a Blocker without PR is in `waiting` with why (`<key> waits on <blocker> to close`); issues not labelled or assigned to someone else are in no list (`gardening`, the Ready `gardening` issues, is empty: the fixture has none).
 - `status-stale` a read older than a tick asks GitHub again; refused, the cache is still shown, with `error`.
 - `status-paused` a paused GitHub is asked nothing: `sources.github.paused_until` is set, an uncached Repo's `error` says when it is asked again.
 - `status-dispatches` each Dispatch with `stage` (`Failed`, `PR draft`, `Implementing`, `Verified`), `agent_state` `unknown` while herdr does not answer, `review` (see review.md), `verdict` and `pr`.
@@ -43,7 +43,8 @@ Preconditions:
 - **Cached read.** Run `$C seed issues`, then `$C state > "$E/state.before.txt"` and `$C run --evidence "$E/02-cached" -- status --json`.
   Exit `0`; no `error`; `read_at` is the seed's; `ready` is `verify/fixture#1` "Verify: a Ready
   issue" `kind` `code` and `verify/fixture#5` "Verify: a Research issue" `kind` `research`;
-  `stackable` is `verify/fixture#6` with `base` `agent/fixture-9`; `#2`, `#3`, `#4` are nowhere.
+  `stackable` is `verify/fixture#6` with `base` `agent/fixture-9`; `waiting` is `verify/fixture#3`
+  with `reason` `verify/fixture#3 waits on verify/fixture#1 to close`; `#2` and `#4` are nowhere.
   `$C state > "$E/state.after.txt"`; their diff is empty: nothing written, nothing asked.
 - **Dispatches.** Run `$C run -- dispatch verify/fixture#1 --json` (fails at worktree, see
   dispatch-refusals), `$C seed dispatch 10 pr` and `$C seed dispatch 12 asking`, then `$C run --evidence "$E/03-dispatches" -- status --json`.

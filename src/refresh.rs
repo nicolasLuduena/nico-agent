@@ -19,8 +19,9 @@ pub fn refresh(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
     Args::parse("refresh", args, &[])?.positionals(&[])?;
     let config = config::load(&ctx.config_dir)?;
     let mut repos = vec![];
-    for (slug, repo) in &config.repos {
-        let (read, error) = source::issues(ctx.world, &ctx.config_dir, slug, repo, Duration::ZERO)?;
+    for slug in config.repos.keys() {
+        let (read, error) =
+            source::issues(ctx.world, &ctx.config_dir, &config, slug, Duration::ZERO)?;
         let mut shown = json!({ "slug": slug, "read_at": read.map(|read| read.read_at) });
         if let Some(error) = error {
             shown["error"] = json!(error.0);

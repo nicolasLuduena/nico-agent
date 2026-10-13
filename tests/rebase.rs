@@ -129,6 +129,7 @@ fn stacked(toml: &str) -> Setup {
         number: 1,
         title: "Issue 1".into(),
         state: IssueState::Open,
+        closed_at: None,
     }];
     drop(issues);
     let below = PullRequest {

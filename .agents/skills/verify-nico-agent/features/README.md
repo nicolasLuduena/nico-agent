@@ -25,8 +25,9 @@ recipe.
 - Run page actions through `$C page`, by ARIA role and accessible name; `ROLE~NAME` only where the
   name carries a time (strip rows).
 - Change outside state only through `$C seed` and `$C drift`; read state through `$C state`.
-- Use the issue numbers the fixtures give: 1 to 6 from `seed issues`, verify/second's 1 and 2
-  from `seed issues second`, above 6 for `seed dispatch`.
+- Use the issue numbers the fixtures give: 1 to 6 from `seed issues`, verify/second's 1 to 3
+  from `seed issues second`, above 6 for `seed dispatch` (not 20: `seed issues second`'s closed
+  Blocker).
 - Do not remove proof artifacts during cleanup.
 
 ## Proof and skip reporting
@@ -63,8 +64,9 @@ commands, and observable proof.
 - [Projects](./projects.md) covers `projects.<name>` and a Repo's `project` in `config.toml`:
   defaults its Repos inherit, `repo list`'s `project`, `status`'s `projects` and `{value, from}`
   per setting, the page's effective Room and switches, and a bad Project refused at its line.
-- [Status](./status.md) covers `status` and `GET /api/status` from a fresh cache, a Source that
-  refuses, a stale cache, a paused GitHub, Dispatches with their Stage, and blocked Runs.
+- [Status](./status.md) covers `status` and `GET /api/status` from a fresh cache (an issue waiting
+  on its Blocker with why), a Source that refuses, a stale cache, a paused GitHub, Dispatches with
+  their Stage, and blocked Runs.
 - [Dispatch's refusals](./dispatch-refusals.md) covers every refusal of `dispatch`, `POST
   /api/dispatch` and the page's Dispatch form, down to a Ready issue failing at its first herdr step,
   and its Claim while GitHub is paused.
@@ -76,8 +78,10 @@ commands, and observable proof.
   and Paused rows (its Check rows are in [checks.md](./checks.md)).
 - [A tab and a map per Project](./project-tabs.md) covers a Project of two Repos on the page: one
   tab, `GET /api/map/<project>` with nodes from both, each naming its Repo, a Blocker edge across
-  them and an outside Blocker with no Stage, the Project's defaults edited on the tab reaching
-  every Repo that does not set its own, the phone select and a strip row opening the Project's tab.
+  them and an outside Blocker with no Stage, a Waiting node saying why, an issue waiting on a
+  Blocker in another Repo to close and then on that Repo's Install, the Project's defaults
+  edited on the tab reaching every Repo that does not set its own, the phone select and a strip row
+  opening the Project's tab.
 - [Where each PR's review stands](./review.md) covers `review` in `status` and the page: the node's
   line under a PR draft Stage, the panel's Review section, and the strip's Review row for a review
   given up on.

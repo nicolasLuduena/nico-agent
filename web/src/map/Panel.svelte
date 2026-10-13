@@ -131,6 +131,7 @@
     </section>
 
     {#if !dispatched}
+      {#if node.stage === "Waiting" && node.waits}<p class="said section">{node.waits}</p>{/if}
       <p class="note section">Not dispatched yet: no restarts, Verdict or Evidence.</p>
     {:else if !full}
       {#if !failure}<p class="note section">Reading the Dispatch…</p>{/if}

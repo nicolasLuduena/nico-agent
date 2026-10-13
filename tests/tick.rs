@@ -348,6 +348,7 @@ fn block(t: &Setup, issue: u64, blockers: &[u64]) {
             number,
             title: format!("Issue {number}"),
             state: IssueState::Open,
+            closed_at: None,
         })
         .collect();
 }

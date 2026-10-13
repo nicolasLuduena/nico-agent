@@ -172,8 +172,11 @@ What the fixtures hold:
   Research issue" (Ready, `research`), `#6` "Verify: stacks on #9 PR" (Stackable on PR #109, head
   `agent/fixture-9`, which the fixture's origin does not have). The user is `verify-nico`.
   `seed issues second` caches, read now, `verify/second#1` "Verify: waits on fixture #1"
-  (unresolved Blocker `verify/fixture#1`, a Blocker in another Repo) and `#2` "Verify: waits on an
-  outside issue" (unresolved Blocker `verify/outside#7` "Verify: an outside Blocker", in no Repo).
+  (unresolved Blocker `verify/fixture#1`, a Blocker in another Repo), `#2` "Verify: waits on an
+  outside issue" (unresolved Blocker `verify/outside#7` "Verify: an outside Blocker", in no Repo)
+  and `#3` "Verify: waits on fixture #20 installed" (Blocker `verify/fixture#20` "Verify: a closed
+  Blocker", closed at the read: Ready, until verify/fixture is in its Project with an `install`
+  that has not run since).
 - `seed dispatch <n> pr` records Dispatch `verify/fixture#<n>` "Verify: seeded Dispatch <n>" with
   every step done, in a worktree `worktrees/fixture-<n>` on `agent/fixture-<n>` holding
   `.evidence/<n>/proof.txt`, and its draft PR `https://github.com/verify/fixture/pull/<100+n>` open

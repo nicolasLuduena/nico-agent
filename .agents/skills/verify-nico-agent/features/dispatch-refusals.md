@@ -14,7 +14,7 @@ reaches.
 - `dispatch-not-a-reference` text that is no `owner/repo#N` or Linear id is exit 2.
 - `dispatch-unconfigured` an issue of a Repo not added is exit 1 with the `repo add` to run.
 - `dispatch-source-unreadable` with no cached read and GitHub refusing, exit 1 `could not read the issues`.
-- `dispatch-not-ready` exit 1 `<issue> is not Ready`, `help` saying why: not labelled, waits on its Blockers, assigned to someone else, or not in the read.
+- `dispatch-not-ready` exit 1 `<issue> is not Ready`, `help` saying why: not labelled, waits on a Blocker to close (or, in another Repo of its Project, to be installed there), assigned to someone else, or not in the read.
 - `dispatch-launch` an unknown Harness, model or Effort is exit 2, listing the valid ones.
 - `dispatch-step-failed` a Ready issue is claimed (a warning when the Claim fails), fetched, and fails at `worktree`; exit 1 with `Run the same \`nico-agent dispatch\` again to continue from worktree`; its Stage is Failed.
 - `dispatch-paused` while GitHub is paused, the Claim asks GitHub nothing: its warning names the pause.
@@ -49,7 +49,7 @@ Preconditions:
   Exit `1`, `error` `other/repo is not a configured Repo`, `help` `Run \`nico-agent repo add other/repo --path <clone>\` first`.
 - **Not labelled.** Run `$C run --evidence "$E/06-not-labelled" -- dispatch verify/fixture#2 --json`.
   Exit `1`, `error` `verify/fixture#2 is not Ready`, `help[0]` `verify/fixture#2 is not labelled ready-for-agent`.
-- **Waits on a Blocker.** `#3`, `--evidence "$E/07-blocked"`: `help[0]` `verify/fixture#3 waits on its Blockers verify/fixture#1`.
+- **Waits on a Blocker.** `#3`, `--evidence "$E/07-blocked"`: `help[0]` `verify/fixture#3 waits on verify/fixture#1 to close`.
 - **Assigned elsewhere.** `#4`, `--evidence "$E/08-assigned"`: `help[0]` `verify/fixture#4 is assigned to someone-else`.
 - **Not in the read.** `#99`, `--evidence "$E/09-unknown"`: `help[0]` `verify/fixture#99 was not an open issue labelled ready-for-agent when its Source was read, at <read_at>`.
 - **Launch.** Run `dispatch verify/fixture#1` with `--harness pi`, `--model gpt-9`, `--effort ludicrous`

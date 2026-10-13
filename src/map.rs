@@ -38,9 +38,10 @@ pub fn map(ctx: &Context, name: &str) -> Result<Option<Value>, Refusal> {
     let rows: Vec<&Value> = (status["repos"].as_array().into_iter().flatten())
         .filter(|r| slugs.iter().any(|slug| r["slug"] == **slug))
         .collect();
-    let listed = |list: &str, key: &str| {
-        (rows.iter().filter_map(|r| r[list].as_array()).flatten()).any(|row| row["key"] == key)
+    let row = |list: &str, key: &str| {
+        (rows.iter().filter_map(|r| r[list].as_array()).flatten()).find(|row| row["key"] == key)
     };
+    let listed = |list: &str, key: &str| row(list, key).is_some();
     let merged_at =
         |d: &Dispatch| stage::pr_of(&prs, d).and_then(|(_, pr)| pr.merged_at.as_deref());
     // Each issue's last Dispatch in the Project, with what `status` shows of
@@ -58,7 +59,9 @@ pub fn map(ctx: &Context, name: &str) -> Result<Option<Value>, Refusal> {
     let mut issues: Vec<Issue> = vec![];
     let mut held: BTreeMap<String, &str> = BTreeMap::new();
     for slug in &slugs {
-        for issue in source::cached(&ctx.config_dir, slug).map_or(vec![], |read| read.issues) {
+        for issue in
+            source::cached(&ctx.config_dir, &config, slug)?.map_or(vec![], |read| read.issues)
+        {
             held.insert(issue.key.clone(), slug);
             issues.push(issue);
         }
@@ -143,33 +146,29 @@ pub fn map(ctx: &Context, name: &str) -> Result<Option<Value>, Refusal> {
         let verdict = &shown["verdict"];
         let repo = (d.map(|d| d.repo.as_str()))
             .or_else(|| held.get(key).copied())
-            .or_else(|| {
-                let (slug, _) = source::github_ref(key)?;
-                slugs
-                    .iter()
-                    .find(|s| s.eq_ignore_ascii_case(slug))
-                    .map(|s| s.as_str())
-            });
-        nodes.insert(
-            key,
-            json!({
-                "key": key,
-                "repo": repo,
-                "title": title,
-                "url": url,
-                "kind": if research { "research" } else { "code" },
-                "stage": stage,
-                "agent_state": shown["agent_state"],
-                "pr": pr,
-                "review": shown["review"],
-                "verdict": if verdict.is_null() { Value::Null } else {
-                    json!({ "result": verdict["result"], "sha": verdict["sha"], "at": verdict["at"] })
-                },
-                "restarts": d.map_or(0, |d| d.restarts.len()),
-                "created_at": issue.map(|i| &i.created_at),
-                "merged_at": d.and_then(merged_at),
-            }),
-        );
+            .or_else(|| source::repo_in(&config, slugs.first()?, key).map(String::as_str));
+        let mut node = json!({
+            "key": key,
+            "repo": repo,
+            "title": title,
+            "url": url,
+            "kind": if research { "research" } else { "code" },
+            "stage": stage,
+            "agent_state": shown["agent_state"],
+            "pr": pr,
+            "review": shown["review"],
+            "verdict": if verdict.is_null() { Value::Null } else {
+                json!({ "result": verdict["result"], "sha": verdict["sha"], "at": verdict["at"] })
+            },
+            "restarts": d.map_or(0, |d| d.restarts.len()),
+            "created_at": issue.map(|i| &i.created_at),
+            "merged_at": d.and_then(merged_at),
+        });
+        // Why a Waiting node waits, as `status` says it.
+        if let Some(waiting) = row("waiting", key).filter(|_| stage == "Waiting") {
+            node["waits"] = waiting["reason"].clone();
+        }
+        nodes.insert(key, node);
     }
     let nodes: Vec<Value> = nodes.into_values().collect();
     Ok(Some(json!({ "nodes": nodes, "edges": edges })))
