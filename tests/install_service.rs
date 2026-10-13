@@ -2,26 +2,22 @@
 //! `sudo` and `ollama` that log their arguments instead of touching the
 //! system; the fake `systemctl --user cat` finds a unit only in the temp HOME.
 
+mod common;
+
 use std::fs;
-use std::path::PathBuf;
 use std::process::{Command, Stdio};
-use std::sync::atomic::{AtomicU32, Ordering};
+
+use common::Scratch;
 
 const SCRIPT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/scripts/install-service.sh");
 
 struct Sandbox {
-    home: PathBuf,
+    home: Scratch,
 }
 
 impl Sandbox {
     fn new() -> Self {
-        static NEXT: AtomicU32 = AtomicU32::new(0);
-        let home = std::env::temp_dir().join(format!(
-            "nico-agent-service-{}-{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = fs::remove_dir_all(&home);
+        let home = Scratch::new("service");
         fs::create_dir_all(home.join("fakebin")).unwrap();
         let units = home.join(".config/systemd/user");
         for (name, then) in [
@@ -50,7 +46,7 @@ impl Sandbox {
             .arg(SCRIPT)
             .args(args)
             .env_clear()
-            .env("HOME", &self.home)
+            .env("HOME", self.home.as_os_str())
             .env("USER", "nico")
             .env(
                 "PATH",

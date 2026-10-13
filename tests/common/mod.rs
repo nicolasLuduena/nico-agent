@@ -1,12 +1,14 @@
 //! The test harness: `setup()` gives a FakeWorld, a fresh config directory
 //! and a `cli()` that runs the binary's library entry as the CLI would.
 //! Tests assert on the command's output, `world.calls()` and the config files.
+//! `Scratch` is the temp folder each test works in, removed when it ends.
 
 // Each test binary uses a different part of the harness.
 #![allow(dead_code)]
 
 mod fake_world;
 
+use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
@@ -23,6 +25,9 @@ pub struct Setup {
     pub world: FakeWorld,
     /// Not created yet: commands create it when they first write.
     pub config_dir: PathBuf,
+    /// The folder `config_dir` is in, removed when the Setup is dropped;
+    /// `None` for a Setup on another's `config_dir`, which leaves it.
+    pub root: Option<Scratch>,
 }
 
 /// What a command printed and the exit code it ended with.
@@ -76,18 +81,47 @@ pub fn edit_dispatch(config_dir: &Path, change: impl FnOnce(&mut Value)) {
     std::fs::write(&file, all.to_string()).unwrap();
 }
 
+/// A fresh folder `nico-agent-<name>-<pid>-<n>` in the temp directory,
+/// removed when dropped; a failing test's is kept and its path printed.
+pub struct Scratch(PathBuf);
+
+impl Scratch {
+    pub fn new(name: &str) -> Scratch {
+        static NEXT: AtomicU32 = AtomicU32::new(0);
+        let path = std::env::temp_dir().join(format!(
+            "nico-agent-{name}-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        let _ = std::fs::remove_dir_all(&path);
+        std::fs::create_dir_all(&path).unwrap();
+        Scratch(path)
+    }
+}
+
+impl Deref for Scratch {
+    type Target = Path;
+    fn deref(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        if std::thread::panicking() {
+            eprintln!("kept {}", self.0.display());
+        } else {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+}
+
 pub fn setup() -> Setup {
-    static NEXT: AtomicU32 = AtomicU32::new(0);
-    let root = std::env::temp_dir().join(format!(
-        "nico-agent-test-{}-{}",
-        std::process::id(),
-        NEXT.fetch_add(1, Ordering::Relaxed)
-    ));
-    let _ = std::fs::remove_dir_all(&root);
-    std::fs::create_dir_all(&root).unwrap();
+    let root = Scratch::new("test");
     Setup {
         world: FakeWorld::default(),
         config_dir: root.join("config"),
+        root: Some(root),
     }
 }
 
