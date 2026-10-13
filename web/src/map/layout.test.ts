@@ -4,6 +4,7 @@ import { layout, withoutMerged, type MapEdge, type MapNode } from "./layout";
 
 const node = (key: string, rest: Partial<MapNode> = {}): MapNode => ({
   key,
+  repo: null,
   title: `Issue ${key}`,
   url: null,
   kind: "code",

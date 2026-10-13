@@ -109,9 +109,7 @@ pub fn shown(
         if let Some(install) = install::shown(&installs, slug, repo) {
             shown["install"] = install;
         }
-        for (key, setting) in settings(config, slug, repo) {
-            shown[key] = setting;
-        }
+        settings(&mut shown, config, slug, repo);
         let harness = &repo.implementer.harness;
         if config.reviewer(repo, harness).harness == *harness {
             shown["warnings"] = json!([format!(
@@ -187,7 +185,9 @@ pub fn shown(
     let projects: Vec<Value> = (projects.into_iter())
         .map(|(name, repos)| {
             let defaults = config.projects.get(name).cloned().unwrap_or_default();
-            json!({ "name": name, "repos": repos, "defaults": defaults })
+            let mut shown = json!({ "name": name, "repos": repos, "defaults": defaults });
+            settings(&mut shown, config, name, &config.project(name));
+            shown
         })
         .collect();
     let mut shown = json!({
@@ -199,9 +199,10 @@ pub fn shown(
     Ok(shown)
 }
 
-/// Each setting of the Repo `slug` as `{value, from}`, `from` the first of
-/// the Repo, its Project and the defaults that sets it.
-pub fn settings(config: &Config, slug: &str, repo: &Repo) -> Vec<(&'static str, Value)> {
+/// Put each setting of the Repo `slug` in `shown` as `{value, from}`, `from`
+/// the first of the Repo, its Project and the defaults that sets it; of a
+/// Project, as [`Config::project`] makes it, by its name, its own or the defaults'.
+pub fn settings(shown: &mut Value, config: &Config, slug: &str, repo: &Repo) {
     let own = json!(repo.own);
     let project = json!(config.projects.get(repo.project_name(slug)));
     let setting = |keys: &[&str], value: Value| {
@@ -225,7 +226,7 @@ pub fn settings(config: &Config, slug: &str, repo: &Repo) -> Vec<(&'static str, 
         })
         .collect();
     let launch = |launch: &Option<Launch>| json!(repo.or_implementer(launch));
-    vec![
+    let settings = [
         ("room", setting(&["room"], json!(repo.room))),
         ("base", setting(&["base"], json!(repo.base))),
         (
@@ -248,5 +249,8 @@ pub fn settings(config: &Config, slug: &str, repo: &Repo) -> Vec<(&'static str, 
             setting(&["faux_nico"], launch(&repo.faux_nico)),
         ),
         ("switches", Value::Object(switches)),
-    ]
+    ];
+    for (key, setting) in settings {
+        shown[key] = setting;
+    }
 }

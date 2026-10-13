@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // page.mjs — open serve's page in headless Chromium, act on it as a user does, capture what it shows.
 // Called by `control-nico-agent page`, which passes the run's URL first and sets VERIFY_PLAYWRIGHT:
-//   page.mjs <url> [--evidence PREFIX] [--width PX] [--storage FILE|none] [--click ROLE=NAME | --click ROLE~NAME | --press KEY | --type TEXT | --expect TEXT
-//            | --gone TEXT | --wait SECONDS | --mode pass|502|signed-out]...
+//   page.mjs <url> [--evidence PREFIX] [--width PX] [--storage FILE|none] [--within ROLE=NAME | --click ROLE=NAME | --click ROLE~NAME | --press KEY
+//            | --type TEXT | --expect TEXT | --gone TEXT | --wait SECONDS | --mode pass|502|signed-out]...
+// --within ROLE=NAME makes each later --click find its element inside that one (a Repo's `region "<slug>"`); `--within page` the whole page again.
 // --storage FILE starts the browser with the storage FILE holds and saves it back after the last step, so
 // another call opens the page again as this browser would; --storage none is a browser whose localStorage throws.
 // Steps run in the order given; `--mode` asks the tunnel stand-in at <url> (tunnel.mjs) to answer so.
@@ -29,6 +30,7 @@ for (let i = 0; i < argv.length; i++) {
   else if (flag === "--width") width = Number(value);
   else if (flag === "--storage") storage = value;
   else if (flag === "--click" && /^[a-z]+[=~]/.test(value)) steps.push({ click: value });
+  else if (flag === "--within" && (value === "page" || /^[a-z]+=/.test(value))) steps.push({ within: value });
   else if (flag === "--press") steps.push({ press: value });
   else if (flag === "--type") steps.push({ type: value });
   else if (flag === "--expect") steps.push({ expect: value });
@@ -39,7 +41,7 @@ for (let i = 0; i < argv.length; i++) {
 }
 
 function usage(why) {
-  console.error(`page: ${why}\nusage: page [--evidence PREFIX] [--width PX] [--storage FILE|none] [--click ROLE=NAME | --click ROLE~NAME | --press KEY | --type TEXT | --expect TEXT | --gone TEXT | --wait SECONDS | --mode pass|502|signed-out]...`);
+  console.error(`page: ${why}\nusage: page [--evidence PREFIX] [--width PX] [--storage FILE|none] [--within ROLE=NAME|page] [--click ROLE=NAME | --click ROLE~NAME | --press KEY | --type TEXT | --expect TEXT | --gone TEXT | --wait SECONDS | --mode pass|502|signed-out]...`);
   process.exit(2);
 }
 
@@ -82,12 +84,16 @@ try {
   await page.goto(url);
   await page.waitForFunction(() => !document.body.innerText.includes("Reading nico-agent"), null, { timeout: 15000 });
   await settle();
+  let scope = page;
   for (const step of steps) {
     try {
-      if (step.click) {
+      if (step.within) {
+        const [, role, name] = step.within.match(/^([a-z]+)=(.*)$/s) ?? [];
+        scope = role ? page.getByRole(role, { name, exact: true }).first() : page;
+      } else if (step.click) {
         // ROLE=NAME: the accessible name is NAME; ROLE~NAME: it contains NAME (a strip row's ends in its time).
         const [, role, how, name] = step.click.match(/^([a-z]+)([=~])(.*)$/s);
-        await page.getByRole(role, { name, exact: how === "=" }).first().click({ timeout: 10000 });
+        await scope.getByRole(role, { name, exact: how === "=" }).first().click({ timeout: 10000 });
       } else if (step.press) {
         await page.keyboard.press(step.press);
       } else if (step.type !== undefined) {

@@ -1,47 +1,39 @@
 <script lang="ts">
-  // The column right of the map: the Repo's Readiness checks, the Dispatch
-  // form, then its room, its switches, settings and Install, then its removal.
+  // A Repo's panel, in the column right of its Project's map: its Readiness
+  // checks, the Dispatch form, then its room, switches, settings and Install,
+  // then its removal; headed by its slug when the tab holds more than its own.
   import type { Repo, Status } from "../status";
   import Checks from "./Checks.svelte";
   import DispatchForm from "./DispatchForm.svelte";
   import Install from "./Install.svelte";
+  import { inFlight } from "./launch";
   import Remove from "./Remove.svelte";
   import Room from "./Room.svelte";
+  import { patch } from "./send";
   import Settings from "./Settings.svelte";
-  import { projectOf } from "./settings";
+  import { type Holder, projectOf } from "./settings";
   import Switches from "./Switches.svelte";
 
-  let { repo, status }: { repo: Repo; status: Status } = $props();
+  let { repo, status, headed = false }: { repo: Repo; status: Status; headed?: boolean } = $props();
 
-  const project = $derived(projectOf(repo.slug, status.projects));
+  const holder: Holder = $derived({
+    own: "repo",
+    settings: repo,
+    under: projectOf(repo.slug, status.projects),
+    patch: (body) => patch(repo.slug, body),
+  });
 </script>
 
-<div class="controls">
-  <!-- A new tab starts the column fresh: no other Repo's picks, saves or refusals. -->
+<section class="controls" aria-label={repo.slug}>
+  <!-- A new Repo starts the panel fresh: no other Repo's picks, saves or refusals. -->
   {#key repo.slug}
+    {#if headed}<h2 class="head">{repo.slug}</h2>{/if}
     <Checks {repo} />
     <DispatchForm {repo} {status} />
-    <Room {repo} {status} {project} />
-    <Switches {repo} {project} />
-    <Settings {repo} {status} {project} />
+    <Room {holder} live={inFlight(repo, status.dispatches)} />
+    <Switches {holder} />
+    <Settings {holder} harnesses={repo.harnesses} {repo} projects={status.projects} />
     <Install {repo} />
     <Remove {repo} />
   {/key}
-</div>
-
-<style>
-  .controls {
-    display: grid;
-    gap: 16px;
-    padding: 16px;
-    background: var(--surface);
-    border: 1px solid var(--hairline);
-  }
-  .controls :global(h2) {
-    font-size: 14px;
-  }
-  .controls > :global(section + section) {
-    padding-top: 16px;
-    border-top: 1px solid var(--hairline);
-  }
-</style>
+</section>

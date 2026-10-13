@@ -1,9 +1,17 @@
 import { describe, expect, it } from "vitest";
-import type { Project } from "../status";
+import type { Project, Settings } from "../status";
 import { picked, projectOf, tag, undoLabel, unset } from "./settings";
 
-const shop: Project = { name: "shop", repos: ["acme/api", "acme/web"], defaults: { room: 4, switches: { review: false } } };
-const own: Project = { name: "acme/cli", repos: ["acme/cli"], defaults: {} };
+const claude = { harness: "claude", model: null, effort: null };
+const defaults: Settings = {
+  switches: {},
+  room: { value: 3, from: "default" },
+  base: { value: null, from: "default" },
+  implementer: { value: claude, from: "default" },
+  reviewer: { value: { ...claude, harness: "codex" }, from: "default" },
+};
+const shop: Project = { ...defaults, name: "shop", repos: ["acme/api", "acme/web"], defaults: { room: 4, switches: { review: false } } };
+const own: Project = { ...defaults, name: "acme/cli", repos: ["acme/cli"], defaults: {} };
 
 describe("a setting's tag", () => {
   it("says where it comes from while the Repo does not set it", () => {
@@ -37,6 +45,19 @@ describe("removing the Repo's own value", () => {
   it("sends null for the setting, or for the one switch", () => {
     expect(unset(["reviewer"])).toEqual({ reviewer: null });
     expect(unset(["switches", "review"])).toEqual({ switches: { review: null } });
+  });
+});
+
+describe("a Project's own defaults", () => {
+  it("are tagged default while the Project does not set them, and untagged once it does", () => {
+    expect(tag({ value: 3, from: "default" }, "project")).toBe("default");
+    expect(tag({ value: 4, from: "project" }, "project")).toBeNull();
+  });
+
+  it("go back to the default, once the Project sets them", () => {
+    expect(undoLabel({ value: 4, from: "project" }, undefined, ["room"], "project")).toBe("Use the default");
+    expect(undoLabel({ value: false, from: "project" }, undefined, ["switches", "review"], "project")).toBe("Use the default");
+    expect(undoLabel({ value: 3, from: "default" }, undefined, ["room"], "project")).toBeNull();
   });
 });
 

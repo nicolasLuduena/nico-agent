@@ -394,6 +394,19 @@ impl Config {
         })
     }
 
+    /// What a Repo of the Project `name` takes where it sets nothing: the
+    /// Project's defaults over the Repos'.
+    pub fn project(&self, name: &str) -> Repo {
+        let project = self.projects.get(name).cloned().unwrap_or_default();
+        let mut repo =
+            toml_edit::ser::to_document(&project).expect("a Project's defaults are TOML");
+        layer(repo.as_table_mut(), defaults(REPO_DEFAULTS).as_table());
+        repo["path"] = toml_edit::value("");
+        repo["project"] = toml_edit::value(name);
+        Repo::deserialize(toml_edit::de::Deserializer::from(repo))
+            .expect("a Project's defaults over the Repo defaults are a Repo")
+    }
+
     /// The Repo's reviewer launch for an Implementer on the Harness
     /// `implementer`; unset, a Harness other than that one, if there is one.
     pub fn reviewer(&self, repo: &Repo, implementer: &str) -> Launch {

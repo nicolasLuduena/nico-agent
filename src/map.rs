@@ -17,42 +17,66 @@ use crate::state;
 use crate::status;
 use crate::world::READY_LABEL;
 
-/// `GET /api/map/<repo>`: the nodes and edges of the Repo `slug`; `None`
-/// when it is no Repo. Its nodes are its open `ready-for-agent` issues, the
-/// issues of its live Dispatches and of those whose PR merged in the last 7
-/// days, the open Blockers of these, and the PRs its Stacked dispatches sit on.
-pub fn map(ctx: &Context, slug: &str) -> Result<Option<Value>, Refusal> {
+/// `GET /api/map/<project>`: the nodes and edges of the Project `name`, a
+/// Repo's own named by its slug; `None` when it is no Project. Its nodes are
+/// its Repos' open `ready-for-agent` issues, the issues of their live
+/// Dispatches and of those whose PR merged in the last 7 days, the open
+/// Blockers of these, and the PRs their Stacked dispatches sit on; each names
+/// its Repo, none for a Blocker outside the Project.
+pub fn map(ctx: &Context, name: &str) -> Result<Option<Value>, Refusal> {
     let config = config::load(&ctx.config_dir)?;
-    let Some((slug, _)) = config.repo(slug) else {
+    let slugs: Vec<&String> = (config.repos.iter())
+        .filter(|(slug, repo)| repo.project_name(slug) == name)
+        .map(|(slug, _)| slug)
+        .collect();
+    if slugs.is_empty() && !config.projects.contains_key(name) {
         return Ok(None);
-    };
+    }
     let dispatches = dispatch::load(&ctx.config_dir)?;
     let prs = stage::load(&ctx.config_dir)?;
     let status = status::shown(ctx, &config, &dispatches, &prs, false)?;
-    let repo = (status["repos"].as_array().into_iter().flatten()).find(|r| r["slug"] == *slug);
+    let rows: Vec<&Value> = (status["repos"].as_array().into_iter().flatten())
+        .filter(|r| slugs.iter().any(|slug| r["slug"] == **slug))
+        .collect();
     let listed = |list: &str, key: &str| {
-        (repo.and_then(|r| r[list].as_array()).into_iter().flatten()).any(|row| row["key"] == key)
+        (rows.iter().filter_map(|r| r[list].as_array()).flatten()).any(|row| row["key"] == key)
     };
     let merged_at =
         |d: &Dispatch| stage::pr_of(&prs, d).and_then(|(_, pr)| pr.merged_at.as_deref());
-    // Each issue's last Dispatch, with what `status` shows of it, while it
-    // is live or its PR merged in the last 7 days.
+    // Each issue's last Dispatch in the Project, with what `status` shows of
+    // it, while it is live or its PR merged in the last 7 days.
     let shown = status["dispatches"].as_array().into_iter().flatten();
     let mut last: BTreeMap<&str, (&Dispatch, &Value)> = BTreeMap::new();
     for (d, shown) in dispatches.iter().zip(shown) {
-        last.insert(&d.issue, (d, shown));
+        if slugs.contains(&&d.repo) {
+            last.insert(&d.issue, (d, shown));
+        }
     }
     let week_ago = state::iso(ctx.world.now() - Duration::from_secs(7 * 86_400));
     last.retain(|_, (d, _)| d.closed_at.is_none() || merged_at(d) >= Some(&week_ago));
-    let issues = source::cached(&ctx.config_dir, slug).map_or(vec![], |read| read.issues);
+    // The issues the Project's Sources hold, and the Repo each is in.
+    let mut issues: Vec<Issue> = vec![];
+    let mut held: BTreeMap<String, &str> = BTreeMap::new();
+    for slug in &slugs {
+        for issue in source::cached(&ctx.config_dir, slug).map_or(vec![], |read| read.issues) {
+            held.insert(issue.key.clone(), slug);
+            issues.push(issue);
+        }
+    }
+    // A Blocker in another Repo of the Project is keyed in GitHub's casing; its node, in the config's.
+    for blocker in issues.iter_mut().flat_map(|i| &mut i.blockers) {
+        let own = source::github_ref(&blocker.key).and_then(|(slug, number)| {
+            let own = slugs.iter().find(|s| s.eq_ignore_ascii_case(slug))?;
+            Some(format!("{own}#{number}"))
+        });
+        if let Some(own) = own {
+            blocker.key = own;
+        }
+    }
     let offered = |i: &Issue| i.open && i.labels.iter().any(|l| l == READY_LABEL);
     let mut keys: Vec<&str> = (issues.iter().filter(|i| offered(i)))
         .map(|i| i.key.as_str())
-        .chain(
-            (last.iter())
-                .filter(|(_, (d, _))| d.repo == *slug)
-                .map(|(k, _)| *k),
-        )
+        .chain(last.keys().copied())
         .collect();
     let mut edges = vec![];
     let walked: Vec<&Issue> = (issues.iter())
@@ -66,7 +90,7 @@ pub fn map(ctx: &Context, slug: &str) -> Result<Option<Value>, Refusal> {
     }
     // The PR each Stacked dispatch still sits on, by the issue it is of.
     let mut targets: BTreeMap<&str, &str> = BTreeMap::new();
-    for (key, (d, _)) in last.iter().filter(|(_, (d, _))| d.repo == *slug) {
+    for (key, (d, _)) in &last {
         let Some(below) = (d.stacked_on.as_ref()).filter(|below| below.head_branch == d.base)
         else {
             continue;
@@ -117,10 +141,20 @@ pub fn map(ctx: &Context, slug: &str) -> Result<Option<Value>, Refusal> {
         let research = (issue.is_some_and(|i| i.labels.iter().any(|l| l == "research")))
             || d.is_some_and(|d| d.research);
         let verdict = &shown["verdict"];
+        let repo = (d.map(|d| d.repo.as_str()))
+            .or_else(|| held.get(key).copied())
+            .or_else(|| {
+                let (slug, _) = source::github_ref(key)?;
+                slugs
+                    .iter()
+                    .find(|s| s.eq_ignore_ascii_case(slug))
+                    .map(|s| s.as_str())
+            });
         nodes.insert(
             key,
             json!({
                 "key": key,
+                "repo": repo,
                 "title": title,
                 "url": url,
                 "kind": if research { "research" } else { "code" },

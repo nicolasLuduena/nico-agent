@@ -2,7 +2,7 @@ import dagre from "@dagrejs/dagre";
 import * as review from "../review";
 import type { Review } from "../status";
 
-/** What `GET /api/map/<repo>` answers. */
+/** What `GET /api/map/<project>` answers. */
 export interface MapData {
   nodes: MapNode[];
   edges: MapEdge[];
@@ -11,6 +11,8 @@ export interface MapData {
 export interface MapNode {
   /** `owner/repo#N` or a Linear id. */
   key: string;
+  /** The Repo of the Project it is in; null for a Blocker outside the Project. */
+  repo: string | null;
   /** Null for a Blocker outside a Source cache read before Blockers had titles: only its key is known. */
   title: string | null;
   url: string | null;
@@ -63,7 +65,7 @@ export function withoutMerged(map: MapData): MapData {
   };
 }
 
-/** Lay out a Repo's map left to right with dagre: Blockers left, the issues they block right. */
+/** Lay out a Project's map left to right with dagre: Blockers left, the issues they block right. */
 export function layout(map: MapData): { width: number; height: number; nodes: Placed[]; edges: Drawn[] } {
   const g = new dagre.graphlib.Graph();
   g.setGraph({ rankdir: "LR", nodesep: 16, ranksep: 48, edgesep: 8 });

@@ -1,6 +1,6 @@
 /** The page's one `/api/events` stream, open while anything watches. */
 let stream: EventSource | null = null;
-const watchers = new Set<{ load: () => void; lost: (why: string) => void }>();
+const watchers = new Set<{ path: string; load: () => void; lost: (why: string) => void }>();
 let down = false;
 /** The new stream pending after the browser gave up on one, and how many in a row did not open. */
 let retry: ReturnType<typeof setTimeout> | undefined;
@@ -14,9 +14,9 @@ export function backoff(attempt: number): number {
   return Math.min(1000 * 2 ** attempt, 30_000);
 }
 
-/** Fetch everything watched again now, as a `changed` would: for a change the page itself just made. */
-export function reload() {
-  watchers.forEach((w) => w.load());
+/** Fetch everything watched again now, as a `changed` would, or only `path`: for a change the page itself just made. */
+export function reload(path?: string) {
+  watchers.forEach((w) => (path === undefined || w.path === path) && w.load());
 }
 
 /** `fetch`, not following a redirect: serve never redirects, Access does once the session lapses. */
@@ -38,7 +38,7 @@ function connect() {
   retry = undefined;
   const mine = new EventSource("/api/events");
   stream = mine;
-  mine.addEventListener("changed", reload);
+  mine.addEventListener("changed", () => reload());
   mine.addEventListener("error", () => void dropped(mine));
   mine.addEventListener("open", () => {
     if (down) reload();
@@ -84,7 +84,7 @@ export function watch<T>(path: string, got: (data: T) => void, failed: (why: str
       if (mine === latest) failed("Could not reach nico-agent serve; retrying.");
     }
   };
-  const watcher = { load, lost: failed };
+  const watcher = { path, load, lost: failed };
   if (!stream && retry === undefined && !signedOut) connect();
   watchers.add(watcher);
   void load();
