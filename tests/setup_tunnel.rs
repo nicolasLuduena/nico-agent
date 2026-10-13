@@ -69,7 +69,7 @@ impl Sandbox {
         let mut child = Command::new("bash")
             .arg(SCRIPT)
             .env_clear()
-            .env("HOME", &*self.home)
+            .env("HOME", self.home.as_os_str())
             .env("USER", "nico")
             .env(
                 "PATH",

@@ -46,7 +46,7 @@ impl Sandbox {
             .arg(SCRIPT)
             .args(args)
             .env_clear()
-            .env("HOME", &*self.home)
+            .env("HOME", self.home.as_os_str())
             .env("USER", "nico")
             .env(
                 "PATH",

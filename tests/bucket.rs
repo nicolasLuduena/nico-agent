@@ -604,8 +604,9 @@ fn get_bucket_above_an_issue_s_folder_links_each_issue_s_with_its_heads() {
     );
 }
 
-/// The implement prompt a tick sends for issue 7 of `acme/api`, with `toml` in the config.
-fn implement_prompt(toml: &str) -> String {
+/// The implement prompt a tick sends for issue 7 of `acme/api`, with `toml` in
+/// the config; and its Setup, kept till the test ends.
+fn implement_prompt(toml: &str) -> (String, Setup) {
     let t = setup();
     std::fs::create_dir_all(&t.config_dir).unwrap();
     std::fs::write(t.config_dir.join("config.toml"), toml).unwrap();
@@ -618,14 +619,14 @@ fn implement_prompt(toml: &str) -> String {
     let prompt = calls
         .iter()
         .find_map(|c| c.strip_prefix("herdr agent prompt impl-api-7 "));
-    prompt.expect("an implement prompt").to_string()
+    (prompt.expect("an implement prompt").to_string(), t)
 }
 
 #[test]
 fn the_implement_prompt_names_the_evidence_folder_and_links_the_bucket_on_serve_or_bucket_url() {
-    let on_serve = implement_prompt("");
-    let on_tunnel = implement_prompt("[bucket]\nurl = \"https://nico.example.com/\"\n");
-    let on_port = implement_prompt("port = 4321\n");
+    let (on_serve, _t) = implement_prompt("");
+    let (on_tunnel, _t2) = implement_prompt("[bucket]\nurl = \"https://nico.example.com/\"\n");
+    let (on_port, _t3) = implement_prompt("port = 4321\n");
 
     assert_eq!(
         on_serve,

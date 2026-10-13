@@ -1,6 +1,7 @@
 //! The test harness: `setup()` gives a FakeWorld, a fresh config directory
 //! and a `cli()` that runs the binary's library entry as the CLI would.
 //! Tests assert on the command's output, `world.calls()` and the config files.
+//! `Scratch` is the temp folder each test works in, removed when it ends.
 
 // Each test binary uses a different part of the harness.
 #![allow(dead_code)]

@@ -54,8 +54,8 @@ fn run(home: &Path, args: &[&str]) -> (Option<i32>, String) {
 }
 
 /// `status --json` of acme/api, which reads Linear's team BLE too, with `gh`
-/// and `curl` the given shell scripts.
-fn status_with(name: &str, gh: &str, curl: &str) -> Value {
+/// and `curl` the given shell scripts; and its HOME, kept till the test ends.
+fn status_with(name: &str, gh: &str, curl: &str) -> (Value, Scratch) {
     let home = home(name);
     fs::create_dir_all(home.join("stubs")).unwrap();
     for (bin, script) in [("gh", gh), ("curl", curl)] {
@@ -79,7 +79,7 @@ fn status_with(name: &str, gh: &str, curl: &str) -> Value {
     assert_eq!(code, Some(0), "{stdout}");
     let (code, stdout) = run(&home, &["status", "--json"]);
     assert_eq!(code, Some(0), "{stdout}");
-    serde_json::from_str(&stdout).unwrap()
+    (serde_json::from_str(&stdout).unwrap(), home)
 }
 
 #[test]
@@ -147,7 +147,7 @@ else
 fi"#;
 
     // `curl` is never run: GitHub, read first, refuses.
-    let status = status_with("github-limit", gh, "exit 7");
+    let (status, _home) = status_with("github-limit", gh, "exit 7");
 
     assert_eq!(
         status["sources"],
@@ -178,7 +178,7 @@ esac"#;
             .collect();
         let curl = LINEAR_LIMITED.replace("HEADERS", &headers);
 
-        let status = status_with(&format!("linear-{spent}"), gh, &curl);
+        let (status, _home) = status_with(&format!("linear-{spent}"), gh, &curl);
 
         assert_eq!(
             status["sources"],
