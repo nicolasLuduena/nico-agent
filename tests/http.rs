@@ -148,6 +148,8 @@ fn an_unknown_path_or_method_answers_404_with_the_routes_as_help() {
         "GET /api/map/<project>: the issues of the Project's Repos and how they block and stack on each other",
         "GET /api/node/<issue>: the issue's Dispatch, its restarts, its Verdict's findings and its Evidence",
         "GET /api/events: a stream of `changed`, sent when state or an Agent state changes, and a keepalive comment otherwise",
+        "GET /api/wikis: each Repo's Wiki, with the commit it describes, when it was built and its Gaps",
+        "GET /api/wiki/<id>: the Wiki, a Repo's by its slug: its Components, Interpretations, Anchors and Gaps",
         "POST /api/dispatch {issue, harness, model, effort}: `nico-agent dispatch` of the issue",
         "POST /api/refresh: `nico-agent refresh`",
         "PATCH /api/repo/<owner/name>/switches {name: bool}: set the Repo's switches; null takes its Project's or the default",

@@ -13,6 +13,7 @@
   function open(need: Need) {
     selection.project = need.repo && (projectOf(need.repo, projects)?.name ?? null);
     selection.issue = need.issue;
+    selection.view = "map";
   }
 
   /** A row the band did not have: it flashes once as it arrives. Not on the first read, nor as the band turns yellow, which says it already. */

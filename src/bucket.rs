@@ -73,10 +73,19 @@ pub fn keep_wiki(
 ) -> Result<(), Refusal> {
     let (world, _lock) = (ctx.world, lock(ctx)?);
     made(world, config)?;
-    let (bucket, kept) = (&config.bucket.path, format!("wiki/{slug}/wiki.json"));
+    let (bucket, kept) = (&config.bucket.path, wiki_file(slug));
     (world.write_file(&format!("{bucket}/{kept}"), text.as_bytes()))
         .and_then(|()| world.git_commit(bucket, &kept, message))
         .map_err(refused)
+}
+
+/// The text of the Wiki of the Repo `slug` the Bucket holds; none before its first build.
+pub fn wiki(world: &dyn World, config: &Config, slug: &str) -> WorldResult<Option<Vec<u8>>> {
+    world.read_file(&format!("{}/{}", config.bucket.path, wiki_file(slug)))
+}
+
+fn wiki_file(slug: &str) -> String {
+    format!("wiki/{slug}/wiki.json")
 }
 
 /// Keep the Evidence of each live Dispatch at its open PR's head, once a

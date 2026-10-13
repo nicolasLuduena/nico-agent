@@ -607,3 +607,43 @@ fn a_repo_not_configured_is_refused_and_no_outcome_written() {
     assert_eq!(t.cli(&["wiki", "--json"]).exit_code, 2);
     assert_eq!(t.cli(&["wiki", "build", "--json"]).exit_code, 2);
 }
+
+#[test]
+fn serve_answers_each_built_wiki_and_a_wiki_by_its_id_and_404s_one_it_has_not() {
+    let t = with_repo("");
+    let gap = interpretation("role", "Past the end.", "src/lib.rs", 1, 9);
+    answer(
+        &t,
+        "acme/api",
+        json!({ "kind": "leaf", "overview": "A small API.", "interpretations": [gap] }),
+    );
+    t.cli(&["wiki", "build", "acme/api", "--json"]);
+    let config = std::fs::read_to_string(t.config_dir.join("config.toml")).unwrap();
+    let web = "[repos.\"acme/web\"]\npath = \"/src/web\"\n";
+    std::fs::write(t.config_dir.join("config.toml"), config + web).unwrap();
+    t.tick();
+
+    let listed = t.get("/api/wikis");
+    let one = t.get("/api/wiki/acme/api");
+    let unbuilt = t.get("/api/wiki/acme/web");
+    let unknown = t.get("/api/wiki/acme/nope");
+
+    let built = json!({
+        "id": "acme/api",
+        "target": { "repo": "acme/api" },
+        "commit": "abc1234",
+        "builtAt": "2026-09-30T12:00:00Z",
+        "gaps": 1,
+    });
+    assert_eq!(listed, (200, json!([built])));
+    assert_eq!(one, (200, wiki(&t)));
+    let help = json!(["Ask for a Wiki /api/wikis lists, or build one: nico-agent wiki build <owner/name>"]);
+    assert_eq!(
+        unbuilt,
+        (404, json!({ "error": "acme/web has no Wiki", "help": help }))
+    );
+    assert_eq!(
+        unknown,
+        (404, json!({ "error": "acme/nope has no Wiki", "help": help }))
+    );
+}

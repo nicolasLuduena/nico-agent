@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // page.mjs — open serve's page in headless Chromium, act on it as a user does, capture what it shows.
 // Called by `control-nico-agent page`, which passes the run's URL first and sets VERIFY_PLAYWRIGHT:
-//   page.mjs <url> [--evidence PREFIX] [--width PX] [--storage FILE|none] [--within ROLE=NAME | --click ROLE=NAME | --click ROLE~NAME | --press KEY
-//            | --type TEXT | --expect TEXT | --gone TEXT | --wait SECONDS | --mode pass|502|signed-out]...
+//   page.mjs <url> [--evidence PREFIX] [--width PX] [--storage FILE|none] [--hash HASH] [--within ROLE=NAME | --click ROLE=NAME | --click ROLE~NAME
+//            | --press KEY | --type TEXT | --expect TEXT | --gone TEXT | --wait SECONDS | --history back|forward | --mode pass|502|signed-out]...
+// --hash HASH opens the page at <url>HASH, as a link does; --history back|forward is the browser's Back or Forward.
 // --within ROLE=NAME makes each later --click find its element inside that one (a Repo's `region "<slug>"`); `--within page` the whole page again.
 // --storage FILE starts the browser with the storage FILE holds and saves it back after the last step, so
 // another call opens the page again as this browser would; --storage none is a browser whose localStorage throws.
@@ -21,6 +22,7 @@ const [url, ...argv] = process.argv.slice(2);
 let evidence = null;
 let width = 1280;
 let storage = null;
+let hash = "";
 const steps = [];
 for (let i = 0; i < argv.length; i++) {
   const [flag, value] = [argv[i], argv[i + 1]];
@@ -29,6 +31,7 @@ for (let i = 0; i < argv.length; i++) {
   if (flag === "--evidence") evidence = value;
   else if (flag === "--width") width = Number(value);
   else if (flag === "--storage") storage = value;
+  else if (flag === "--hash" && value.startsWith("#")) hash = value;
   else if (flag === "--click" && /^[a-z]+[=~]/.test(value)) steps.push({ click: value });
   else if (flag === "--within" && (value === "page" || /^[a-z]+=/.test(value))) steps.push({ within: value });
   else if (flag === "--press") steps.push({ press: value });
@@ -36,12 +39,13 @@ for (let i = 0; i < argv.length; i++) {
   else if (flag === "--expect") steps.push({ expect: value });
   else if (flag === "--gone") steps.push({ gone: value });
   else if (flag === "--wait" && Number(value) >= 0) steps.push({ wait: Number(value) });
+  else if (flag === "--history" && ["back", "forward"].includes(value)) steps.push({ history: value });
   else if (flag === "--mode") steps.push({ mode: value });
   else usage(`unknown argument ${flag} ${value}`);
 }
 
 function usage(why) {
-  console.error(`page: ${why}\nusage: page [--evidence PREFIX] [--width PX] [--storage FILE|none] [--within ROLE=NAME|page] [--click ROLE=NAME | --click ROLE~NAME | --press KEY | --type TEXT | --expect TEXT | --gone TEXT | --wait SECONDS | --mode pass|502|signed-out]...`);
+  console.error(`page: ${why}\nusage: page [--evidence PREFIX] [--width PX] [--storage FILE|none] [--hash HASH] [--within ROLE=NAME|page] [--click ROLE=NAME | --click ROLE~NAME | --press KEY | --type TEXT | --expect TEXT | --gone TEXT | --wait SECONDS | --history back|forward | --mode pass|502|signed-out]...`);
   process.exit(2);
 }
 
@@ -81,7 +85,7 @@ try {
     }
   };
 
-  await page.goto(url);
+  await page.goto(url + hash);
   await page.waitForFunction(() => !document.body.innerText.includes("Reading nico-agent"), null, { timeout: 15000 });
   await settle();
   let scope = page;
@@ -104,6 +108,8 @@ try {
         await page.getByText(step.gone, { exact: false }).first().waitFor({ state: "hidden", timeout: 60000 });
       } else if (step.wait !== undefined) {
         await page.waitForTimeout(step.wait * 1000);
+      } else if (step.history) {
+        await (step.history === "back" ? page.goBack() : page.goForward());
       } else if (step.mode) {
         const set = await fetch(new URL("/__tunnel/mode", url), { method: "PUT", body: step.mode });
         if (!set.ok) throw new Error(`the tunnel stand-in answered ${set.status}: ${await set.text()}`);
