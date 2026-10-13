@@ -30,7 +30,8 @@ use crate::ask;
 use crate::away::{self, Run, Trigger};
 use crate::bucket;
 use crate::cli::{Context, Refusal, bad_invocation};
-use crate::config::{self, Config, Repo, fill_in};
+use crate::config::{self, Config, Launch, Repo, fill_in};
+use crate::dispatch;
 use crate::install::base;
 use crate::launch;
 use crate::repo;
@@ -684,6 +685,127 @@ pub fn marked(world: &dyn World, repo: &Repo, wiki: &mut Value) -> WorldResult<(
     Ok(())
 }
 
+/// What `PATCH /api/wiki/settings` sets, each with what it is.
+const SETTINGS: [(&str, &str); 6] = [
+    (
+        "hour",
+        "hour is when the loop checks each Repo's Wiki against its Base, daily, local time",
+    ),
+    (
+        "launch",
+        "launch is the Harness, model and Effort each part is asked of",
+    ),
+    ("calls", "calls is how many model calls a build may make"),
+    ("depth", "depth is how deep a build divides the code"),
+    (
+        "concurrency",
+        "concurrency is how many calls a build makes at once",
+    ),
+    (
+        "embed_model",
+        "embed_model is the Ollama model that embeds each Wiki for `ask`",
+    ),
+];
+
+/// Every Wiki's settings, `[wiki]` as it takes effect but `ollama`, with the
+/// Harnesses a Wiki builds on and the models and Efforts each takes (null: any).
+pub fn settings(config: &Config) -> Value {
+    let wiki = &config.wiki;
+    let harnesses: serde_json::Map<String, Value> = (config.harnesses.iter())
+        .filter(|(name, _)| HEADLESS.contains(&name.as_str()))
+        .map(|(name, h)| {
+            let takes = json!({ "models": h.models, "efforts": h.efforts });
+            (name.clone(), takes)
+        })
+        .collect();
+    json!({
+        "hour": wiki.hour,
+        "launch": wiki.launch,
+        "calls": wiki.calls,
+        "depth": wiki.depth,
+        "concurrency": wiki.concurrency,
+        "embed_model": wiki.embed_model,
+        "harnesses": harnesses,
+    })
+}
+
+/// `PATCH /api/wiki/settings`: write `set`, `{setting: value}` of
+/// [`SETTINGS`], to `[wiki]` in the config, keeping the rest as written; null
+/// takes the default. Every Wiki's settings after.
+pub fn set(ctx: &Context, set: &Value) -> Result<Value, Refusal> {
+    config::edit(&ctx.config_dir, |config, doc| {
+        let set = checked_settings(config, set)?;
+        repo::write(repo::table_at(doc.as_table_mut(), "wiki"), set);
+        Ok::<_, Refusal>(())
+    })??;
+    Ok(settings(&config::load(&ctx.config_dir)?))
+}
+
+/// `set` as an object of some of [`SETTINGS`], each null or a value
+/// `[wiki]` holds; else a bad request.
+fn checked_settings<'a>(
+    config: &Config,
+    set: &'a Value,
+) -> Result<&'a serde_json::Map<String, Value>, Refusal> {
+    let bad = |error: String, help: &str| Refusal {
+        error,
+        help: vec![help.into()],
+        exit_code: 2,
+    };
+    let keys: Vec<&str> = SETTINGS.iter().map(|(key, _)| *key).collect();
+    let all = format!("Settings: {}; null takes the default", keys.join(", "));
+    let set = (set.as_object())
+        .filter(|set| !set.is_empty())
+        .ok_or_else(|| bad(format!("{set} sets nothing"), &all))?;
+    let builds: Vec<&str> = (HEADLESS.iter().copied())
+        .filter(|name| config.harnesses.contains_key(*name))
+        .collect();
+    let builds = format!("Harnesses that build a Wiki: {}", builds.join(", "));
+    for (key, new) in set {
+        let Some((_, help)) = SETTINGS.iter().find(|(name, _)| name == key) else {
+            return Err(bad(format!("`{key}` is not a setting the page sets"), &all));
+        };
+        // Past u32, config.toml would no longer read.
+        let whole = new.as_u64().and_then(|n| u32::try_from(n).ok());
+        match (key.as_str(), new) {
+            (_, Value::Null) => {}
+            ("hour", _) if whole.is_some_and(|hour| hour <= 23) => {}
+            ("hour", _) => {
+                return Err(bad(
+                    format!("hour is an hour from 0 to 23, not {new}"),
+                    help,
+                ));
+            }
+            ("embed_model", Value::String(model)) if !model.trim().is_empty() => {}
+            ("embed_model", _) => {
+                return Err(bad(
+                    format!("embed_model is a model's name, not {new}"),
+                    help,
+                ));
+            }
+            ("launch", _) => {
+                let launch: Launch = serde_json::from_value(new.clone()).map_err(|_| {
+                    bad(
+                        format!("launch is {{harness, model, effort}}, not {new}"),
+                        &builds,
+                    )
+                })?;
+                dispatch::check(config, &launch)?;
+                if !HEADLESS.contains(&launch.harness.as_str()) {
+                    let error = format!("{} has no headless form: {BUILDS_ON}", launch.harness);
+                    return Err(bad(error, &builds));
+                }
+            }
+            _ if whole.is_some_and(|n| n >= 1) => {}
+            _ => {
+                let error = format!("{key} is a whole number of at least 1, not {new}");
+                return Err(bad(error, help));
+            }
+        }
+    }
+    Ok(set)
+}
+
 /// The Wiki of the Repo `slug` the Bucket holds.
 fn kept(ctx: &Context, config: &Config, slug: &str) -> Result<Option<Value>, Refusal> {
     let Some(text) = bucket::wiki(ctx.world, config, slug)? else {
@@ -709,7 +831,7 @@ fn built(
     repo: &Repo,
     how: Option<&str>,
 ) -> Result<Wiki, Refusal> {
-    let (world, call) = (ctx.world, headless(config, &WRITES)?);
+    let (world, call) = (ctx.world, headless(ctx, config, true, None)?);
     let continuing = how == Some("continue");
     let previous = match how {
         Some("update" | "continue") => kept(ctx, config, slug)?.map(serde_json::from_value::<Wiki>),
@@ -893,13 +1015,11 @@ fn described(
                 if a.unread {
                     failed.insert(0, "your last reply: it is no JSON object of either shape, leaf or division, so the claims below are of the answer before it".into());
                 }
-                let resumed = ["-s".into(), answered.session.clone()];
                 sent.push((
                     i,
                     Headless {
-                        args: [&call.args[..], &resumed].concat(),
                         prompt: correction(&a.part, &failed),
-                        ..call.clone()
+                        ..headless(ctx, config, true, Some(&answered.session))?
                     },
                 ));
             }
@@ -1109,8 +1229,8 @@ fn files(world: &dyn World, dir: &str) -> WorldResult<Vec<File>> {
     Ok(files)
 }
 
-/// The tools a part's call may not use: every one that writes or leaves its
-/// folder. `execute` reaches the user's own MCP servers, some of which write.
+/// The tools a part's call may not use on opencode: every one that writes or
+/// leaves its folder. `execute` reaches the user's own MCP servers, some of which write.
 const WRITES: [&str; 7] = [
     "edit",
     "bash",
@@ -1121,39 +1241,152 @@ const WRITES: [&str; 7] = [
     "execute",
 ];
 
-/// The `[wiki]` launch's headless call, its prompt to fill in, with the
-/// tools `denied` (`*` for every one): opencode's `run`, on a server of its
-/// own, so that the config denying them is the one it runs on.
-pub fn headless(config: &Config, denied: &[&str]) -> Result<Headless, Refusal> {
+/// The Harnesses with a headless form, which a Wiki builds on.
+pub const HEADLESS: [&str; 3] = ["claude", "codex", "opencode"];
+const BUILDS_ON: &str = "a Wiki builds on claude, codex or opencode";
+
+/// Where codex reads the answer's JSON schema from, in the config directory.
+const SCHEMA_FILE: &str = "wiki/answer.schema.json";
+
+/// The `[wiki]` launch's headless call, its prompt to fill in: one that
+/// `reads` the code and answers a part in the Wiki's shape, or one with no
+/// tools at all; continuing `session`, to correct its answer.
+/// opencode's `run`, on a server of its own, so that the config denying its
+/// tools is the one it runs on, with the shape in the prompt alone; claude's
+/// `-p` and codex's `exec`, each given the shape as a JSON schema.
+pub fn headless(
+    ctx: &Context,
+    config: &Config,
+    reads: bool,
+    session: Option<&str>,
+) -> Result<Headless, Refusal> {
     let launch = &config.wiki.launch;
-    let command = (launch.harness == "opencode")
-        .then(|| config.harnesses[&launch.harness].command.clone())
-        .flatten()
-        .ok_or_else(|| {
-            Refusal::new(
-                format!(
-                    "{} has no headless form: only opencode builds a Wiki",
-                    launch.harness
-                ),
-                vec!["Set [wiki] launch to an opencode one in config.toml".into()],
-            )
-        })?;
-    let mut args = vec!["run".to_string(), "--standalone".into()];
-    if let Some(model) = &launch.model {
-        let model = (launch.effort.as_ref()).map_or(model.clone(), |e| format!("{model}#{e}"));
-        args.extend(["-m".into(), model]);
-    }
-    args.extend(["--format".into(), "json".into()]);
-    let permission: serde_json::Map<String, Value> = (denied.iter())
-        .map(|tool| (tool.to_string(), json!("deny")))
-        .collect();
-    let config = json!({ "permission": permission }).to_string();
+    let harness = &config.harnesses[&launch.harness];
+    // The Harness's model and Effort arguments, as its launch fills them in.
+    let chosen = |args: &[String], value: &Option<String>, name: &str| -> Vec<String> {
+        (value.iter())
+            .flat_map(|value| args.iter().map(|arg| fill_in(arg, &[(name, value)])))
+            .collect()
+    };
+    let chosen = [
+        chosen(&harness.model_args, &launch.model, "model"),
+        chosen(&harness.effort_args, &launch.effort, "effort"),
+    ]
+    .concat();
+    let strings = |args: &[&str]| args.iter().map(|a| a.to_string()).collect::<Vec<_>>();
+    let mut env = vec![];
+    let args = match launch.harness.as_str() {
+        "opencode" => {
+            let mut args = strings(&["run", "--standalone"]);
+            if let Some(model) = &launch.model {
+                let model =
+                    (launch.effort.as_ref()).map_or(model.clone(), |e| format!("{model}#{e}"));
+                args.extend(["-m".into(), model]);
+            }
+            args.extend(strings(&["--format", "json"]));
+            let denied: &[&str] = if reads { &WRITES } else { &["*"] };
+            let permission: serde_json::Map<String, Value> = (denied.iter())
+                .map(|tool| (tool.to_string(), json!("deny")))
+                .collect();
+            let config = json!({ "permission": permission }).to_string();
+            env.push(("OPENCODE_CONFIG_CONTENT".into(), config));
+            args.extend(session.into_iter().flat_map(|s| ["-s".into(), s.into()]));
+            args
+        }
+        "claude" => {
+            let mut args = strings(&["-p", "--output-format", "json"]);
+            if reads {
+                args.extend(["--json-schema".into(), schema().to_string()]);
+            }
+            // `=`: the list takes every word after it, the prompt too, otherwise.
+            let tools = if reads { "Read,Grep,Glob" } else { "" };
+            args.push(format!("--tools={tools}"));
+            // No MCP server of the user's, some of which write.
+            args.extend(strings(&[
+                "--strict-mcp-config",
+                "--permission-prompts",
+                "none",
+            ]));
+            args.extend(chosen);
+            args.extend(
+                session
+                    .into_iter()
+                    .flat_map(|s| ["--resume".into(), s.into()]),
+            );
+            args
+        }
+        "codex" => {
+            let mut args = strings(&["exec"]);
+            args.extend(
+                session
+                    .into_iter()
+                    .flat_map(|s| ["resume".into(), s.into()]),
+            );
+            // `exec resume` takes no `-s`, so the sandbox is set as config, for both.
+            // shortcut: codex keeps the user's MCP servers and its shell (read-only), even for `ask`; drop them if one ever writes.
+            args.extend(strings(&[
+                "-c",
+                "sandbox_mode=\"read-only\"",
+                "--skip-git-repo-check",
+                "--json",
+            ]));
+            if reads {
+                let file = ctx.config_dir.join(SCHEMA_FILE);
+                let schema = state::text(&schema());
+                state::update(&file, |_| Ok::<_, io::Error>((schema, ())))?;
+                args.extend(["--output-schema".into(), file.display().to_string()]);
+            }
+            args.extend(chosen);
+            args
+        }
+        name => {
+            return Err(Refusal::new(
+                format!("{name} has no headless form: {BUILDS_ON}"),
+                vec!["Set [wiki] launch to one of them, on the Wiki view's settings or in config.toml".into()],
+            ));
+        }
+    };
+    let command = (harness.command.clone())
+        .or_else(|| harness.kind.clone())
+        .expect("config requires a command or a kind");
     Ok(Headless {
         command,
         args,
-        env: vec![("OPENCODE_CONFIG_CONTENT".into(), config)],
+        env,
         prompt: String::new(),
     })
+}
+
+/// What every answer holds, a leaf or a division, as a JSON schema strict
+/// enough for codex: every key required, one left out null.
+fn schema() -> Value {
+    let object = |properties: Value| {
+        let required: Vec<&String> = properties.as_object().expect("an object").keys().collect();
+        json!({ "type": "object", "additionalProperties": false, "required": required, "properties": properties })
+    };
+    let (string, number) = (json!({ "type": "string" }), json!({ "type": "integer" }));
+    let list = |items: Value| json!({ "type": "array", "items": items });
+    let one_of = |kinds: &[&str]| json!({ "type": "string", "enum": kinds });
+    let or_null = |value: Value| json!({ "anyOf": [{ "type": "null" }, value] });
+    let anchors = list(object(
+        json!({ "path": string, "start": number, "end": number }),
+    ));
+    object(json!({
+        "kind": one_of(&["leaf", "division"]),
+        "overview": string,
+        "components": list(object(json!({ "name": string, "summary": string, "files": list(string.clone()) }))),
+        "relationships": list(object(json!({
+            "from": string, "to": string, "kind": one_of(&RELATIONSHIPS), "description": string,
+        }))),
+        "interpretations": list(object(json!({ "kind": one_of(&KINDS), "text": string, "anchors": anchors }))),
+        "explainer": or_null(object(json!({
+            "title": string,
+            "steps": list(object(json!({
+                "n": number, "caption": string, "anchors": anchors, "lane": or_null(string.clone()),
+            }))),
+            "arrows": list(object(json!({ "from": number, "to": number, "label": or_null(string.clone()) }))),
+        }))),
+    }))
 }
 
 const PROMPT: &str = r#"You are writing one part of the Wiki of {repo}: what its code does, each claim citing the lines it rests on. You may read, grep, glob and list the files in this folder, and nothing else.

@@ -229,7 +229,9 @@ a `link` per Component, `button "Update"`, `button "Rebuild"` and, while the bud
 `button "Continue +N calls"` under the header, `article "<Component>"` with a `region` per kind of Interpretation,
 `"Components"` and `"Gaps"`, `navigation "Outline"` with a `button` per head; under 1080px
 `button "Outline"`, under 720px `button "Components"` too, each opening its sheet with `button
-"Close"`), `region "Dispatch"` with `button "Dispatch"` (a Repo's only), `region "Readiness"` with a `group` reading `N of M pass` (a Repo's only), `region "Map of <project>"`, `region "Settings"` with
+"Close"`; `button "Wiki settings"` opening `region "Settings for every Wiki"` with `combobox
+"Harness"`, `combobox` or `textbox` `"Model"` and `"Effort"`, `spinbutton "Hour"`, `"Calls"`,
+`"Depth"` and `"Calls at once"`, and `textbox "Embedding model"`), `region "Dispatch"` with `button "Dispatch"` (a Repo's only), `region "Readiness"` with a `group` reading `N of M pass` (a Repo's only), `region "Map of <project>"`, `region "Settings"` with
 `combobox "Implementer Harness"` (and `model`, `Effort`, and the same for `Reviewer`), `textbox
 "Base"`, `combobox "Project"` (a Repo's only), `region "Install"` with `textbox "Install"` (a Repo's only), `button "Use the default <Setting>"` or `"Use the
 Project's <Setting>"`, `button "Remove <slug>…"`; a `--click` takes the first match, which is the

@@ -72,6 +72,10 @@ const ROUTES: &[(&str, &str)] = &[
         "set the Project's defaults for its Repos; null removes one",
     ),
     (
+        "PATCH /api/wiki/settings {hour, launch, calls, depth, concurrency, embed_model}",
+        "set what every Wiki is built on; null takes the default",
+    ),
+    (
         "POST /api/repo {slug, path, project}",
         "`nico-agent repo add`",
     ),
@@ -145,6 +149,7 @@ pub fn answer(ctx: &Context, port: u16, request: &HttpRequest) -> Answer {
         ("PATCH", path) if let Some(slug) = path.strip_prefix("/api/repo/") => {
             ran(body(request).and_then(|set| repo::set(ctx, &unescaped(slug), &set)))
         }
+        ("PATCH", "/api/wiki/settings") => ran(body(request).and_then(|set| wiki::set(ctx, &set))),
         ("PATCH", path) if let Some(name) = path.strip_prefix("/api/project/") => {
             ran(body(request).and_then(|set| repo::set_project(ctx, &unescaped(name), &set)))
         }
@@ -242,6 +247,7 @@ fn status(ctx: &Context) -> Result<Value, Refusal> {
             shown[key] = value.clone();
         }
     }
+    shown["wiki_settings"] = wiki::settings(&config);
     // shortcut: an unreadable morning.md shows as none, like a missing one; say why if one ever is.
     shown["morning_summary"] = json!(fs::read_to_string(ctx.config_dir.join(away::SUMMARY)).ok());
     Ok(shown)

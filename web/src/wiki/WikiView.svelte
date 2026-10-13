@@ -2,7 +2,8 @@
   // A Project's Wiki view: a picker of its Repos' Wikis, the open one's
   // header, its Component tree with search over it, the open Component in a
   // reading column and its outline; the tree and the outline as sheets once
-  // the window is too narrow for them beside the Component.
+  // the window is too narrow for them beside the Component. The header opens
+  // the sheet of what every Wiki is built on, before any is built too.
   import { onMount } from "svelte";
   import { MediaQuery } from "svelte/reactivity";
   import Refused, { ticked } from "../controls/Refused.svelte";
@@ -10,21 +11,22 @@
   import { reload, watch } from "../live";
   import { hash } from "../route";
   import { selection } from "../selection.svelte";
-  import type { Project } from "../status";
+  import type { Project, WikiSettings as Settings } from "../status";
   import { clock } from "../time";
   import Reading from "./Reading.svelte";
   import Sheet from "./Sheet.svelte";
   import { byKind, freshness, search, unexplored, type Component, type Hit, type Listed, type Wiki } from "./wiki";
+  import WikiSettings from "./WikiSettings.svelte";
 
-  let { project }: { project: Project } = $props();
+  let { project, settings }: { project: Project; settings: Settings } = $props();
 
   let listed = $state<Listed[] | null>(null);
   let wiki = $state<Wiki | null>(null);
   /** Why the Wikis, or the open one, could not be read; each cleared by its next answer. */
   let failure = $state<string | null>(null);
   let wikiFailure = $state<string | null>(null);
-  /** The tree folds into a sheet on a phone, the outline under 1080px too; at most one is open. */
-  const TITLES = { tree: "Components", outline: "Outline" } as const;
+  /** The tree folds into a sheet on a phone, the outline under 1080px too, the settings always; at most one is open. */
+  const TITLES = { tree: "Components", outline: "Outline", settings: "Settings for every Wiki" } as const;
   type Fold = keyof typeof TITLES;
   const phone = new MediaQuery("(width < 720px)");
   const narrow = new MediaQuery("(width < 1080px)");
@@ -155,23 +157,18 @@
     {#if !failure}
       <p class="none">Reading the Wikis…</p>
     {/if}
-  {:else if wikis.length === 0}
-    <div class="none">
-      <p>No Wiki of {project.name} yet. Build one by Repo; it describes the code at the Repo's Base, each claim citing its lines:</p>
-      {#each project.repos as slug (slug)}
-        <p><code>nico-agent wiki build {slug}</code></p>
-      {/each}
-    </div>
   {:else}
     <header>
-      <label class="pick">
-        <span class="label">Wiki</span>
-        <select value={id} onchange={(e) => pick(e.currentTarget.value)}>
-          {#each wikis as w (w.id)}
-            <option value={w.id}>{w.id}</option>
-          {/each}
-        </select>
-      </label>
+      {#if wikis.length > 0}
+        <label class="pick">
+          <span class="label">Wiki</span>
+          <select value={id} onchange={(e) => pick(e.currentTarget.value)}>
+            {#each wikis as w (w.id)}
+              <option value={w.id}>{w.id}</option>
+            {/each}
+          </select>
+        </label>
+      {/if}
       {#if wiki}
         <p class="built">
           Describes <a href="https://github.com/{wiki.target.repo}/commit/{wiki.commit}" target="_blank" rel="noreferrer"
@@ -215,22 +212,27 @@
           {/if}
         </div>
       {/if}
-      {#if open && toggles.length > 0}
-        <div class="toggles">
-          {#each toggles as sheet (sheet)}
-            <button
-              type="button"
-              class="quiet"
-              aria-expanded={opened === sheet}
-              aria-controls="wiki-{sheet}"
-              onclick={() => (opened = opened === sheet ? null : sheet)}>{TITLES[sheet]}</button
-            >
-          {/each}
-        </div>
-      {/if}
+      <div class="toggles">
+        {#each [...(open ? toggles : []), "settings" as const] as sheet (sheet)}
+          <button
+            type="button"
+            class="quiet"
+            aria-expanded={opened === sheet}
+            aria-controls="wiki-{sheet}"
+            onclick={() => (opened = opened === sheet ? null : sheet)}>{sheet === "settings" ? "Wiki settings" : TITLES[sheet]}</button
+          >
+        {/each}
+      </div>
     </header>
 
-    {#if wiki && open}
+    {#if wikis.length === 0}
+      <div class="none">
+        <p>No Wiki of {project.name} yet. Build one by Repo; it describes the code at the Repo's Base, each claim citing its lines:</p>
+        {#each project.repos as slug (slug)}
+          <p><code>nico-agent wiki build {slug}</code></p>
+        {/each}
+      </div>
+    {:else if wiki && open}
       <div class="read">
         <Sheet id="wiki-tree" title={TITLES.tree} folded={phone.current} open={opened === "tree"} close={() => (opened = null)}>
           <input class="find" type="search" placeholder="Search this Wiki" aria-label="Search this Wiki" bind:value={query} />
@@ -278,6 +280,9 @@
       <p class="none">Reading the Wiki of {id}…</p>
     {/if}
   {/if}
+  <Sheet id="wiki-settings" title={TITLES.settings} folded={true} open={opened === "settings"} close={() => (opened = null)}>
+    <WikiSettings {settings} />
+  </Sheet>
 </div>
 
 <style>

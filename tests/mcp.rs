@@ -654,6 +654,45 @@ fn ask_answers_from_the_closest_records_only_and_drops_each_sentence_citing_none
 }
 
 #[test]
+fn ask_on_a_claude_wiki_launch_is_one_claude_p_with_no_tools_at_all() {
+    let t = with_claims();
+    let file = t.config_dir.join("config.toml");
+    let config = std::fs::read_to_string(&file).unwrap();
+    std::fs::write(
+        &file,
+        format!("{config}\n[wiki]\nlaunch = {{ harness = \"claude\" }}\n"),
+    )
+    .unwrap();
+    let port = json!({ "path": "web/app.ts", "start": 2, "end": 2 });
+    answers(
+        &t,
+        json!([{ "text": "A browser connects to port 80.", "anchors": [port] }]),
+    );
+
+    let answered = call(
+        &t,
+        &[],
+        "ask",
+        json!({ "wiki": "acme/api", "question": QUESTION }),
+    );
+
+    assert_eq!(
+        answered.unwrap()["answer"][0]["text"],
+        "A browser connects to port 80."
+    );
+    let asked = asked(&t);
+    assert_eq!(asked.len(), 1);
+    let dir = t.config_dir.display();
+    assert!(
+        asked[0].starts_with(&format!(
+            "cd {dir} && env claude -p --output-format json --tools= --strict-mcp-config --permission-prompts none You answer a question"
+        )),
+        "{}",
+        asked[0]
+    );
+}
+
+#[test]
 fn ask_embeds_the_records_whose_vectors_are_missing_first_and_keeps_them() {
     let t = with_claims();
     let vectors = t.config_dir.join("wiki/acme/api/vectors.json");
