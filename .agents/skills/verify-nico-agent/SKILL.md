@@ -63,6 +63,7 @@ $C seed correction <file>|none  # what the wiki model answers each correction (a
 $C drift push <n>|stale|pause   # what GitHub would change: a new PR head, an old read, a rate limit
 $C drift below merged|closed    # ... or the PR below a Stacked dispatch merged or closed unmerged
 $C drift base [<file>]          # ... or verify/fixture's Base moved on by a merge rewriting README.md (or <file>), fetched into its clone
+$C drift tag <tag>              # ... or verify/second tagged <tag>, a release adding lib/, as a Library is
 $C state                        # fingerprint: config dir files, Dispatches, Verdicts, Bucket log, outside calls
 $C run [--evidence PREFIX] -- <nico-agent args...>       # the CLI in the scratch HOME; exit code is the CLI's
 $C http [--evidence PREFIX] [--header 'NAME: VALUE']... <METHOD> <PATH> [BODY]
@@ -213,12 +214,18 @@ What the fixtures hold:
   `drift pause` writes GitHub paused for an hour, as a rate limit does; `drift below merged|closed`
   makes PR #109 final, merged or closed unmerged, as GitHub would say; `drift base [<file>]` pushes a commit
   rewriting `README.md`, or `<file>` (a path in the fixture, made if new), to verify/fixture's
-  `main` and fetches it, as a merge and the loop's next fetch would, printing `{base, file, old, head}`.
+  `main` and fetches it, as a merge and the loop's next fetch would, printing `{base, file, old, head}`;
+  `drift tag <tag>` pushes tag `<tag>` to verify/second's origin, on a commit off its `main` adding
+  `lib/greet.sh` and `lib/README.md`, as a Library's release would, printing `{repo, tag, commit}`.
+  `state` shows each Library's bare clone in the config dir by its tags and worktrees, not its files.
 
 Stable handles are the command words and flags (`--path`, `--json`, `--harness`, `--model`,
 `--effort`, `--sha`, `--findings`), the exit codes, the JSON field names, the routes in `GET` of an
 unknown path's `help`, and on the page the ARIA roles and names: `tablist "Projects"` with one
-`tab` per Project (a Repo with none is its own, named by its slug), `region "Needs you"`, `button
+`tab` per Project (a Repo with none is its own, named by its slug), then `tab "Libraries"` (its
+`tabpanel "Libraries"`: `list "Libraries"` with `button "Remove <id>…"` per version, then `region
+"Add a Library"` with `textbox "Library"`, `textbox "Tag"`, `textbox "Subfolder"` and `button
+"Add"`), `region "Needs you"`, `button
 "Refresh"`, a `region "<project>"` of its defaults unless it is a Repo's own, then a `region
 "<slug>"` per Repo, each holding `switch "Dispatch"` (and `Faux-nico answers`,
 `Flip to ready`, `Gardening`, `Quality-scan`, `Restart`, `Review`, `Stack`, `Wiki`), `spinbutton "Room"`,
@@ -233,7 +240,7 @@ a `link` per Component, `button "Update"`, `button "Rebuild"` and, while the bud
 "Harness"`, `combobox` or `textbox` `"Model"` and `"Effort"`, `spinbutton "Hour"`, `"Calls"`,
 `"Depth"` and `"Calls at once"`, and `textbox "Embedding model"`), `region "Dispatch"` with `button "Dispatch"` (a Repo's only), `region "Readiness"` with a `group` reading `N of M pass` (a Repo's only), `region "Map of <project>"`, `region "Settings"` with
 `combobox "Implementer Harness"` (and `model`, `Effort`, and the same for `Reviewer`), `textbox
-"Base"`, `combobox "Project"` (a Repo's only), `region "Install"` with `textbox "Install"` (a Repo's only), `button "Use the default <Setting>"` or `"Use the
+"Base"`, `combobox "Project"` (a Repo's only), `region "Libraries"` with `button "Unlink <id>"` per version and `form "Link a Library"` (`textbox "Library"`, `textbox "Tag"`, `textbox "Subfolder"`, `button "Link"`) (a Repo's only), `region "Install"` with `textbox "Install"` (a Repo's only), `button "Use the default <Setting>"` or `"Use the
 Project's <Setting>"`, `button "Remove <slug>…"`; a `--click` takes the first match, which is the
 Project's defaults before any Repo's, `region "Add a Repo"` with `textbox "Repo"`, `textbox "Its
 clone"`, `combobox "Its Project"` and `button "Add"`. `run` executes with the run's `work/` as cwd: pass absolute paths (`--findings`).

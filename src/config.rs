@@ -16,6 +16,7 @@ use toml_edit::{Document, DocumentMut, Item, TableLike};
 
 use crate::cli::Refusal;
 use crate::dispatch::Dispatch;
+use crate::repo;
 use crate::state;
 
 pub const FILE: &str = "config.toml";
@@ -55,7 +56,11 @@ hour = 7
 # commit. Each part of the code is one headless, read-only call of `launch`: at
 # most `calls` of them a build, `concurrency` at once, dividing the code at
 # most `depth` deep. `ask` finds what a question is about by the embeddings of
-# `embed_model`, from the Ollama answering at `ollama`.
+# `embed_model`, from the Ollama answering at `ollama`. Each Library version a
+# Repo's `libraries` links, or `libraries` here adds, as
+# `{ repo = "owner/name", tag = "...", path = "sub/folder" }` (`path` optional),
+# is built once, when it has no Wiki, fetched from https://github.com/<owner/name>.git
+# with git's own credentials: a private one needs a credential helper for it.
 [wiki]
 hour = 2
 launch = { harness = "opencode", model = "opencode-go/deepseek-v4.1-flash" }
@@ -64,6 +69,7 @@ depth = 7
 concurrency = 4
 embed_model = "nomic-embed-text"
 ollama = "http://127.0.0.1:11434"
+libraries = []
 
 [prompts]
 implement = "{sigil}implement {issueUrl} as draft PR against {baseBranch}, saving its Evidence under {evidenceFolder}/ in the worktree and linking it to {bucketUrl}"
@@ -140,6 +146,7 @@ const REPO_DEFAULTS: &str = r#"
 room = 3
 implementer = { harness = "claude" }
 switches = { dispatch = true, stack = true, review = true, restart = true, flip = true, answer = false, gardening = false, quality_scan = false, wiki = false }
+libraries = []
 "#;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -189,6 +196,9 @@ pub struct Repo {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub faux_nico: Option<Launch>,
     pub switches: Switches,
+    /// The Library versions it uses, whose Wikis its agents ask about.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub libraries: Vec<Library>,
     /// What it sets itself, of what it shows above.
     #[serde(skip)]
     pub own: Settings,
@@ -214,6 +224,8 @@ pub struct Settings {
     /// Each of [`SWITCHES`] it sets.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub switches: BTreeMap<String, bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub libraries: Option<Vec<Library>>,
 }
 
 impl Repo {
@@ -280,6 +292,37 @@ pub struct Wiki {
     pub embed_model: String,
     /// Where Ollama answers.
     pub ollama: String,
+    /// The Library versions no Repo links, added for the user's own sessions.
+    pub libraries: Vec<Library>,
+}
+
+/// A Library version: a GitHub repository at a tag, its Wiki covering only
+/// the subfolder `path`, when set.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Library {
+    #[serde(deserialize_with = "slug")]
+    pub repo: String,
+    #[serde(deserialize_with = "tag")]
+    pub tag: String,
+    #[serde(
+        default,
+        deserialize_with = "subfolder",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub path: Option<String>,
+}
+
+impl Library {
+    /// Its Wiki's id: `<owner/name>@<tag>`, then `:<path>` when it has one.
+    /// A slug holds no `@` and a tag no `:`, so the id reads back one way.
+    pub fn id(&self) -> String {
+        let path = self
+            .path
+            .as_ref()
+            .map_or(String::new(), |p| format!(":{p}"));
+        format!("{}@{}{path}", self.repo, self.tag)
+    }
 }
 
 /// In the order `as` numbers them: Sunday is 0.
@@ -439,6 +482,14 @@ impl Config {
     /// How long a tick lasts, and so how old a Source read may be.
     pub fn tick(&self) -> Duration {
         Duration::from_secs(u64::from(self.tick_minutes) * 60)
+    }
+
+    /// Each Library version a Repo links or `[wiki]` adds, once, by its id.
+    pub fn libraries(&self) -> BTreeMap<String, &Library> {
+        let linked = self.repos.values().flat_map(|r| &r.libraries);
+        (linked.chain(&self.wiki.libraries))
+            .map(|l| (l.id(), l))
+            .collect()
     }
 
     /// The Repo `slug` names, in any casing, by its slug as configured.
@@ -719,6 +770,50 @@ fn positive<'de, D: Deserializer<'de>>(d: D) -> Result<u32, D::Error> {
 
 fn positive_port<'de, D: Deserializer<'de>>(d: D) -> Result<u16, D::Error> {
     std::num::NonZeroU16::deserialize(d).map(u16::from)
+}
+
+/// A GitHub repository's `<owner>/<name>`, neither a way out of its folder.
+fn slug<'de, D: Deserializer<'de>>(d: D) -> Result<String, D::Error> {
+    let slug = String::deserialize(d)?;
+    if !repo::is_slug(&slug) || !plain(&slug) {
+        return Err(serde::de::Error::invalid_value(
+            serde::de::Unexpected::Str(&slug),
+            &"a GitHub repository's owner/name",
+        ));
+    }
+    Ok(slug)
+}
+
+/// A tag: no `:`, which a Library version's id ends it with, and no part
+/// of it a way out of its folder.
+fn tag<'de, D: Deserializer<'de>>(d: D) -> Result<String, D::Error> {
+    let tag = String::deserialize(d)?;
+    if tag.contains(':') || !plain(&tag) {
+        return Err(serde::de::Error::invalid_value(
+            serde::de::Unexpected::Str(&tag),
+            &"a git tag",
+        ));
+    }
+    Ok(tag)
+}
+
+/// A subfolder of a repository, from its root: `packages/effect`; null, none.
+fn subfolder<'de, D: Deserializer<'de>>(d: D) -> Result<Option<String>, D::Error> {
+    let Some(path) = Option::<String>::deserialize(d)? else {
+        return Ok(None);
+    };
+    if !plain(&path) {
+        return Err(serde::de::Error::invalid_value(
+            serde::de::Unexpected::Str(&path),
+            &"a folder's path from the repository's root, such as packages/effect",
+        ));
+    }
+    Ok(Some(path))
+}
+
+/// Whether each `/`-part of `path` names something: none empty, `.` or `..`.
+fn plain(path: &str) -> bool {
+    path.split('/').all(|part| !["", ".", ".."].contains(&part))
 }
 
 fn hour<'de, D: Deserializer<'de>>(d: D) -> Result<u32, D::Error> {

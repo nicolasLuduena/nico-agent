@@ -503,7 +503,7 @@ fn each_interpretation_still_failing_a_check_after_its_third_round_is_dropped_an
     assert!(calls[1].contains(
         ": its kind `other` is not one of invariant, precondition, postcondition, effect, role\n"
     ));
-    assert!(calls[1].contains(": src/main.rs is not a file of the Repo\n"));
+    assert!(calls[1].contains(": src/main.rs is not one of the Wiki's files\n"));
     assert_eq!(ran.json()["gaps"], json!({ "unreadable": 1 }));
     let index = &wiki(&t)["components"][0];
     let mut numbered = kept;
@@ -1096,7 +1096,7 @@ fn serve_answers_each_built_wiki_and_a_wiki_by_its_id_and_404s_one_it_has_not() 
     marked["stale"] = json!(0);
     assert_eq!(one, (200, marked));
     let help = json!([
-        "Ask for a Wiki /api/wikis lists, or build one: nico-agent wiki build <owner/name>"
+        "Ask for a Wiki /api/wikis lists, or build one: nico-agent wiki build <owner/name>[@<tag>[:<path>]]"
     ]);
     assert_eq!(
         unbuilt,

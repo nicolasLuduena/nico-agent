@@ -14,6 +14,7 @@ const repo: Repo = {
   base: { value: null, from: "default" },
   implementer: { value: { harness: "claude", model: "opus", effort: null }, from: "repo" },
   reviewer: { value: { harness: "codex", model: null, effort: null }, from: "default" },
+  libraries: { value: [], from: "default" },
   harnesses: {
     claude: { models: ["opus", "sonnet"], efforts: ["low", "high"] },
     codex: { models: null, efforts: null },

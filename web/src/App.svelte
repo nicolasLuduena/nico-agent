@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import AddRepo from "./controls/AddRepo.svelte";
+  import Libraries from "./Libraries.svelte";
   import Refresh from "./controls/Refresh.svelte";
   import { watch } from "./live";
   import Morning from "./Morning.svelte";
@@ -40,18 +41,22 @@
     ),
   );
 
-  /** A tab per Project with a Repo: a Repo naming none is its own. */
+  /** A tab per Project with a Repo: a Repo naming none is its own; then the Libraries tab, of no Project. */
   const projects = $derived(status?.projects.filter((p) => p.repos.length > 0) ?? []);
+  const onLibraries = $derived(selection.project === null && selection.view === "libraries");
   const project = $derived(projects.find((p) => p.name === selection.project) ?? projects[0]);
-  const at = $derived(projects.indexOf(project));
+  const at = $derived(onLibraries ? projects.length : projects.indexOf(project));
   /** The Project's oldest time of `key`, which holds for each of its Repos; none while any has none. */
   const oldest = (key: "read_at" | "prs_checked_at") => {
     const times = (status?.repos ?? []).filter((r) => project.repos.includes(r.slug)).map((r) => r[key]);
     return times.includes(null) ? null : times.sort()[0];
   };
 
-  function show(name: string) {
-    Object.assign(selection, { project: name, wiki: null, component: null, issue: null });
+  /** The tab at `i`: a Project's, its view kept, or past them the Libraries tab. */
+  function show(i: number) {
+    const libraries = i === projects.length;
+    const view = libraries ? "libraries" : selection.view === "libraries" ? "map" : selection.view;
+    Object.assign(selection, { project: libraries ? null : projects[i].name, view, wiki: null, component: null, issue: null });
   }
 
   /** The read times flash once when a read moves them, not when another Project's tab shows its own. */
@@ -66,11 +71,12 @@
 
   /** The tabs' arrow keys, Home and End: the next tab shows, and takes focus. */
   function step(event: KeyboardEvent) {
-    const to = { ArrowRight: at + 1, ArrowLeft: at - 1, Home: 0, End: projects.length - 1 }[event.key];
+    const tabs = projects.length + 1;
+    const to = { ArrowRight: at + 1, ArrowLeft: at - 1, Home: 0, End: tabs - 1 }[event.key];
     if (to === undefined) return;
     event.preventDefault();
-    const next = (to + projects.length) % projects.length;
-    show(projects[next].name);
+    const next = (to + tabs) % tabs;
+    show(next);
     document.getElementById(`tab-${next}`)?.focus();
   }
 </script>
@@ -105,33 +111,50 @@
               type="button"
               role="tab"
               id="tab-{i}"
-              aria-selected={p === project}
+              aria-selected={i === at}
               aria-controls="project-tab"
-              tabindex={p === project ? 0 : -1}
-              onclick={() => show(p.name)}
+              tabindex={i === at ? 0 : -1}
+              onclick={() => show(i)}
               onkeydown={step}>{p.name}</button
             >
           {/each}
+          <button
+            type="button"
+            role="tab"
+            id="tab-{projects.length}"
+            aria-selected={onLibraries}
+            aria-controls="project-tab"
+            tabindex={onLibraries ? 0 : -1}
+            onclick={() => show(projects.length)}
+            onkeydown={step}>Libraries</button
+          >
         </div>
         <label class="pick">
           <span class="label">Project</span>
-          <select value={project.name} onchange={(e) => show(e.currentTarget.value)}>
-            {#each projects as p (p.name)}
-              <option value={p.name}>{p.name}</option>
+          <select value={at} onchange={(e) => show(Number(e.currentTarget.value))}>
+            {#each projects as p, i (p.name)}
+              <option value={i}>{p.name}</option>
             {/each}
+            <option value={projects.length}>Libraries</option>
           </select>
         </label>
         <!-- Beside the tabs; above them when long Project names leave no room, so the tabs stay on the baseline. -->
         <div class="read">
-          <p class="times" use:moved={[project.name, `${read} ${checked}`]}>
-            {read ? `Source read ${clock(read)}` : "Source not read yet"}
-            · {checked ? `PRs checked ${clock(checked)}` : "PRs not checked yet"}
-          </p>
+          {#if !onLibraries}
+            <p class="times" use:moved={[project.name, `${read} ${checked}`]}>
+              {read ? `Source read ${clock(read)}` : "Source not read yet"}
+              · {checked ? `PRs checked ${clock(checked)}` : "PRs not checked yet"}
+            </p>
+          {/if}
           <Refresh />
         </div>
       </div>
       <div role="tabpanel" id="project-tab" aria-labelledby="tab-{at}">
-        <ProjectTab {project} {status} />
+        {#if onLibraries}
+          <Libraries {status} />
+        {:else}
+          <ProjectTab {project} {status} />
+        {/if}
       </div>
     {:else}
       <p class="none">No Repo yet. Add one here, or with <code>nico-agent repo add &lt;owner/name&gt; --path &lt;clone&gt;</code>.</p>

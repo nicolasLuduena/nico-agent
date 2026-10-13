@@ -1,6 +1,6 @@
 //! `nico-agent mcp`: the Wikis, served to agents as an MCP server over
 //! stdio, a JSON-RPC message a line. Each call reads the config, the Bucket
-//! and the Repos' clones afresh, so a build that lands meanwhile is served;
+//! and the clones afresh, so a build that lands meanwhile is served;
 //! it writes nothing but the embeddings `ask` makes of a Wiki lacking them.
 
 use std::cmp::Reverse;
@@ -12,14 +12,14 @@ use crate::ask;
 use crate::bucket;
 use crate::cli::{Context, Refusal};
 use crate::config::{self, Config};
-use crate::wiki;
+use crate::wiki::{self, Of};
 
 /// The MCP versions it speaks, the latest last.
 const VERSIONS: [&str; 4] = ["2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25"];
 
-const INSTRUCTIONS: &str = "The Wikis of the user's Repos: what each Repo's code does as of one commit, as a tree of Components whose every claim (an Interpretation) cites the lines it rests on (its Anchors). Ask here before reading a Repo's code: `wikis` lists them, `find_component` finds a Component by words, `get_component` reads one, the top one being `index`, `read_anchor` reads the lines a claim cites, and `ask` answers a question in a few sentences, each citing lines. Where a Wiki and the code disagree, the code wins.";
+const INSTRUCTIONS: &str = "The Wikis of the user's Repos and of the Library versions they use: what each one's code does as of one commit, as a tree of Components whose every claim (an Interpretation) cites the lines it rests on (its Anchors). Ask here before reading a Repo's code: `wikis` lists them, `find_component` finds a Component by words, `get_component` reads one, the top one being `index`, `read_anchor` reads the lines a claim cites, and `ask` answers a question in a few sentences, each citing lines. Where a Wiki and the code disagree, the code wins.";
 
-/// `mcp [--wiki <owner/name>]...`: answer each request on stdin till it
+/// `mcp [--wiki <wiki>]...`: answer each request on stdin till it
 /// closes, serving the Wikis named, or every one.
 pub fn mcp(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
     let args = Args::parse("mcp", args, &["--wiki"])?;
@@ -95,7 +95,7 @@ fn tools() -> Value {
             "annotations": { "readOnlyHint": true },
         })
     };
-    let wiki = json!({ "type": "string", "description": "The Wiki, as `wikis` names it: a Repo's owner/name." });
+    let wiki = json!({ "type": "string", "description": "The Wiki, as `wikis` names it: a Repo's owner/name, or a Library version's owner/name@tag, then :path for its subfolder." });
     let line = |what: &str| json!({ "type": "integer", "minimum": 1, "description": what });
     json!([
         tool(
@@ -145,69 +145,84 @@ fn called(
     arguments: &Value,
 ) -> Option<Result<Value, String>> {
     let config = config::load(&ctx.config_dir).map_err(|no| no.error);
-    let served = |config: &Config| -> Result<_, String> {
-        let wiki = text(arguments, "wiki")?;
-        let (slug, repo) = (config.repo(wiki))
-            .filter(|(slug, _)| serves(named, slug))
-            .map(|(slug, repo)| (slug.clone(), repo.clone()))
-            .ok_or_else(|| unserved(wiki))?;
-        let wiki = read(ctx, config, &slug)?.ok_or_else(|| unserved(&slug))?;
-        Ok((slug, repo, wiki))
-    };
     Some(match name {
         "wikis" => config.and_then(|config| wikis(ctx, named, &config)),
         "find_component" => config.and_then(|config| {
-            let (_, _, wiki) = served(&config)?;
+            let (_, wiki) = served(ctx, named, &config, arguments)?;
             Ok(found(&wiki, text(arguments, "query")?))
         }),
         "get_component" => config.and_then(|config| {
-            let (slug, repo, mut wiki) = served(&config)?;
-            wiki::marked(ctx.world, &repo, &mut wiki).map_err(|e| e.0)?;
-            component(&slug, &wiki, text(arguments, "id")?)
+            let (of, mut wiki) = served(ctx, named, &config, arguments)?;
+            // A tag never moves: a Library version's Wiki is never Stale.
+            if let Of::Repo(_, repo) = &of {
+                wiki::marked(ctx.world, repo, &mut wiki).map_err(|e| e.0)?;
+            }
+            component(&of.id(), &wiki, text(arguments, "id")?)
         }),
         "read_anchor" => config.and_then(|config| {
-            let (slug, repo, wiki) = served(&config)?;
-            anchor(ctx, &slug, &repo.path, &wiki, arguments)
+            let (of, wiki) = served(ctx, named, &config, arguments)?;
+            let clone = of.clone_dir(&ctx.config_dir);
+            anchor(ctx, &of.id(), &clone, &wiki, arguments)
         }),
         "ask" => config.and_then(|config| {
-            let (slug, repo, wiki) = served(&config)?;
+            let (of, wiki) = served(ctx, named, &config, arguments)?;
             let question = text(arguments, "question")?;
-            ask::ask(ctx, &config, &slug, &repo.path, &wiki, question)
+            ask::ask(ctx, &config, &of, &wiki, question)
         }),
         _ => return None,
     })
 }
 
-/// Whether the Wiki of `slug` is one of those `named`, or none is.
-fn serves(named: &[&str], slug: &str) -> bool {
-    named.is_empty() || named.iter().any(|n| n.eq_ignore_ascii_case(slug))
+/// The Wiki the argument `wiki` names, and what the Bucket holds of it,
+/// when it is built and served.
+fn served<'a>(
+    ctx: &Context,
+    named: &[&str],
+    config: &'a Config,
+    arguments: &Value,
+) -> Result<(Of<'a>, Value), String> {
+    let wiki = text(arguments, "wiki")?;
+    let of = (wiki::of(config, wiki))
+        .filter(|of| serves(named, &of.id()))
+        .ok_or_else(|| unserved(wiki))?;
+    let held = read(ctx, config, &of)?.ok_or_else(|| unserved(&of.id()))?;
+    Ok((of, held))
 }
 
-/// Why a tool refuses the Wiki `wiki`: not built, no Repo's, or not named.
+/// Whether the Wiki `id` is one of those `named`, or none is: a Repo's
+/// slug in any casing.
+fn serves(named: &[&str], id: &str) -> bool {
+    named.is_empty() || named.iter().any(|n| n.eq_ignore_ascii_case(id))
+}
+
+/// Why a tool refuses the Wiki `wiki`: not built, not the config's, or not named.
 fn unserved(wiki: &str) -> String {
     format!("no Wiki {wiki} is served here: `wikis` lists those that are")
 }
 
-/// The Wiki of the Repo `slug`, as the Bucket holds it; `None` before its first build.
-fn read(ctx: &Context, config: &Config, slug: &str) -> Result<Option<Value>, String> {
-    let Some(held) = bucket::wiki(ctx.world, config, slug).map_err(|e| e.0)? else {
+/// The Wiki `of`, as the Bucket holds it; `None` before its first build.
+fn read(ctx: &Context, config: &Config, of: &Of) -> Result<Option<Value>, String> {
+    let Some(held) = bucket::wiki(ctx.world, config, &of.folder()).map_err(|e| e.0)? else {
         return Ok(None);
     };
     (serde_json::from_slice(&held).map(Some))
-        .map_err(|e| format!("the Wiki of {slug} does not read: {e}"))
+        .map_err(|e| format!("the Wiki of {} does not read: {e}", of.id()))
 }
 
 /// Each Wiki served that is built, with its commit, build time and Gap count.
 fn wikis(ctx: &Context, named: &[&str], config: &Config) -> Result<Value, String> {
     let mut wikis = vec![];
-    for slug in config.repos.keys().filter(|slug| serves(named, slug)) {
-        if let Some(wiki) = read(ctx, config, slug)? {
+    for of in wiki::every(config) {
+        let id = of.id();
+        if !serves(named, &id) {
+            continue;
+        }
+        if let Some(wiki) = read(ctx, config, &of)? {
             let gaps: usize = (components(&wiki).iter())
                 .map(|c| c["gaps"].as_array().map_or(0, Vec::len))
                 .sum();
             let (commit, built_at) = (&wiki["commit"], &wiki["builtAt"]);
-            wikis
-                .push(json!({ "wiki": slug, "commit": commit, "builtAt": built_at, "gaps": gaps }));
+            wikis.push(json!({ "wiki": id, "commit": commit, "builtAt": built_at, "gaps": gaps }));
         }
     }
     Ok(json!(wikis))
@@ -235,7 +250,7 @@ fn found(wiki: &Value, query: &str) -> Value {
     json!(found.into_iter().map(|(_, c)| brief(c)).collect::<Vec<_>>())
 }
 
-/// The Component `id` of the Wiki of `slug`, with its sub-Components; its
+/// The Component `id` of the Wiki `slug` names, with its sub-Components; its
 /// files only when it has none, a parent's being its parts'. Its
 /// Relationships go both ways: to what it uses, and `from` what uses it,
 /// which the Wiki keeps on the user's side.
@@ -279,10 +294,10 @@ fn components(wiki: &Value) -> &[Value] {
 }
 
 /// What `read_anchor` answers: the lines `arguments` names, as the clone at
-/// `clone` holds them at the commit of `wiki`, the Wiki of `slug`.
+/// `clone` holds them at the commit of `wiki`, the Wiki `id` names.
 fn anchor(
     ctx: &Context,
-    slug: &str,
+    id: &str,
     clone: &str,
     wiki: &Value,
     arguments: &Value,
@@ -295,7 +310,7 @@ fn anchor(
     let commit = wiki["commit"].as_str().unwrap_or_default();
     let held = (ctx.world.git_show(clone, commit, file))
         .map_err(|e| e.0)?
-        .ok_or_else(|| format!("{file} is not a file of {slug} at {commit}"))?;
+        .ok_or_else(|| format!("{file} is not a file of {id} at {commit}"))?;
     let lines: Vec<&str> = held.lines().collect();
     if start > end || end > lines.len() {
         let n = lines.len();

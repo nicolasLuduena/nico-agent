@@ -162,6 +162,9 @@ impl World for Guarded<'_> {
     fn git_commit(&self, path: &str, add: &str, message: &str) -> WorldResult<()> {
         self.world.git_commit(path, add, message)
     }
+    fn git_remove(&self, path: &str, file: &str, message: &str) -> WorldResult<()> {
+        self.world.git_remove(path, file, message)
+    }
     fn git_changed(&self, path: &str, folder: &str) -> WorldResult<bool> {
         self.world.git_changed(path, folder)
     }
@@ -197,6 +200,9 @@ impl World for Guarded<'_> {
     }
     fn git_rev_count(&self, path: &str, from: &str, to: &str) -> WorldResult<usize> {
         self.world.git_rev_count(path, from, to)
+    }
+    fn git_fetch_tag(&self, path: &str, url: &str, tag: &str) -> WorldResult<()> {
+        self.world.git_fetch_tag(path, url, tag)
     }
     fn harness_headless(
         &self,

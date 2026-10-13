@@ -1,4 +1,24 @@
 import { spans } from "../markdown";
+import type { WikiState } from "../status";
+
+/** A GitHub repository at a tag, its Wiki covering only the subfolder `path`, when set. */
+export interface Library {
+  /** owner/name. */
+  repo: string;
+  tag: string;
+  path?: string;
+}
+
+/** The id of a Library version's Wiki, as `/api/wikis` lists it. */
+export const libraryId = (l: Library) => `${l.repo}@${l.tag}${l.path ? `:${l.path}` : ""}`;
+
+/** Where the builds of the Wiki `id` stand, in a line. */
+export function standing(wikis: WikiState[], id: string): string {
+  const w = wikis.find((w) => w.wiki === id);
+  if (!w) return "Wiki not built yet";
+  if (w.state === "failed") return `Wiki failed: ${w.why}`;
+  return w.state === "built" ? `Wiki built at ${w.commit?.slice(0, 7)}` : `Wiki ${w.state}`;
+}
 
 /** A Wiki as `GET /api/wikis` lists it. */
 export interface Listed {
@@ -17,13 +37,14 @@ export interface Listed {
   why: string | null;
 }
 
-/** A Wiki as `GET /api/wiki/<id>` answers it: the Bucket's `wiki.json`, only the fields the page reads, marked against its Repo's Base. */
+/** A Wiki as `GET /api/wiki/<id>` answers it: the Bucket's `wiki.json`, only the fields the page reads, a Repo's marked against its Base. */
 export interface Wiki {
-  target: { repo: string };
+  /** A Library version's names its tag; a Repo's has none. */
+  target: { repo: string; tag?: string };
   /** The commit it describes. */
   commit: string;
   builtAt: string;
-  /** The Repo's Base, how many commits its head is past `commit`, and how many Interpretations are `stale`. */
+  /** The Repo's Base, how many commits its head is past `commit`, and how many Interpretations are `stale`; a Library version's has none. */
   base: string;
   behind: number;
   stale: number;

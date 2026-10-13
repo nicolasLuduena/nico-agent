@@ -355,6 +355,17 @@ impl World for FakeWorld {
         Ok(())
     }
 
+    fn git_remove(&self, path: &str, file: &str, message: &str) -> WorldResult<()> {
+        self.call(format!(
+            "git -C {path} rm --quiet -r -- {file} && git -C {path} -c user.name=nico-agent -c user.email=nico-agent@localhost commit --quiet --allow-empty --no-gpg-sign -m {message}"
+        ))?;
+        let removed = format!("{path}/{file}");
+        let gone = |f: &String| *f == removed || f.starts_with(&format!("{removed}/"));
+        self.files.borrow_mut().retain(|f, _| !gone(f));
+        self.committed.borrow_mut().retain(|f, _| !gone(f));
+        Ok(())
+    }
+
     fn git_changed(&self, path: &str, folder: &str) -> WorldResult<bool> {
         self.call(format!("git -C {path} status --porcelain -- {folder}"))?;
         let committed = self.committed.borrow();
@@ -460,6 +471,29 @@ impl World for FakeWorld {
             .get(&format!("{path} {from}..{to}"))
             .copied()
             .unwrap_or(0))
+    }
+
+    /// The files at the tag in `tree`, under `url`, are the bare repo's at
+    /// the tag from now on; a tag `url` lacks fails as git's fetch does.
+    fn git_fetch_tag(&self, path: &str, url: &str, tag: &str) -> WorldResult<()> {
+        let refspec = format!("+refs/tags/{tag}:refs/tags/{tag}");
+        let fetch = format!("fetch --quiet --depth 1 {url} {refspec}");
+        self.call(format!(
+            "git init --bare --quiet {path} && git -C {path} {fetch}"
+        ))?;
+        let at = format!("{url} refs/tags/{tag}:");
+        let fetched: Vec<(String, String)> = (self.tree.borrow().iter())
+            .filter_map(|(key, text)| Some((key.strip_prefix(&at)?.to_string(), text.clone())))
+            .collect();
+        if fetched.is_empty() {
+            return Err(WorldError(format!(
+                "`git {fetch}` failed in {path}: fatal: couldn't find remote ref refs/tags/{tag}"
+            )));
+        }
+        for (file, text) in fetched {
+            self.add_tree_file(path, &format!("refs/tags/{tag}"), &file, &text);
+        }
+        Ok(())
     }
 
     /// One at a time, each answered as `headless` scripts it.
