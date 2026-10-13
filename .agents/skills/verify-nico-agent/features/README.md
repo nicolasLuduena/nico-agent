@@ -115,6 +115,10 @@ commands, and observable proof.
 - [Build a Repo's Wiki](./wiki-build.md) covers `wiki build` and its refusals, a failed call
   failing the build with why in `wikis.json`, each call a read-only `opencode2 run`, the Wiki
   landing in the Bucket in one commit, and a claim failing a check dropped as a Gap.
+- [Read a Wiki on the page](./wiki-view.md) covers `GET /api/wikis` and `GET /api/wiki/<id>`, a
+  Project tab's Map and Wiki views, the picker, the header, the Component tree, Interpretations by
+  kind with their Anchors on GitHub, sub-Components and Gaps, a hash opening a Component, back and
+  forward, light and dark at desk and phone width.
 - [Requests from other sites](./foreign-requests.md) covers the 403 serve answers a foreign or
   missing `Host` and a foreign or `null` `Origin` on a write, and the page, `localhost` and the
   tunnel answered as before.
