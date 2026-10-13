@@ -11,8 +11,8 @@ use std::io::{self, BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, mpsc};
 use std::thread;
 use std::time::{Duration, SystemTime};
 
@@ -246,6 +246,13 @@ pub struct Answered {
     pub session: String,
 }
 
+/// What a call of [`World::harness_headless`] did: started, or answered,
+/// well or not.
+pub enum Called {
+    Started,
+    Answered,
+}
+
 /// What `serve` answers a request with.
 pub enum Answer {
     /// One response, sent whole.
@@ -316,13 +323,16 @@ pub trait World {
 
     // Harnesses
     /// Make each of `calls` in the folder `cwd`, with no input, up to
-    /// `at_once` of them at a time: the last message each answered, and its
-    /// session, in order. opencode's, claude's and codex's JSON output is read.
+    /// `at_once` of them at a time, `told` of each, by its place in `calls`,
+    /// as it starts and as it answers: the last message each answered, and
+    /// its session, in order.
+    /// opencode's, claude's and codex's JSON output is read.
     fn harness_headless(
         &self,
         cwd: &str,
         calls: &[Headless],
         at_once: usize,
+        told: &mut dyn FnMut(usize, Called),
     ) -> Vec<WorldResult<Answered>>;
 
     // Ollama
@@ -1253,25 +1263,38 @@ impl World for RealWorld {
         cwd: &str,
         calls: &[Headless],
         at_once: usize,
+        told: &mut dyn FnMut(usize, Called),
     ) -> Vec<WorldResult<Answered>> {
         let next = AtomicUsize::new(0);
         let mut answered: Vec<(usize, WorldResult<Answered>)> = thread::scope(|scope| {
-            let workers: Vec<_> = (0..at_once.clamp(1, calls.len().max(1)))
-                .map(|_| {
-                    scope.spawn(|| {
-                        let mut answered = vec![];
-                        loop {
-                            let i = next.fetch_add(1, Ordering::Relaxed);
-                            let Some(call) = calls.get(i) else {
-                                return answered;
-                            };
-                            answered.push((i, headless(cwd, call)));
-                        }
-                    })
+            // Each worker says when a call starts (no answer yet) and when it answers.
+            let (said, heard) = mpsc::channel();
+            for _ in 0..at_once.clamp(1, calls.len().max(1)) {
+                let (said, next) = (said.clone(), &next);
+                scope.spawn(move || {
+                    loop {
+                        let i = next.fetch_add(1, Ordering::Relaxed);
+                        let Some(call) = calls.get(i) else {
+                            return;
+                        };
+                        // Heard till the last answer: the receiving end outlives every worker.
+                        let _ = said.send((i, None));
+                        let _ = said.send((i, Some(headless(cwd, call))));
+                    }
+                });
+            }
+            drop(said);
+            (heard.into_iter())
+                .filter_map(|(i, answer)| match answer {
+                    None => {
+                        told(i, Called::Started);
+                        None
+                    }
+                    Some(answer) => {
+                        told(i, Called::Answered);
+                        Some((i, answer))
+                    }
                 })
-                .collect();
-            (workers.into_iter())
-                .flat_map(|worker| worker.join().expect("a headless call never panics"))
                 .collect()
         });
         answered.sort_by_key(|(i, _)| *i);

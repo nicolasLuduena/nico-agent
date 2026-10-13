@@ -496,33 +496,41 @@ impl World for FakeWorld {
         Ok(())
     }
 
-    /// One at a time, each answered as `headless` scripts it.
+    /// One at a time, each answered as `headless` scripts it, `told` of
+    /// each as it starts and as it answers.
     fn harness_headless(
         &self,
         cwd: &str,
         calls: &[Headless],
         _at_once: usize,
+        told: &mut dyn FnMut(usize, Called),
     ) -> Vec<WorldResult<Answered>> {
-        (calls.iter())
-            .map(|call| {
-                let env: String = (call.env.iter())
-                    .map(|(k, v)| format!("{k}={v} "))
-                    .collect();
-                let (command, args) = (&call.command, call.args.join(" "));
-                self.call(format!(
-                    "cd {cwd} && env {env}{command} {args} {}",
-                    call.prompt
-                ))?;
-                let script = self.headless.borrow();
-                let (_, text) = (script.iter())
-                    .find(|(line, _)| call.prompt.lines().any(|l| l == line))
-                    .ok_or_else(|| WorldError("no answer scripted for this prompt".into()))?;
-                self.sessions.set(self.sessions.get() + 1);
-                let session = format!("ses_{}", self.sessions.get());
-                Ok(Answered {
-                    text: text.clone(),
-                    session,
-                })
+        let answer = |call: &Headless| {
+            let env: String = (call.env.iter())
+                .map(|(k, v)| format!("{k}={v} "))
+                .collect();
+            let (command, args) = (&call.command, call.args.join(" "));
+            self.call(format!(
+                "cd {cwd} && env {env}{command} {args} {}",
+                call.prompt
+            ))?;
+            let script = self.headless.borrow();
+            let (_, text) = (script.iter())
+                .find(|(line, _)| call.prompt.lines().any(|l| l == line))
+                .ok_or_else(|| WorldError("no answer scripted for this prompt".into()))?;
+            self.sessions.set(self.sessions.get() + 1);
+            let session = format!("ses_{}", self.sessions.get());
+            Ok(Answered {
+                text: text.clone(),
+                session,
+            })
+        };
+        (calls.iter().enumerate())
+            .map(|(i, call)| {
+                told(i, Called::Started);
+                let answered = answer(call);
+                told(i, Called::Answered);
+                answered
             })
             .collect()
     }

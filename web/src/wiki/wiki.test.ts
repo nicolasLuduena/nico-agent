@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { anchorUrl, freshness, libraryId, search, unexplored } from "./wiki";
+import { anchorUrl, freshness, libraryId, progressed, search, unexplored } from "./wiki";
 
 test("an Anchor opens GitHub at the Wiki's commit, at its lines, its path escaped", () => {
   const wiki = { target: { repo: "acme/api" }, commit: "abc1234" };
@@ -61,4 +61,11 @@ test("what Continue asks about counts the parts the budget left unexplored", () 
 test("a Library version's Wiki is named by its slug and tag, then its subfolder when it has one", () => {
   expect(libraryId({ repo: "Effect-TS/effect", tag: "effect@3.17.0", path: "packages/effect" })).toBe("Effect-TS/effect@effect@3.17.0:packages/effect");
   expect(libraryId({ repo: "acme/kit", tag: "v1" })).toBe("acme/kit@v1");
+});
+
+test("a build's progress counts its calls and depth against its budget, then its parts, those sent back and its Gaps", () => {
+  const progress = { at: "2026-09-30T12:00:00Z", calls: 48, made: 17, depth: 7, reached: 2, asked: 15, sent_back: 2, gaps: 3, now: ["acme/api > Core"] };
+  expect(progressed(progress)).toEqual(["Call 17 of 48", "depth 2 of 7", "15 parts asked, 2 sent back", "3 Gaps"]);
+  expect(progressed({ ...progress, made: 1, reached: 0, asked: 1, sent_back: 0, gaps: 0 })).toEqual(["Call 1 of 48", "depth 0 of 7", "1 part asked, none sent back", "no Gap"]);
+  expect(progressed({ ...progress, gaps: 1 })[3]).toBe("1 Gap");
 });

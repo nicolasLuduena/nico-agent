@@ -20,13 +20,14 @@ export function standing(wikis: WikiState[], id: string): string {
   return w.state === "built" ? `Wiki built at ${w.commit?.slice(0, 7)}` : `Wiki ${w.state}`;
 }
 
-/** A Wiki as `GET /api/wikis` lists it. */
+/** A Wiki as `GET /api/wikis` lists it, or one not built yet while its build waits, runs or failed. */
 export interface Listed {
   id: string;
   /** A Library version's names its tag; a Repo's has none. */
   target: { repo: string; tag?: string };
-  commit: string;
-  builtAt: string;
+  /** The commit it describes; null till its first build ends built. */
+  commit: string | null;
+  builtAt: string | null;
   gaps: number;
   /** How many of its Gaps the budget left, which Continue asks about with a fresh budget of `calls`. */
   budget: number;
@@ -35,6 +36,28 @@ export interface Listed {
   state: "built" | "building" | "queued" | "failed";
   pane: string | null;
   why: string | null;
+  /** How far the build its Run runs has got; null but while one is open and its build has started. */
+  progress: Progress | null;
+}
+
+/** A build's progress: when its Run started, the calls it `made` (started) of its `calls`, the deepest part it `reached` of its `depth`, the parts asked, those sent back for a correction round, the Gaps so far, and the parts asked `now`, by their trails. */
+export interface Progress {
+  at: string;
+  calls: number;
+  made: number;
+  depth: number;
+  reached: number;
+  asked: number;
+  sent_back: number;
+  gaps: number;
+  now: string[];
+}
+
+/** A build's progress, a line of segments the page keeps whole: "Call 17 of 48", "depth 2 of 7", "15 parts asked, 2 sent back", "3 Gaps". */
+export function progressed(p: Progress): string[] {
+  const parts = `${p.asked} part${p.asked === 1 ? "" : "s"} asked, ${p.sent_back === 0 ? "none" : p.sent_back} sent back`;
+  const gaps = p.gaps === 0 ? "no Gap" : `${p.gaps} Gap${p.gaps === 1 ? "" : "s"}`;
+  return [`Call ${p.made} of ${p.calls}`, `depth ${p.reached} of ${p.depth}`, parts, gaps];
 }
 
 /** A Wiki as `GET /api/wiki/<id>` answers it: the Bucket's `wiki.json`, only the fields the page reads, a Repo's marked against its Base. */

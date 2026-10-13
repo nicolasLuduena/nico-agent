@@ -29,7 +29,7 @@ Decisions this skill was generated from (the interview of the repo):
   `config.toml`); the page in headless Chromium through Playwright; `/api` with curl.
 - **Observe:** stdout JSON and exit codes; the files of the scratch config dir (`config.toml`,
   `dispatches.json`, `prs.json`, `issues/`, `verdicts/`, `pauses.json`, `checks.json`, `installs.json`,
-  `runs.json`, `wikis.json`, `wiki-queue.json`); the Bucket's git log; HTTP
+  `runs.json`, `wikis.json`, `wiki-queue.json`, a build's `wiki/<folder>/progress.json`); the Bucket's git log; HTTP
   status, headers and body; the page's ARIA snapshot, screenshot and the `/api` requests it made;
   every call the binary made outside the process, recorded by the stubs in `outside.log`.
 - **Isolate:** yes. Each run has its own directory `${VERIFY_RUN_ROOT:-${TMPDIR:-/tmp}/verify-nico-agent}/$VERIFY_RUN_ID`
@@ -60,6 +60,7 @@ $C seed morning <file>|none     # the Morning summary the morning agent leaves: 
 $C seed answer <file>|none [<part>]  # what the wiki model (the opencode2 stub) answers every call: <file>'s text, or none;
                                 # with <part>, a trail such as `verify/fixture > Readme`, only the calls about it
 $C seed correction <file>|none  # what the wiki model answers each correction (a call with -s): <file>'s text, or none
+$C seed pace <seconds>|none     # how long the wiki model takes over each call before it answers, or none: a build to watch
 $C drift push <n>|stale|pause   # what GitHub would change: a new PR head, an old read, a rate limit
 $C drift below merged|closed    # ... or the PR below a Stacked dispatch merged or closed unmerged
 $C drift base [<file>]          # ... or verify/fixture's Base moved on by a merge rewriting README.md (or <file>), fetched into its clone
@@ -208,7 +209,9 @@ What the fixtures hold:
   correction <file>` answers each correction (a call with `-s <session>`, which it continues) with
   `<file>`'s text instead, and `seed correction none` goes back to the part's answer; `seed answer
   none` takes every answer away, corrections too, and each call fails again, as opencode with no
-  model does. The stub logs each call after the `OPENCODE_CONFIG_CONTENT` it was given.
+  model does. `seed pace <seconds>` has every call after it wait that long before it answers (or
+  fails), so a build lasts long enough to watch from the page; `seed pace none` answers at once
+  again. The stub logs each call after the `OPENCODE_CONFIG_CONTENT` it was given.
 - `drift push <n>` commits to the seeded worktree and moves the PR's `head_sha`, as a push would;
   `drift stale` dates the cached read 2000-01-01, so the next `status` or `dispatch` asks GitHub;
   `drift pause` writes GitHub paused for an hour, as a rate limit does; `drift below merged|closed`

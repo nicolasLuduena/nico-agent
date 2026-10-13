@@ -11,7 +11,7 @@ a fresh `[wiki] calls`, and fills them in place.
 
 ## Sub-features
 
-- `wiki-buttons-list` `GET /api/wikis` gives each Wiki `state` (`built`, `building`, `queued`, `failed`), `pane`, `why`, `budget` (its budget Gaps) and `calls`.
+- `wiki-buttons-list` `GET /api/wikis` gives each Wiki `state` (`built`, `building`, `queued`, `failed`), `pane`, `why`, `progress` (see [wiki-progress.md](./wiki-progress.md)), `budget` (its budget Gaps) and `calls`.
 - `wiki-buttons-shown` the header's `button "Update"`, `button "Rebuild"`, and, only with budget Gaps, `1 part not explored (budget) ·` and `button "Continue +<calls> calls"`.
 - `wiki-buttons-queue` a button is `POST /api/wiki/<id>/update|rebuild|continue`, `200` `{wiki, build, waiting}`; `wiki-queue.json` has the id first in `waiting` and its build in `asked`; the header reads `Queued`.
 - `wiki-buttons-states` after a refresh the header reads `BUILDING` (the start failed at herdr in a run, so no pane), after another `Last build failed` with why on the errata rule.
@@ -42,7 +42,7 @@ Preconditions:
   `built`, `"gaps":{"budget":1}` (Notes past the 2 calls). Then `$C state > "$E/state.before.txt"`.
 
 - **Listed.** `$C http --evidence "$E/02-wikis" GET /api/wikis`: `"state":"built"`, `"budget":1`,
-  `"calls":2`, `"pane":null`, `"why":null`.
+  `"calls":2`, `"pane":null`, `"why":null`, `"progress":null`.
 - **Shown.** `$C page --evidence "$E/03-built-desk-light" --hash "#shop/wiki/verify%2Ffixture" --expect "Continue +2 calls"`:
   `button "Update"`, `button "Rebuild"`, `1 part not explored (budget) ·`, `button "Continue +2 calls"`.
 - **Continue clicked.** `$C page --evidence "$E/04-continue-clicked" --hash "#shop/wiki/verify%2Ffixture" --expect "Continue +2 calls" --click "button=Continue +2 calls" --expect Queued`:

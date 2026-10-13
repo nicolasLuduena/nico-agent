@@ -336,6 +336,7 @@ fn a_linked_library_version_with_no_wiki_starts_its_build_at_the_next_tick_and_s
             "built_at": null,
             "gaps": null,
             "pane": "w1:p2",
+            "progress": null,
         }])
     );
 }
@@ -587,6 +588,7 @@ fn serve_lists_a_library_wiki_and_answers_it_by_its_id() {
                 "state": "built",
                 "pane": null,
                 "why": null,
+                "progress": null,
             }])
         )
     );

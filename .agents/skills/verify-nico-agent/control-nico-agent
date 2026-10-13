@@ -22,6 +22,7 @@
 #                                 such as `verify/fixture > Docs`, only the calls asking about that part
 #   seed correction <file>|none   what the wiki model answers each correction (a call with -s): <file>'s text,
 #                                 or none (then the answer for its part)
+#   seed pace <seconds>|none      how long the wiki model takes over each call before it answers, or none
 #   drift push <n>|stale|pause|below merged|closed|base [<file>]|tag <tag>
 #                                 what GitHub would change: a new PR head, an old read, a rate limit,
 #                                 the PR below a Stacked dispatch merged or closed unmerged,
@@ -139,6 +140,7 @@ case "\$name" in
     [ -f "\$answer" ] || answer="$RUN_DIR/opencode-answer"
     [ -z "\$session" ] || [ ! -f "$RUN_DIR/opencode-correction" ] || answer="$RUN_DIR/opencode-correction"
     [ -n "\$session" ] || session="ses_verify_\$(wc -l < "$log")"
+    [ ! -f "$RUN_DIR/opencode-pace" ] || sleep "\$(cat "$RUN_DIR/opencode-pace")"
     if [ -f "\$answer" ]; then
       jq -cn --rawfile text "\$answer" --arg session "\$session" '{type: "text", sessionID: \$session, part: {type: "text", text: \$text}}'
       exit 0
@@ -344,7 +346,8 @@ cmd_seed() {
     morning) seed_morning "$@" ;;
     answer) seed_answer "$@" ;;
     correction) seed_correction "$@" ;;
-    *) die "seed: usage: seed issues [second] | seed dispatch <n> pr|asking|stacked | seed run quality-scan|morning|faux-nico <n> | seed morning <file>|none | seed answer <file>|none [<part>] | seed correction <file>|none" ;;
+    pace) seed_pace "$@" ;;
+    *) die "seed: usage: seed issues [second] | seed dispatch <n> pr|asking|stacked | seed run quality-scan|morning|faux-nico <n> | seed morning <file>|none | seed answer <file>|none [<part>] | seed correction <file>|none | seed pace <seconds>|none" ;;
   esac
 }
 
@@ -488,6 +491,16 @@ seed_correction() {
     none) rm -f "$RUN_DIR/opencode-correction" ;;
     "") die "seed: usage: seed correction <file>|none" ;;
     *) [ -f "$1" ] || die "seed: no file $1"; cp "$1" "$RUN_DIR/opencode-correction" ;;
+  esac
+}
+
+# How long the wiki model takes over each call from now on, before it answers (or fails), so a
+# build lasts long enough to watch; with none, it answers at once again.
+seed_pace() {
+  case "${1:-}" in
+    none) rm -f "$RUN_DIR/opencode-pace" ;;
+    *[!0-9]*|"") die "seed: usage: seed pace <seconds>|none" ;;
+    *) printf '%s\n' "$1" > "$RUN_DIR/opencode-pace" ;;
   esac
 }
 

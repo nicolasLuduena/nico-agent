@@ -888,6 +888,106 @@ fn a_correction_round_is_a_call_of_the_budget_and_leaves_fewer_for_the_parts_bel
     }
 }
 
+/// What `wiki/acme/api/progress.json` held during each call starting with
+/// `prefix`, null while there was none.
+fn progress_seen_during(t: &Setup, prefix: &str) -> std::rc::Rc<std::cell::RefCell<Vec<Value>>> {
+    let seen = std::rc::Rc::new(std::cell::RefCell::new(vec![]));
+    let (file, during) = (
+        t.config_dir.join("wiki/acme/api/progress.json"),
+        seen.clone(),
+    );
+    t.world.during_call(prefix, move || {
+        let text = std::fs::read_to_string(&file).ok();
+        let held = text.map_or(Value::Null, |text| serde_json::from_str(&text).unwrap());
+        during.borrow_mut().push(held);
+    });
+    seen
+}
+
+#[test]
+fn while_a_build_runs_its_progress_file_counts_each_call_as_it_starts_and_after_it_none() {
+    let t = with_repo("[wiki]\ncalls = 3");
+    let core = json!({ "name": "Core", "summary": "The crate.", "files": ["src/lib.rs", "src/config.rs"] });
+    let web = json!({ "name": "Web", "summary": "The page.", "files": ["web/app.ts"] });
+    let calls = |to: &str| json!({ "from": "Web", "to": to, "kind": "calls", "description": "It calls the API." });
+    answer(
+        &t,
+        "acme/api",
+        json!({ "kind": "division", "overview": "An API.", "components": [core, web], "relationships": [calls("Server")] }),
+    );
+    corrected(
+        &t,
+        "acme/api",
+        json!({ "kind": "division", "overview": "An API.", "components": [core, web], "relationships": [calls("Core")] }),
+    );
+    answer(
+        &t,
+        "acme/api > Core",
+        json!({ "kind": "leaf", "overview": "The crate's modules." }),
+    );
+    let seen = progress_seen_during(&t, &format!("cd {} && ", checkout(&t)));
+    let at_commit = progress_seen_during(&t, &format!("git -C {BUCKET} add"));
+
+    let ran = t.cli(&["wiki", "build", "acme/api", "--json"]);
+
+    assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
+    let progress =
+        |made: u64, reached: u64, asked: u64, sent_back: u64, gaps: u64, now: &[&str]| {
+            json!({
+                "at": "2026-09-30T12:00:00Z",
+                "calls": 3,
+                "made": made,
+                "depth": 7,
+                "reached": reached,
+                "asked": asked,
+                "sent_back": sent_back,
+                "gaps": gaps,
+                "now": now,
+            })
+        };
+    assert_eq!(
+        *seen.borrow(),
+        [
+            progress(1, 0, 1, 0, 0, &["acme/api"]),
+            progress(2, 0, 1, 1, 0, &["acme/api"]),
+            progress(3, 1, 2, 1, 0, &["acme/api > Core"]),
+        ]
+    );
+    // Its last call answered, and Web, past the calls, a Gap.
+    assert_eq!(*at_commit.borrow(), [progress(3, 1, 2, 1, 1, &[])]);
+    assert!(!t.config_dir.join("wiki/acme/api/progress.json").exists());
+    assert_eq!(ran.json()["gaps"], json!({ "budget": 1 }));
+}
+
+#[test]
+fn a_depth_s_calls_count_one_by_one_and_a_build_that_fails_leaves_no_progress_file() {
+    let t = with_repo("");
+    divided(&t);
+    answer(
+        &t,
+        "acme/api > Core",
+        json!({ "kind": "leaf", "overview": "The crate's modules." }),
+    );
+    let seen = progress_seen_during(&t, &format!("cd {} && ", checkout(&t)));
+
+    let ran = t.cli(&["wiki", "build", "acme/api", "--json"]);
+
+    // Web has no answer scripted: its call errors, and the build fails.
+    assert_eq!(ran.exit_code, 1, "{}", ran.stdout);
+    let counts: Vec<(Value, Value)> = (seen.borrow().iter())
+        .map(|p| (p["made"].clone(), p["now"].clone()))
+        .collect();
+    assert_eq!(
+        counts,
+        [
+            (json!(1), json!(["acme/api"])),
+            (json!(2), json!(["acme/api > Core"])),
+            (json!(3), json!(["acme/api > Web"])),
+        ]
+    );
+    assert!(!t.config_dir.join("wiki/acme/api/progress.json").exists());
+}
+
 #[test]
 fn a_claim_still_failing_when_the_calls_are_spent_is_dropped_and_its_part_a_budget_gap() {
     let t = with_repo("[wiki]\ncalls = 2");
@@ -1152,6 +1252,7 @@ fn serve_answers_each_built_wiki_and_a_wiki_by_its_id_and_404s_one_it_has_not() 
         "state": "built",
         "pane": null,
         "why": null,
+        "progress": null,
     });
     assert_eq!(listed, (200, json!([built])));
     let mut marked = wiki(&t);

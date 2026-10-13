@@ -16,7 +16,7 @@
   import { clock } from "../time";
   import Reading from "./Reading.svelte";
   import Sheet from "./Sheet.svelte";
-  import { byKind, freshness, search, unexplored, type Component, type Hit, type Listed, type Wiki } from "./wiki";
+  import { byKind, freshness, progressed, search, unexplored, type Component, type Hit, type Listed, type Wiki } from "./wiki";
   import SettingsForm from "./SettingsForm.svelte";
 
   let { project, libraries, settings }: { project: Project; libraries: string[]; settings: WikiSettings } = $props();
@@ -48,11 +48,13 @@
     ),
   );
 
-  /** The built Wikis of its Repos, then of the Library versions they link, by id. */
+  /** The Wikis of its Repos, then of the Library versions they link, by id: each built, or with its first build waiting, running or failed. */
   const wikis = $derived([...project.repos, ...libraries].flatMap((id) => (listed ?? []).filter((w) => w.id === id)));
   /** The Wiki the hash names, or the Project's first. */
   const picked = $derived(wikis.find((w) => w.id === selection.wiki) ?? wikis[0] ?? null);
   const id = $derived(picked?.id ?? null);
+  /** Whether it has a Wiki to read: none till its first build ends built. */
+  const readable = $derived(picked?.commit != null);
   /** The build a button is asking for, and the answer to the last one asked. */
   let asking = $state<string | null>(null);
   let sent = $state<Sent | null>(null);
@@ -67,10 +69,10 @@
   }
 
   $effect(() => {
-    if (id === null) return;
+    wiki = null;
+    if (id === null || !readable) return;
     // An answer for the Wiki shown before is dropped.
     let shown = true;
-    wiki = null;
     const stop = watch<Wiki>(
       `/api/wiki/${encodeURIComponent(id)}`,
       (got) => {
@@ -180,6 +182,7 @@
           <p role="status">
             <span class="label">Building</span>
             {#if picked.pane}<span class="muted">in herdr pane {picked.pane}</span>{/if}
+            {#if picked.progress}<span class="muted">since {clock(picked.progress.at)}</span>{/if}
           </p>
         {:else if picked.state === "queued"}
           <p role="status"><span class="label">Queued</span></p>
@@ -202,6 +205,14 @@
             >
           {/if}
         </div>
+        {#if picked.progress}
+          <p class="progress">
+            <span>
+              {#each progressed(picked.progress) as segment, n (n)}{n > 0 ? " · " : ""}<span class="whole">{segment}</span>{/each}
+            </span>
+            {#if picked.progress.now.length > 0}<span class="muted now">Now on {picked.progress.now.join(", ")}</span>{/if}
+          </p>
+        {/if}
         {#if sent && !sent.ok}
           <div class="refused">
             <Refused error={sent.error} help={sent.help} />
@@ -233,6 +244,8 @@
         <p><code>nico-agent wiki build {slug}</code></p>
       {/each}
     </div>
+  {:else if !readable}
+    <p class="none">No Wiki of {id} to read yet: it shows here once a build of it ends built.</p>
   {:else if wiki && open}
     <div class="read">
       <Sheet id="wiki-tree" title={TITLES.tree} folded={phone.current} open={opened === "tree"} close={() => (opened = null)}>
@@ -349,6 +362,21 @@
   }
   .refused {
     flex-basis: 100%;
+  }
+  /* The counts, then the parts asked now, on their own line under the state and the buttons. */
+  .progress {
+    display: flex;
+    flex-basis: 100%;
+    flex-wrap: wrap;
+    gap: 0 16px;
+    min-width: 0;
+  }
+  .whole {
+    white-space: nowrap;
+  }
+  .now {
+    min-width: 0;
+    overflow-wrap: anywhere;
   }
 
   /* The tree, the Component and its outline, side by side. */

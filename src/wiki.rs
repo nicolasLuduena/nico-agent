@@ -19,8 +19,8 @@
 
 use std::cmp::Reverse;
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::{fs, io};
 
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -37,7 +37,7 @@ use crate::install::base;
 use crate::launch;
 use crate::repo;
 use crate::state;
-use crate::world::{Answered, Headless, World, WorldResult};
+use crate::world::{Answered, Called, Headless, World, WorldResult};
 
 /// Each Wiki's last build, by its id: a Repo's slug, or a Library version's.
 pub const FILE: &str = "wikis.json";
@@ -88,6 +88,64 @@ pub struct Built {
     components: usize,
     /// How many Gaps of each reason it left.
     gaps: BTreeMap<String, usize>,
+}
+
+/// How far a build has got, in `wiki/<folder>/progress.json` beside its
+/// `build.lock`: written as it starts, as each call starts and answers and
+/// at each Gap, removed once the build ends, built or failed.
+#[derive(Default, Serialize, Deserialize)]
+struct Progress {
+    /// When the build started; as `status` shows it, when its Run did.
+    at: String,
+    /// The calls it may make, and those it started.
+    calls: u32,
+    made: u32,
+    /// How deep it may divide, and the deepest part it asked.
+    depth: u32,
+    reached: u32,
+    /// The parts asked, those sent back for a correction round, and the Gaps so far.
+    asked: usize,
+    sent_back: usize,
+    gaps: usize,
+    /// The trails of the parts asked now, each till its call answers.
+    now: Vec<String>,
+}
+
+impl Progress {
+    /// Count `called`, a call about `part` in its correction round `round`
+    /// (0: its first ask), and keep it: started, a call made, its part asked
+    /// or sent back, and asked now; answered, asked no more.
+    fn told(&mut self, file: &Path, called: Called, part: &Part, round: u32) {
+        match called {
+            Called::Started => {
+                self.made += 1;
+                match round {
+                    0 => self.asked += 1,
+                    // One sent back again in a later round was counted in its first.
+                    1 => self.sent_back += 1,
+                    _ => {}
+                }
+                self.reached = self.reached.max(part.depth);
+                self.now.push(part.trail.clone());
+            }
+            Called::Answered => self.now.retain(|trail| *trail != part.trail),
+        }
+        self.keep(file);
+    }
+
+    fn keep(&self, file: &Path) {
+        // A build never fails for its progress: it is only shown.
+        let _ = state::update(file, |_| Ok::<_, io::Error>((state::text(self), ())));
+    }
+}
+
+/// A build's [`Progress`] file, removed however the build ends.
+struct Removed(PathBuf);
+
+impl Drop for Removed {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.0);
+    }
 }
 
 #[derive(Default, Serialize, Deserialize)]
@@ -319,9 +377,10 @@ fn close(ctx: &Context) -> Result<Vec<String>, Refusal> {
 }
 
 /// Every Wiki built, tried, queued or building, as `status` shows it: its
-/// state, the commit, time and Gaps of the build that built it, and why
-/// its last build failed if it did.
-pub fn shown(config_dir: &Path, runs: &[Run]) -> io::Result<Vec<Value>> {
+/// state, the commit, time and Gaps of the build that built it, why its
+/// last build failed if it did, and while its Run is open, how far the
+/// build it runs has got, from when the Run started.
+pub fn shown(config_dir: &Path, config: &Config, runs: &[Run]) -> io::Result<Vec<Value>> {
     let outcomes = load(config_dir)?;
     let queue: Queue = state::load(&config_dir.join(QUEUE))?;
     let open = open_run(runs);
@@ -329,9 +388,20 @@ pub fn shown(config_dir: &Path, runs: &[Run]) -> io::Result<Vec<Value>> {
     ids.extend(open.and_then(|r| r.repo.as_ref()));
     ids.sort();
     ids.dedup();
-    Ok((ids.into_iter())
+    (ids.into_iter())
         .map(|id| {
             let building = open.filter(|r| r.repo.as_ref() == Some(id));
+            let progress = match (building, of(config, id)) {
+                (Some(run), Some(of)) => {
+                    let progress: Option<Progress> = state::load(&of.progress(config_dir))?;
+                    // Not one a build before this Run's left behind.
+                    (progress.filter(|p| p.at >= run.at)).map(|p| Progress {
+                        at: run.at.clone(),
+                        ..p
+                    })
+                }
+                _ => None,
+            };
             let outcome = outcomes.get(id);
             let state = match outcome {
                 _ if building.is_some() => "building",
@@ -347,6 +417,7 @@ pub fn shown(config_dir: &Path, runs: &[Run]) -> io::Result<Vec<Value>> {
                 "built_at": null,
                 "gaps": null,
                 "pane": building.and_then(|r| r.launch.pane.clone()),
+                "progress": progress,
             });
             if let Some(Built {
                 at, commit, gaps, ..
@@ -360,9 +431,9 @@ pub fn shown(config_dir: &Path, runs: &[Run]) -> io::Result<Vec<Value>> {
                 shown["failed_at"] = json!(at);
                 shown["why"] = json!(why);
             }
-            shown
+            Ok(shown)
         })
-        .collect())
+        .collect()
 }
 
 /// The Wikis faux-nico and morning are given of `repos`: each one's with its
@@ -513,6 +584,12 @@ impl Of<'_> {
                 format!("{repo}/{tag}{path}")
             }
         }
+    }
+
+    /// Where its build keeps its [`Progress`] while it runs.
+    fn progress(&self, config_dir: &Path) -> PathBuf {
+        let folder = config_dir.join("wiki").join(self.folder());
+        folder.join("progress.json")
     }
 
     /// The clone holding its commits: the Repo's, or the Library's bare one,
@@ -793,22 +870,27 @@ fn budget(wiki: &Value) -> usize {
 }
 
 /// `GET /api/wikis`: each Wiki the Bucket holds of a Repo or a Library
-/// version, by its id, with the commit it describes, when it was built, how
-/// many Gaps it has and how many of them `continue` asks about with its
-/// `calls`, and the `state` of its build as `status` shows it, with the open
-/// Run's pane, or why it failed.
+/// version, and each not built yet while its build waits, runs or failed, by
+/// its id, with the commit it describes, when it was built, how many Gaps it
+/// has and how many of them `continue` asks about with its `calls`, and the
+/// `state` of its build as `status` shows it, with the open Run's pane and
+/// the build's progress, or why it failed.
 pub fn list(ctx: &Context) -> Result<Value, Refusal> {
     let config = config::load(&ctx.config_dir)?;
-    let builds = shown(&ctx.config_dir, &away::load(&ctx.config_dir)?)?;
+    let builds = shown(&ctx.config_dir, &config, &away::load(&ctx.config_dir)?)?;
     let mut wikis = vec![];
     for of in every(&config) {
-        let Some(wiki) = kept(ctx, &config, &of)? else {
-            continue;
-        };
         // One the Bucket holds that no build of this machine's made is built.
         let id = of.id();
         let build = builds.iter().find(|b| b["wiki"] == id);
         let build = build.cloned().unwrap_or(json!({ "state": "built" }));
+        let wiki = match kept(ctx, &config, &of)? {
+            Some(wiki) => wiki,
+            None if build["state"] != "built" => {
+                json!({ "target": build["target"], "commit": null, "builtAt": null })
+            }
+            None => continue,
+        };
         wikis.push(json!({
             "id": id,
             "target": wiki["target"],
@@ -820,6 +902,7 @@ pub fn list(ctx: &Context) -> Result<Value, Refusal> {
             "state": build["state"],
             "pane": build["pane"],
             "why": build["why"],
+            "progress": build["progress"],
         }));
     }
     Ok(json!(wikis))
@@ -1063,6 +1146,8 @@ fn built(ctx: &Context, config: &Config, of: &Of, how: Option<&str>) -> Result<W
     let folder = ctx.config_dir.join("wiki").join(of.folder());
     // One build of a Wiki at a time: another would remove its checkout.
     let _building = state::lock(&folder.join("build"))?;
+    // Dropped first, so removed while the lock is still held; one a build that died left is older than its next Run.
+    let _progress = Removed(of.progress(&ctx.config_dir));
     let dir = folder.join("checkout").display().to_string();
     // One a build that died left behind.
     world.git_worktree_remove(&clone, &dir)?;
@@ -1173,6 +1258,14 @@ fn described(
         .chain(frontier.iter().map(|p| p.id.clone()))
         .collect();
     let mut calls_left = budget.calls;
+    let file = of.progress(&ctx.config_dir);
+    let mut progress = Progress {
+        at: state::iso(world.now()),
+        calls: budget.calls,
+        depth: budget.depth,
+        ..Progress::default()
+    };
+    progress.keep(&file);
     while !frontier.is_empty() {
         // Why each part goes unasked, if it does: the calls go to the first ones.
         let unasked: Vec<Option<&'static str>> = (frontier.iter())
@@ -1192,15 +1285,21 @@ fn described(
                 }
             })
             .collect();
-        let calls: Vec<Headless> = (frontier.iter().zip(&unasked))
+        let called: Vec<&Part> = (frontier.iter().zip(&unasked))
             .filter(|(_, unasked)| unasked.is_none())
-            .map(|(part, _)| Headless {
+            .map(|(part, _)| part)
+            .collect();
+        let calls: Vec<Headless> = (called.iter())
+            .map(|part| Headless {
                 prompt: prompt(id, part, &lines),
                 ..call.clone()
             })
             .collect();
         let at_once = budget.concurrency as usize;
-        let mut answers = world.harness_headless(dir, &calls, at_once).into_iter();
+        let mut told = |i, c| progress.told(&file, c, called[i], 0);
+        let mut answers = world
+            .harness_headless(dir, &calls, at_once, &mut told)
+            .into_iter();
         let mut asked = vec![];
         for (part, unasked) in frontier.drain(..).zip(unasked) {
             let answered = match unasked {
@@ -1252,7 +1351,8 @@ fn described(
                 break;
             }
             let (which, corrections): (Vec<usize>, Vec<Headless>) = sent.into_iter().unzip();
-            let replies = world.harness_headless(dir, &corrections, at_once);
+            let mut told = |j: usize, c| progress.told(&file, c, &asked[which[j]].part, round);
+            let replies = world.harness_headless(dir, &corrections, at_once, &mut told);
             for (i, reply) in which.into_iter().zip(replies) {
                 let (reply, a) = (reply?, &mut asked[i]);
                 let answered = a.answered.as_mut().expect("sent back");
@@ -1274,10 +1374,16 @@ fn described(
             let Some(answered) = answered else {
                 world.log(&format!("{}: not asked ({reason}), a Gap", part.trail));
                 components.push(gap(part, reason));
+                progress.gaps += 1;
+                progress.keep(&file);
                 continue;
             };
             let trail = part.trail.clone();
             let (component, parts, dropped) = read(part, &answered.text, &lines, &mut ids, reason);
+            if !component.gaps.is_empty() {
+                progress.gaps += component.gaps.len();
+                progress.keep(&file);
+            }
             for why in &dropped {
                 world.log(&format!("{trail}: dropped {why}"));
             }
