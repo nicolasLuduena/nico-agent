@@ -82,6 +82,9 @@ morning = "{sigil}morning: the night is in nico-agent status --json --since {las
 # then faux_nico_wiki for faux-nico's; nothing when they are given none.
 wiki = " The Wiki of {repo} describes {sha}; where it and the code disagree, the code wins."
 faux_nico_wiki = " The Wiki says what the code does, never what was decided: never answer from it."
+# Appended to the Implementer's, Reviewer's and quality-scan's prompts, when
+# a Library version their Repo links has its Wiki built: `{libraries}` those.
+libraries = " Ask the wiki MCP about {libraries} before reading their source."
 # Appended to implement and research, as is, when the GitHub App is installed on the Repo.
 bot_suffix = ", opened with `ghbot pr create` (not `gh`); end every commit message with the trailer `Co-authored-by: nicolasluduena-coding-agent[bot] <324920906+nicolasluduena-coding-agent[bot]@users.noreply.github.com>`"
 
@@ -453,6 +456,7 @@ pub struct Prompts {
     pub morning: String,
     pub wiki: String,
     pub faux_nico_wiki: String,
+    pub libraries: String,
     pub bot_suffix: String,
     pub restart: RestartPrompts,
 }

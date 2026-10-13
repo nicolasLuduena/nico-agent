@@ -2,7 +2,7 @@ mod common;
 
 use std::time::Duration;
 
-use common::{Setup, setup};
+use common::{KIT, KIT_TOML, Setup, kit_built, setup};
 
 const TICK: Duration = Duration::from_secs(600);
 const WEEK: Duration = Duration::from_secs(7 * 86_400);
@@ -63,6 +63,23 @@ fn a_scan_starts_on_its_weekday_at_its_hour_with_the_quality_scan_prompt_and_is_
     assert_eq!(scan["at"], "2026-10-04T03:00:00Z");
     assert_eq!(scan["agent"], "quality-scan-api");
     assert_eq!(scan["closed_at"], serde_json::Value::Null);
+}
+
+#[test]
+fn a_scan_of_a_repo_linking_a_built_library_version_starts_with_its_wiki_mcp_and_asks_it_first() {
+    let t = with_repo(&format!("{ON}\nlibraries = [{KIT_TOML}]"));
+    kit_built(&t);
+    t.world.advance(TO_SUNDAY_3AM);
+
+    let (_, calls) = calls_after(&t, || t.tick());
+
+    assert_eq!(
+        started(&calls)[4..],
+        [
+            r#"herdr agent start quality-scan-api --kind claude --pane w1:p2 -- --mcp-config {"mcpServers":{"wiki":{"command":"nico-agent","args":["mcp","--wiki","acme/kit@v1"]}}} --allowedTools mcp__wiki__*"#.to_string(),
+            format!("herdr agent prompt quality-scan-api /quality-scan acme/api Ask the wiki MCP about {KIT} before reading their source."),
+        ]
+    );
 }
 
 #[test]

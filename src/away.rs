@@ -253,14 +253,15 @@ fn scan(ctx: &Context, config: &Config) -> Result<Vec<String>, Refusal> {
         let chosen = repo.or_implementer(&repo.quality_scan);
         let sigil = &config.harnesses[&chosen.harness].sigil;
         let values = [("sigil", sigil.as_str()), ("repoSlug", slug)];
-        let text = fill_in(&config.prompts.quality_scan, &values);
+        let (wikis, line) = wiki::libraries(&ctx.config_dir, config, repo)?;
+        let text = fill_in(&config.prompts.quality_scan, &values) + &line;
         // On a worktree of the Repo at its Base.
         let start = |run: &mut Run| {
             let base = match &repo.base {
                 Some(base) => base.clone(),
                 None => ctx.world.git_default_branch(&repo.path)?,
             };
-            start_on_worktree(ctx, config, repo, &base, run, &text, &[])
+            start_on_worktree(ctx, config, repo, &base, run, &text, &wikis)
         };
         said.push(start_run(
             ctx,

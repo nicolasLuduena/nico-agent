@@ -23,6 +23,7 @@ use crate::review::Reviewer;
 use crate::source::{self, BlockerPr, Read, Start};
 use crate::stage;
 use crate::state;
+use crate::wiki;
 use crate::world::{self, PrState, READY_LABEL, World};
 
 pub const FILE: &str = "dispatches.json";
@@ -410,14 +411,16 @@ fn run_step(
             )?;
         }
         "agent start" => {
-            *ready = launch::start(world, harness, &record.implementer, &repo.path, &[])?
+            let (wikis, _) = wiki::libraries(&ctx.config_dir, config, repo)?;
+            *ready = launch::start(world, harness, &record.implementer, &repo.path, &wikis)?
         }
         "agent ready" => {
             let worktree = record.worktree.as_ref().expect(made);
             launch::get_ready(world, harness, &record.implementer, worktree, *ready)?;
         }
         "prompt" => {
-            let text = implement_prompt(ctx, config, harness, record);
+            let (_, line) = wiki::libraries(&ctx.config_dir, config, repo)?;
+            let text = implement_prompt(ctx, config, harness, record) + &line;
             launch::prompt(world, harness, &record.implementer.agent, &text)?;
         }
         _ => unreachable!("not a step: {step}"),
