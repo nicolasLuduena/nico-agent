@@ -13,7 +13,7 @@ as its last act: built, with its Gaps by reason, or failed with why.
 - `wiki-failed` a call that errors fails the build: exit 1 with why, `wikis.json` `failed` with it, nothing in the Bucket, the checkout gone.
 - `wiki-read-only` each call is `opencode2 run --standalone -m <model> --format json <prompt>` with `OPENCODE_CONFIG_CONTENT` denying bash, edit, execute, external_directory, task, webfetch and websearch.
 - `wiki-built` an answer lands as one Bucket commit `wiki <owner/name> <commit>`, served at `/bucket/wiki/<owner>/<name>/wiki.json`, its files with git's blobs and their line counts; `wikis.json` `built`.
-- `wiki-gap` a claim failing a check (an Anchor past its file's end) is dropped, said on stderr, and its part a Gap `unreadable`; the build still succeeds.
+- `wiki-gap` a claim failing a check (an Anchor past its file's end, an Explainer's arrow to a step it does not have) is dropped, said on stderr, and its part a Gap `unreadable`; the build still succeeds.
 
 ## How to get to it (user POV)
 
@@ -41,15 +41,17 @@ Preconditions:
   outside call, `OPENCODE_CONFIG_CONTENT={"permission":{"bash":"deny","edit":"deny","execute":"deny","external_directory":"deny","task":"deny","webfetch":"deny","websearch":"deny"}} opencode2 run --standalone -m opencode-go/deepseek-v4.1-flash --format json $'You are writing one part of the Wiki of verify/fixture...'`
   (shell-quoted).
 - **Built, with a Gap.** Write a leaf answer to `$E/answer.json`: `{"kind": "leaf", "overview": "...",
-  "interpretations": [...]}`, one Interpretation anchored at `README.md` lines `1`-`1` and one at
-  lines `1`-`9`. `$C seed answer "$E/answer.json"`, then `$C run --evidence "$E/04-built" -- wiki build verify/fixture --json`.
+  "interpretations": [...], "explainer": {...}}`, one Interpretation anchored at `README.md` lines
+  `1`-`1` and one at lines `1`-`9`, and an Explainer of one step at `1`-`1` with an arrow from
+  step 1 to step 2. `$C seed answer "$E/answer.json"`, then `$C run --evidence "$E/04-built" -- wiki build verify/fixture --json`.
   Exit `0`, `{"outcome":"built","commit":<commit>,"components":1,"gaps":{"unreadable":1},"wiki":"verify/fixture",...}`;
-  stderr says `verify/fixture: dropped {...}: lines 1-9 are not inside README.md (3 lines)`.
+  stderr says `verify/fixture: dropped {...}: lines 1-9 are not inside README.md (3 lines)` and
+  `verify/fixture: dropped {...}: its arrow 1 to 2 is not between two of its steps`.
   `$C state`'s diff: `wikis.json` `built`, and one Bucket commit `wiki verify/fixture <commit>`
   adding `wiki/verify/fixture/wiki.json`.
 - **Second view.** `$C http --evidence "$E/05-bucket-wiki" GET /bucket/wiki/verify/fixture/wiki.json` is
   `200`: `commit` the fixture's `origin/main`, `files` `[{"path":"README.md","blob":<git rev-parse origin/main:README.md>,"lines":3}]`,
-  one Component `index` with the first Interpretation only and `gaps` `[{"paths":["README.md"],"reason":"unreadable"}]`.
+  one Component `index` with the first Interpretation only, no `explainer`, and `gaps` `[{"paths":["README.md"],"reason":"unreadable"}]`.
   `git -C "$FIXTURE_CLONE" worktree list` lists the clone alone. Copy `$OUTSIDE_LOG` to `$E/outside.log`.
 
 ## Gotchas

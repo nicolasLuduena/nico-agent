@@ -24,7 +24,33 @@ export interface Component {
   /** Markdown, at most about 5 sentences. */
   overview: string;
   interpretations: Interpretation[];
+  /** What it uses, calls, reads or writes; what does so to it is in the other Components' own. */
+  relationships: Relationship[];
+  explainer?: Explainer;
   gaps: Gap[];
+}
+
+export interface Relationship {
+  /** The Component's id. */
+  to: string;
+  kind: "uses" | "calls" | "reads" | "writes";
+  description: string;
+}
+
+/** A walkthrough of how something in a Component works: steps numbered from 1, arrows between them by number. */
+export interface Explainer {
+  title: string;
+  steps: Step[];
+  arrows: { from: number; to: number; label?: string }[];
+}
+
+export interface Step {
+  n: number;
+  /** One sentence. */
+  caption: string;
+  anchors: Anchor[];
+  /** Where the step happens; steps of one lane are framed together. */
+  lane?: string;
 }
 
 export interface Interpretation {
