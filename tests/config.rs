@@ -152,7 +152,7 @@ gardening = true
         repos[0]["switches"],
         json!({
             "dispatch": false, "stack": true, "review": true, "restart": true, "flip": true,
-            "answer": false, "gardening": true, "quality_scan": false,
+            "answer": false, "gardening": true, "quality_scan": false, "wiki": false,
         })
     );
 }
@@ -200,7 +200,7 @@ fn a_project_s_value_reaches_its_repos_and_a_repo_s_own_wins() {
     );
     let switches = json!({
         "dispatch": true, "stack": true, "review": false, "restart": true, "flip": true,
-        "answer": false, "gardening": true, "quality_scan": false,
+        "answer": false, "gardening": true, "quality_scan": false, "wiki": false,
     });
     assert_eq!(api["switches"], switches);
     let mut web_switches = switches;
@@ -298,6 +298,7 @@ project = "docs"
             "answer": setting(json!(false), "default"),
             "gardening": setting(json!(false), "default"),
             "quality_scan": setting(json!(false), "default"),
+            "wiki": setting(json!(false), "default"),
         });
         for (name, on, from) in set {
             all[name] = setting(json!(on), from);
@@ -387,8 +388,7 @@ project = "docs"
 #[test]
 fn a_bad_key_or_launch_in_a_project_is_refused_at_its_own_line() {
     let repo = "[repos.\"acme/api\"]\npath = \"/src/api\"\nproject = \"shop\"\n\n";
-    let switches =
-        "`dispatch`, `stack`, `review`, `restart`, `flip`, `answer`, `gardening`, `quality_scan`";
+    let switches = "`dispatch`, `stack`, `review`, `restart`, `flip`, `answer`, `gardening`, `quality_scan`, `wiki`";
     let cases = [
         (
             format!("{repo}[projects.shop]\npath = \"/src/shop\"\n"),
@@ -520,7 +520,7 @@ fn an_invalid_config_is_refused_not_rewritten() {
         added.json()["error"]
             .as_str()
             .unwrap()
-            .ends_with("line 1: room: unknown field `room`, expected one of `repos`, `projects`, `harnesses`, `bucket`, `quality_scan`, `morning`, `prompts`, `tick_minutes`, `stall_minutes`, `max_restarts_per_reason`, `port`")
+            .ends_with("line 1: room: unknown field `room`, expected one of `repos`, `projects`, `harnesses`, `bucket`, `quality_scan`, `morning`, `wiki`, `prompts`, `tick_minutes`, `stall_minutes`, `max_restarts_per_reason`, `port`")
     );
     assert_eq!(
         fs::read_to_string(t.config_dir.join("config.toml")).unwrap(),

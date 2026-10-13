@@ -8,8 +8,8 @@ use std::time::{Duration, SystemTime};
 
 use crate::state;
 use crate::world::{
-    Agent, GitHubIssue, Handler, HttpRequest, LinearIssue, PullRequest, PullRequestActivity, Tab,
-    Worktree, World, WorldError, WorldResult,
+    Agent, Answered, GitHubIssue, Handler, Headless, HttpRequest, LinearIssue, PullRequest,
+    PullRequestActivity, Tab, Worktree, World, WorldError, WorldResult,
 };
 
 pub const FILE: &str = "pauses.json";
@@ -183,8 +183,33 @@ impl World for Guarded<'_> {
     fn git_pull(&self, path: &str) -> WorldResult<()> {
         self.world.git_pull(path)
     }
-    fn git_head(&self, path: &str) -> WorldResult<String> {
-        self.world.git_head(path)
+    fn git_rev(&self, path: &str, rev: &str) -> WorldResult<String> {
+        self.world.git_rev(path, rev)
+    }
+    fn git_worktree_add(&self, path: &str, dir: &str, rev: &str) -> WorldResult<()> {
+        self.world.git_worktree_add(path, dir, rev)
+    }
+    fn git_worktree_remove(&self, path: &str, dir: &str) -> WorldResult<()> {
+        self.world.git_worktree_remove(path, dir)
+    }
+    fn git_ls_tree_blobs(&self, path: &str, rev: &str) -> WorldResult<Vec<(String, String)>> {
+        self.world.git_ls_tree_blobs(path, rev)
+    }
+    fn harness_headless(
+        &self,
+        cwd: &str,
+        calls: &[Headless],
+        at_once: usize,
+    ) -> Vec<WorldResult<Answered>> {
+        self.world.harness_headless(cwd, calls, at_once)
+    }
+    fn ollama_embed(
+        &self,
+        ollama: &str,
+        model: &str,
+        input: &[String],
+    ) -> WorldResult<Vec<Vec<f32>>> {
+        self.world.ollama_embed(ollama, model, input)
     }
     fn shell(&self, cwd: &str, command: &str) -> WorldResult<(bool, String)> {
         self.world.shell(cwd, command)
@@ -237,6 +262,9 @@ impl World for Guarded<'_> {
     fn herdr_pane_run(&self, pane: &str, command: &str) -> WorldResult<()> {
         self.world.herdr_pane_run(pane, command)
     }
+    fn herdr_pane_exists(&self, pane: &str) -> WorldResult<bool> {
+        self.world.herdr_pane_exists(pane)
+    }
     fn herdr_agent_detect(&self, pane: &str, timeout: Duration) -> WorldResult<()> {
         self.world.herdr_agent_detect(pane, timeout)
     }
@@ -276,6 +304,12 @@ impl World for Guarded<'_> {
     }
     fn notify(&self, title: &str, body: &str) -> WorldResult<()> {
         self.world.notify(title, body)
+    }
+    fn read_line(&self) -> WorldResult<Option<String>> {
+        self.world.read_line()
+    }
+    fn write_line(&self, line: &str) -> WorldResult<()> {
+        self.world.write_line(line)
     }
     fn log(&self, line: &str) {
         self.world.log(line)

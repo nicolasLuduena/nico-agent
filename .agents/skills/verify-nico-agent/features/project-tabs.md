@@ -121,7 +121,7 @@ Preconditions:
 - A tab is a Project with a Repo: a `[projects.<name>]` no Repo names has none.
 - The Project's defaults come first on its tab and share their control names with each Repo's: a
   bare `--click` reaches the Project's. Use `--within "region=<slug>"` for a Repo's.
-- The switches are folded to `<n> of 8 on`, in each panel: `--click "region=Switches"` opens the
+- The switches are folded to `<n> of 9 on`, in each panel: `--click "region=Switches"` opens the
   first (the Project's); a Repo's needs `--within "region=<slug>"` before it.
 - The Room input keeps its value as typed: select it (`Control+a`) before typing, and leave it
   (`Tab`) to send it.

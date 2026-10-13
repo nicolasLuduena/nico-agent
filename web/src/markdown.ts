@@ -49,7 +49,7 @@ export function firstLine(markdown: string): Span[] {
 /** **strong**, `code`, [named](https://…) and bare https://… links, the last without trailing punctuation. */
 const INLINE = /\*\*(.+?)\*\*|`([^`]+)`|\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/[^\s)]*[^\s).,;:!?])/g;
 
-function spans(line: string): Span[] {
+export function spans(line: string): Span[] {
   const out: Span[] = [];
   let at = 0;
   for (const m of line.matchAll(INLINE)) {

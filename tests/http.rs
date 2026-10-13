@@ -148,6 +148,8 @@ fn an_unknown_path_or_method_answers_404_with_the_routes_as_help() {
         "GET /api/map/<project>: the issues of the Project's Repos and how they block and stack on each other",
         "GET /api/node/<issue>: the issue's Dispatch, its restarts, its Verdict's findings and its Evidence",
         "GET /api/events: a stream of `changed`, sent when state or an Agent state changes, and a keepalive comment otherwise",
+        "GET /api/wikis: each Repo's Wiki, with the commit it describes, when it was built and its Gaps",
+        "GET /api/wiki/<id>: the Wiki, a Repo's by its slug: its Components, Interpretations, Anchors and Gaps",
         "POST /api/dispatch {issue, harness, model, effort}: `nico-agent dispatch` of the issue",
         "POST /api/refresh: `nico-agent refresh`",
         "PATCH /api/repo/<owner/name>/switches {name: bool}: set the Repo's switches; null takes its Project's or the default",
@@ -502,25 +504,26 @@ fn patch_switches_writes_only_the_named_switches_and_answers_the_repo_s_switches
     let web = t.send(
         "PATCH",
         "/api/repo/acme/web/switches",
-        r#"{"stack": false, "gardening": true}"#,
+        r#"{"stack": false, "gardening": true, "wiki": true}"#,
     );
 
     let defaults = json!({
         "dispatch": true, "stack": true, "review": true, "restart": true, "flip": true,
-        "answer": false, "gardening": false, "quality_scan": false,
+        "answer": false, "gardening": false, "quality_scan": false, "wiki": false,
     });
     let mut no_review = defaults.clone();
     no_review["review"] = json!(false);
     let mut no_stack_gardening = defaults;
     no_stack_gardening["stack"] = json!(false);
     no_stack_gardening["gardening"] = json!(true);
+    no_stack_gardening["wiki"] = json!(true);
     assert_eq!(api, (200, json!({ "switches": no_review })));
     assert_eq!(web, (200, json!({ "switches": no_stack_gardening })));
     let expected = WRITTEN
         .replace("review = true }", "review = false }")
         .replace(
             "room = 1\n",
-            "room = 1\nswitches = { gardening = true, stack = false }\n",
+            "room = 1\nswitches = { gardening = true, stack = false, wiki = true }\n",
         );
     assert_eq!(config(&t), expected);
     assert_eq!(
@@ -534,7 +537,7 @@ fn patch_switches_refuses_an_unknown_switch_slug_or_value_and_writes_nothing() {
     let t = written();
     let patch = |path: &str, body: &str| t.send("PATCH", path, body);
     let help = json!([
-        "Switches: dispatch, stack, review, restart, flip, answer, gardening, quality_scan"
+        "Switches: dispatch, stack, review, restart, flip, answer, gardening, quality_scan, wiki"
     ]);
 
     let unknown_switch = patch(
@@ -720,7 +723,7 @@ fn patch_repo_refuses_a_bad_value_of_any_setting_and_writes_nothing() {
     let room = "room is how many Dispatches the Repo may have In flight at once, a whole number of at least 1";
     let settings = "Settings: implementer, reviewer, room, base, project, install, switches; null takes the Project's or the default";
     let switches =
-        "Switches: dispatch, stack, review, restart, flip, answer, gardening, quality_scan";
+        "Switches: dispatch, stack, review, restart, flip, answer, gardening, quality_scan, wiki";
     let harnesses = "Harnesses: claude, codex, opencode";
 
     let bodies = [

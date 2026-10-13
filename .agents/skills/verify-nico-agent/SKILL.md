@@ -8,7 +8,7 @@ description: "Drive nico-agent the way its user and its agents do — the CLI (`
 nico-agent is one Rust binary with two user surfaces, and this skill drives both:
 
 - **The CLI**, what outsiders call: `repo add|rm|list`, `status`, `dispatch`, `verdict`, `refresh`,
-  `install`.
+  `install`, `wiki build`, and `mcp`, an MCP server on stdio fed by `run`'s stdin.
   Every command prints one JSON object with `--json`; exit `0` is an answer, `1` a refusal the user
   can act on, `2` a bad invocation, each refusal as `{error, help}`.
 - **serve's page**, the Svelte app `serve` embeds and answers on `127.0.0.1:<port>`, with the
@@ -28,7 +28,8 @@ Decisions this skill was generated from (the interview of the repo):
   `$HOME/.config/nico-agent` there (`src/main.rs`); serve on a free port (`port` in that
   `config.toml`); the page in headless Chromium through Playwright; `/api` with curl.
 - **Observe:** stdout JSON and exit codes; the files of the scratch config dir (`config.toml`,
-  `dispatches.json`, `prs.json`, `issues/`, `verdicts/`, `pauses.json`, `checks.json`, `installs.json`); the Bucket's git log; HTTP
+  `dispatches.json`, `prs.json`, `issues/`, `verdicts/`, `pauses.json`, `checks.json`, `installs.json`,
+  `runs.json`, `wikis.json`, `wiki-queue.json`); the Bucket's git log; HTTP
   status, headers and body; the page's ARIA snapshot, screenshot and the `/api` requests it made;
   every call the binary made outside the process, recorded by the stubs in `outside.log`.
 - **Isolate:** yes. Each run has its own directory `${VERIFY_RUN_ROOT:-${TMPDIR:-/tmp}/verify-nico-agent}/$VERIFY_RUN_ID`
@@ -56,14 +57,18 @@ $C seed issues [second]         # a fresh read of verify/fixture's issues (or ve
 $C seed dispatch <n> pr|asking|stacked  # a Dispatch of verify/fixture#<n> as the loop records one; prints JSON
 $C seed run quality-scan|morning|faux-nico <n>  # a Run of the loop's own agent, blocked; prints JSON
 $C seed morning <file>|none     # the Morning summary the morning agent leaves: <file> as morning.md, or none
+$C seed answer <file>|none [<part>]  # what the wiki model (the opencode2 stub) answers every call: <file>'s text, or none;
+                                # with <part>, a trail such as `verify/fixture > Readme`, only the calls about it
+$C seed correction <file>|none  # what the wiki model answers each correction (a call with -s): <file>'s text, or none
 $C drift push <n>|stale|pause   # what GitHub would change: a new PR head, an old read, a rate limit
 $C drift below merged|closed    # ... or the PR below a Stacked dispatch merged or closed unmerged
+$C drift base                   # ... or verify/fixture's Base moved on by a merge, fetched into its clone
 $C state                        # fingerprint: config dir files, Dispatches, Verdicts, Bucket log, outside calls
 $C run [--evidence PREFIX] -- <nico-agent args...>       # the CLI in the scratch HOME; exit code is the CLI's
 $C http [--evidence PREFIX] [--header 'NAME: VALUE']... <METHOD> <PATH> [BODY]
                                 # ask serve, as the page does (or with other headers); exit 1 on 4xx/5xx
-$C page [--tunnel] [--evidence PREFIX] [--width PX] [--storage FILE|none] [--within ROLE=NAME|page | --click ROLE=NAME | --click ROLE~NAME | --press KEY | --type TEXT | --expect TEXT
-        | --gone TEXT | --wait SECONDS | --mode pass|502|signed-out]...
+$C page [--tunnel] [--evidence PREFIX] [--width PX] [--storage FILE|none] [--hash HASH] [--within ROLE=NAME|page | --click ROLE=NAME | --click ROLE~NAME | --press KEY | --type TEXT
+        | --expect TEXT | --gone TEXT | --wait SECONDS | --history back|forward | --mode pass|502|signed-out]...
                                 # open the page (through the tunnel stand-in), act in order, capture
 $C tunnel start|pass|502|signed-out   # a stand-in for cloudflared and Access in front of serve; $TUNNEL_URL, $TUNNEL_LOG
 $C cleanup                      # stop what the run started, remove the run dir; never touches .evidence/
@@ -72,7 +77,9 @@ $C cleanup                      # stop what the run started, remove the run dir;
 `run --evidence PREFIX` writes `PREFIX.cmd`, `.stdout`, `.stderr` and `.exit`; `http --evidence`
 writes `.cmd` (each `--header` in brackets first), `.stdout` (the body), `.stderr`, `.exit` (the
 HTTP status) and `.headers`; `page
---evidence` writes `.cmd`, `.aria.txt`, `.png`, `.requests.txt` and `.console.txt`. Each still prints
+--evidence` writes `.cmd`, `.aria.txt`, `.png` (the whole page), `.view.png` (the window, as scrolled),
+`.view.txt` (where the window is scrolled, the page's width against the window's, and what has focus),
+`.requests.txt` and `.console.txt`. Each still prints
 what it captured, so a recipe can record and inspect at once. `page` steps: `--click tab=verify/second`
 clicks the element of that ARIA role whose accessible name is exactly the text, `--click
 "button~Failed verify/fixture #1"` one whose name contains it, `--within "region=verify/fixture"` makes
@@ -81,8 +88,9 @@ controls share their names with the Project's and the other Repos'), `--within p
 page again, `--press ArrowRight` a key, `--type
 dev` text into what has focus,
 `--expect "Source not read yet"` waits for the text, `--gone TEXT` up to a minute for it to go,
-`--wait 120` lets two minutes pass, and `--mode 502` switches the tunnel stand-in (with `--tunnel`
-only). Each `page` is a new browser with nothing stored: `--storage FILE` starts it with the
+`--wait 120` lets two minutes pass, `--history back` (or `forward`) is the browser's Back (or
+Forward) button, and `--mode 502` switches the tunnel stand-in (with `--tunnel` only). `--hash
+"#shop/wiki/verify%2Ffixture"` opens the page at that hash, as a link to it does. Each `page` is a new browser with nothing stored: `--storage FILE` starts it with the
 storage `FILE` holds (none the first time) and saves it back at the end, so the next `page` with
 the same `FILE` is a reload in the same browser; `--storage none` is a browser whose `localStorage`
 throws, as one blocking the site's data does. `page` prints `ok` or `FAIL` per step and exits 1 on
@@ -113,10 +121,11 @@ export VERIFY_RUN_ID=<issue>
 This runs `cargo build --locked --bin nico-agent` (the first build also runs `npm ci` in `web/`
 when `web/node_modules` is older than its lockfile), copies the binary into the run dir, and makes:
 
-- `stubs/`: `gh`, `ghbot`, `herdr`, `notify-send` and `curl`, first on the binary's `PATH`. Each
+- `stubs/`: `gh`, `ghbot`, `herdr`, `notify-send`, `curl` and `opencode2`, first on the binary's `PATH`. Each
   appends its command line to `outside.log` and reaches nothing: `gh` says what it says in a HOME
   that never ran `gh auth login` (exit 4), `herdr` fails with code `verify_stub`, `notify-send`
-  succeeds without showing anything, `curl` fails as if offline.
+  succeeds without showing anything, `curl` fails as if offline, `opencode2` fails as with no model
+  (exit 1, an `error` event) unless `seed answer` gave it a text to answer with.
 - `home/`: the scratch HOME, with a `.gitconfig` naming `Verify Nico <verify-nico@example.com>`.
   Its `.config/nico-agent/config.toml` sets `port` to a free port, `tick_minutes = 600`,
   `bucket.path` to `bucket/` in the run dir and `morning.enabled = false` (the morning agent
@@ -144,7 +153,7 @@ Read-only. Passes only when: `nico-agent --version` prints the version in `Cargo
 binary is byte for byte `target/debug/nico-agent` (a rebuild since launch fails this: relaunch to
 verify the new build); serve's pid is alive and runs the run's binary; the port is that pid's;
 `/api/status` answers 200 with JSON; the scratch HOME is under the run dir and not your `$HOME`;
-`config.toml` holds the run's port and Bucket; `gh`, `ghbot`, `herdr`, `notify-send` and `curl`
+`config.toml` holds the run's port and Bucket; `gh`, `ghbot`, `herdr`, `notify-send`, `curl` and `opencode2`
 resolve to the run's stubs; the fixture's origin is the GitHub URL and `git ls-remote` reaches it on
 disk. It also prints the build's commit, the Repos configured and the outside calls so far. Run it
 first, and again whenever anything looks off; a failing doctor means "do not drive this run".
@@ -191,10 +200,20 @@ What the fixtures hold:
   `asking`. A tick leaves it as it is: with herdr stubbed, no agent is ever seen ended.
 - `seed morning <file>` puts `<file>`'s text in the config dir as `morning.md`, as the morning agent
   writes its summary (the agent itself is off in a run); `seed morning none` takes it away.
+- `seed answer <file>` makes the `opencode2` stub answer every headless call with `<file>`'s text, as
+  the wiki model's last message, in a session of its own (`ses_verify_<n>`); `seed answer <file>
+  "<trail>"` only the calls whose prompt asks about that part (`## The part: <trail>`, or a
+  correction's `## Corrections to the part: <trail>`), ahead of the answer for every call; `seed
+  correction <file>` answers each correction (a call with `-s <session>`, which it continues) with
+  `<file>`'s text instead, and `seed correction none` goes back to the part's answer; `seed answer
+  none` takes every answer away, corrections too, and each call fails again, as opencode with no
+  model does. The stub logs each call after the `OPENCODE_CONFIG_CONTENT` it was given.
 - `drift push <n>` commits to the seeded worktree and moves the PR's `head_sha`, as a push would;
   `drift stale` dates the cached read 2000-01-01, so the next `status` or `dispatch` asks GitHub;
   `drift pause` writes GitHub paused for an hour, as a rate limit does; `drift below merged|closed`
-  makes PR #109 final, merged or closed unmerged, as GitHub would say.
+  makes PR #109 final, merged or closed unmerged, as GitHub would say; `drift base` pushes a commit
+  rewriting `README.md` to verify/fixture's `main` and fetches it, as a merge and the loop's next
+  fetch would, printing `{base, old, head}`.
 
 Stable handles are the command words and flags (`--path`, `--json`, `--harness`, `--model`,
 `--effort`, `--sha`, `--findings`), the exit codes, the JSON field names, the routes in `GET` of an
@@ -202,8 +221,14 @@ unknown path's `help`, and on the page the ARIA roles and names: `tablist "Proje
 `tab` per Project (a Repo with none is its own, named by its slug), `region "Needs you"`, `button
 "Refresh"`, a `region "<project>"` of its defaults unless it is a Repo's own, then a `region
 "<slug>"` per Repo, each holding `switch "Dispatch"` (and `Faux-nico answers`,
-`Flip to ready`, `Gardening`, `Quality-scan`, `Restart`, `Review`, `Stack`), `spinbutton "Room"`,
-`region "Dispatch"` with `button "Dispatch"` (a Repo's only), `region "Readiness"` with a `group` reading `N of M pass` (a Repo's only), `region "Map of <project>"`, `region "Settings"` with
+`Flip to ready`, `Gardening`, `Quality-scan`, `Restart`, `Review`, `Stack`, `Wiki`), `spinbutton "Room"`,
+`navigation "View"` with `link "Map"` and `link "Wiki"` (the
+Wiki view: `combobox "Wiki"`, `searchbox "Search this Wiki"` with, while it holds words, a `status`
+`N found` and `navigation "Found"` with a `link` per hit in place of `navigation "Components"` with
+a `link` per Component, `article "<Component>"` with a `region` per kind of Interpretation,
+`"Components"` and `"Gaps"`, `navigation "Outline"` with a `button` per head; under 1080px
+`button "Outline"`, under 720px `button "Components"` too, each opening its sheet with `button
+"Close"`), `region "Dispatch"` with `button "Dispatch"` (a Repo's only), `region "Readiness"` with a `group` reading `N of M pass` (a Repo's only), `region "Map of <project>"`, `region "Settings"` with
 `combobox "Implementer Harness"` (and `model`, `Effort`, and the same for `Reviewer`), `textbox
 "Base"`, `combobox "Project"` (a Repo's only), `region "Install"` with `textbox "Install"` (a Repo's only), `button "Use the default <Setting>"` or `"Use the
 Project's <Setting>"`, `button "Remove <slug>…"`; a `--click` takes the first match, which is the
@@ -242,7 +267,7 @@ Proof standards:
 - Prove isolation: copy `outside.log` into the folder. It lists every outside call the binary made;
   each went to a stub, and none can reach GitHub, herdr or the desktop.
 - Mocks only at the process boundary nico-agent already isolates behind its `World` (`gh`, `herdr`,
-  `notify-send`, `curl`); `git` is real, on the run's own repos.
+  `notify-send`, `curl`, `opencode2`); `git` is real, on the run's own repos.
 
 ## Cleanup
 

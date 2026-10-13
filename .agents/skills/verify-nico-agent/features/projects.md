@@ -49,7 +49,7 @@ Preconditions:
 - **API.** Run `$C http --evidence "$E/03-api" GET /api/status`. HTTP `200`; `projects` equals the
   command's, and each Repo has the same `{value, from}` settings plus `harnesses`.
 - **Page.** Run `$C page --evidence "$E/04-page" --click "tab=verify" --expect "Defaults for its Repos" --within "region=verify" --click "region=Switches" --within "region=verify/fixture" --click "region=Switches" --within "region=verify/second" --click "region=Switches" --expect "Faux-nico answers"`:
-  `tablist "Projects"` has `tab "verify"` alone; each panel's Switches read `4 of 8 on`.
+  `tablist "Projects"` has `tab "verify"` alone; each panel's Switches read `4 of 9 on`.
   `region "verify"` (the Project's defaults) has `text: Room` with `button "Use the default Room"`
   and `spinbutton "Room": "2"`, and `switch "Review"` unchecked beside `button "Use the default
   Review"`; `region "verify/fixture"` has `text: Room project`, `spinbutton "Room": "2"`, `switch

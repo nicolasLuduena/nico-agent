@@ -4,7 +4,7 @@
 # Every subcommand works inside one run directory, chosen by VERIFY_RUN_ID:
 #   $VERIFY_RUN_ROOT/$VERIFY_RUN_ID   (VERIFY_RUN_ROOT defaults to ${TMPDIR:-/tmp}/verify-nico-agent)
 # The run has its own HOME (so its own ~/.config/nico-agent), two fixture clones, a Bucket,
-# a free port for serve, and stubs for gh, ghbot, herdr, notify-send and curl first on PATH.
+# a free port for serve, and stubs for gh, ghbot, herdr, notify-send, curl and opencode2 first on PATH.
 #
 # Subcommands (see SKILL.md for when to use each):
 #   launch [--no-build]           build, make the scratch HOME and fixtures, start serve
@@ -17,16 +17,22 @@
 #   seed run quality-scan|morning|faux-nico <n>
 #                                 a Run of the loop's own agent, blocked, as the loop records it
 #   seed morning <file>|none      the Morning summary the morning agent leaves: <file> as morning.md, or none
-#   drift push <n>|stale|pause|below merged|closed
+#   seed answer <file>|none [<part>]  what the wiki model answers every headless call: <file>'s text, or none
+#                                 (then each call fails as opencode2 does with no model); with <part>, a trail
+#                                 such as `verify/fixture > Docs`, only the calls asking about that part
+#   seed correction <file>|none   what the wiki model answers each correction (a call with -s): <file>'s text,
+#                                 or none (then the answer for its part)
+#   drift push <n>|stale|pause|below merged|closed|base
 #                                 what GitHub would change: a new PR head, an old read, a rate limit,
-#                                 the PR below a Stacked dispatch merged or closed unmerged
+#                                 the PR below a Stacked dispatch merged or closed unmerged,
+#                                 verify/fixture's Base moved on (and fetched)
 #   state                         read-only fingerprint of the config dir, Bucket and outside calls
 #   run [--evidence PREFIX] -- <nico-agent args...>
 #                                 run the CLI in the scratch HOME; exit code is the CLI's
 #   http [--evidence PREFIX] <METHOD> <PATH> [BODY]
 #                                 ask this run's serve, as the page does
-#   page [--tunnel] [--evidence PREFIX] [--width PX] [--storage FILE|none] [--within ROLE=NAME|page | --click ROLE=NAME | --click ROLE~NAME | --press KEY | --type TEXT
-#        | --expect TEXT | --gone TEXT | --wait SECONDS | --mode pass|502|signed-out]...
+#   page [--tunnel] [--evidence PREFIX] [--width PX] [--storage FILE|none] [--hash HASH] [--within ROLE=NAME|page | --click ROLE=NAME | --click ROLE~NAME | --press KEY
+#        | --type TEXT | --expect TEXT | --gone TEXT | --wait SECONDS | --history back|forward | --mode pass|502|signed-out]...
 #                                 open serve's page in headless Chromium (through the tunnel stand-in), act, capture
 #   tunnel start|pass|502|signed-out
 #                                 start a stand-in for the cloudflared tunnel and Access in front of serve;
@@ -112,6 +118,8 @@ write_stubs() {
 name="\$(basename "\$0")"
 # One write per line: serve and a CLI run may call stubs at the same moment.
 line="\$name\$(printf ' %q' "\$@")"
+# opencode2 takes its config inline: the line shows what it was allowed.
+[ -z "\${OPENCODE_CONFIG_CONTENT:-}" ] || line="OPENCODE_CONFIG_CONTENT=\$(printf '%q' "\$OPENCODE_CONFIG_CONTENT") \$line"
 printf '%s\\n' "\$line" >> "$log"
 case "\$name" in
   # What the real gh says in a HOME that never ran \`gh auth login\`.
@@ -120,11 +128,28 @@ case "\$name" in
   # Recorded, never shown on the desktop.
   notify-send) exit 0 ;;
   curl) echo "curl: (6) verify-nico-agent: no network in this run" >&2; exit 6 ;;
+  # \`run --format json\`'s events: the seeded answer as its last message, in its session, else
+  # its error. The answer seeded for the part the prompt asks about, else the one for every part.
+  # A call with \`-s\` continues that session, answered by the seeded correction if any.
+  opencode2)
+    session="" prev=""
+    for arg in "\$@"; do [ "\$prev" != "-s" ] || session="\$arg"; prev="\$arg"; done
+    part="\$(printf '%s' "\${@: -1}" | sed -n 's/^## \\(The part\\|Corrections to the part\\): //p' | head -n 1)"
+    answer="$RUN_DIR/opencode-answers/\$(printf '%s' "\$part" | md5sum | cut -c 1-32)"
+    [ -f "\$answer" ] || answer="$RUN_DIR/opencode-answer"
+    [ -z "\$session" ] || [ ! -f "$RUN_DIR/opencode-correction" ] || answer="$RUN_DIR/opencode-correction"
+    [ -n "\$session" ] || session="ses_verify_\$(wc -l < "$log")"
+    if [ -f "\$answer" ]; then
+      jq -cn --rawfile text "\$answer" --arg session "\$session" '{type: "text", sessionID: \$session, part: {type: "text", text: \$text}}'
+      exit 0
+    fi
+    echo '{"type":"error","error":{"type":"provider.no-route","message":"Model unavailable: opencode2 is a stub in this verification run"}}'
+    exit 1 ;;
 esac
 EOF
   chmod +x "$stubs/outside-stub"
   local name
-  for name in gh ghbot herdr notify-send curl; do ln -s outside-stub "$stubs/$name"; done
+  for name in gh ghbot herdr notify-send curl opencode2; do ln -s outside-stub "$stubs/$name"; done
 }
 
 # A clone of <slug> whose origin is https://github.com/<slug>.git, which the scratch HOME's
@@ -290,7 +315,7 @@ cmd_doctor() {
   check "config.toml sets port $PORT and the Bucket under the run dir" \
     bash -c "grep -qx 'port = $PORT' '$CONFIG_DIR/config.toml' && grep -qx 'path = \"$BUCKET\"' '$CONFIG_DIR/config.toml'"
   local name
-  for name in gh ghbot herdr notify-send curl; do
+  for name in gh ghbot herdr notify-send curl opencode2; do
     check "$name resolves to this run's stub" \
       test "$(in_fixture "$RUN_DIR/work" bash -c "command -v $name")" = "$RUN_DIR/stubs/$name"
   done
@@ -317,7 +342,9 @@ cmd_seed() {
     dispatch) seed_dispatch "$@" ;;
     run) seed_run "$@" ;;
     morning) seed_morning "$@" ;;
-    *) die "seed: usage: seed issues [second] | seed dispatch <n> pr|asking|stacked | seed run quality-scan|morning|faux-nico <n> | seed morning <file>|none" ;;
+    answer) seed_answer "$@" ;;
+    correction) seed_correction "$@" ;;
+    *) die "seed: usage: seed issues [second] | seed dispatch <n> pr|asking|stacked | seed run quality-scan|morning|faux-nico <n> | seed morning <file>|none | seed answer <file>|none [<part>] | seed correction <file>|none" ;;
   esac
 }
 
@@ -437,6 +464,33 @@ seed_morning() {
   esac
 }
 
+# What the wiki model answers each headless call from now on: <file>'s text, or with none, each
+# call fails as opencode2 with no model does. With <part>, a trail as the prompt names it
+# (`verify/fixture > Docs`), only the calls about that part; none takes every answer away,
+# corrections too.
+seed_answer() {
+  local answers="$RUN_DIR/opencode-answers"
+  case "${1:-}" in
+    none) rm -rf "$RUN_DIR/opencode-answer" "$answers" "$RUN_DIR/opencode-correction" ;;
+    "") die "seed: usage: seed answer <file>|none [<part>]" ;;
+    *)
+      [ -f "$1" ] || die "seed: no file $1"
+      if [ -z "${2:-}" ]; then cp "$1" "$RUN_DIR/opencode-answer"; return; fi
+      mkdir -p "$answers"
+      cp "$1" "$answers/$(printf '%s' "$2" | md5sum | cut -c 1-32)" ;;
+  esac
+}
+
+# What the wiki model answers each correction (a call with -s) from now on: <file>'s text, or
+# with none, the answer for its part again.
+seed_correction() {
+  case "${1:-}" in
+    none) rm -f "$RUN_DIR/opencode-correction" ;;
+    "") die "seed: usage: seed correction <file>|none" ;;
+    *) [ -f "$1" ] || die "seed: no file $1"; cp "$1" "$RUN_DIR/opencode-correction" ;;
+  esac
+}
+
 seed_run() {
   local trigger="${1:-}" n="${2:-}" run
   local usage="seed: usage: seed run quality-scan|morning|faux-nico <n>"
@@ -507,7 +561,22 @@ cmd_drift() {
           | .merged_at = (if $how == "merged" then $at else null end))' "$CONFIG_DIR/prs.json")"
       jq -c --arg u "$url" '.[$u] | { url: $u, state, final, merged_at }' "$CONFIG_DIR/prs.json"
       ;;
-    *) die "drift: usage: drift push <n> | drift stale | drift pause | drift below merged|closed" ;;
+    # A merge into verify/fixture's Base on GitHub, rewriting README.md, then fetched into the
+    # clone as the loop's next fetch would: origin/main moves on past what a Wiki describes.
+    base)
+      local work="$RUN_DIR/fixture/fixture-drift" old head
+      old="$(fgit "$FIXTURE_CLONE" rev-parse origin/main)"
+      rm -rf "$work"
+      fgit "$RUN_DIR/fixture" clone --quiet "$RUN_DIR/fixture/fixture.git" "$work"
+      printf '# %s, moved on\n\nThe Base moved past the Wiki.\n' "$SLUG" > "$work/README.md"
+      fgit "$work" commit --quiet --all -m "fixture: the Base moves on"
+      fgit "$work" push --quiet origin HEAD:main
+      rm -rf "$work"
+      fgit "$FIXTURE_CLONE" fetch --quiet origin
+      head="$(fgit "$FIXTURE_CLONE" rev-parse origin/main)"
+      jq -n --arg old "$old" --arg head "$head" '{ base: "main", old: $old, head: $head }'
+      ;;
+    *) die "drift: usage: drift push <n> | drift stale | drift pause | drift below merged|closed | drift base" ;;
   esac
 }
 
@@ -526,6 +595,8 @@ cmd_state() {
   if [ -d "$CONFIG_DIR/verdicts" ]; then
     (cd "$CONFIG_DIR/verdicts" && find . -name '*.json' | sort | while read -r f; do echo "$f $(jq -c '{result, sha}' "$f")"; done)
   fi
+  echo "## wikis.json (each Wiki's last build)"
+  [ ! -f "$CONFIG_DIR/wikis.json" ] || jq -c 'to_entries[] | { wiki: .key } + .value' "$CONFIG_DIR/wikis.json"
   echo "## Bucket: git log --stat"
   if [ -d "$BUCKET/.git" ]; then
     fgit "$BUCKET" log --format='%s' --stat

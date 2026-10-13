@@ -16,6 +16,7 @@ use crate::repo;
 use crate::review;
 use crate::source;
 use crate::stage::{self, Prs, Stage};
+use crate::wiki;
 use crate::world::{self, AgentState};
 
 pub fn status(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
@@ -192,6 +193,7 @@ pub fn shown(
         .collect();
     let mut shown = json!({
         "projects": projects, "repos": repos, "sources": sources, "dispatches": shown_dispatches,
+        "wikis": wiki::shown(&ctx.config_dir, &runs)?,
     });
     if let Some(morning) = away::last_morning(&runs) {
         shown["morning"] = json!(morning);

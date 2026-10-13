@@ -49,13 +49,29 @@ hour = 3
 enabled = true
 hour = 7
 
+# Wiki builds, one at a time, outside every room. The loop checks the Wiki of
+# each Repo with its wiki switch on once the switch turns on, then daily from
+# `hour`, local time, and builds it when it has none or its Base moved from its
+# commit. Each part of the code is one headless, read-only call of `launch`: at
+# most `calls` of them a build, `concurrency` at once, dividing the code at
+# most `depth` deep. `ask` finds what a question is about by the embeddings of
+# `embed_model`, from the Ollama answering at `ollama`.
+[wiki]
+hour = 2
+launch = { harness = "opencode", model = "opencode-go/deepseek-v4.1-flash" }
+calls = 48
+depth = 7
+concurrency = 4
+embed_model = "nomic-embed-text"
+ollama = "http://127.0.0.1:11434"
+
 [prompts]
 implement = "{sigil}implement {issueUrl} as draft PR against {baseBranch}, saving its Evidence under {evidenceFolder}/ in the worktree and linking it to {bucketUrl}"
 research = "{sigil}research {issueUrl}; write the findings with sources to one Markdown file under docs/research/ and open it as a draft PR against {baseBranch}"
 faux_nico = '{sigil}faux-nico {issueUrl}: the Implementer asks "{question}". Read PRODUCT.md, the issue and its parent. Answer with nico-agent answer {issue} --text "..." --by faux-nico only when they settle it; otherwise end your turn without answering.'
 review = "{sigil}verdict {prUrl} for {issueUrl}: re-run the repo's verification skill under .agents/skills/verify-*/ against the PR's head, saving its Evidence under {evidenceFolder}/, and record the result with nico-agent verdict {issue} pass|fail --sha {headSha} --findings <file>"
 quality_scan = "{sigil}quality-scan {repoSlug}"
-morning = "{sigil}morning: the night is in nico-agent status --json --since {lastMorningAt}. Write the summary to {configDir}/morning.md."
+morning = "{sigil}morning: the night is in nico-agent status --json --since {lastMorningAt}. Write the summary to {configDir}/morning.md, with one line on the Wikis its `wikis` lists built or failed since then."
 # Appended to implement and research, as is, when the GitHub App is installed on the Repo.
 bot_suffix = ", opened with `ghbot pr create` (not `gh`); end every commit message with the trailer `Co-authored-by: nicolasluduena-coding-agent[bot] <324920906+nicolasluduena-coding-agent[bot]@users.noreply.github.com>`"
 
@@ -112,7 +128,7 @@ skill_dirs = [
 const REPO_DEFAULTS: &str = r#"
 room = 3
 implementer = { harness = "claude" }
-switches = { dispatch = true, stack = true, review = true, restart = true, flip = true, answer = false, gardening = false, quality_scan = false }
+switches = { dispatch = true, stack = true, review = true, restart = true, flip = true, answer = false, gardening = false, quality_scan = false, wiki = false }
 "#;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -127,6 +143,7 @@ pub struct Config {
     pub bucket: Bucket,
     pub quality_scan: QualityScan,
     pub morning: Morning,
+    pub wiki: Wiki,
     pub prompts: Prompts,
     #[serde(deserialize_with = "positive")]
     pub tick_minutes: u32,
@@ -230,6 +247,30 @@ pub struct Morning {
     pub launch: Option<Launch>,
 }
 
+/// How Wikis are built (when, on what, and each build's budget) and searched.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Wiki {
+    /// When Repos' Wikis are updated, daily, local time.
+    #[serde(deserialize_with = "hour")]
+    pub hour: u32,
+    /// What answers each part, headless and read-only.
+    pub launch: Launch,
+    /// Model calls a build may make.
+    #[serde(deserialize_with = "positive")]
+    pub calls: u32,
+    /// How deep a build divides the code: the deepest division's parts are Gaps.
+    #[serde(deserialize_with = "positive")]
+    pub depth: u32,
+    /// Calls a build makes at once.
+    #[serde(deserialize_with = "positive")]
+    pub concurrency: u32,
+    /// The Ollama model that embeds overviews, Interpretations and questions.
+    pub embed_model: String,
+    /// Where Ollama answers.
+    pub ollama: String,
+}
+
 /// In the order `as` numbers them: Sunday is 0.
 #[derive(Debug, Clone, Copy, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -262,7 +303,7 @@ pub struct Launch {
 }
 
 /// The switches the app shows and sets.
-pub const SWITCHES: [&str; 8] = [
+pub const SWITCHES: [&str; 9] = [
     "dispatch",
     "stack",
     "review",
@@ -271,6 +312,7 @@ pub const SWITCHES: [&str; 8] = [
     "answer",
     "gardening",
     "quality_scan",
+    "wiki",
 ];
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -285,6 +327,8 @@ pub struct Switches {
     pub answer: bool,
     pub gardening: bool,
     pub quality_scan: bool,
+    /// The loop builds its Wiki; off, the Wiki stays readable and is built no more.
+    pub wiki: bool,
 }
 
 /// How a Harness is launched, as on `main` (ADR-0005).
@@ -553,6 +597,12 @@ fn parse(file: &Path, text: &str) -> Result<Config, Refusal> {
     {
         return Err(not_a_harness(&["morning", "launch"], harness));
     }
+    if !config.harnesses.contains_key(&config.wiki.launch.harness) {
+        return Err(not_a_harness(
+            &["wiki", "launch"],
+            &config.wiki.launch.harness,
+        ));
+    }
     Ok(config)
 }
 
@@ -596,19 +646,20 @@ fn layer(repo: &mut dyn TableLike, lower: &dyn TableLike) {
     }
 }
 
-/// Put each key of `defaults` that `table` lacks into it, table by table.
+/// Put each key of `defaults` that `table` lacks into it, table by table; a
+/// launch whole, as a default model is its default Harness's.
 fn fill(table: &mut dyn TableLike, defaults: &dyn TableLike) {
     for (key, default) in defaults.iter() {
         match (table.get_mut(key), default.as_table_like()) {
             (None, _) => {
                 table.insert(key, default.clone());
             }
-            (Some(item), Some(defaults)) => {
+            (Some(item), Some(defaults)) if key != "launch" => {
                 if let Some(table) = item.as_table_like_mut() {
                     fill(table, defaults);
                 }
             }
-            (Some(_), None) => {}
+            (Some(_), _) => {}
         }
     }
 }

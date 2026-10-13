@@ -112,6 +112,25 @@ commands, and observable proof.
 - [The Morning summary on the page](./morning.md) covers `morning.md` shown first on the page, its
   Hide and Show, hidden remembered in the browser across a reload until `morning.md` changes, and
   a browser whose storage throws.
+- [Build a Repo's Wiki](./wiki-build.md) covers `wiki build` and its refusals, a failed call
+  failing the build with why in `wikis.json`, each call a read-only `opencode2 run`, the Wiki
+  landing in the Bucket in one commit, a claim failing a check (an Explainer's arrow to no
+  step too) sent back up to 3 rounds in the same session, kept once corrected and dropped as a Gap when not, and the build ending by
+  embedding the Wiki through Ollama, or saying it could not.
+- [Serve Wikis to agents through the MCP](./wiki-mcp.md) covers `mcp` on stdio: the handshake,
+  `tools/list`, `wikis`, `find_component`, `get_component`, `read_anchor` and `ask` on a built
+  Wiki, the lines read at the Wiki's commit after the Base moved, `--wiki` limiting what it serves,
+  tool errors it goes on answering after, `ask` saying search is unavailable without Ollama and
+  answering for real with it, nothing written but `ask`'s embeddings, and the server added to
+  Claude Code.
+- [Read a Wiki on the page](./wiki-view.md) covers `GET /api/wikis` and `GET /api/wiki/<id>`, a
+  Project tab's Map and Wiki views, the picker, the header, the Component tree, Interpretations by
+  kind with their Anchors on GitHub, the Relationship diagram and the Explainer clicked through,
+  sub-Components and Gaps, a hash opening a Component, back and
+  forward, light and dark at desk and phone width.
+- [Wiki builds from the loop](./wiki-runs.md) covers the `wiki` switch queueing a build at the next
+  refresh, the build's start failing at herdr and its Run closed failed, `status`'s `wikis`, and
+  the daily check of a Repo's Base: unmoved, moved (`drift base`) and once a day.
 - [Requests from other sites](./foreign-requests.md) covers the 403 serve answers a foreign or
   missing `Host` and a foreign or `null` `Origin` on a write, and the page, `localhost` and the
   tunnel answered as before.
