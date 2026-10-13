@@ -87,8 +87,8 @@ const COMMANDS: &[(&str, &str)] = &[
         "show per Repo the Ready and Stackable issues, every Dispatch and every Wiki; with --since, what merged, Closed, was answered and was scanned after it",
     ),
     (
-        "nico-agent wiki build <owner/name> [--update]",
-        "build the Repo's Wiki from scratch at origin/<base>, one headless call of the [wiki] launch per part of its code, and keep it in the Bucket; with --update, from the Wiki it holds, asking only about the parts whose files changed",
+        "nico-agent wiki build <owner/name> [--update|--rebuild|--continue]",
+        "build the Repo's Wiki from scratch at origin/<base> (--rebuild too), one headless call of the [wiki] launch per part of its code, and keep it in the Bucket; with --update, from the Wiki it holds, asking only about the parts whose files changed; with --continue, at the Wiki's commit, asking only about the parts its budget left Gaps, with a fresh budget",
     ),
     (
         "nico-agent mcp [--wiki <owner/name>]...",

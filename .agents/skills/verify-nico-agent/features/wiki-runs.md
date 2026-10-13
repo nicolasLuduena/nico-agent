@@ -80,7 +80,7 @@ Moved (`-moved`):
 
 - herdr is stubbed, so no build ever runs from the loop in a run: every start fails at `herdr
   workspace create`, and the command its pane would run (`nico-agent wiki build <owner/name>`, with
-  `--update` once the Repo has a Wiki) is `cargo test`'s. A build running in its pane, closing on its outcome and a pane gone are
+  `--update` once the Repo has a Wiki, or the build a button asked: [wiki-buttons.md](./wiki-buttons.md)) is `cargo test`'s. A build running in its pane, closing on its outcome and a pane gone are
   `cargo test`'s (`tests/wiki_runs.rs`); here, the queue, the check and the failed start.
 - The daily check runs at the first refresh after the switch goes on, whatever the hour (a Repo
   never checked is due), then not again till the next `[wiki] hour`: move the Base with `drift

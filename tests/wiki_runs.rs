@@ -526,3 +526,182 @@ fn a_build_of_a_repo_that_has_a_wiki_is_an_update() {
         runs[0]
     );
 }
+
+/// The command the pane of each wiki Run started in `calls` runs.
+fn ran(calls: &[String]) -> Vec<&str> {
+    (calls.iter())
+        .filter_map(|c| c.strip_prefix("herdr pane run "))
+        .map(|c| c.split_once(' ').unwrap().1)
+        .collect()
+}
+
+#[test]
+fn a_button_queues_its_build_first_and_the_tick_starts_it_as_asked_once_the_open_run_closes() {
+    let t = with_repos(ON);
+    t.tick();
+
+    let (status, queued) = t.send("POST", "/api/wiki/acme%2Fapi/rebuild", "");
+    let shown = wikis(&t);
+    build(&t, "acme/api");
+    t.world.advance(TICK);
+    let (said, calls) = calls_after(&t, || t.tick());
+
+    assert_eq!(
+        (status, queued),
+        (
+            200,
+            json!({ "wiki": "acme/api", "build": "rebuild", "waiting": ["acme/api", "acme/web"] })
+        )
+    );
+    // Asked again while it builds: it shows building, then queued.
+    assert_eq!(
+        (&shown[0]["state"], &shown[1]["state"]),
+        (&json!("building"), &json!("queued"))
+    );
+    assert_eq!(
+        said,
+        [
+            "acme/api: wiki built at abc1234; its workspace closed",
+            "acme/api: wiki started on opencode",
+        ]
+    );
+    assert_eq!(
+        ran(&calls),
+        ["nico-agent wiki build acme/api --rebuild; exit"]
+    );
+    let shown = wikis(&t);
+    assert_eq!(
+        (&shown[0]["state"], &shown[1]["state"]),
+        (&json!("building"), &json!("queued"))
+    );
+}
+
+#[test]
+fn update_and_continue_start_their_own_build_even_with_the_wiki_switch_off() {
+    let t = with_repos("");
+    let file = t.config_dir.join("config.toml");
+    let config = std::fs::read_to_string(&file).unwrap();
+    // One call: acme/api's division leaves its part a budget Gap.
+    std::fs::write(&file, config + "[wiki]\ncalls = 1\n").unwrap();
+    let core = json!({ "name": "Core", "summary": "The crate.", "files": ["src/lib.rs"] });
+    (t.world.headless.borrow_mut()).push((
+        "## The part: acme/api".into(),
+        json!({ "kind": "division", "overview": "An API.", "components": [core] }).to_string(),
+    ));
+    build(&t, "acme/api");
+    build(&t, "acme/web");
+    t.tick();
+
+    let update = t.send("POST", "/api/wiki/acme/web/update", "");
+    let continued = t.send("POST", "/api/wiki/acme/api/continue", "");
+    let (_, first) = calls_after(&t, || t.tick());
+    build(&t, "acme/api");
+    t.world.advance(TICK);
+    let (_, second) = calls_after(&t, || t.tick());
+
+    assert_eq!(update.0, 200, "{}", update.1);
+    let budget = |listed: &Value| (listed[0]["budget"].clone(), listed[1]["budget"].clone());
+    assert_eq!(budget(&t.get("/api/wikis").1), (json!(1), json!(0)));
+    assert_eq!(
+        continued.1["waiting"],
+        json!(["acme/api", "acme/web"]),
+        "{}",
+        continued.1
+    );
+    assert_eq!(
+        ran(&first),
+        ["nico-agent wiki build acme/api --continue; exit"]
+    );
+    assert_eq!(
+        ran(&second),
+        ["nico-agent wiki build acme/web --update; exit"]
+    );
+}
+
+#[test]
+fn a_button_is_refused_for_no_repo_and_continue_for_a_wiki_with_no_budget_gaps() {
+    let t = with_repos("");
+    build(&t, "acme/api");
+    t.tick();
+
+    let unknown = t.send("POST", "/api/wiki/acme/nope/rebuild", "");
+    let unbuilt = t.send("POST", "/api/wiki/acme/web/continue", "");
+    let whole = t.send("POST", "/api/wiki/acme/api/continue", "");
+    let other = t.send("POST", "/api/wiki/acme/api/delete", "");
+
+    assert_eq!(unknown.0, 409);
+    assert_eq!(
+        unknown.1["error"], "acme/nope is not a configured Repo",
+        "{}",
+        unknown.1
+    );
+    assert_eq!(
+        unbuilt,
+        (
+            409,
+            json!({ "error": "acme/web has no Wiki to continue", "help": ["Build it first: nico-agent wiki build acme/web"] })
+        )
+    );
+    assert_eq!(
+        whole,
+        (
+            409,
+            json!({ "error": "the Wiki of acme/api has no budget Gaps to continue", "help": ["Update it, or Rebuild it from nothing"] })
+        )
+    );
+    assert_eq!(other.0, 404);
+    // Nothing queued.
+    assert_eq!(t.tick(), Vec::<String>::new());
+}
+
+#[test]
+fn the_wikis_listed_show_their_build_building_with_its_pane_queued_or_failed_with_why() {
+    let t = with_repos(ON);
+    both_built(&t);
+    t.send("POST", "/api/wiki/acme/api/rebuild", "");
+    t.send("POST", "/api/wiki/acme/web/update", "");
+    t.tick();
+    let building = t.get("/api/wikis");
+    t.world.gone_panes.borrow_mut().push("w3:p2".into());
+    t.world.advance(TICK);
+    t.tick();
+
+    let failed = t.get("/api/wikis");
+
+    let shown = |id: &str, state: &str, pane: Value, why: Value| {
+        json!({
+            "id": id,
+            "target": { "repo": id },
+            "commit": "abc1234",
+            "builtAt": if id == "acme/api" { "2026-09-30T12:00:00Z" } else { "2026-09-30T12:10:00Z" },
+            "gaps": 0,
+            "budget": 0,
+            "calls": 48,
+            "state": state,
+            "pane": pane,
+            "why": why,
+        })
+    };
+    assert_eq!(
+        building,
+        (
+            200,
+            json!([
+                shown("acme/api", "queued", Value::Null, Value::Null),
+                shown("acme/web", "building", json!("w3:p2"), Value::Null),
+            ])
+        )
+    );
+    assert_eq!(
+        failed.1,
+        json!([
+            shown("acme/api", "building", json!("w4:p2"), Value::Null),
+            shown(
+                "acme/web",
+                "failed",
+                Value::Null,
+                json!("its pane is gone without an outcome")
+            ),
+        ])
+    );
+}
