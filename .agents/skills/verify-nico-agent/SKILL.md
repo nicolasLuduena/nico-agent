@@ -27,7 +27,7 @@ Decisions this skill was generated from (the interview of the repo):
   `$HOME/.config/nico-agent` there (`src/main.rs`); serve on a free port (`port` in that
   `config.toml`); the page in headless Chromium through Playwright; `/api` with curl.
 - **Observe:** stdout JSON and exit codes; the files of the scratch config dir (`config.toml`,
-  `dispatches.json`, `prs.json`, `issues/`, `verdicts/`, `pauses.json`); the Bucket's git log; HTTP
+  `dispatches.json`, `prs.json`, `issues/`, `verdicts/`, `pauses.json`, `checks.json`); the Bucket's git log; HTTP
   status, headers and body; the page's ARIA snapshot, screenshot and the `/api` requests it made;
   every call the binary made outside the process, recorded by the stubs in `outside.log`.
 - **Isolate:** yes. Each run has its own directory `${VERIFY_RUN_ROOT:-${TMPDIR:-/tmp}/verify-nico-agent}/$VERIFY_RUN_ID`
@@ -191,7 +191,7 @@ Stable handles are the command words and flags (`--path`, `--json`, `--harness`,
 unknown path's `help`, and on the page the ARIA roles and names: `tablist "Repos"` with one `tab`
 per Repo, `region "Needs you"`, `button "Refresh"`, `switch "Dispatch"` (and `Faux-nico answers`,
 `Flip to ready`, `Gardening`, `Quality-scan`, `Restart`, `Review`, `Stack`), `spinbutton "Room"`,
-`region "Dispatch"` with `button "Dispatch"`, `region "Map of <slug>"`, `region "Settings"` with
+`region "Dispatch"` with `button "Dispatch"`, `region "Readiness"` with a `group` reading `N of M pass`, `region "Map of <slug>"`, `region "Settings"` with
 `combobox "Implementer Harness"` (and `model`, `Effort`, and the same for `Reviewer`), `textbox
 "Base"`, `combobox "Project"`, `button "Use the default <Setting>"` or `"Use the Project's
 <Setting>"`, `button "Remove <slug>…"`, `region "Add a Repo"` with `textbox "Repo"`, `textbox "Its

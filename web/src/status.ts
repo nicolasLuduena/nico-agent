@@ -35,6 +35,23 @@ export interface Repo {
   harnesses: Record<string, { models: string[] | null; efforts: string[] | null }>;
   /** Its last quality-scan's Run; none before the first. */
   last_scan?: Run;
+  /** Its Readiness checks; none before the first. */
+  checks?: Checks;
+}
+
+/** A Repo's Readiness checks: what would break it before it does. */
+export interface Checks {
+  /** Since when they say what they say. */
+  at: string;
+  results: Check[];
+}
+
+export interface Check {
+  name: string;
+  ok: boolean;
+  said: string;
+  /** What to do about it, while it fails. */
+  help: string | null;
 }
 
 /** Repos that work together, and the defaults they take where they set none. */

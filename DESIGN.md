@@ -163,7 +163,7 @@ Barlow is a grotesk drawn from transit and highway signage. It is served from th
 - `number` (22px bold): the issue number on a node, which is the "departure time" of the timetable.
 - `head` (22px semibold): the panel's title and the Repo name where it heads a section.
 - `body` and `strong` (14px): titles, Stage words, form text, history rows.
-- `label` (14px semibold caps, 0.06em): `CODE` / `RESEARCH`, `ASKING` / `FAILED` / `REVIEW` / `VERIFIED` / `PAUSED`, form field labels.
+- `label` (14px semibold caps, 0.06em): `CODE` / `RESEARCH`, `ASKING` / `FAILED` / `REVIEW` / `VERIFIED` / `PAUSED` / `CHECK`, form field labels.
 
 **The Right Column Rule.** Every time on the page (Source read, PRs checked, restarted at, Verdict at, paused until) is set right-aligned in a tabular column, `HH:MM`, plus the date when it isn't today.
 
@@ -225,7 +225,7 @@ A node that needs you carries a 4px `signal` flag across its top edge.
 - `blocker`: one 2px `ink` line, so a chain reads as a route between its stops.
 - `stack`: double rails, `live`, drawn as a 5px stroke with a 2px `surface` stroke over it, so it reads as two parallel lines (a through-coach connection) and never as a heavier blocker line.
 
-**Band (needs you):** one row per item: kind (`label`), `repo #issue` (`strong`, tabular), the question's first line, the title, or where the review stands with the command that records a Verdict by hand (`body`, ellipsized), and the time right-aligned. The whole row is the button that focuses the node. With items, it is `signal` with a 1px `rule` top and bottom. With none, it is `surface` with a hairline frame and reads "Nothing needs you" in `ink-muted`. GitHub paused is a row like the others: `PAUSED · GitHub · until HH:MM`. So is an agent of the loop's own that herdr reports blocked: `BLOCKED · <agent> · HH:MM`, under its `repo #issue` for a faux-nico, the only one with a node to focus.
+**Band (needs you):** one row per item: kind (`label`), `repo #issue` (`strong`, tabular), the question's first line, the title, or where the review stands with the command that records a Verdict by hand (`body`, ellipsized), and the time right-aligned. The whole row is the button that focuses the node. With items, it is `signal` with a 1px `rule` top and bottom. With none, it is `surface` with a hairline frame and reads "Nothing needs you" in `ink-muted`. GitHub paused is a row like the others: `PAUSED · GitHub · until HH:MM`. So is an agent of the loop's own that herdr reports blocked: `BLOCKED · <agent> · HH:MM`, under its `repo #issue` for a faux-nico, the only one with a node to focus. A failing Readiness check is `CHECK · <repo>: · what it says · HH:MM`, its help on the line under what it says, both wrapped, never ellipsized: the help is the fix.
 
 **Tabs:** text tabs on a hairline baseline, each Repo's name set in `head` (it heads the work below it), 24px apart with no side padding, so the first aligns with the gutter and the underline is as wide as the name. The active tab is `ink` with a 3px `rule` underline; the others are `ink-muted`.
 
@@ -235,6 +235,7 @@ A node that needs you carries a 4px `signal` flag across its top edge.
 
 These are the shapes the UI tickets build. They are not implemented yet.
 
+- **Readiness:** first in the column, under a `label` head: each failing check on the errata rule, what it says in `strong` and its help in `body`; then a native disclosure "N of M pass" folding the passing ones, and one `ink-muted` line with the time the results last changed.
 - **Switches:** set once and left, so folded (a native disclosure) to one line: `SWITCHES` (`label`) and how many are on, `6 of 8 on` in `ink-muted` at its right. Opened, eight rows (dispatch, stack, review, restart, flip, answer, gardening, quality_scan), with the name as `strong` on the left and a standard toggle on the right (`live` when on, `hairline` track when off). A toggle that is saving is disabled until the PATCH answers.
 - **Where a setting comes from:** beside each setting, left of its control, a `label` in `ink-muted` reading `project` or `default` while the Repo does not set it; once it does, a `button-quiet` "Use the Project's" (or "Use the default") in its place, which removes the Repo's own. A long name wraps it under the name.
 - **Room:** a row like a switch's, "Room" as `strong` on the left and a number input on the right, then one `ink-muted` line counting the Repo's Dispatches In flight. A refused value appears inline under it, as the Dispatch form's refusal does, and the input goes back to the room set.

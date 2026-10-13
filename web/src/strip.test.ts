@@ -129,4 +129,36 @@ describe("the needs-you strip", () => {
       ["Paused", "GitHub", "2026-09-30T13:00:00Z"],
     ]);
   });
+
+  it("lists each failing Readiness check with its Repo, what it says and its help, since when it fails, after the work", () => {
+    const check = (name: string, ok: boolean, said: string, help: string | null = null) => ({ name, ok, said, help });
+    const checked: Status = {
+      ...status([{ stage: "Failed" }]),
+      repos: [
+        {
+          slug: "acme/api",
+          checks: {
+            at: "2026-09-30T07:00:00Z",
+            results: [
+              check("clone", true, "/src/api is a clone of acme/api"),
+              check("skills", false, "no verdict skill for codex, the Reviewer's Harness", "Install verdict in one of ~/.agents/skills"),
+            ],
+          },
+        } as Repo,
+        { slug: "acme/web" } as Repo,
+      ],
+    };
+
+    expect(needsYou(checked)).toEqual([
+      { kind: "Failed", repo: "acme/api", issue: "acme/api#7", text: "Add the export endpoint", at: "2026-09-30T11:00:00Z" },
+      {
+        kind: "Check",
+        repo: "acme/api",
+        issue: null,
+        text: "no verdict skill for codex, the Reviewer's Harness",
+        help: "Install verdict in one of ~/.agents/skills",
+        at: "2026-09-30T07:00:00Z",
+      },
+    ]);
+  });
 });

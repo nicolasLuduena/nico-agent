@@ -81,11 +81,11 @@ const COMMANDS: &[(&str, &str)] = &[
     ),
     (
         "nico-agent serve",
-        "run the loop: a tick now and every tick_minutes",
+        "check every Repo's readiness, then run the loop: a tick now and every tick_minutes",
     ),
     (
         "nico-agent refresh",
-        "re-read every Repo's issues and re-ask about every watched PR, then run a tick",
+        "re-read every Repo's issues and re-ask about every watched PR, then run a tick and check every Repo's readiness",
     ),
 ];
 

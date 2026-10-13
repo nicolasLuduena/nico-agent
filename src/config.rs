@@ -76,6 +76,7 @@ effort_args = ["--effort", "{effort}"]
 models = ["fable", "opus", "sonnet", "haiku"]
 efforts = ["low", "medium", "high", "xhigh", "max"]
 trust_prompt = { text = "Yes, I trust this folder", keys = ["down", "enter"] }
+skill_dirs = ["~/.claude/skills", ".claude/skills"]
 
 [harnesses.codex]
 launch_mode = "herdr-kind"
@@ -89,6 +90,8 @@ trust_args = ["-c", 'projects={"{repoPath}"={trust_level="trusted"}}']
 # Its review of new or changed hooks, which herdr reports ready (#279), takes
 # a prompt's Enter: the user's to answer, so no prompt is sent into it again.
 startup_questions = ["Hooks need review", "review before"]
+# ~/.codex/skills is where its skill installer still puts them.
+skill_dirs = ["~/.codex/skills", "~/.agents/skills", ".agents/skills"]
 
 # Its TUI takes no model or Effort flag: the model goes in
 # OPENCODE_CONFIG_CONTENT and the Effort in its variant file.
@@ -99,6 +102,10 @@ variant_file = "~/.local/state/opencode/model.json"
 sigil = "@"
 model_args = []
 effort_args = []
+skill_dirs = [
+  "~/.config/opencode/skills", "~/.claude/skills", "~/.agents/skills",
+  ".opencode/skills", ".claude/skills", ".agents/skills",
+]
 "#;
 
 /// What a Repo leaves out, filled in under each `repos.<slug>` after its Project's.
@@ -306,6 +313,10 @@ pub struct Harness {
     /// Text on a screen it asks the user a question on while herdr reports it ready.
     #[serde(default)]
     pub startup_questions: Vec<String>,
+    /// Where it reads skills from, each `<name>/SKILL.md`: `~/` the home
+    /// directory, a relative one the Repo's clone.
+    #[serde(default)]
+    pub skill_dirs: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]

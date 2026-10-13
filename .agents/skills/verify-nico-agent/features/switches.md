@@ -49,8 +49,9 @@ Preconditions:
 - **Second view.** Run `$C run --evidence "$E/08-list" -- repo list --json`: `switches` has
   `dispatch` false, `review` false, the rest as before (`answer`, `gardening`, `quality_scan` false).
 - **Obeyed.** `: > "$OUTSIDE_LOG"`; run `$C http --evidence "$E/09-refresh-off" POST /api/refresh`.
-  HTTP `200`, `actions` `[]`; `$OUTSIDE_LOG` holds only `gh api user --jq .login` (no `gh issue
-  edit`, no `herdr worktree create`): nothing was dispatched. Copy it to `$E/outside.off.log`.
+  HTTP `200`, `actions` `[]`; `$OUTSIDE_LOG` holds only `gh api user --jq .login` and the Readiness
+  checks' `ghbot api /installation/repositories ...` (no `gh issue edit`, no `herdr worktree
+  create`): nothing was dispatched. Copy it to `$E/outside.off.log`.
 - **Toggle on the page.** Run `$C page --evidence "$E/10-toggle" --click "region=Switches" --expect "3 of 8 on" --click "switch=Dispatch" --expect "4 of 8 on"`.
   `.requests.txt` has `PATCH /api/repo/verify/fixture {"switches":{"dispatch":true}} -> 200`; the ARIA
   snapshot has `switch "Dispatch" [checked]`, `switch "Review"` unchecked, and `Faux-nico answers`,

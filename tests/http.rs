@@ -26,7 +26,8 @@ fn serve_listens_on_127_0_0_1_42069_before_its_first_tick_and_ticks_on_schedule(
 
     assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
     let calls = t.world.calls();
-    assert_eq!(calls[0], "listen 127.0.0.1:42069");
+    let at = |call: &str| calls.iter().position(|c| c == call).unwrap();
+    assert!(at("listen 127.0.0.1:42069") < at("github issues acme/api"));
     // The Source is read at 12:00 and 12:10.
     let reads = calls.iter().filter(|c| *c == "github issues acme/api");
     assert_eq!(reads.count(), 2);
@@ -48,7 +49,7 @@ fn serve_listens_on_the_port_config_toml_sets() {
     let ran = t.cli(&["serve"]);
 
     assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
-    assert_eq!(t.world.calls()[0], "listen 127.0.0.1:4321");
+    assert!(t.world.calls().contains(&"listen 127.0.0.1:4321".into()));
 }
 
 #[test]

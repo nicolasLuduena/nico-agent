@@ -6,10 +6,12 @@ use toml_edit::{InlineTable, Item, Table, TableLike, value};
 
 use crate::args::Args;
 use crate::bucket;
+use crate::checks;
 use crate::cli::{Context, Refusal, bad_invocation};
 use crate::config::{self, Config, Launch, Linear, SWITCHES, Switches};
 use crate::dispatch;
 use crate::status;
+use crate::world::World;
 
 pub fn add(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
     const ADD: &str = "repo add";
@@ -56,27 +58,7 @@ pub fn add(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
         }
     };
 
-    let Some(remotes) = ctx.world.git_remotes(&path)? else {
-        return Err(Refusal::new(
-            format!("{path} is not a git clone"),
-            vec![format!(
-                "Run `git clone https://github.com/{slug} {path}` first, or pass the path of an existing clone"
-            )],
-        ));
-    };
-    let of_slug =
-        |remote: &String| remote_slug(remote).is_some_and(|s| s.eq_ignore_ascii_case(slug));
-    if !remotes.iter().any(of_slug) {
-        return Err(Refusal::new(
-            format!(
-                "{path} is not a clone of {slug} (its remotes: {})",
-                remotes.join(", ")
-            ),
-            vec![format!(
-                "Run `nico-agent repo add <owner/name> --path {path}` with the slug its remote points at"
-            )],
-        ));
-    }
+    clone_of(ctx.world, slug, &path)?;
     bucket::create(ctx, &config::load(&ctx.config_dir)?)?;
 
     config::edit(&ctx.config_dir, |config, doc| {
@@ -108,6 +90,32 @@ pub fn add(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
         }
         json!({ "repo": format!("{slug} {done}"), "path": path })
     })
+}
+
+/// Whether `path` is a clone with a remote for `slug`; refused saying why.
+pub fn clone_of(world: &dyn World, slug: &str, path: &str) -> Result<(), Refusal> {
+    let Some(remotes) = world.git_remotes(path)? else {
+        return Err(Refusal::new(
+            format!("{path} is not a git clone"),
+            vec![format!(
+                "Run `git clone https://github.com/{slug} {path}` first, or pass the path of an existing clone"
+            )],
+        ));
+    };
+    let of_slug =
+        |remote: &String| remote_slug(remote).is_some_and(|s| s.eq_ignore_ascii_case(slug));
+    if !remotes.iter().any(of_slug) {
+        return Err(Refusal::new(
+            format!(
+                "{path} is not a clone of {slug} (its remotes: {})",
+                remotes.join(", ")
+            ),
+            vec![format!(
+                "Run `nico-agent repo add <owner/name> --path {path}` with the slug its remote points at"
+            )],
+        ));
+    }
+    Ok(())
 }
 
 pub fn rm(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
@@ -193,8 +201,8 @@ pub fn switches(ctx: &Context, slug: &str, set: &Value) -> Result<Value, Refusal
 
 /// Write `set`, `{setting: value}` of [`SETTINGS`], to the Repo `slug` in the
 /// config, keeping the rest as written; null removes the Repo's own value,
-/// a switch's its own switch. The Repo's slug and settings after, as
-/// `status` shows them.
+/// a switch's its own switch; then the Repo's Readiness checks run. The
+/// Repo's slug and settings after, as `status` shows them.
 pub fn set(ctx: &Context, slug: &str, set: &Value) -> Result<Value, Refusal> {
     let slug = config::edit(&ctx.config_dir, |config, doc| {
         let Some((slug, _)) = config.repo(slug) else {
@@ -209,6 +217,7 @@ pub fn set(ctx: &Context, slug: &str, set: &Value) -> Result<Value, Refusal> {
     })??;
     let config = config::load(&ctx.config_dir)?;
     let (slug, repo) = config.repo(&slug).ok_or_else(|| not_configured(&slug))?;
+    checks::run(ctx, &config, |checked, _| checked == slug)?;
     let mut shown = json!({ "slug": slug });
     for (key, setting) in status::settings(&config, slug, repo) {
         shown[key] = setting;
@@ -217,7 +226,8 @@ pub fn set(ctx: &Context, slug: &str, set: &Value) -> Result<Value, Refusal> {
 }
 
 /// Write `set`, `{setting: value}` of [`PROJECT_SETTINGS`], to the defaults
-/// of the Project `name`, as [`set`] does a Repo's; its name and defaults after.
+/// of the Project `name` as [`set`] does a Repo's, then check its Repos;
+/// its name and defaults after.
 pub fn set_project(ctx: &Context, name: &str, set: &Value) -> Result<Value, Refusal> {
     config::edit(&ctx.config_dir, |config, doc| {
         let mut names: Vec<&str> = config.projects.keys().map(String::as_str).collect();
@@ -236,6 +246,7 @@ pub fn set_project(ctx: &Context, name: &str, set: &Value) -> Result<Value, Refu
         Ok(())
     })??;
     let config = config::load(&ctx.config_dir)?;
+    checks::run(ctx, &config, |slug, repo| repo.project_name(slug) == name)?;
     Ok(json!({ "name": name, "defaults": config.projects.get(name) }))
 }
 

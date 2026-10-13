@@ -26,6 +26,10 @@
     <!-- `acme/api #7`, or `acme/api BLE-12` for a Linear issue. -->
     <span class="ref">{need.repo} {need.issue.replace(need.repo, "")}</span>
     <span class="text">{@render ticked(need.text)}</span>
+  {:else if need.kind === "Check"}
+    <!-- `acme/api: what it says`, and under it what to do about it. -->
+    <span class="ref">{need.repo}:</span>
+    <span class="text full">{@render ticked(need.text)}<span class="help">{@render ticked(need.help ?? "")}</span></span>
   {:else}
     <span class="ref">{need.text}</span>
     <span class="text"></span>
@@ -118,6 +122,14 @@
   }
   .at {
     text-align: right;
+  }
+  /* A check's help is the fix: read whole, never cut. */
+  .text.full {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .help {
+    display: block;
   }
 
   /* One item per block: kind, Repo and issue, and time; the question or title under them. */

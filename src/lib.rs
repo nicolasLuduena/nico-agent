@@ -3,6 +3,7 @@ pub mod args;
 pub mod asking;
 pub mod away;
 pub mod bucket;
+pub mod checks;
 pub mod cli;
 pub mod config;
 pub mod dispatch;
