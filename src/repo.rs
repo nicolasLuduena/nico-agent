@@ -178,15 +178,16 @@ pub fn list(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
 }
 
 /// What `PATCH /api/repo/<slug>` sets; null takes the Project's or the default.
-const SETTINGS: [&str; 6] = [
+const SETTINGS: [&str; 7] = [
     "implementer",
     "reviewer",
     "room",
     "base",
     "project",
+    "install",
     "switches",
 ];
-/// What `PATCH /api/project/<name>` sets: a Repo's, but `project`.
+/// What `PATCH /api/project/<name>` sets: a Repo's, but `project` and `install`.
 const PROJECT_SETTINGS: [&str; 5] = ["implementer", "reviewer", "room", "base", "switches"];
 
 /// Write `set`, `{name: bool}`, to the switches of the Repo `slug` as
@@ -296,6 +297,15 @@ fn checked<'a>(
                 ));
             }
             ("base" | "project", Value::String(name)) if is_name(name) => {}
+            ("install", Value::String(command)) if !command.trim().is_empty() => {}
+            ("install", other) => {
+                let help =
+                    "install is the command run in the Repo's clone after a merge into its Base";
+                return Err(bad(
+                    format!("install is a command, not {other}"),
+                    help.into(),
+                ));
+            }
             ("base" | "project", other) => {
                 let help = match key.as_str() {
                     "base" => "base is the branch a Dispatch starts from unless stacked",
@@ -422,7 +432,7 @@ fn set_kept(table: &mut dyn TableLike, key: &str, mut new: toml_edit::Value) {
 }
 
 /// The refusal of a `slug` the config has no Repo for.
-fn not_configured(slug: &str) -> Refusal {
+pub fn not_configured(slug: &str) -> Refusal {
     Refusal::new(
         format!("{slug} is not a configured Repo"),
         vec![format!(

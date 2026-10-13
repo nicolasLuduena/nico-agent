@@ -72,6 +72,15 @@ pub struct FakeWorld {
     pub committed: RefCell<BTreeMap<String, Vec<u8>>>,
     /// Files at a commit of a clone, by `<path> <rev>:<file>`.
     pub tree: RefCell<BTreeMap<String, String>>,
+    /// The branch each clone is on, by path; `main` when unset.
+    pub branches: RefCell<HashMap<String, String>>,
+    /// The changes to tracked files of each clone, by path, as `git status --porcelain` lists them.
+    pub tracked_changes: RefCell<HashMap<String, Vec<String>>>,
+    /// The commit each clone is on, by path; `abc1234` when unset.
+    pub heads: RefCell<HashMap<String, String>>,
+    /// Whether each shell command line succeeds and what it prints, by the
+    /// command; one unset succeeds printing nothing.
+    pub shell_runs: RefCell<HashMap<String, (bool, String)>>,
     /// How far local time is ahead of UTC, in seconds: 0, UTC, unless set.
     pub utc_offset: Cell<i64>,
     workspaces: Cell<u32>,
@@ -114,6 +123,10 @@ impl Default for FakeWorld {
             files: Default::default(),
             committed: Default::default(),
             tree: Default::default(),
+            branches: Default::default(),
+            tracked_changes: Default::default(),
+            heads: Default::default(),
+            shell_runs: Default::default(),
             utc_offset: Cell::new(0),
             workspaces: Cell::new(0),
             tabs: Default::default(),
@@ -342,6 +355,42 @@ impl World for FakeWorld {
             .collect();
         names.dedup();
         Ok(names)
+    }
+
+    fn git_branch(&self, path: &str) -> WorldResult<String> {
+        self.call(format!("git -C {path} branch --show-current"))?;
+        let branches = self.branches.borrow();
+        Ok(branches.get(path).cloned().unwrap_or_else(|| "main".into()))
+    }
+
+    fn git_tracked_changes(&self, path: &str) -> WorldResult<Vec<String>> {
+        self.call(format!(
+            "git -C {path} status --porcelain --untracked-files=no"
+        ))?;
+        Ok(self
+            .tracked_changes
+            .borrow()
+            .get(path)
+            .cloned()
+            .unwrap_or_default())
+    }
+
+    fn git_pull(&self, path: &str) -> WorldResult<()> {
+        self.call(format!(
+            "GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND=\"ssh -o BatchMode=yes -o ConnectTimeout=10\" git -C {path} pull --ff-only"
+        ))
+    }
+
+    fn git_head(&self, path: &str) -> WorldResult<String> {
+        self.call(format!("git -C {path} rev-parse HEAD"))?;
+        let heads = self.heads.borrow();
+        Ok(heads.get(path).cloned().unwrap_or_else(|| "abc1234".into()))
+    }
+
+    fn shell(&self, cwd: &str, command: &str) -> WorldResult<(bool, String)> {
+        self.call(format!("cd {cwd} && sh -c {command}"))?;
+        let runs = self.shell_runs.borrow();
+        Ok(runs.get(command).cloned().unwrap_or((true, String::new())))
     }
 
     fn copy_dir(&self, from: &str, to: &str) -> WorldResult<()> {

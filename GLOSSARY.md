@@ -76,15 +76,23 @@ garden.
 
 **Needs you**: the strip across Repos listing what only the user can act on:
 Asking, failed twice, a review given up on or stopped, Verified PRs to merge, a
-Run whose agent herdr reports blocked, a failing Readiness check. _Avoid_:
-inbox, alerts.
+Run whose agent herdr reports blocked, a failed or refused Install, a failing
+Readiness check. _Avoid_: inbox, alerts.
 
 **Readiness check**: one of the things a Repo needs before the Loop works it,
-checked when `serve` starts, on Refresh and after a write to its or its
-Project's settings: its clone, a fetch that asks nothing, `.evidence/`
-ignored and a Verification skill on its Base, the skills its steps' prompts
-name for their Harness, the GitHub App on it. A failing one is in needs-you
-with its help, and stops nothing. _Avoid_: health, doctor.
+checked when `serve` starts, on Refresh, after a write to its or its
+Project's settings and after its Install: its clone, a fetch that asks
+nothing, `.evidence/` ignored and a Verification skill on its Base, the
+skills its steps' prompts name for their Harness, the GitHub App on it. A
+failing one is in needs-you with its help, and stops nothing. _Avoid_:
+health, doctor.
+
+**Install**: the command a Repo runs in its clone after a PR merges into its
+Base, so what it builds (the skills, the nico-agent binary) is what the next
+agent uses: `nico-agent install <owner/name>` in a herdr pane, refused unless
+the clone is on its Base with no changes to tracked files, then a
+fast-forward pull and the command. One at a time per Repo; a merge while one
+runs queues one more. _Avoid_: deploy, release.
 
 **Harness**: the coding agent CLI a Dispatch runs on: claude, codex,
 opencode. Each has launch modes, models and Effort values. _Avoid_: tool,

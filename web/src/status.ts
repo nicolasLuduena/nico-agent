@@ -37,6 +37,19 @@ export interface Repo {
   last_scan?: Run;
   /** Its Readiness checks; none before the first. */
   checks?: Checks;
+  /** Its Install, while it has a command. */
+  install?: { command: string; last: Install | null };
+}
+
+/** How a Repo's last Install went. */
+export interface Install {
+  /** When it started, before it pulled. */
+  at: string;
+  /** The commit it installed; null when it was refused or its pull failed. */
+  sha: string | null;
+  ok: boolean;
+  /** The last lines of what it printed, or why it was refused. */
+  output: string;
 }
 
 /** A Repo's Readiness checks: what would break it before it does. */

@@ -263,6 +263,23 @@ pub trait World {
     /// The names of what the folder `folder` holds at `rev` in the clone at
     /// `path`; none when it has no such folder.
     fn git_ls_tree(&self, path: &str, rev: &str, folder: &str) -> WorldResult<Vec<String>>;
+    /// The branch the clone at `path` is on; empty when its HEAD is detached.
+    fn git_branch(&self, path: &str) -> WorldResult<String>;
+    /// The changes to tracked files in the clone at `path`, a line each as
+    /// `git status --porcelain` lists them; none when it has none.
+    fn git_tracked_changes(&self, path: &str) -> WorldResult<Vec<String>>;
+    /// Pull the clone's branch fast-forward only, failing at once rather
+    /// than asking for a passphrase.
+    fn git_pull(&self, path: &str) -> WorldResult<()>;
+    /// The commit the clone at `path` is on.
+    fn git_head(&self, path: &str) -> WorldResult<String>;
+
+    // shell
+    /// Run `command` with `sh -c` in the folder `cwd`, with no input, showing
+    /// what it prints on stderr as it prints it, so stdout stays the
+    /// command's own: whether it succeeded, and what it printed, stdout and
+    /// stderr as they came.
+    fn shell(&self, cwd: &str, command: &str) -> WorldResult<(bool, String)>;
 
     // files outside the config directory: worktrees, the Bucket
     /// Copy the files [`World::list_files`] lists under the folder `from`
@@ -791,6 +808,13 @@ fn git(dir: &Path, args: &[&str]) -> WorldResult<(bool, String)> {
     ))
 }
 
+/// ssh that fails at once rather than asking for a passphrase; ConnectTimeout:
+/// an unreachable origin does not hold serve's start, which checks it.
+const BATCH_SSH: (&str, &str) = (
+    "GIT_SSH_COMMAND",
+    "ssh -o BatchMode=yes -o ConnectTimeout=10",
+);
+
 /// Run `git -C <path> <args>`, never prompting: what it printed, trimmed, or
 /// its failure with git's first line about it.
 fn git_ok(path: &str, args: &[&str]) -> WorldResult<String> {
@@ -1017,12 +1041,7 @@ impl World for RealWorld {
         git_ok(path, &["status", "--porcelain", "--", folder]).map(|out| !out.is_empty())
     }
     fn git_ls_remote(&self, path: &str) -> WorldResult<()> {
-        // ConnectTimeout: an unreachable origin does not hold serve's start, which checks it.
-        let ssh = (
-            "GIT_SSH_COMMAND",
-            "ssh -o BatchMode=yes -o ConnectTimeout=10",
-        );
-        git_env(path, &["ls-remote", "origin"], &[ssh]).map(drop)
+        git_env(path, &["ls-remote", "origin"], &[BATCH_SSH]).map(drop)
     }
     fn git_show(&self, path: &str, rev: &str, file: &str) -> WorldResult<Option<String>> {
         // Lists nothing for a file `rev` lacks; fails for a `rev` the clone lacks.
@@ -1037,6 +1056,45 @@ impl World for RealWorld {
         Ok((listed.lines())
             .map(|name| name.strip_prefix(&folder).unwrap_or(name).to_string())
             .collect())
+    }
+    fn git_branch(&self, path: &str) -> WorldResult<String> {
+        git_ok(path, &["branch", "--show-current"])
+    }
+    fn git_tracked_changes(&self, path: &str) -> WorldResult<Vec<String>> {
+        let listed = git_ok(path, &["status", "--porcelain", "--untracked-files=no"])?;
+        Ok(listed.lines().map(|line| line.trim().to_string()).collect())
+    }
+    fn git_pull(&self, path: &str) -> WorldResult<()> {
+        git_env(path, &["pull", "--ff-only"], &[BATCH_SSH]).map(drop)
+    }
+    fn git_head(&self, path: &str) -> WorldResult<String> {
+        git_ok(path, &["rev-parse", "HEAD"])
+    }
+    fn shell(&self, cwd: &str, command: &str) -> WorldResult<(bool, String)> {
+        let failed = |e: io::Error| WorldError(format!("could not run `{command}` in {cwd}: {e}"));
+        let (mut reader, writer) = io::pipe().map_err(failed)?;
+        // Our ends of the pipe go with the Command: the reads below end when its process does.
+        let mut child = Command::new("sh")
+            .args(["-c", command])
+            .current_dir(cwd)
+            .stdin(Stdio::null())
+            .stdout(writer.try_clone().map_err(failed)?)
+            .stderr(writer)
+            .spawn()
+            .map_err(failed)?;
+        // shortcut: a process it leaves in the background holding the pipe holds this till it ends; none we run does.
+        let (mut printed, mut chunk, mut shown) = (vec![], [0; 8192], io::stderr());
+        loop {
+            let n = reader.read(&mut chunk).map_err(failed)?;
+            if n == 0 {
+                break;
+            }
+            // Shown is for whoever watches; a closed terminal stops nothing.
+            let _ = shown.write_all(&chunk[..n]).and_then(|()| shown.flush());
+            printed.extend_from_slice(&chunk[..n]);
+        }
+        let status = child.wait().map_err(failed)?;
+        Ok((status.success(), String::from_utf8_lossy(&printed).into()))
     }
     fn copy_dir(&self, from: &str, to: &str) -> WorldResult<()> {
         copy_tree(Path::new(from), Path::new(to))

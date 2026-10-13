@@ -26,7 +26,7 @@
     <!-- `acme/api #7`, or `acme/api BLE-12` for a Linear issue. -->
     <span class="ref">{need.repo} {need.issue.replace(need.repo, "")}</span>
     <span class="text">{@render ticked(need.text)}</span>
-  {:else if need.kind === "Check"}
+  {:else if need.kind === "Check" || need.kind === "Install"}
     <!-- `acme/api: what it says`, and under it what to do about it. -->
     <span class="ref">{need.repo}:</span>
     <span class="text full">{@render ticked(need.text)}<span class="help">{@render ticked(need.help ?? "")}</span></span>

@@ -10,6 +10,7 @@ use crate::checks;
 use crate::cli::{Context, Refusal, bad_invocation};
 use crate::config::{self, Config, Launch, Repo, SWITCHES};
 use crate::dispatch::{self, Dispatch};
+use crate::install;
 use crate::pause;
 use crate::repo;
 use crate::review;
@@ -78,6 +79,7 @@ pub fn shown(
     let mut repos = vec![];
     let runs = away::load(&ctx.config_dir)?;
     let checks = checks::load(&ctx.config_dir)?;
+    let installs = install::load(&ctx.config_dir)?;
     for (slug, repo) in &config.repos {
         let (read, error) = match read {
             true => source::issues(ctx.world, &ctx.config_dir, slug, repo, config.tick())?,
@@ -103,6 +105,9 @@ pub fn shown(
         }
         if let Some(checks) = checks.get(slug) {
             shown["checks"] = json!(checks);
+        }
+        if let Some(install) = install::shown(&installs, slug, repo) {
+            shown["install"] = install;
         }
         for (key, setting) in settings(config, slug, repo) {
             shown[key] = setting;
