@@ -205,7 +205,7 @@ fn run(world: &dyn World, repo: &Repo, command: &str, at: String) -> Last {
             )));
         }
         world.git_pull(path)?;
-        world.git_head(path)
+        world.git_rev(path, "HEAD")
     };
     let sha = match pulled() {
         Ok(sha) => sha,

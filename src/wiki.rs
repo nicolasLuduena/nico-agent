@@ -4,6 +4,9 @@
 //! code checks every answer, dropping each claim that fails and recording
 //! its part as a Gap. The Wiki lands in the Bucket in one commit, then its
 //! records are embedded for `ask`; the build's outcome in `wikis.json`, last.
+//!
+//! The loop runs each build as a Run in a herdr pane, one at a time across
+//! every Repo and outside every room, the others waiting in `wiki-queue.json`.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io;
@@ -15,15 +18,20 @@ use serde_json::{Value, json};
 
 use crate::args::Args;
 use crate::ask;
+use crate::away::{self, Run, Trigger};
 use crate::bucket;
 use crate::cli::{Context, Refusal};
 use crate::config::{self, Config, Repo, fill_in};
+use crate::launch;
 use crate::repo;
 use crate::state;
 use crate::world::{Headless, World, WorldResult};
 
 /// Each Wiki's last build, by its id: a Repo's slug.
 pub const FILE: &str = "wikis.json";
+
+/// The Wikis waiting for a build, and when each Repo's was last checked.
+const QUEUE: &str = "wiki-queue.json";
 
 /// The id of a Wiki's top Component: the whole of its code.
 const INDEX: &str = "index";
@@ -41,17 +49,245 @@ const RELATIONSHIPS: [&str; 4] = ["uses", "calls", "reads", "writes"];
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "outcome", rename_all = "lowercase")]
 pub enum Outcome {
-    Built {
-        at: String,
-        commit: String,
-        components: usize,
-        /// How many Gaps of each reason it left.
-        gaps: BTreeMap<String, usize>,
-    },
+    Built(Built),
     Failed {
         at: String,
         why: String,
+        /// The last build that built the Wiki, whose Wiki the Bucket still holds.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        built: Option<Built>,
     },
+}
+
+/// A build that built its Wiki.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Built {
+    at: String,
+    commit: String,
+    components: usize,
+    /// How many Gaps of each reason it left.
+    gaps: BTreeMap<String, usize>,
+}
+
+#[derive(Default, Serialize, Deserialize)]
+struct Queue {
+    /// By id, in the order they start.
+    waiting: Vec<String>,
+    /// When each Repo's Wiki was last checked against its Base, by slug.
+    #[serde(default)]
+    checked: BTreeMap<String, String>,
+}
+
+/// Close the wiki Run whose build ended; check the Wiki of each Repo with
+/// its `wiki` switch on, once a day from the wiki hour and at once when the
+/// switch turns on, queueing it when it has none or its `origin/<base>`
+/// moved from its commit; then start the first queued while no wiki Run is
+/// open. A check that fails is said and tried again next tick. What it said.
+pub fn step(ctx: &Context, config: &Config) -> Result<Vec<String>, Refusal> {
+    let mut said = close(ctx)?;
+    let outcomes = load(&ctx.config_dir)?;
+    let runs = away::load(&ctx.config_dir)?;
+    let open = open_run(&runs).and_then(|r| r.repo.as_ref());
+    let queue: Queue = state::load(&ctx.config_dir.join(QUEUE))?;
+    let slot = state::iso(away::last_slot(ctx, None, config.wiki.hour));
+    let (mut queued, mut checked) = (vec![], vec![]);
+    for (slug, repo) in config.repos.iter().filter(|(_, r)| r.switches.wiki) {
+        let due = queue.checked.get(slug).is_none_or(|at| *at < slot);
+        let why = match outcomes.get(slug).and_then(Outcome::wiki) {
+            // Checked today, or its build in hand is today's.
+            _ if !due || queue.waiting.contains(slug) || open == Some(slug) => None,
+            None => Some("it has none".into()),
+            Some(Built { commit, .. }) => match base_head(ctx.world, repo) {
+                Err(e) => {
+                    said.push(format!("could not check {slug}'s Base for its Wiki: {e}"));
+                    continue;
+                }
+                Ok((_, head)) if head == *commit => None,
+                Ok((base, head)) => Some(format!("origin/{base} moved from {commit} to {head}")),
+            },
+        };
+        queued.extend(why.map(|why| (slug, why)));
+        if due {
+            checked.push(slug);
+        }
+    }
+    let now = state::iso(ctx.world.now());
+    let next = update_queue(&ctx.config_dir, |queue| {
+        // Off, a Repo's Wiki is built no more: one waiting waits no longer,
+        // and its check is forgotten, so it is checked once the switch is on.
+        let on = |id: &String| config.repos.get(id).is_some_and(|r| r.switches.wiki);
+        queue.waiting.retain(on);
+        queue.checked.retain(|id, _| on(id));
+        for (slug, why) in queued {
+            queue.waiting.push(slug.clone());
+            said.push(format!("{slug}: wiki queued, {why}"));
+        }
+        for slug in checked {
+            queue.checked.insert(slug.clone(), now.clone());
+        }
+        (open.is_none() && !queue.waiting.is_empty()).then(|| queue.waiting.remove(0))
+    })?;
+    if let Some(slug) = next {
+        let repo = &config.repos[&slug];
+        let start = |run: &mut Run| {
+            let workspace = (run.workspace).insert(
+                ctx.world
+                    .herdr_workspace_create(&repo.path, &run.launch.agent)?,
+            );
+            let label = run.trigger.label();
+            launch::open_tab(ctx.world, &mut run.launch, workspace, &repo.path, label)?;
+            let pane = run.launch.pane.as_deref().expect("its tab is open");
+            // Its shell exits with it, so a pane gone is a build ended.
+            let command = format!("nico-agent wiki build {slug}; exit");
+            Ok(ctx.world.herdr_pane_run(pane, &command)?)
+        };
+        let chosen = config.wiki.launch.clone();
+        said.push(away::start_run(
+            ctx,
+            Trigger::Wiki,
+            Some(&slug),
+            chosen,
+            start,
+        )?);
+    }
+    Ok(said)
+}
+
+/// Close the open wiki Run once its build wrote an outcome since it
+/// started, or once its pane is gone without one: failed, which `wikis.json`
+/// then keeps. Closing closes its workspace; one that fails is said and
+/// tried again next tick. What it said.
+fn close(ctx: &Context) -> Result<Vec<String>, Refusal> {
+    let runs = away::load(&ctx.config_dir)?;
+    let Some(run) = open_run(&runs) else {
+        return Ok(vec![]);
+    };
+    let id = run.repo.as_deref().expect("a wiki Run is of a Repo");
+    // Asked first: a pane gone is a build exited, its outcome written if any.
+    let gone = match (&run.failure, &run.launch.pane) {
+        (None, Some(pane)) => match ctx.world.herdr_pane_exists(pane) {
+            Ok(there) => !there,
+            Err(e) => return Ok(vec![format!("could not find the pane of {id}'s wiki: {e}")]),
+        },
+        // Its start stopped short of the build.
+        _ => true,
+    };
+    let ended = load(&ctx.config_dir)?.remove(id);
+    let outcome = match ended.filter(|o| o.at() >= run.at.as_str()) {
+        Some(outcome) => outcome,
+        None if gone => {
+            let why = (run.failure.clone())
+                .unwrap_or_else(|| "its pane is gone without an outcome".into());
+            let failed = Outcome::Failed {
+                at: state::iso(ctx.world.now()),
+                why,
+                built: None,
+            };
+            keep(&ctx.config_dir, id, &failed)?;
+            failed
+        }
+        None => return Ok(vec![]),
+    };
+    let mut said = match &outcome {
+        Outcome::Built(Built { commit, .. }) => format!("{id}: wiki built at {commit}"),
+        Outcome::Failed { why, .. } => format!("{id}: wiki failed: {why}"),
+    };
+    if let Some(workspace) = &run.workspace {
+        if let Err(e) = ctx.world.herdr_workspace_close(workspace) {
+            return Ok(vec![format!(
+                "could not close the workspace of {id}'s wiki: {e}"
+            )]);
+        }
+        said += "; its workspace closed";
+    }
+    let now = state::iso(ctx.world.now());
+    away::update(&ctx.config_dir, |all| {
+        let open = all
+            .iter_mut()
+            .find(|r| r.trigger == Trigger::Wiki && r.closed_at.is_none());
+        open.map(|r| r.closed_at = Some(now))
+    })?;
+    Ok(vec![said])
+}
+
+/// Every Wiki built, tried, queued or building, as `status` shows it: its
+/// state, the commit, time and Gaps of the build that built it, and why
+/// its last build failed if it did.
+pub fn shown(config_dir: &Path, runs: &[Run]) -> io::Result<Vec<Value>> {
+    let outcomes = load(config_dir)?;
+    let queue: Queue = state::load(&config_dir.join(QUEUE))?;
+    let open = open_run(runs);
+    let mut ids: Vec<&String> = outcomes.keys().chain(&queue.waiting).collect();
+    ids.extend(open.and_then(|r| r.repo.as_ref()));
+    ids.sort();
+    ids.dedup();
+    Ok((ids.into_iter())
+        .map(|id| {
+            let building = open.filter(|r| r.repo.as_ref() == Some(id));
+            let outcome = outcomes.get(id);
+            let state = match outcome {
+                _ if building.is_some() => "building",
+                _ if queue.waiting.contains(id) => "queued",
+                Some(Outcome::Built(_)) => "built",
+                _ => "failed",
+            };
+            let mut shown = json!({
+                "wiki": id,
+                "target": { "repo": id },
+                "state": state,
+                "commit": null,
+                "built_at": null,
+                "gaps": null,
+                "pane": building.and_then(|r| r.launch.pane.clone()),
+            });
+            if let Some(Built {
+                at, commit, gaps, ..
+            }) = outcome.and_then(Outcome::wiki)
+            {
+                shown["commit"] = json!(commit);
+                shown["built_at"] = json!(at);
+                shown["gaps"] = json!(gaps.values().sum::<usize>());
+            }
+            if let Some(Outcome::Failed { at, why, .. }) = outcome {
+                shown["failed_at"] = json!(at);
+                shown["why"] = json!(why);
+            }
+            shown
+        })
+        .collect())
+}
+
+/// The Repo's Base, and the commit its `origin/<base>` is on, fetched.
+fn base_head(world: &dyn World, repo: &Repo) -> WorldResult<(String, String)> {
+    let base = match &repo.base {
+        Some(base) => base.clone(),
+        None => world.git_default_branch(&repo.path)?,
+    };
+    world.git_fetch(&repo.path, None)?;
+    let head = world.git_rev(&repo.path, &format!("origin/{base}"))?;
+    Ok((base, head))
+}
+
+/// The wiki Run open, if one is.
+fn open_run(runs: &[Run]) -> Option<&Run> {
+    (runs.iter()).find(|r| r.trigger == Trigger::Wiki && r.closed_at.is_none())
+}
+
+impl Outcome {
+    /// When the build ended.
+    fn at(&self) -> &str {
+        match self {
+            Outcome::Built(Built { at, .. }) | Outcome::Failed { at, .. } => at,
+        }
+    }
+
+    /// The last build that built the Wiki: this one, or the one before it failed.
+    fn wiki(&self) -> Option<&Built> {
+        match self {
+            Outcome::Built(built) => Some(built),
+            Outcome::Failed { built, .. } => built.as_ref(),
+        }
+    }
 }
 
 /// A Wiki as the Bucket keeps it.
@@ -185,16 +421,17 @@ pub fn build(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
             for gap in wiki.components.iter().flat_map(|c| &c.gaps) {
                 *gaps.entry(gap.reason.to_string()).or_default() += 1;
             }
-            Outcome::Built {
+            Outcome::Built(Built {
                 at,
                 commit: wiki.commit.clone(),
                 components: wiki.components.len(),
                 gaps,
-            }
+            })
         }
         Err(no) => Outcome::Failed {
             at,
             why: no.error.clone(),
+            built: None,
         },
     };
     keep(&ctx.config_dir, slug, &outcome)?;
@@ -296,7 +533,7 @@ fn described(
     call: &Headless,
 ) -> Result<Wiki, Refusal> {
     let (world, budget) = (ctx.world, &config.wiki);
-    let commit = world.git_head(dir)?;
+    let commit = world.git_rev(dir, "HEAD")?;
     let files = files(world, dir)?;
     let lines: HashMap<&str, usize> = (files.iter()).map(|f| (f.path.as_str(), f.lines)).collect();
     world.log(&format!(
@@ -665,12 +902,31 @@ fn gap(part: Part, reason: &'static str) -> Component {
     }
 }
 
+/// Each Wiki's last build, by its id.
+fn load(config_dir: &Path) -> io::Result<BTreeMap<String, Outcome>> {
+    state::load(&config_dir.join(FILE))
+}
+
+/// Change the queue under its lock.
+fn update_queue<T>(config_dir: &Path, change: impl FnOnce(&mut Queue) -> T) -> io::Result<T> {
+    let file = config_dir.join(QUEUE);
+    state::update(&file, |text| {
+        let mut queue = state::parse(&file, text)?;
+        let out = change(&mut queue);
+        Ok::<_, io::Error>((state::text(&queue), out))
+    })
+}
+
 /// Keep `outcome` as the last build of the Wiki `id`.
 fn keep(config_dir: &Path, id: &str, outcome: &Outcome) -> io::Result<()> {
     let file = config_dir.join(FILE);
     state::update(&file, |text| {
         let mut all: BTreeMap<String, Outcome> = state::parse(&file, text)?;
-        all.insert(id.into(), outcome.clone());
+        let mut outcome = outcome.clone();
+        if let Outcome::Failed { built, .. } = &mut outcome {
+            *built = all.get(id).and_then(Outcome::wiki).cloned();
+        }
+        all.insert(id.into(), outcome);
         Ok::<_, io::Error>((state::text(&all), ()))
     })
 }

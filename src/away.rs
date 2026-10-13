@@ -1,7 +1,8 @@
 //! The loop's agents that are no Implementer nor Reviewer: a quality-scan per
 //! Repo, weekly, a faux-nico per Asking, and the morning agent, daily. Each
 //! start is kept as a Run in `runs.json`, and its workspace closed once herdr
-//! reports its agent ended. What such an agent files is its own Source write;
+//! reports its agent ended. A wiki build is a Run too, whose pane runs a
+//! command rather than an agent: `wiki` starts and closes it. What such an agent files is its own Source write;
 //! nico-agent writes nothing for it.
 
 use std::fs;
@@ -57,6 +58,8 @@ pub struct Run {
 pub enum Trigger {
     QualityScan,
     Morning,
+    /// A wiki build of the Repo it ran for, in a pane, closed on its outcome.
+    Wiki,
     /// For `issue`, on its Asking since `asking`.
     FauxNico {
         issue: String,
@@ -73,6 +76,7 @@ impl Trigger {
         match self {
             Trigger::QualityScan => "quality-scan",
             Trigger::Morning => "morning",
+            Trigger::Wiki => "wiki",
             Trigger::FauxNico { .. } => "faux-nico",
         }
     }
@@ -117,7 +121,7 @@ pub fn step(
 /// permission may hold its answer. What it said, and the Runs it closed.
 fn close_ended(ctx: &Context, agents: Option<&[Agent]>) -> io::Result<(Vec<String>, Vec<Run>)> {
     let open: Vec<Run> = (load(&ctx.config_dir)?.into_iter())
-        .filter(|r| r.closed_at.is_none())
+        .filter(|r| r.closed_at.is_none() && r.trigger != Trigger::Wiki)
         .collect();
     if open.is_empty() {
         return Ok((vec![], vec![]));
@@ -427,7 +431,7 @@ const HOUR: Duration = Duration::from_secs(3600);
 
 /// When the latest slot at or before now began: `hour` local time, on
 /// `weekday` when one is given, else daily.
-fn last_slot(ctx: &Context, weekday: Option<Weekday>, hour: u32) -> SystemTime {
+pub fn last_slot(ctx: &Context, weekday: Option<Weekday>, hour: u32) -> SystemTime {
     const DAY: i64 = 86_400;
     let offset = ctx.world.utc_offset();
     let now = ctx.world.now().duration_since(UNIX_EPOCH);

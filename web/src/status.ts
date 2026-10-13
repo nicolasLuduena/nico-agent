@@ -13,7 +13,7 @@ export interface Status {
 
 /** The settings of a Repo, or the defaults of a Project, each as it takes effect. */
 export interface Settings {
-  /** dispatch, stack, review, restart, flip, answer, gardening, quality_scan. */
+  /** dispatch, stack, review, restart, flip, answer, gardening, quality_scan, wiki. */
   switches: Record<string, Setting<boolean>>;
   /** How many Dispatches a Repo may have In flight at once. */
   room: Setting<number>;

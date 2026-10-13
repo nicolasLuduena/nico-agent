@@ -43,6 +43,8 @@ pub struct FakeWorld {
     pub agents: RefCell<BTreeMap<String, String>>,
     /// The pane each named agent runs in.
     pub agent_panes: RefCell<HashMap<String, String>>,
+    /// Panes herdr no longer has: closed, or their shell exited.
+    pub gone_panes: RefCell<Vec<String>>,
     /// What `herdr agent read` shows of each named agent.
     pub screens: RefCell<HashMap<String, String>>,
     /// The startup question the next agents started are blocked on, shown as
@@ -76,7 +78,7 @@ pub struct FakeWorld {
     pub branches: RefCell<HashMap<String, String>>,
     /// The changes to tracked files of each clone, by path, as `git status --porcelain` lists them.
     pub tracked_changes: RefCell<HashMap<String, Vec<String>>>,
-    /// The commit each clone is on, by path; `abc1234` when unset.
+    /// The commit each rev names in a clone, by `<path> <rev>`; `abc1234` when unset.
     pub heads: RefCell<HashMap<String, String>>,
     /// Whether each shell command line succeeds and what it prints, by the
     /// command; one unset succeeds printing nothing.
@@ -116,6 +118,7 @@ impl Default for FakeWorld {
             app_repos: Default::default(),
             agents: Default::default(),
             agent_panes: Default::default(),
+            gone_panes: Default::default(),
             screens: Default::default(),
             blocked_screen: Default::default(),
             stalled_prompts: Default::default(),
@@ -402,10 +405,10 @@ impl World for FakeWorld {
         ))
     }
 
-    fn git_head(&self, path: &str) -> WorldResult<String> {
-        self.call(format!("git -C {path} rev-parse HEAD"))?;
+    fn git_rev(&self, path: &str, rev: &str) -> WorldResult<String> {
+        self.call(format!("git -C {path} rev-parse {rev}"))?;
         let heads = self.heads.borrow();
-        Ok(heads.get(path).cloned().unwrap_or_else(|| "abc1234".into()))
+        Ok((heads.get(&format!("{path} {rev}")).cloned()).unwrap_or_else(|| "abc1234".into()))
     }
 
     /// `dir` holds the files of `rev` in the clone, and has them at its `HEAD`.
@@ -737,6 +740,11 @@ impl World for FakeWorld {
 
     fn herdr_pane_run(&self, pane: &str, command: &str) -> WorldResult<()> {
         self.call(format!("herdr pane run {pane} {command}"))
+    }
+
+    fn herdr_pane_exists(&self, pane: &str) -> WorldResult<bool> {
+        self.call(format!("herdr pane get {pane}"))?;
+        Ok(!self.gone_panes.borrow().iter().any(|p| p == pane))
     }
 
     fn herdr_agent_detect(&self, pane: &str, timeout: Duration) -> WorldResult<()> {
