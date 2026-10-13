@@ -8,12 +8,12 @@ once. A Libraries tab beside the Project tabs (`#/libraries`) lists the versions
 libraries` adds that no Repo links, adds one (`POST /api/libraries`, queued too) and removes one,
 asked twice (`DELETE /api/libraries/<id>`), its Wiki taken out of the Bucket's files in one commit
 that its history keeps. Removing a version a Repo links is refused with help. A Project tab's Wiki
-picker lists the built Wikis of its Repos, then of the Library versions they link.
+view lists the Wikis of its Repos, then of the Library versions they link, each opening its page.
 
 ## Sub-features
 
 - `link-settings` the Repo panel's Libraries form sends `PATCH /api/repo/<slug>` with the whole list; `config.toml` gains `libraries = [{ repo = "...", tag = "...", path = "..." }]` under the Repo, `wiki-queue.json` waits on the version's id, and its row reads `Wiki queued`; Unlink sends the list without it, Use the default removes the Repo's own list.
-- `picker` the Wiki view's `combobox "Wiki"` lists the Repo's Wiki, then each built Library version it links; a hash naming one opens it.
+- `picker` the Wiki view's `list "Wikis"` lists the Repo's Wiki, then each Library version it links, each a `link` to its page, `/wiki/<owner>/<name>@<tag>[:<path>]`, its `@` and `:` as written; an old link naming one on the Board (`#<project>/wiki/<id>`) opens that page.
 - `tab-add` the Libraries tab's Add sends `POST /api/libraries {repo, tag, path}` (no `path` when Subfolder is empty), answers `<id> added`, writes `[wiki] libraries`, queues it, and lists it; a version a Repo links answers `<id> already linked by <slug> (no-op)` and writes nothing.
 - `tab-remove` `Remove <id>…`, then `Remove <id>`, sends `DELETE /api/libraries/<id>`: `config.toml` drops the entry, `wikis.json` forgets its builds, the Bucket's one commit `wiki <id> removed` deletes its `wiki.json`, which `git show` still finds at the commit before; `/bucket/` answers 404 for it.
 - `refused` `DELETE` of a linked version is 409 `<id> is linked by <slug>` with help to unlink it in that Repo's settings; a bad version is 400 with what a Library version is; either writes nothing.
@@ -22,7 +22,7 @@ picker lists the built Wikis of its Repos, then of the Library versions they lin
 
 - A Repo's panel on its Project's tab: the Libraries section under Settings.
 - The Libraries tab after the Project tabs (the phone's Project select's last option, `Libraries`), or a link to `#/libraries`.
-- The Wiki view of a Project tab: its picker.
+- The Wiki view of a Project tab: its list, each Wiki a link to its page.
 - `/api` directly, as the page sends it.
 
 ## Driving it with control-nico-agent
@@ -45,11 +45,14 @@ Preconditions:
   `wiki-queue.json` waits on `verify/second@v1.0:lib`.
 - **Picker.** Seed answers by trail (`seed answer <file> "verify/second@v1.0:lib"`, `seed answer
   <file> "verify/fixture"`), then `$C run -- wiki build verify/second@v1.0:lib --json` and `wiki
-  build verify/fixture --json`. `$C page --evidence "$E/04-picker" --hash
-  "#verify%2Ffixture/wiki/verify%2Fsecond%40v1.0%3Alib" --expect "<its Interpretation's text>"`:
-  `combobox "Wiki"` holds `option "verify/fixture"` and `option "verify/second@v1.0:lib"
-  [selected]`, `article "verify/second@v1.0:lib"`, and "Describes" links
-  `https://github.com/verify/second/commit/<tag's commit>`.
+  build verify/fixture --json`. `$C page --evidence "$E/04-picker" --hash "#verify%2Ffixture/wiki"
+  --click "link=verify/second@v1.0:lib" --expect "<its Interpretation's text>"`: `.view.txt` `at
+  /wiki/verify/second@v1.0:lib`, `article "verify/second@v1.0:lib"`, no `button "Update"`, and
+  "Describes" links `https://github.com/verify/second/commit/<tag's commit>`; `04b-picker-list`
+  (`--hash "#verify%2Ffixture/wiki" --expect Built`) shows `list "Wikis"` with `link
+  "verify/fixture"` then `link "verify/second@v1.0:lib"`. `$C page --evidence "$E/04c-old-link" --hash
+  "#verify%2Ffixture/wiki/verify%2Fsecond%40v1.0%3Alib" --expect "<its Interpretation's text>"`: the
+  same page, `.view.txt` `at /wiki/verify/second@v1.0:lib`.
 - **Add from the tab.** `$C drift tag v2.0`; `$C page --evidence "$E/05-tab-add" --click
   "tab=Libraries" --click "textbox=Library" --type verify/second --click "textbox=Tag" --type v2.0
   --click "button=Add" --expect "verify/second@v2.0 added." --expect "Wiki queued"`:

@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 // page.mjs — open serve's page in headless Chromium, act on it as a user does, capture what it shows.
 // Called by `control-nico-agent page`, which passes the run's URL first and sets VERIFY_PLAYWRIGHT:
-//   page.mjs <url> [--evidence PREFIX] [--width PX] [--storage FILE|none] [--hash HASH] [--within ROLE=NAME | --click ROLE=NAME | --click ROLE~NAME
+//   page.mjs <url> [--evidence PREFIX] [--width PX] [--scheme light|dark] [--storage FILE|none] [--path PATH] [--hash HASH] [--within ROLE=NAME | --click ROLE=NAME | --click ROLE~NAME
 //            | --press KEY | --type TEXT | --expect TEXT | --gone TEXT | --wait SECONDS | --history back|forward | --mode pass|502|signed-out]...
-// --hash HASH opens the page at <url>HASH, as a link does; --history back|forward is the browser's Back or Forward.
+// --path PATH opens <url>PATH (a Wiki's page, /wiki/<id>) for the Board at /; --hash HASH opens it at HASH, as a
+// link does; --history back|forward is the browser's Back or Forward. --scheme dark is a browser whose system
+// colours are dark, as the theme System follows; light, the default, a light one.
 // --within ROLE=NAME makes each later --click find its element inside that one (a Repo's `region "<slug>"`); `--within page` the whole page again.
 // --storage FILE starts the browser with the storage FILE holds and saves it back after the last step, so
 // another call opens the page again as this browser would; --storage none is a browser whose localStorage throws.
@@ -23,6 +25,8 @@ let evidence = null;
 let width = 1280;
 let storage = null;
 let hash = "";
+let path = "/";
+let scheme = "light";
 const steps = [];
 for (let i = 0; i < argv.length; i++) {
   const [flag, value] = [argv[i], argv[i + 1]];
@@ -32,6 +36,8 @@ for (let i = 0; i < argv.length; i++) {
   else if (flag === "--width") width = Number(value);
   else if (flag === "--storage") storage = value;
   else if (flag === "--hash" && value.startsWith("#")) hash = value;
+  else if (flag === "--path" && value.startsWith("/")) path = value;
+  else if (flag === "--scheme" && ["light", "dark"].includes(value)) scheme = value;
   else if (flag === "--click" && /^[a-z]+[=~]/.test(value)) steps.push({ click: value });
   else if (flag === "--within" && (value === "page" || /^[a-z]+=/.test(value))) steps.push({ within: value });
   else if (flag === "--press") steps.push({ press: value });
@@ -45,7 +51,7 @@ for (let i = 0; i < argv.length; i++) {
 }
 
 function usage(why) {
-  console.error(`page: ${why}\nusage: page [--evidence PREFIX] [--width PX] [--storage FILE|none] [--hash HASH] [--within ROLE=NAME|page] [--click ROLE=NAME | --click ROLE~NAME | --press KEY | --type TEXT | --expect TEXT | --gone TEXT | --wait SECONDS | --history back|forward | --mode pass|502|signed-out]...`);
+  console.error(`page: ${why}\nusage: page [--evidence PREFIX] [--width PX] [--scheme light|dark] [--storage FILE|none] [--path PATH] [--hash HASH] [--within ROLE=NAME|page] [--click ROLE=NAME | --click ROLE~NAME | --press KEY | --type TEXT | --expect TEXT | --gone TEXT | --wait SECONDS | --history back|forward | --mode pass|502|signed-out]...`);
   process.exit(2);
 }
 
@@ -59,7 +65,7 @@ const errors = [];
 let failed = null;
 try {
   const kept = storage === "none" ? null : storage;
-  const context = await browser.newContext({ viewport: { width, height: 900 }, storageState: kept && existsSync(kept) ? kept : undefined });
+  const context = await browser.newContext({ viewport: { width, height: 900 }, colorScheme: scheme, storageState: kept && existsSync(kept) ? kept : undefined });
   // As a browser that blocks the site's data: reading localStorage throws.
   if (storage === "none") await context.addInitScript(() => Object.defineProperty(window, "localStorage", { get: () => { throw new DOMException("The user denied storage", "SecurityError"); } }));
   const page = await context.newPage();
@@ -85,7 +91,7 @@ try {
     }
   };
 
-  await page.goto(url + hash);
+  await page.goto(new URL(path, url).href + hash);
   await page.waitForFunction(() => !document.body.innerText.includes("Reading nico-agent"), null, { timeout: 15000 });
   await settle();
   let scope = page;
@@ -127,11 +133,11 @@ try {
   if (kept) await context.storageState({ path: kept });
   const aria = await page.locator("body").ariaSnapshot();
   console.log(aria);
-  // What the window shows: where it is scrolled, the page's width against its own, and what has focus.
+  // What the window shows: its address, where it is scrolled, the page's width against its own, and what has focus.
   const view = await page.evaluate(() => {
     const at = document.activeElement;
     const focus = !at || at === document.body ? "nothing" : `${at.tagName.toLowerCase()} "${at.textContent.trim().replace(/\s+/g, " ").slice(0, 100)}"`;
-    return `scrolled to ${scrollX},${scrollY}\npage ${document.documentElement.scrollWidth}px wide in a ${innerWidth}px window\nfocus on ${focus}\n`;
+    return `at ${location.pathname}${location.hash}\nscrolled to ${scrollX},${scrollY}\npage ${document.documentElement.scrollWidth}px wide in a ${innerWidth}px window\nfocus on ${focus}\n`;
   });
   console.log(view);
   if (evidence) {

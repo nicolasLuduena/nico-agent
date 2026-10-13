@@ -23,6 +23,8 @@
 #   seed correction <file>|none   what the wiki model answers each correction (a call with -s): <file>'s text,
 #                                 or none (then the answer for its part)
 #   seed pace <seconds>|none      how long the wiki model takes over each call before it answers, or none
+#   seed wiki <wiki.json> <clone> a Repo's Wiki built elsewhere committed to the Bucket, and that Repo cloned
+#                                 on disk from <clone> for `repo add`; prints { repo, clone, commit }
 #   drift push <n>|stale|pause|below merged|closed|base [<file>]|tag <tag>
 #                                 what GitHub would change: a new PR head, an old read, a rate limit,
 #                                 the PR below a Stacked dispatch merged or closed unmerged,
@@ -32,7 +34,7 @@
 #                                 run the CLI in the scratch HOME; exit code is the CLI's
 #   http [--evidence PREFIX] <METHOD> <PATH> [BODY]
 #                                 ask this run's serve, as the page does
-#   page [--tunnel] [--evidence PREFIX] [--width PX] [--storage FILE|none] [--hash HASH] [--within ROLE=NAME|page | --click ROLE=NAME | --click ROLE~NAME | --press KEY
+#   page [--tunnel] [--evidence PREFIX] [--width PX] [--scheme light|dark] [--storage FILE|none] [--path PATH] [--hash HASH] [--within ROLE=NAME|page | --click ROLE=NAME | --click ROLE~NAME | --press KEY
 #        | --type TEXT | --expect TEXT | --gone TEXT | --wait SECONDS | --history back|forward | --mode pass|502|signed-out]...
 #                                 open serve's page in headless Chromium (through the tunnel stand-in), act, capture
 #   tunnel start|pass|502|signed-out
@@ -347,7 +349,8 @@ cmd_seed() {
     answer) seed_answer "$@" ;;
     correction) seed_correction "$@" ;;
     pace) seed_pace "$@" ;;
-    *) die "seed: usage: seed issues [second] | seed dispatch <n> pr|asking|stacked | seed run quality-scan|morning|faux-nico <n> | seed morning <file>|none | seed answer <file>|none [<part>] | seed correction <file>|none | seed pace <seconds>|none" ;;
+    wiki) seed_wiki "$@" ;;
+    *) die "seed: usage: seed issues [second] | seed dispatch <n> pr|asking|stacked | seed run quality-scan|morning|faux-nico <n> | seed morning <file>|none | seed answer <file>|none [<part>] | seed correction <file>|none | seed pace <seconds>|none | seed wiki <wiki.json> <clone>" ;;
   esac
 }
 
@@ -465,6 +468,33 @@ seed_morning() {
     "") die "seed: usage: seed morning <file>|none" ;;
     *) [ -f "$1" ] || die "seed: no file $1"; cp "$1" "$CONFIG_DIR/morning.md" ;;
   esac
+}
+
+# A Repo's Wiki built elsewhere, as the Bucket keeps one: <wiki.json> (a real Wiki, its target a
+# GitHub Repo) committed to this run's Bucket at wiki/<owner>/<name>/wiki.json, as a build's last
+# act does, and a clone of that Repo made on disk from <clone> under fixture/, its origin the GitHub
+# URL, holding the Wiki's commit, for `repo add`. Prints { repo, clone, commit }. The Bucket must
+# exist: `repo add` a Repo first.
+seed_wiki() {
+  local usage="seed: usage: seed wiki <wiki.json> <clone>"
+  local file="${1:-}" from="${2:-}"
+  [ -f "$file" ] && [ -d "$from" ] || die "$usage"
+  local repo commit
+  repo="$(jq -r '.target.repo // empty' "$file")"; commit="$(jq -r '.commit // empty' "$file")"
+  [[ "$repo" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] && [ -n "$commit" ] || die "seed: $file is not a Wiki of a Repo"
+  jq -e '.target.tag == null' "$file" >/dev/null || die "seed: $file is a Library version's Wiki; only a Repo's is seeded"
+  git -C "$BUCKET" rev-parse --git-dir >/dev/null 2>&1 || die "seed: no Bucket yet; repo add a Repo first"
+  local clone="$RUN_DIR/fixture/${repo#*/}"
+  if [ ! -d "$clone" ]; then
+    git clone --quiet "$from" "$clone" || die "seed: could not clone $from"
+    git -C "$clone" remote set-url origin "https://github.com/$repo.git"
+  fi
+  git -C "$clone" cat-file -e "$commit^{commit}" 2>/dev/null || die "seed: $from does not hold the Wiki's commit $commit"
+  mkdir -p "$BUCKET/wiki/$repo"
+  cp "$file" "$BUCKET/wiki/$repo/wiki.json"
+  git -C "$BUCKET" add "wiki/$repo/wiki.json"
+  HOME="$FIXTURE_HOME" git -C "$BUCKET" commit --quiet -m "wiki $repo $commit" || die "seed: could not commit the Wiki to the Bucket"
+  jq -nc --arg r "$repo" --arg c "$clone" --arg s "$commit" '{ repo: $r, clone: $c, commit: $s }'
 }
 
 # What the wiki model answers each headless call from now on: <file>'s text, or with none, each

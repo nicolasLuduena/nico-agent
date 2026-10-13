@@ -1,6 +1,6 @@
 # Set up Wikis from the page
 
-A Project tab's Wiki view has `button "Wiki settings"` in its header, there before any Wiki is
+A Project tab's Wiki view, the list of its Wikis, has `button "Wiki settings"` above it, there before any Wiki is
 built too. It opens a bottom sheet titled "Settings for every Wiki", saying these apply to every
 Wiki, holding what `[wiki]` in `config.toml` sets: the launch each part is asked of (Harness,
 model, Effort), the hour the loop checks each Repo's Wiki, a build's `calls`, `depth` and calls at

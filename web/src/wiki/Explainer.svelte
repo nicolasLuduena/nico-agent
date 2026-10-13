@@ -7,7 +7,7 @@
   import { layoutExplainer, LINE, type PlacedStep } from "./layout";
   import type { Explainer, Wiki } from "./wiki";
 
-  let { wiki, explainer }: { wiki: Wiki; explainer: Explainer } = $props();
+  let { wiki, explainer, name }: { wiki: Wiki; explainer: Explainer; name: ((path: string) => string) | null } = $props();
 
   let room = $state(0);
   const drawn = $derived(room ? layoutExplainer(explainer, room) : null);
@@ -64,7 +64,7 @@
 <div id="explainer-step" class="opened">
   {#if step}
     <p><strong class="n">{step.n}</strong> {step.caption}</p>
-    <p class="anchors"><Anchors {wiki} anchors={step.anchors} /></p>
+    <p class="anchors"><Anchors {wiki} anchors={step.anchors} {name} /></p>
   {:else}
     <p class="none">Open a step for the lines it cites.</p>
   {/if}
@@ -161,7 +161,8 @@
   .anchors {
     display: flex;
     flex-wrap: wrap;
-    gap: 4px;
+    gap: 0 16px;
+    font-size: 14px;
   }
   .none {
     color: var(--ink-muted);

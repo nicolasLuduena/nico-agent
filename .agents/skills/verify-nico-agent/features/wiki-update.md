@@ -6,7 +6,7 @@ files changed is asked again, the part a file added or removed sits under is div
 parts from scratch, and a parent whose parts changed keeps its Interpretations. Each part keeps
 its place in the tree. Between builds, `GET /api/wiki/<id>` and the MCP's `get_component` mark
 `stale` each Interpretation citing a file whose blob at `origin/<base>` (as the clone last
-fetched it) is not the one it was written against, and the Wiki view's header says how many
+fetched it) is not the one it was written against, and the Wiki's page's masthead says how many
 commits behind the Base the Wiki is and how many Interpretations are Stale, each one labelled
 `STALE` before its sentence. A parent kept by an Update stays Stale until the next build from
 scratch. The loop's nightly build is an Update once the Repo has a Wiki.
@@ -16,7 +16,7 @@ scratch. The loop's nightly build is an Update once the Repo has a Wiki.
 - `update-copy` with one file changed, `--update` asks only the leaf holding it (one `opencode2 run`), copies every other part, and keeps the parent's Interpretations; stderr says `updating it from <old>: N part(s) copied or kept, M to ask again`; one Bucket commit `wiki <owner/name> <new>`.
 - `update-added` a file added under a folder asks again only the part holding that folder's files, divided anew (its new parts asked too); every other part is copied, in its place.
 - `stale-route` `GET /api/wiki/<id>` adds `base`, `behind` (commits from the Wiki's commit to `origin/<base>`) and `stale` (how many), and `"stale": true` on each Stale Interpretation; reading it writes nothing and fetches nothing.
-- `stale-page` the header reads `Describes <sha> · Built HH:MM · 1 commit behind main · 3 Interpretations Stale`, or `Up to date with main` with the Stale count left out when none is; each Stale Interpretation's paragraph reads `Stale <sentence>`, in light, dark and at phone width.
+- `stale-page` the masthead reads `Describes <sha> · Built HH:MM · 1 commit behind main · 3 Interpretations Stale`, or `Up to date with main` with the Stale count left out when none is; each Stale Interpretation's paragraph reads `Stale <sentence>`, in light, dark and at phone width.
 - `stale-mcp` `get_component` marks the same Interpretations `stale`.
 - `stale-kept` after an Update, a parent kept with its claims stays Stale (its Component carries the `blobs` they were written against) while the parts asked again are not.
 
@@ -24,7 +24,7 @@ scratch. The loop's nightly build is an Update once the Repo has a Wiki.
 
 - The user runs `nico-agent wiki build <owner/name> --update`; the loop runs the same in a herdr pane
   at the wiki hour once the Base moved (see [wiki-runs.md](./wiki-runs.md)).
-- The page: a Project's tab, `link "Wiki"`, the header beside `combobox "Wiki"` and each
+- The Wiki's page, `/wiki/<owner>/<name>` (a Project's Wiki view links it): its masthead and each
   Component's Interpretations.
 - Ask serve: `GET /api/wiki/<owner>/<name>`; an agent: the MCP's `get_component`.
 
@@ -46,17 +46,17 @@ Preconditions:
 
 - **Fresh.** `$C http --evidence "$E/02-wiki-fresh" GET /api/wiki/verify/fixture`: `200`, `"base":"main"`,
   `"behind":0`, `"stale":0`, no `stale` on any Interpretation. `$C page --evidence "$E/03-page-fresh"
-  --hash "#shop/wiki/verify%2Ffixture/readme" --expect "Up to date with main"`.
+  --path /wiki/verify/fixture --hash "#readme" --expect "Up to date with main"`.
 - **A merge into the Base.** `$C drift base` (rewrites `README.md`). `$C state >
   "$E/state.stale.before.txt"`. `$C http --evidence "$E/05-wiki-stale" GET /api/wiki/verify/fixture`:
   `"behind":1`, `"stale":3`, `"stale":true` on the top Component's and both of Readme's
   Interpretations, none on Docs'.
-- **Stale on the page.** `$C page --evidence "$E/06-page-stale-light" --hash
-  "#shop/wiki/verify%2Ffixture/readme" --expect "1 commit behind main"`: the header `· Built HH:MM · 1
+- **Stale on the page.** `$C page --evidence "$E/06-page-stale-light" --path /wiki/verify/fixture
+  --hash "#readme" --expect "1 commit behind main"`: the masthead `· Built HH:MM · 1
   commit behind main · 3 Interpretations Stale`, `paragraph: Stale The title names the Repo.` and
   `Stale The README describes ...`; the same in Dark on the top Component (`07-page-stale-dark-index`,
-  `--hash "#shop/wiki/verify%2Ffixture" --click button=Dark`); Docs (`08-page-docs-not-stale`) with no
-  `Stale`; at `--width 390` (`08b-page-stale-phone`) the header wraps and `.view.txt` says `page 390px
+  `--path /wiki/verify/fixture --scheme dark`); Docs (`08-page-docs-not-stale`) with no
+  `Stale`; at `--width 390` (`08b-page-stale-phone`) the masthead wraps and `.view.txt` says `page 390px
   wide in a 390px window`.
 - **In the MCP.** Exchange `09-mcp` (`initialize`, `notifications/initialized`, `get_component` of
   `readme` and of `docs`, as in [wiki-mcp.md](./wiki-mcp.md)): Readme's two Interpretations
@@ -71,8 +71,8 @@ Preconditions:
 - **Kept, still Stale.** `$C http --evidence "$E/11-wiki-updated" GET /api/wiki/verify/fixture`:
   `"behind":0`, `"stale":1`, Components `index`, `readme`, `docs` in that order; `index` keeps its
   Interpretation, `"stale":true`, with `blobs` `{"README.md": <its blob before the merge>}`; Readme's
-  new one and Docs' copied one are not Stale. `$C page --evidence "$E/12-page-updated-index" --hash
-  "#shop/wiki/verify%2Ffixture" --expect "Up to date with main"`: `Up to date with main · 1
+  new one and Docs' copied one are not Stale. `$C page --evidence "$E/12-page-updated-index" --path
+  /wiki/verify/fixture --expect "Up to date with main"`: `Up to date with main · 1
   Interpretation Stale`, `Stale The README's title names the fixture.`; `13-page-updated-readme`
   shows `The title says the fixture moved on.` with no `Stale`.
 - **A file added.** `$C drift base docs/guide.md`; seed `verify/fixture > Docs` a division into
@@ -81,7 +81,7 @@ Preconditions:
   `state` diff's three `opencode2 run` calls are about `verify/fixture > Docs`, `... > Docs > Notes`
   and `... > Docs > Guide` only. `$C http --evidence "$E/16-wiki-added" GET /api/wiki/verify/fixture`:
   Components `index`, `readme` (copied as it was), `docs`, `docs/notes`, `docs/guide`; `index`'s
-  `files` gain `docs/guide.md`. `17-page-added-docs` (`--hash "#shop/wiki/verify%2Ffixture/docs"`)
+  `files` gain `docs/guide.md`. `17-page-added-docs` (`--path /wiki/verify/fixture --hash "#docs"`)
   shows `link "Notes"` and `link "Guide"`.
 - **After.** `git -C "$BUCKET" log --format=%s`: three `wiki verify/fixture <commit>`, one per build.
   Copy `$OUTSIDE_LOG` to `$E/outside.log`: `opencode2` and `curl` calls only, the curls each build's

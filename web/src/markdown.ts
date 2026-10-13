@@ -40,10 +40,15 @@ export function withoutLive(markdown: string): string {
     .join("\n");
 }
 
-/** The first line of `markdown` that is not a heading, a list item's marker dropped: the folded Morning summary's one line. */
-export function firstLine(markdown: string): Span[] {
+/** The first line of `markdown` that is not a heading, a list item's marker dropped, as Markdown. */
+export function firstText(markdown: string): string {
   const line = markdown.split("\n").map((l) => l.trim()).find((l) => l && !l.startsWith("#"));
-  return line ? spans(line.replace(/^(?:[-*+]|\d+[.)])\s+/, "")) : [];
+  return line ? line.replace(/^(?:[-*+]|\d+[.)])\s+/, "") : "";
+}
+
+/** The first line of `markdown`, as `firstText` reads it: the folded Morning summary's one line. */
+export function firstLine(markdown: string): Span[] {
+  return spans(firstText(markdown));
 }
 
 /** **strong**, `code`, [named](https://…) and bare https://… links, the last without trailing punctuation. */

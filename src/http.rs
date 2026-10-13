@@ -30,6 +30,10 @@ const APP: &[(&str, &str, &[u8])] = include!(concat!(env!("OUT_DIR"), "/app.rs")
 /// Every route and what it answers, for help lines.
 const ROUTES: &[(&str, &str)] = &[
     ("GET /", "the app"),
+    (
+        "GET /wiki/<id>",
+        "the app at the Wiki's page, its Component in the fragment",
+    ),
     ("GET /api/status", "the status of every Repo and Dispatch"),
     (
         "GET /api/map/<project>",
@@ -104,6 +108,12 @@ pub fn answer(ctx: &Context, port: u16, request: &HttpRequest) -> Answer {
         return refused;
     }
     let path = request.url.split('?').next().unwrap_or_default();
+    // A Wiki's page is the app's own, which reads the Wiki from the path.
+    let file = if path.starts_with("/wiki/") {
+        "/"
+    } else {
+        path
+    };
     match (request.method.as_str(), path) {
         ("GET", "/api/status") => reply(status(ctx)),
         ("GET", "/api/events") => events(ctx),
@@ -132,7 +142,7 @@ pub fn answer(ctx: &Context, port: u16, request: &HttpRequest) -> Answer {
             let help = "Ask for a Wiki /api/wikis lists, or build one: nico-agent wiki build <owner/name>[@<tag>[:<path>]]";
             found(wiki::get(ctx, &id), format!("{id} has no Wiki"), help)
         }
-        ("GET", path) if let Some((_, kind, bytes)) = APP.iter().find(|(p, ..)| *p == path) => {
+        ("GET", _) if let Some((_, kind, bytes)) = APP.iter().find(|(p, ..)| *p == file) => {
             Answer::Whole(HttpResponse {
                 status: 200,
                 headers: vec![("Content-Type".into(), (*kind).into())],

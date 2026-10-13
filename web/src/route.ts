@@ -1,38 +1,67 @@
-/** What the URL's hash selects: a Project's tab, its view, and in its Wiki view a Wiki and one of its Components; or the Libraries tab, of no Project. */
+/** What the Board's URL hash selects: a Project's tab and its view; or the Libraries tab, of no Project. */
 export interface Route {
   project: string | null;
   view: "map" | "wiki" | "libraries";
-  /** The Wiki's id; null, the Project's first. */
-  wiki: string | null;
-  /** The Component's id; null, the Wiki's top one. */
-  component: string | null;
 }
 
 /**
- * `#<project>`, its map, or `#<project>/wiki/<wiki>/<component>`, the last
- * two optional; each part escaped, as names and ids hold `/`. The Libraries
- * tab is `#/libraries`: no Project, as an escaped name holds no `/`.
+ * `#<project>`, its map, or `#<project>/wiki`, its Wiki view; the name
+ * escaped, as names hold `/`. The Libraries tab is `#/libraries`: no
+ * Project, as an escaped name holds no `/`.
  */
 export function hash(at: Route): string {
   if (at.project === null) return at.view === "libraries" ? "#/libraries" : "";
-  const parts = [at.project];
-  if (at.view === "wiki") parts.push("wiki");
-  if (at.view === "wiki" && at.wiki) parts.push(at.wiki);
-  if (at.view === "wiki" && at.wiki && at.component) parts.push(at.component);
-  return `#${parts.map(encodeURIComponent).join("/")}`;
+  return `#${encodeURIComponent(at.project)}${at.view === "wiki" ? "/wiki" : ""}`;
+}
+
+/** The hash's parts, unescaped; null for a broken escape. */
+function parts(hash: string): string[] | null {
+  try {
+    return hash.replace(/^#/, "").split("/").map(decodeURIComponent);
+  } catch {
+    return null;
+  }
 }
 
 /** What `hash` selects: nothing it cannot read. */
 export function route(hash: string): Route {
-  const none: Route = { project: null, view: "map", wiki: null, component: null };
-  let parts: string[];
+  const none: Route = { project: null, view: "map" };
+  const [project, view] = parts(hash) ?? [];
+  if (!project) return parts(hash)?.length === 2 && view === "libraries" ? { ...none, view } : none;
+  return { project, view: view === "wiki" ? view : "map" };
+}
+
+/** Escaped for a page's URL, its `/`, `@` and `:` kept as written, as a Library version's id reads. */
+const escaped = (text: string) =>
+  text
+    .split("/")
+    .map((part) => encodeURIComponent(part).replaceAll("%40", "@").replaceAll("%3A", ":"))
+    .join("/");
+
+const unescaped = (text: string) => {
   try {
-    parts = hash.replace(/^#/, "").split("/").map(decodeURIComponent);
+    return decodeURIComponent(text);
   } catch {
-    return none;
+    return text;
   }
-  const [project, view, wiki, component] = parts;
-  if (!project) return parts.length === 2 && view === "libraries" ? { ...none, view } : none;
-  if (view !== "wiki") return { ...none, project };
-  return { project, view, wiki: wiki || null, component: (wiki && component) || null };
+};
+
+/** The fragment opening `component` on its Wiki's page; none, its top one. */
+export const fragment = (component: string | null) => (component ? `#${escaped(component)}` : "");
+
+/** A Wiki's page, `/wiki/<id>`, open at `component`, or at its top one; a link to it from anywhere. */
+export function page(id: string, component: string | null = null): string {
+  return `/wiki/${escaped(id)}${fragment(component)}`;
+}
+
+/** What a Wiki's page opens: the Wiki its path names, at the Component its fragment does; none off a Wiki's page. */
+export function reading(path: string, hash: string): { wiki: string; component: string | null } | null {
+  const id = /^\/wiki\/(.+)$/.exec(path)?.[1];
+  return id ? { wiki: unescaped(id), component: unescaped(hash.replace(/^#/, "")) || null } : null;
+}
+
+/** Where an old link to a Wiki on the Board, `#<project>/wiki/<wiki>[/<component>]`, is now: its page; none for any other hash. */
+export function movedTo(hash: string): string | null {
+  const [, view, wiki, component] = parts(hash) ?? [];
+  return view === "wiki" && wiki ? page(wiki, component || null) : null;
 }
