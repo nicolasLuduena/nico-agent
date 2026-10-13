@@ -439,7 +439,7 @@ fn a_wiki_launch_on_codex_asks_each_part_with_codex_exec_read_only_and_corrects_
     let dir = checkout(&t);
     let file = t.config_dir.join("wiki/answer.schema.json");
     let rest = format!(
-        "-c sandbox_mode=\"read-only\" --skip-git-repo-check --json --output-schema {} -m gpt-5.5 -c model_reasoning_effort=low",
+        "--ignore-user-config -c sandbox_mode=\"read-only\" --skip-git-repo-check --json --output-schema {} -m gpt-5.5 -c model_reasoning_effort=low",
         file.display()
     );
     let (calls, _) = schema_aside(&t);

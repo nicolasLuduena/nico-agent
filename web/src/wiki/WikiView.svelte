@@ -11,14 +11,14 @@
   import { reload, watch } from "../live";
   import { hash } from "../route";
   import { selection } from "../selection.svelte";
-  import type { Project, WikiSettings as Settings } from "../status";
+  import type { Project, WikiSettings } from "../status";
   import { clock } from "../time";
   import Reading from "./Reading.svelte";
   import Sheet from "./Sheet.svelte";
   import { byKind, freshness, search, unexplored, type Component, type Hit, type Listed, type Wiki } from "./wiki";
-  import WikiSettings from "./WikiSettings.svelte";
+  import SettingsForm from "./SettingsForm.svelte";
 
-  let { project, settings }: { project: Project; settings: Settings } = $props();
+  let { project, settings }: { project: Project; settings: WikiSettings } = $props();
 
   let listed = $state<Listed[] | null>(null);
   let wiki = $state<Wiki | null>(null);
@@ -153,135 +153,133 @@
     <p class="errata" role="status"><strong>{failure ?? wikiFailure}</strong></p>
   {/if}
 
+  <header>
+    {#if wikis.length > 0}
+      <label class="pick">
+        <span class="label">Wiki</span>
+        <select value={id} onchange={(e) => pick(e.currentTarget.value)}>
+          {#each wikis as w (w.id)}
+            <option value={w.id}>{w.id}</option>
+          {/each}
+        </select>
+      </label>
+    {/if}
+    {#if wiki}
+      <p class="built">
+        Describes <a href="https://github.com/{wiki.target.repo}/commit/{wiki.commit}" target="_blank" rel="noreferrer"
+          >{wiki.commit.slice(0, 7)}</a
+        >
+        · Built {clock(wiki.builtAt)} · {freshness(wiki)}
+      </p>
+    {/if}
+    {#if picked}
+      <div class="build">
+        {#if picked.state === "building"}
+          <p role="status">
+            <span class="label">Building</span>
+            {#if picked.pane}<span class="muted">in herdr pane {picked.pane}</span>{/if}
+          </p>
+        {:else if picked.state === "queued"}
+          <p role="status"><span class="label">Queued</span></p>
+        {:else if picked.state === "failed"}
+          <p class="errata" role="status"><strong>Last build failed</strong> {@render ticked(picked.why ?? "")}</p>
+        {/if}
+        <div class="buttons">
+          {#if !picked.target.tag}
+            <button type="button" class="quiet" disabled={asking !== null} aria-busy={asking === "update"} onclick={() => build("update")}
+              >Update</button
+            >
+          {/if}
+          <button type="button" class="quiet" disabled={asking !== null} aria-busy={asking === "rebuild"} onclick={() => build("rebuild")}
+            >Rebuild</button
+          >
+          {#if picked.budget > 0}
+            <span class="muted">{unexplored(picked.budget)} ·</span>
+            <button type="button" class="quiet" disabled={asking !== null} aria-busy={asking === "continue"} onclick={() => build("continue")}
+              >Continue +{picked.calls} calls</button
+            >
+          {/if}
+        </div>
+        {#if sent && !sent.ok}
+          <div class="refused">
+            <Refused error={sent.error} help={sent.help} />
+          </div>
+        {/if}
+      </div>
+    {/if}
+    <div class="toggles">
+      {#each [...(open ? toggles : []), "settings" as const] as sheet (sheet)}
+        <button
+          type="button"
+          class="quiet"
+          aria-expanded={opened === sheet}
+          aria-controls="wiki-{sheet}"
+          onclick={() => (opened = opened === sheet ? null : sheet)}>{sheet === "settings" ? "Wiki settings" : TITLES[sheet]}</button
+        >
+      {/each}
+    </div>
+  </header>
+
   {#if listed === null}
     {#if !failure}
       <p class="none">Reading the Wikis…</p>
     {/if}
-  {:else}
-    <header>
-      {#if wikis.length > 0}
-        <label class="pick">
-          <span class="label">Wiki</span>
-          <select value={id} onchange={(e) => pick(e.currentTarget.value)}>
-            {#each wikis as w (w.id)}
-              <option value={w.id}>{w.id}</option>
-            {/each}
-          </select>
-        </label>
-      {/if}
-      {#if wiki}
-        <p class="built">
-          Describes <a href="https://github.com/{wiki.target.repo}/commit/{wiki.commit}" target="_blank" rel="noreferrer"
-            >{wiki.commit.slice(0, 7)}</a
-          >
-          · Built {clock(wiki.builtAt)} · {freshness(wiki)}
-        </p>
-      {/if}
-      {#if picked}
-        <div class="build">
-          {#if picked.state === "building"}
-            <p role="status">
-              <span class="label">Building</span>
-              {#if picked.pane}<span class="muted">in herdr pane {picked.pane}</span>{/if}
-            </p>
-          {:else if picked.state === "queued"}
-            <p role="status"><span class="label">Queued</span></p>
-          {:else if picked.state === "failed"}
-            <p class="errata" role="status"><strong>Last build failed</strong> {@render ticked(picked.why ?? "")}</p>
-          {/if}
-          <div class="buttons">
-            {#if !picked.target.tag}
-              <button type="button" class="quiet" disabled={asking !== null} aria-busy={asking === "update"} onclick={() => build("update")}
-                >Update</button
-              >
-            {/if}
-            <button type="button" class="quiet" disabled={asking !== null} aria-busy={asking === "rebuild"} onclick={() => build("rebuild")}
-              >Rebuild</button
-            >
-            {#if picked.budget > 0}
-              <span class="muted">{unexplored(picked.budget)} ·</span>
-              <button type="button" class="quiet" disabled={asking !== null} aria-busy={asking === "continue"} onclick={() => build("continue")}
-                >Continue +{picked.calls} calls</button
-              >
-            {/if}
-          </div>
-          {#if sent && !sent.ok}
-            <div class="refused">
-              <Refused error={sent.error} help={sent.help} />
-            </div>
-          {/if}
-        </div>
-      {/if}
-      <div class="toggles">
-        {#each [...(open ? toggles : []), "settings" as const] as sheet (sheet)}
-          <button
-            type="button"
-            class="quiet"
-            aria-expanded={opened === sheet}
-            aria-controls="wiki-{sheet}"
-            onclick={() => (opened = opened === sheet ? null : sheet)}>{sheet === "settings" ? "Wiki settings" : TITLES[sheet]}</button
-          >
-        {/each}
-      </div>
-    </header>
-
-    {#if wikis.length === 0}
-      <div class="none">
-        <p>No Wiki of {project.name} yet. Build one by Repo; it describes the code at the Repo's Base, each claim citing its lines:</p>
-        {#each project.repos as slug (slug)}
-          <p><code>nico-agent wiki build {slug}</code></p>
-        {/each}
-      </div>
-    {:else if wiki && open}
-      <div class="read">
-        <Sheet id="wiki-tree" title={TITLES.tree} folded={phone.current} open={opened === "tree"} close={() => (opened = null)}>
-          <input class="find" type="search" placeholder="Search this Wiki" aria-label="Search this Wiki" bind:value={query} />
-          {#if query.trim()}
-            <p class="found" role="status">{hits.length === 0 ? "Nothing found" : `${hits.length} found`}</p>
-            {#if hits.length > 0}
-              <nav aria-label="Found">
-                <ul class="hits">
-                  {#each hits as hit (`${hit.component.id} ${hit.interpretation?.id ?? ""}`)}
-                    <li>
-                      <a href={link(hit.component.id)} onclick={() => follow(hit)}>
-                        <span class="where"
-                          ><strong>{hit.component.name}</strong>
-                          {#if hit.interpretation}<span class="label">{hit.interpretation.kind}</span>{/if}</span
-                        >
-                        <span class="text">{hit.text}</span>
-                      </a>
-                    </li>
-                  {/each}
-                </ul>
-              </nav>
-            {/if}
-          {:else}
-            <nav class="tree" aria-label="Components">
-              {@render branch(null)}
+  {:else if wikis.length === 0}
+    <div class="none">
+      <p>No Wiki of {project.name} yet. Build one by Repo; it describes the code at the Repo's Base, each claim citing its lines:</p>
+      {#each project.repos as slug (slug)}
+        <p><code>nico-agent wiki build {slug}</code></p>
+      {/each}
+    </div>
+  {:else if wiki && open}
+    <div class="read">
+      <Sheet id="wiki-tree" title={TITLES.tree} folded={phone.current} open={opened === "tree"} close={() => (opened = null)}>
+        <input class="find" type="search" placeholder="Search this Wiki" aria-label="Search this Wiki" bind:value={query} />
+        {#if query.trim()}
+          <p class="found" role="status">{hits.length === 0 ? "Nothing found" : `${hits.length} found`}</p>
+          {#if hits.length > 0}
+            <nav aria-label="Found">
+              <ul class="hits">
+                {#each hits as hit (`${hit.component.id} ${hit.interpretation?.id ?? ""}`)}
+                  <li>
+                    <a href={link(hit.component.id)} onclick={() => follow(hit)}>
+                      <span class="where"
+                        ><strong>{hit.component.name}</strong>
+                        {#if hit.interpretation}<span class="label">{hit.interpretation.kind}</span>{/if}</span
+                      >
+                      <span class="text">{hit.text}</span>
+                    </a>
+                  </li>
+                {/each}
+              </ul>
             </nav>
           {/if}
-        </Sheet>
-        <Reading {wiki} component={open} {parts} {link} {found} />
-        <Sheet id="wiki-outline" title={TITLES.outline} folded={narrow.current} open={opened === "outline"} close={() => (opened = null)}>
-          <nav aria-label="Outline">
-            <ul class="outline">
-              {#each outline as head (head.id)}
-                <li>
-                  <button type="button" onclick={() => bring(head.id)}
-                    >{head.name}{#if head.count !== null}{" "}<span class="count">{head.count}</span>{/if}</button
-                  >
-                </li>
-              {/each}
-            </ul>
+        {:else}
+          <nav class="tree" aria-label="Components">
+            {@render branch(null)}
           </nav>
-        </Sheet>
-      </div>
-    {:else if !wikiFailure}
-      <p class="none">Reading the Wiki of {id}…</p>
-    {/if}
+        {/if}
+      </Sheet>
+      <Reading {wiki} component={open} {parts} {link} {found} />
+      <Sheet id="wiki-outline" title={TITLES.outline} folded={narrow.current} open={opened === "outline"} close={() => (opened = null)}>
+        <nav aria-label="Outline">
+          <ul class="outline">
+            {#each outline as head (head.id)}
+              <li>
+                <button type="button" onclick={() => bring(head.id)}
+                  >{head.name}{#if head.count !== null}{" "}<span class="count">{head.count}</span>{/if}</button
+                >
+              </li>
+            {/each}
+          </ul>
+        </nav>
+      </Sheet>
+    </div>
+  {:else if !wikiFailure}
+    <p class="none">Reading the Wiki of {id}…</p>
   {/if}
   <Sheet id="wiki-settings" title={TITLES.settings} folded={true} open={opened === "settings"} close={() => (opened = null)}>
-    <WikiSettings {settings} />
+    <SettingsForm {settings} />
   </Sheet>
 </div>
 

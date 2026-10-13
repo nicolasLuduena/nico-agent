@@ -1302,7 +1302,7 @@ fn patch_wiki_settings_refuses_an_unknown_harness_with_help_or_a_bad_value_and_w
         (
             r#"{"launch": {"harness": "pi"}}"#,
             "unknown Harness `pi`",
-            "Valid Harnesses: claude, codex, opencode",
+            builds,
         ),
         (
             r#"{"launch": "claude"}"#,

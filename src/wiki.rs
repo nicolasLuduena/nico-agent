@@ -30,7 +30,7 @@ use crate::ask;
 use crate::away::{self, Run, Trigger};
 use crate::bucket;
 use crate::cli::{Context, Refusal, bad_invocation};
-use crate::config::{self, Config, Launch, Repo, fill_in};
+use crate::config::{self, Config, Harness, Launch, Repo, fill_in};
 use crate::dispatch;
 use crate::install::base;
 use crate::launch;
@@ -711,8 +711,7 @@ const SETTINGS: [(&str, &str); 6] = [
 /// Harnesses a Wiki builds on and the models and Efforts each takes (null: any).
 pub fn settings(config: &Config) -> Value {
     let wiki = &config.wiki;
-    let harnesses: serde_json::Map<String, Value> = (config.harnesses.iter())
-        .filter(|(name, _)| HEADLESS.contains(&name.as_str()))
+    let harnesses: serde_json::Map<String, Value> = (builders(config))
         .map(|(name, h)| {
             let takes = json!({ "models": h.models, "efforts": h.efforts });
             (name.clone(), takes)
@@ -741,6 +740,11 @@ pub fn set(ctx: &Context, set: &Value) -> Result<Value, Refusal> {
     Ok(settings(&config::load(&ctx.config_dir)?))
 }
 
+/// The Harnesses configured that a Wiki builds on: each with a headless form.
+fn builders(config: &Config) -> impl Iterator<Item = (&String, &Harness)> {
+    (config.harnesses.iter()).filter(|(name, _)| HEADLESS.contains(&name.as_str()))
+}
+
 /// `set` as an object of some of [`SETTINGS`], each null or a value
 /// `[wiki]` holds; else a bad request.
 fn checked_settings<'a>(
@@ -757,10 +761,8 @@ fn checked_settings<'a>(
     let set = (set.as_object())
         .filter(|set| !set.is_empty())
         .ok_or_else(|| bad(format!("{set} sets nothing"), &all))?;
-    let builds: Vec<&str> = (HEADLESS.iter().copied())
-        .filter(|name| config.harnesses.contains_key(*name))
-        .collect();
-    let builds = format!("Harnesses that build a Wiki: {}", builds.join(", "));
+    let names: Vec<&str> = builders(config).map(|(name, _)| name.as_str()).collect();
+    let builders_help = format!("Harnesses that build a Wiki: {}", names.join(", "));
     for (key, new) in set {
         let Some((_, help)) = SETTINGS.iter().find(|(name, _)| name == key) else {
             return Err(bad(format!("`{key}` is not a setting the page sets"), &all));
@@ -787,14 +789,18 @@ fn checked_settings<'a>(
                 let launch: Launch = serde_json::from_value(new.clone()).map_err(|_| {
                     bad(
                         format!("launch is {{harness, model, effort}}, not {new}"),
-                        &builds,
+                        &builders_help,
                     )
                 })?;
-                dispatch::check(config, &launch)?;
-                if !HEADLESS.contains(&launch.harness.as_str()) {
-                    let error = format!("{} has no headless form: {BUILDS_ON}", launch.harness);
-                    return Err(bad(error, &builds));
+                let harness = &launch.harness;
+                if !names.contains(&harness.as_str()) {
+                    let error = match config.harnesses.contains_key(harness) {
+                        true => format!("{harness} has no headless form: {BUILDS_ON}"),
+                        false => format!("unknown Harness `{harness}`"),
+                    };
+                    return Err(bad(error, &builders_help));
                 }
+                dispatch::check(config, &launch)?;
             }
             _ if whole.is_some_and(|n| n >= 1) => {}
             _ => {
@@ -1263,14 +1269,14 @@ pub fn headless(
     let launch = &config.wiki.launch;
     let harness = &config.harnesses[&launch.harness];
     // The Harness's model and Effort arguments, as its launch fills them in.
-    let chosen = |args: &[String], value: &Option<String>, name: &str| -> Vec<String> {
+    let filled = |args: &[String], value: &Option<String>, name: &str| -> Vec<String> {
         (value.iter())
             .flat_map(|value| args.iter().map(|arg| fill_in(arg, &[(name, value)])))
             .collect()
     };
     let chosen = [
-        chosen(&harness.model_args, &launch.model, "model"),
-        chosen(&harness.effort_args, &launch.effort, "effort"),
+        filled(&harness.model_args, &launch.model, "model"),
+        filled(&harness.effort_args, &launch.effort, "effort"),
     ]
     .concat();
     let strings = |args: &[&str]| args.iter().map(|a| a.to_string()).collect::<Vec<_>>();
@@ -1323,8 +1329,11 @@ pub fn headless(
                     .flat_map(|s| ["resume".into(), s.into()]),
             );
             // `exec resume` takes no `-s`, so the sandbox is set as config, for both.
-            // shortcut: codex keeps the user's MCP servers and its shell (read-only), even for `ask`; drop them if one ever writes.
+            // Not the user's config.toml: its MCP servers and plugins, some of
+            // which write, are not this call's. Its login is still read.
+            // shortcut: codex keeps its read-only shell and its web search, even for `ask`; drop them if codex gains a flag for it.
             args.extend(strings(&[
+                "--ignore-user-config",
                 "-c",
                 "sandbox_mode=\"read-only\"",
                 "--skip-git-repo-check",
