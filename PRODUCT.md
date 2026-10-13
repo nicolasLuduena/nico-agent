@@ -43,6 +43,12 @@ it binds the rebuild.
   Readiness check (what will break a Repo before it does). The morning
   summary renders first each day. A Refresh button is the one way to ask
   GitHub again.
+- **A Wiki per Repo and per Library version.** What the code does, as a
+  tree of Components whose every claim cites its lines, built overnight by
+  a cheap model through headless Harness calls that code checks, kept in
+  the Bucket, read on the Project's tab and by agents through `nico-agent
+  mcp`: the Implementer, Reviewer and quality-scan ask about the Libraries
+  their Repo uses, faux-nico and morning about the Repo itself.
 - **Local first.** What GitHub or Linear said is kept locally and shown from
   there. A PR is asked about again only while it can still change; merged and
   closed are kept forever. Refresh re-asks on purpose. Rate limits and
@@ -51,8 +57,8 @@ it binds the rebuild.
   shown with where it comes from (default, Project, Repo) and undone back to
   it: the Implementer and Reviewer launches, room, Base, its Project, and the
   switches: dispatch, stack, review, restart, flip to ready, faux-nico
-  answers, gardening, quality-scan. All switches off is a Repo that only
-  shows. Defaults: all on except faux-nico answers and gardening. A Repo is
+  answers, gardening, quality-scan, wiki. All switches off is a Repo that only
+  shows. Defaults: all on except faux-nico answers, gardening and wiki. A Repo is
   added, removed and moved into or out of a Project from the page too.
 
 ## How work is verified

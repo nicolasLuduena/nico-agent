@@ -105,7 +105,7 @@ budget.
 
 **Switch**: a Repo's on/off, or its Project's default, for one automatic
 step: dispatch, stack, review, restart, flip to ready, faux-nico answers,
-gardening, quality-scan.
+gardening, quality-scan, wiki.
 _Avoid_: standing order, manual mode.
 
 **Close**: end a Dispatch, removing its worktree and workspace; the branch
@@ -132,8 +132,8 @@ _Avoid_: approval, review.
 flips it from draft to ready. _Avoid_: approved, green.
 
 **Bucket**: the git repo at `/mnt/agents-land/nico-agent-bucket` holding
-Evidence, one commit per PR head, Verdict and Close, served with the Board
-through the tunnel.
+Evidence, one commit per PR head, Verdict and Close, and each Repo's Wiki,
+one commit per regeneration, served with the Board through the tunnel.
 _Avoid_: artifact store.
 
 ## Away
@@ -151,9 +151,48 @@ from what `status` shows since the last one: what to merge in which order,
 what needs an answer, what failed, what gardening landed, what ideas were
 filed. Rendered first on the Board. _Avoid_: report, digest.
 
-**Run**: one start of a trigger's agent: a quality-scan, a faux-nico or the
-morning agent, recorded with when it started and when it ended, so a missed
-scan or morning shows in `status`. One whose agent herdr reports waiting on
+**Wiki**: what a Repo's or a Library's code does as of one commit, as a tree
+of Components, each claim citing the lines it rests on, written by a wiki
+build and kept in the Bucket. The user and the agents read it to find their
+way around. It records what the code does, never what was decided: faux-nico
+reads it to understand a question, never as grounds for its answer.
+_Avoid_: DeepWiki, docs, documentation.
+
+**Library**: a GitHub repository nico-agent keeps Wikis for and never
+dispatches into, one Wiki per version asked for, so an agent asks about the
+version a Repo uses instead of reading the whole library. _Avoid_:
+dependency, package, external repo.
+
+**Component**: a named part of a Wiki's code, with an overview, its files,
+its Interpretations and its sub-Components. One page of the Wiki. _Avoid_:
+module, section, page.
+
+**Interpretation**: a one-sentence claim about a Component, of one kind
+(invariant, precondition, postcondition, effect, role), citing at least one
+Anchor. _Avoid_: note, insight, fact.
+
+**Anchor**: a path and a line range at the Wiki's commit, the lines an
+Interpretation cites. _Avoid_: evidence (that is a verification run's),
+reference, citation.
+
+**Relationship**: one Component using, calling, reading or writing another.
+_Avoid_: dependency, edge, link.
+
+**Gap**: a part of the code a Wiki never reached, with why. _Avoid_:
+missing, TODO.
+
+**Explainer**: a Component's walkthrough of how something in it works, as
+numbered steps in order, each a one-sentence caption citing Anchors. At
+most one per Component. _Avoid_: diagram,
+illustration, figure.
+
+**Stale**: an Interpretation of a Repo's Wiki whose anchored file changed on
+the base since the Wiki's commit; shown as such, never hidden. _Avoid_:
+outdated, invalid.
+
+**Run**: one start of a trigger's agent: a quality-scan, a faux-nico, the
+morning agent or a wiki build, recorded with when it started and when it
+ended, so a missed scan or morning shows in `status`. One whose agent herdr reports waiting on
 a human is blocked, herdr's word: it stays open and the user is told once a
 spell. An Implementer so is Asking, never blocked. A Dispatch is never a
 Run, nor called one. _Avoid_: job, session.
