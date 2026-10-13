@@ -107,8 +107,9 @@ fn read_sources(
     config: &Config,
 ) -> Result<(Vec<String>, BTreeMap<String, Read>), Refusal> {
     let (mut said, mut reads) = (vec![], BTreeMap::new());
-    for (slug, repo) in &config.repos {
-        let (read, error) = source::issues(ctx.world, &ctx.config_dir, slug, repo, config.tick())?;
+    for slug in config.repos.keys() {
+        let (read, error) =
+            source::issues(ctx.world, &ctx.config_dir, config, slug, config.tick())?;
         if let Some(e) = error {
             said.push(format!("could not read the issues of {slug}: {e}"));
         }

@@ -79,6 +79,8 @@ pub struct GitHubBlocker {
     pub number: u64,
     pub title: String,
     pub state: IssueState,
+    /// ISO 8601, once closed.
+    pub closed_at: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -115,6 +117,8 @@ pub struct LinearBlocker {
     pub title: String,
     /// Linear's state type (`unstarted`, `completed`, ...).
     pub state: String,
+    /// ISO 8601, once completed or canceled.
+    pub closed_at: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -662,7 +666,7 @@ const ISSUES_QUERY: &str = "query($owner: String!, $name: String!, $label: Strin
         number title url state createdAt
         labels(first: 50) { nodes { name } }
         assignees(first: 20) { nodes { login } }
-        blockedBy(first: 50) { nodes { number title state repository { nameWithOwner } } }
+        blockedBy(first: 50) { nodes { number title state closedAt repository { nameWithOwner } } }
         subIssuesSummary { total }
       }
     }
@@ -689,10 +693,12 @@ struct Login {
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct NumberedNode {
     number: u64,
     title: String,
     state: String,
+    closed_at: Option<String>,
     repository: Repository,
 }
 
@@ -725,6 +731,7 @@ impl From<IssueNode> for GitHubIssue {
                     number: b.number,
                     title: b.title,
                     state: issue_state(&b.state),
+                    closed_at: b.closed_at,
                 })
                 .collect(),
             has_sub_issues: node.sub_issues_summary.total > 0,

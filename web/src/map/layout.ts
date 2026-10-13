@@ -26,6 +26,8 @@ export interface MapNode {
   restarts: number;
   created_at: string | null;
   merged_at: string | null;
+  /** Why a Waiting node waits, as `status` says it. */
+  waits?: string;
 }
 
 export interface MapEdge {
@@ -34,7 +36,7 @@ export interface MapEdge {
   kind: "blocker" | "stack";
 }
 
-/** DESIGN.md's node, in px; one with a review line is a row taller. */
+/** DESIGN.md's node, in px; one with a line under its Stage is a row taller. */
 export const NODE = { width: 248, height: 88, row: 22 };
 
 export interface Point {
@@ -44,13 +46,18 @@ export interface Point {
 
 /**
  * A node where the map draws it: `x`, `y` its top left corner, `height` its
- * own; `line` where its review stands while it is PR draft; `faded` once its
- * PR merged; `needs` when the needs-you strip lists it.
+ * own; `line` where its review stands while it is PR draft, or why it waits
+ * while Waiting; `faded` once its PR merged; `needs` when the needs-you strip
+ * lists it.
  */
 export type Placed = MapNode & Point & { height: number; line: string | null; faded: boolean; needs: boolean };
 
-/** The review's short line under a PR draft node's Stage. */
-const line = (n: MapNode) => (n.stage === "PR draft" && n.review ? review.short[n.review.state] : null);
+/** The short line under a node's Stage: its review's while PR draft, why it waits while Waiting, less its own key. */
+function line(n: MapNode) {
+  if (n.stage === "PR draft" && n.review) return review.short[n.review.state];
+  if (n.stage === "Waiting" && n.waits) return n.waits.startsWith(`${n.key} `) ? n.waits.slice(n.key.length + 1) : n.waits;
+  return null;
+}
 const heightOf = (n: MapNode) => NODE.height + (line(n) ? NODE.row : 0);
 
 /** An edge as drawn: its points run left to right, the arrowhead at the last. */

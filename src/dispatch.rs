@@ -538,32 +538,28 @@ fn source_of<'c>(
     config: &'c Config,
     key: &str,
 ) -> Result<(&'c String, &'c Repo, Read), Refusal> {
-    let read = |slug: &str, repo: &Repo| match source::issues(
-        ctx.world,
-        &ctx.config_dir,
-        slug,
-        repo,
-        config.tick(),
-    )? {
-        (Some(read), _) => Ok(read),
-        (None, error) => Err(Refusal::new(
-            format!(
-                "could not read the issues of {slug}: {}",
-                error.map(|e| e.0).unwrap_or_default()
-            ),
-            vec!["Run the same `nico-agent dispatch` again once the Source answers".into()],
-        )),
-    };
+    let read =
+        |slug: &str| match source::issues(ctx.world, &ctx.config_dir, config, slug, config.tick())?
+        {
+            (Some(read), _) => Ok(read),
+            (None, error) => Err(Refusal::new(
+                format!(
+                    "could not read the issues of {slug}: {}",
+                    error.map(|e| e.0).unwrap_or_default()
+                ),
+                vec!["Run the same `nico-agent dispatch` again once the Source answers".into()],
+            )),
+        };
     if let Some((slug, _)) = source::github_ref(key) {
         let (slug, repo) = config
             .repos
             .get_key_value(slug)
             .expect("key() found its Repo");
-        return Ok((slug, repo, read(slug, repo)?));
+        return Ok((slug, repo, read(slug)?));
     }
     // shortcut: a Linear issue two Repos claim goes to the first; add `--repo` if that happens.
     for (slug, repo) in config.repos.iter().filter(|(_, r)| r.linear.is_some()) {
-        let read = read(slug, repo)?;
+        let read = read(slug)?;
         if read.issues.iter().any(|i| i.key == key) {
             return Ok((slug, repo, read));
         }

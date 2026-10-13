@@ -324,7 +324,7 @@ cmd_seed() {
 # What a read of verify/fixture's GitHub issues would cache, read now: one Ready, one Research,
 # one Stackable on an open PR, and three that are not Ready, each for its own reason. With
 # `second`, verify/second's instead: #1 waiting on verify/fixture#1, a Blocker in another Repo,
-# and #2 on verify/outside#7, in no Repo.
+# #2 on verify/outside#7, in no Repo, and #3 on verify/fixture#20, closed as it is read.
 seed_issues() {
   [ "${1:-}" != second ] || { seed_second_issues; return; }
   local at; at="$(now)"
@@ -358,7 +358,9 @@ seed_second_issues() {
       blockers: [{key: $blocker, title: $blocker_title, resolved: false, prs: []}] };
     { read_at: $at, user: ["verify-nico"], issues: [
       waits(1; "Verify: waits on fixture #1"; "\($f)#1"; "Verify: a Ready issue"),
-      waits(2; "Verify: waits on an outside issue"; "verify/outside#7"; "Verify: an outside Blocker")
+      waits(2; "Verify: waits on an outside issue"; "verify/outside#7"; "Verify: an outside Blocker"),
+      (waits(3; "Verify: waits on fixture #20 installed"; "\($f)#20"; "Verify: a closed Blocker")
+        | .blockers[0] += {resolved: true, closed_at: $at})
     ] }')"
   jq -c '{ file: input_filename, read_at, issues: [.issues[] | {key, title}] }' "$CONFIG_DIR/issues/$SECOND.json"
 }

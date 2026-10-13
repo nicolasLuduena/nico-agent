@@ -82,8 +82,8 @@ pub fn shown(
     let installs = install::load(&ctx.config_dir)?;
     for (slug, repo) in &config.repos {
         let (read, error) = match read {
-            true => source::issues(ctx.world, &ctx.config_dir, slug, repo, config.tick())?,
-            false => (source::cached(&ctx.config_dir, slug), None),
+            true => source::issues(ctx.world, &ctx.config_dir, config, slug, config.tick())?,
+            false => (source::cached(&ctx.config_dir, config, slug)?, None),
         };
         let readiness = read
             .as_ref()

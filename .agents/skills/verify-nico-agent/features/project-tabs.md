@@ -6,15 +6,19 @@ Repos' issues with Blocker edges across them, then the Project's defaults, each 
 until the Project sets it and editable there, then one panel per Repo with its Readiness, Dispatch form,
 room, switches, settings, Install and Remove. A default set on the tab reaches every Repo that does not set
 it. With more than one Repo, each node names its Repo after its number; a Blocker outside the
-Project stays a node with no Stage. `GET /api/map/<project>` answers the map, the name
-percent-decoded.
+Project stays a node with no Stage. A Waiting node says why under its Stage and in its panel: an
+issue blocked by an issue in another Repo of its Project waits on it to close and, when that Repo
+has an Install, on that Install to run after the close; it is never stacked on it. `GET
+/api/map/<project>` answers the map, the name percent-decoded.
 
 ## Sub-features
 
 - `project-tabs-own` a Repo with no Project has its own tab and map, named by its slug; a Blocker in another Repo is a node by its whole key with no Stage.
 - `project-tabs-join` typing a Project in a Repo's `combobox "Project"` moves the page to that Project's tab; `PATCH /api/repo/<slug> {"project": ...}` does the same from outside.
 - `project-tabs-map-api` `GET /api/map/<project>` answers every Repo's nodes, each with `repo`, a Blocker edge across Repos, and an outside Blocker with `repo` and `stage` null; a Repo inside a Project has no map of its own (404).
-- `project-tabs-map-page` `region "Map of <project>"` names each node `#<n> <repo name>, <title>, <Stage>`, an outside Blocker by its whole key.
+- `project-tabs-map-page` `region "Map of <project>"` names each node `#<n> <repo name>, <title>, <Stage>`, a Waiting one followed by why it waits, an outside Blocker by its whole key.
+- `project-tabs-waits` a Waiting node's `waits` in `GET /api/map/<project>` and `status`'s `waiting[].reason` say `<key> waits on <blocker> to close`; its panel shows the sentence whole.
+- `project-tabs-install-wait` a closed Blocker in another Repo of the Project with an `install` keeps its edge and the issue Waiting (`... waits on <blocker> to be installed in <repo>`, and `dispatch` refused with it) until `nico-agent install <repo>` runs after the close: then the issue is Ready and the edge gone. A Blocker's Repo with no `install`, or one in another Project, is resolved on close.
 - `project-tabs-defaults` `region "<project>"`, headed `Defaults for its Repos, where they set none`, holds the Project's `spinbutton "Room"`, switches and settings, each `default` until set, then `button "Use the default <Setting>"`; a change sends `PATCH /api/project/<name>`.
 - `project-tabs-reach` a default set on the tab shows in each Repo's panel tagged `project`, except where the Repo sets its own, which offers `button "Use the Project's <Setting>"`.
 - `project-tabs-phone` under 720px the tabs are `combobox "Project"`.
@@ -39,10 +43,11 @@ Preconditions:
 
 - **Own Projects.** Run `$C page --evidence "$E/01-own-projects" --click "tab=verify/second"`.
   `tablist "Projects"` has `tab "verify/fixture"` and `tab "verify/second" [selected]`; `region
-  "Map of verify/second"` has `#1, Verify: waits on fixture #1, Waiting`, `#2, Verify: waits on an
-  outside issue, Waiting`, `verify/fixture#1, Verify: a Ready issue, Blocker` and
-  `verify/outside#7, Verify: an outside Blocker, Blocker`; one `region "verify/second"` panel, no
-  Project's defaults.
+  "Map of verify/second"` has `#1, Verify: waits on fixture #1, Waiting, waits on verify/fixture#1 to
+  close`, `#2, Verify: waits on an outside issue, Waiting, waits on verify/outside#7 to close`, `#3,
+  Verify: waits on fixture #20 installed, Ready` (its Blocker closed, in another Project),
+  `verify/fixture#1, Verify: a Ready issue, Blocker` and `verify/outside#7, Verify: an outside
+  Blocker, Blocker`; one `region "verify/second"` panel, no Project's defaults.
 - **Join on the page.** Run `$C page --evidence "$E/02-join-on-page" --click "tab=verify/fixture" --click "combobox=Project" --type verify --press Tab --expect "Defaults for its Repos"`.
   `tab "verify" [selected]` beside `tab "verify/second"`; `region "verify"` above `region
   "verify/fixture"`; `.requests.txt` has `PATCH /api/repo/verify/fixture {"project":"verify"} ->
@@ -51,15 +56,19 @@ Preconditions:
 - **Join through the route.** Run `$C http --evidence "$E/03-join-second" PATCH /api/repo/verify/second '{"project":"verify"}'`: HTTP `200`.
 - **The map.** Run `$C http --evidence "$E/04-map-api" GET /api/map/verify`: HTTP `200`; nodes
   `verify/fixture#1` (`repo` `verify/fixture`, `Ready`), `#3`, `#4`, `#5`, `#6`, `#9` of
-  verify/fixture, `verify/outside#7` (`repo` null, `stage` null), and `verify/second#1` and `#2`
-  (`repo` `verify/second`, `Waiting`); `edges` include `{"from":"verify/fixture#1","kind":"blocker","to":"verify/second#1"}`
+  verify/fixture, `verify/outside#7` (`repo` null, `stage` null), `verify/second#1` and `#2`
+  (`repo` `verify/second`, `Waiting`, `waits` `verify/second#1 waits on verify/fixture#1 to close`
+  and `... on verify/outside#7 to close`) and `#3` (`Ready`: verify/fixture has no Install, so a
+  closed Blocker there is resolved); `edges` include `{"from":"verify/fixture#1","kind":"blocker","to":"verify/second#1"}`
   and `{"from":"verify/outside#7","kind":"blocker","to":"verify/second#2"}`. Run `$C http --evidence "$E/05-old-map" GET /api/map/verify%2Fsecond`:
   HTTP `404`, `verify/second is not a Project`, help `Ask for a Project /api/status lists`.
 - **A Repo's own room.** Run `$C http --evidence "$E/06-second-own-room" PATCH /api/repo/verify/second '{"room":2}'`: `room` `{"from":"repo","value":2}`.
 - **The tab.** Run `$C page --evidence "$E/07-project-tab" --expect "Defaults for its Repos"`.
   `tab "verify" [selected]` alone; `region "Map of verify"` names nodes `#1 fixture, Verify: a Ready
-  issue, Ready`, `#1 second, Verify: waits on fixture #1, Waiting` and `verify/outside#7, Verify:
-  an outside Blocker, Blocker`; the screenshot draws the edge from `#1 fixture` to `#1 second`.
+  issue, Ready`, `#1 second, Verify: waits on fixture #1, Waiting, waits on verify/fixture#1 to
+  close` and `verify/outside#7, Verify: an outside Blocker, Blocker`; the screenshot draws the edge
+  from `#1 fixture` to `#1 second`, and `waits on verify/fixture#1 to close` under `#1 second`'s
+  Stage.
   `region "verify"` has `text: Room default`, `spinbutton "Room": "3"`; `region "verify/fixture"`
   `text: Room default`, `"3"`; `region "verify/second"` `button "Use the default Room"`, `"2"`.
 - **Edit the Project's defaults.** Run `$C page --evidence "$E/08-edit-defaults" --click "spinbutton=Room" --press Control+a --type 5 --press Tab --click "region=Switches" --click "switch=Review" --within "region=verify/fixture" --click "region=Switches" --within "region=verify/second" --click "region=Switches"`.
@@ -79,11 +88,31 @@ Preconditions:
   with `defaults` `{"room":5,"switches":{"review":false}}` and `room` `{"from":"project","value":5}`;
   verify/fixture's `room` `{"from":"project","value":5}`, verify/second's `{"from":"repo","value":2}`,
   both `switches.review` `{"from":"project","value":false}`.
+- **Waits on an Install.** Run `$C http --evidence "$E/12-set-install" PATCH /api/repo/verify/fixture '{"install":"echo installed"}'`:
+  HTTP `200`. `$C run --evidence "$E/13-status-waits-install" -- status --json`: verify/second's
+  `waiting` adds `verify/second#3 waits on verify/fixture#20 to be installed in verify/fixture`, its
+  `ready` is `[]`. `$C http --evidence "$E/14-map-waits-install" GET /api/map/verify`: `verify/second#3`
+  is `Waiting` with that `waits`; `verify/fixture#20` is a node (`repo` `verify/fixture`, `title`
+  `Verify: a closed Blocker`, `stage` null); `edges` include `{"from":"verify/fixture#20","kind":"blocker","to":"verify/second#3"}`.
+  `$C run --evidence "$E/15-dispatch-refused" -- dispatch verify/second#3 --json`: exit `1`,
+  `verify/second#3 is not Ready`, `help[0]` the same sentence.
+- **On the page.** Run `$C page --evidence "$E/16-page-waits-install" --click "button~#3 second" --expect "verify/second#3 waits on verify/fixture#20 to be installed in verify/fixture"`.
+  The node is `#3 second, Verify: waits on fixture #20 installed, Waiting, waits on
+  verify/fixture#20 to be installed in verify/fixture`, its panel `region "Verify: waits on fixture
+  #20 installed #3 second"` has the sentence as a paragraph; the screenshot draws the edge from
+  `#20 fixture` to `#3 second`.
+- **Installed.** Run `$C run --evidence "$E/17-install" -- install verify/fixture --json`: exit `0`,
+  `installed` `verify/fixture at <sha>`; `installs.json`'s `last.at` is after the Blocker's
+  `closed_at` (the seed's read time). `$C run --evidence "$E/18-status-ready" -- status --json`:
+  verify/second's `ready` is `verify/second#3`, `waiting` `#1` and `#2`. `$C http --evidence "$E/19-map-ready" GET /api/map/verify`:
+  `verify/second#3` `Ready` with no `waits`, no edge to it, no `verify/fixture#20` node. `$C page --evidence "$E/20-page-ready"`:
+  `#3 second, Verify: waits on fixture #20 installed, Ready`.
 - **Proof.** `$C state > "$E/state.after.txt"`; the diff shows `config.toml` gaining `project =
-  "verify"` under both Repos, `room = 2` under verify/second and `[projects.verify]` with `room =
-  5` and `switches = { review = false }`, and the seeded Dispatch. Copy `$OUTSIDE_LOG` to
-  `$E/outside.log`: only `herdr agent list` (the open page with a live Dispatch). Every
-  `.console.txt` is empty.
+  "verify"` under both Repos, `room = 2` under verify/second, `install = "echo installed"` under
+  verify/fixture and `[projects.verify]` with `room = 5` and `switches = { review = false }`, the
+  seeded Dispatch, and `installs.json`. Copy `$OUTSIDE_LOG` to `$E/outside.log`: only `herdr agent
+  list` (the open page with a live Dispatch) and `ghbot api /installation/repositories ...` (the
+  Readiness checks after a settings write and the Install). Every `.console.txt` is empty.
 
 ## Gotchas
 
@@ -98,3 +127,8 @@ Preconditions:
   (`Tab`) to send it.
 - The map field is as tall as the column beside it; with several Repo panels the `Fit` button is
   far down the page.
+- A node's line under its Stage is cut to the node's width (`waits on verify/fixture#20 to b…`):
+  `--expect` reads the text drawn, so expect the whole sentence in the node's panel, or read the
+  node's name in the ARIA snapshot.
+- `seed issues second` dates verify/fixture#20's close at the read: an Install run after the seed
+  is after the close.

@@ -157,6 +157,7 @@ fn an_issue_that_is_not_ready_is_refused_with_help_saying_why() {
             number: 2,
             title: "Issue 2".into(),
             state: nico_agent::world::IssueState::Open,
+            closed_at: None,
         }]
     });
     issue(5, &|i| i.labels = vec!["needs-triage".into()]);
@@ -166,7 +167,7 @@ fn an_issue_that_is_not_ready_is_refused_with_help_saying_why() {
             "acme/api#2 is a parent issue; dispatch its sub-issues instead",
         ),
         (3, "acme/api#3 is assigned to colleague"),
-        (4, "acme/api#4 waits on its Blockers acme/api#2"),
+        (4, "acme/api#4 waits on acme/api#2 to close"),
         (
             5,
             "acme/api#5 was not an open issue labelled ready-for-agent when its Source was read, at 2026-09-30T12:00:00Z",

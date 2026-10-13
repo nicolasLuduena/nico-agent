@@ -322,7 +322,7 @@
               >
             {/if}
             {#if a}<circle class="agent {a}" cx="231" cy="71" r="4" />{/if}
-            {#if n.line}<text class="review" x="32" y="98">{n.line}</text>{/if}
+            {#if n.line}<text class="review" x="32" y="98" use:fit_text={[n.line, 236]}></text>{/if}
           </g>
         {/each}
       </g>

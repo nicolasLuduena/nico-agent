@@ -1,7 +1,7 @@
 //! A Repo's Source read into `issues/<repo>.json`, one issue shape for GitHub
 //! and Linear, and what of it is Ready or Stackable.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::io;
 use std::path::Path;
@@ -9,8 +9,9 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
-use crate::config::{Linear, Repo};
+use crate::config::{Config, Linear, Repo};
 use crate::dispatch::Dispatch;
+use crate::install::{self, Install};
 use crate::pause;
 use crate::stage::{self, Prs};
 use crate::state;
@@ -50,9 +51,18 @@ pub struct Blocker {
     /// Unknown in a cache read before Blockers had titles.
     #[serde(default)]
     pub title: Option<String>,
+    /// Closed, as cached; as loaded, also installed when it is in another
+    /// Repo of the Project with an Install (see [`settle`]).
     pub resolved: bool,
+    /// When it closed, as its Source says; unknown in a cache read before.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub closed_at: Option<String>,
+    /// Closed, the Repo of the Project whose Install it waits on.
+    #[serde(skip)]
+    pub installing: Option<String>,
     /// Its open PRs in this Repo with a head branch here, asked only while it
-    /// is unresolved and blocks an issue the loop could start.
+    /// is unresolved and blocks an issue the loop could start; none for one
+    /// in another Repo of the Project.
     pub prs: Vec<BlockerPr>,
 }
 
@@ -85,9 +95,10 @@ pub struct Readiness {
     pub stackable: Vec<Row>,
     /// Ready Gardening issues, kept out of `ready`.
     pub gardening: Vec<Row>,
-    /// Stackable but for its Blockers' open PRs sitting on several branches
-    /// or its being a Gardening issue, or still open though its last
-    /// Dispatch's PR merged or was closed unmerged.
+    /// Waiting on its Blockers to close or be installed, or Stackable but
+    /// for their open PRs sitting on several branches or its being a
+    /// Gardening issue, or still open though its last Dispatch's PR merged or
+    /// was closed unmerged.
     pub waiting: Vec<Row>,
 }
 
@@ -97,10 +108,75 @@ pub fn github_branch(slug: &str, number: u64) -> String {
     format!("agent/{name}-{number}")
 }
 
-/// The Repo's issues: its cache while younger than `max_age`, else read from
-/// the Source and cached. A failed read, or one a rate limit pauses, keeps
-/// the cache, and says why.
+/// The issues of the Repo `slug`, [`settle`]d: its cache while younger than
+/// `max_age`, else read from the Source and cached. A failed read, or one a
+/// rate limit pauses, keeps the cache, and says why.
 pub fn issues(
+    world: &dyn World,
+    config_dir: &Path,
+    config: &Config,
+    slug: &str,
+    max_age: Duration,
+) -> io::Result<(Option<Read>, Option<WorldError>)> {
+    let (read, error) = fresh(world, config_dir, slug, &config.repos[slug], max_age)?;
+    Ok((settled(read, config_dir, config, slug)?, error))
+}
+
+/// What the Repo `slug`'s Source last said, however old, [`settle`]d.
+pub fn cached(config_dir: &Path, config: &Config, slug: &str) -> io::Result<Option<Read>> {
+    settled(cache(config_dir, slug), config_dir, config, slug)
+}
+
+fn settled(
+    read: Option<Read>,
+    config_dir: &Path,
+    config: &Config,
+    slug: &str,
+) -> io::Result<Option<Read>> {
+    let installs = install::load(config_dir)?;
+    Ok(read.map(|mut read| {
+        settle(&mut read, config, slug, &installs);
+        read
+    }))
+}
+
+/// Hold each closed Blocker of `read`, the Repo `slug`'s, that is in another
+/// Repo of its Project with an Install, until that Repo's last Install ran ok
+/// at or after the close. None in another Repo is stacked on.
+fn settle(read: &mut Read, config: &Config, slug: &str, installs: &BTreeMap<String, Install>) {
+    for blocker in read.issues.iter_mut().flat_map(|i| &mut i.blockers) {
+        let Some(other) = repo_in(config, slug, &blocker.key).filter(|s| *s != slug) else {
+            continue;
+        };
+        blocker.prs.clear();
+        let last = installs.get(other).and_then(|i| i.last.as_ref());
+        let installed = last.is_some_and(|l| l.ok && Some(&l.at) >= blocker.closed_at.as_ref());
+        if blocker.resolved && config.repos[other].install.is_some() && !installed {
+            blocker.resolved = false;
+            blocker.installing = Some(other.clone());
+        }
+    }
+}
+
+/// The Repo of the Project of `slug`, `slug` first, that the issue `key` is
+/// in: a GitHub one by its slug, a Linear one by its identifier's team key
+/// against the Repos' `linear.team`.
+pub fn repo_in<'c>(config: &'c Config, slug: &str, key: &str) -> Option<&'c String> {
+    let (own, repo) = config.repos.get_key_value(slug)?;
+    let project = repo.project_name(own);
+    let others = (config.repos.iter()).filter(|(s, r)| *s != own && r.project_name(s) == project);
+    let mut repos = std::iter::once((own, repo)).chain(others);
+    let (found, _) = match github_ref(key) {
+        Some((of, _)) => repos.find(|(s, _)| s.eq_ignore_ascii_case(of)),
+        None => {
+            let (team, _) = key.rsplit_once('-')?;
+            repos.find(|(_, r)| r.linear.as_ref().is_some_and(|l| l.team == team))
+        }
+    }?;
+    Some(found)
+}
+
+fn fresh(
     world: &dyn World,
     config_dir: &Path,
     slug: &str,
@@ -108,7 +184,7 @@ pub fn issues(
     max_age: Duration,
 ) -> io::Result<(Option<Read>, Option<WorldError>)> {
     let file = config_dir.join("issues").join(format!("{slug}.json"));
-    let cached = cached(config_dir, slug);
+    let cached = cache(config_dir, slug);
     let oldest = state::iso(world.now() - max_age);
     if cached.as_ref().is_some_and(|c| c.read_at > oldest) {
         return Ok((cached, None));
@@ -129,8 +205,7 @@ pub fn issues(
     }
 }
 
-/// What the Repo's Source last said, however old.
-pub fn cached(config_dir: &Path, slug: &str) -> Option<Read> {
+fn cache(config_dir: &Path, slug: &str) -> Option<Read> {
     let file = config_dir.join("issues").join(format!("{slug}.json"));
     // A cache that doesn't parse is no cache: the Source is the truth.
     fs::read_to_string(file)
@@ -271,8 +346,7 @@ pub fn readiness(read: &Read, dispatches: &[Dispatch], prs: &Prs) -> Readiness {
                 base: Some(pr.head_branch.clone()),
                 ..row
             }),
-            Start::WaitsOnBlockers => {}
-            Start::Split(reason) => readiness.waiting.push(Row {
+            Start::Waits(reason) | Start::Split(reason) => readiness.waiting.push(Row {
                 reason: Some(reason),
                 ..row
             }),
@@ -287,8 +361,8 @@ pub enum Start<'a> {
     Ready,
     /// On the one branch its unresolved Blockers' open PRs sit on: Stackable.
     Stacked(&'a BlockerPr),
-    /// An unresolved Blocker has no open PR here.
-    WaitsOnBlockers,
+    /// An unresolved Blocker has no open PR here: why it waits.
+    Waits(String),
     /// Their open PRs sit on several branches: why it waits.
     Split(String),
 }
@@ -299,7 +373,13 @@ pub fn start(issue: &Issue) -> Start<'_> {
         return Start::Ready;
     }
     if unresolved.iter().any(|b| b.prs.is_empty()) {
-        return Start::WaitsOnBlockers;
+        let on: Vec<String> = (unresolved.iter())
+            .map(|b| match &b.installing {
+                Some(repo) => format!("{} to be installed in {repo}", b.key),
+                None => format!("{} to close", b.key),
+            })
+            .collect();
+        return Start::Waits(format!("{} waits on {}", issue.key, on.join(", and on ")));
     }
     let mut prs: Vec<&BlockerPr> = vec![];
     for pr in unresolved.iter().flat_map(|b| &b.prs) {
@@ -356,17 +436,7 @@ pub fn why_not_ready(read: &Read, key: &str) -> Option<String> {
     };
     why_not_startable(issue, &read.user).or_else(|| match start(issue) {
         Start::Ready | Start::Stacked(_) => None,
-        Start::WaitsOnBlockers => {
-            let unresolved: Vec<&str> = (issue.blockers.iter())
-                .filter(|b| !b.resolved)
-                .map(|b| b.key.as_str())
-                .collect();
-            Some(format!(
-                "{key} waits on its Blockers {}",
-                unresolved.join(", ")
-            ))
-        }
-        Start::Split(reason) => Some(reason),
+        Start::Waits(reason) | Start::Split(reason) => Some(reason),
     })
 }
 
@@ -388,6 +458,8 @@ fn from_github(slug: &str, issue: &GitHubIssue) -> Issue {
                 key: github_key(slug, &b.slug, b.number),
                 title: Some(b.title.clone()),
                 resolved: b.state == IssueState::Closed,
+                closed_at: b.closed_at.clone(),
+                installing: None,
                 prs: vec![],
             })
             .collect(),
@@ -434,6 +506,8 @@ fn from_linear(issue: &LinearIssue) -> Issue {
                 key: b.identifier.clone(),
                 title: Some(b.title.clone()),
                 resolved: closed(&b.state),
+                closed_at: b.closed_at.clone(),
+                installing: None,
                 prs: vec![],
             })
             .collect(),

@@ -22,6 +22,7 @@ fn blocker(slug: &str, number: u64, state: IssueState) -> GitHubBlocker {
         number,
         title: format!("Issue {number}"),
         state,
+        closed_at: None,
     }
 }
 
@@ -163,11 +164,24 @@ fn an_issue_whose_blockers_have_one_open_pr_branch_here_is_stackable_on_it() {
         ])
     );
     assert_eq!(
-        repo["waiting"],
-        json!([{
+        repo["waiting"][0],
+        json!({
             "key": "acme/api#23", "title": "Issue 23", "url": "https://github.com/acme/api/issues/23", "kind": "code",
             "reason": "acme/api#23 waits for its Blockers' open PRs https://github.com/acme/api/pull/15, https://github.com/acme/api/pull/16 to merge down to one; they sit on different branches",
-        }])
+        })
+    );
+    // A Blocker with no open PR here, outside every Project as acme/other#3, is waited on till it closes.
+    let reasons: Vec<&Value> = (repo["waiting"].as_array().unwrap()[1..].iter())
+        .map(|row| &row["reason"])
+        .collect();
+    assert_eq!(
+        reasons,
+        [
+            "acme/api#24 waits on acme/other#3 to close",
+            "acme/api#26 waits on acme/api#2 to close",
+            "acme/api#27 waits on acme/api#1 to close",
+            "acme/api#28 waits on acme/api#6 to close, and on acme/api#7 to close",
+        ]
     );
     // Each unresolved Blocker is asked about once, however many issues it blocks.
     let linked = |key: &str| {
@@ -364,6 +378,7 @@ fn linear_issues_the_selector_claims_are_ready_or_stackable_beside_github_ones()
         identifier: id.into(),
         title: id.into(),
         state: state.into(),
+        closed_at: None,
     };
     claimed("BLE-1", 1, &|_| {});
     claimed("BLE-2", 2, &|i| i.project = None);
@@ -420,4 +435,136 @@ fn linear_issues_the_selector_claims_are_ready_or_stackable_beside_github_ones()
             "linear attachments BLE-31",
         ]
     );
+}
+
+/// Repos `acme/api` and `acme/web` in the Project `acme shop`, acme/web with
+/// the Install `install`, if any; dispatch off; no calls recorded yet.
+fn in_a_project(install: Option<&str>) -> Setup {
+    let t = setup();
+    std::fs::create_dir_all(&t.config_dir).unwrap();
+    let install = install.map_or(String::new(), |c| format!("install = \"{c}\"\n"));
+    let config = format!(
+        "[repos.\"acme/api\"]\npath = \"/src/api\"\nproject = \"acme shop\"\nswitches = {{ dispatch = false }}\n\n\
+         [repos.\"acme/web\"]\npath = \"/src/web\"\nproject = \"acme shop\"\n{install}switches = {{ dispatch = false }}\n"
+    );
+    std::fs::write(t.config_dir.join("config.toml"), config).unwrap();
+    t
+}
+
+/// The reasons `status` gives for the waiting issues of the Repo at `index`.
+fn waiting(t: &Setup, index: usize) -> Vec<String> {
+    let status = status(t);
+    let rows = status["repos"][index]["waiting"]
+        .as_array()
+        .unwrap()
+        .clone();
+    (rows.iter())
+        .map(|r| {
+            format!(
+                "{}: {}",
+                r["key"].as_str().unwrap(),
+                r["reason"].as_str().unwrap()
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn an_issue_blocked_in_another_repo_of_its_project_waits_on_its_close_then_on_its_install_then_is_ready()
+ {
+    let t = in_a_project(Some("make install"));
+    t.world.add_issue(
+        "acme/api",
+        GitHubIssue {
+            blockers: vec![blocker("acme/web", 1, IssueState::Open)],
+            ..github_issue("acme/api", 3)
+        },
+    );
+    // An Install before the Blocker closed is not the one it waits on.
+    assert_eq!(t.cli(&["install", "acme/web"]).exit_code, 0);
+
+    assert_eq!(
+        waiting(&t, 0),
+        ["acme/api#3: acme/api#3 waits on acme/web#1 to close"]
+    );
+
+    t.world.advance(Duration::from_secs(5 * 60));
+    t.world.issues.borrow_mut().get_mut("acme/api").unwrap()[0].blockers = vec![GitHubBlocker {
+        closed_at: Some("2026-09-30T12:05:00Z".into()),
+        ..blocker("acme/web", 1, IssueState::Closed)
+    }];
+    t.world.advance(Duration::from_secs(10 * 60));
+    let waits_install = ["acme/api#3: acme/api#3 waits on acme/web#1 to be installed in acme/web"];
+    assert_eq!(waiting(&t, 0), waits_install);
+
+    // A failed Install is none.
+    (t.world.shell_runs.borrow_mut()).insert("make install".into(), (false, "boom\n".into()));
+    assert_eq!(t.cli(&["install", "acme/web"]).exit_code, 1);
+    assert_eq!(waiting(&t, 0), waits_install);
+
+    t.world.shell_runs.borrow_mut().clear();
+    assert_eq!(t.cli(&["install", "acme/web"]).exit_code, 0);
+    let status = status(&t);
+    assert_eq!(keys(&status["repos"][0]["ready"]), ["acme/api#3"]);
+    assert_eq!(status["repos"][0]["waiting"], json!([]));
+}
+
+#[test]
+fn an_issue_blocked_in_another_repo_of_its_project_with_no_install_is_ready_on_its_close_and_never_stacked()
+ {
+    let t = in_a_project(None);
+    t.world.add_issue(
+        "acme/api",
+        GitHubIssue {
+            blockers: vec![blocker("acme/web", 1, IssueState::Open)],
+            ..github_issue("acme/api", 3)
+        },
+    );
+    // Its PR in this Repo, as a Blocker outside every Project would be stacked on.
+    t.world
+        .link_pr("acme/web", 1, pr("acme/api", 11, "fix-web-1"));
+
+    assert_eq!(status(&t)["repos"][0]["stackable"], json!([]));
+    assert_eq!(
+        waiting(&t, 0),
+        ["acme/api#3: acme/api#3 waits on acme/web#1 to close"]
+    );
+
+    t.world.issues.borrow_mut().get_mut("acme/api").unwrap()[0].blockers = vec![GitHubBlocker {
+        closed_at: Some("2026-09-30T12:05:00Z".into()),
+        ..blocker("acme/web", 1, IssueState::Closed)
+    }];
+    t.world.advance(Duration::from_secs(10 * 60));
+    assert_eq!(keys(&status(&t)["repos"][0]["ready"]), ["acme/api#3"]);
+}
+
+#[test]
+fn a_linear_blocker_is_placed_in_the_repo_of_its_project_whose_linear_team_is_its_team_key() {
+    let t = setup();
+    std::fs::create_dir_all(&t.config_dir).unwrap();
+    let config = "[repos.\"acme/api\"]\npath = \"/src/api\"\nproject = \"acme shop\"\nlinear = { team = \"BLE\" }\n\n\
+                  [repos.\"acme/web\"]\npath = \"/src/web\"\nproject = \"acme shop\"\nlinear = { team = \"WEB\" }\ninstall = \"make install\"\n";
+    std::fs::write(t.config_dir.join("config.toml"), config).unwrap();
+    let closed = |id: &str| LinearBlocker {
+        identifier: id.into(),
+        title: id.into(),
+        state: "completed".into(),
+        closed_at: Some("2026-09-30T11:00:00.000Z".into()),
+    };
+    // WEB-5 is acme/web's, which installs; BLE-1, of its own team, is acme/api's.
+    let mut on_web = linear_issue("BLE-2");
+    on_web.blockers = vec![closed("WEB-5")];
+    t.world.add_linear_issue(on_web);
+    let mut on_own = linear_issue("BLE-3");
+    on_own.blockers = vec![closed("BLE-1")];
+    t.world.add_linear_issue(on_own);
+
+    assert_eq!(
+        waiting(&t, 0),
+        ["BLE-2: BLE-2 waits on WEB-5 to be installed in acme/web"]
+    );
+    assert_eq!(keys(&status(&t)["repos"][0]["ready"]), ["BLE-3"]);
+
+    assert_eq!(t.cli(&["install", "acme/web"]).exit_code, 0);
+    assert_eq!(keys(&status(&t)["repos"][0]["ready"]), ["BLE-2", "BLE-3"]);
 }
