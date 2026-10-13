@@ -34,7 +34,7 @@ const NOTIFIED: &str = "morning.notified";
 pub struct Run {
     #[serde(flatten)]
     pub trigger: Trigger,
-    /// The Repo it ran for, if one.
+    /// The Repo it ran for, if one; a wiki Run's, the id of its Wiki.
     pub repo: Option<String>,
     /// When it started.
     pub at: String,

@@ -170,19 +170,19 @@ pub fn step(ctx: &Context, config: &Config) -> Result<Vec<String>, Refusal> {
             queue.checked.insert(id, now.clone());
         }
         (open.is_none() && !queue.waiting.is_empty()).then(|| {
-            let slug = queue.waiting.remove(0);
-            let how = queue.asked.remove(&slug);
-            (slug, how)
+            let id = queue.waiting.remove(0);
+            let how = queue.asked.remove(&id);
+            (id, how)
         })
     })?;
-    if let Some((slug, how)) = next {
-        let cwd = match of(config, &slug).expect("only a Wiki the config names waits") {
+    if let Some((id, how)) = next {
+        let cwd = match of(config, &id).expect("only a Wiki the config names waits") {
             Of::Repo(_, repo) => repo.path.clone(),
             // No clone of its own till its build fetches one.
             Of::Library(_) => ctx.config_dir.display().to_string(),
         };
         // Once it has a Wiki, a Repo's is updated from it, unless asked otherwise.
-        let has = outcomes.get(&slug).and_then(Outcome::wiki);
+        let has = outcomes.get(&id).and_then(Outcome::wiki);
         let how = how.or_else(|| has.map(|_| "update".into()));
         let flag = how.map_or(String::new(), |how| format!(" --{how}"));
         let start = |run: &mut Run| {
@@ -194,7 +194,7 @@ pub fn step(ctx: &Context, config: &Config) -> Result<Vec<String>, Refusal> {
             // Its shell exits with it, so a pane gone is a build ended.
             let command = format!(
                 "nico-agent wiki build {}{flag}; exit",
-                launch::shell_word(&slug)
+                launch::shell_word(&id)
             );
             Ok(ctx.world.herdr_pane_run(pane, &command)?)
         };
@@ -202,7 +202,7 @@ pub fn step(ctx: &Context, config: &Config) -> Result<Vec<String>, Refusal> {
         said.push(away::start_run(
             ctx,
             Trigger::Wiki,
-            Some(&slug),
+            Some(&id),
             chosen,
             start,
         )?);
@@ -433,7 +433,7 @@ impl Of<'_> {
     /// Where it is kept, under `wiki/` in the Bucket and in the config
     /// directory: the Repo's slug, or `<owner/name>/<tag>[/<path>]`, the
     /// tag's `%` and `/` escaped so that it is one folder.
-    // shortcut: a tag named as a Repo's own files there (`checkout`, `vectors.json`) shares them; escape such a tag if one is ever used.
+    // shortcut: a tag or subfolder named as a Wiki's own files there (`checkout`, `build.lock`, `vectors.json`) shares them; escape such names if one is ever used.
     pub fn folder(&self) -> String {
         match self {
             Of::Repo(slug, _) => slug.to_string(),
@@ -447,7 +447,7 @@ impl Of<'_> {
 
     /// The clone holding its commits: the Repo's, or the Library's bare one,
     /// cached in the config directory for every version of it.
-    pub fn clone(&self, config_dir: &Path) -> String {
+    pub fn clone_dir(&self, config_dir: &Path) -> String {
         match self {
             Of::Repo(_, repo) => repo.path.clone(),
             Of::Library(library) => {
@@ -963,7 +963,7 @@ fn kept(ctx: &Context, config: &Config, of: &Of) -> Result<Option<Value>, Refusa
 /// a `continue`, from it on a checkout of the commit it describes.
 fn built(ctx: &Context, config: &Config, of: &Of, how: Option<&str>) -> Result<Wiki, Refusal> {
     let (world, call) = (ctx.world, headless(ctx, config, true, None)?);
-    let (id, clone) = (&of.id(), of.clone(&ctx.config_dir));
+    let (id, clone) = (&of.id(), of.clone_dir(&ctx.config_dir));
     let continuing = how == Some("continue");
     let previous = match how {
         Some("update" | "continue") => kept(ctx, config, of)?.map(serde_json::from_value::<Wiki>),
@@ -1050,6 +1050,17 @@ fn described(
         Of::Repo(..) => None,
     };
     let files = files(world, dir, under)?;
+    if let (Of::Library(library), Some(under), true) = (of, under, files.is_empty()) {
+        return Err(Refusal::new(
+            format!("{} has no file under {under} at {commit}", library.repo),
+            vec![format!(
+                "Set its path to a folder {} holds at {}, in {}",
+                library.repo,
+                library.tag,
+                ctx.config_dir.join(config::FILE).display()
+            )],
+        ));
+    }
     let lines: HashMap<&str, usize> = (files.iter()).map(|f| (f.path.as_str(), f.lines)).collect();
     world.log(&format!(
         "building the Wiki of {id} at {commit}: {} calls, {} deep, {} at once",

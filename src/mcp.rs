@@ -161,7 +161,7 @@ fn called(
         }),
         "read_anchor" => config.and_then(|config| {
             let (of, wiki) = served(ctx, named, &config, arguments)?;
-            let clone = of.clone(&ctx.config_dir);
+            let clone = of.clone_dir(&ctx.config_dir);
             anchor(ctx, &of.id(), &clone, &wiki, arguments)
         }),
         "ask" => config.and_then(|config| {
@@ -213,8 +213,8 @@ fn read(ctx: &Context, config: &Config, of: &Of) -> Result<Option<Value>, String
 fn wikis(ctx: &Context, named: &[&str], config: &Config) -> Result<Value, String> {
     let mut wikis = vec![];
     for of in wiki::every(config) {
-        let slug = of.id();
-        if !serves(named, &slug) {
+        let id = of.id();
+        if !serves(named, &id) {
             continue;
         }
         if let Some(wiki) = read(ctx, config, &of)? {
@@ -222,8 +222,7 @@ fn wikis(ctx: &Context, named: &[&str], config: &Config) -> Result<Value, String
                 .map(|c| c["gaps"].as_array().map_or(0, Vec::len))
                 .sum();
             let (commit, built_at) = (&wiki["commit"], &wiki["builtAt"]);
-            wikis
-                .push(json!({ "wiki": slug, "commit": commit, "builtAt": built_at, "gaps": gaps }));
+            wikis.push(json!({ "wiki": id, "commit": commit, "builtAt": built_at, "gaps": gaps }));
         }
     }
     Ok(json!(wikis))
@@ -295,10 +294,10 @@ fn components(wiki: &Value) -> &[Value] {
 }
 
 /// What `read_anchor` answers: the lines `arguments` names, as the clone at
-/// `clone` holds them at the commit of `wiki`, the Wiki `slug` names.
+/// `clone` holds them at the commit of `wiki`, the Wiki `id` names.
 fn anchor(
     ctx: &Context,
-    slug: &str,
+    id: &str,
     clone: &str,
     wiki: &Value,
     arguments: &Value,
@@ -311,7 +310,7 @@ fn anchor(
     let commit = wiki["commit"].as_str().unwrap_or_default();
     let held = (ctx.world.git_show(clone, commit, file))
         .map_err(|e| e.0)?
-        .ok_or_else(|| format!("{file} is not a file of {slug} at {commit}"))?;
+        .ok_or_else(|| format!("{file} is not a file of {id} at {commit}"))?;
     let lines: Vec<&str> = held.lines().collect();
     if start > end || end > lines.len() {
         let n = lines.len();

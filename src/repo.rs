@@ -455,7 +455,7 @@ fn is_name(text: &str) -> bool {
 }
 
 /// `owner/name`, each part letters, digits, `_`, `.` or `-`.
-fn is_slug(text: &str) -> bool {
+pub fn is_slug(text: &str) -> bool {
     let part = |p: &str| {
         !p.is_empty()
             && p.chars()

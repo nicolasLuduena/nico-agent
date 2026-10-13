@@ -16,6 +16,7 @@ use toml_edit::{Document, DocumentMut, Item, TableLike};
 
 use crate::cli::Refusal;
 use crate::dispatch::Dispatch;
+use crate::repo;
 use crate::state;
 
 pub const FILE: &str = "config.toml";
@@ -58,7 +59,8 @@ hour = 7
 # `embed_model`, from the Ollama answering at `ollama`. Each Library version a
 # Repo's `libraries` links, or `libraries` here adds, as
 # `{ repo = "owner/name", tag = "...", path = "sub/folder" }` (`path` optional),
-# is built once, when it has no Wiki.
+# is built once, when it has no Wiki, fetched from https://github.com/<owner/name>.git
+# with git's own credentials: a private one needs a credential helper for it.
 [wiki]
 hour = 2
 launch = { harness = "opencode", model = "opencode-go/deepseek-v4.1-flash" }
@@ -770,21 +772,16 @@ fn positive_port<'de, D: Deserializer<'de>>(d: D) -> Result<u16, D::Error> {
     std::num::NonZeroU16::deserialize(d).map(u16::from)
 }
 
-/// A GitHub repository's `<owner>/<name>`.
+/// A GitHub repository's `<owner>/<name>`, neither a way out of its folder.
 fn slug<'de, D: Deserializer<'de>>(d: D) -> Result<String, D::Error> {
     let slug = String::deserialize(d)?;
-    let named = |part: &str| {
-        !part.is_empty()
-            && !part.starts_with('.')
-            && (part.chars()).all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c))
-    };
-    match slug.split_once('/') {
-        Some((owner, name)) if named(owner) && named(name) => Ok(slug),
-        _ => Err(serde::de::Error::invalid_value(
+    if !repo::is_slug(&slug) || !plain(&slug) {
+        return Err(serde::de::Error::invalid_value(
             serde::de::Unexpected::Str(&slug),
             &"a GitHub repository's owner/name",
-        )),
+        ));
     }
+    Ok(slug)
 }
 
 /// A tag: no `:`, which a Library version's id ends it with, and no part

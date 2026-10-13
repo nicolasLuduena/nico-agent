@@ -156,7 +156,7 @@ pub fn ask(
     wiki: &Value,
     question: &str,
 ) -> Result<Value, String> {
-    let (world, slug, clone) = (ctx.world, &of.id(), &of.clone(&ctx.config_dir));
+    let (world, id, clone) = (ctx.world, &of.id(), &of.clone_dir(&ctx.config_dir));
     let records = embedded(ctx, config, &of.folder(), wiki).map_err(|_| UNAVAILABLE.to_string())?;
     let (ollama, model) = (&config.wiki.ollama, &config.wiki.embed_model);
     let asked = (world.ollama_embed(ollama, model, &[question.into()]).ok())
@@ -201,7 +201,7 @@ pub fn ask(
     }
     // The records last: code they quote is never taken for a placeholder.
     let values = [
-        ("repo", slug.as_str()),
+        ("repo", id.as_str()),
         ("question", question),
         ("records", &shown),
     ];
