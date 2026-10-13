@@ -13,7 +13,7 @@ const component = (id: string, rest: Partial<Component> = {}): Component => ({
   ...rest,
 });
 
-const wiki = (components: Component[]): Wiki => ({ target: { repo: "acme/api" }, commit: "abc1234", builtAt: "", components });
+const wiki = (components: Component[]): Wiki => ({ target: { repo: "acme/api" }, commit: "abc1234", builtAt: "", base: "main", behind: 0, stale: 0, components });
 
 describe("a Component's Relationship diagram", () => {
   // The Web front calls Core, Core reads the Store, and the Store writes the Web front, which is no Relationship of Core's.

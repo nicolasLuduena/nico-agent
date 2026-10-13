@@ -22,7 +22,7 @@
 #                                 such as `verify/fixture > Docs`, only the calls asking about that part
 #   seed correction <file>|none   what the wiki model answers each correction (a call with -s): <file>'s text,
 #                                 or none (then the answer for its part)
-#   drift push <n>|stale|pause|below merged|closed|base
+#   drift push <n>|stale|pause|below merged|closed|base [<file>]
 #                                 what GitHub would change: a new PR head, an old read, a rate limit,
 #                                 the PR below a Stacked dispatch merged or closed unmerged,
 #                                 verify/fixture's Base moved on (and fetched)
@@ -561,22 +561,26 @@ cmd_drift() {
           | .merged_at = (if $how == "merged" then $at else null end))' "$CONFIG_DIR/prs.json")"
       jq -c --arg u "$url" '.[$u] | { url: $u, state, final, merged_at }' "$CONFIG_DIR/prs.json"
       ;;
-    # A merge into verify/fixture's Base on GitHub, rewriting README.md, then fetched into the
-    # clone as the loop's next fetch would: origin/main moves on past what a Wiki describes.
+    # A merge into verify/fixture's Base on GitHub, rewriting README.md (or the file named, made
+    # if new), then fetched into the clone as the loop's next fetch would: origin/main moves on
+    # past what a Wiki describes.
     base)
-      local work="$RUN_DIR/fixture/fixture-drift" old head
+      local work="$RUN_DIR/fixture/fixture-drift" file="${2:-README.md}" old head
+      [[ "$file" != /* && "$file" != *..* ]] || die "drift: usage: drift base [<file in the fixture>]"
       old="$(fgit "$FIXTURE_CLONE" rev-parse origin/main)"
       rm -rf "$work"
       fgit "$RUN_DIR/fixture" clone --quiet "$RUN_DIR/fixture/fixture.git" "$work"
-      printf '# %s, moved on\n\nThe Base moved past the Wiki.\n' "$SLUG" > "$work/README.md"
-      fgit "$work" commit --quiet --all -m "fixture: the Base moves on"
+      mkdir -p "$(dirname "$work/$file")"
+      printf '# %s, moved on\n\nThe Base moved past the Wiki.\n' "$SLUG" > "$work/$file"
+      fgit "$work" add -- "$file"
+      fgit "$work" commit --quiet -m "fixture: the Base moves on"
       fgit "$work" push --quiet origin HEAD:main
       rm -rf "$work"
       fgit "$FIXTURE_CLONE" fetch --quiet origin
       head="$(fgit "$FIXTURE_CLONE" rev-parse origin/main)"
-      jq -n --arg old "$old" --arg head "$head" '{ base: "main", old: $old, head: $head }'
+      jq -n --arg old "$old" --arg head "$head" --arg file "$file" '{ base: "main", file: $file, old: $old, head: $head }'
       ;;
-    *) die "drift: usage: drift push <n> | drift stale | drift pause | drift below merged|closed | drift base" ;;
+    *) die "drift: usage: drift push <n> | drift stale | drift pause | drift below merged|closed | drift base [<file>]" ;;
   esac
 }
 

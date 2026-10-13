@@ -304,6 +304,8 @@ pub trait World {
     /// Each file at `rev` in the clone at `path`, every folder down, as its
     /// path and its blob; no symlink nor submodule.
     fn git_ls_tree_blobs(&self, path: &str, rev: &str) -> WorldResult<Vec<(String, String)>>;
+    /// How many commits `to` holds that `from` does not, in the clone at `path`.
+    fn git_rev_count(&self, path: &str, from: &str, to: &str) -> WorldResult<usize>;
 
     // Harnesses
     /// Make each of `calls` in the folder `cwd`, with no input, up to
@@ -1198,6 +1200,11 @@ impl World for RealWorld {
                 }
             })
             .collect())
+    }
+    fn git_rev_count(&self, path: &str, from: &str, to: &str) -> WorldResult<usize> {
+        let counted = git_ok(path, &["rev-list", "--count", &format!("{from}..{to}")])?;
+        (counted.parse())
+            .map_err(|e| WorldError(format!("git rev-list --count printed {counted:?}: {e}")))
     }
     fn harness_headless(
         &self,

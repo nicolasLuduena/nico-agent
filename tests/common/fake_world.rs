@@ -80,6 +80,8 @@ pub struct FakeWorld {
     pub tracked_changes: RefCell<HashMap<String, Vec<String>>>,
     /// The commit each rev names in a clone, by `<path> <rev>`; `abc1234` when unset.
     pub heads: RefCell<HashMap<String, String>>,
+    /// How many commits each range of a clone holds, by `<path> <from>..<to>`; 0 when unset.
+    pub behind: RefCell<HashMap<String, usize>>,
     /// Whether each shell command line succeeds and what it prints, by the
     /// command; one unset succeeds printing nothing.
     pub shell_runs: RefCell<HashMap<String, (bool, String)>>,
@@ -142,6 +144,7 @@ impl Default for FakeWorld {
             heads: Default::default(),
             shell_runs: Default::default(),
             utc_offset: Cell::new(0),
+            behind: Default::default(),
             headless: Default::default(),
             embeddings: Default::default(),
             stdin: Default::default(),
@@ -448,6 +451,15 @@ impl World for FakeWorld {
         Ok((self.tree.borrow().iter())
             .filter_map(|(key, text)| Some((key.strip_prefix(&at)?.to_string(), blob(text))))
             .collect())
+    }
+
+    fn git_rev_count(&self, path: &str, from: &str, to: &str) -> WorldResult<usize> {
+        self.call(format!("git -C {path} rev-list --count {from}..{to}"))?;
+        let behind = self.behind.borrow();
+        Ok(behind
+            .get(&format!("{path} {from}..{to}"))
+            .copied()
+            .unwrap_or(0))
     }
 
     /// One at a time, each answered as `headless` scripts it.

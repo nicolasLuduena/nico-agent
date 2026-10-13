@@ -1,6 +1,8 @@
 # Build a Repo's Wiki
 
-`nico-agent wiki build <owner/name>` builds that Repo's Wiki from scratch: it checks the Repo out
+`nico-agent wiki build <owner/name>` builds that Repo's Wiki from scratch, as `--rebuild` does
+(`--update`, from the Wiki before it, is [wiki-update.md](./wiki-update.md); `--continue`, filling
+its budget Gaps, [wiki-buttons.md](./wiki-buttons.md)): it checks the Repo out
 at `origin/<base>`, records each file's blob and line count, and asks the `[wiki]` launch about the
 code part by part, top-down, each part one headless, read-only `opencode2 run`. Code checks every
 answer: a claim that fails goes back to the model in the same session, by its id with what failed,

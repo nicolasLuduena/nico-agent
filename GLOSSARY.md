@@ -189,8 +189,20 @@ most one per Component. _Avoid_: diagram,
 illustration, figure.
 
 **Stale**: an Interpretation of a Repo's Wiki whose anchored file changed on
-the base since the Wiki's commit; shown as such, never hidden. _Avoid_:
-outdated, invalid.
+the base since it was written; shown as such, never hidden, until a wiki
+build asks about its part again. _Avoid_: outdated, invalid.
+
+**Update**: a wiki build of a Repo's Wiki from the one before it, asking
+again only about the parts whose files changed and copying the rest; a
+parent whose parts changed keeps its Interpretations, Stale where they
+are. _Avoid_: refresh, incremental build.
+
+**Rebuild**: a wiki build of a Wiki from nothing, as its first one is,
+asked for by the user. _Avoid_: reset, regenerate.
+
+**Continue**: a wiki build asking again only the parts of a Wiki its
+budget left Gaps, with a fresh budget, at the commit the Wiki describes.
+_Avoid_: resume, retry.
 
 **Run**: one start of a trigger's agent: a quality-scan, a faux-nico, the
 morning agent or a wiki build, recorded with when it started and when it

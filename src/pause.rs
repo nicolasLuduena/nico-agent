@@ -195,6 +195,9 @@ impl World for Guarded<'_> {
     fn git_ls_tree_blobs(&self, path: &str, rev: &str) -> WorldResult<Vec<(String, String)>> {
         self.world.git_ls_tree_blobs(path, rev)
     }
+    fn git_rev_count(&self, path: &str, from: &str, to: &str) -> WorldResult<usize> {
+        self.world.git_rev_count(path, from, to)
+    }
     fn harness_headless(
         &self,
         cwd: &str,

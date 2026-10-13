@@ -951,9 +951,18 @@ fn serve_answers_each_built_wiki_and_a_wiki_by_its_id_and_404s_one_it_has_not() 
         "commit": "abc1234",
         "builtAt": "2026-09-30T12:00:00Z",
         "gaps": 1,
+        "budget": 0,
+        "calls": 48,
+        "state": "built",
+        "pane": null,
+        "why": null,
     });
     assert_eq!(listed, (200, json!([built])));
-    assert_eq!(one, (200, wiki(&t)));
+    let mut marked = wiki(&t);
+    marked["base"] = json!("main");
+    marked["behind"] = json!(0);
+    marked["stale"] = json!(0);
+    assert_eq!(one, (200, marked));
     let help = json!([
         "Ask for a Wiki /api/wikis lists, or build one: nico-agent wiki build <owner/name>"
     ]);
@@ -1117,4 +1126,431 @@ fn an_explainer_citing_no_real_anchor_with_an_arrow_to_no_step_or_over_8_steps_i
             "{part}: {logged:?}"
         );
     }
+}
+
+/// `acme/api` built at abc1234, divided into Core (`src/lib.rs` and
+/// `src/config.rs`) and Web (`web/app.ts`), each a leaf of one role; then
+/// its Base moved on to def5678, as `files` say, and the model's script
+/// and the calls cleared. The Wiki it built.
+fn built_then_moved(t: &Setup, files: &[(&str, Option<&str>)]) -> Value {
+    answer(
+        t,
+        "acme/api",
+        json!({
+            "kind": "division",
+            "overview": "An API.",
+            "components": [
+                { "name": "Core", "summary": "The crate.", "files": ["src/lib.rs", "src/config.rs"] },
+                { "name": "Web", "summary": "The page.", "files": ["web/app.ts"] },
+            ],
+            "interpretations": [interpretation("role", "run is the entry point.", "src/lib.rs", 4, 4)],
+        }),
+    );
+    let core = interpretation(
+        "invariant",
+        "Config is a unit struct.",
+        "src/config.rs",
+        1,
+        1,
+    );
+    answer(
+        t,
+        "acme/api > Core",
+        json!({ "kind": "leaf", "overview": "The crate.", "interpretations": [core] }),
+    );
+    let web = interpretation("effect", "The page serves on port 80.", "web/app.ts", 2, 2);
+    answer(
+        t,
+        "acme/api > Web",
+        json!({ "kind": "leaf", "overview": "The page.", "interpretations": [web] }),
+    );
+    let ran = t.cli(&["wiki", "build", "acme/api", "--json"]);
+    assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
+    for (file, text) in files {
+        let key = format!("/src/api origin/main:{file}");
+        match text {
+            Some(text) => t.world.add_tree_file("/src/api", "origin/main", file, text),
+            None => drop(t.world.tree.borrow_mut().remove(&key)),
+        }
+    }
+    (t.world.heads.borrow_mut()).insert(format!("{} HEAD", checkout(t)), "def5678".into());
+    t.world.headless.borrow_mut().clear();
+    t.world.calls.borrow_mut().clear();
+    wiki(t)
+}
+
+/// The part whose prompt names `trail` answers `answer` from now on.
+fn answer_first(t: &Setup, trail: &str, answer: Value) {
+    let line = format!("## The part: {trail}");
+    (t.world.headless.borrow_mut()).insert(0, (line, answer.to_string()));
+}
+
+/// The parts asked about since the calls were cleared, by their trail.
+fn asked(t: &Setup) -> Vec<String> {
+    (t.world.calls().iter())
+        .flat_map(|c| c.lines().filter_map(|l| l.strip_prefix("## The part: ")))
+        .map(String::from)
+        .collect()
+}
+
+const NEW_WEB: &str = "export const serve = () => {};\nexport const port = 8080;\n";
+
+#[test]
+fn update_with_one_file_changed_asks_again_only_its_leaf_and_copies_every_other_part() {
+    let t = with_repo("");
+    let before = built_then_moved(&t, &[("web/app.ts", Some(NEW_WEB))]);
+    let port = interpretation(
+        "effect",
+        "The page serves on port 8080.",
+        "web/app.ts",
+        2,
+        2,
+    );
+    answer(
+        &t,
+        "acme/api > Web",
+        json!({ "kind": "leaf", "overview": "The page, moved.", "interpretations": [port] }),
+    );
+
+    let ran = t.cli(&["wiki", "build", "acme/api", "--update", "--json"]);
+
+    assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
+    assert_eq!(ran.json()["commit"], "def5678");
+    assert_eq!(ran.json()["components"], 3);
+    assert_eq!(asked(&t), ["acme/api > Web"]);
+    let mut after = before.clone();
+    after["commit"] = json!("def5678");
+    after["files"][2]["blob"] = json!(blob(NEW_WEB));
+    after["components"][2]["overview"] = json!("The page, moved.");
+    after["components"][2]["interpretations"][0]["text"] = json!("The page serves on port 8080.");
+    assert_eq!(wiki(&t), after);
+    // The re-asked part is told what its parent's division said of it.
+    let call = (t.world.calls().into_iter())
+        .find(|c| c.contains("## The part: acme/api > Web\n"))
+        .unwrap();
+    assert!(
+        call.contains("This part is the Component \"Web\" of acme/api, described as: The page.")
+    );
+    let message = "-m wiki acme/api def5678";
+    assert!(t.world.calls().iter().any(|c| c.ends_with(message)));
+}
+
+#[test]
+fn update_with_a_file_added_divides_again_only_the_part_it_sits_under() {
+    let t = with_repo("");
+    let before = built_then_moved(&t, &[("web/style.css", Some("body {}\n"))]);
+    answer(
+        &t,
+        "acme/api > Web",
+        json!({
+            "kind": "division",
+            "overview": "The page and its style.",
+            "components": [
+                { "name": "Script", "summary": "Its code.", "files": ["web/app.ts"] },
+                { "name": "Style", "summary": "Its look.", "files": ["web/style.css"] },
+            ],
+        }),
+    );
+    for (part, overview) in [("Script", "Its code."), ("Style", "Its look.")] {
+        answer(
+            &t,
+            &format!("acme/api > Web > {part}"),
+            json!({ "kind": "leaf", "overview": overview }),
+        );
+    }
+
+    let ran = t.cli(&["wiki", "build", "acme/api", "--update", "--json"]);
+
+    assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
+    assert_eq!(
+        asked(&t),
+        [
+            "acme/api > Web",
+            "acme/api > Web > Script",
+            "acme/api > Web > Style"
+        ]
+    );
+    let call = (t.world.calls().into_iter())
+        .find(|c| c.contains("## The part: acme/api > Web\n"))
+        .unwrap();
+    assert!(call.contains("- web/app.ts (2 lines)\n- web/style.css (1 lines)\n"));
+    let after = wiki(&t);
+    let components = after["components"].as_array().unwrap();
+    let ids: Vec<&str> = components
+        .iter()
+        .map(|c| c["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(ids, ["index", "core", "web", "web/script", "web/style"]);
+    let mut index = before["components"][0].clone();
+    index["files"] = json!(["src/config.rs", "src/lib.rs", "web/app.ts", "web/style.css"]);
+    assert_eq!(components[0], index);
+    assert_eq!(components[1], before["components"][1]);
+    assert_eq!(components[2]["overview"], "The page and its style.");
+    assert_eq!(
+        components[2]["files"],
+        json!(["web/app.ts", "web/style.css"])
+    );
+    assert_eq!(components[4]["parent"], "web");
+}
+
+#[test]
+fn update_with_a_file_removed_divides_again_only_the_part_it_was_in() {
+    let t = with_repo("");
+    let before = built_then_moved(&t, &[("src/config.rs", None)]);
+    let entry = interpretation("role", "run is the entry point.", "src/lib.rs", 4, 4);
+    answer(
+        &t,
+        "acme/api > Core",
+        json!({ "kind": "leaf", "overview": "The crate, without its config.", "interpretations": [entry] }),
+    );
+
+    let ran = t.cli(&["wiki", "build", "acme/api", "--update", "--json"]);
+
+    assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
+    assert_eq!(asked(&t), ["acme/api > Core"]);
+    let call = (t.world.calls().into_iter())
+        .find(|c| c.contains("## The part: acme/api > Core\n"))
+        .unwrap();
+    assert!(call.contains("- src/lib.rs (4 lines)\n\n"), "{call}");
+    let after = wiki(&t);
+    assert_eq!(
+        after["files"],
+        json!([
+            { "path": "src/lib.rs", "blob": blob(LIB), "lines": 4 },
+            { "path": "web/app.ts", "blob": blob(WEB), "lines": 2 },
+        ])
+    );
+    let mut index = before["components"][0].clone();
+    index["files"] = json!(["src/lib.rs", "web/app.ts"]);
+    assert_eq!(after["components"][0], index);
+    // In the order it had: the part asked again keeps its place.
+    assert_eq!(after["components"][1]["id"], "core");
+    assert_eq!(after["components"][1]["files"], json!(["src/lib.rs"]));
+    assert_eq!(
+        after["components"][1]["overview"],
+        "The crate, without its config."
+    );
+    assert_eq!(after["components"][2], before["components"][2]);
+}
+
+const NEW_LIB: &str = "pub mod config;\npub mod web;\n\npub fn run() { web::serve(); }\n";
+
+/// The calls `GET path` makes, and its answer.
+fn served(t: &Setup, path: &str) -> ((u16, Value), Vec<String>) {
+    t.world.calls.borrow_mut().clear();
+    let answer = t.get(path);
+    (answer, t.world.calls())
+}
+
+#[test]
+fn an_interpretation_citing_a_file_changed_on_the_base_is_stale_until_an_update_asks_it_again() {
+    let t = with_repo("");
+    let before = built_then_moved(&t, &[("src/lib.rs", Some(NEW_LIB))]);
+    (t.world.behind.borrow_mut()).insert("/src/api abc1234..origin/main".into(), 3);
+    t.tick();
+
+    let (moved, calls) = served(&t, "/api/wiki/acme/api");
+
+    // The top part's claim cites src/lib.rs; Core's and Web's cite neither.
+    let mut stale = before.clone();
+    stale["components"][0]["interpretations"][0]["stale"] = json!(true);
+    stale["base"] = json!("main");
+    stale["behind"] = json!(3);
+    stale["stale"] = json!(1);
+    assert_eq!(moved, (200, stale));
+    // Against the Base as the clone has it: nothing fetched.
+    assert_eq!(
+        calls,
+        [
+            &format!("read {WIKI}"),
+            "git -C /src/api default-branch",
+            "git -C /src/api ls-tree -r -z origin/main",
+            "git -C /src/api rev-list --count abc1234..origin/main",
+        ]
+    );
+
+    // An Update asks Core again; the top part, kept, keeps its claim, Stale.
+    answer(
+        &t,
+        "acme/api > Core",
+        json!({ "kind": "leaf", "overview": "The crate, serving.", "interpretations": [interpretation("effect", "run serves the page.", "src/lib.rs", 4, 4)] }),
+    );
+    let ran = t.cli(&["wiki", "build", "acme/api", "--update", "--json"]);
+    assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
+    assert_eq!(asked(&t), ["acme/api > Core"]);
+    let (updated, _) = served(&t, "/api/wiki/acme/api");
+
+    let (status, updated) = updated;
+    assert_eq!(status, 200);
+    assert_eq!(
+        (&updated["behind"], &updated["stale"]),
+        (&json!(0), &json!(1))
+    );
+    let index = &updated["components"][0];
+    assert_eq!(index["interpretations"][0]["stale"], true);
+    assert_eq!(index["blobs"], json!({ "src/lib.rs": blob(LIB) }));
+    let core = &updated["components"][1];
+    assert_eq!(core["id"], "core");
+    assert!(core["interpretations"][0].get("stale").is_none(), "{core}");
+}
+
+#[test]
+fn update_never_asks_about_a_part_left_with_no_files_when_two_parts_shared_a_removed_one() {
+    let t = with_repo("");
+    // src/config.rs in both Core and Web, as a model may answer.
+    answer(
+        &t,
+        "acme/api",
+        json!({
+            "kind": "division",
+            "overview": "An API.",
+            "components": [
+                { "name": "Core", "summary": "The crate.", "files": ["src/lib.rs", "src/config.rs"] },
+                { "name": "Web", "summary": "The page.", "files": ["web/app.ts", "src/config.rs"] },
+            ],
+        }),
+    );
+    answer(
+        &t,
+        "acme/api > Core",
+        json!({ "kind": "leaf", "overview": "The crate." }),
+    );
+    answer(
+        &t,
+        "acme/api > Web",
+        json!({
+            "kind": "division",
+            "overview": "The page and its config.",
+            "components": [
+                { "name": "Page", "summary": "The page.", "files": ["web/app.ts"] },
+                { "name": "Conf", "summary": "Its config.", "files": ["src/config.rs"] },
+            ],
+        }),
+    );
+    for part in ["Page", "Conf"] {
+        let trail = format!("acme/api > Web > {part}");
+        answer(&t, &trail, json!({ "kind": "leaf", "overview": part }));
+    }
+    let ran = t.cli(&["wiki", "build", "acme/api", "--json"]);
+    assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
+    (t.world.tree.borrow_mut()).remove("/src/api origin/main:src/config.rs");
+    t.world.calls.borrow_mut().clear();
+
+    answer_first(
+        &t,
+        "acme/api > Web",
+        json!({
+            "kind": "division",
+            "overview": "The page.",
+            "components": [{ "name": "Page", "summary": "The page.", "files": ["web/app.ts"] }],
+        }),
+    );
+
+    let ran = t.cli(&["wiki", "build", "acme/api", "--update", "--json"]);
+
+    assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
+    // Web, its Conf left with nothing, is divided again.
+    assert_eq!(
+        asked(&t),
+        ["acme/api > Core", "acme/api > Web", "acme/api > Web > Page"]
+    );
+    let after = wiki(&t);
+    let ids: Vec<&str> = (after["components"].as_array().unwrap().iter())
+        .map(|c| c["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(ids, ["index", "core", "web", "web/page"]);
+}
+
+#[test]
+fn continue_asks_only_the_budget_gaps_with_a_fresh_budget_and_fills_them_in_place_at_the_wiki_s_commit()
+ {
+    let t = with_repo("[wiki]\ncalls = 2");
+    divided(&t);
+    answer(
+        &t,
+        "acme/api > Core",
+        json!({ "kind": "leaf", "overview": "The crate's modules." }),
+    );
+    let ran = t.cli(&["wiki", "build", "acme/api", "--json"]);
+    assert_eq!(ran.json()["gaps"], json!({ "budget": 1 }));
+    let before = wiki(&t);
+    // Its Base moved on since: Continue reads the commit the Wiki describes.
+    for (file, text) in [
+        ("src/lib.rs", LIB),
+        ("src/config.rs", CONFIG),
+        ("web/app.ts", WEB),
+    ] {
+        t.world.add_tree_file("/src/api", "abc1234", file, text);
+    }
+    t.world
+        .add_tree_file("/src/api", "origin/main", "web/app.ts", NEW_WEB);
+    (t.world.heads.borrow_mut()).insert("/src/api origin/main".into(), "def5678".into());
+    t.world.calls.borrow_mut().clear();
+    let port = interpretation("effect", "The page serves on port 80.", "web/app.ts", 2, 2);
+    answer(
+        &t,
+        "acme/api > Web",
+        json!({ "kind": "leaf", "overview": "The page.", "interpretations": [port] }),
+    );
+
+    let ran = t.cli(&["wiki", "build", "acme/api", "--continue", "--json"]);
+
+    assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
+    assert_eq!(
+        (&ran.json()["commit"], &ran.json()["gaps"]),
+        (&json!("abc1234"), &json!({}))
+    );
+    assert_eq!(asked(&t), ["acme/api > Web"]);
+    let dir = checkout(&t);
+    assert!(t.world.calls().contains(&format!(
+        "git -C /src/api worktree add --detach --quiet {dir} abc1234"
+    )));
+    let mut after = before.clone();
+    after["components"][2]["interpretations"] = json!([{ "id": 1, "kind": "effect", "text": "The page serves on port 80.", "anchors": [{ "path": "web/app.ts", "start": 2, "end": 2 }] }]);
+    after["components"][2]["gaps"] = json!([]);
+    assert_eq!(wiki(&t), after);
+}
+
+#[test]
+fn continue_is_refused_for_a_repo_with_no_wiki_and_one_build_kind_is_asked_at_a_time() {
+    let t = with_repo("");
+
+    let none = t.cli(&["wiki", "build", "acme/api", "--continue", "--json"]);
+    let both = t.cli(&[
+        "wiki",
+        "build",
+        "acme/api",
+        "--update",
+        "--rebuild",
+        "--json",
+    ]);
+
+    assert_eq!(none.exit_code, 1, "{}", none.stdout);
+    assert_eq!(
+        none.json()["error"],
+        "could not build the Wiki of acme/api: acme/api has no Wiki to continue"
+    );
+    assert_eq!(both.exit_code, 2, "{}", both.stdout);
+    assert_eq!(
+        both.json()["error"],
+        "--update, --rebuild and --continue are one at a time"
+    );
+}
+
+#[test]
+fn rebuild_asks_about_every_part_again_without_reading_the_wiki_before_it() {
+    let t = with_repo("");
+    divided(&t);
+    for part in ["Core", "Web"] {
+        let trail = format!("acme/api > {part}");
+        answer(&t, &trail, json!({ "kind": "leaf", "overview": part }));
+    }
+    t.cli(&["wiki", "build", "acme/api", "--json"]);
+    t.world.calls.borrow_mut().clear();
+
+    let ran = t.cli(&["wiki", "build", "acme/api", "--rebuild", "--json"]);
+
+    assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
+    assert_eq!(asked(&t), ["acme/api", "acme/api > Core", "acme/api > Web"]);
+    assert!(!t.world.calls().contains(&format!("read {WIKI}")));
 }

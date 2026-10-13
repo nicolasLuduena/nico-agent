@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { anchorUrl, search } from "./wiki";
+import { anchorUrl, freshness, search, unexplored } from "./wiki";
 
 test("an Anchor opens GitHub at the Wiki's commit, at its lines, its path escaped", () => {
   const wiki = { target: { repo: "acme/api" }, commit: "abc1234" };
@@ -44,4 +44,16 @@ test("search reads the text as the page shows it: a link's address and the Markd
   expect(search(wiki, "example")).toEqual([]);
   expect(search(wiki, "rfc serde").map((h) => h.text)).toEqual(["Follows the RFC and serde."]);
   expect(search(wiki, "the api").map((h) => h.text)).toEqual(["Serves the API."]);
+});
+
+test("freshness says how far behind its Base a Wiki is, and how many Interpretations are Stale when any are", () => {
+  expect(freshness({ base: "main", behind: 0, stale: 0 })).toBe("Up to date with main");
+  expect(freshness({ base: "main", behind: 1, stale: 1 })).toBe("1 commit behind main · 1 Interpretation Stale");
+  expect(freshness({ base: "dev", behind: 3, stale: 0 })).toBe("3 commits behind dev");
+  expect(freshness({ base: "main", behind: 12, stale: 4 })).toBe("12 commits behind main · 4 Interpretations Stale");
+});
+
+test("what Continue asks about counts the parts the budget left unexplored", () => {
+  expect(unexplored(1)).toBe("1 part not explored (budget)");
+  expect(unexplored(6)).toBe("6 parts not explored (budget)");
 });
