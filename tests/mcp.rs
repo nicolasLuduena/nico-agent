@@ -85,12 +85,12 @@ fn interpretation(kind: &str, text: &str, path: &str, start: u64, end: u64) -> V
     json!({ "kind": kind, "text": text, "anchors": [{ "path": path, "start": start, "end": end }] })
 }
 
-/// Run `nico-agent mcp <args>` with `requests` on its stdin, a line each:
-/// the lines it wrote to stdout, read as JSON.
+/// Run `nico-agent mcp <args> --json` with `requests` on its stdin, a line
+/// each: the lines it wrote to stdout, read as JSON.
 fn mcp(t: &Setup, args: &[&str], requests: &[Value]) -> Vec<Value> {
     let lines = requests.iter().map(Value::to_string);
     t.world.stdin.borrow_mut().extend(lines);
-    let ran = t.cli(&[&["mcp"], args].concat());
+    let ran = t.cli(&[&["mcp"], args, &["--json"]].concat());
     assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
     assert_eq!(ran.stdout, "", "stdout is the protocol's alone");
     (t.world.stdout.borrow_mut().drain(..))
@@ -131,21 +131,12 @@ fn request(id: u64, method: &str, params: Value) -> Value {
 #[test]
 fn it_answers_the_handshake_as_mcp_requires_and_never_a_notification() {
     let t = setup();
-    let initialize = request(
-        1,
-        "initialize",
-        json!({
-            "protocolVersion": "2025-06-18",
-            "capabilities": {},
-            "clientInfo": { "name": "claude-code", "version": "2.1.296" },
-        }),
-    );
     let initialized = json!({ "jsonrpc": "2.0", "method": "notifications/initialized" });
 
     let answered = mcp(
         &t,
         &[],
-        &[initialize, initialized, request(2, "ping", json!({}))],
+        &[initialize(), initialized, request(2, "ping", json!({}))],
     );
 
     assert_eq!(answered.len(), 2, "{answered:?}");
@@ -256,6 +247,12 @@ fn get_component_gives_its_interpretations_relationships_sub_components_and_gaps
         "get_component",
         json!({ "wiki": "acme/api", "id": "web-front" }),
     );
+    let core = call(
+        &t,
+        &[],
+        "get_component",
+        json!({ "wiki": "acme/api", "id": "core" }),
+    );
 
     // A parent's files are its parts': only a leaf lists them.
     assert_eq!(
@@ -287,6 +284,11 @@ fn get_component_gives_its_interpretations_relationships_sub_components_and_gaps
             "gaps": [{ "paths": ["web/app.ts"], "reason": "unreadable" }],
             "components": [],
         }))
+    );
+    // What uses it too, though the Wiki keeps a Relationship on its user's side.
+    assert_eq!(
+        core.unwrap()["relationships"],
+        json!([{ "from": "web-front", "kind": "calls", "description": "It calls the API." }])
     );
     assert_eq!(
         call(
@@ -402,7 +404,7 @@ fn wiki_limits_what_it_serves_and_an_unserved_or_unknown_wiki_is_a_tool_error() 
     assert_eq!(unserved, Err(not("acme/api")));
     assert_eq!(unknown, Err(not("acme/nope")));
     assert_eq!(both.unwrap().as_array().unwrap().len(), 2);
-    // Still served after a tool error: a session goes on.
+    // A tool error ends nothing: it goes on answering.
     assert_eq!(wikis_of(&t, &[]), ["acme/api", "acme/web"]);
 }
 
@@ -469,10 +471,11 @@ fn it_answers_what_it_cannot_do_with_the_json_rpc_error_for_it() {
         answered[2],
         error(json!(3), -32601, "Method not found: resources/list")
     );
-    // A message with no id is a notification, answered with nothing.
-    assert_eq!(answered[3]["result"]["protocolVersion"], "2025-11-25");
+    // A batch, or anything else not one message, is no request.
+    assert_eq!(answered[3], error(Value::Null, -32600, "Invalid Request"));
+    assert_eq!(answered[4]["result"]["protocolVersion"], "2025-11-25");
     assert_eq!(
-        answered[4]["result"],
+        answered[5]["result"],
         json!({ "content": [{ "type": "text", "text": "`wiki` is required, a string" }], "isError": true })
     );
     assert_eq!(unparsed, [error(Value::Null, -32700, "Parse error")]);

@@ -32,7 +32,7 @@ pub fn mcp(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
         }
     }
     // Stdout is the protocol's: nothing more to print.
-    Ok(json!({}))
+    Ok(Value::Null)
 }
 
 /// The response to the message `line`; none to a notification.
@@ -40,6 +40,10 @@ fn answer(ctx: &Context, named: &[&str], line: &str) -> Option<Value> {
     let Ok(message) = serde_json::from_str::<Value>(line) else {
         return Some(error(Value::Null, -32700, "Parse error".into()));
     };
+    // A batch too: no MCP version this speaks needs one.
+    if !message.is_object() {
+        return Some(error(Value::Null, -32600, "Invalid Request".into()));
+    }
     let id = message.get("id")?.clone();
     let params = &message["params"];
     let result = match message["method"].as_str().unwrap_or_default() {
@@ -106,7 +110,7 @@ fn tools() -> Value {
         ),
         tool(
             "get_component",
-            "Read a Component of a Wiki: its overview, its Interpretations (one-sentence claims, each an invariant, precondition, postcondition, effect or role, citing Anchors: a path and lines, 1-based and inclusive), its Relationships to other Components, its sub-Components and its Gaps; a leaf's files too. `index` is a Wiki's top Component.",
+            "Read a Component of a Wiki: its overview, its Interpretations (one-sentence claims, each an invariant, precondition, postcondition, effect or role, citing Anchors: a path and lines, 1-based and inclusive), its Relationships (`to` what it uses, `from` what uses it), its sub-Components and its Gaps; a leaf's files too. `index` is a Wiki's top Component.",
             json!({ "wiki": wiki, "id": { "type": "string", "description": "The Component's id, as find_component or a parent gives it." } }),
             &["wiki", "id"],
         ),
@@ -153,25 +157,8 @@ fn called(
             component(&slug, &wiki, text(arguments, "id")?)
         }),
         "read_anchor" => config.and_then(|config| {
-            let (slug, path, wiki) = served(&config)?;
-            let (file, start, end) = (
-                text(arguments, "path")?,
-                number(arguments, "start")?,
-                number(arguments, "end")?,
-            );
-            let commit = wiki["commit"].as_str().unwrap_or_default();
-            let held = (ctx.world.git_show(&path, commit, file))
-                .map_err(|e| e.0)?
-                .ok_or_else(|| format!("{file} is not a file of {slug} at {commit}"))?;
-            let lines: Vec<&str> = held.lines().collect();
-            if start > end || end > lines.len() {
-                let n = lines.len();
-                return Err(format!(
-                    "lines {start}-{end} are not inside {file} ({n} lines)"
-                ));
-            }
-            let text = lines[start - 1..end].join("\n");
-            Ok(json!({ "path": file, "start": start, "end": end, "commit": commit, "text": text }))
+            let (slug, clone, wiki) = served(&config)?;
+            anchor(ctx, &slug, &clone, &wiki, arguments)
         }),
         _ => return None,
     })
@@ -182,6 +169,7 @@ fn serves(named: &[&str], slug: &str) -> bool {
     named.is_empty() || named.iter().any(|n| n.eq_ignore_ascii_case(slug))
 }
 
+/// Why a tool refuses the Wiki `wiki`: not built, no Repo's, or not named.
 fn unserved(wiki: &str) -> String {
     format!("no Wiki {wiki} is served here: `wikis` lists those that are")
 }
@@ -235,13 +223,25 @@ fn found(wiki: &Value, query: &str) -> Value {
 }
 
 /// The Component `id` of the Wiki of `slug`, with its sub-Components; its
-/// files only when it has none, a parent's being its parts'.
+/// files only when it has none, a parent's being its parts'. Its
+/// Relationships go both ways: to what it uses, and `from` what uses it,
+/// which the Wiki keeps on the user's side.
 fn component(slug: &str, wiki: &Value, id: &str) -> Result<Value, String> {
     let all = components(wiki);
     let mut component = (all.iter())
         .find(|c| c["id"] == id)
         .ok_or_else(|| format!("{slug} has no Component {id}: find_component finds them"))?
         .clone();
+    let used_by: Vec<Value> = (all.iter())
+        .flat_map(|c| {
+            (c["relationships"].as_array().into_iter().flatten())
+                .filter(|r| r["to"] == id)
+                .map(|r| json!({ "from": c["id"], "kind": r["kind"], "description": r["description"] }))
+        })
+        .collect();
+    if let Some(relationships) = component["relationships"].as_array_mut() {
+        relationships.extend(used_by);
+    }
     let parts: Vec<Value> = (all.iter())
         .filter(|c| c["parent"] == id)
         .map(brief)
@@ -258,8 +258,38 @@ fn brief(c: &Value) -> Value {
     json!({ "id": c["id"], "name": c["name"], "overview": c["overview"] })
 }
 
+/// Every Component of `wiki`, a parent before its parts.
 fn components(wiki: &Value) -> &[Value] {
     wiki["components"].as_array().map_or(&[], Vec::as_slice)
+}
+
+/// What `read_anchor` answers: the lines `arguments` names, as the clone at
+/// `clone` holds them at the commit of `wiki`, the Wiki of `slug`.
+fn anchor(
+    ctx: &Context,
+    slug: &str,
+    clone: &str,
+    wiki: &Value,
+    arguments: &Value,
+) -> Result<Value, String> {
+    let (file, start, end) = (
+        text(arguments, "path")?,
+        number(arguments, "start")?,
+        number(arguments, "end")?,
+    );
+    let commit = wiki["commit"].as_str().unwrap_or_default();
+    let held = (ctx.world.git_show(clone, commit, file))
+        .map_err(|e| e.0)?
+        .ok_or_else(|| format!("{file} is not a file of {slug} at {commit}"))?;
+    let lines: Vec<&str> = held.lines().collect();
+    if start > end || end > lines.len() {
+        let n = lines.len();
+        return Err(format!(
+            "lines {start}-{end} are not inside {file} ({n} lines)"
+        ));
+    }
+    let text = lines[start - 1..end].join("\n");
+    Ok(json!({ "path": file, "start": start, "end": end, "commit": commit, "text": text }))
 }
 
 /// The argument `name`, a string.

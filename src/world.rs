@@ -1700,10 +1700,15 @@ impl World for RealWorld {
         Ok(())
     }
     fn read_line(&self) -> WorldResult<Option<String>> {
-        let mut line = String::new();
-        match io::stdin().lock().read_line(&mut line) {
+        let mut line = vec![];
+        match io::stdin().lock().read_until(b'\n', &mut line) {
             Ok(0) => Ok(None),
-            Ok(_) => Ok(Some(line.trim_end_matches(['\n', '\r']).into())),
+            // Bytes that are no UTF-8 make a line that does not parse, not a read that fails.
+            Ok(_) => Ok(Some(
+                String::from_utf8_lossy(&line)
+                    .trim_end_matches(['\n', '\r'])
+                    .into(),
+            )),
             Err(e) => Err(WorldError(format!("could not read stdin: {e}"))),
         }
     }

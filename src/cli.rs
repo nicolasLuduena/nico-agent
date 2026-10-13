@@ -146,6 +146,11 @@ pub fn run(argv: &[String], ctx: &Context) -> Output {
         [word, ..] => Err(bad_invocation(format!("unknown command `{word}`"), "")),
     };
     match answer {
+        // `mcp`: stdout was the protocol's, and ends with its last answer.
+        Ok(Value::Null) => Output {
+            stdout: String::new(),
+            exit_code: 0,
+        },
         Ok(answer) => Output {
             stdout: render(&answer, json),
             exit_code: 0,
