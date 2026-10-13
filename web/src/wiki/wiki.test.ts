@@ -37,3 +37,10 @@ test("an empty query finds nothing, and so does a word nowhere", () => {
   expect(search(wiki, " ")).toEqual([]);
   expect(search(wiki, "api nowhere")).toEqual([]);
 });
+
+test("search reads the text as the page shows it: a link's address and the Markdown marks are not words", () => {
+  const wiki = { components: [component("index", "acme/api", "Serves **the API**.", ["Follows [the RFC](https://example.com/rfc) and `serde`."])] };
+  expect(search(wiki, "example")).toEqual([]);
+  expect(search(wiki, "rfc serde").map((h) => h.text)).toEqual(["Follows the RFC and serde."]);
+  expect(search(wiki, "the api").map((h) => h.text)).toEqual(["Serves the API."]);
+});

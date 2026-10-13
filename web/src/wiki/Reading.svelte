@@ -4,7 +4,7 @@
   // sub-Components and its Gaps.
   import { blocks, firstLine, spans, type Span } from "../markdown";
   import { flash } from "../motion";
-  import { anchorUrl, byKind, REASONS, type Component, type Wiki } from "./wiki";
+  import { anchorUrl, byKind, REASONS, type Component, type Hit, type Wiki } from "./wiki";
 
   let {
     wiki,
@@ -17,8 +17,8 @@
     component: Component;
     parts: Component[];
     link: (component: string) => string;
-    /** What a search hit asked to be shown: an Interpretation of a Component, or (null) its name. */
-    found: { component: string; interpretation: number | null } | null;
+    /** The search hit last followed: a new one each time, shown once its Component is. */
+    found: Hit | null;
   } = $props();
 
   const kinds = $derived(byKind(component));
@@ -27,12 +27,12 @@
   // A search hit, once its Component shows, scrolls to its Interpretation, focuses it and flashes it, once.
   let heading: HTMLElement;
   let shown: string | undefined;
-  let done: typeof found = null;
+  let followed: Hit | null = null;
   $effect(() => {
     const id = component.id;
-    if (found && found !== done && found.component === id) {
-      done = found;
-      const row = found.interpretation === null ? null : document.getElementById(`interpretation-${found.interpretation}`);
+    if (found && found !== followed && found.component.id === id) {
+      followed = found;
+      const row = found.interpretation && document.getElementById(`interpretation-${found.interpretation.id}`);
       if (row) {
         row.scrollIntoView({ block: "center" });
         row.focus({ preventScroll: true });

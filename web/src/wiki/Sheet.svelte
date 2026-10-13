@@ -1,23 +1,23 @@
 <script lang="ts">
   // A column of the Wiki view beside the Component, staying in view; while
-  // `sheet`, a bottom sheet as the node panel's on a phone, shown once opened
+  // `folded`, a bottom sheet as the node panel's on a phone, shown once opened
   // and closed by its Close button or Escape.
   import type { Snippet } from "svelte";
 
   let {
     id,
     title,
-    sheet,
+    folded,
     open,
     close,
     children,
-  }: { id: string; title: string; sheet: boolean; open: boolean; close: () => void; children: Snippet } = $props();
+  }: { id: string; title: string; folded: boolean; open: boolean; close: () => void; children: Snippet } = $props();
 
   // Focus moves to the sheet's title as it opens, and back to what opened it as Close or Escape shuts it.
   let head = $state<HTMLElement>();
   let opener: HTMLElement | null = null;
   $effect(() => {
-    if (!sheet || !open || !head) return;
+    if (!folded || !open || !head) return;
     opener = document.activeElement as HTMLElement | null;
     head.focus();
   });
@@ -27,13 +27,13 @@
   }
 </script>
 
-<svelte:window onkeydown={(e) => sheet && open && e.key === "Escape" && shut()} />
+<svelte:window onkeydown={(e) => folded && open && e.key === "Escape" && shut()} />
 
-{#if !sheet || open}
-  <div {id} class="column" class:sheet>
+{#if !folded || open}
+  <div {id} class="column" class:sheet={folded}>
     <header>
       <h2 class="label" tabindex="-1" bind:this={head}>{title}</h2>
-      {#if sheet}
+      {#if folded}
         <button type="button" class="quiet" onclick={shut}>Close</button>
       {/if}
     </header>

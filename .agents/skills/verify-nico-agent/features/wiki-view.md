@@ -81,19 +81,25 @@ Preconditions:
 - **Search.** `$C page --evidence "$E/15-search-desk-light" --hash "#shop/wiki/verify%2Ffixture" --expect "The fixture is described" --click "searchbox=Search this Wiki" --type sentence --expect "1 found" --click "link~exactly one sentence" --expect "The title names the Repo"`:
   `article "Readme"`, `navigation "Found"` still holding the hit, `.view.txt` `focus on li "The
   README describes the fixture in exactly one sentence after its title. README.md 3"`. In Dark at
-  phone width, where the Component is longer than the window:
-  `$C page --evidence "$E/16-search-phone-dark" --width 360 --hash "#shop/wiki/verify%2Ffixture" --click button=Dark --expect "The fixture is described" --click button=Components --click "searchbox=Search this Wiki" --type sentence --click "link~exactly one sentence" --expect "The title names the Repo"`:
+  phone width, in the tree's sheet:
+  `$C page --evidence "$E/16-search-sheet-phone-dark" --width 360 --hash "#shop/wiki/verify%2Ffixture" --click button=Dark --expect "The fixture is described" --click button=Components --click "searchbox=Search this Wiki" --type readme --expect "5 found"`:
+  the sheet open with `button "Close"` and the hits, `.view.txt` `page 360px wide in a 360px window`;
+  then following one, where the Component is longer than the window:
+  `$C page --evidence "$E/17-search-phone-dark" --width 360 --hash "#shop/wiki/verify%2Ffixture" --click button=Dark --expect "The fixture is described" --click button=Components --click "searchbox=Search this Wiki" --type sentence --click "link~exactly one sentence" --expect "The title names the Repo"`:
   the sheet shut, `.view.txt` scrolled down (`scrolled to 0,<more than 0>`), `page 360px wide in a
   360px window`, focus on that `li`, and `.view.png` shows it in the window with its focus ring.
-  `$C page --evidence "$E/17-search-nothing" --hash "#shop/wiki/verify%2Ffixture" --click "searchbox=Search this Wiki" --type "readme nowhere" --expect "Nothing found"`:
-  no `navigation "Components"`.
-- **Outline.** `$C page --evidence "$E/18-outline-desk-dark" --hash "#shop/wiki/verify%2Ffixture/readme" --click button=Dark --expect "The title names the Repo" --within "navigation=Outline" --click "button~Gaps" --within "navigation=Components" --click link=Title --expect "Not explored"`:
-  `navigation "Outline"` holds `button "Title"` and `button "Gaps 1"` only, the Component now
-  `Title`. `$C page --evidence "$E/19-outline-phone-light" --width 390 --hash "#shop/wiki/verify%2Ffixture/readme" --click button=Outline --within "navigation=Outline" --click "button~Gaps" --expect "Unreadable"`:
+  `$C page --evidence "$E/18-search-nothing" --hash "#shop/wiki/verify%2Ffixture" --click "searchbox=Search this Wiki" --type "readme nowhere" --expect "Nothing found"`:
+  `status` `Nothing found`, no `navigation "Found"` nor `navigation "Components"`.
+- **Outline.** `$C page --evidence "$E/19-outline-desk-dark" --hash "#shop/wiki/verify%2Ffixture/readme" --click button=Dark --expect "The title names the Repo" --within "navigation=Outline" --click "button~Gaps" --expect "Unreadable"`:
+  `.view.txt` scrolled down and `focus on h3 "Gaps"`. `$C page --evidence "$E/20-outline-follows" --hash "#shop/wiki/verify%2Ffixture/readme" --expect "The title names the Repo" --within "navigation=Components" --click link=Title --expect "Not explored"`:
+  `navigation "Outline"` holds `button "Title"` and `button "Gaps 1"` only. At phone width, in Dark:
+  `$C page --evidence "$E/21-outline-sheet-phone-dark" --width 360 --hash "#shop/wiki/verify%2Ffixture/readme" --click button=Dark --click button=Outline --expect Close`:
+  the outline open as a sheet with `button "Close"`, `.view.txt` `page 360px wide in a 360px window`
+  and `focus on h2 "Outline"`. `$C page --evidence "$E/22-outline-phone-light" --width 390 --hash "#shop/wiki/verify%2Ffixture/readme" --click button=Outline --within "navigation=Outline" --click "button~Gaps" --expect "Unreadable"`:
   the sheet shut, `.view.txt` scrolled down and `focus on h3 "Gaps"`.
-- **Between.** `$C page --evidence "$E/20-narrow" --width 900 --hash "#shop/wiki/verify%2Ffixture/readme" --click button=Outline --expect Close --press Escape --gone Close`:
-  the tree beside the Component, no `navigation "Outline"` once shut, `.view.txt` `focus on button
-  "Outline"`.
+- **Between.** `$C page --evidence "$E/23-narrow-open" --width 900 --hash "#shop/wiki/verify%2Ffixture/readme" --click button=Outline --expect Close`:
+  the tree beside the Component, the outline open as a sheet. `$C page --evidence "$E/24-narrow-shut" --width 900 --hash "#shop/wiki/verify%2Ffixture/readme" --click button=Outline --expect Close --press Escape --gone Close`:
+  no `navigation "Outline"`, `.view.txt` `focus on button "Outline"`.
 - **After.** `$C state`'s diff: `wikis.json` and two Bucket commits, `wiki verify/fixture <commit>`
   and `wiki verify/second <commit>`; the page wrote nothing. Copy `$OUTSIDE_LOG` to `$E/outside.log`.
 

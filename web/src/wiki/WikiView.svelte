@@ -6,7 +6,6 @@
   import { onMount } from "svelte";
   import { MediaQuery } from "svelte/reactivity";
   import { watch } from "../live";
-  import { spans } from "../markdown";
   import { hash } from "../route";
   import { selection } from "../selection.svelte";
   import type { Project } from "../status";
@@ -22,14 +21,16 @@
   /** Why the Wikis, or the open one, could not be read; each cleared by its next answer. */
   let failure = $state<string | null>(null);
   let wikiFailure = $state<string | null>(null);
-  /** The tree is a sheet on a phone, the outline under 1080px too; at most one is open. */
+  /** The tree folds into a sheet on a phone, the outline under 1080px too; at most one is open. */
+  const TITLES = { tree: "Components", outline: "Outline" } as const;
+  type Fold = keyof typeof TITLES;
   const phone = new MediaQuery("(width < 720px)");
   const narrow = new MediaQuery("(width < 1080px)");
-  let opened = $state<"tree" | "outline" | null>(null);
-  const toggles = $derived<("tree" | "outline")[]>(phone.current ? ["tree", "outline"] : narrow.current ? ["outline"] : []);
+  let opened = $state<Fold | null>(null);
+  const toggles = $derived<Fold[]>(phone.current ? ["tree", "outline"] : narrow.current ? ["outline"] : []);
   let query = $state("");
   /** The search hit last followed, for Reading to scroll to. */
-  let found = $state.raw<{ component: string; interpretation: number | null } | null>(null);
+  let found = $state.raw<Hit | null>(null);
 
   onMount(() =>
     watch<Listed[]>(
@@ -96,19 +97,15 @@
   }
   function follow(hit: Hit) {
     opened = null;
-    found = { component: hit.component.id, interpretation: hit.interpretation?.id ?? null };
+    // A copy, so following the same hit again scrolls to it again.
+    found = { ...hit };
   }
-  function to(head: string) {
+  function bring(head: string) {
     opened = null;
     const at = document.getElementById(head);
     at?.scrollIntoView();
     at?.focus({ preventScroll: true });
   }
-  /** A hit's text without its Markdown marks. */
-  const plain = (markdown: string) =>
-    spans(markdown)
-      .map((s) => s.text)
-      .join("");
 </script>
 
 {#snippet branch(parent: string | null)}
@@ -173,7 +170,7 @@
               class="quiet"
               aria-expanded={opened === sheet}
               aria-controls="wiki-{sheet}"
-              onclick={() => (opened = opened === sheet ? null : sheet)}>{sheet === "tree" ? "Components" : "Outline"}</button
+              onclick={() => (opened = opened === sheet ? null : sheet)}>{TITLES[sheet]}</button
             >
           {/each}
         </div>
@@ -182,21 +179,21 @@
 
     {#if wiki && open}
       <div class="read">
-        <Sheet id="wiki-tree" title="Components" sheet={phone.current} open={opened === "tree"} close={() => (opened = null)}>
+        <Sheet id="wiki-tree" title={TITLES.tree} folded={phone.current} open={opened === "tree"} close={() => (opened = null)}>
           <input class="find" type="search" placeholder="Search this Wiki" aria-label="Search this Wiki" bind:value={query} />
           {#if query.trim()}
             <p class="found" role="status">{hits.length === 0 ? "Nothing found" : `${hits.length} found`}</p>
             {#if hits.length > 0}
               <nav aria-label="Found">
                 <ul class="hits">
-                  {#each hits as hit, n (n)}
+                  {#each hits as hit (`${hit.component.id} ${hit.interpretation?.id ?? ""}`)}
                     <li>
                       <a href={link(hit.component.id)} onclick={() => follow(hit)}>
                         <span class="where"
                           ><strong>{hit.component.name}</strong>
                           {#if hit.interpretation}<span class="label">{hit.interpretation.kind}</span>{/if}</span
                         >
-                        <span class="text">{plain(hit.text)}</span>
+                        <span class="text">{hit.text}</span>
                       </a>
                     </li>
                   {/each}
@@ -210,12 +207,12 @@
           {/if}
         </Sheet>
         <Reading {wiki} component={open} {parts} {link} {found} />
-        <Sheet id="wiki-outline" title="Outline" sheet={narrow.current} open={opened === "outline"} close={() => (opened = null)}>
+        <Sheet id="wiki-outline" title={TITLES.outline} folded={narrow.current} open={opened === "outline"} close={() => (opened = null)}>
           <nav aria-label="Outline">
             <ul class="outline">
               {#each outline as head (head.id)}
                 <li>
-                  <button type="button" onclick={() => to(head.id)}
+                  <button type="button" onclick={() => bring(head.id)}
                     >{head.name}{#if head.count !== null}{" "}<span class="count">{head.count}</span>{/if}</button
                   >
                 </li>
