@@ -144,8 +144,8 @@ pub fn step(ctx: &Context, config: &Config) -> Result<Vec<String>, Refusal> {
         }
         (open.is_none() && !queue.waiting.is_empty()).then(|| queue.waiting.remove(0))
     })?;
-    if let Some(slug) = next {
-        let cwd = match of(config, &slug).expect("only a Wiki the loop builds waits") {
+    if let Some(id) = next {
+        let cwd = match of(config, &id).expect("only a Wiki the loop builds waits") {
             Of::Repo(_, repo) => repo.path.clone(),
             // No clone of its own till its build fetches one.
             Of::Library(_) => ctx.config_dir.display().to_string(),
@@ -157,14 +157,14 @@ pub fn step(ctx: &Context, config: &Config) -> Result<Vec<String>, Refusal> {
             launch::open_tab(ctx.world, &mut run.launch, workspace, &cwd, label)?;
             let pane = run.launch.pane.as_deref().expect("its tab is open");
             // Its shell exits with it, so a pane gone is a build ended.
-            let command = format!("nico-agent wiki build {}; exit", launch::shell_word(&slug));
+            let command = format!("nico-agent wiki build {}; exit", launch::shell_word(&id));
             Ok(ctx.world.herdr_pane_run(pane, &command)?)
         };
         let chosen = config.wiki.launch.clone();
         said.push(away::start_run(
             ctx,
             Trigger::Wiki,
-            Some(&slug),
+            Some(&id),
             chosen,
             start,
         )?);
@@ -379,7 +379,7 @@ impl Of<'_> {
     /// Where it is kept, under `wiki/` in the Bucket and in the config
     /// directory: the Repo's slug, or `<owner/name>/<tag>[/<path>]`, the
     /// tag's `%` and `/` escaped so that it is one folder.
-    // shortcut: a tag named as a Repo's own files there (`checkout`, `vectors.json`) shares them; escape such a tag if one is ever used.
+    // shortcut: a tag or subfolder named as a Wiki's own files there (`checkout`, `build.lock`, `vectors.json`) shares them; escape such names if one is ever used.
     pub fn folder(&self) -> String {
         match self {
             Of::Repo(slug, _) => slug.to_string(),
@@ -393,7 +393,7 @@ impl Of<'_> {
 
     /// The clone holding its commits: the Repo's, or the Library's bare one,
     /// cached in the config directory for every version of it.
-    pub fn clone(&self, config_dir: &Path) -> String {
+    pub fn clone_dir(&self, config_dir: &Path) -> String {
         match self {
             Of::Repo(_, repo) => repo.path.clone(),
             Of::Library(library) => {
@@ -657,7 +657,7 @@ fn kept(ctx: &Context, config: &Config, of: &Of) -> Result<Option<Value>, Refusa
 /// version's tag, removed after, and kept in the Bucket.
 fn built(ctx: &Context, config: &Config, of: &Of) -> Result<Wiki, Refusal> {
     let (world, call) = (ctx.world, headless(config, &WRITES)?);
-    let (id, clone) = (&of.id(), of.clone(&ctx.config_dir));
+    let (id, clone) = (&of.id(), of.clone_dir(&ctx.config_dir));
     let rev = match of {
         Of::Repo(_, repo) => {
             let base = match &repo.base {
@@ -724,6 +724,17 @@ fn described(
         Of::Repo(..) => None,
     };
     let files = files(world, dir, under)?;
+    if let (Of::Library(library), Some(under), true) = (of, under, files.is_empty()) {
+        return Err(Refusal::new(
+            format!("{} has no file under {under} at {commit}", library.repo),
+            vec![format!(
+                "Set its path to a folder {} holds at {}, in {}",
+                library.repo,
+                library.tag,
+                ctx.config_dir.join(config::FILE).display()
+            )],
+        ));
+    }
     let lines: HashMap<&str, usize> = (files.iter()).map(|f| (f.path.as_str(), f.lines)).collect();
     world.log(&format!(
         "building the Wiki of {id} at {commit}: {} calls, {} deep, {} at once",

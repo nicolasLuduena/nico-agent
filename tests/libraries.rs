@@ -658,3 +658,33 @@ fn a_claim_citing_a_file_outside_the_subfolder_is_sent_back_then_dropped_as_a_ga
         json!([{ "paths": ["packages/effect/package.json", "packages/effect/src/Effect.ts"], "reason": "unreadable" }])
     );
 }
+
+#[test]
+fn a_subfolder_the_tag_does_not_have_fails_the_build_with_why_and_asks_no_model() {
+    let t = with_library(
+        "[wiki]\nlibraries = [{ repo = \"Effect-TS/effect\", tag = \"effect@3.17.0\", path = \"packages/efect\" }]",
+    );
+
+    let ran = t.cli(&[
+        "wiki",
+        "build",
+        "Effect-TS/effect@effect@3.17.0:packages/efect",
+        "--json",
+    ]);
+
+    assert_eq!(ran.exit_code, 1, "{}", ran.stdout);
+    assert_eq!(
+        ran.json()["error"],
+        "could not build the Wiki of Effect-TS/effect@effect@3.17.0:packages/efect: Effect-TS/effect has no file under packages/efect at abc1234"
+    );
+    let calls = t.world.calls();
+    assert!(!calls.iter().any(|c| c.contains("opencode2")));
+    let dir = checkout(&t, "Effect-TS/effect/effect@3.17.0/packages/efect");
+    assert!(
+        calls
+            .last()
+            .unwrap()
+            .ends_with(&format!("worktree remove --force {dir}"))
+    );
+    assert!(!(t.world.files.borrow().keys()).any(|f| f.starts_with(&format!("{BUCKET}/wiki/"))));
+}

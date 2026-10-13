@@ -5,10 +5,9 @@ path }` in a Repo's `libraries` in `config.toml` (a Project's defaults carry it 
 any Repo key), or under `[wiki] libraries` for one no Repo links. Its Wiki's id is
 `<owner/name>@<tag>`, then `:<path>` with a subfolder. A linked or added version with no Wiki is
 queued at the next tick like a Repo's, and built once: `nico-agent wiki build <id>` fetches the
-tag, its commit alone, into a bare clone in the config dir (`libraries/<owner>/<name>.git`, one
-for every version) with the user's own git credentials, checks it out in a detached worktree
-removed after, and asks about the subfolder's files alone, every Anchor still a path from the
-repo's root. The Wiki lands in the Bucket at `wiki/<owner>/<name>/<tag>/<path>/wiki.json`, a `/`
+tag into a bare clone in the config dir (`libraries/<owner>/<name>.git`, one for every version)
+with the user's own git credentials, checks it out in a worktree removed after, and asks about
+the subfolder's files alone, every Anchor still a path from the repo's root. The Wiki lands in the Bucket at `wiki/<owner>/<name>/<tag>/<path>/wiki.json`, a `/`
 in the tag kept as `%2F`. A built one is never queued again; one whose build failed is tried again
 at the wiki hour. `status`, `GET /api/wikis`, `GET /api/wiki/<id>` and the MCP serve it.
 
@@ -18,7 +17,7 @@ at the wiki hour. `status`, `GET /api/wikis`, `GET /api/wiki/<id>` and the MCP s
 - `lib-built` `wiki build <id>` is `built` at the tag's commit; the config dir holds a bare clone with the tag and no worktree after; the Bucket's one commit `wiki <id> <commit>` adds `wiki/<owner>/<name>/<tag>/<path>/wiki.json`, whose `target` is `{repo, tag, path}` and whose files are the subfolder's alone.
 - `lib-subfolder` a claim citing a file outside the subfolder is sent back, `<path> is not one of the Wiki's files`, and dropped as a Gap.
 - `lib-reused` a second version of the same Library fetches into the same bare clone, which then holds both tags; a tag with no subfolder covers every file.
-- `lib-unknown-tag` a tag the Library lacks fails the build, exit `1`, with git's `couldn't find remote ref refs/tags/<tag>`, written to `wikis.json` as `failed`, nothing in the Bucket.
+- `lib-unknown-tag` a tag the Library lacks fails the build, exit `1`, with git's `couldn't find remote ref refs/tags/<tag>`, written to `wikis.json` as `failed`, nothing in the Bucket; a subfolder the tag lacks fails it with `<owner/name> has no file under <path> at <commit>`, no model asked.
 - `lib-once` once built, a refresh closes its Run built and queues it no more; one failed is not queued again that day.
 - `lib-served` `status`'s `wikis`, `GET /api/wikis` and `GET /api/wiki/<id>` (the id URL-encoded) list and answer it with its `target`; the MCP's `wikis`, `find_component`, `get_component` and `read_anchor` serve it, the lines read from the bare clone at the Wiki's commit; `--wiki <id>` limits the MCP to it.
 - `lib-refused` a `libraries` entry whose `repo` is not `<owner>/<name>`, whose `tag` holds `:`, or whose `path` leaves the repo (`..`) is refused at its line; `wiki build` of a version the config does not name is exit `1`.
@@ -68,7 +67,11 @@ Preconditions:
 - **Unknown tag.** `$C run --evidence "$E/06-build-v9" -- wiki build verify/second@v9 --json` is exit
   `1`, `error` `` could not build the Wiki of verify/second@v9: `git fetch --quiet --depth 1
   https://github.com/verify/second.git +refs/tags/v9:refs/tags/v9` failed in <config
-  dir>/libraries/verify/second.git: fatal: couldn't find remote ref refs/tags/v9 ``.
+  dir>/libraries/verify/second.git: fatal: couldn't find remote ref refs/tags/v9 ``. With the v1.0
+  link's `path` set to `nope`, `$C run --evidence "$E/06-build-no-subfolder" -- wiki build
+  verify/second@v1.0:nope --json` is exit `1`, `error` `could not build the Wiki of
+  verify/second@v1.0:nope: verify/second has no file under nope at <commit>`, no `opencode2` call
+  in `outside.log` for it; put the link back.
 - **Once.** `$C http --evidence "$E/07-refresh" POST /api/refresh`: `verify/second@v1.0:lib: wiki
   built at <commit>`, `verify/second@v9: wiki queued, it has none` and its start failing at herdr;
   v2.0 is not queued. `$C http --evidence "$E/08-refresh" POST /api/refresh`: `verify/second@v9:
