@@ -47,7 +47,8 @@ Preconditions:
 
 - **Empty.** `$C page --evidence "$E/01-empty" --click link=Wiki --expect "No Wiki of shop yet"`:
   `paragraph` `nico-agent wiki build verify/fixture`, and the same for `verify/second`.
-- **Build.** `printf '\n[wiki]\ncalls = 2\n' >> "$CONFIG_DIR/config.toml"`. Write one answer per
+- **Build.** `printf '\n[wiki]\ncalls = 5\n' >> "$CONFIG_DIR/config.toml"`: the two parts asked and
+  Readme's three correction rounds, each answered with Readme's answer again, leave none for Title. Write one answer per
   part: `$E/answer-fixture.json`, a division into one Component `Readme` (`README.md`) with a
   `role` anchored at `README.md` `1`-`3`; `$E/answer-readme.json`, a division into `Title`
   (`README.md`) with a `role` at `1`-`1`, an `invariant` at `3`-`3`, an `effect` at both, and a

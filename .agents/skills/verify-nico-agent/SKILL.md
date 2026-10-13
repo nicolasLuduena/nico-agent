@@ -59,6 +59,7 @@ $C seed run quality-scan|morning|faux-nico <n>  # a Run of the loop's own agent,
 $C seed morning <file>|none     # the Morning summary the morning agent leaves: <file> as morning.md, or none
 $C seed answer <file>|none [<part>]  # what the wiki model (the opencode2 stub) answers every call: <file>'s text, or none;
                                 # with <part>, a trail such as `verify/fixture > Readme`, only the calls about it
+$C seed correction <file>|none  # what the wiki model answers each correction (a call with -s): <file>'s text, or none
 $C drift push <n>|stale|pause   # what GitHub would change: a new PR head, an old read, a rate limit
 $C drift below merged|closed    # ... or the PR below a Stacked dispatch merged or closed unmerged
 $C drift base                   # ... or verify/fixture's Base moved on by a merge, fetched into its clone
@@ -200,9 +201,13 @@ What the fixtures hold:
 - `seed morning <file>` puts `<file>`'s text in the config dir as `morning.md`, as the morning agent
   writes its summary (the agent itself is off in a run); `seed morning none` takes it away.
 - `seed answer <file>` makes the `opencode2` stub answer every headless call with `<file>`'s text, as
-  the wiki model's last message; `seed answer <file> "<trail>"` only the calls whose prompt asks
-  about that part (`## The part: <trail>`), ahead of the answer for every call; `seed answer none`
-  takes every answer away, and each call fails again, as opencode with no model does. The stub logs each call after the `OPENCODE_CONFIG_CONTENT` it was given.
+  the wiki model's last message, in a session of its own (`ses_verify_<n>`); `seed answer <file>
+  "<trail>"` only the calls whose prompt asks about that part (`## The part: <trail>`, or a
+  correction's `## Corrections to the part: <trail>`), ahead of the answer for every call; `seed
+  correction <file>` answers each correction (a call with `-s <session>`, which it continues) with
+  `<file>`'s text instead, and `seed correction none` goes back to the part's answer; `seed answer
+  none` takes every answer away, corrections too, and each call fails again, as opencode with no
+  model does. The stub logs each call after the `OPENCODE_CONFIG_CONTENT` it was given.
 - `drift push <n>` commits to the seeded worktree and moves the PR's `head_sha`, as a push would;
   `drift stale` dates the cached read 2000-01-01, so the next `status` or `dispatch` asks GitHub;
   `drift pause` writes GitHub paused for an hour, as a rate limit does; `drift below merged|closed`

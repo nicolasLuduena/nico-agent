@@ -94,6 +94,8 @@ pub struct FakeWorld {
     pub stdin: RefCell<VecDeque<String>>,
     /// The lines written to stdout, in order.
     pub stdout: RefCell<Vec<String>>,
+    /// Headless calls answered so far, each in a session of its own: `ses_1`.
+    sessions: Cell<u32>,
     workspaces: Cell<u32>,
     tabs: RefCell<HashMap<String, u32>>,
 }
@@ -144,6 +146,7 @@ impl Default for FakeWorld {
             embeddings: Default::default(),
             stdin: Default::default(),
             stdout: Default::default(),
+            sessions: Cell::new(0),
             workspaces: Cell::new(0),
             tabs: Default::default(),
         }
@@ -453,7 +456,7 @@ impl World for FakeWorld {
         cwd: &str,
         calls: &[Headless],
         _at_once: usize,
-    ) -> Vec<WorldResult<String>> {
+    ) -> Vec<WorldResult<Answered>> {
         (calls.iter())
             .map(|call| {
                 let env: String = (call.env.iter())
@@ -465,10 +468,15 @@ impl World for FakeWorld {
                     call.prompt
                 ))?;
                 let script = self.headless.borrow();
-                (script.iter())
+                let (_, text) = (script.iter())
                     .find(|(line, _)| call.prompt.lines().any(|l| l == line))
-                    .map(|(_, answer)| answer.clone())
-                    .ok_or_else(|| WorldError("no answer scripted for this prompt".into()))
+                    .ok_or_else(|| WorldError("no answer scripted for this prompt".into()))?;
+                self.sessions.set(self.sessions.get() + 1);
+                let session = format!("ses_{}", self.sessions.get());
+                Ok(Answered {
+                    text: text.clone(),
+                    session,
+                })
             })
             .collect()
     }
