@@ -286,8 +286,8 @@ pub trait World {
     /// Pull the clone's branch fast-forward only, failing at once rather
     /// than asking for a passphrase.
     fn git_pull(&self, path: &str) -> WorldResult<()>;
-    /// The commit the clone at `path` is on.
-    fn git_head(&self, path: &str) -> WorldResult<String>;
+    /// The commit `rev` names in the clone at `path`: `HEAD`, the one it is on.
+    fn git_rev(&self, path: &str, rev: &str) -> WorldResult<String>;
     /// Check `rev` of the clone at `path` out in the folder `dir`, a worktree
     /// of it on no branch.
     fn git_worktree_add(&self, path: &str, dir: &str, rev: &str) -> WorldResult<()>;
@@ -404,6 +404,8 @@ pub trait World {
     ) -> WorldResult<bool>;
     /// Run a shell command line in a pane, as if typed and entered.
     fn herdr_pane_run(&self, pane: &str, command: &str) -> WorldResult<()>;
+    /// Whether herdr still has the pane: one closed, or whose shell exited, is gone.
+    fn herdr_pane_exists(&self, pane: &str) -> WorldResult<bool>;
     /// Wait until herdr detects an agent in a pane, failing after `timeout`.
     fn herdr_agent_detect(&self, pane: &str, timeout: Duration) -> WorldResult<()>;
     /// Name the agent in a pane, so later agent commands can address it.
@@ -1160,8 +1162,8 @@ impl World for RealWorld {
     fn git_pull(&self, path: &str) -> WorldResult<()> {
         git_env(path, &["pull", "--ff-only"], &[BATCH_SSH]).map(drop)
     }
-    fn git_head(&self, path: &str) -> WorldResult<String> {
-        git_ok(path, &["rev-parse", "HEAD"])
+    fn git_rev(&self, path: &str, rev: &str) -> WorldResult<String> {
+        git_ok(path, &["rev-parse", rev])
     }
     fn git_worktree_add(&self, path: &str, dir: &str, rev: &str) -> WorldResult<()> {
         git_ok(path, &["worktree", "add", "--detach", "--quiet", dir, rev]).map(drop)
@@ -1582,6 +1584,13 @@ impl World for RealWorld {
         // Prints nothing on success.
         herdr_text(&["pane", "run", pane, command])?;
         Ok(())
+    }
+    fn herdr_pane_exists(&self, pane: &str) -> WorldResult<bool> {
+        match herdr(&["pane", "get", pane]) {
+            Ok(_) => Ok(true),
+            Err(failure) if failure.is(&["pane_not_found"]) => Ok(false),
+            Err(failure) => Err(failure.into()),
+        }
     }
     /// `agent wait` fails at once on a pane with no agent yet, so herdr is asked until it sees one.
     fn herdr_agent_detect(&self, pane: &str, timeout: Duration) -> WorldResult<()> {

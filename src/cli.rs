@@ -84,7 +84,7 @@ const COMMANDS: &[(&str, &str)] = &[
     ),
     (
         "nico-agent status [--since <time>]",
-        "show per Repo the Ready and Stackable issues, and every Dispatch; with --since, what merged, Closed, was answered and was scanned after it",
+        "show per Repo the Ready and Stackable issues, every Dispatch and every Wiki; with --since, what merged, Closed, was answered and was scanned after it",
     ),
     (
         "nico-agent wiki build <owner/name>",

@@ -20,6 +20,7 @@ use crate::restart;
 use crate::review;
 use crate::source::{self, Read};
 use crate::stage;
+use crate::wiki;
 use crate::world::Agent;
 
 /// Held by the running tick, with its pid.
@@ -57,6 +58,7 @@ pub fn tick(ctx: &Context, refresh: bool) -> Result<Vec<String>, Refusal> {
     let (ran, ended) = away::step(ctx, &config, agents.as_deref())?;
     said.extend(ran);
     said.extend(faux_nico::step(ctx, &config, &ended)?);
+    said.extend(wiki::step(ctx, &config)?);
     Ok(said)
 }
 

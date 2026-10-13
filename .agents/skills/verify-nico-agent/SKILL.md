@@ -28,7 +28,8 @@ Decisions this skill was generated from (the interview of the repo):
   `$HOME/.config/nico-agent` there (`src/main.rs`); serve on a free port (`port` in that
   `config.toml`); the page in headless Chromium through Playwright; `/api` with curl.
 - **Observe:** stdout JSON and exit codes; the files of the scratch config dir (`config.toml`,
-  `dispatches.json`, `prs.json`, `issues/`, `verdicts/`, `pauses.json`, `checks.json`, `installs.json`); the Bucket's git log; HTTP
+  `dispatches.json`, `prs.json`, `issues/`, `verdicts/`, `pauses.json`, `checks.json`, `installs.json`,
+  `runs.json`, `wikis.json`, `wiki-queue.json`); the Bucket's git log; HTTP
   status, headers and body; the page's ARIA snapshot, screenshot and the `/api` requests it made;
   every call the binary made outside the process, recorded by the stubs in `outside.log`.
 - **Isolate:** yes. Each run has its own directory `${VERIFY_RUN_ROOT:-${TMPDIR:-/tmp}/verify-nico-agent}/$VERIFY_RUN_ID`
@@ -213,7 +214,7 @@ unknown path's `help`, and on the page the ARIA roles and names: `tablist "Proje
 `tab` per Project (a Repo with none is its own, named by its slug), `region "Needs you"`, `button
 "Refresh"`, a `region "<project>"` of its defaults unless it is a Repo's own, then a `region
 "<slug>"` per Repo, each holding `switch "Dispatch"` (and `Faux-nico answers`,
-`Flip to ready`, `Gardening`, `Quality-scan`, `Restart`, `Review`, `Stack`), `spinbutton "Room"`,
+`Flip to ready`, `Gardening`, `Quality-scan`, `Restart`, `Review`, `Stack`, `Wiki`), `spinbutton "Room"`,
 `navigation "View"` with `link "Map"` and `link "Wiki"` (the
 Wiki view: `combobox "Wiki"`, `navigation "Components"` with a `link` per Component, `button
 "Components"` at phone width, `article "<Component>"` with a `region` per kind of Interpretation,

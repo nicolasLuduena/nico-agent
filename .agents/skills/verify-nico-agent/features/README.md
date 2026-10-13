@@ -126,6 +126,9 @@ commands, and observable proof.
   Project tab's Map and Wiki views, the picker, the header, the Component tree, Interpretations by
   kind with their Anchors on GitHub, sub-Components and Gaps, a hash opening a Component, back and
   forward, light and dark at desk and phone width.
+- [Wiki builds from the loop](./wiki-runs.md) covers the `wiki` switch queueing a build at the next
+  refresh, the build's start failing at herdr and its Run closed failed, `status`'s `wikis`, and
+  the daily check of a Repo's Base: unmoved, moved (`drift base`) and once a day.
 - [Requests from other sites](./foreign-requests.md) covers the 403 serve answers a foreign or
   missing `Host` and a foreign or `null` `Origin` on a write, and the page, `localhost` and the
   tunnel answered as before.

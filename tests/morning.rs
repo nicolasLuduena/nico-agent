@@ -219,7 +219,7 @@ fn at_the_hour_one_morning_agent_starts_on_the_config_directory_and_once_that_da
             format!("herdr tab create --workspace w1 --cwd {dir} --label morning --no-focus"),
             "herdr agent start morning --kind claude --pane w1:p2 -- ".into(),
             format!(
-                "herdr agent prompt morning /morning: the night is in nico-agent status --json --since 2026-09-30T07:00:00Z. Write the summary to {dir}/morning.md."
+                "herdr agent prompt morning /morning: the night is in nico-agent status --json --since 2026-09-30T07:00:00Z. Write the summary to {dir}/morning.md, with one line on the Wikis its `wikis` lists built or failed since then."
             ),
         ]
     );

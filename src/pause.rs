@@ -183,8 +183,8 @@ impl World for Guarded<'_> {
     fn git_pull(&self, path: &str) -> WorldResult<()> {
         self.world.git_pull(path)
     }
-    fn git_head(&self, path: &str) -> WorldResult<String> {
-        self.world.git_head(path)
+    fn git_rev(&self, path: &str, rev: &str) -> WorldResult<String> {
+        self.world.git_rev(path, rev)
     }
     fn git_worktree_add(&self, path: &str, dir: &str, rev: &str) -> WorldResult<()> {
         self.world.git_worktree_add(path, dir, rev)
@@ -261,6 +261,9 @@ impl World for Guarded<'_> {
     }
     fn herdr_pane_run(&self, pane: &str, command: &str) -> WorldResult<()> {
         self.world.herdr_pane_run(pane, command)
+    }
+    fn herdr_pane_exists(&self, pane: &str) -> WorldResult<bool> {
+        self.world.herdr_pane_exists(pane)
     }
     fn herdr_agent_detect(&self, pane: &str, timeout: Duration) -> WorldResult<()> {
         self.world.herdr_agent_detect(pane, timeout)
