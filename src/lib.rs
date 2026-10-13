@@ -1,5 +1,6 @@
 pub mod answer;
 pub mod args;
+pub mod ask;
 pub mod asking;
 pub mod away;
 pub mod bucket;
@@ -13,6 +14,7 @@ pub mod http;
 pub mod install;
 pub mod launch;
 pub mod map;
+pub mod mcp;
 pub mod pause;
 pub mod rebase;
 pub mod refresh;

@@ -3,30 +3,46 @@
   // Interpretations by kind, each with its Anchors on GitHub, its
   // Relationship diagram, its Explainer, its sub-Components and its Gaps.
   import { blocks, firstLine, spans, type Span } from "../markdown";
+  import { flash } from "../motion";
   import Anchors from "./Anchors.svelte";
   import Explainer from "./Explainer.svelte";
   import Relationships from "./Relationships.svelte";
-  import { KINDS, REASONS, type Component, type Wiki } from "./wiki";
+  import { byKind, REASONS, type Component, type Hit, type Wiki } from "./wiki";
 
   let {
     wiki,
     component,
     parts,
     link,
-  }: { wiki: Wiki; component: Component; parts: Component[]; link: (component: string) => string } = $props();
+    found,
+  }: {
+    wiki: Wiki;
+    component: Component;
+    parts: Component[];
+    link: (component: string) => string;
+    /** The search hit last followed: a new one each time, shown once its Component is. */
+    found: Hit | null;
+  } = $props();
 
-  const kinds = $derived(
-    KINDS.map((kind) => ({ kind, interpretations: component.interpretations.filter((i) => i.kind === kind) })).filter(
-      (k) => k.interpretations.length > 0,
-    ),
-  );
+  const kinds = $derived(byKind(component));
 
   // Another Component opened takes focus to its name, which scrolls it into view; the first one shown does not.
+  // A search hit, once its Component shows, scrolls to its Interpretation, focuses it and flashes it, once.
   let heading: HTMLElement;
   let shown: string | undefined;
+  let followed: Hit | null = null;
   $effect(() => {
-    if (shown !== undefined && shown !== component.id) heading.focus();
-    shown = component.id;
+    const id = component.id;
+    if (found && found !== followed && found.component.id === id) {
+      followed = found;
+      const row = found.interpretation && document.getElementById(`interpretation-${found.interpretation.id}`);
+      if (row) {
+        row.scrollIntoView({ block: "center" });
+        row.focus({ preventScroll: true });
+        flash(row);
+      } else heading.focus();
+    } else if (shown !== undefined && shown !== id) heading.focus();
+    shown = id;
   });
 </script>
 
@@ -49,10 +65,10 @@
 
   {#each kinds as { kind, interpretations } (kind)}
     <section aria-labelledby="kind-{kind}">
-      <h3 id="kind-{kind}" class="label">{kind}s</h3>
+      <h3 id="kind-{kind}" class="label" tabindex="-1">{kind}s</h3>
       <ul class="rows">
         {#each interpretations as interpretation (interpretation.id)}
-          <li class="interpretation">
+          <li class="interpretation" id="interpretation-{interpretation.id}" tabindex="-1">
             <p>{@render line(spans(interpretation.text))}</p>
             <p class="anchors"><Anchors {wiki} anchors={interpretation.anchors} /></p>
           </li>
@@ -62,13 +78,13 @@
   {/each}
 
   <section aria-labelledby="relationships">
-    <h3 id="relationships" class="label">Relationships</h3>
+    <h3 id="relationships" class="label" tabindex="-1">Relationships</h3>
     <Relationships {wiki} {component} {link} />
   </section>
 
   {#if component.explainer}
     <section aria-labelledby="explainer">
-      <h3 id="explainer" class="label">Explainer</h3>
+      <h3 id="explainer" class="label" tabindex="-1">Explainer</h3>
       {#key component.id}
         <Explainer {wiki} explainer={component.explainer} />
       {/key}
@@ -77,7 +93,7 @@
 
   {#if parts.length > 0}
     <section aria-labelledby="parts">
-      <h3 id="parts" class="label">Components</h3>
+      <h3 id="parts" class="label" tabindex="-1">Components</h3>
       <ul class="rows">
         {#each parts as part (part.id)}
           <li class="part">
@@ -91,7 +107,7 @@
 
   {#if component.gaps.length > 0}
     <section aria-labelledby="gaps">
-      <h3 id="gaps" class="label">Gaps</h3>
+      <h3 id="gaps" class="label" tabindex="-1">Gaps</h3>
       <ul class="rows">
         {#each component.gaps as gap, n (n)}
           <li class="gap">
@@ -115,12 +131,19 @@
   /* A sheet laid on the page, as the panel is, its prose at a reading measure. */
   .reading {
     display: grid;
+    /* Never wider than the column, whatever an ellipsized line would take. */
+    grid-template-columns: minmax(0, 1fr);
     gap: 8px;
     min-width: 0;
     padding: 24px;
     background: var(--surface);
     border: 1px solid var(--hairline);
     overflow-wrap: anywhere;
+  }
+  /* The outline brings a head to the top of the window, a little below its edge. */
+  .head,
+  h3 {
+    scroll-margin-top: 16px;
   }
   .head {
     font-size: 22px;
@@ -163,6 +186,11 @@
     display: grid;
     grid-template-columns: minmax(0, 70ch) minmax(16ch, 1fr);
     gap: 4px 24px;
+  }
+  /* A search hit keeps its focus ring until focus moves on, so the eye finds it. */
+  .interpretation:focus {
+    outline: 2px solid var(--focus);
+    outline-offset: 4px;
   }
   .anchors {
     display: flex;

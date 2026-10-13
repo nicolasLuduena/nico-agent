@@ -1,9 +1,13 @@
 //! A Repo's Wiki, built from scratch by `wiki build`. Its code at
 //! `origin/<base>` is divided top-down, as know-the-map's hermeneut does:
 //! each part is one headless, read-only call of the `[wiki]` launch, and
-//! code checks every answer, dropping each claim that fails and recording
-//! its part as a Gap. The Wiki lands in the Bucket in one commit; the
-//! build's outcome in `wikis.json`, last.
+//! code checks every answer, sending each claim that fails back to the
+//! model in the same session, up to 3 rounds, then dropping it and recording
+//! its part as a Gap. The Wiki lands in the Bucket in one commit, then its
+//! records are embedded for `ask`; the build's outcome in `wikis.json`, last.
+//!
+//! The loop runs each build as a Run in a herdr pane, one at a time across
+//! every Repo and outside every room, the others waiting in `wiki-queue.json`.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io;
@@ -14,15 +18,21 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::args::Args;
+use crate::ask;
+use crate::away::{self, Run, Trigger};
 use crate::bucket;
 use crate::cli::{Context, Refusal};
 use crate::config::{self, Config, Repo, fill_in};
+use crate::launch;
 use crate::repo;
 use crate::state;
-use crate::world::{Headless, World, WorldResult};
+use crate::world::{Answered, Headless, World, WorldResult};
 
 /// Each Wiki's last build, by its id: a Repo's slug.
 pub const FILE: &str = "wikis.json";
+
+/// The Wikis waiting for a build, and when each Repo's was last checked.
+const QUEUE: &str = "wiki-queue.json";
 
 /// The id of a Wiki's top Component: the whole of its code.
 const INDEX: &str = "index";
@@ -38,21 +48,252 @@ const RELATIONSHIPS: [&str; 4] = ["uses", "calls", "reads", "writes"];
 /// The most steps an Explainer has.
 const MOST_STEPS: usize = 8;
 
+/// How many times a part's failing claims go back to the model.
+const ROUNDS: u32 = 3;
+
 /// How a build ended, as `wikis.json` keeps it: `"outcome": "built"`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "outcome", rename_all = "lowercase")]
 pub enum Outcome {
-    Built {
-        at: String,
-        commit: String,
-        components: usize,
-        /// How many Gaps of each reason it left.
-        gaps: BTreeMap<String, usize>,
-    },
+    Built(Built),
     Failed {
         at: String,
         why: String,
+        /// The last build that built the Wiki, whose Wiki the Bucket still holds.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        built: Option<Built>,
     },
+}
+
+/// A build that built its Wiki.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Built {
+    at: String,
+    commit: String,
+    components: usize,
+    /// How many Gaps of each reason it left.
+    gaps: BTreeMap<String, usize>,
+}
+
+#[derive(Default, Serialize, Deserialize)]
+struct Queue {
+    /// By id, in the order they start.
+    waiting: Vec<String>,
+    /// When each Repo's Wiki was last checked against its Base, by slug.
+    #[serde(default)]
+    checked: BTreeMap<String, String>,
+}
+
+/// Close the wiki Run whose build ended; check the Wiki of each Repo with
+/// its `wiki` switch on, once a day from the wiki hour and at once when the
+/// switch turns on, queueing it when it has none or its `origin/<base>`
+/// moved from its commit; then start the first queued while no wiki Run is
+/// open. A check that fails is said and tried again next tick. What it said.
+pub fn step(ctx: &Context, config: &Config) -> Result<Vec<String>, Refusal> {
+    let mut said = close(ctx)?;
+    let outcomes = load(&ctx.config_dir)?;
+    let runs = away::load(&ctx.config_dir)?;
+    let open = open_run(&runs).and_then(|r| r.repo.as_ref());
+    let queue: Queue = state::load(&ctx.config_dir.join(QUEUE))?;
+    let slot = state::iso(away::last_slot(ctx, None, config.wiki.hour));
+    let (mut queued, mut checked) = (vec![], vec![]);
+    for (slug, repo) in config.repos.iter().filter(|(_, r)| r.switches.wiki) {
+        let due = queue.checked.get(slug).is_none_or(|at| *at < slot);
+        let why = match outcomes.get(slug).and_then(Outcome::wiki) {
+            // Checked today, or its build in hand is today's.
+            _ if !due || queue.waiting.contains(slug) || open == Some(slug) => None,
+            None => Some("it has none".into()),
+            Some(Built { commit, .. }) => match base_head(ctx.world, repo) {
+                Err(e) => {
+                    said.push(format!("could not check {slug}'s Base for its Wiki: {e}"));
+                    continue;
+                }
+                Ok((_, head)) if head == *commit => None,
+                Ok((base, head)) => Some(format!("origin/{base} moved from {commit} to {head}")),
+            },
+        };
+        queued.extend(why.map(|why| (slug, why)));
+        if due {
+            checked.push(slug);
+        }
+    }
+    let now = state::iso(ctx.world.now());
+    let next = update_queue(&ctx.config_dir, |queue| {
+        // Off, a Repo's Wiki is built no more: one waiting waits no longer,
+        // and its check is forgotten, so it is checked once the switch is on.
+        let on = |id: &String| config.repos.get(id).is_some_and(|r| r.switches.wiki);
+        queue.waiting.retain(on);
+        queue.checked.retain(|id, _| on(id));
+        for (slug, why) in queued {
+            queue.waiting.push(slug.clone());
+            said.push(format!("{slug}: wiki queued, {why}"));
+        }
+        for slug in checked {
+            queue.checked.insert(slug.clone(), now.clone());
+        }
+        (open.is_none() && !queue.waiting.is_empty()).then(|| queue.waiting.remove(0))
+    })?;
+    if let Some(slug) = next {
+        let repo = &config.repos[&slug];
+        let start = |run: &mut Run| {
+            let workspace = (run.workspace).insert(
+                ctx.world
+                    .herdr_workspace_create(&repo.path, &run.launch.agent)?,
+            );
+            let label = run.trigger.label();
+            launch::open_tab(ctx.world, &mut run.launch, workspace, &repo.path, label)?;
+            let pane = run.launch.pane.as_deref().expect("its tab is open");
+            // Its shell exits with it, so a pane gone is a build ended.
+            let command = format!("nico-agent wiki build {slug}; exit");
+            Ok(ctx.world.herdr_pane_run(pane, &command)?)
+        };
+        let chosen = config.wiki.launch.clone();
+        said.push(away::start_run(
+            ctx,
+            Trigger::Wiki,
+            Some(&slug),
+            chosen,
+            start,
+        )?);
+    }
+    Ok(said)
+}
+
+/// Close the open wiki Run once its build wrote an outcome since it
+/// started, or once its pane is gone without one: failed, which `wikis.json`
+/// then keeps. Closing closes its workspace; one that fails is said and
+/// tried again next tick. What it said.
+fn close(ctx: &Context) -> Result<Vec<String>, Refusal> {
+    let runs = away::load(&ctx.config_dir)?;
+    let Some(run) = open_run(&runs) else {
+        return Ok(vec![]);
+    };
+    let id = run.repo.as_deref().expect("a wiki Run is of a Repo");
+    // Asked first: a pane gone is a build exited, its outcome written if any.
+    let gone = match (&run.failure, &run.launch.pane) {
+        (None, Some(pane)) => match ctx.world.herdr_pane_exists(pane) {
+            Ok(there) => !there,
+            Err(e) => return Ok(vec![format!("could not find the pane of {id}'s wiki: {e}")]),
+        },
+        // Its start stopped short of the build.
+        _ => true,
+    };
+    let ended = load(&ctx.config_dir)?.remove(id);
+    let outcome = match ended.filter(|o| o.at() >= run.at.as_str()) {
+        Some(outcome) => outcome,
+        None if gone => {
+            let why = (run.failure.clone())
+                .unwrap_or_else(|| "its pane is gone without an outcome".into());
+            let failed = Outcome::Failed {
+                at: state::iso(ctx.world.now()),
+                why,
+                built: None,
+            };
+            keep(&ctx.config_dir, id, &failed)?;
+            failed
+        }
+        None => return Ok(vec![]),
+    };
+    let mut said = match &outcome {
+        Outcome::Built(Built { commit, .. }) => format!("{id}: wiki built at {commit}"),
+        Outcome::Failed { why, .. } => format!("{id}: wiki failed: {why}"),
+    };
+    if let Some(workspace) = &run.workspace {
+        if let Err(e) = ctx.world.herdr_workspace_close(workspace) {
+            return Ok(vec![format!(
+                "could not close the workspace of {id}'s wiki: {e}"
+            )]);
+        }
+        said += "; its workspace closed";
+    }
+    let now = state::iso(ctx.world.now());
+    away::update(&ctx.config_dir, |all| {
+        let open = all
+            .iter_mut()
+            .find(|r| r.trigger == Trigger::Wiki && r.closed_at.is_none());
+        open.map(|r| r.closed_at = Some(now))
+    })?;
+    Ok(vec![said])
+}
+
+/// Every Wiki built, tried, queued or building, as `status` shows it: its
+/// state, the commit, time and Gaps of the build that built it, and why
+/// its last build failed if it did.
+pub fn shown(config_dir: &Path, runs: &[Run]) -> io::Result<Vec<Value>> {
+    let outcomes = load(config_dir)?;
+    let queue: Queue = state::load(&config_dir.join(QUEUE))?;
+    let open = open_run(runs);
+    let mut ids: Vec<&String> = outcomes.keys().chain(&queue.waiting).collect();
+    ids.extend(open.and_then(|r| r.repo.as_ref()));
+    ids.sort();
+    ids.dedup();
+    Ok((ids.into_iter())
+        .map(|id| {
+            let building = open.filter(|r| r.repo.as_ref() == Some(id));
+            let outcome = outcomes.get(id);
+            let state = match outcome {
+                _ if building.is_some() => "building",
+                _ if queue.waiting.contains(id) => "queued",
+                Some(Outcome::Built(_)) => "built",
+                _ => "failed",
+            };
+            let mut shown = json!({
+                "wiki": id,
+                "target": { "repo": id },
+                "state": state,
+                "commit": null,
+                "built_at": null,
+                "gaps": null,
+                "pane": building.and_then(|r| r.launch.pane.clone()),
+            });
+            if let Some(Built {
+                at, commit, gaps, ..
+            }) = outcome.and_then(Outcome::wiki)
+            {
+                shown["commit"] = json!(commit);
+                shown["built_at"] = json!(at);
+                shown["gaps"] = json!(gaps.values().sum::<usize>());
+            }
+            if let Some(Outcome::Failed { at, why, .. }) = outcome {
+                shown["failed_at"] = json!(at);
+                shown["why"] = json!(why);
+            }
+            shown
+        })
+        .collect())
+}
+
+/// The Repo's Base, and the commit its `origin/<base>` is on, fetched.
+fn base_head(world: &dyn World, repo: &Repo) -> WorldResult<(String, String)> {
+    let base = match &repo.base {
+        Some(base) => base.clone(),
+        None => world.git_default_branch(&repo.path)?,
+    };
+    world.git_fetch(&repo.path, None)?;
+    let head = world.git_rev(&repo.path, &format!("origin/{base}"))?;
+    Ok((base, head))
+}
+
+/// The wiki Run open, if one is.
+fn open_run(runs: &[Run]) -> Option<&Run> {
+    (runs.iter()).find(|r| r.trigger == Trigger::Wiki && r.closed_at.is_none())
+}
+
+impl Outcome {
+    /// When the build ended.
+    fn at(&self) -> &str {
+        match self {
+            Outcome::Built(Built { at, .. }) | Outcome::Failed { at, .. } => at,
+        }
+    }
+
+    /// The last build that built the Wiki: this one, or the one before it failed.
+    fn wiki(&self) -> Option<&Built> {
+        match self {
+            Outcome::Built(built) => Some(built),
+            Outcome::Failed { built, .. } => built.as_ref(),
+        }
+    }
 }
 
 /// A Wiki as the Bucket keeps it.
@@ -105,10 +346,10 @@ struct Interpretation {
 
 /// Lines of a file, 1-based and inclusive.
 #[derive(Serialize, Deserialize)]
-struct Anchor {
-    path: String,
-    start: usize,
-    end: usize,
+pub struct Anchor {
+    pub path: String,
+    pub start: usize,
+    pub end: usize,
 }
 
 /// A leaf's walkthrough: steps numbered from 1 in order, each citing
@@ -186,6 +427,15 @@ struct Said {
     description: String,
 }
 
+/// The claims of an answer that pass every check.
+struct Checked {
+    overview: String,
+    interpretations: Vec<Interpretation>,
+    named: Vec<Named>,
+    said: Vec<Said>,
+    explainer: Option<Explainer>,
+}
+
 /// A part of the code still to describe.
 struct Part {
     id: String,
@@ -217,16 +467,17 @@ pub fn build(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
             for gap in wiki.components.iter().flat_map(|c| &c.gaps) {
                 *gaps.entry(gap.reason.to_string()).or_default() += 1;
             }
-            Outcome::Built {
+            Outcome::Built(Built {
                 at,
                 commit: wiki.commit.clone(),
                 components: wiki.components.len(),
                 gaps,
-            }
+            })
         }
         Err(no) => Outcome::Failed {
             at,
             why: no.error.clone(),
+            built: None,
         },
     };
     keep(&ctx.config_dir, slug, &outcome)?;
@@ -288,7 +539,7 @@ fn kept(ctx: &Context, config: &Config, slug: &str) -> Result<Option<Value>, Ref
 /// The Wiki of the Repo `slug`, built on a checkout of its Base, removed
 /// after, and kept in the Bucket.
 fn built(ctx: &Context, config: &Config, slug: &str, repo: &Repo) -> Result<Wiki, Refusal> {
-    let (world, call) = (ctx.world, headless(config)?);
+    let (world, call) = (ctx.world, headless(config, &WRITES)?);
     let base = match &repo.base {
         Some(base) => base.clone(),
         None => world.git_default_branch(&repo.path)?,
@@ -307,11 +558,29 @@ fn built(ctx: &Context, config: &Config, slug: &str, repo: &Repo) -> Result<Wiki
     removed?;
     let message = format!("wiki {slug} {}", wiki.commit);
     bucket::keep_wiki(ctx, config, slug, &state::text(&wiki), &message)?;
+    let kept = serde_json::to_value(&wiki).expect("a Wiki is plain data");
+    if let Err(no) = ask::embedded(ctx, config, slug, &kept) {
+        let why = no.error;
+        world.log(&format!(
+            "could not embed the Wiki of {slug}, so ask embeds it first: {why}"
+        ));
+    }
     Ok(wiki)
 }
 
+/// A part of a depth, its answer if it was asked.
+struct Asked {
+    part: Part,
+    /// Its first answer's session, with its last answer that reads.
+    answered: Option<Answered>,
+    /// Why it is a Gap, if it is: unasked, or a claim still failing.
+    reason: &'static str,
+    /// Whether its last reply did not read, its answer the one before.
+    unread: bool,
+}
+
 /// The Wiki of the code checked out in `dir`, its parts asked by `call`
-/// a depth at a time.
+/// a depth at a time, each answer's failing claims sent back in rounds.
 // shortcut: a slow part holds up the next depth's; pipeline the calls if builds run long.
 fn described(
     ctx: &Context,
@@ -321,7 +590,7 @@ fn described(
     call: &Headless,
 ) -> Result<Wiki, Refusal> {
     let (world, budget) = (ctx.world, &config.wiki);
-    let commit = world.git_head(dir)?;
+    let commit = world.git_rev(dir, "HEAD")?;
     let files = files(world, dir)?;
     let lines: HashMap<&str, usize> = (files.iter()).map(|f| (f.path.as_str(), f.lines)).collect();
     world.log(&format!(
@@ -368,16 +637,85 @@ fn described(
             .collect();
         let at_once = budget.concurrency as usize;
         let mut answers = world.harness_headless(dir, &calls, at_once).into_iter();
-        let mut next = vec![];
+        let mut asked = vec![];
         for (part, unasked) in frontier.drain(..).zip(unasked) {
-            if let Some(reason) = unasked {
+            let answered = match unasked {
+                Some(_) => None,
+                None => Some(answers.next().expect("an answer to each call")?),
+            };
+            let reason = unasked.unwrap_or("unreadable");
+            asked.push(Asked {
+                part,
+                answered,
+                reason,
+                unread: false,
+            });
+        }
+        for round in 1..=ROUNDS {
+            let mut sent = vec![];
+            for (i, a) in asked.iter_mut().enumerate() {
+                let Some(answered) = &a.answered else {
+                    continue;
+                };
+                let (_, mut failed) = checked(&a.part, &answered.text, &lines);
+                if failed.is_empty() {
+                    continue;
+                }
+                if calls_left == 0 {
+                    a.reason = "budget";
+                    continue;
+                }
+                calls_left -= 1;
+                world.log(&format!(
+                    "{}: {} claim(s) failed, sent back (round {round} of {ROUNDS}, call {} of {})",
+                    a.part.trail,
+                    failed.len(),
+                    budget.calls - calls_left,
+                    budget.calls
+                ));
+                if a.unread {
+                    failed.insert(0, "your last reply: it is no JSON object of either shape, leaf or division, so the claims below are of the answer before it".into());
+                }
+                let resumed = ["-s".into(), answered.session.clone()];
+                sent.push((
+                    i,
+                    Headless {
+                        args: [&call.args[..], &resumed].concat(),
+                        prompt: correction(&a.part, &failed),
+                        ..call.clone()
+                    },
+                ));
+            }
+            if sent.is_empty() {
+                break;
+            }
+            let (which, corrections): (Vec<usize>, Vec<Headless>) = sent.into_iter().unzip();
+            let replies = world.harness_headless(dir, &corrections, at_once);
+            for (i, reply) in which.into_iter().zip(replies) {
+                let (reply, a) = (reply?, &mut asked[i]);
+                let answered = a.answered.as_mut().expect("sent back");
+                // A reply that does not read leaves the last answer that did.
+                a.unread = parsed(&reply.text).is_none() && parsed(&answered.text).is_some();
+                if !a.unread {
+                    answered.text = reply.text;
+                }
+            }
+        }
+        let mut next = vec![];
+        for Asked {
+            part,
+            answered,
+            reason,
+            ..
+        } in asked
+        {
+            let Some(answered) = answered else {
                 world.log(&format!("{}: not asked ({reason}), a Gap", part.trail));
                 components.push(gap(part, reason));
                 continue;
-            }
-            let answer = answers.next().expect("an answer to each call")?;
+            };
             let trail = part.trail.clone();
-            let (component, parts, dropped) = read(part, &answer, &lines, &mut ids);
+            let (component, parts, dropped) = read(part, &answered.text, &lines, &mut ids, reason);
             for why in &dropped {
                 world.log(&format!("{trail}: dropped {why}"));
             }
@@ -413,10 +751,22 @@ fn files(world: &dyn World, dir: &str) -> WorldResult<Vec<File>> {
     Ok(files)
 }
 
-/// The `[wiki]` launch's headless, read-only call, its prompt to fill in:
-/// opencode's `run`, on a server of its own, so that the config denying
-/// every write is the one it runs on.
-fn headless(config: &Config) -> Result<Headless, Refusal> {
+/// The tools a part's call may not use: every one that writes or leaves its
+/// folder. `execute` reaches the user's own MCP servers, some of which write.
+const WRITES: [&str; 7] = [
+    "edit",
+    "bash",
+    "webfetch",
+    "websearch",
+    "task",
+    "external_directory",
+    "execute",
+];
+
+/// The `[wiki]` launch's headless call, its prompt to fill in, with the
+/// tools `denied` (`*` for every one): opencode's `run`, on a server of its
+/// own, so that the config denying them is the one it runs on.
+pub fn headless(config: &Config, denied: &[&str]) -> Result<Headless, Refusal> {
     let launch = &config.wiki.launch;
     let command = (launch.harness == "opencode")
         .then(|| config.harnesses[&launch.harness].command.clone())
@@ -436,16 +786,6 @@ fn headless(config: &Config) -> Result<Headless, Refusal> {
         args.extend(["-m".into(), model]);
     }
     args.extend(["--format".into(), "json".into()]);
-    // `execute` reaches the user's own MCP servers, some of which write.
-    let denied = [
-        "edit",
-        "bash",
-        "webfetch",
-        "websearch",
-        "task",
-        "external_directory",
-        "execute",
-    ];
     let permission: serde_json::Map<String, Value> = (denied.iter())
         .map(|tool| (tool.to_string(), json!("deny")))
         .collect();
@@ -505,82 +845,40 @@ fn prompt(slug: &str, part: &Part, lines: &HashMap<&str, usize>) -> String {
     fill_in(PROMPT, &values)
 }
 
+/// What the model is asked to correct of its answer about `part`: each
+/// claim that `failed`, by its id, with what failed.
+fn correction(part: &Part, failed: &[String]) -> String {
+    let failed: String = failed.iter().map(|why| format!("- {why}\n")).collect();
+    format!(
+        "## Corrections to the part: {}\n\nThese claims of your last answer failed their checks, each by its id:\n\n{failed}\nCorrect each one, reading again the lines it cites, and answer again with the whole JSON object in the same shape, every other claim as it was.",
+        part.trail
+    )
+}
+
 /// The Component `part` makes of the model's `answer`, the parts its
 /// division opens, each named by an id not in `ids`, and why each claim that
-/// failed a check was dropped: the part is then a Gap, unreadable.
+/// failed a check was dropped: the part is then a Gap for `reason`.
 fn read(
     part: Part,
     answer: &str,
     lines: &HashMap<&str, usize>,
     ids: &mut HashSet<String>,
+    reason: &'static str,
 ) -> (Component, Vec<Part>, Vec<String>) {
-    let Some(answer) = parsed(answer) else {
-        return (gap(part, "unreadable"), vec![], vec!["its answer".into()]);
+    let (checked, dropped) = checked(&part, answer, lines);
+    let Some(Checked {
+        overview,
+        mut interpretations,
+        named,
+        said,
+        explainer,
+    }) = checked
+    else {
+        return (gap(part, reason), vec![], dropped);
     };
-    let in_part: HashSet<&str> = part.files.iter().map(String::as_str).collect();
-    let mut dropped = vec![];
-    let mut interpretations = claims(
-        &answer.interpretations,
-        &mut dropped,
-        |i: &Interpretation| {
-            if !KINDS.contains(&i.kind.as_str()) {
-                return Some(format!(
-                    "its kind `{}` is not one of {}",
-                    i.kind,
-                    KINDS.join(", ")
-                ));
-            }
-            unanchored(&i.anchors, lines)
-        },
-    );
     for (n, interpretation) in interpretations.iter_mut().enumerate() {
         interpretation.id = n + 1;
     }
-    let (division, explainer) = match answer.kind.as_str() {
-        "division" => (&answer.components[..], &[][..]),
-        _ => (&[][..], answer.explainer.as_slice()),
-    };
-    let explainer = claims(explainer, &mut dropped, |e: &Explainer| {
-        let steps = e.steps.len();
-        if steps == 0 || steps > MOST_STEPS {
-            return Some(format!("it has {steps} steps, not 1 to {MOST_STEPS}"));
-        }
-        if (e.steps.iter().enumerate()).any(|(i, s)| s.n != i + 1) {
-            return Some(format!("its steps are not numbered 1 to {steps} in order"));
-        }
-        if let Some(why) = (e.steps.iter())
-            .find_map(|s| unanchored(&s.anchors, lines).map(|why| format!("step {}: {why}", s.n)))
-        {
-            return Some(why);
-        }
-        (e.arrows.iter())
-            .find(|a| ![a.from, a.to].iter().all(|n| (1..=steps).contains(n)))
-            .map(|a| {
-                format!(
-                    "its arrow {} to {} is not between two of its steps",
-                    a.from, a.to
-                )
-            })
-    })
-    .pop();
-    let named = claims(division, &mut dropped, |c: &Named| {
-        let outside = c.files.iter().find(|f| !in_part.contains(f.as_str()));
-        match (c.files.is_empty(), outside) {
-            (true, _) => Some("it has no files".into()),
-            (_, Some(f)) => Some(format!("{f} is not one of the part's files")),
-            _ => None,
-        }
-    });
-    let said = claims(&answer.relationships, &mut dropped, |r: &Said| {
-        if !RELATIONSHIPS.contains(&r.kind.as_str()) {
-            let kinds = RELATIONSHIPS.join(", ");
-            return Some(format!("its kind `{}` is not one of {kinds}", r.kind));
-        }
-        [&r.from, &r.to]
-            .into_iter()
-            .find(|name| !named.iter().any(|c| c.name == **name))
-            .map(|name| format!("{name} is not a Component of the division"))
-    });
     let mut parts: Vec<Part> = (named.into_iter())
         .map(|c| Part {
             id: unique(&part.id, &c.name, ids),
@@ -608,14 +906,14 @@ fn read(
         true => vec![],
         false => vec![Gap {
             paths: part.files.clone(),
-            reason: "unreadable",
+            reason,
         }],
     };
     let component = Component {
         id: part.id,
         name: part.name,
         parent: part.parent,
-        overview: answer.overview,
+        overview,
         files: part.files,
         interpretations,
         relationships: part.relationships,
@@ -623,6 +921,95 @@ fn read(
         gaps,
     };
     (component, parts, dropped)
+}
+
+/// The claims of the model's `answer` about `part` that pass every check,
+/// none when it is no answer of either shape, and why each other one
+/// failed, by its id.
+fn checked(
+    part: &Part,
+    answer: &str,
+    lines: &HashMap<&str, usize>,
+) -> (Option<Checked>, Vec<String>) {
+    let Some(answer) = parsed(answer) else {
+        let why = "the answer: it is no JSON object of either shape, leaf or division";
+        return (None, vec![why.into()]);
+    };
+    let in_part: HashSet<&str> = part.files.iter().map(String::as_str).collect();
+    let mut dropped = vec![];
+    let interpretations = claims(
+        "interpretation",
+        &answer.interpretations,
+        &mut dropped,
+        |i: &Interpretation| {
+            if !KINDS.contains(&i.kind.as_str()) {
+                return Some(format!(
+                    "its kind `{}` is not one of {}",
+                    i.kind,
+                    KINDS.join(", ")
+                ));
+            }
+            unanchored(&i.anchors, lines)
+        },
+    );
+    let (division, explainer) = match answer.kind.as_str() {
+        "division" => (&answer.components[..], &[][..]),
+        _ => (&[][..], answer.explainer.as_slice()),
+    };
+    let explainer = claims("explainer", explainer, &mut dropped, |e: &Explainer| {
+        let steps = e.steps.len();
+        if steps == 0 || steps > MOST_STEPS {
+            return Some(format!("it has {steps} steps, not 1 to {MOST_STEPS}"));
+        }
+        if (e.steps.iter().enumerate()).any(|(i, s)| s.n != i + 1) {
+            return Some(format!("its steps are not numbered 1 to {steps} in order"));
+        }
+        if let Some(why) = (e.steps.iter())
+            .find_map(|s| unanchored(&s.anchors, lines).map(|why| format!("step {}: {why}", s.n)))
+        {
+            return Some(why);
+        }
+        (e.arrows.iter())
+            .find(|a| ![a.from, a.to].iter().all(|n| (1..=steps).contains(n)))
+            .map(|a| {
+                format!(
+                    "its arrow {} to {} is not between two of its steps",
+                    a.from, a.to
+                )
+            })
+    })
+    .pop();
+    let named = claims("component", division, &mut dropped, |c: &Named| {
+        let outside = c.files.iter().find(|f| !in_part.contains(f.as_str()));
+        match (c.files.is_empty(), outside) {
+            (true, _) => Some("it has no files".into()),
+            (_, Some(f)) => Some(format!("{f} is not one of the part's files")),
+            _ => None,
+        }
+    });
+    let said = claims(
+        "relationship",
+        &answer.relationships,
+        &mut dropped,
+        |r: &Said| {
+            if !RELATIONSHIPS.contains(&r.kind.as_str()) {
+                let kinds = RELATIONSHIPS.join(", ");
+                return Some(format!("its kind `{}` is not one of {kinds}", r.kind));
+            }
+            [&r.from, &r.to]
+                .into_iter()
+                .find(|name| !named.iter().any(|c| c.name == **name))
+                .map(|name| format!("{name} is not a Component of the division"))
+        },
+    );
+    let checked = Checked {
+        overview: answer.overview,
+        interpretations,
+        named,
+        said,
+        explainer,
+    };
+    (Some(checked), dropped)
 }
 
 /// The id of the Component `name` under `parent`'s: their names' slugs
@@ -680,14 +1067,16 @@ fn parsed(text: &str) -> Option<Answer> {
 }
 
 /// Each claim of `raw` that reads as a `T` and passes `check`, which says
-/// what is wrong with one; why each other one was dropped, onto `dropped`.
+/// what is wrong with one; why each other one was dropped, onto `dropped`,
+/// by its id: `name` and its place among them, from 1.
 fn claims<T: DeserializeOwned>(
+    name: &str,
     raw: &[Value],
     dropped: &mut Vec<String>,
     check: impl Fn(&T) -> Option<String>,
 ) -> Vec<T> {
-    (raw.iter())
-        .filter_map(|claim| {
+    (raw.iter().enumerate())
+        .filter_map(|(n, claim)| {
             let problem = match serde_json::from_value::<T>(claim.clone()) {
                 Ok(read) => match check(&read) {
                     None => return Some(read),
@@ -695,7 +1084,7 @@ fn claims<T: DeserializeOwned>(
                 },
                 Err(e) => format!("it does not read: {e}"),
             };
-            dropped.push(format!("{claim}: {problem}"));
+            dropped.push(format!("{name} {} {claim}: {problem}", n + 1));
             None
         })
         .collect()
@@ -720,12 +1109,31 @@ fn gap(part: Part, reason: &'static str) -> Component {
     }
 }
 
+/// Each Wiki's last build, by its id.
+fn load(config_dir: &Path) -> io::Result<BTreeMap<String, Outcome>> {
+    state::load(&config_dir.join(FILE))
+}
+
+/// Change the queue under its lock.
+fn update_queue<T>(config_dir: &Path, change: impl FnOnce(&mut Queue) -> T) -> io::Result<T> {
+    let file = config_dir.join(QUEUE);
+    state::update(&file, |text| {
+        let mut queue = state::parse(&file, text)?;
+        let out = change(&mut queue);
+        Ok::<_, io::Error>((state::text(&queue), out))
+    })
+}
+
 /// Keep `outcome` as the last build of the Wiki `id`.
 fn keep(config_dir: &Path, id: &str, outcome: &Outcome) -> io::Result<()> {
     let file = config_dir.join(FILE);
     state::update(&file, |text| {
         let mut all: BTreeMap<String, Outcome> = state::parse(&file, text)?;
-        all.insert(id.into(), outcome.clone());
+        let mut outcome = outcome.clone();
+        if let Outcome::Failed { built, .. } = &mut outcome {
+            *built = all.get(id).and_then(Outcome::wiki).cloned();
+        }
+        all.insert(id.into(), outcome);
         Ok::<_, io::Error>((state::text(&all), ()))
     })
 }

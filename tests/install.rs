@@ -125,7 +125,7 @@ fn install_pulls_the_clone_on_its_base_fast_forward_runs_its_command_and_records
     t.world
         .heads
         .borrow_mut()
-        .insert("/src/api".into(), "f00d".into());
+        .insert("/src/api HEAD".into(), "f00d".into());
 
     let ran = t.cli(&["install", "acme/api", "--json"]);
 

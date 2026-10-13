@@ -8,7 +8,7 @@ description: "Drive nico-agent the way its user and its agents do — the CLI (`
 nico-agent is one Rust binary with two user surfaces, and this skill drives both:
 
 - **The CLI**, what outsiders call: `repo add|rm|list`, `status`, `dispatch`, `verdict`, `refresh`,
-  `install`, `wiki build`.
+  `install`, `wiki build`, and `mcp`, an MCP server on stdio fed by `run`'s stdin.
   Every command prints one JSON object with `--json`; exit `0` is an answer, `1` a refusal the user
   can act on, `2` a bad invocation, each refusal as `{error, help}`.
 - **serve's page**, the Svelte app `serve` embeds and answers on `127.0.0.1:<port>`, with the
@@ -28,7 +28,8 @@ Decisions this skill was generated from (the interview of the repo):
   `$HOME/.config/nico-agent` there (`src/main.rs`); serve on a free port (`port` in that
   `config.toml`); the page in headless Chromium through Playwright; `/api` with curl.
 - **Observe:** stdout JSON and exit codes; the files of the scratch config dir (`config.toml`,
-  `dispatches.json`, `prs.json`, `issues/`, `verdicts/`, `pauses.json`, `checks.json`, `installs.json`); the Bucket's git log; HTTP
+  `dispatches.json`, `prs.json`, `issues/`, `verdicts/`, `pauses.json`, `checks.json`, `installs.json`,
+  `runs.json`, `wikis.json`, `wiki-queue.json`); the Bucket's git log; HTTP
   status, headers and body; the page's ARIA snapshot, screenshot and the `/api` requests it made;
   every call the binary made outside the process, recorded by the stubs in `outside.log`.
 - **Isolate:** yes. Each run has its own directory `${VERIFY_RUN_ROOT:-${TMPDIR:-/tmp}/verify-nico-agent}/$VERIFY_RUN_ID`
@@ -58,8 +59,10 @@ $C seed run quality-scan|morning|faux-nico <n>  # a Run of the loop's own agent,
 $C seed morning <file>|none     # the Morning summary the morning agent leaves: <file> as morning.md, or none
 $C seed answer <file>|none [<part>]  # what the wiki model (the opencode2 stub) answers every call: <file>'s text, or none;
                                 # with <part>, a trail such as `verify/fixture > Readme`, only the calls about it
+$C seed correction <file>|none  # what the wiki model answers each correction (a call with -s): <file>'s text, or none
 $C drift push <n>|stale|pause   # what GitHub would change: a new PR head, an old read, a rate limit
 $C drift below merged|closed    # ... or the PR below a Stacked dispatch merged or closed unmerged
+$C drift base                   # ... or verify/fixture's Base moved on by a merge, fetched into its clone
 $C state                        # fingerprint: config dir files, Dispatches, Verdicts, Bucket log, outside calls
 $C run [--evidence PREFIX] -- <nico-agent args...>       # the CLI in the scratch HOME; exit code is the CLI's
 $C http [--evidence PREFIX] [--header 'NAME: VALUE']... <METHOD> <PATH> [BODY]
@@ -74,7 +77,9 @@ $C cleanup                      # stop what the run started, remove the run dir;
 `run --evidence PREFIX` writes `PREFIX.cmd`, `.stdout`, `.stderr` and `.exit`; `http --evidence`
 writes `.cmd` (each `--header` in brackets first), `.stdout` (the body), `.stderr`, `.exit` (the
 HTTP status) and `.headers`; `page
---evidence` writes `.cmd`, `.aria.txt`, `.png`, `.requests.txt` and `.console.txt`. Each still prints
+--evidence` writes `.cmd`, `.aria.txt`, `.png` (the whole page), `.view.png` (the window, as scrolled),
+`.view.txt` (where the window is scrolled, the page's width against the window's, and what has focus),
+`.requests.txt` and `.console.txt`. Each still prints
 what it captured, so a recipe can record and inspect at once. `page` steps: `--click tab=verify/second`
 clicks the element of that ARIA role whose accessible name is exactly the text, `--click
 "button~Failed verify/fixture #1"` one whose name contains it, `--within "region=verify/fixture"` makes
@@ -196,13 +201,19 @@ What the fixtures hold:
 - `seed morning <file>` puts `<file>`'s text in the config dir as `morning.md`, as the morning agent
   writes its summary (the agent itself is off in a run); `seed morning none` takes it away.
 - `seed answer <file>` makes the `opencode2` stub answer every headless call with `<file>`'s text, as
-  the wiki model's last message; `seed answer <file> "<trail>"` only the calls whose prompt asks
-  about that part (`## The part: <trail>`), ahead of the answer for every call; `seed answer none`
-  takes every answer away, and each call fails again, as opencode with no model does. The stub logs each call after the `OPENCODE_CONFIG_CONTENT` it was given.
+  the wiki model's last message, in a session of its own (`ses_verify_<n>`); `seed answer <file>
+  "<trail>"` only the calls whose prompt asks about that part (`## The part: <trail>`, or a
+  correction's `## Corrections to the part: <trail>`), ahead of the answer for every call; `seed
+  correction <file>` answers each correction (a call with `-s <session>`, which it continues) with
+  `<file>`'s text instead, and `seed correction none` goes back to the part's answer; `seed answer
+  none` takes every answer away, corrections too, and each call fails again, as opencode with no
+  model does. The stub logs each call after the `OPENCODE_CONFIG_CONTENT` it was given.
 - `drift push <n>` commits to the seeded worktree and moves the PR's `head_sha`, as a push would;
   `drift stale` dates the cached read 2000-01-01, so the next `status` or `dispatch` asks GitHub;
   `drift pause` writes GitHub paused for an hour, as a rate limit does; `drift below merged|closed`
-  makes PR #109 final, merged or closed unmerged, as GitHub would say.
+  makes PR #109 final, merged or closed unmerged, as GitHub would say; `drift base` pushes a commit
+  rewriting `README.md` to verify/fixture's `main` and fetches it, as a merge and the loop's next
+  fetch would, printing `{base, old, head}`.
 
 Stable handles are the command words and flags (`--path`, `--json`, `--harness`, `--model`,
 `--effort`, `--sha`, `--findings`), the exit codes, the JSON field names, the routes in `GET` of an
@@ -210,11 +221,14 @@ unknown path's `help`, and on the page the ARIA roles and names: `tablist "Proje
 `tab` per Project (a Repo with none is its own, named by its slug), `region "Needs you"`, `button
 "Refresh"`, a `region "<project>"` of its defaults unless it is a Repo's own, then a `region
 "<slug>"` per Repo, each holding `switch "Dispatch"` (and `Faux-nico answers`,
-`Flip to ready`, `Gardening`, `Quality-scan`, `Restart`, `Review`, `Stack`), `spinbutton "Room"`,
+`Flip to ready`, `Gardening`, `Quality-scan`, `Restart`, `Review`, `Stack`, `Wiki`), `spinbutton "Room"`,
 `navigation "View"` with `link "Map"` and `link "Wiki"` (the
-Wiki view: `combobox "Wiki"`, `navigation "Components"` with a `link` per Component, `button
-"Components"` at phone width, `article "<Component>"` with a `region` per kind of Interpretation,
-`"Components"` and `"Gaps"`), `region "Dispatch"` with `button "Dispatch"` (a Repo's only), `region "Readiness"` with a `group` reading `N of M pass` (a Repo's only), `region "Map of <project>"`, `region "Settings"` with
+Wiki view: `combobox "Wiki"`, `searchbox "Search this Wiki"` with, while it holds words, a `status`
+`N found` and `navigation "Found"` with a `link` per hit in place of `navigation "Components"` with
+a `link` per Component, `article "<Component>"` with a `region` per kind of Interpretation,
+`"Components"` and `"Gaps"`, `navigation "Outline"` with a `button` per head; under 1080px
+`button "Outline"`, under 720px `button "Components"` too, each opening its sheet with `button
+"Close"`), `region "Dispatch"` with `button "Dispatch"` (a Repo's only), `region "Readiness"` with a `group` reading `N of M pass` (a Repo's only), `region "Map of <project>"`, `region "Settings"` with
 `combobox "Implementer Harness"` (and `model`, `Effort`, and the same for `Reviewer`), `textbox
 "Base"`, `combobox "Project"` (a Repo's only), `region "Install"` with `textbox "Install"` (a Repo's only), `button "Use the default <Setting>"` or `"Use the
 Project's <Setting>"`, `button "Remove <slug>…"`; a `--click` takes the first match, which is the

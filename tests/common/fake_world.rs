@@ -2,7 +2,7 @@
 //! recorded in order as the command it stands for, in `main`'s shapes.
 
 use std::cell::{Cell, RefCell};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::time::{Duration, SystemTime};
 
 use nico_agent::world::*;
@@ -43,6 +43,8 @@ pub struct FakeWorld {
     pub agents: RefCell<BTreeMap<String, String>>,
     /// The pane each named agent runs in.
     pub agent_panes: RefCell<HashMap<String, String>>,
+    /// Panes herdr no longer has: closed, or their shell exited.
+    pub gone_panes: RefCell<Vec<String>>,
     /// What `herdr agent read` shows of each named agent.
     pub screens: RefCell<HashMap<String, String>>,
     /// The startup question the next agents started are blocked on, shown as
@@ -76,7 +78,7 @@ pub struct FakeWorld {
     pub branches: RefCell<HashMap<String, String>>,
     /// The changes to tracked files of each clone, by path, as `git status --porcelain` lists them.
     pub tracked_changes: RefCell<HashMap<String, Vec<String>>>,
-    /// The commit each clone is on, by path; `abc1234` when unset.
+    /// The commit each rev names in a clone, by `<path> <rev>`; `abc1234` when unset.
     pub heads: RefCell<HashMap<String, String>>,
     /// Whether each shell command line succeeds and what it prints, by the
     /// command; one unset succeeds printing nothing.
@@ -86,6 +88,14 @@ pub struct FakeWorld {
     /// What a headless call answers, by a line its prompt holds; a call
     /// whose prompt holds none of them fails.
     pub headless: RefCell<Vec<(String, String)>>,
+    /// What Ollama embeds each text as; one unset as `[0, 1]`.
+    pub embeddings: RefCell<HashMap<String, Vec<f32>>>,
+    /// The lines stdin holds still, read in order; closed once they are read.
+    pub stdin: RefCell<VecDeque<String>>,
+    /// The lines written to stdout, in order.
+    pub stdout: RefCell<Vec<String>>,
+    /// Headless calls answered so far, each in a session of its own: `ses_1`.
+    sessions: Cell<u32>,
     workspaces: Cell<u32>,
     tabs: RefCell<HashMap<String, u32>>,
 }
@@ -110,6 +120,7 @@ impl Default for FakeWorld {
             app_repos: Default::default(),
             agents: Default::default(),
             agent_panes: Default::default(),
+            gone_panes: Default::default(),
             screens: Default::default(),
             blocked_screen: Default::default(),
             stalled_prompts: Default::default(),
@@ -132,6 +143,10 @@ impl Default for FakeWorld {
             shell_runs: Default::default(),
             utc_offset: Cell::new(0),
             headless: Default::default(),
+            embeddings: Default::default(),
+            stdin: Default::default(),
+            stdout: Default::default(),
+            sessions: Cell::new(0),
             workspaces: Cell::new(0),
             tabs: Default::default(),
         }
@@ -393,10 +408,10 @@ impl World for FakeWorld {
         ))
     }
 
-    fn git_head(&self, path: &str) -> WorldResult<String> {
-        self.call(format!("git -C {path} rev-parse HEAD"))?;
+    fn git_rev(&self, path: &str, rev: &str) -> WorldResult<String> {
+        self.call(format!("git -C {path} rev-parse {rev}"))?;
         let heads = self.heads.borrow();
-        Ok(heads.get(path).cloned().unwrap_or_else(|| "abc1234".into()))
+        Ok((heads.get(&format!("{path} {rev}")).cloned()).unwrap_or_else(|| "abc1234".into()))
     }
 
     /// `dir` holds the files of `rev` in the clone, and has them at its `HEAD`.
@@ -441,7 +456,7 @@ impl World for FakeWorld {
         cwd: &str,
         calls: &[Headless],
         _at_once: usize,
-    ) -> Vec<WorldResult<String>> {
+    ) -> Vec<WorldResult<Answered>> {
         (calls.iter())
             .map(|call| {
                 let env: String = (call.env.iter())
@@ -453,12 +468,31 @@ impl World for FakeWorld {
                     call.prompt
                 ))?;
                 let script = self.headless.borrow();
-                (script.iter())
+                let (_, text) = (script.iter())
                     .find(|(line, _)| call.prompt.lines().any(|l| l == line))
-                    .map(|(_, answer)| answer.clone())
-                    .ok_or_else(|| WorldError("no answer scripted for this prompt".into()))
+                    .ok_or_else(|| WorldError("no answer scripted for this prompt".into()))?;
+                self.sessions.set(self.sessions.get() + 1);
+                let session = format!("ses_{}", self.sessions.get());
+                Ok(Answered {
+                    text: text.clone(),
+                    session,
+                })
             })
             .collect()
+    }
+
+    fn ollama_embed(
+        &self,
+        ollama: &str,
+        model: &str,
+        input: &[String],
+    ) -> WorldResult<Vec<Vec<f32>>> {
+        let body = serde_json::json!({ "model": model, "input": input });
+        self.call(format!("curl -X POST {ollama}/api/embed -d {body}"))?;
+        let embeddings = self.embeddings.borrow();
+        Ok((input.iter())
+            .map(|text| embeddings.get(text).cloned().unwrap_or(vec![0.0, 1.0]))
+            .collect())
     }
 
     fn shell(&self, cwd: &str, command: &str) -> WorldResult<(bool, String)> {
@@ -716,6 +750,11 @@ impl World for FakeWorld {
         self.call(format!("herdr pane run {pane} {command}"))
     }
 
+    fn herdr_pane_exists(&self, pane: &str) -> WorldResult<bool> {
+        self.call(format!("herdr pane get {pane}"))?;
+        Ok(!self.gone_panes.borrow().iter().any(|p| p == pane))
+    }
+
     fn herdr_agent_detect(&self, pane: &str, timeout: Duration) -> WorldResult<()> {
         self.call(format!(
             "herdr agent detect {pane} --timeout {}",
@@ -820,6 +859,15 @@ impl World for FakeWorld {
     fn listen(&self, port: u16, handler: Handler) -> WorldResult<()> {
         self.call(format!("listen 127.0.0.1:{port}"))?;
         *self.listening.borrow_mut() = Some(handler);
+        Ok(())
+    }
+
+    fn read_line(&self) -> WorldResult<Option<String>> {
+        Ok(self.stdin.borrow_mut().pop_front())
+    }
+
+    fn write_line(&self, line: &str) -> WorldResult<()> {
+        self.stdout.borrow_mut().push(line.into());
         Ok(())
     }
 
