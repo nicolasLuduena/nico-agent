@@ -61,7 +61,9 @@ Preconditions:
 ## Gotchas
 
 - The model is stubbed: `opencode2` answers every call with the seeded text, so a division would
-  divide again at every depth. Seed leaves only; `cargo test` covers divisions, budgets and depth.
+  divide again at every depth. Seed leaves only, or seed each part's answer by its trail
+  (`seed answer <file> <part>`, as [wiki-view.md](./wiki-view.md) does); `cargo test` covers
+  divisions, budgets and depth.
 - `seed answer none` puts the stub back to failing each call.
 - A real build needs opencode's credentials, which the scratch HOME lacks: it is driven outside a
   run, in a scratch config dir, with `OPENCODE_API_KEY` set. It embeds through the user's own

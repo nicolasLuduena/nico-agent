@@ -122,6 +122,10 @@ commands, and observable proof.
   tool errors it goes on answering after, `ask` saying search is unavailable without Ollama and
   answering for real with it, nothing written but `ask`'s embeddings, and the server added to
   Claude Code.
+- [Read a Wiki on the page](./wiki-view.md) covers `GET /api/wikis` and `GET /api/wiki/<id>`, a
+  Project tab's Map and Wiki views, the picker, the header, the Component tree, Interpretations by
+  kind with their Anchors on GitHub, sub-Components and Gaps, a hash opening a Component, back and
+  forward, light and dark at desk and phone width.
 - [Requests from other sites](./foreign-requests.md) covers the 403 serve answers a foreign or
   missing `Host` and a foreign or `null` `Origin` on a write, and the page, `localhost` and the
   tunnel answered as before.

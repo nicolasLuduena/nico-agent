@@ -7,6 +7,7 @@
   import { flash } from "./motion";
   import NeedsYou from "./NeedsYou.svelte";
   import ProjectTab from "./ProjectTab.svelte";
+  import { hash, route } from "./route";
   import { selection } from "./selection.svelte";
   import type { Status } from "./status";
   import { needsYou } from "./strip";
@@ -15,6 +16,18 @@
 
   let status = $state<Status | null>(null);
   let failure = $state<string | null>(null);
+
+  // The hash selects as a link opens the page, and as back and forward move through it; the selection writes it back.
+  function follow() {
+    const at = route(location.hash);
+    if (at.project !== selection.project) selection.issue = null;
+    Object.assign(selection, at);
+  }
+  follow();
+  $effect(() => {
+    const want = hash(selection);
+    if (want !== hash(route(location.hash))) location.hash = want;
+  });
 
   onMount(() =>
     watch<Status>(
@@ -38,8 +51,7 @@
   };
 
   function show(name: string) {
-    selection.project = name;
-    selection.issue = null;
+    Object.assign(selection, { project: name, wiki: null, component: null, issue: null });
   }
 
   /** The read times flash once when a read moves them, not when another Project's tab shows its own. */
@@ -62,6 +74,8 @@
     document.getElementById(`tab-${next}`)?.focus();
   }
 </script>
+
+<svelte:window onhashchange={follow} />
 
 <header class="top">
   <h1 class="label">nico-agent</h1>

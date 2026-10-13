@@ -206,6 +206,53 @@ pub fn build(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
     })
 }
 
+/// `GET /api/wikis`: each Repo's Wiki the Bucket holds, by its id, with the
+/// commit it describes, when it was built and how many Gaps it has.
+pub fn list(ctx: &Context) -> Result<Value, Refusal> {
+    let config = config::load(&ctx.config_dir)?;
+    let mut wikis = vec![];
+    for slug in config.repos.keys() {
+        let Some(wiki) = kept(ctx, &config, slug)? else {
+            continue;
+        };
+        let gaps: usize = (wiki["components"].as_array().into_iter().flatten())
+            .filter_map(|c| c["gaps"].as_array().map(Vec::len))
+            .sum();
+        wikis.push(json!({
+            "id": slug,
+            "target": wiki["target"],
+            "commit": wiki["commit"],
+            "builtAt": wiki["builtAt"],
+            "gaps": gaps,
+        }));
+    }
+    Ok(json!(wikis))
+}
+
+/// `GET /api/wiki/<id>`: the Wiki `id` names, as the Bucket holds it; none
+/// for an id no Repo has, or a Repo whose Wiki was never built.
+pub fn get(ctx: &Context, id: &str) -> Result<Option<Value>, Refusal> {
+    let config = config::load(&ctx.config_dir)?;
+    match config.repo(id) {
+        Some((slug, _)) => kept(ctx, &config, slug),
+        None => Ok(None),
+    }
+}
+
+/// The Wiki of the Repo `slug` the Bucket holds.
+fn kept(ctx: &Context, config: &Config, slug: &str) -> Result<Option<Value>, Refusal> {
+    let Some(text) = bucket::wiki(ctx.world, config, slug)? else {
+        return Ok(None);
+    };
+    let wiki = serde_json::from_slice(&text).map_err(|e| {
+        Refusal::new(
+            format!("the Wiki of {slug} in the Bucket is not JSON: {e}"),
+            vec![format!("Build it again: nico-agent wiki build {slug}")],
+        )
+    })?;
+    Ok(Some(wiki))
+}
+
 /// The Wiki of the Repo `slug`, built on a checkout of its Base, removed
 /// after, and kept in the Bucket.
 fn built(ctx: &Context, config: &Config, slug: &str, repo: &Repo) -> Result<Wiki, Refusal> {

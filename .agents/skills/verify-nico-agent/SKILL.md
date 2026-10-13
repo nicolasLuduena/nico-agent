@@ -56,7 +56,8 @@ $C seed issues [second]         # a fresh read of verify/fixture's issues (or ve
 $C seed dispatch <n> pr|asking|stacked  # a Dispatch of verify/fixture#<n> as the loop records one; prints JSON
 $C seed run quality-scan|morning|faux-nico <n>  # a Run of the loop's own agent, blocked; prints JSON
 $C seed morning <file>|none     # the Morning summary the morning agent leaves: <file> as morning.md, or none
-$C seed answer <file>|none      # what the wiki model (the opencode2 stub) answers every call: <file>'s text, or none
+$C seed answer <file>|none [<part>]  # what the wiki model (the opencode2 stub) answers every call: <file>'s text, or none;
+                                # with <part>, a trail such as `verify/fixture > Readme`, only the calls about it
 $C drift push <n>|stale|pause   # what GitHub would change: a new PR head, an old read, a rate limit
 $C drift below merged|closed    # ... or the PR below a Stacked dispatch merged or closed unmerged
 $C drift base                   # ... or verify/fixture's Base moved on by a merge, fetched into its clone
@@ -64,8 +65,8 @@ $C state                        # fingerprint: config dir files, Dispatches, Ver
 $C run [--evidence PREFIX] -- <nico-agent args...>       # the CLI in the scratch HOME; exit code is the CLI's
 $C http [--evidence PREFIX] [--header 'NAME: VALUE']... <METHOD> <PATH> [BODY]
                                 # ask serve, as the page does (or with other headers); exit 1 on 4xx/5xx
-$C page [--tunnel] [--evidence PREFIX] [--width PX] [--storage FILE|none] [--within ROLE=NAME|page | --click ROLE=NAME | --click ROLE~NAME | --press KEY | --type TEXT | --expect TEXT
-        | --gone TEXT | --wait SECONDS | --mode pass|502|signed-out]...
+$C page [--tunnel] [--evidence PREFIX] [--width PX] [--storage FILE|none] [--hash HASH] [--within ROLE=NAME|page | --click ROLE=NAME | --click ROLE~NAME | --press KEY | --type TEXT
+        | --expect TEXT | --gone TEXT | --wait SECONDS | --history back|forward | --mode pass|502|signed-out]...
                                 # open the page (through the tunnel stand-in), act in order, capture
 $C tunnel start|pass|502|signed-out   # a stand-in for cloudflared and Access in front of serve; $TUNNEL_URL, $TUNNEL_LOG
 $C cleanup                      # stop what the run started, remove the run dir; never touches .evidence/
@@ -83,8 +84,9 @@ controls share their names with the Project's and the other Repos'), `--within p
 page again, `--press ArrowRight` a key, `--type
 dev` text into what has focus,
 `--expect "Source not read yet"` waits for the text, `--gone TEXT` up to a minute for it to go,
-`--wait 120` lets two minutes pass, and `--mode 502` switches the tunnel stand-in (with `--tunnel`
-only). Each `page` is a new browser with nothing stored: `--storage FILE` starts it with the
+`--wait 120` lets two minutes pass, `--history back` (or `forward`) is the browser's Back (or
+Forward) button, and `--mode 502` switches the tunnel stand-in (with `--tunnel` only). `--hash
+"#shop/wiki/verify%2Ffixture"` opens the page at that hash, as a link to it does. Each `page` is a new browser with nothing stored: `--storage FILE` starts it with the
 storage `FILE` holds (none the first time) and saves it back at the end, so the next `page` with
 the same `FILE` is a reload in the same browser; `--storage none` is a browser whose `localStorage`
 throws, as one blocking the site's data does. `page` prints `ok` or `FAIL` per step and exits 1 on
@@ -195,8 +197,9 @@ What the fixtures hold:
 - `seed morning <file>` puts `<file>`'s text in the config dir as `morning.md`, as the morning agent
   writes its summary (the agent itself is off in a run); `seed morning none` takes it away.
 - `seed answer <file>` makes the `opencode2` stub answer every headless call with `<file>`'s text, as
-  the wiki model's last message; `seed answer none` makes each call fail again, as opencode with no
-  model does. The stub logs each call after the `OPENCODE_CONFIG_CONTENT` it was given.
+  the wiki model's last message; `seed answer <file> "<trail>"` only the calls whose prompt asks
+  about that part (`## The part: <trail>`), ahead of the answer for every call; `seed answer none`
+  takes every answer away, and each call fails again, as opencode with no model does. The stub logs each call after the `OPENCODE_CONFIG_CONTENT` it was given.
 - `drift push <n>` commits to the seeded worktree and moves the PR's `head_sha`, as a push would;
   `drift stale` dates the cached read 2000-01-01, so the next `status` or `dispatch` asks GitHub;
   `drift pause` writes GitHub paused for an hour, as a rate limit does; `drift below merged|closed`
@@ -211,7 +214,10 @@ unknown path's `help`, and on the page the ARIA roles and names: `tablist "Proje
 "Refresh"`, a `region "<project>"` of its defaults unless it is a Repo's own, then a `region
 "<slug>"` per Repo, each holding `switch "Dispatch"` (and `Faux-nico answers`,
 `Flip to ready`, `Gardening`, `Quality-scan`, `Restart`, `Review`, `Stack`), `spinbutton "Room"`,
-`region "Dispatch"` with `button "Dispatch"` (a Repo's only), `region "Readiness"` with a `group` reading `N of M pass` (a Repo's only), `region "Map of <project>"`, `region "Settings"` with
+`navigation "View"` with `link "Map"` and `link "Wiki"` (the
+Wiki view: `combobox "Wiki"`, `navigation "Components"` with a `link` per Component, `button
+"Components"` at phone width, `article "<Component>"` with a `region` per kind of Interpretation,
+`"Components"` and `"Gaps"`), `region "Dispatch"` with `button "Dispatch"` (a Repo's only), `region "Readiness"` with a `group` reading `N of M pass` (a Repo's only), `region "Map of <project>"`, `region "Settings"` with
 `combobox "Implementer Harness"` (and `model`, `Effort`, and the same for `Reviewer`), `textbox
 "Base"`, `combobox "Project"` (a Repo's only), `region "Install"` with `textbox "Install"` (a Repo's only), `button "Use the default <Setting>"` or `"Use the
 Project's <Setting>"`, `button "Remove <slug>…"`; a `--click` takes the first match, which is the

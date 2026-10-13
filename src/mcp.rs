@@ -188,8 +188,7 @@ fn unserved(wiki: &str) -> String {
 
 /// The Wiki of the Repo `slug`, as the Bucket holds it; `None` before its first build.
 fn read(ctx: &Context, config: &Config, slug: &str) -> Result<Option<Value>, String> {
-    let file = format!("{}/{}", config.bucket.path, bucket::wiki(slug));
-    let Some(held) = ctx.world.read_file(&file).map_err(|e| e.0)? else {
+    let Some(held) = bucket::wiki(ctx.world, config, slug).map_err(|e| e.0)? else {
         return Ok(None);
     };
     (serde_json::from_slice(&held).map(Some))

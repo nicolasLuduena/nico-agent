@@ -62,13 +62,8 @@ pub fn keep(
     world.git_commit(bucket, &kept, message).map_err(refused)
 }
 
-/// Where the Bucket keeps the Wiki of the Repo `slug`.
-pub fn wiki(slug: &str) -> String {
-    format!("wiki/{slug}/wiki.json")
-}
-
-/// Commit `text` as the Wiki of the Repo `slug`, at [`wiki`], with
-/// `message`, the Bucket made first if it is missing.
+/// Commit `text` as the Wiki of the Repo `slug`, at `wiki/<slug>/wiki.json`,
+/// with `message`, the Bucket made first if it is missing.
 pub fn keep_wiki(
     ctx: &Context,
     config: &Config,
@@ -78,10 +73,20 @@ pub fn keep_wiki(
 ) -> Result<(), Refusal> {
     let (world, _lock) = (ctx.world, lock(ctx)?);
     made(world, config)?;
-    let (bucket, kept) = (&config.bucket.path, wiki(slug));
+    let (bucket, kept) = (&config.bucket.path, wiki_file(slug));
     (world.write_file(&format!("{bucket}/{kept}"), text.as_bytes()))
         .and_then(|()| world.git_commit(bucket, &kept, message))
         .map_err(refused)
+}
+
+/// The text of the Wiki of the Repo `slug` the Bucket holds; none before its first build.
+pub fn wiki(world: &dyn World, config: &Config, slug: &str) -> WorldResult<Option<Vec<u8>>> {
+    world.read_file(&format!("{}/{}", config.bucket.path, wiki_file(slug)))
+}
+
+/// Where the Wiki of the Repo `slug` is in the Bucket.
+fn wiki_file(slug: &str) -> String {
+    format!("wiki/{slug}/wiki.json")
 }
 
 /// Keep the Evidence of each live Dispatch at its open PR's head, once a

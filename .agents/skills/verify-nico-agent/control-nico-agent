@@ -17,8 +17,9 @@
 #   seed run quality-scan|morning|faux-nico <n>
 #                                 a Run of the loop's own agent, blocked, as the loop records it
 #   seed morning <file>|none      the Morning summary the morning agent leaves: <file> as morning.md, or none
-#   seed answer <file>|none       what the wiki model answers every headless call: <file>'s text, or none
-#                                 (then each call fails as opencode2 does with no model)
+#   seed answer <file>|none [<part>]  what the wiki model answers every headless call: <file>'s text, or none
+#                                 (then each call fails as opencode2 does with no model); with <part>, a trail
+#                                 such as `verify/fixture > Docs`, only the calls asking about that part
 #   drift push <n>|stale|pause|below merged|closed|base
 #                                 what GitHub would change: a new PR head, an old read, a rate limit,
 #                                 the PR below a Stacked dispatch merged or closed unmerged,
@@ -28,8 +29,8 @@
 #                                 run the CLI in the scratch HOME; exit code is the CLI's
 #   http [--evidence PREFIX] <METHOD> <PATH> [BODY]
 #                                 ask this run's serve, as the page does
-#   page [--tunnel] [--evidence PREFIX] [--width PX] [--storage FILE|none] [--within ROLE=NAME|page | --click ROLE=NAME | --click ROLE~NAME | --press KEY | --type TEXT
-#        | --expect TEXT | --gone TEXT | --wait SECONDS | --mode pass|502|signed-out]...
+#   page [--tunnel] [--evidence PREFIX] [--width PX] [--storage FILE|none] [--hash HASH] [--within ROLE=NAME|page | --click ROLE=NAME | --click ROLE~NAME | --press KEY
+#        | --type TEXT | --expect TEXT | --gone TEXT | --wait SECONDS | --history back|forward | --mode pass|502|signed-out]...
 #                                 open serve's page in headless Chromium (through the tunnel stand-in), act, capture
 #   tunnel start|pass|502|signed-out
 #                                 start a stand-in for the cloudflared tunnel and Access in front of serve;
@@ -126,9 +127,13 @@ case "\$name" in
   notify-send) exit 0 ;;
   curl) echo "curl: (6) verify-nico-agent: no network in this run" >&2; exit 6 ;;
   # \`run --format json\`'s events: the seeded answer as its last message, else its error.
+  # The answer seeded for the part the prompt asks about, else the one for every part.
   opencode2)
-    if [ -f "$RUN_DIR/opencode-answer" ]; then
-      jq -cn --rawfile text "$RUN_DIR/opencode-answer" '{type: "text", part: {type: "text", text: \$text}}'
+    part="\$(printf '%s' "\${@: -1}" | sed -n 's/^## The part: //p' | head -n 1)"
+    answer="$RUN_DIR/opencode-answers/\$(printf '%s' "\$part" | md5sum | cut -c 1-32)"
+    [ -f "\$answer" ] || answer="$RUN_DIR/opencode-answer"
+    if [ -f "\$answer" ]; then
+      jq -cn --rawfile text "\$answer" '{type: "text", part: {type: "text", text: \$text}}'
       exit 0
     fi
     echo '{"type":"error","error":{"type":"provider.no-route","message":"Model unavailable: opencode2 is a stub in this verification run"}}'
@@ -331,7 +336,7 @@ cmd_seed() {
     run) seed_run "$@" ;;
     morning) seed_morning "$@" ;;
     answer) seed_answer "$@" ;;
-    *) die "seed: usage: seed issues [second] | seed dispatch <n> pr|asking|stacked | seed run quality-scan|morning|faux-nico <n> | seed morning <file>|none | seed answer <file>|none" ;;
+    *) die "seed: usage: seed issues [second] | seed dispatch <n> pr|asking|stacked | seed run quality-scan|morning|faux-nico <n> | seed morning <file>|none | seed answer <file>|none [<part>]" ;;
   esac
 }
 
@@ -452,12 +457,18 @@ seed_morning() {
 }
 
 # What the wiki model answers each headless call from now on: <file>'s text, or with none, each
-# call fails as opencode2 with no model does.
+# call fails as opencode2 with no model does. With <part>, a trail as the prompt names it
+# (`verify/fixture > Docs`), only the calls about that part; none takes every answer away.
 seed_answer() {
+  local answers="$RUN_DIR/opencode-answers"
   case "${1:-}" in
-    none) rm -f "$RUN_DIR/opencode-answer" ;;
-    "") die "seed: usage: seed answer <file>|none" ;;
-    *) [ -f "$1" ] || die "seed: no file $1"; cp "$1" "$RUN_DIR/opencode-answer" ;;
+    none) rm -rf "$RUN_DIR/opencode-answer" "$answers" ;;
+    "") die "seed: usage: seed answer <file>|none [<part>]" ;;
+    *)
+      [ -f "$1" ] || die "seed: no file $1"
+      if [ -z "${2:-}" ]; then cp "$1" "$RUN_DIR/opencode-answer"; return; fi
+      mkdir -p "$answers"
+      cp "$1" "$answers/$(printf '%s' "$2" | md5sum | cut -c 1-32)" ;;
   esac
 }
 
