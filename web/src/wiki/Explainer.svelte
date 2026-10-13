@@ -4,19 +4,19 @@
   // step opens the Anchors it cites under the drawing.
   import { NODE } from "../map/layout";
   import Anchors from "./Anchors.svelte";
-  import { explainer as layout, LINE, type Placed } from "./layout";
+  import { layoutExplainer, LINE, type PlacedStep } from "./layout";
   import type { Explainer, Wiki } from "./wiki";
 
   let { wiki, explainer }: { wiki: Wiki; explainer: Explainer } = $props();
 
   let room = $state(0);
-  const drawn = $derived(room ? layout(explainer, room) : null);
+  const drawn = $derived(room ? layoutExplainer(explainer, room) : null);
   /** The step whose Anchors show. */
   let open = $state<number | null>(null);
   const step = $derived(explainer.steps.find((s) => s.n === open));
 
   const toggle = (n: number) => (open = open === n ? null : n);
-  const said = (s: Placed) => `Step ${s.n}${s.lane ? `, ${s.lane}` : ""}: ${s.caption}`;
+  const said = (s: PlacedStep) => `Step ${s.n}${s.lane ? `, ${s.lane}` : ""}: ${s.caption}`;
 </script>
 
 <p class="title"><strong>{explainer.title}</strong></p>
@@ -40,7 +40,7 @@
       {#each drawn.steps as s (s.n)}
         <g
           class="step"
-          class:selected={open === s.n}
+          class:open={open === s.n}
           transform="translate({s.x} {s.y})"
           role="button"
           tabindex="0"
@@ -145,13 +145,10 @@
     fill: var(--ink-muted);
     text-anchor: end;
   }
-  /* The open step: reversed, as the map's selected node. */
-  .selected .frame {
-    fill: var(--reversed);
-    stroke: var(--reversed);
-  }
-  .selected text {
-    fill: var(--reversed-ink);
+  /* The open step, framed in full ink: the map's selected node is the page's one reversed element. */
+  .open .frame {
+    stroke: var(--ink);
+    stroke-width: 2;
   }
   .opened {
     display: grid;

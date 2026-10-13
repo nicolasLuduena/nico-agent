@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { explainer, relationships } from "./layout";
+import { layoutExplainer, layoutRelationships } from "./layout";
 import type { Component, Explainer, Wiki } from "./wiki";
 
 const component = (id: string, rest: Partial<Component> = {}): Component => ({
@@ -26,7 +26,7 @@ describe("a Component's Relationship diagram", () => {
   ]);
 
   it("draws what uses it left of it and what it uses right of it, each arrow naming its kind, when that fits", () => {
-    const drawn = relationships(shop, core, 2000);
+    const drawn = layoutRelationships(shop, core, 2000);
 
     const at = (id: string) => drawn.components.find((c) => c.id === id)!;
     expect(drawn.components.map((c) => [c.id, c.lines, c.here])).toEqual([
@@ -50,9 +50,9 @@ describe("a Component's Relationship diagram", () => {
   });
 
   it("goes top to bottom in a room too narrow for left to right", () => {
-    const wide = relationships(shop, core, 2000);
+    const wide = layoutRelationships(shop, core, 2000);
 
-    const drawn = relationships(shop, core, wide.width - 1);
+    const drawn = layoutRelationships(shop, core, wide.width - 1);
 
     const at = (id: string) => drawn.components.find((c) => c.id === id)!;
     expect(at("web").y + at("web").height).toBeLessThan(at("core").y);
@@ -61,7 +61,7 @@ describe("a Component's Relationship diagram", () => {
   });
 
   it("is the Component alone, with no arrow, when no Relationship touches it", () => {
-    const drawn = relationships(shop, shop.components[0], 2000);
+    const drawn = layoutRelationships(shop, shop.components[0], 2000);
 
     expect(drawn.components.map((c) => c.id)).toEqual(["index"]);
     expect(drawn.arrows).toEqual([]);
@@ -69,7 +69,7 @@ describe("a Component's Relationship diagram", () => {
 
   it("wraps a long name onto a second line, and cuts it short past that", () => {
     const long = component("long", { name: "The component whose name runs on and on past two lines of a box" });
-    const drawn = relationships(wiki([long, component("core", { relationships: [{ to: "long", kind: "uses", description: "" }] })]), long, 2000);
+    const drawn = layoutRelationships(wiki([long, component("core", { relationships: [{ to: "long", kind: "uses", description: "" }] })]), long, 2000);
 
     const [here, user] = drawn.components;
     expect(here.lines).toHaveLength(2);
@@ -96,7 +96,7 @@ describe("an Explainer's layout", () => {
       ],
     };
 
-    const drawn = explainer(walk, 2000);
+    const drawn = layoutExplainer(walk, 2000);
 
     const [one, two, three] = drawn.steps;
     expect(drawn.steps.map((s) => [s.n, s.lines])).toEqual([
@@ -112,7 +112,7 @@ describe("an Explainer's layout", () => {
     ]);
     expect(drawn.lanes).toEqual([]);
 
-    const narrow = explainer(walk, drawn.width - 1);
+    const narrow = layoutExplainer(walk, drawn.width - 1);
     expect(narrow.steps[0].y + narrow.steps[0].height).toBeLessThan(narrow.steps[1].y);
   });
 
@@ -120,7 +120,7 @@ describe("an Explainer's layout", () => {
     const long =
       "The request arrives at the router, which reads its path and its method, looks up the handler for both, and hands it the parsed body and its headers before anything else runs.";
 
-    const drawn = explainer({ title: "", steps: [step(1, "Short."), step(2, long)], arrows: [] }, 2000);
+    const drawn = layoutExplainer({ title: "", steps: [step(1, "Short."), step(2, long)], arrows: [] }, 2000);
 
     const [short, wrapped] = drawn.steps;
     expect(wrapped.lines).toHaveLength(4);
@@ -130,7 +130,7 @@ describe("an Explainer's layout", () => {
   });
 
   it("frames each lane around its own steps, and no step in another", () => {
-    const drawn = explainer(
+    const drawn = layoutExplainer(
       {
         title: "",
         steps: [step(1, "Arrives.", "HTTP"), step(2, "Parsed.", "HTTP"), step(3, "Stored.", "Store"), step(4, "Logged.")],

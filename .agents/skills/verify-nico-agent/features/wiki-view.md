@@ -86,7 +86,7 @@ Preconditions:
   `$C page --evidence "$E/17-relationships-none" --hash "#shop/wiki/verify%2Ffixture" --expect "None: no Component of this Wiki uses it"`.
 - **Explainer, light and dark.** `$C page --evidence "$E/18-explainer-light" --hash "#shop/wiki/verify%2Fsecond" --expect "How the README reads" --click "button~Step 3" --expect "The last line says what the fixture is for."`:
   `region "Explainer"` with `button "Step 1, Heading: The title names the second fixture."`,
-  `"Step 2, Heading: …"` and `"Step 3, Body: …"`, step 3 reversed and expanded, and under the
+  `"Step 2, Heading: …"` and `"Step 3, Body: …"`, step 3 framed in full ink and expanded, and under the
   drawing `link "README.md 3"` and `link "README.md 1"`; the lanes `HEADING` and `BODY` framed.
   `$C page --evidence "$E/19-explainer-dark" --hash "#shop/wiki/verify%2Fsecond" --click button=Dark --click "button~Step 1" --expect "README.md 1" --click "button~Step 1" --expect "Open a step for the lines it cites."`.
   `article "Readme"` of verify/fixture has no `region "Explainer"`.
@@ -107,6 +107,6 @@ Preconditions:
 - An Anchor link opens github.com: read its URL from the ARIA snapshot, never click it in a run.
 - Seed each part's answer by its trail; one answer for every part divides again at every depth.
 - A Relationship link's name carries its description: click it by `link~<from> <kind> <to>`.
-- A diagram is laid out once the column has a width: `--expect` its text first, then read the
-  snapshot.
+- The Relationship diagram and the Explainer are laid out once the column has a width: `--expect`
+  their text first, then read the snapshot.
 - Picking a Wiki in the `combobox` is a key press in headless Chromium: click it, `ArrowDown`, `Enter`.

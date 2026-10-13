@@ -1,6 +1,6 @@
 import dagre from "@dagrejs/dagre";
 import { NODE, type Point } from "../map/layout";
-import type { Component, Explainer, Step, Wiki } from "./wiki";
+import type { Component, Explainer, Relationship, Step, Wiki } from "./wiki";
 
 /** A box where a drawing puts it: `x`, `y` its top left corner. */
 export interface Box extends Point {
@@ -9,7 +9,7 @@ export interface Box extends Point {
 }
 
 /** An arrow as drawn: its points, the arrowhead at the last, and its label centred `at`. */
-export interface Drawn {
+export interface DrawnArrow {
   from: string;
   to: string;
   label: string;
@@ -42,15 +42,16 @@ function wrap(text: string, chars: number, most: number): string[] {
   return cut;
 }
 
-type Laid = { id: string; width: number; height: number; lane?: string };
+type Sized = { id: string; width: number; height: number; lane?: string };
+type Joining = { from: string; to: string; label: string };
 
 /**
  * Lay out `boxes` and the arrows between them with dagre, as the map is: left
  * to right while that fits in `room` px, top to bottom otherwise; a box with a
  * lane inside that lane's frame.
  */
-function lay<B extends Laid>(boxes: B[], arrows: { from: string; to: string; label: string }[], room: number) {
-  const at = (rankdir: "LR" | "TB") => {
+function layout<B extends Sized, A extends Joining>(boxes: B[], arrows: A[], room: number) {
+  const towards = (rankdir: "LR" | "TB") => {
     const g = new dagre.graphlib.Graph({ compound: true, multigraph: true });
     // The margin leaves room above the top lane for its name.
     g.setGraph({ rankdir, nodesep: 16, ranksep: 48, edgesep: 8, marginx: 8, marginy: 8 });
@@ -60,7 +61,7 @@ function lay<B extends Laid>(boxes: B[], arrows: { from: string; to: string; lab
     for (const b of boxes) if (b.lane) g.setParent(b.id, `lane:${b.lane}`);
     // shortcut: a label's width is guessed from its length, with room for its arrow either side; measure it if labels overrun.
     arrows.forEach((a, i) =>
-      g.setEdge(a.from, a.to, { width: a.label ? a.label.length * 9 + 24 : 0, height: a.label ? LINE : 0, labelpos: "c" }, String(i)),
+      g.setEdge(a.from, a.to, { width: a.label ? a.label.length * 10 + 32 : 0, height: a.label ? LINE : 0, labelpos: "c" }, String(i)),
     );
     dagre.layout(g);
     const corner = (id: string) => {
@@ -79,44 +80,54 @@ function lay<B extends Laid>(boxes: B[], arrows: { from: string; to: string; lab
       lanes: lanes.map((name) => ({ name, ...corner(`lane:${name}`) })),
     };
   };
-  const across = at("LR");
-  return across.width <= room ? across : at("TB");
+  const across = towards("LR");
+  return across.width <= room ? across : towards("TB");
 }
 
 /** A Component as its Relationship diagram draws it: `here` the one whose page it is. */
 export type Related = Box & { id: string; lines: string[]; here: boolean };
 
+/** A Relationship as its diagram draws it, labelled with its kind. */
+export type RelationshipArrow = DrawnArrow & Pick<Relationship, "kind" | "description">;
+
 /**
  * `component`'s Relationship diagram in `room` px: it, what it uses, calls,
- * reads or writes, and what does so to it, each arrow named by its kind.
+ * reads or writes, and what does so to it, each arrow labelled with its kind.
  */
-export function relationships(wiki: Wiki, component: Component, room: number): { width: number; height: number; components: Related[]; arrows: Drawn[] } {
+export function layoutRelationships(
+  wiki: Wiki,
+  component: Component,
+  room: number,
+): { width: number; height: number; components: Related[]; arrows: RelationshipArrow[] } {
   const arrows = [
-    ...component.relationships.map((r) => ({ from: component.id, to: r.to, label: r.kind })),
+    ...component.relationships.map((r) => ({ from: component.id, ...r })),
     ...wiki.components
       .filter((c) => c.id !== component.id)
-      .flatMap((c) => c.relationships.filter((r) => r.to === component.id).map((r) => ({ from: c.id, to: r.to, label: r.kind }))),
-  ];
+      .flatMap((c) => c.relationships.filter((r) => r.to === component.id).map((r) => ({ from: c.id, ...r }))),
+  ].map((r) => ({ ...r, label: r.kind }));
   const touched = new Set(arrows.flatMap((a) => [a.from, a.to]));
   const shown = [component, ...wiki.components.filter((c) => c.id !== component.id && touched.has(c.id))];
   const boxes = shown.map((c) => {
     const lines = wrap(c.name, COMPONENT.chars, COMPONENT.lines);
     return { id: c.id, lines, here: c.id === component.id, width: COMPONENT.width, height: 2 * COMPONENT.pad + lines.length * LINE };
   });
-  const drawn = lay(boxes, arrows, room);
+  const drawn = layout(boxes, arrows, room);
   return { width: drawn.width, height: drawn.height, components: drawn.boxes, arrows: drawn.arrows };
 }
 
 /** A step as its Explainer draws it, its caption in `lines`. */
-export type Placed = Step & Box & { id: string; lines: string[] };
+export type PlacedStep = Step & Box & { id: string; lines: string[] };
 
 /** `explainer`'s steps, arrows and lanes in `room` px. */
-export function explainer(explainer: Explainer, room: number): { width: number; height: number; steps: Placed[]; arrows: Drawn[]; lanes: Lane[] } {
+export function layoutExplainer(
+  explainer: Explainer,
+  room: number,
+): { width: number; height: number; steps: PlacedStep[]; arrows: DrawnArrow[]; lanes: Lane[] } {
   const boxes = explainer.steps.map((s) => {
     const lines = wrap(s.caption, STEP.chars, STEP.lines);
     return { ...s, id: String(s.n), lines, width: STEP.width, height: STEP.top + lines.length * LINE + STEP.bottom };
   });
   const arrows = explainer.arrows.map((a) => ({ from: String(a.from), to: String(a.to), label: wrap(a.label ?? "", 24, 1)[0] ?? "" }));
-  const drawn = lay(boxes, arrows, room);
+  const drawn = layout(boxes, arrows, room);
   return { width: drawn.width, height: drawn.height, steps: drawn.boxes, arrows: drawn.arrows, lanes: drawn.lanes };
 }

@@ -2,21 +2,20 @@
   // A Component's Relationship diagram, laid out and drawn as the map is: what
   // uses it on the left, what it uses on the right, each arrow naming its kind.
   // Another Component opens it.
-  import { LINE, relationships, type Related } from "./layout";
+  import { layoutRelationships, LINE, type Related } from "./layout";
   import type { Component, Wiki } from "./wiki";
 
   let { wiki, component, link }: { wiki: Wiki; component: Component; link: (component: string) => string } = $props();
 
   let room = $state(0);
-  const drawn = $derived(room ? relationships(wiki, component, room) : null);
+  const drawn = $derived(room ? layoutRelationships(wiki, component, room) : null);
 
   /** What a Component's box says of it, in words: each Relationship between it and this one, with its description. */
   function said(c: Related) {
     const name = (id: string) => wiki.components.find((x) => x.id === id)?.name ?? id;
-    return wiki.components
-      .flatMap((from) => from.relationships.map((r) => ({ from: from.id, ...r })))
-      .filter((r) => (r.from === c.id && r.to === component.id) || (r.from === component.id && r.to === c.id))
-      .map((r) => `${name(r.from)} ${r.kind} ${name(r.to)}${r.description ? `: ${r.description}` : ""}`)
+    return (drawn?.arrows ?? [])
+      .filter((a) => a.from === c.id || a.to === c.id)
+      .map((a) => `${name(a.from)} ${a.kind} ${name(a.to)}${a.description ? `: ${a.description}` : ""}`)
       .join("; ");
   }
 </script>

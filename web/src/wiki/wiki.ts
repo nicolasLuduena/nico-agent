@@ -41,7 +41,14 @@ export interface Relationship {
 export interface Explainer {
   title: string;
   steps: Step[];
-  arrows: { from: number; to: number; label?: string }[];
+  arrows: Arrow[];
+}
+
+/** From one step to another, by number. */
+export interface Arrow {
+  from: number;
+  to: number;
+  label?: string;
 }
 
 export interface Step {

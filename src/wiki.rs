@@ -36,7 +36,7 @@ const KINDS: [&str; 5] = [
 ];
 const RELATIONSHIPS: [&str; 4] = ["uses", "calls", "reads", "writes"];
 /// The most steps an Explainer has.
-const STEPS: usize = 8;
+const MOST_STEPS: usize = 8;
 
 /// How a build ended, as `wikis.json` keeps it: `"outcome": "built"`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -530,7 +530,7 @@ fn read(
                     KINDS.join(", ")
                 ));
             }
-            misplaced(&i.anchors, lines)
+            unanchored(&i.anchors, lines)
         },
     );
     for (n, interpretation) in interpretations.iter_mut().enumerate() {
@@ -542,14 +542,14 @@ fn read(
     };
     let explainer = claims(explainer, &mut dropped, |e: &Explainer| {
         let steps = e.steps.len();
-        if steps == 0 || steps > STEPS {
-            return Some(format!("it has {steps} steps, not 1 to {STEPS}"));
+        if steps == 0 || steps > MOST_STEPS {
+            return Some(format!("it has {steps} steps, not 1 to {MOST_STEPS}"));
         }
         if (e.steps.iter().enumerate()).any(|(i, s)| s.n != i + 1) {
             return Some(format!("its steps are not numbered 1 to {steps} in order"));
         }
         if let Some(why) = (e.steps.iter())
-            .find_map(|s| misplaced(&s.anchors, lines).map(|why| format!("step {}: {why}", s.n)))
+            .find_map(|s| unanchored(&s.anchors, lines).map(|why| format!("step {}: {why}", s.n)))
         {
             return Some(why);
         }
@@ -653,9 +653,9 @@ fn unique(parent: &str, name: &str, ids: &mut HashSet<String>) -> String {
     id
 }
 
-/// What is wrong with `anchors` as an Interpretation's or a step's: none,
-/// or one not inside a file of the Repo, as `lines` counts them.
-fn misplaced(anchors: &[Anchor], lines: &HashMap<&str, usize>) -> Option<String> {
+/// Why a claim citing `anchors` rests on no real lines: it cites none, or
+/// one not inside a file of the Repo, as `lines` counts them.
+fn unanchored(anchors: &[Anchor], lines: &HashMap<&str, usize>) -> Option<String> {
     if anchors.is_empty() {
         return Some("it cites no Anchor".into());
     }
