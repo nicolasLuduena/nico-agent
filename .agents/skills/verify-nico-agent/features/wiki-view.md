@@ -19,7 +19,7 @@ move between Components. serve answers the Wikis at `GET /api/wikis` and one at
 - `wiki-history` a Component opened from the tree or from `region "Components"` is a new hash: back and forward move between Components.
 - `wiki-picker` picking another Wiki opens its top Component.
 - `wiki-toggle` `link "Map"` shows the map again, and back the Wiki view.
-- `wiki-phone` at phone width the tree folds behind `button "Components"`, and an Anchor goes under its claim; nothing is wider than the viewport.
+- `wiki-phone` at phone width the tree folds behind `button "Components"`, and an Anchor goes under its Interpretation; nothing is wider than the viewport.
 
 ## How to get to it (user POV)
 
@@ -40,14 +40,17 @@ Preconditions:
 
 - **Empty.** `$C page --evidence "$E/01-empty" --click link=Wiki --expect "No Wiki of shop yet"`:
   `paragraph` `nico-agent wiki build verify/fixture`, and the same for `verify/second`.
-- **Build.** Append `[wiki]` with `calls = 2` to `$CONFIG_DIR/config.toml`. Seed one answer per
-  part: for `verify/fixture` a division into one Component `Readme` (`README.md`) with a `role`
-  anchored at `README.md` `1`-`3`; for `verify/fixture > Readme` a division into `Title`
+- **Build.** `printf '\n[wiki]\ncalls = 2\n' >> "$CONFIG_DIR/config.toml"`. Write one answer per
+  part: `$E/answer-fixture.json`, a division into one Component `Readme` (`README.md`) with a
+  `role` anchored at `README.md` `1`-`3`; `$E/answer-readme.json`, a division into `Title`
   (`README.md`) with a `role` at `1`-`1`, an `invariant` at `3`-`3`, an `effect` at both, and a
-  `postcondition` at `2`-`9`; for `verify/second` a leaf with a `role` at `1`-`1`
-  (`$C seed answer <file> "verify/fixture > Readme"`). Then `$C run -- wiki build verify/fixture --json`
-  is `built`, `"gaps":{"budget":1,"unreadable":1}`, and `$C run -- wiki build verify/second --json`
-  `built`.
+  `postcondition` at `2`-`9`; `$E/answer-second.json`, a leaf with a `role` at `1`-`1`. Seed
+  them: `$C seed answer "$E/answer-fixture.json" "verify/fixture"`,
+  `$C seed answer "$E/answer-readme.json" "verify/fixture > Readme"` and
+  `$C seed answer "$E/answer-second.json" "verify/second"`. Then
+  `$C run --evidence "$E/02-build-fixture" -- wiki build verify/fixture --json` is `built`,
+  `"gaps":{"budget":1,"unreadable":1}`, and
+  `$C run --evidence "$E/03-build-second" -- wiki build verify/second --json` `built`.
 - **Routes.** `$C http --evidence "$E/04-wikis" GET /api/wikis` is `200`, both Wikis, `verify/fixture`
   with `"gaps":2`; `$C http --evidence "$E/05-wiki" GET /api/wiki/verify/fixture` is `200`,
   Components `index`, `readme` (Gap `unreadable`) and `readme/title` (Gap `budget`);
@@ -57,15 +60,16 @@ Preconditions:
   `article "Readme"` with regions `roles`, `invariants`, `effects` (no `postconditions`: dropped),
   `Components` with `link "Title"`, and `Gaps` with `Unreadable: an answer failed its checks`;
   `link "README.md 1"` to `https://github.com/verify/fixture/blob/<commit>/README.md#L1-L1`;
-  `.requests.txt` `GET /api/wikis` and `GET /api/wiki/verify/fixture`. Again with
-  `--click button=Dark` for `08-hash-desk-dark`.
+  `.requests.txt` `GET /api/wikis` and `GET /api/wiki/verify%2Ffixture`. In Dark:
+  `$C page --evidence "$E/08-hash-desk-dark" --hash "#shop/wiki/verify%2Ffixture/readme" --click button=Dark --expect "The title names the Repo"`.
 - **Back and forward.** `$C page --evidence "$E/09-back-forward" --hash "#shop/wiki/verify%2Ffixture" --expect "The fixture is described" --within "navigation=Components" --click link=Readme --expect "The title names the Repo" --within page --click link=Title --expect "Not explored: the build's calls ran out" --history back --expect "The title names the Repo" --history back --expect "The fixture is described" --history forward --expect "The title names the Repo"`.
 - **Picker.** `$C page --evidence "$E/10-picker" --hash "#shop/wiki/verify%2Ffixture/readme" --click combobox=Wiki --press ArrowDown --press Enter --expect "The README names the second fixture"`.
 - **Map and back.** `$C page --evidence "$E/11-map-toggle" --hash "#shop/wiki/verify%2Ffixture/readme" --click link=Map --expect "Verify: a Ready issue" --history back --expect "The title names the Repo"`.
-- **Phone.** `--width 390` with `--click button=Components --expect "Unreadable"` (`12-phone-light`,
-  the tree open above the Component), with `--click button=Dark` (`13-phone-dark`), and with
-  `--click button=Components --click link=Title --expect "Not explored"` (`14-phone-tree`, the
-  tree folded again).
+- **Phone.** `$C page --evidence "$E/12-phone-light" --width 390 --hash "#shop/wiki/verify%2Ffixture/readme" --click button=Components --expect "Unreadable"`:
+  the tree open above the Component, each Anchor under its Interpretation.
+  `$C page --evidence "$E/13-phone-dark" --width 390 --hash "#shop/wiki/verify%2Ffixture/readme" --click button=Dark --expect "Unreadable"`:
+  the tree folded. `$C page --evidence "$E/14-phone-tree" --width 390 --hash "#shop/wiki/verify%2Ffixture/readme" --click button=Components --click link=Title --expect "Not explored"`:
+  `article "Title"`, the tree folded again.
 - **After.** `$C state`'s diff: `wikis.json` and two Bucket commits, `wiki verify/fixture <commit>`
   and `wiki verify/second <commit>`; the page wrote nothing. Copy `$OUTSIDE_LOG` to `$E/outside.log`.
 

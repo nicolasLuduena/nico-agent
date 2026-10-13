@@ -13,7 +13,9 @@
   }: { wiki: Wiki; component: Component; parts: Component[]; link: (component: string) => string } = $props();
 
   const kinds = $derived(
-    KINDS.map((kind) => ({ kind, of: component.interpretations.filter((i) => i.kind === kind) })).filter((k) => k.of.length > 0),
+    KINDS.map((kind) => ({ kind, interpretations: component.interpretations.filter((i) => i.kind === kind) })).filter(
+      (k) => k.interpretations.length > 0,
+    ),
   );
 
   // Another Component opened takes focus to its name, which scrolls it into view; the first one shown does not.
@@ -42,12 +44,12 @@
     {/if}
   {/each}
 
-  {#each kinds as { kind, of } (kind)}
+  {#each kinds as { kind, interpretations } (kind)}
     <section aria-labelledby="kind-{kind}">
       <h3 id="kind-{kind}" class="label">{kind}s</h3>
       <ul class="rows">
-        {#each of as interpretation (interpretation.id)}
-          <li class="claim">
+        {#each interpretations as interpretation (interpretation.id)}
+          <li class="interpretation">
             <p>{@render line(spans(interpretation.text))}</p>
             <p class="anchors">
               {#each interpretation.anchors as a, n (n)}
@@ -114,9 +116,6 @@
     font-weight: 600;
     line-height: 1.2;
   }
-  .head:focus {
-    outline: none;
-  }
   .overview {
     max-width: 70ch;
   }
@@ -148,8 +147,8 @@
   .rows > li:last-child {
     border-bottom: 0;
   }
-  /* A claim on the left, the lines it cites in the right column. */
-  .claim {
+  /* An Interpretation on the left, the lines it cites in the right column. */
+  .interpretation {
     display: grid;
     grid-template-columns: minmax(0, 70ch) minmax(16ch, 1fr);
     gap: 4px 24px;
@@ -163,8 +162,8 @@
   }
   .anchors a {
     display: inline-flex;
-    gap: 6px;
-    padding: 1px 6px;
+    gap: 4px;
+    padding: 0 4px;
     border: 1px solid var(--hairline);
     border-radius: 2px;
     text-decoration: none;
@@ -205,12 +204,12 @@
     padding: 4px 0 0 2ch;
   }
 
-  /* The lines a claim cites go under it. */
+  /* The lines an Interpretation cites go under it. */
   @media (width < 720px) {
     .reading {
       padding: 16px;
     }
-    .claim {
+    .interpretation {
       grid-template-columns: minmax(0, 1fr);
     }
     .anchors {

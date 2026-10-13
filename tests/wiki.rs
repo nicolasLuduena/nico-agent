@@ -611,11 +611,11 @@ fn a_repo_not_configured_is_refused_and_no_outcome_written() {
 #[test]
 fn serve_answers_each_built_wiki_and_a_wiki_by_its_id_and_404s_one_it_has_not() {
     let t = with_repo("");
-    let gap = interpretation("role", "Past the end.", "src/lib.rs", 1, 9);
+    let past_the_end = interpretation("role", "Past the end.", "src/lib.rs", 1, 9);
     answer(
         &t,
         "acme/api",
-        json!({ "kind": "leaf", "overview": "A small API.", "interpretations": [gap] }),
+        json!({ "kind": "leaf", "overview": "A small API.", "interpretations": [past_the_end] }),
     );
     t.cli(&["wiki", "build", "acme/api", "--json"]);
     let config = std::fs::read_to_string(t.config_dir.join("config.toml")).unwrap();
@@ -637,13 +637,21 @@ fn serve_answers_each_built_wiki_and_a_wiki_by_its_id_and_404s_one_it_has_not() 
     });
     assert_eq!(listed, (200, json!([built])));
     assert_eq!(one, (200, wiki(&t)));
-    let help = json!(["Ask for a Wiki /api/wikis lists, or build one: nico-agent wiki build <owner/name>"]);
+    let help = json!([
+        "Ask for a Wiki /api/wikis lists, or build one: nico-agent wiki build <owner/name>"
+    ]);
     assert_eq!(
         unbuilt,
-        (404, json!({ "error": "acme/web has no Wiki", "help": help }))
+        (
+            404,
+            json!({ "error": "acme/web has no Wiki", "help": help })
+        )
     );
     assert_eq!(
         unknown,
-        (404, json!({ "error": "acme/nope has no Wiki", "help": help }))
+        (
+            404,
+            json!({ "error": "acme/nope has no Wiki", "help": help })
+        )
     );
 }

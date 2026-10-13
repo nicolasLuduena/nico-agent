@@ -14,7 +14,9 @@
 
   let listed = $state<Listed[] | null>(null);
   let wiki = $state<Wiki | null>(null);
+  /** Why the Wikis, or the open one, could not be read; each cleared by its next answer. */
   let failure = $state<string | null>(null);
+  let wikiFailure = $state<string | null>(null);
   /** On a phone, the tree shows over the column only once asked for. */
   let treeOpen = $state(false);
 
@@ -39,9 +41,13 @@
     let shown = true;
     wiki = null;
     const stop = watch<Wiki>(
-      `/api/wiki/${id.split("/").map(encodeURIComponent).join("/")}`,
-      (got) => shown && (wiki = got),
-      (why) => shown && (failure = why),
+      `/api/wiki/${encodeURIComponent(id)}`,
+      (got) => {
+        if (!shown) return;
+        wiki = got;
+        wikiFailure = null;
+      },
+      (why) => shown && (wikiFailure = why),
     );
     return () => {
       shown = false;
@@ -59,8 +65,8 @@
   const open = $derived(wiki?.components.find((c) => c.id === selection.component) ?? children.get(null)?.[0]);
   const link = (component: string) => hash({ project: project.name, view: "wiki", wiki: id, component });
 
-  function pick(wiki: string) {
-    Object.assign(selection, { wiki, component: null });
+  function pick(chosen: string) {
+    Object.assign(selection, { wiki: chosen, component: null });
   }
 </script>
 
@@ -78,8 +84,8 @@
 {/snippet}
 
 <div class="wiki">
-  {#if failure}
-    <p class="errata" role="status"><strong>{failure}</strong></p>
+  {#if failure ?? wikiFailure}
+    <p class="errata" role="status"><strong>{failure ?? wikiFailure}</strong></p>
   {/if}
 
   {#if listed === null}
@@ -94,7 +100,7 @@
       {/each}
     </div>
   {:else}
-    <header class="head">
+    <header>
       <label class="pick">
         <span class="label">Wiki</span>
         <select value={id} onchange={(e) => pick(e.currentTarget.value)}>
@@ -123,7 +129,7 @@
         </nav>
         <Reading {wiki} component={open} parts={children.get(open.id) ?? []} {link} />
       </div>
-    {:else if !failure}
+    {:else if !wikiFailure}
       <p class="none">Reading the Wiki of {id}…</p>
     {/if}
   {/if}
@@ -141,7 +147,7 @@
     color: var(--ink-muted);
   }
   /* The picker on the left, the commit and build time in the right column. */
-  .head {
+  header {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -199,7 +205,7 @@
   }
   .tree a {
     display: block;
-    padding: 3px 0 3px 4px;
+    padding: 4px 0 4px 4px;
     color: var(--ink);
     text-decoration: none;
   }

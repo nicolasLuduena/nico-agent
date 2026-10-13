@@ -84,6 +84,7 @@ pub fn wiki(world: &dyn World, config: &Config, slug: &str) -> WorldResult<Optio
     world.read_file(&format!("{}/{}", config.bucket.path, wiki_file(slug)))
 }
 
+/// Where the Wiki of the Repo `slug` is in the Bucket.
 fn wiki_file(slug: &str) -> String {
     format!("wiki/{slug}/wiki.json")
 }
