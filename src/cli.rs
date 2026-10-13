@@ -11,6 +11,7 @@ use crate::repo;
 use crate::serve;
 use crate::status;
 use crate::verdict;
+use crate::wiki;
 use crate::world::{World, WorldError};
 
 /// What a command runs against: the outside world and the config directory.
@@ -85,6 +86,10 @@ const COMMANDS: &[(&str, &str)] = &[
         "show per Repo the Ready and Stackable issues, and every Dispatch; with --since, what merged, Closed, was answered and was scanned after it",
     ),
     (
+        "nico-agent wiki build <owner/name>",
+        "build the Repo's Wiki from scratch at origin/<base>, one headless call of the [wiki] launch per part of its code, and keep it in the Bucket",
+    ),
+    (
         "nico-agent serve",
         "check every Repo's readiness, then run the loop: a tick now and every tick_minutes",
     ),
@@ -122,9 +127,14 @@ pub fn run(argv: &[String], ctx: &Context) -> Output {
         ["status", args @ ..] => status::status(args, ctx),
         ["serve", args @ ..] => serve::serve(args, ctx),
         ["refresh", args @ ..] => refresh::refresh(args, ctx),
+        ["wiki", "build", args @ ..] => wiki::build(args, ctx),
         ["repo", ..] => Err(bad_invocation(
             "`repo` needs a subcommand: add, rm or list".into(),
             "repo",
+        )),
+        ["wiki", ..] => Err(bad_invocation(
+            "`wiki` needs a subcommand: build".into(),
+            "wiki",
         )),
         [] => Err(bad_invocation("no command given".into(), "")),
         [word, ..] => Err(bad_invocation(format!("unknown command `{word}`"), "")),

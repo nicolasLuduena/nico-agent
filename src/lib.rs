@@ -26,6 +26,7 @@ pub mod state;
 pub mod status;
 pub mod tick;
 pub mod verdict;
+pub mod wiki;
 pub mod world;
 
 pub use cli::{Context, Output, run};

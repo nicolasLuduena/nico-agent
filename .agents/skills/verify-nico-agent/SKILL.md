@@ -8,7 +8,7 @@ description: "Drive nico-agent the way its user and its agents do — the CLI (`
 nico-agent is one Rust binary with two user surfaces, and this skill drives both:
 
 - **The CLI**, what outsiders call: `repo add|rm|list`, `status`, `dispatch`, `verdict`, `refresh`,
-  `install`.
+  `install`, `wiki build`.
   Every command prints one JSON object with `--json`; exit `0` is an answer, `1` a refusal the user
   can act on, `2` a bad invocation, each refusal as `{error, help}`.
 - **serve's page**, the Svelte app `serve` embeds and answers on `127.0.0.1:<port>`, with the
@@ -56,6 +56,7 @@ $C seed issues [second]         # a fresh read of verify/fixture's issues (or ve
 $C seed dispatch <n> pr|asking|stacked  # a Dispatch of verify/fixture#<n> as the loop records one; prints JSON
 $C seed run quality-scan|morning|faux-nico <n>  # a Run of the loop's own agent, blocked; prints JSON
 $C seed morning <file>|none     # the Morning summary the morning agent leaves: <file> as morning.md, or none
+$C seed answer <file>|none      # what the wiki model (the opencode2 stub) answers every call: <file>'s text, or none
 $C drift push <n>|stale|pause   # what GitHub would change: a new PR head, an old read, a rate limit
 $C drift below merged|closed    # ... or the PR below a Stacked dispatch merged or closed unmerged
 $C state                        # fingerprint: config dir files, Dispatches, Verdicts, Bucket log, outside calls
@@ -113,10 +114,11 @@ export VERIFY_RUN_ID=<issue>
 This runs `cargo build --locked --bin nico-agent` (the first build also runs `npm ci` in `web/`
 when `web/node_modules` is older than its lockfile), copies the binary into the run dir, and makes:
 
-- `stubs/`: `gh`, `ghbot`, `herdr`, `notify-send` and `curl`, first on the binary's `PATH`. Each
+- `stubs/`: `gh`, `ghbot`, `herdr`, `notify-send`, `curl` and `opencode2`, first on the binary's `PATH`. Each
   appends its command line to `outside.log` and reaches nothing: `gh` says what it says in a HOME
   that never ran `gh auth login` (exit 4), `herdr` fails with code `verify_stub`, `notify-send`
-  succeeds without showing anything, `curl` fails as if offline.
+  succeeds without showing anything, `curl` fails as if offline, `opencode2` fails as with no model
+  (exit 1, an `error` event) unless `seed answer` gave it a text to answer with.
 - `home/`: the scratch HOME, with a `.gitconfig` naming `Verify Nico <verify-nico@example.com>`.
   Its `.config/nico-agent/config.toml` sets `port` to a free port, `tick_minutes = 600`,
   `bucket.path` to `bucket/` in the run dir and `morning.enabled = false` (the morning agent
@@ -144,7 +146,7 @@ Read-only. Passes only when: `nico-agent --version` prints the version in `Cargo
 binary is byte for byte `target/debug/nico-agent` (a rebuild since launch fails this: relaunch to
 verify the new build); serve's pid is alive and runs the run's binary; the port is that pid's;
 `/api/status` answers 200 with JSON; the scratch HOME is under the run dir and not your `$HOME`;
-`config.toml` holds the run's port and Bucket; `gh`, `ghbot`, `herdr`, `notify-send` and `curl`
+`config.toml` holds the run's port and Bucket; `gh`, `ghbot`, `herdr`, `notify-send`, `curl` and `opencode2`
 resolve to the run's stubs; the fixture's origin is the GitHub URL and `git ls-remote` reaches it on
 disk. It also prints the build's commit, the Repos configured and the outside calls so far. Run it
 first, and again whenever anything looks off; a failing doctor means "do not drive this run".
@@ -191,6 +193,9 @@ What the fixtures hold:
   `asking`. A tick leaves it as it is: with herdr stubbed, no agent is ever seen ended.
 - `seed morning <file>` puts `<file>`'s text in the config dir as `morning.md`, as the morning agent
   writes its summary (the agent itself is off in a run); `seed morning none` takes it away.
+- `seed answer <file>` makes the `opencode2` stub answer every headless call with `<file>`'s text, as
+  the wiki model's last message; `seed answer none` makes each call fail again, as opencode with no
+  model does. The stub logs each call after the `OPENCODE_CONFIG_CONTENT` it was given.
 - `drift push <n>` commits to the seeded worktree and moves the PR's `head_sha`, as a push would;
   `drift stale` dates the cached read 2000-01-01, so the next `status` or `dispatch` asks GitHub;
   `drift pause` writes GitHub paused for an hour, as a rate limit does; `drift below merged|closed`
@@ -242,7 +247,7 @@ Proof standards:
 - Prove isolation: copy `outside.log` into the folder. It lists every outside call the binary made;
   each went to a stub, and none can reach GitHub, herdr or the desktop.
 - Mocks only at the process boundary nico-agent already isolates behind its `World` (`gh`, `herdr`,
-  `notify-send`, `curl`); `git` is real, on the run's own repos.
+  `notify-send`, `curl`, `opencode2`); `git` is real, on the run's own repos.
 
 ## Cleanup
 

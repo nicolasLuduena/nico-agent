@@ -4,7 +4,7 @@
 # Every subcommand works inside one run directory, chosen by VERIFY_RUN_ID:
 #   $VERIFY_RUN_ROOT/$VERIFY_RUN_ID   (VERIFY_RUN_ROOT defaults to ${TMPDIR:-/tmp}/verify-nico-agent)
 # The run has its own HOME (so its own ~/.config/nico-agent), two fixture clones, a Bucket,
-# a free port for serve, and stubs for gh, ghbot, herdr, notify-send and curl first on PATH.
+# a free port for serve, and stubs for gh, ghbot, herdr, notify-send, curl and opencode2 first on PATH.
 #
 # Subcommands (see SKILL.md for when to use each):
 #   launch [--no-build]           build, make the scratch HOME and fixtures, start serve
@@ -17,6 +17,8 @@
 #   seed run quality-scan|morning|faux-nico <n>
 #                                 a Run of the loop's own agent, blocked, as the loop records it
 #   seed morning <file>|none      the Morning summary the morning agent leaves: <file> as morning.md, or none
+#   seed answer <file>|none       what the wiki model answers every headless call: <file>'s text, or none
+#                                 (then each call fails as opencode2 does with no model)
 #   drift push <n>|stale|pause|below merged|closed
 #                                 what GitHub would change: a new PR head, an old read, a rate limit,
 #                                 the PR below a Stacked dispatch merged or closed unmerged
@@ -112,6 +114,8 @@ write_stubs() {
 name="\$(basename "\$0")"
 # One write per line: serve and a CLI run may call stubs at the same moment.
 line="\$name\$(printf ' %q' "\$@")"
+# opencode2 takes its config inline: the line shows what it was allowed.
+[ -z "\${OPENCODE_CONFIG_CONTENT:-}" ] || line="OPENCODE_CONFIG_CONTENT=\$(printf '%q' "\$OPENCODE_CONFIG_CONTENT") \$line"
 printf '%s\\n' "\$line" >> "$log"
 case "\$name" in
   # What the real gh says in a HOME that never ran \`gh auth login\`.
@@ -120,11 +124,19 @@ case "\$name" in
   # Recorded, never shown on the desktop.
   notify-send) exit 0 ;;
   curl) echo "curl: (6) verify-nico-agent: no network in this run" >&2; exit 6 ;;
+  # \`run --format json\`'s events: the seeded answer as its last message, else its error.
+  opencode2)
+    if [ -f "$RUN_DIR/opencode-answer" ]; then
+      jq -cn --rawfile text "$RUN_DIR/opencode-answer" '{type: "text", part: {type: "text", text: \$text}}'
+      exit 0
+    fi
+    echo '{"type":"error","error":{"type":"provider.no-route","message":"Model unavailable: opencode2 is a stub in this verification run"}}'
+    exit 1 ;;
 esac
 EOF
   chmod +x "$stubs/outside-stub"
   local name
-  for name in gh ghbot herdr notify-send curl; do ln -s outside-stub "$stubs/$name"; done
+  for name in gh ghbot herdr notify-send curl opencode2; do ln -s outside-stub "$stubs/$name"; done
 }
 
 # A clone of <slug> whose origin is https://github.com/<slug>.git, which the scratch HOME's
@@ -290,7 +302,7 @@ cmd_doctor() {
   check "config.toml sets port $PORT and the Bucket under the run dir" \
     bash -c "grep -qx 'port = $PORT' '$CONFIG_DIR/config.toml' && grep -qx 'path = \"$BUCKET\"' '$CONFIG_DIR/config.toml'"
   local name
-  for name in gh ghbot herdr notify-send curl; do
+  for name in gh ghbot herdr notify-send curl opencode2; do
     check "$name resolves to this run's stub" \
       test "$(in_fixture "$RUN_DIR/work" bash -c "command -v $name")" = "$RUN_DIR/stubs/$name"
   done
@@ -317,7 +329,8 @@ cmd_seed() {
     dispatch) seed_dispatch "$@" ;;
     run) seed_run "$@" ;;
     morning) seed_morning "$@" ;;
-    *) die "seed: usage: seed issues [second] | seed dispatch <n> pr|asking|stacked | seed run quality-scan|morning|faux-nico <n> | seed morning <file>|none" ;;
+    answer) seed_answer "$@" ;;
+    *) die "seed: usage: seed issues [second] | seed dispatch <n> pr|asking|stacked | seed run quality-scan|morning|faux-nico <n> | seed morning <file>|none | seed answer <file>|none" ;;
   esac
 }
 
@@ -437,6 +450,16 @@ seed_morning() {
   esac
 }
 
+# What the wiki model answers each headless call from now on: <file>'s text, or with none, each
+# call fails as opencode2 with no model does.
+seed_answer() {
+  case "${1:-}" in
+    none) rm -f "$RUN_DIR/opencode-answer" ;;
+    "") die "seed: usage: seed answer <file>|none" ;;
+    *) [ -f "$1" ] || die "seed: no file $1"; cp "$1" "$RUN_DIR/opencode-answer" ;;
+  esac
+}
+
 seed_run() {
   local trigger="${1:-}" n="${2:-}" run
   local usage="seed: usage: seed run quality-scan|morning|faux-nico <n>"
@@ -526,6 +549,8 @@ cmd_state() {
   if [ -d "$CONFIG_DIR/verdicts" ]; then
     (cd "$CONFIG_DIR/verdicts" && find . -name '*.json' | sort | while read -r f; do echo "$f $(jq -c '{result, sha}' "$f")"; done)
   fi
+  echo "## wikis.json (each Wiki's last build)"
+  [ ! -f "$CONFIG_DIR/wikis.json" ] || jq -c 'to_entries[] | { wiki: .key } + .value' "$CONFIG_DIR/wikis.json"
   echo "## Bucket: git log --stat"
   if [ -d "$BUCKET/.git" ]; then
     fgit "$BUCKET" log --format='%s' --stat

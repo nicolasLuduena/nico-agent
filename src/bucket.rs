@@ -16,7 +16,7 @@ use crate::stage;
 use crate::state;
 use crate::world::{Answer, HttpResponse, World, WorldError, WorldResult};
 
-const README: &str = "# nico-agent's Bucket\n\nEvidence, one commit per PR head, Verdict and Close: `<owner>/<repo>/<issue>/<sha>/`\nholds what the worktree's `.evidence/<issue>/` held while its PR was at `<sha>`,\nand a Verdict's `findings.md` from its Reviewer.\n";
+const README: &str = "# nico-agent's Bucket\n\nEvidence, one commit per PR head, Verdict and Close: `<owner>/<repo>/<issue>/<sha>/`\nholds what the worktree's `.evidence/<issue>/` held while its PR was at `<sha>`,\nand a Verdict's `findings.md` from its Reviewer.\n\nEach Repo's Wiki, one commit per build: `wiki/<owner>/<repo>/wiki.json`.\n";
 
 /// Make the Bucket, a git repo with its README committed, unless there is one.
 pub fn create(ctx: &Context, config: &Config) -> Result<(), Refusal> {
@@ -60,6 +60,23 @@ pub fn keep(
         world.write_file(&file, text.as_bytes()).map_err(refused)?;
     }
     world.git_commit(bucket, &kept, message).map_err(refused)
+}
+
+/// Commit `text` as the Wiki of the Repo `slug`, at `wiki/<slug>/wiki.json`,
+/// with `message`, the Bucket made first if it is missing.
+pub fn keep_wiki(
+    ctx: &Context,
+    config: &Config,
+    slug: &str,
+    text: &str,
+    message: &str,
+) -> Result<(), Refusal> {
+    let (world, _lock) = (ctx.world, lock(ctx)?);
+    made(world, config)?;
+    let (bucket, kept) = (&config.bucket.path, format!("wiki/{slug}/wiki.json"));
+    (world.write_file(&format!("{bucket}/{kept}"), text.as_bytes()))
+        .and_then(|()| world.git_commit(bucket, &kept, message))
+        .map_err(refused)
 }
 
 /// Keep the Evidence of each live Dispatch at its open PR's head, once a

@@ -12,6 +12,7 @@ use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 use std::time::{Duration, SystemTime};
 
@@ -228,6 +229,16 @@ pub struct HttpResponse {
     pub body: Vec<u8>,
 }
 
+/// One headless, read-only call of a Harness: `command` with `args`, then
+/// `prompt` as its last argument, with `env` set.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Headless {
+    pub command: String,
+    pub args: Vec<String>,
+    pub env: Vec<(String, String)>,
+    pub prompt: String,
+}
+
 /// What `serve` answers a request with.
 pub enum Answer {
     /// One response, sent whole.
@@ -277,6 +288,26 @@ pub trait World {
     fn git_pull(&self, path: &str) -> WorldResult<()>;
     /// The commit the clone at `path` is on.
     fn git_head(&self, path: &str) -> WorldResult<String>;
+    /// Check `rev` of the clone at `path` out in the folder `dir`, a worktree
+    /// of it on no branch.
+    fn git_worktree_add(&self, path: &str, dir: &str, rev: &str) -> WorldResult<()>;
+    /// Remove the clone at `path`'s worktree in the folder `dir`, changes and
+    /// all; no-op when there is none.
+    fn git_worktree_remove(&self, path: &str, dir: &str) -> WorldResult<()>;
+    /// Each file at `rev` in the clone at `path`, every folder down, as its
+    /// path and its blob; no symlink nor submodule.
+    fn git_ls_tree_blobs(&self, path: &str, rev: &str) -> WorldResult<Vec<(String, String)>>;
+
+    // Harnesses
+    /// Make each of `calls` in the folder `cwd`, with no input, up to
+    /// `at_once` of them at a time: the last message each answered, in order.
+    /// opencode's `--format json` is read.
+    fn harness_headless(
+        &self,
+        cwd: &str,
+        calls: &[Headless],
+        at_once: usize,
+    ) -> Vec<WorldResult<String>>;
 
     // shell
     /// Run `command` with `sh -c` in the folder `cwd`, with no input, showing
@@ -899,6 +930,44 @@ fn first_line(stderr: &[u8], status: &std::process::ExitStatus) -> String {
         .map_or_else(|| status.to_string(), String::from)
 }
 
+/// Make one headless call of opencode in `cwd`: the text of its last
+/// message among the events `--format json` prints, or the error it
+/// reported among them.
+fn headless(cwd: &str, call: &Headless) -> WorldResult<String> {
+    let command = format!(
+        "{} {}",
+        call.command,
+        call.args.first().map_or("", String::as_str)
+    );
+    // shortcut: no timeout, so a call that hangs holds its build until killed; add one if a model ever hangs.
+    let ran = Command::new(&call.command)
+        .args(&call.args)
+        .arg(&call.prompt)
+        .envs(call.env.iter().map(|(name, value)| (name, value)))
+        .current_dir(cwd)
+        // With an input open it waits on it, and never answers.
+        .stdin(Stdio::null())
+        .output()
+        .map_err(|e| WorldError(format!("could not run `{command}` in {cwd}: {e}")))?;
+    let events: Vec<Value> = (String::from_utf8_lossy(&ran.stdout).lines())
+        .filter_map(|line| serde_json::from_str(line).ok())
+        .collect();
+    let last = |kind: &str, text: &dyn Fn(&Value) -> &Value| {
+        (events.iter().rev())
+            .filter(|event| event["type"] == kind)
+            .find_map(|event| text(event).as_str().map(String::from))
+    };
+    if let Some(text) = last("text", &|event| &event["part"]["text"])
+        && ran.status.success()
+    {
+        return Ok(text);
+    }
+    let why = (last("error", &|event| &event["error"]["message"]))
+        .or_else(|| (!ran.status.success()).then(|| first_line(&ran.stderr, &ran.status)))
+        .unwrap_or_else(|| "it answered nothing".into());
+    Err(WorldError(format!("`{command}` failed: {why}")))
+}
+
 /// A failed herdr command, with herdr's error code when it reported one.
 struct HerdrFailure {
     code: Option<String>,
@@ -1076,6 +1145,58 @@ impl World for RealWorld {
     }
     fn git_head(&self, path: &str) -> WorldResult<String> {
         git_ok(path, &["rev-parse", "HEAD"])
+    }
+    fn git_worktree_add(&self, path: &str, dir: &str, rev: &str) -> WorldResult<()> {
+        git_ok(path, &["worktree", "add", "--detach", "--quiet", dir, rev]).map(drop)
+    }
+    fn git_worktree_remove(&self, path: &str, dir: &str) -> WorldResult<()> {
+        // One whose folder is gone only needs forgetting.
+        if !Path::new(dir).exists() {
+            return git_ok(path, &["worktree", "prune"]).map(drop);
+        }
+        git_ok(path, &["worktree", "remove", "--force", dir]).map(drop)
+    }
+    fn git_ls_tree_blobs(&self, path: &str, rev: &str) -> WorldResult<Vec<(String, String)>> {
+        // `-z`: paths as they are, never quoted.
+        let listed = git_ok(path, &["ls-tree", "-r", "-z", rev])?;
+        Ok((listed.split('\0'))
+            .filter_map(|entry| {
+                let (about, file) = entry.split_once('\t')?;
+                match about.split(' ').collect::<Vec<_>>()[..] {
+                    [mode, "blob", blob] if mode != "120000" => Some((file.into(), blob.into())),
+                    _ => None,
+                }
+            })
+            .collect())
+    }
+    fn harness_headless(
+        &self,
+        cwd: &str,
+        calls: &[Headless],
+        at_once: usize,
+    ) -> Vec<WorldResult<String>> {
+        let next = AtomicUsize::new(0);
+        let mut answered: Vec<(usize, WorldResult<String>)> = thread::scope(|scope| {
+            let workers: Vec<_> = (0..at_once.clamp(1, calls.len().max(1)))
+                .map(|_| {
+                    scope.spawn(|| {
+                        let mut answered = vec![];
+                        loop {
+                            let i = next.fetch_add(1, Ordering::Relaxed);
+                            let Some(call) = calls.get(i) else {
+                                return answered;
+                            };
+                            answered.push((i, headless(cwd, call)));
+                        }
+                    })
+                })
+                .collect();
+            (workers.into_iter())
+                .flat_map(|worker| worker.join().expect("a headless call never panics"))
+                .collect()
+        });
+        answered.sort_by_key(|(i, _)| *i);
+        answered.into_iter().map(|(_, answer)| answer).collect()
     }
     fn shell(&self, cwd: &str, command: &str) -> WorldResult<(bool, String)> {
         let failed = |e: io::Error| WorldError(format!("could not run `{command}` in {cwd}: {e}"));

@@ -49,6 +49,16 @@ hour = 3
 enabled = true
 hour = 7
 
+# Wiki builds. Repos' Wikis are updated daily at `hour`, local time. Each part
+# of the code is one headless, read-only call of `launch`: at most `calls` of
+# them a build, `concurrency` at once, dividing the code at most `depth` deep.
+[wiki]
+hour = 2
+launch = { harness = "opencode", model = "opencode-go/deepseek-v4.1-flash" }
+calls = 48
+depth = 7
+concurrency = 4
+
 [prompts]
 implement = "{sigil}implement {issueUrl} as draft PR against {baseBranch}, saving its Evidence under {evidenceFolder}/ in the worktree and linking it to {bucketUrl}"
 research = "{sigil}research {issueUrl}; write the findings with sources to one Markdown file under docs/research/ and open it as a draft PR against {baseBranch}"
@@ -127,6 +137,7 @@ pub struct Config {
     pub bucket: Bucket,
     pub quality_scan: QualityScan,
     pub morning: Morning,
+    pub wiki: Wiki,
     pub prompts: Prompts,
     #[serde(deserialize_with = "positive")]
     pub tick_minutes: u32,
@@ -228,6 +239,26 @@ pub struct Morning {
     pub hour: u32,
     /// The first Repo's implementer when unset.
     pub launch: Option<Launch>,
+}
+
+/// How Wikis are built: when, on what, and each build's budget.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Wiki {
+    /// When Repos' Wikis are updated, daily, local time.
+    #[serde(deserialize_with = "hour")]
+    pub hour: u32,
+    /// What answers each part, headless and read-only.
+    pub launch: Launch,
+    /// Model calls a build may make.
+    #[serde(deserialize_with = "positive")]
+    pub calls: u32,
+    /// How deep a build divides the code: the deepest division's parts are Gaps.
+    #[serde(deserialize_with = "positive")]
+    pub depth: u32,
+    /// Calls a build makes at once.
+    #[serde(deserialize_with = "positive")]
+    pub concurrency: u32,
 }
 
 /// In the order `as` numbers them: Sunday is 0.
@@ -553,6 +584,12 @@ fn parse(file: &Path, text: &str) -> Result<Config, Refusal> {
     {
         return Err(not_a_harness(&["morning", "launch"], harness));
     }
+    if !config.harnesses.contains_key(&config.wiki.launch.harness) {
+        return Err(not_a_harness(
+            &["wiki", "launch"],
+            &config.wiki.launch.harness,
+        ));
+    }
     Ok(config)
 }
 
@@ -596,19 +633,20 @@ fn layer(repo: &mut dyn TableLike, lower: &dyn TableLike) {
     }
 }
 
-/// Put each key of `defaults` that `table` lacks into it, table by table.
+/// Put each key of `defaults` that `table` lacks into it, table by table; a
+/// launch whole, as a default model is its default Harness's.
 fn fill(table: &mut dyn TableLike, defaults: &dyn TableLike) {
     for (key, default) in defaults.iter() {
         match (table.get_mut(key), default.as_table_like()) {
             (None, _) => {
                 table.insert(key, default.clone());
             }
-            (Some(item), Some(defaults)) => {
+            (Some(item), Some(defaults)) if key != "launch" => {
                 if let Some(table) = item.as_table_like_mut() {
                     fill(table, defaults);
                 }
             }
-            (Some(_), None) => {}
+            (Some(_), _) => {}
         }
     }
 }

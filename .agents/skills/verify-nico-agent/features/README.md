@@ -112,6 +112,9 @@ commands, and observable proof.
 - [The Morning summary on the page](./morning.md) covers `morning.md` shown first on the page, its
   Hide and Show, hidden remembered in the browser across a reload until `morning.md` changes, and
   a browser whose storage throws.
+- [Build a Repo's Wiki](./wiki-build.md) covers `wiki build` and its refusals, a failed call
+  failing the build with why in `wikis.json`, each call a read-only `opencode2 run`, the Wiki
+  landing in the Bucket in one commit, and a claim failing a check dropped as a Gap.
 - [Requests from other sites](./foreign-requests.md) covers the 403 serve answers a foreign or
   missing `Host` and a foreign or `null` `Origin` on a write, and the page, `localhost` and the
   tunnel answered as before.

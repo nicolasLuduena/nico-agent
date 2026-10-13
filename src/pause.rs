@@ -8,8 +8,8 @@ use std::time::{Duration, SystemTime};
 
 use crate::state;
 use crate::world::{
-    Agent, GitHubIssue, Handler, HttpRequest, LinearIssue, PullRequest, PullRequestActivity, Tab,
-    Worktree, World, WorldError, WorldResult,
+    Agent, GitHubIssue, Handler, Headless, HttpRequest, LinearIssue, PullRequest,
+    PullRequestActivity, Tab, Worktree, World, WorldError, WorldResult,
 };
 
 pub const FILE: &str = "pauses.json";
@@ -185,6 +185,23 @@ impl World for Guarded<'_> {
     }
     fn git_head(&self, path: &str) -> WorldResult<String> {
         self.world.git_head(path)
+    }
+    fn git_worktree_add(&self, path: &str, dir: &str, rev: &str) -> WorldResult<()> {
+        self.world.git_worktree_add(path, dir, rev)
+    }
+    fn git_worktree_remove(&self, path: &str, dir: &str) -> WorldResult<()> {
+        self.world.git_worktree_remove(path, dir)
+    }
+    fn git_ls_tree_blobs(&self, path: &str, rev: &str) -> WorldResult<Vec<(String, String)>> {
+        self.world.git_ls_tree_blobs(path, rev)
+    }
+    fn harness_headless(
+        &self,
+        cwd: &str,
+        calls: &[Headless],
+        at_once: usize,
+    ) -> Vec<WorldResult<String>> {
+        self.world.harness_headless(cwd, calls, at_once)
     }
     fn shell(&self, cwd: &str, command: &str) -> WorldResult<(bool, String)> {
         self.world.shell(cwd, command)
