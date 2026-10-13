@@ -1642,6 +1642,7 @@ Where to divide:
   - a package or crate, declared by its own manifest (a workspace member's package.json, a Cargo.toml)
   - a module, declared by the language or the package (a Rust mod, a Compact module, a package.json exports subpath)
   - a skill, declared by its SKILL.md, or a plugin, declared by its manifest
+- A division's Components are the part's units, or the folders that group them, at the first folder level where its units split apart: a folder holding all of them is no Component of its own, and one holding several is a Component, its units under it.
 - A part that is one declared unit, declaring none inside it, is a leaf, however big it is.
 - A division's Components share out the part's files, each listed file in at most one; a file in none is left out. A Component's summary is one or two sentences.
 - A Relationship goes from one Component of your division to another, named as you named them, of one kind: uses, calls, reads or writes.
