@@ -384,6 +384,28 @@ pub fn given<'a>(
     Ok((wikis, line))
 }
 
+/// The Wikis an Implementer, Reviewer and quality-scan of `repo` are given:
+/// each Library version it links whose Wiki is built, by id, and what the
+/// `libraries` prompt says of them, for the end of their prompt; nothing
+/// when none is. Never the Repo's own.
+pub fn libraries(
+    config_dir: &Path,
+    config: &Config,
+    repo: &Repo,
+) -> io::Result<(Vec<String>, String)> {
+    let outcomes = load(config_dir)?;
+    let built = |id: &String| outcomes.get(id).and_then(Outcome::wiki).is_some();
+    let wikis: Vec<String> = (repo.libraries.iter().map(Library::id))
+        .filter(built)
+        .collect();
+    let named = wikis.join(", ");
+    let line = match wikis.is_empty() {
+        true => String::new(),
+        false => fill_in(&config.prompts.libraries, &[("libraries", &named)]),
+    };
+    Ok((wikis, line))
+}
+
 /// The Repo's Base, and the commit its `origin/<base>` is on, fetched.
 fn base_head(world: &dyn World, repo: &Repo) -> WorldResult<(String, String)> {
     let base = base(world, repo)?;

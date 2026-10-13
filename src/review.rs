@@ -7,11 +7,12 @@ use serde_json::{Value, json};
 
 use crate::bucket;
 use crate::cli::{Context, Refusal};
-use crate::config::{Config, fill_in};
+use crate::config::{Config, Repo, fill_in};
 use crate::dispatch::{self, Dispatch};
 use crate::launch::{self, AgentLaunch};
 use crate::stage::{self, Pr, Stage, Standing};
 use crate::verdict::Outcome;
+use crate::wiki;
 use crate::world::{self, Agent, AgentState};
 
 /// A Dispatch's latest Reviewer.
@@ -108,7 +109,7 @@ pub fn start_reviewers(
                 sha: None,
                 failures: vec![],
             };
-            match start(ctx, config, &repo.path, &d, &mut started.launch, url, pr) {
+            match start(ctx, config, &repo, &d, &mut started.launch, url, pr) {
                 Ok(()) => {
                     said.push(format!(
                         "{}: Reviewer started on {} for {head}",
@@ -203,11 +204,12 @@ fn stop(ctx: &Context, issue: &str, head: &str, times: usize) -> Vec<String> {
 }
 
 /// Open the Reviewer's tab in the Dispatch's worktree, start its Harness
-/// there and prompt it for the PR's head.
+/// there, given the Wikis of the Library versions `repo` links, and prompt
+/// it for the PR's head.
 fn start(
     ctx: &Context,
     config: &Config,
-    repo_path: &str,
+    repo: &Repo,
     d: &Dispatch,
     reviewer: &mut AgentLaunch,
     url: &str,
@@ -220,7 +222,8 @@ fn start(
     );
     let harness = &config.harnesses[&reviewer.harness];
     launch::open_tab(ctx.world, reviewer, workspace, worktree, "reviewer")?;
-    let ready = launch::start(ctx.world, harness, reviewer, repo_path, &[])?;
+    let (wikis, line) = wiki::libraries(&ctx.config_dir, config, repo)?;
+    let ready = launch::start(ctx.world, harness, reviewer, &repo.path, &wikis)?;
     launch::get_ready(ctx.world, harness, reviewer, worktree, ready)?;
     let values = [
         ("sigil", harness.sigil.as_str()),
@@ -230,6 +233,6 @@ fn start(
         ("headSha", &pr.head_sha),
         ("evidenceFolder", &bucket::evidence(d)),
     ];
-    let text = fill_in(&config.prompts.review, &values);
+    let text = fill_in(&config.prompts.review, &values) + &line;
     launch::prompt(ctx.world, harness, &reviewer.agent, &text)
 }

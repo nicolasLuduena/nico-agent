@@ -18,6 +18,7 @@ use crate::rebase;
 use crate::stage::{self, Prs};
 use crate::state;
 use crate::verdict::{self, Outcome};
+use crate::wiki;
 use crate::world::{self, Agent, AgentState};
 
 /// One restart of a Dispatch's Implementer.
@@ -220,8 +221,9 @@ pub fn restart(
         live.restarts.push(new);
         live.idle_since = None;
     })?;
-    let text = prompt(ctx, config, record, reason)?;
-    let failed = relaunch(ctx, config, record, &text).err();
+    let (wikis, line) = wiki::libraries(&ctx.config_dir, config, &config.repo_of(record))?;
+    let text = prompt(ctx, config, record, reason)? + &line;
+    let failed = relaunch(ctx, config, record, &text, &wikis).err();
     record.failure = failed.as_ref().map(|(step, no)| Failure {
         step: step.to_string(),
         error: no.error.clone(),
@@ -246,12 +248,14 @@ pub fn restart(
 }
 
 /// Close the Implementer's tab, open a new one in its workspace and
-/// worktree, start its Harness and send it `text`: the step that failed, if one did.
+/// worktree, start its Harness given `wikis` and send it `text`: the step
+/// that failed, if one did.
 fn relaunch(
     ctx: &Context,
     config: &Config,
     record: &mut Dispatch,
     text: &str,
+    wikis: &[String],
 ) -> Result<(), (&'static str, Refusal)> {
     let world = ctx.world;
     let repo = config.repo_of(record);
@@ -270,7 +274,7 @@ fn relaunch(
         .map_or(Ok(()), |tab| world.herdr_tab_close(&tab))
         .and_then(|()| launch::open_tab(world, launch, workspace, worktree, "implementer"));
     opened.map_err(|e| ("tab", e.into()))?;
-    let ready = launch::start(world, harness, launch, &repo.path, &[])
+    let ready = launch::start(world, harness, launch, &repo.path, wikis)
         .map_err(|e| ("agent start", e.into()))?;
     launch::get_ready(world, harness, launch, worktree, ready).map_err(|no| ("agent ready", no))?;
     launch::prompt(world, harness, &launch.agent, text).map_err(|no| ("prompt", no))

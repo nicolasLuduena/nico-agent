@@ -10,7 +10,8 @@ of what was retrieved. A Wiki it does not serve, a missing Component or lines ou
 are tool errors, and it goes on answering. It writes nothing but the embeddings `ask` makes of a
 Wiki that lacks them. The user adds it to their own Claude Code with
 `claude mcp add wiki -- nico-agent mcp`; the loop gives it to faux-nico and the morning agent with
-their Repo's Wiki, its tools allowed on each Harness.
+their Repo's Wiki, and to the Implementer, Reviewer and quality-scan with the built Wikis of the
+Library versions their Repo links, its tools allowed on each Harness.
 
 ## Sub-features
 
@@ -22,6 +23,7 @@ their Repo's Wiki, its tools allowed on each Harness.
 - `mcp-read-only` answering changes nothing in the config dir or the Bucket, and calls no stub but `ask`'s `curl` to Ollama.
 - `mcp-claude` added to Claude Code, it is connected, its five `mcp__wiki__*` tools are listed, and `get_component` answers.
 - `mcp-launches` a launch given Wikis (faux-nico's and the morning agent's, of each Repo with its `wiki` switch on and its Wiki built) carries its Harness's `mcp_args` with `{mcpArgs}` `["mcp","--wiki","<owner/name>",...]`: claude `--mcp-config` and `--allowedTools mcp__wiki__*`, codex `-c mcp_servers.wiki.command`, `.args` and `.default_tools_approval_mode="approve"`; opencode an `mcp` entry `{"wiki":{"command":["nico-agent","mcp","--wiki",...],"type":"local"}}` in its `OPENCODE_CONFIG_CONTENT`. Started for real, each calls a wiki tool with no question in its pane.
+- `mcp-libraries` an Implementer's, Reviewer's and quality-scan's launch (and a restarted Implementer's) carries the same `mcp_args` with `--wiki <id>` for each Library version its Repo links whose Wiki is built, never the Repo's own, and its prompt ends ` Ask the wiki MCP about <id>, ... before reading their source.`; a linked version not built adds nothing. Started for real, an Implementer so prompted calls `find_component` on the Library's Wiki before reading its code.
 
 ## How to get to it (user POV)
 
@@ -29,6 +31,8 @@ their Repo's Wiki, its tools allowed on each Harness.
   for every project); Claude Code starts it with each conversation and calls its tools.
 - The user turns a Repo's `wiki` switch on; once its Wiki is built, each faux-nico of the Repo and
   each morning agent starts with the server, prompted with the commit the Wiki describes.
+- The user links a Library version to a Repo; once its Wiki is built, each Implementer, Reviewer
+  and quality-scan of the Repo starts with the server serving it, prompted to ask it first.
 
 ## Driving it with control-nico-agent
 
@@ -130,6 +134,25 @@ its answer's `result.content[0].text` is the tool's JSON, or its error with `isE
     `tools.wiki.get_component` whose output is the Component.
   Then `herdr workspace close <workspace>`.
 
+- **An Implementer given a Library's Wiki.** Needs the user's herdr and claude logged in.
+  `E=.evidence/<issue>/wiki-mcp/launches`. Build a Library Wiki in the run: `$C drift tag v1.0`; `$C
+  http PATCH /api/repo/verify/fixture '{"libraries":[{"repo":"verify/second","tag":"v1.0","path":"lib"}]}'`;
+  seed a leaf answer for `verify/second@v1.0:lib` claiming what `greet` prints, anchored at
+  `lib/greet.sh` `3`-`5`; `wiki build verify/second@v1.0:lib --json` is `built`. With `launch-bin` as
+  above, `git -C "$FIXTURE_CLONE" worktree add "$R/impl-1" -b agent/fixture-1 origin/main` and
+  `herdr workspace create --cwd "$R/impl-1" --no-focus`; in its pane, `herdr agent start <agent>
+  --kind claude --pane <pane> -- --model sonnet --mcp-config
+  '{"mcpServers":{"wiki":{"command":"nico-agent","args":["mcp","--wiki","verify/second@v1.0:lib"]}}}'
+  --allowedTools 'mcp__wiki__*'`, its trust answered with `down enter`. Prompt it `Implement this
+  issue in this worktree, without committing: "Add hello.sh at the root, a shell script that greets
+  its first argument exactly as the greet function of the Library verify/second does." Ask the wiki
+  MCP about verify/second@v1.0:lib before reading their source.` (the last sentence is the line the
+  loop appends). Its transcript (`~/.claude/projects/<cwd>/<session>.jsonl`, the session in
+  `herdr agent prompt`'s answer) holds `mcp__wiki__find_component` with `wiki`
+  `verify/second@v1.0:lib` before any read of the Library's code (its `ask` fails without the
+  wiki model in the scratch HOME), and `hello.sh` echoes `hello, $1`. Keep the tool calls, then
+  `herdr workspace close <workspace>`.
+
 ## Gotchas
 
 - `run` passes its stdin to the binary: without `< file`, `mcp` waits on the terminal till EOF.
@@ -142,4 +165,5 @@ its answer's `result.content[0].text` is the tool's JSON, or its error with `isE
   remove the server before `cleanup`, or `claude mcp get wiki` there keeps naming a deleted binary.
 - The launches step runs in the user's own herdr: close its workspace before `cleanup`, which
   deletes the binary its panes' `nico-agent` points at. What the loop's own launches carry (the
-  switch off or the Wiki unbuilt adding nothing, the prompts' lines) is `cargo test`'s.
+  switch off or the Wiki unbuilt adding nothing, a linked Library version unbuilt adding nothing,
+  the prompts' lines) is `cargo test`'s.

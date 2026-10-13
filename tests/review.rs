@@ -2,7 +2,9 @@ mod common;
 
 use std::time::Duration;
 
-use common::{Ran, Setup, edit_dispatch, github_issue, pull_request, setup};
+use common::{
+    KIT, KIT_TOML, Ran, Setup, edit_dispatch, github_issue, kit_built, pull_request, setup,
+};
 use nico_agent::world::{Mergeable, PrState, PullRequest, PullRequestActivity};
 use serde_json::{Value, json};
 
@@ -15,8 +17,8 @@ fn review_prompt(sha: &str) -> String {
     )
 }
 
-/// Repo `acme/api`, as `toml` sets it, with issue 7 dispatched by a tick.
-fn dispatched(toml: &str) -> Setup {
+/// Repo `acme/api`, as `toml` sets it, with issue 7 Ready.
+fn with_issue(toml: &str) -> Setup {
     let t = setup();
     t.world
         .add_clone("/src/api", &["git@github.com:acme/api.git"]);
@@ -24,13 +26,27 @@ fn dispatched(toml: &str) -> Setup {
     let config = format!("[repos.\"acme/api\"]\npath = \"/src/api\"\n{toml}\n");
     std::fs::write(t.config_dir.join("config.toml"), config).unwrap();
     t.world.add_issue("acme/api", github_issue("acme/api", 7));
+    t
+}
+
+/// `with_issue`, dispatched by a tick.
+fn dispatched(toml: &str) -> Setup {
+    dispatch(with_issue(toml))
+}
+
+/// `t` with issue 7 dispatched by a tick.
+fn dispatch(t: Setup) -> Setup {
     assert_eq!(t.tick(), ["acme/api#7 dispatched"]);
     t
 }
 
 /// `dispatched`, then PR 9 opened on its branch and seen by the next tick.
 fn with_pr(toml: &str) -> Setup {
-    let t = dispatched(toml);
+    pr_opened(dispatched(toml))
+}
+
+/// `t` with PR 9 opened on issue 7's branch, a tick later.
+fn pr_opened(t: Setup) -> Setup {
     t.world.add_pr(PullRequest {
         head_branch: Some("agent/api-7".into()),
         ..pull_request("acme/api", 9)
@@ -292,6 +308,27 @@ fn a_reviewer_whose_start_failed_but_works_after_all_is_not_closed_until_it_stop
     assert_eq!(herdr(&calls), Vec::<&str>::new());
     assert_eq!(after, ["acme/api#7: Reviewer started on codex for sha9"]);
     assert_eq!(herdr(&later)[0], "herdr tab close w1:t3");
+}
+
+#[test]
+fn a_reviewer_of_a_repo_linking_a_built_library_version_starts_with_its_wiki_mcp_and_asks_it_first()
+{
+    let t = with_issue(&format!("libraries = [{KIT_TOML}]"));
+    kit_built(&t);
+    let t = pr_opened(dispatch(t));
+
+    let (_, calls) = calls_after(&t, || t.tick());
+
+    assert_eq!(
+        herdr(&calls)[1..],
+        [
+            r#"herdr agent start rev-api-7 --kind codex --pane w1:p3 -- -c projects={"/src/api"={trust_level="trusted"}} -c mcp_servers.wiki.command="nico-agent" -c mcp_servers.wiki.args=["mcp","--wiki","acme/kit@v1"] -c mcp_servers.wiki.default_tools_approval_mode="approve""#.to_string(),
+            format!(
+                "{} Ask the wiki MCP about {KIT} before reading their source.",
+                review_prompt("sha9")
+            ),
+        ]
+    );
 }
 
 #[test]

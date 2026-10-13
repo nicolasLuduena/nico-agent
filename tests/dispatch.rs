@@ -1,6 +1,6 @@
 mod common;
 
-use common::{Ran, Setup, edit_dispatch, github_issue, setup};
+use common::{KIT, KIT_TOML, Ran, Setup, edit_dispatch, github_issue, kit_built, setup};
 use serde_json::{Value, json};
 
 const FLAGS: [&str; 6] = ["--harness", "claude", "--model", "opus", "--effort", "high"];
@@ -868,4 +868,43 @@ fn status_shows_the_dispatch_implementing_with_its_launch_and_steps() {
         .map(|row| row["key"].as_str().unwrap())
         .collect();
     assert_eq!(ready, ["acme/api#8"]);
+}
+
+/// The Implementer's start and prompt, once dispatched with FLAGS.
+fn launched(t: &Setup) -> Vec<String> {
+    t.world.calls.borrow_mut().clear();
+    dispatch_7(t);
+    (herdr_calls(t).into_iter())
+        .filter(|c| c.starts_with("herdr agent "))
+        .collect()
+}
+
+#[test]
+fn an_implementer_of_a_repo_linking_a_built_library_version_starts_with_its_wiki_mcp_and_asks_it_first()
+ {
+    let t = with_repo_config(&format!(
+        "switches = {{ wiki = true }}\nlibraries = [{KIT_TOML}, {{ repo = \"acme/ui\", tag = \"v2\" }}]\n"
+    ));
+    kit_built(&t);
+    // Its Repo's own Wiki, built too, is never given.
+    (t.world).add_tree_file("/src/api", "origin/main", "src/lib.rs", "pub fn run() {}\n");
+    let leaf = json!({ "kind": "leaf", "overview": "The api." });
+    (t.world.headless.borrow_mut()).push(("## The part: acme/api".into(), leaf.to_string()));
+    assert_eq!(t.cli(&["wiki", "build", "acme/api", "--json"]).exit_code, 0);
+
+    assert_eq!(
+        launched(&t),
+        [
+            r#"herdr agent start impl-api-7 --kind claude --pane w1:p2 -- --model opus --effort high --mcp-config {"mcpServers":{"wiki":{"command":"nico-agent","args":["mcp","--wiki","acme/kit@v1"]}}} --allowedTools mcp__wiki__*"#.to_string(),
+            format!("{} Ask the wiki MCP about {KIT} before reading their source.", ALL[9]),
+        ]
+    );
+}
+
+#[test]
+fn an_implementer_of_a_repo_linking_only_unbuilt_library_versions_gets_neither_the_mcp_nor_the_line()
+ {
+    let t = with_repo_config(&format!("libraries = [{KIT_TOML}]\n"));
+
+    assert_eq!(launched(&t), [ALL[7], ALL[9]]);
 }

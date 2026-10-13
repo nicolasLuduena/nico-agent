@@ -123,7 +123,8 @@ commands, and observable proof.
   tool errors it goes on answering after, `ask` saying search is unavailable without Ollama and
   answering for real with it, nothing written but `ask`'s embeddings, the server added to
   Claude Code, and each Harness started with it as faux-nico and the morning agent are, calling a
-  wiki tool with no question in its pane.
+  wiki tool with no question in its pane, and an Implementer given a linked Library version's Wiki
+  calling `find_component` on it.
 - [Read a Wiki on the page](./wiki-view.md) covers `GET /api/wikis` and `GET /api/wiki/<id>`, a
   Project tab's Map and Wiki views, the picker, the header, the Component tree, Interpretations by
   kind with their Anchors on GitHub, the Relationship diagram and the Explainer clicked through,
