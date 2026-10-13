@@ -1536,3 +1536,21 @@ fn continue_is_refused_for_a_repo_with_no_wiki_and_one_build_kind_is_asked_at_a_
         "--update, --rebuild and --continue are one at a time"
     );
 }
+
+#[test]
+fn rebuild_asks_about_every_part_again_without_reading_the_wiki_before_it() {
+    let t = with_repo("");
+    divided(&t);
+    for part in ["Core", "Web"] {
+        let trail = format!("acme/api > {part}");
+        answer(&t, &trail, json!({ "kind": "leaf", "overview": part }));
+    }
+    t.cli(&["wiki", "build", "acme/api", "--json"]);
+    t.world.calls.borrow_mut().clear();
+
+    let ran = t.cli(&["wiki", "build", "acme/api", "--rebuild", "--json"]);
+
+    assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
+    assert_eq!(asked(&t), ["acme/api", "acme/api > Core", "acme/api > Web"]);
+    assert!(!t.world.calls().contains(&format!("read {WIKI}")));
+}

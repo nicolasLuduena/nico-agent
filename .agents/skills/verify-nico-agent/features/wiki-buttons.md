@@ -16,7 +16,7 @@ a fresh `[wiki] calls`, and fills them in place.
 - `wiki-buttons-queue` a button is `POST /api/wiki/<id>/update|rebuild|continue`, `200` `{wiki, build, waiting}`; `wiki-queue.json` has the id first in `waiting` and its build in `asked`; the header reads `Queued`.
 - `wiki-buttons-states` after a refresh the header reads `BUILDING` (the start failed at herdr in a run, so no pane), after another `Last build failed` with why on the errata rule.
 - `wiki-buttons-continue` `wiki build <owner/name> --continue` asks only the parts with a budget Gap, at the Wiki's commit though the Base moved, and leaves none; Continue is gone from the header.
-- `wiki-buttons-refused` `continue` of a Wiki with no budget Gaps, or of a Repo with no Wiki, and any button of no Repo are `409` with help; another word than the three is `404`.
+- `wiki-buttons-refused` `continue` of a Wiki with no budget Gaps, or of a Repo with no Wiki, and any button of no Repo are `409` with help; another word than the three is `404`. On the CLI, `--continue` of a Repo with no Wiki is exit 1 `could not build the Wiki of <owner/name>: <owner/name> has no Wiki to continue`, and two of `--update`, `--rebuild`, `--continue` exit 2 `--update, --rebuild and --continue are one at a time`.
 
 ## How to get to it (user POV)
 
@@ -69,6 +69,13 @@ Preconditions:
   `409` `the Wiki of verify/fixture has no budget Gaps to continue`; `$C http --evidence
   "$E/16-unknown-refused" POST /api/wiki/verify/nope/update`: `409` `verify/nope is not a configured
   Repo`; `$C http --evidence "$E/17-no-such-build" POST /api/wiki/verify/fixture/delete`: `404`.
+- **Refused on the CLI.** In a fresh run with verify/fixture added and no Wiki built: `$C run
+  --evidence "$E/19-cli-continue-no-wiki" -- wiki build verify/fixture --continue --json` exits `1`,
+  `could not build the Wiki of verify/fixture: verify/fixture has no Wiki to continue`, help `Build it
+  first: nico-agent wiki build verify/fixture`; `$C run --evidence "$E/20-cli-two-builds" -- wiki
+  build verify/fixture --update --rebuild --json` exits `2`, `--update, --rebuild and --continue are
+  one at a time`. The first leaves `wikis.json` `failed` with that why, as any build that stops
+  does; the second writes nothing.
 - **After.** `$C state > "$E/state.after.txt"`, its diff: `wiki-queue.json`, `runs.json` (the
   failed Run), `wikis.json` (`gaps` `{}`) and a Bucket commit `wiki verify/fixture <old>`. Copy
   `$OUTSIDE_LOG` to `$E/outside.log`.

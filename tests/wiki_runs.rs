@@ -516,14 +516,9 @@ fn a_build_of_a_repo_that_has_a_wiki_is_an_update() {
 
     let (_, calls) = calls_after(&t, || t.tick());
 
-    let runs: Vec<&String> = (calls.iter())
-        .filter(|c| c.starts_with("herdr pane run "))
-        .collect();
-    assert_eq!(runs.len(), 1, "{calls:?}");
-    assert!(
-        runs[0].ends_with(" nico-agent wiki build acme/api --update; exit"),
-        "{}",
-        runs[0]
+    assert_eq!(
+        ran(&calls),
+        ["nico-agent wiki build acme/api --update; exit"]
     );
 }
 
@@ -703,5 +698,33 @@ fn the_wikis_listed_show_their_build_building_with_its_pane_queued_or_failed_wit
                 json!("its pane is gone without an outcome")
             ),
         ])
+    );
+}
+
+#[test]
+fn a_build_a_button_queued_at_the_wiki_hour_leaves_its_base_check_till_it_is_built() {
+    let t = with_repos(ON);
+    both_built(&t);
+    t.world.advance(TO_1_50AM);
+    t.tick();
+    (t.world.heads.borrow_mut()).insert("/src/api origin/main".into(), "def5678".into());
+    assert_eq!(t.send("POST", "/api/wiki/acme/api/rebuild", "").0, 200);
+    t.world.advance(TICK);
+    let (started, calls) = calls_after(&t, || t.tick());
+    // Built at the commit its Wiki describes, as a Continue is.
+    build(&t, "acme/api");
+    t.world.advance(TICK);
+
+    let said = t.tick();
+
+    assert_eq!(started, ["acme/api: wiki started on opencode"]);
+    assert_eq!(checks(&calls), ["git -C /src/web rev-parse origin/main"]);
+    assert_eq!(
+        said,
+        [
+            "acme/api: wiki built at abc1234; its workspace closed",
+            "acme/api: wiki queued, origin/main moved from abc1234 to def5678",
+            "acme/api: wiki started on opencode",
+        ]
     );
 }

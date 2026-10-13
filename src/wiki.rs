@@ -43,8 +43,8 @@ pub const FILE: &str = "wikis.json";
 /// The Wikis waiting for a build, and when each Repo's was last checked.
 const QUEUE: &str = "wiki-queue.json";
 
-/// How a build may be asked for, besides from scratch: `--update`,
-/// `--rebuild` (from scratch) or `--continue`.
+/// The builds a button or a flag asks for: `--update`, `--rebuild` (from
+/// scratch, as with no flag) or `--continue`.
 pub const BUILDS: [&str; 3] = ["update", "rebuild", "continue"];
 
 /// The id of a Wiki's top Component: the whole of its code.
@@ -104,8 +104,9 @@ struct Queue {
 /// its `wiki` switch on, once a day from the wiki hour and at once when the
 /// switch turns on, queueing it when it has none or its `origin/<base>`
 /// moved from its commit; then start the first queued while no wiki Run is
-/// open, an Update once the Repo has a Wiki. A check that fails is said and
-/// tried again next tick. What it said.
+/// open, built as a button asked, or else an Update once the Repo has a Wiki.
+/// A check that fails is said and tried again next tick, as is one of a Wiki
+/// whose build waits or runs. What it said.
 pub fn step(ctx: &Context, config: &Config) -> Result<Vec<String>, Refusal> {
     let mut said = close(ctx)?;
     let outcomes = load(&ctx.config_dir)?;
@@ -116,9 +117,11 @@ pub fn step(ctx: &Context, config: &Config) -> Result<Vec<String>, Refusal> {
     let (mut queued, mut checked) = (vec![], vec![]);
     for (slug, repo) in config.repos.iter().filter(|(_, r)| r.switches.wiki) {
         let due = queue.checked.get(slug).is_none_or(|at| *at < slot);
+        // One waiting or building is checked once built: a Continue builds at its Wiki's commit.
+        if !due || queue.waiting.contains(slug) || open == Some(slug) {
+            continue;
+        }
         let why = match outcomes.get(slug).and_then(Outcome::wiki) {
-            // Checked today, or its build in hand is today's.
-            _ if !due || queue.waiting.contains(slug) || open == Some(slug) => None,
             None => Some("it has none".into()),
             Some(Built { commit, .. }) => match base_head(ctx.world, repo) {
                 Err(e) => {
@@ -130,9 +133,7 @@ pub fn step(ctx: &Context, config: &Config) -> Result<Vec<String>, Refusal> {
             },
         };
         queued.extend(why.map(|why| (slug, why)));
-        if due {
-            checked.push(slug);
-        }
+        checked.push(slug);
     }
     let now = state::iso(ctx.world.now());
     let next = update_queue(&ctx.config_dir, |queue| {
@@ -167,7 +168,7 @@ pub fn step(ctx: &Context, config: &Config) -> Result<Vec<String>, Refusal> {
         // Once it has a Wiki, a Repo's is updated from it, unless asked otherwise.
         let has = outcomes.get(&slug).and_then(Outcome::wiki);
         let how = how.or_else(|| has.map(|_| "update".into()));
-        let update = how.map_or(String::new(), |how| format!(" --{how}"));
+        let flag = how.map_or(String::new(), |how| format!(" --{how}"));
         let start = |run: &mut Run| {
             let workspace = (run.workspace).insert(
                 ctx.world
@@ -177,7 +178,7 @@ pub fn step(ctx: &Context, config: &Config) -> Result<Vec<String>, Refusal> {
             launch::open_tab(ctx.world, &mut run.launch, workspace, &repo.path, label)?;
             let pane = run.launch.pane.as_deref().expect("its tab is open");
             // Its shell exits with it, so a pane gone is a build ended.
-            let command = format!("nico-agent wiki build {slug}{update}; exit");
+            let command = format!("nico-agent wiki build {slug}{flag}; exit");
             Ok(ctx.world.herdr_pane_run(pane, &command)?)
         };
         let chosen = config.wiki.launch.clone();
@@ -541,7 +542,7 @@ pub fn queue(ctx: &Context, id: &str, how: &str) -> Result<Value, Refusal> {
     let (slug, _) = config.repo(id).ok_or_else(|| repo::not_configured(id))?;
     if how == "continue" {
         let wiki = kept(ctx, &config, slug)?.ok_or_else(|| uncontinued(slug))?;
-        if gaps(&wiki).filter(|g| g["reason"] == "budget").count() == 0 {
+        if budget(&wiki) == 0 {
             return Err(Refusal::new(
                 format!("the Wiki of {slug} has no budget Gaps to continue"),
                 vec!["Update it, or Rebuild it from nothing".into()],
@@ -571,6 +572,11 @@ fn gaps(wiki: &Value) -> impl Iterator<Item = &Value> {
         .flat_map(|c| c["gaps"].as_array().into_iter().flatten())
 }
 
+/// How many Gaps of `wiki` its budget left: those a `continue` asks about.
+fn budget(wiki: &Value) -> usize {
+    gaps(wiki).filter(|g| g["reason"] == "budget").count()
+}
+
 /// `GET /api/wikis`: each Repo's Wiki the Bucket holds, by its id, with the
 /// commit it describes, when it was built, how many Gaps it has and how many
 /// of them `continue` asks about with its `calls`, and the `state` of its
@@ -592,7 +598,7 @@ pub fn list(ctx: &Context) -> Result<Value, Refusal> {
             "commit": wiki["commit"],
             "builtAt": wiki["builtAt"],
             "gaps": gaps(&wiki).count(),
-            "budget": gaps(&wiki).filter(|g| g["reason"] == "budget").count(),
+            "budget": budget(&wiki),
             "calls": config.wiki.calls,
             "state": build["state"],
             "pane": build["pane"],
@@ -963,9 +969,9 @@ fn updated(previous: Wiki, files: &[File], continuing: bool) -> (Vec<Component>,
             .min_by_key(|&i| Reverse(depth[i]))
             .unwrap_or(0)
     };
-    let budget = |i: &usize| continuing && all[*i].gaps.iter().any(|g| g.reason == "budget");
+    let unexplored = |i: &usize| continuing && all[*i].gaps.iter().any(|g| g.reason == "budget");
     let (mut asked, mut added): (HashSet<usize>, _) = (
-        (0..all.len()).filter(budget).collect(),
+        (0..all.len()).filter(unexplored).collect(),
         vec![vec![]; all.len()],
     );
     let mut new: Vec<&String> = now.keys().filter(|p| !was.contains_key(*p)).collect();

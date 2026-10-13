@@ -185,7 +185,7 @@
           {#if picked.state === "building"}
             <p role="status">
               <span class="label">Building</span>
-              {#if picked.pane}<span class="muted">in herdr pane <code>{picked.pane}</code></span>{/if}
+              {#if picked.pane}<span class="muted">in herdr pane {picked.pane}</span>{/if}
             </p>
           {:else if picked.state === "queued"}
             <p role="status"><span class="label">Queued</span></p>
