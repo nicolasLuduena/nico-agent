@@ -214,8 +214,10 @@ fn built(ctx: &Context, config: &Config, slug: &str, repo: &Repo) -> Result<Wiki
         None => world.git_default_branch(&repo.path)?,
     };
     world.git_fetch(&repo.path, None)?;
-    let dir = ctx.config_dir.join("wiki").join(slug).join("checkout");
-    let dir = dir.display().to_string();
+    let folder = ctx.config_dir.join("wiki").join(slug);
+    // One build of a Wiki at a time: another would remove its checkout.
+    let _building = state::lock(&folder.join("build"))?;
+    let dir = folder.join("checkout").display().to_string();
     // One a build that died left behind.
     world.git_worktree_remove(&repo.path, &dir)?;
     world.git_worktree_add(&repo.path, &dir, &format!("origin/{base}"))?;
@@ -451,15 +453,13 @@ fn read(
                 return Some("it cites no Anchor".into());
             }
             (i.anchors.iter()).find_map(|a| match lines.get(a.path.as_str()) {
-                Some(&n) if in_part.contains(a.path.as_str()) => {
-                    (a.start < 1 || a.start > a.end || a.end > n).then(|| {
-                        format!(
-                            "lines {}-{} are not inside {} ({n} lines)",
-                            a.start, a.end, a.path
-                        )
-                    })
-                }
-                _ => Some(format!("{} is not one of the part's files", a.path)),
+                Some(&n) => (a.start < 1 || a.start > a.end || a.end > n).then(|| {
+                    format!(
+                        "lines {}-{} are not inside {} ({n} lines)",
+                        a.start, a.end, a.path
+                    )
+                }),
+                None => Some(format!("{} is not a file of the Repo", a.path)),
             })
         },
     );

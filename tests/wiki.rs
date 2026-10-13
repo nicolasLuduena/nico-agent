@@ -166,10 +166,18 @@ fn a_division_and_its_leaves_land_as_one_wiki_of_components_with_their_relations
         1,
         1,
     );
+    // A file of another part is still a file of the Repo.
+    let served = interpretation(
+        "role",
+        "The crate is served by the page.",
+        "web/app.ts",
+        1,
+        1,
+    );
     answer(
         &t,
         "acme/api > Core",
-        json!({ "kind": "leaf", "overview": "The crate's modules.", "interpretations": [config.clone()] }),
+        json!({ "kind": "leaf", "overview": "The crate's modules.", "interpretations": [config.clone(), served.clone()] }),
     );
     let port = interpretation("effect", "The page serves on port 80.", "web/app.ts", 2, 2);
     answer(
@@ -182,8 +190,8 @@ fn a_division_and_its_leaves_land_as_one_wiki_of_components_with_their_relations
 
     assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
     assert_eq!(ran.json()["components"], 3);
-    let numbered = |mut i: Value| {
-        i["id"] = json!(1);
+    let numbered = |mut i: Value, id: u64| {
+        i["id"] = json!(id);
         i
     };
     assert_eq!(
@@ -195,7 +203,7 @@ fn a_division_and_its_leaves_land_as_one_wiki_of_components_with_their_relations
                 "parent": null,
                 "overview": "An API and its web front.",
                 "files": ["src/config.rs", "src/lib.rs", "web/app.ts"],
-                "interpretations": [numbered(entry)],
+                "interpretations": [numbered(entry, 1)],
                 "relationships": [],
                 "gaps": [],
             },
@@ -205,7 +213,7 @@ fn a_division_and_its_leaves_land_as_one_wiki_of_components_with_their_relations
                 "parent": "index",
                 "overview": "The crate's modules.",
                 "files": ["src/lib.rs", "src/config.rs"],
-                "interpretations": [numbered(config)],
+                "interpretations": [numbered(config, 1), numbered(served, 2)],
                 "relationships": [],
                 "gaps": [],
             },
@@ -215,7 +223,7 @@ fn a_division_and_its_leaves_land_as_one_wiki_of_components_with_their_relations
                 "parent": "index",
                 "overview": "The page.",
                 "files": ["web/app.ts"],
-                "interpretations": [numbered(port)],
+                "interpretations": [numbered(port, 1)],
                 "relationships": [{ "to": "core", "kind": "calls", "description": "It calls the API." }],
                 "gaps": [],
             },

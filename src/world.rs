@@ -940,6 +940,7 @@ fn headless(cwd: &str, call: &Headless) -> WorldResult<String> {
         call.args.first().map_or("", String::as_str)
     );
     // shortcut: no timeout, so a call that hangs holds its build until killed; add one if a model ever hangs.
+    // shortcut: the prompt is one argument, which Linux caps at 128 KiB (a top part of some 2,800 files); send it on stdin for a code base that big.
     let ran = Command::new(&call.command)
         .args(&call.args)
         .arg(&call.prompt)
@@ -1150,11 +1151,11 @@ impl World for RealWorld {
         git_ok(path, &["worktree", "add", "--detach", "--quiet", dir, rev]).map(drop)
     }
     fn git_worktree_remove(&self, path: &str, dir: &str) -> WorldResult<()> {
-        // One whose folder is gone only needs forgetting.
-        if !Path::new(dir).exists() {
-            return git_ok(path, &["worktree", "prune"]).map(drop);
+        // Forgets one whose folder is gone too; with no folder, none is no worktree to remove.
+        match git_ok(path, &["worktree", "remove", "--force", dir]) {
+            Err(_) if !Path::new(dir).exists() => Ok(()),
+            removed => removed.map(drop),
         }
-        git_ok(path, &["worktree", "remove", "--force", dir]).map(drop)
     }
     fn git_ls_tree_blobs(&self, path: &str, rev: &str) -> WorldResult<Vec<(String, String)>> {
         // `-z`: paths as they are, never quoted.
