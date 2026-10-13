@@ -153,10 +153,12 @@ fn an_unknown_path_or_method_answers_404_with_the_routes_as_help() {
         "POST /api/dispatch {issue, harness, model, effort}: `nico-agent dispatch` of the issue",
         "POST /api/refresh: `nico-agent refresh`",
         "PATCH /api/repo/<owner/name>/switches {name: bool}: set the Repo's switches; null takes its Project's or the default",
-        "PATCH /api/repo/<owner/name> {implementer, reviewer, room, base, project, install, switches}: set the Repo's own settings; null takes its Project's or the default",
+        "PATCH /api/repo/<owner/name> {implementer, reviewer, room, base, project, install, switches, libraries}: set the Repo's own settings; null takes its Project's or the default",
         "PATCH /api/project/<name> {implementer, reviewer, room, base, switches}: set the Project's defaults for its Repos; null removes one",
         "POST /api/repo {slug, path, project}: `nico-agent repo add`",
         "DELETE /api/repo/<owner/name>: `nico-agent repo rm`, refused while the Repo has a Dispatch In flight",
+        "POST /api/libraries {repo, tag, path}: add a Library version no Repo links, under [wiki] libraries, and queue its Wiki",
+        "DELETE /api/libraries/<owner/name@tag[:path]>: remove a Library version [wiki] libraries adds, its Wiki taken out of the Bucket's files; refused while a Repo links it",
         "GET /bucket/<path>: a file of the Bucket, where each Verdict's Evidence is kept, or a page of a folder's",
     ]);
     assert_eq!(
@@ -721,7 +723,7 @@ fn patch_room_writes_room_in_the_repo_s_table_alone_and_answers_it() {
 fn patch_repo_refuses_a_bad_value_of_any_setting_and_writes_nothing() {
     let t = written();
     let room = "room is how many Dispatches the Repo may have In flight at once, a whole number of at least 1";
-    let settings = "Settings: implementer, reviewer, room, base, project, install, switches; null takes the Project's or the default";
+    let settings = "Settings: implementer, reviewer, room, base, project, install, switches, libraries; null takes the Project's or the default";
     let switches =
         "Switches: dispatch, stack, review, restart, flip, answer, gardening, quality_scan, wiki";
     let harnesses = "Harnesses: claude, codex, opencode";

@@ -1,3 +1,5 @@
+import type { Library } from "./wiki/wiki";
+
 /** What `GET /api/status` answers: `status --json`, plus per Repo what the page shows beside its map. Only the fields the page reads so far. */
 export interface Status {
   /** Each Project: a Repo naming none is its own, named by its slug. */
@@ -9,6 +11,20 @@ export interface Status {
   morning_summary?: string | null;
   /** The last morning agent's Run; none before the first. */
   morning?: Run;
+  /** Each Wiki built, tried, queued or building, by its id. */
+  wikis: WikiState[];
+  /** The Library versions `[wiki]` adds that no Repo links: the Libraries tab's. */
+  libraries: Library[];
+}
+
+/** Where a Wiki's builds stand. */
+export interface WikiState {
+  wiki: string;
+  state: "built" | "building" | "queued" | "failed";
+  /** The commit of the build that built it; null before one did. */
+  commit: string | null;
+  /** Why its last build failed, if it did. */
+  why?: string;
 }
 
 /** The settings of a Repo, or the defaults of a Project, each as it takes effect. */
@@ -23,6 +39,8 @@ export interface Settings {
   implementer: Setting<Launch>;
   /** The launch Reviewers start on. */
   reviewer: Setting<Launch>;
+  /** The Library versions its agents ask the Wikis of. */
+  libraries: Setting<Library[]>;
 }
 
 export interface Repo extends Settings {

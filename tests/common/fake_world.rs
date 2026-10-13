@@ -352,6 +352,17 @@ impl World for FakeWorld {
         Ok(())
     }
 
+    fn git_remove(&self, path: &str, file: &str, message: &str) -> WorldResult<()> {
+        self.call(format!(
+            "git -C {path} rm --quiet -r -- {file} && git -C {path} -c user.name=nico-agent -c user.email=nico-agent@localhost commit --quiet --allow-empty --no-gpg-sign -m {message}"
+        ))?;
+        let removed = format!("{path}/{file}");
+        let gone = |f: &String| *f == removed || f.starts_with(&format!("{removed}/"));
+        self.files.borrow_mut().retain(|f, _| !gone(f));
+        self.committed.borrow_mut().retain(|f, _| !gone(f));
+        Ok(())
+    }
+
     fn git_changed(&self, path: &str, folder: &str) -> WorldResult<bool> {
         self.call(format!("git -C {path} status --porcelain -- {folder}"))?;
         let committed = self.committed.borrow();

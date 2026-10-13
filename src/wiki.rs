@@ -172,6 +172,54 @@ pub fn step(ctx: &Context, config: &Config) -> Result<Vec<String>, Refusal> {
     Ok(said)
 }
 
+/// Queue each Library version the config names that no build has tried,
+/// unless it waits or builds already, as the next tick would: one the user
+/// just linked or added.
+pub fn queue_new(ctx: &Context, config: &Config) -> Result<(), Refusal> {
+    let tried = load(&ctx.config_dir)?;
+    let runs = away::load(&ctx.config_dir)?;
+    let open = open_run(&runs).and_then(|r| r.repo.clone());
+    Ok(update_queue(&ctx.config_dir, |queue| {
+        for id in config.libraries().into_keys() {
+            if !tried.contains_key(&id) && !queue.waiting.contains(&id) && open != Some(id.clone())
+            {
+                queue.waiting.push(id);
+            }
+        }
+    })?)
+}
+
+/// Take the Wiki `of` out of the Bucket's files in one commit, its history
+/// keeping it, and forget its builds and its place in the queue, so it is
+/// built again once it is one again; refused while it builds. Whether the
+/// Bucket held it.
+pub fn forget(ctx: &Context, config: &Config, of: &Of) -> Result<bool, Refusal> {
+    let id = of.id();
+    let runs = away::load(&ctx.config_dir)?;
+    if open_run(&runs).is_some_and(|r| r.repo.as_ref() == Some(&id)) {
+        return Err(Refusal::new(
+            format!("the Wiki of {id} is building"),
+            vec![
+                "Remove it once its build ends, built or failed, as `nico-agent status` shows"
+                    .into(),
+            ],
+        ));
+    }
+    let message = format!("wiki {id} removed");
+    let dropped = bucket::drop_wiki(ctx, config, &of.folder(), &message)?;
+    update_queue(&ctx.config_dir, |queue| {
+        queue.waiting.retain(|waiting| *waiting != id);
+        queue.checked.remove(&id);
+    })?;
+    let file = ctx.config_dir.join(FILE);
+    state::update(&file, |text| {
+        let mut all: BTreeMap<String, Outcome> = state::parse(&file, text)?;
+        all.remove(&id);
+        Ok::<_, io::Error>((state::text(&all), ()))
+    })?;
+    Ok(dropped)
+}
+
 /// Close the open wiki Run once its build wrote an outcome since it
 /// started, or once its pane is gone without one: failed, which `wikis.json`
 /// then keeps. Closing closes its workspace; one that fails is said and

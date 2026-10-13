@@ -1,5 +1,6 @@
 <script lang="ts">
-  // A Project's Wiki view: a picker of its Repos' Wikis, the open one's
+  // A Project's Wiki view: a picker of its Repos' Wikis and of the Library
+  // versions they link, the open one's
   // header, its Component tree with search over it, the open Component in a
   // reading column and its outline; the tree and the outline as sheets once
   // the window is too narrow for them beside the Component.
@@ -14,7 +15,7 @@
   import Sheet from "./Sheet.svelte";
   import { byKind, search, type Component, type Hit, type Listed, type Wiki } from "./wiki";
 
-  let { project }: { project: Project } = $props();
+  let { project, libraries }: { project: Project; libraries: string[] } = $props();
 
   let listed = $state<Listed[] | null>(null);
   let wiki = $state<Wiki | null>(null);
@@ -43,7 +44,8 @@
     ),
   );
 
-  const wikis = $derived((listed ?? []).filter((w) => project.repos.includes(w.target.repo)));
+  /** The built Wikis of its Repos, then of the Library versions they link, by id. */
+  const wikis = $derived([...project.repos, ...libraries].flatMap((id) => (listed ?? []).filter((w) => w.id === id)));
   /** The Wiki the hash names, or the Project's first. */
   const id = $derived((wikis.find((w) => w.id === selection.wiki) ?? wikis[0])?.id ?? null);
 

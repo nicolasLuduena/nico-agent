@@ -251,6 +251,7 @@ pub fn settings(shown: &mut Value, config: &Config, slug: &str, repo: &Repo) {
             setting(&["faux_nico"], launch(&repo.faux_nico)),
         ),
         ("switches", Value::Object(switches)),
+        ("libraries", setting(&["libraries"], json!(repo.libraries))),
     ];
     for (key, setting) in settings {
         shown[key] = setting;

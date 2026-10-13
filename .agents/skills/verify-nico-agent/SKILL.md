@@ -222,7 +222,10 @@ What the fixtures hold:
 Stable handles are the command words and flags (`--path`, `--json`, `--harness`, `--model`,
 `--effort`, `--sha`, `--findings`), the exit codes, the JSON field names, the routes in `GET` of an
 unknown path's `help`, and on the page the ARIA roles and names: `tablist "Projects"` with one
-`tab` per Project (a Repo with none is its own, named by its slug), `region "Needs you"`, `button
+`tab` per Project (a Repo with none is its own, named by its slug), then `tab "Libraries"` (its
+`tabpanel "Libraries"`: `list "Libraries"` with `button "Remove <id>…"` per version, then `region
+"Add a Library"` with `textbox "Library"`, `textbox "Tag"`, `textbox "Subfolder"` and `button
+"Add"`), `region "Needs you"`, `button
 "Refresh"`, a `region "<project>"` of its defaults unless it is a Repo's own, then a `region
 "<slug>"` per Repo, each holding `switch "Dispatch"` (and `Faux-nico answers`,
 `Flip to ready`, `Gardening`, `Quality-scan`, `Restart`, `Review`, `Stack`, `Wiki`), `spinbutton "Room"`,
@@ -234,7 +237,7 @@ a `link` per Component, `article "<Component>"` with a `region` per kind of Inte
 `button "Outline"`, under 720px `button "Components"` too, each opening its sheet with `button
 "Close"`), `region "Dispatch"` with `button "Dispatch"` (a Repo's only), `region "Readiness"` with a `group` reading `N of M pass` (a Repo's only), `region "Map of <project>"`, `region "Settings"` with
 `combobox "Implementer Harness"` (and `model`, `Effort`, and the same for `Reviewer`), `textbox
-"Base"`, `combobox "Project"` (a Repo's only), `region "Install"` with `textbox "Install"` (a Repo's only), `button "Use the default <Setting>"` or `"Use the
+"Base"`, `combobox "Project"` (a Repo's only), `region "Libraries"` with `button "Unlink <id>"` per version and `form "Link a Library"` (`textbox "Library"`, `textbox "Tag"`, `textbox "Subfolder"`, `button "Link"`) (a Repo's only), `region "Install"` with `textbox "Install"` (a Repo's only), `button "Use the default <Setting>"` or `"Use the
 Project's <Setting>"`, `button "Remove <slug>…"`; a `--click` takes the first match, which is the
 Project's defaults before any Repo's, `region "Add a Repo"` with `textbox "Repo"`, `textbox "Its
 clone"`, `combobox "Its Project"` and `button "Add"`. `run` executes with the run's `work/` as cwd: pass absolute paths (`--findings`).

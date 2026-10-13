@@ -1,12 +1,13 @@
 <script lang="ts">
   // A Repo's panel, in the column right of its Project's map: its Readiness
-  // checks, the Dispatch form, then its room, switches, settings and Install,
-  // then its removal; headed by its slug when the tab holds more than its own.
+  // checks, the Dispatch form, then its room, switches, settings, Library
+  // links and Install, then its removal; headed by its slug when the tab holds more than its own.
   import type { Repo, Status } from "../status";
   import Checks from "./Checks.svelte";
   import DispatchForm from "./DispatchForm.svelte";
   import Install from "./Install.svelte";
   import { inFlight } from "./launch";
+  import Links from "./Links.svelte";
   import Remove from "./Remove.svelte";
   import Room from "./Room.svelte";
   import { patch } from "./send";
@@ -33,6 +34,7 @@
     <Room {holder} live={inFlight(repo, status.dispatches)} />
     <Switches {holder} />
     <Settings {holder} harnesses={repo.harnesses} {repo} projects={status.projects} />
+    <Links {holder} wikis={status.wikis} />
     <Install {repo} />
     <Remove {repo} />
   {/key}

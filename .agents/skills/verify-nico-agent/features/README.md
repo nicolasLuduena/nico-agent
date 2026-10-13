@@ -136,6 +136,11 @@ commands, and observable proof.
   dir reused across versions, covering only its subfolder, an unknown tag failing with why, never
   queued again once built, served by `status`, `/api/wikis`, `/api/wiki/<id>` and the MCP, and a
   bad entry refused at its line.
+- [Libraries on the page](./library-links.md) covers a Repo's Libraries section linking and
+  unlinking versions through `PATCH /api/repo/<slug>`, queued at once, the Libraries tab adding and
+  removing the versions no Repo links (`POST /api/libraries`, `DELETE /api/libraries/<id>`, the
+  Wiki's removal one Bucket commit), the refusal of a linked one, and the Wiki picker listing
+  linked Library Wikis beside the Repos'.
 - [Requests from other sites](./foreign-requests.md) covers the 403 serve answers a foreign or
   missing `Host` and a foreign or `null` `Origin` on a write, and the page, `localhost` and the
   tunnel answered as before.

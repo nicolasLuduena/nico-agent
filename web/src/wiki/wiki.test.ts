@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { anchorUrl, search } from "./wiki";
+import { anchorUrl, libraryId, search } from "./wiki";
 
 test("an Anchor opens GitHub at the Wiki's commit, at its lines, its path escaped", () => {
   const wiki = { target: { repo: "acme/api" }, commit: "abc1234" };
@@ -44,4 +44,9 @@ test("search reads the text as the page shows it: a link's address and the Markd
   expect(search(wiki, "example")).toEqual([]);
   expect(search(wiki, "rfc serde").map((h) => h.text)).toEqual(["Follows the RFC and serde."]);
   expect(search(wiki, "the api").map((h) => h.text)).toEqual(["Serves the API."]);
+});
+
+test("a Library version's Wiki is named by its slug and tag, then its subfolder when it has one", () => {
+  expect(libraryId({ repo: "Effect-TS/effect", tag: "effect@3.17.0", path: "packages/effect" })).toBe("Effect-TS/effect@effect@3.17.0:packages/effect");
+  expect(libraryId({ repo: "acme/kit", tag: "v1" })).toBe("acme/kit@v1");
 });

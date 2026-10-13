@@ -10,11 +10,14 @@
   import { hash } from "./route";
   import { selection } from "./selection.svelte";
   import type { Project, Status } from "./status";
+  import { libraryId } from "./wiki/wiki";
   import WikiView from "./wiki/WikiView.svelte";
 
   let { project, status }: { project: Project; status: Status } = $props();
 
   const repos = $derived(status.repos.filter((r) => project.repos.includes(r.slug)));
+  /** The Library versions its Repos link, by id, each once. */
+  const linked = $derived([...new Set(repos.flatMap((r) => r.libraries.value.map(libraryId)))]);
   /** A Repo's own Project: its panel is the tab's, as before Projects. */
   const own = $derived(project.repos.length === 1 && project.repos[0] === project.name);
 </script>
@@ -30,7 +33,7 @@
 </nav>
 
 {#if selection.view === "wiki"}
-  <WikiView {project} />
+  <WikiView {project} libraries={linked} />
 {:else}
   <div class="work" class:open={selection.issue}>
     <ProjectMap {project} />

@@ -1,4 +1,24 @@
 import { spans } from "../markdown";
+import type { WikiState } from "../status";
+
+/** A GitHub repository at a tag, its Wiki covering only the subfolder `path`, when set. */
+export interface Library {
+  /** owner/name. */
+  repo: string;
+  tag: string;
+  path?: string;
+}
+
+/** The id of a Library version's Wiki, as `/api/wikis` lists it. */
+export const libraryId = (l: Library) => `${l.repo}@${l.tag}${l.path ? `:${l.path}` : ""}`;
+
+/** Where the builds of the Wiki `id` stand, in a line. */
+export function standing(wikis: WikiState[], id: string): string {
+  const w = wikis.find((w) => w.wiki === id);
+  if (!w) return "Wiki not built yet";
+  if (w.state === "failed") return `Wiki failed: ${w.why}`;
+  return w.state === "built" ? `Wiki built at ${w.commit?.slice(0, 7)}` : `Wiki ${w.state}`;
+}
 
 /** A Wiki as `GET /api/wikis` lists it. */
 export interface Listed {
