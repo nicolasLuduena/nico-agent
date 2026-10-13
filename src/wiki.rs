@@ -29,6 +29,7 @@ use crate::away::{self, Run, Trigger};
 use crate::bucket;
 use crate::cli::{Context, Refusal};
 use crate::config::{self, Config, Repo, fill_in};
+use crate::install::base;
 use crate::launch;
 use crate::repo;
 use crate::state;
@@ -270,14 +271,6 @@ pub fn shown(config_dir: &Path, runs: &[Run]) -> io::Result<Vec<Value>> {
             shown
         })
         .collect())
-}
-
-/// The Repo's Base: its own, or its origin's default branch.
-fn base(world: &dyn World, repo: &Repo) -> WorldResult<String> {
-    match &repo.base {
-        Some(base) => Ok(base.clone()),
-        None => world.git_default_branch(&repo.path),
-    }
 }
 
 /// The Repo's Base, and the commit its `origin/<base>` is on, fetched.
@@ -546,7 +539,7 @@ pub fn get(ctx: &Context, id: &str) -> Result<Option<Value>, Refusal> {
     let Some(mut wiki) = kept(ctx, &config, slug)? else {
         return Ok(None);
     };
-    staled(ctx.world, repo, &mut wiki)?;
+    marked(ctx.world, repo, &mut wiki)?;
     Ok(Some(wiki))
 }
 
@@ -555,7 +548,7 @@ pub fn get(ctx: &Context, id: &str) -> Result<Option<Value>, Refusal> {
 /// Interpretation citing a file whose blob there is not the one it was
 /// written against, with how many are, and how many commits the Wiki's is
 /// `behind` the Base.
-pub fn staled(world: &dyn World, repo: &Repo, wiki: &mut Value) -> WorldResult<()> {
+pub fn marked(world: &dyn World, repo: &Repo, wiki: &mut Value) -> WorldResult<()> {
     let base = base(world, repo)?;
     let head = format!("origin/{base}");
     let now: HashMap<String, String> = (world.git_ls_tree_blobs(&repo.path, &head)?)
@@ -884,6 +877,8 @@ fn updated(previous: Wiki, files: &[File]) -> (Vec<Component>, Vec<Part>) {
     new.sort();
     for path in new {
         // It sits under the deepest part holding every file of its nearest folder.
+        // shortcut: a file new at the top, or in a folder split across parts, divides their
+        // parent again from scratch; copy the new parts that keep an old one's files if that costs.
         let folders = (path.rmatch_indices('/'))
             .map(|(n, _)| &path[..=n])
             .chain([""]);
@@ -903,10 +898,19 @@ fn updated(previous: Wiki, files: &[File]) -> (Vec<Component>, Vec<Part>) {
             up = parent(i);
         }
     }
+    let left = |i: usize| all[i].files.iter().any(|f| now.contains_key(f));
     for path in was.keys().filter(|p| !now.contains_key(*p)) {
-        // The deepest part it was in that still has files.
-        let left = |c: &Component| c.files.iter().any(|f| now.contains_key(f));
-        asked.insert(deepest(&|c| c.files.contains(path) && left(c)));
+        let holds = |i: usize| all[i].files.contains(path);
+        // Each part it was in that no part of it holds, or the nearest above it with files left.
+        let lowest = (0..all.len())
+            .filter(|&i| holds(i) && !(0..all.len()).any(|j| parent(j) == Some(i) && holds(j)));
+        for i in lowest {
+            let mut up = Some(i);
+            while let Some(j) = up.filter(|&j| !left(j)) {
+                up = parent(j);
+            }
+            asked.insert(up.unwrap_or(0));
+        }
     }
     #[derive(Clone, Copy, PartialEq)]
     enum Fate {

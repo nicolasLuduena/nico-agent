@@ -162,7 +162,7 @@ fn called(
         }),
         "get_component" => config.and_then(|config| {
             let (slug, repo, mut wiki) = served(&config)?;
-            wiki::staled(ctx.world, &repo, &mut wiki).map_err(|e| e.0)?;
+            wiki::marked(ctx.world, &repo, &mut wiki).map_err(|e| e.0)?;
             component(&slug, &wiki, text(arguments, "id")?)
         }),
         "read_anchor" => config.and_then(|config| {

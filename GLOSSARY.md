@@ -189,8 +189,13 @@ most one per Component. _Avoid_: diagram,
 illustration, figure.
 
 **Stale**: an Interpretation of a Repo's Wiki whose anchored file changed on
-the base since the Wiki's commit; shown as such, never hidden. _Avoid_:
-outdated, invalid.
+the base since it was written; shown as such, never hidden, until a wiki
+build asks about its part again. _Avoid_: outdated, invalid.
+
+**Update**: a wiki build of a Repo's Wiki from the one before it, asking
+again only about the parts whose files changed and copying the rest; a
+parent whose parts changed keeps its Interpretations, Stale where they
+are. _Avoid_: refresh, incremental build.
 
 **Run**: one start of a trigger's agent: a quality-scan, a faux-nico, the
 morning agent or a wiki build, recorded with when it started and when it

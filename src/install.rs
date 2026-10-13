@@ -229,7 +229,7 @@ fn run(world: &dyn World, repo: &Repo, command: &str, at: String) -> Last {
 }
 
 /// The Repo's Base: as set, else origin's default branch.
-fn base(world: &dyn World, repo: &Repo) -> WorldResult<String> {
+pub fn base(world: &dyn World, repo: &Repo) -> WorldResult<String> {
     (repo.base.clone()).map_or_else(|| world.git_default_branch(&repo.path), Ok)
 }
 

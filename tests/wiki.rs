@@ -1174,6 +1174,12 @@ fn built_then_moved(t: &Setup, files: &[(&str, Option<&str>)]) -> Value {
     wiki(t)
 }
 
+/// The part whose prompt names `trail` answers `answer` from now on.
+fn answer_first(t: &Setup, trail: &str, answer: Value) {
+    let line = format!("## The part: {trail}");
+    (t.world.headless.borrow_mut()).insert(0, (line, answer.to_string()));
+}
+
 /// The parts asked about since the calls were cleared, by their trail.
 fn asked(t: &Setup) -> Vec<String> {
     (t.world.calls().iter())
@@ -1381,4 +1387,71 @@ fn an_interpretation_citing_a_file_changed_on_the_base_is_stale_until_an_update_
     let core = &updated["components"][1];
     assert_eq!(core["id"], "core");
     assert!(core["interpretations"][0].get("stale").is_none(), "{core}");
+}
+
+#[test]
+fn update_never_asks_about_a_part_left_with_no_files_when_two_parts_shared_a_removed_one() {
+    let t = with_repo("");
+    // src/config.rs in both Core and Web, as a model may answer.
+    answer(
+        &t,
+        "acme/api",
+        json!({
+            "kind": "division",
+            "overview": "An API.",
+            "components": [
+                { "name": "Core", "summary": "The crate.", "files": ["src/lib.rs", "src/config.rs"] },
+                { "name": "Web", "summary": "The page.", "files": ["web/app.ts", "src/config.rs"] },
+            ],
+        }),
+    );
+    answer(
+        &t,
+        "acme/api > Core",
+        json!({ "kind": "leaf", "overview": "The crate." }),
+    );
+    answer(
+        &t,
+        "acme/api > Web",
+        json!({
+            "kind": "division",
+            "overview": "The page and its config.",
+            "components": [
+                { "name": "Page", "summary": "The page.", "files": ["web/app.ts"] },
+                { "name": "Conf", "summary": "Its config.", "files": ["src/config.rs"] },
+            ],
+        }),
+    );
+    for part in ["Page", "Conf"] {
+        let trail = format!("acme/api > Web > {part}");
+        answer(&t, &trail, json!({ "kind": "leaf", "overview": part }));
+    }
+    let ran = t.cli(&["wiki", "build", "acme/api", "--json"]);
+    assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
+    (t.world.tree.borrow_mut()).remove("/src/api origin/main:src/config.rs");
+    t.world.calls.borrow_mut().clear();
+
+    answer_first(
+        &t,
+        "acme/api > Web",
+        json!({
+            "kind": "division",
+            "overview": "The page.",
+            "components": [{ "name": "Page", "summary": "The page.", "files": ["web/app.ts"] }],
+        }),
+    );
+
+    let ran = t.cli(&["wiki", "build", "acme/api", "--update", "--json"]);
+
+    assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
+    // Web, its Conf left with nothing, is divided again.
+    assert_eq!(
+        asked(&t),
+        ["acme/api > Core", "acme/api > Web", "acme/api > Web > Page"]
+    );
+    let after = wiki(&t);
+    let ids: Vec<&str> = (after["components"].as_array().unwrap().iter())
+        .map(|c| c["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(ids, ["index", "core", "web", "web/page"]);
 }
