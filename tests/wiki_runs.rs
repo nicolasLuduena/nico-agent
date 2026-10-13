@@ -97,6 +97,7 @@ fn a_switch_turned_on_with_no_wiki_starts_its_build_in_a_herdr_pane_at_the_next_
             "built_at": null,
             "gaps": null,
             "pane": "w1:p2",
+            "progress": null,
         }])
     );
 }
@@ -138,6 +139,7 @@ fn a_run_is_closed_on_its_builds_outcome_and_the_wiki_shown_built() {
             "built_at": "2026-09-30T12:10:00Z",
             "gaps": 0,
             "pane": null,
+            "progress": null,
         })
     );
     let runs: Value =
@@ -675,6 +677,7 @@ fn the_wikis_listed_show_their_build_building_with_its_pane_queued_or_failed_wit
             "state": state,
             "pane": pane,
             "why": why,
+            "progress": null,
         })
     };
     assert_eq!(
@@ -726,5 +729,131 @@ fn a_build_a_button_queued_at_the_wiki_hour_leaves_its_base_check_till_it_is_bui
             "acme/api: wiki queued, origin/main moved from abc1234 to def5678",
             "acme/api: wiki started on opencode",
         ]
+    );
+}
+
+/// The build of `acme/api` started at `at`, half-way through its calls, as
+/// `nico-agent wiki build` keeps its progress while it runs.
+fn half_way(t: &Setup, at: &str) {
+    let progress = json!({
+        "at": at, "calls": 48, "made": 17, "depth": 7, "reached": 2,
+        "asked": 15, "sent_back": 2, "gaps": 1, "asking": "acme/api > Core",
+    });
+    let file = t.config_dir.join("wiki/acme/api/progress.json");
+    std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+    std::fs::write(file, progress.to_string()).unwrap();
+}
+
+#[test]
+fn a_building_wiki_shows_its_builds_progress_from_its_runs_start_and_a_queued_one_none() {
+    let t = with_repos(ON);
+    t.tick();
+    // The build starts a few seconds after its Run.
+    half_way(&t, "2026-09-30T12:00:04Z");
+
+    let shown = wikis(&t);
+
+    assert_eq!(
+        shown[0]["progress"],
+        json!({
+            "at": "2026-09-30T12:00:00Z",
+            "calls": 48, "made": 17, "depth": 7, "reached": 2,
+            "asked": 15, "sent_back": 2, "gaps": 1, "asking": "acme/api > Core",
+        })
+    );
+    assert_eq!(
+        (&shown[1]["state"], &shown[1]["progress"]),
+        (&json!("queued"), &Value::Null)
+    );
+}
+
+#[test]
+fn a_build_whose_pane_died_shows_no_progress_once_its_run_closed_nor_in_the_next_run() {
+    let t = with_repos("");
+    t.tick();
+    t.send("PATCH", "/api/repo/acme/api/switches", r#"{"wiki": true}"#);
+    t.tick();
+    half_way(&t, "2026-09-30T12:00:00Z");
+    t.world.gone_panes.borrow_mut().push("w1:p2".into());
+    t.world.advance(TICK);
+    t.tick();
+    let failed = wikis(&t);
+    t.send("POST", "/api/wiki/acme/api/rebuild", "");
+    t.world.advance(TICK);
+    t.tick();
+
+    let again = wikis(&t);
+
+    assert_eq!(
+        (&failed[0]["state"], &failed[0]["progress"]),
+        (&json!("failed"), &Value::Null)
+    );
+    assert_eq!(
+        (&again[0]["state"], &again[0]["pane"], &again[0]["progress"]),
+        (&json!("building"), &json!("w2:p2"), &Value::Null)
+    );
+}
+
+#[test]
+fn the_wikis_listed_hold_one_not_built_yet_while_queued_building_with_its_progress_or_failed() {
+    let t = with_repos(ON);
+    t.tick();
+    half_way(&t, "2026-09-30T12:00:00Z");
+    let building = t.get("/api/wikis");
+    t.world.gone_panes.borrow_mut().push("w1:p2".into());
+    t.world.advance(TICK);
+    t.tick();
+
+    let failed = t.get("/api/wikis");
+
+    let shown = |id: &str, state: &str, pane: Value, why: Value, progress: Value| {
+        json!({
+            "id": id,
+            "target": { "repo": id },
+            "commit": null,
+            "builtAt": null,
+            "gaps": 0,
+            "budget": 0,
+            "calls": 48,
+            "state": state,
+            "pane": pane,
+            "why": why,
+            "progress": progress,
+        })
+    };
+    let progress = json!({
+        "at": "2026-09-30T12:00:00Z",
+        "calls": 48, "made": 17, "depth": 7, "reached": 2,
+        "asked": 15, "sent_back": 2, "gaps": 1, "asking": "acme/api > Core",
+    });
+    assert_eq!(
+        building,
+        (
+            200,
+            json!([
+                shown(
+                    "acme/api",
+                    "building",
+                    json!("w1:p2"),
+                    Value::Null,
+                    progress
+                ),
+                shown("acme/web", "queued", Value::Null, Value::Null, Value::Null),
+            ])
+        )
+    );
+    let why = json!("its pane is gone without an outcome");
+    assert_eq!(
+        failed.1,
+        json!([
+            shown("acme/api", "failed", Value::Null, why, Value::Null),
+            shown(
+                "acme/web",
+                "building",
+                json!("w2:p2"),
+                Value::Null,
+                Value::Null
+            ),
+        ])
     );
 }

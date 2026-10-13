@@ -193,7 +193,7 @@ pub fn shown(
         .collect();
     let mut shown = json!({
         "projects": projects, "repos": repos, "sources": sources, "dispatches": shown_dispatches,
-        "wikis": wiki::shown(&ctx.config_dir, &runs)?,
+        "wikis": wiki::shown(&ctx.config_dir, config, &runs)?,
     });
     if let Some(morning) = away::last_morning(&runs) {
         shown["morning"] = json!(morning);

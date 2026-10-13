@@ -49,6 +49,7 @@ fn queued(id: &str) -> Value {
         "built_at": null,
         "gaps": null,
         "pane": null,
+        "progress": null,
     }])
 }
 

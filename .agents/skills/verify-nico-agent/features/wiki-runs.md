@@ -13,7 +13,7 @@ failed build after it), why its last build failed, and the open Run's pane. No W
 
 - `wiki-runs-queued` with the switch on and no Wiki, a refresh says `<slug>: wiki queued, it has none` and starts its build: `herdr workspace create --cwd <clone> --label wiki-<repo>`.
 - `wiki-runs-failed-start` a start that fails is said (`could not start the wiki of <slug>: ...`), and the next refresh closes the Run failed with that why, kept in `wikis.json`.
-- `wiki-runs-status` `status --json` `wikis[]`: `state` `building` while its Run is open (`pane` its pane, null when its start failed), then `failed` with `why` and `failed_at`, or `built` with `commit`, `built_at` and `gaps`.
+- `wiki-runs-status` `status --json` `wikis[]`: `state` `building` while its Run is open (`pane` its pane, null when its start failed; `progress` how far its build got: [wiki-progress.md](./wiki-progress.md)), then `failed` with `why` and `failed_at`, or `built` with `commit`, `built_at` and `gaps`.
 - `wiki-runs-once` a failed build is not queued again before the next wiki hour, unless the switch goes off and on.
 - `wiki-runs-unmoved` a Wiki whose commit is still `origin/main`'s is not queued; a Base that moves later that day waits for the next day's check.
 - `wiki-runs-moved` a Wiki whose `origin/main` moved is queued: `<slug>: wiki queued, origin/main moved from <old> to <new>`.
@@ -44,7 +44,7 @@ Queued with no Wiki, failed at herdr:
   `verify/fixture: wiki queued, it has none`, then ``could not start the wiki of verify/fixture:
   `herdr workspace create` failed: verify_stub: herdr is a stub in this verification run``.
 - **Building.** `$C run --evidence "$E/03-status-building" -- status --json`: `wikis` is
-  `[{"wiki":"verify/fixture","target":{"repo":"verify/fixture"},"state":"building","commit":null,"built_at":null,"gaps":null,"pane":null}]`.
+  `[{"wiki":"verify/fixture","target":{"repo":"verify/fixture"},"state":"building","commit":null,"built_at":null,"gaps":null,"pane":null,"progress":null}]`.
 - **Closed failed.** `$C http --evidence "$E/04-refresh-failed" POST /api/refresh`: `actions` has
   ``verify/fixture: wiki failed: `herdr workspace create` failed: verify_stub: ...``; `$C run
   --evidence "$E/05-status-failed" -- status --json`: `state` `failed`, `why` that error, `failed_at`.
