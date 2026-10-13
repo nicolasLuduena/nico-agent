@@ -4,7 +4,7 @@
 clone's remote points at that slug, and with `--project` names the Project it joins; `repo list`
 shows each Repo with its defaults filled in; `repo rm` stops the loop working one and says what
 stays. The first `repo add` also makes the Bucket. The page does the same: `Add a Repo` under the
-tabs runs `repo add` through `POST /api/repo`, and `Remove <slug>…` in a Repo's tab runs `repo rm`
+tabs runs `repo add` through `POST /api/repo`, and `Remove <slug>…` in a Repo's panel runs `repo rm`
 through `DELETE /api/repo/<slug>`, refused while the Repo has a Dispatch In flight.
 
 ## Sub-features
@@ -19,8 +19,8 @@ through `DELETE /api/repo/<slug>`, refused while the Repo has a Dispatch In flig
 - `repo-rm` removes a Repo, keeping its clone (`stays`); a second `rm` is a no-op.
 - `repo-usage` `repo` with no subcommand is exit 2 with the three usage lines.
 - `repo-add-project` `--project <name>` writes `project = "<name>"`; adding again without it keeps it.
-- `repo-page-add` the page's `region "Add a Repo"` sends `POST /api/repo {slug, path, project}`, answered as `repo add`; the new Repo's tab opens.
-- `repo-page-remove` `button "Remove <slug>…"`, then `button "Remove <slug>"`, sends `DELETE /api/repo/<slug>`, answered as `repo rm`; its tab goes.
+- `repo-page-add` the page's `region "Add a Repo"` sends `POST /api/repo {slug, path, project}`, answered as `repo add`; the tab of the new Repo's Project opens.
+- `repo-page-remove` `button "Remove <slug>…"`, then `button "Remove <slug>"`, sends `DELETE /api/repo/<slug>`, answered as `repo rm`; its panel goes, and its Project's tab with it when it held no other Repo.
 - `repo-page-remove-refused` with a Dispatch In flight the DELETE is 409, `<slug> has a Dispatch In flight: <issue>`, shown under the button; nothing written.
 - `repo-api-refused` a POST without a path, or with a field not a string, is 400 with the `repo add` usage.
 
@@ -28,9 +28,9 @@ through `DELETE /api/repo/<slug>`, refused while the Repo has a Dispatch In flig
 
 - Run `nico-agent repo add <owner/name> --path <clone>` in a terminal.
 - Run `nico-agent repo list` and `nico-agent repo rm <owner/name>`.
-- See the result on the page: one tab per Repo in `tablist "Repos"` (see page-tabs-strip).
+- See the result on the page: one tab per Project in `tablist "Projects"`, a panel per Repo in it (see project-tabs).
 - On the page: fill `Repo`, `Its clone` and, if any, `Its Project` under `Add a Repo`, and press
-  `Add`; in a Repo's tab press `Remove <slug>…`, then `Remove <slug>` (or `Keep it`).
+  `Add`; in a Repo's panel press `Remove <slug>…`, then `Remove <slug>` (or `Keep it`).
 - From a script: `POST /api/repo {slug, path, project}`, `DELETE /api/repo/<owner/name>`.
 
 ## Driving it with control-nico-agent
@@ -69,12 +69,12 @@ Preconditions:
   Exit `0`, `verify/second added`; `config.toml`'s `[repos."verify/second"]` has `project = "verify"`.
   `$C run --evidence "$E/15-add-again" -- repo add verify/second --path "$SECOND_CLONE" --json`:
   `already added (no-op)`, `project` kept.
-- **Remove on the page.** Run `$C page --evidence "$E/16-page-remove" --click "tab=verify/second" --click "button=Remove verify/second…" --expect "Its clone stays" --click "button=Remove verify/second" --gone "Remove verify/second"`.
-  `.requests.txt` has `DELETE /api/repo/verify/second -> 200`; the snapshot's `tablist "Repos"`
-  holds `tab "verify/fixture"` alone; `config.toml` has no `verify/second`.
+- **Remove on the page.** Run `$C page --evidence "$E/16-page-remove" --click "tab=verify" --click "button=Remove verify/second…" --expect "Its clone stays" --click "button=Remove verify/second" --gone "Remove verify/second"`.
+  `.requests.txt` has `DELETE /api/repo/verify/second -> 200`; the snapshot's `tablist "Projects"`
+  holds `tab "verify/fixture"` alone (Project verify has no Repo left, so no tab); `config.toml` has no `verify/second`.
 - **Add on the page.** Run `$C page --evidence "$E/17-page-add" --click "textbox=Repo" --type verify/second --click "textbox=Its clone" --type "$SECOND_CLONE" --click "combobox=Its Project" --type verify --click "button=Add" --expect "verify/second added"`.
   `.requests.txt` has `POST /api/repo {"slug":"verify/second","path":"$SECOND_CLONE","project":"verify"} -> 200`;
-  the snapshot has `tab "verify/second" [selected]`; `config.toml` has it again with `project = "verify"`.
+  the snapshot has `tab "verify" [selected]`, its Project's, holding `region "verify/second"`; `config.toml` has it again with `project = "verify"`.
 - **The routes.** `$C http --evidence "$E/18-post-no-path" POST /api/repo '{"slug":"verify/x"}'`:
   `400`, `missing required flag --path`, help the `repo add` usage. `$C http --evidence
   "$E/19-delete" DELETE /api/repo/verify%2Fsecond`: `200`, `{"repo":"verify/second removed","stays":[...]}`.

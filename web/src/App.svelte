@@ -6,7 +6,7 @@
   import Morning from "./Morning.svelte";
   import { flash } from "./motion";
   import NeedsYou from "./NeedsYou.svelte";
-  import RepoTab from "./RepoTab.svelte";
+  import ProjectTab from "./ProjectTab.svelte";
   import { selection } from "./selection.svelte";
   import type { Status } from "./status";
   import { needsYou } from "./strip";
@@ -27,33 +27,39 @@
     ),
   );
 
-  const repos = $derived(status?.repos ?? []);
-  const repo = $derived(repos.find((r) => r.slug === selection.repo) ?? repos[0]);
+  /** A tab per Project with a Repo: a Repo naming none is its own. */
+  const projects = $derived(status?.projects.filter((p) => p.repos.length > 0) ?? []);
+  const project = $derived(projects.find((p) => p.name === selection.project) ?? projects[0]);
+  const at = $derived(projects.indexOf(project));
+  /** The Project's oldest time of `key`, which holds for each of its Repos; none while any has none. */
+  const oldest = (key: "read_at" | "prs_checked_at") => {
+    const times = (status?.repos ?? []).filter((r) => project.repos.includes(r.slug)).map((r) => r[key]);
+    return times.includes(null) ? null : times.sort()[0];
+  };
 
-  function show(slug: string) {
-    selection.repo = slug;
+  function show(name: string) {
+    selection.project = name;
     selection.issue = null;
   }
 
-  /** The read times flash once when a read moves them, not when another Repo's tab shows its own. */
-  function moved(el: HTMLElement, [slug, times]: [string, string]) {
+  /** The read times flash once when a read moves them, not when another Project's tab shows its own. */
+  function moved(el: HTMLElement, [name, times]: [string, string]) {
     return {
-      update([nextSlug, nextTimes]: [string, string]) {
-        if (nextSlug === slug && nextTimes !== times) flash(el);
-        [slug, times] = [nextSlug, nextTimes];
+      update([nextName, nextTimes]: [string, string]) {
+        if (nextName === name && nextTimes !== times) flash(el);
+        [name, times] = [nextName, nextTimes];
       },
     };
   }
 
   /** The tabs' arrow keys, Home and End: the next tab shows, and takes focus. */
   function step(event: KeyboardEvent) {
-    const at = repos.indexOf(repo);
-    const to = { ArrowRight: at + 1, ArrowLeft: at - 1, Home: 0, End: repos.length - 1 }[event.key];
+    const to = { ArrowRight: at + 1, ArrowLeft: at - 1, Home: 0, End: projects.length - 1 }[event.key];
     if (to === undefined) return;
     event.preventDefault();
-    const slug = repos[(to + repos.length) % repos.length].slug;
-    show(slug);
-    document.getElementById(`tab-${slug}`)?.focus();
+    const next = (to + projects.length) % projects.length;
+    show(projects[next].name);
+    document.getElementById(`tab-${next}`)?.focus();
   }
 </script>
 
@@ -73,43 +79,45 @@
   {/if}
 
   {#if status}
-    <NeedsYou needs={needsYou(status)} />
+    <NeedsYou needs={needsYou(status)} projects={status.projects} />
 
-    {#if repo}
+    {#if project}
+      {@const read = oldest("read_at")}
+      {@const checked = oldest("prs_checked_at")}
       <div class="bar">
-        <div class="tabs" role="tablist" aria-label="Repos">
-          {#each repos as r (r.slug)}
+        <div class="tabs" role="tablist" aria-label="Projects">
+          {#each projects as p, i (p.name)}
             <button
               type="button"
               role="tab"
-              id="tab-{r.slug}"
-              aria-selected={r === repo}
-              aria-controls="repo-tab"
-              tabindex={r === repo ? 0 : -1}
-              onclick={() => show(r.slug)}
-              onkeydown={step}>{r.slug}</button
+              id="tab-{i}"
+              aria-selected={p === project}
+              aria-controls="project-tab"
+              tabindex={p === project ? 0 : -1}
+              onclick={() => show(p.name)}
+              onkeydown={step}>{p.name}</button
             >
           {/each}
         </div>
         <label class="pick">
-          <span class="label">Repo</span>
-          <select value={repo.slug} onchange={(e) => show(e.currentTarget.value)}>
-            {#each repos as r (r.slug)}
-              <option value={r.slug}>{r.slug}</option>
+          <span class="label">Project</span>
+          <select value={project.name} onchange={(e) => show(e.currentTarget.value)}>
+            {#each projects as p (p.name)}
+              <option value={p.name}>{p.name}</option>
             {/each}
           </select>
         </label>
-        <!-- Beside the tabs; above them when long Repo names leave no room, so the tabs stay on the baseline. -->
+        <!-- Beside the tabs; above them when long Project names leave no room, so the tabs stay on the baseline. -->
         <div class="read">
-          <p class="times" use:moved={[repo.slug, `${repo.read_at} ${repo.prs_checked_at}`]}>
-            {repo.read_at ? `Source read ${clock(repo.read_at)}` : "Source not read yet"}
-            · {repo.prs_checked_at ? `PRs checked ${clock(repo.prs_checked_at)}` : "PRs not checked yet"}
+          <p class="times" use:moved={[project.name, `${read} ${checked}`]}>
+            {read ? `Source read ${clock(read)}` : "Source not read yet"}
+            · {checked ? `PRs checked ${clock(checked)}` : "PRs not checked yet"}
           </p>
           <Refresh />
         </div>
       </div>
-      <div role="tabpanel" id="repo-tab" aria-labelledby="tab-{repo.slug}">
-        <RepoTab {repo} {status} />
+      <div role="tabpanel" id="project-tab" aria-labelledby="tab-{at}">
+        <ProjectTab {project} {status} />
       </div>
     {:else}
       <p class="none">No Repo yet. Add one here, or with <code>nico-agent repo add &lt;owner/name&gt; --path &lt;clone&gt;</code>.</p>
@@ -154,7 +162,7 @@
     column-gap: 24px;
     margin-right: auto;
   }
-  /* Each Repo's name heads its work, set as DESIGN.md's `head`, its rule as wide as the name. */
+  /* Each Project's name heads its work, set as DESIGN.md's `head`, its rule as wide as the name. */
   [role="tab"] {
     padding: 10px 0 8px;
     border: 0;
@@ -193,7 +201,7 @@
     text-align: right;
   }
 
-  /* The tabs become one select named Repo; the read times and Refresh wrap under it. */
+  /* The tabs become one select named Project; the read times and Refresh wrap under it. */
   @media (width < 720px) {
     .bar {
       flex-wrap: wrap;

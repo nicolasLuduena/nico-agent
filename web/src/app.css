@@ -153,3 +153,25 @@ code {
   color: var(--ink-muted);
   cursor: progress;
 }
+
+/* A panel of the column right of the map: a Repo's, or its Project's defaults. */
+.controls {
+  display: grid;
+  gap: 16px;
+  padding: 16px;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+}
+.controls h2 {
+  font-size: 14px;
+}
+/* DESIGN.md's `head`: the Repo's or Project's name heading its panel. */
+.controls h2.head {
+  font-size: 22px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.controls > section + section {
+  padding-top: 16px;
+  border-top: 1px solid var(--hairline);
+}

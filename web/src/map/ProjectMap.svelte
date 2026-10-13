@@ -6,17 +6,18 @@
 </script>
 
 <script lang="ts">
-  // The Repo's map from /api/map/<repo>, refetched on every `changed`: dagre
-  // lays it out left to right, the field pans and zooms, a node opens its panel.
+  // The Project's map from /api/map/<project>, refetched on every `changed`:
+  // dagre lays it out left to right, the field pans and zooms, a node opens its
+  // panel. With more than one Repo, each node names its Repo after its number.
   import { tick, untrack } from "svelte";
   import { watch } from "../live";
   import { still } from "../motion";
   import { selection } from "../selection.svelte";
-  import { number, type Repo } from "../status";
+  import { number, repoName, type Project } from "../status";
   import { layout, NODE, withoutMerged, type Placed } from "./layout";
   import Mark, { worded } from "./Mark.svelte";
 
-  let { repo }: { repo: Repo } = $props();
+  let { project }: { project: Project } = $props();
 
   const PAD = 16;
   let failure = $state<string | null>(null);
@@ -25,11 +26,11 @@
   let width = $state(0);
   let height = $state(0);
   let view = $state({ x: PAD, y: PAD, k: 1 });
-  /** The Repo the view was last fitted to, and the issue it last panned to. */
+  /** The Project the view was last fitted to, and the issue it last panned to. */
   let fitted: string | null = null;
   let panned: string | null = null;
 
-  // "Hide merged", remembered in this browser for every Repo's map.
+  // "Hide merged", remembered in this browser for every Project's map.
   const HIDE_MERGED = "nico-agent.hide-merged";
   let hideMerged = $state(remembered());
   function remembered() {
@@ -53,11 +54,11 @@
   const drawn = $derived(shown.map && layout(hideMerged ? withoutMerged(shown.map) : shown.map));
 
   $effect(() => {
-    const slug = repo.slug;
+    const name = project.name;
     shown.map = null;
     failure = null;
     return watch<MapData>(
-      `/api/map/${slug}`,
+      `/api/map/${encodeURIComponent(name)}`,
       (got) => {
         const before = new Map(shown.map?.nodes.map((n) => [n.key, n.stage]));
         flashed = new Set(got.nodes.filter((n) => before.has(n.key) && before.get(n.key) !== n.stage).map((n) => n.key));
@@ -79,8 +80,8 @@
   const closer = $derived(view.k > scale);
 
   $effect(() => {
-    if (drawn && width && fitted !== repo.slug) {
-      fitted = repo.slug;
+    if (drawn && width && fitted !== project.name) {
+      fitted = project.name;
       untrack(() => (view = home()));
     }
   });
@@ -180,10 +181,11 @@
     zoom(Math.exp(-e.deltaY * 0.002), { x: e.clientX, y: e.clientY });
   }
 
-  /** Fit `text` into `room` px, ellipsized, once the font is in. */
-  function fit_text(el: SVGTextElement, [text, room]: [string, number]) {
+  /** Fit `text`, ellipsized, to end by the node's `end` px, once the font is in; a tspan starts after what comes before it. */
+  function fit_text(el: SVGTextContentElement, [text, end]: [string, number]) {
     const set = () => {
       el.textContent = text;
+      const room = end - el.getStartPositionOfChar(0).x;
       if (el.getComputedTextLength() <= room) return;
       let n = text.length;
       try {
@@ -197,7 +199,7 @@
     void document.fonts.ready.then(set);
     return {
       update(next: [string, number]) {
-        [text, room] = next;
+        [text, end] = next;
         set();
       },
     };
@@ -219,7 +221,7 @@
   function said(n: Placed) {
     const a = agent(n);
     return [
-      number(n.key, repo.slug),
+      [number(n.key, n.repo ?? ""), repoName(n.repo, project.repos)].filter(Boolean).join(" "),
       n.title ?? "",
       n.stage ?? "Blocker",
       a && `agent ${a}`,
@@ -234,7 +236,7 @@
 
 <section
   class="field"
-  aria-label="Map of {repo.slug}"
+  aria-label="Map of {project.name}"
   style:--drawn={tall}
   bind:this={field}
   bind:clientWidth={width}
@@ -275,6 +277,7 @@
         {/each}
         {#each drawn.nodes as n (n.key)}
           {@const a = agent(n)}
+          {@const repo = repoName(n.repo, project.repos)}
           <g
             class="node"
             data-key={n.key}
@@ -293,11 +296,18 @@
             <rect class="frame" x="0.5" y="0.5" width={NODE.width - 1} height={n.height - 1} />
             {#if n.needs}<rect class="flag" width={NODE.width} height="4" />{/if}
             {#if n.stage === "Failed"}<rect class="failed" width="4" height={n.height} />{/if}
-            <text class="number" x="12" y="30" use:fit_text={[number(n.key, repo.slug), 140]}></text>
+            {#if repo}
+              <text x="12" y="30"
+                ><tspan class="number">{number(n.key, n.repo ?? "")}</tspan><tspan class="repo" dx="8" use:fit_text={[repo, 152]}
+                ></tspan></text
+              >
+            {:else}
+              <text class="number" x="12" y="30" use:fit_text={[number(n.key, n.repo ?? ""), 152]}></text>
+            {/if}
             <!-- Nearly every node is code: only the exception is labelled. -->
             {#if n.kind !== "code"}<text class="kind" x="236" y="27">{n.kind.toUpperCase()}</text>{/if}
             {#if n.title}
-              <text class="title" x="12" y="53" use:fit_text={[n.title, 224]}></text>
+              <text class="title" x="12" y="53" use:fit_text={[n.title, 236]}></text>
             {:else}
               <text class="title unknown" x="12" y="53">Title not read</text>
             {/if}
@@ -441,6 +451,10 @@
     font-weight: 700;
     letter-spacing: -0.01em;
   }
+  .repo {
+    fill: var(--ink-muted);
+    font-weight: 600;
+  }
   .kind {
     fill: var(--ink-muted);
     font-weight: 600;
@@ -508,6 +522,7 @@
   }
   .selected text,
   .selected .stage,
+  .selected .repo,
   .selected .unknown,
   .selected .draft,
   .selected .review {

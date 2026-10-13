@@ -7,10 +7,10 @@
   import { watch } from "../live";
   import { selection } from "../selection.svelte";
   import * as review from "../review";
-  import { number, type Review, type Stage } from "../status";
+  import { number, repoName, type Project, type Review, type Stage } from "../status";
   import { clock } from "../time";
   import Mark, { worded } from "./Mark.svelte";
-  import { shown } from "./RepoMap.svelte";
+  import { shown } from "./ProjectMap.svelte";
 
   /** What `GET /api/node/<issue>` answers: the issue's last Dispatch, as /api/status shows it, with its Evidence. */
   interface Node {
@@ -23,7 +23,7 @@
     evidence: { path: string; url: string }[];
   }
 
-  let { issue, slug }: { issue: string; slug: string } = $props();
+  let { issue, project }: { issue: string; project: Project } = $props();
 
   /** The Stages only a Dispatch has: any other node has no /api/node (it answers 404). */
   const DISPATCHED: Stage[] = ["Implementing", "PR draft", "Verified", "Merged", "Closed", "Failed"];
@@ -95,7 +95,9 @@
     <div class="line">
       <h2 id="panel-title" tabindex="-1" bind:this={title}>
         {node?.title ?? issue}
-        {#if node?.url}<a href={node.url} target="_blank" rel="noreferrer">{number(issue, slug)}</a>{/if}
+        {#if node?.url}<a href={node.url} target="_blank" rel="noreferrer"
+            >{[number(issue, node.repo ?? ""), repoName(node.repo, project.repos)].filter(Boolean).join(" ")}</a
+          >{/if}
       </h2>
       <button type="button" class="quiet" onclick={close}>Close</button>
     </div>
@@ -109,7 +111,7 @@
   </header>
 
   {#if !node}
-    <p class="note">{shown.map ? `${issue} is not on this Repo's map.` : "Reading the map…"}</p>
+    <p class="note">{shown.map ? `${issue} is not on this Project's map.` : "Reading the map…"}</p>
   {:else}
     {#if failure}<p class="errata"><strong>{failure}</strong></p>{/if}
 

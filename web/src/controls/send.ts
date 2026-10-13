@@ -15,3 +15,6 @@ export async function send(method: string, path: string, body?: unknown): Promis
 
 /** Set the Repo `slug`'s own settings, `body` as `PATCH /api/repo/<slug>` takes it; it answers the Repo's settings after. */
 export const patch = (slug: string, body: Record<string, unknown>) => send("PATCH", `/api/repo/${slug}`, body);
+
+/** Set the Project `name`'s defaults, `body` as `PATCH /api/project/<name>` takes it; it answers its settings after. */
+export const patchProject = (name: string, body: Record<string, unknown>) => send("PATCH", `/api/project/${encodeURIComponent(name)}`, body);
