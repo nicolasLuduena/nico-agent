@@ -294,6 +294,12 @@ impl World for Guarded<'_> {
     fn notify(&self, title: &str, body: &str) -> WorldResult<()> {
         self.world.notify(title, body)
     }
+    fn read_line(&self) -> WorldResult<Option<String>> {
+        self.world.read_line()
+    }
+    fn write_line(&self, line: &str) -> WorldResult<()> {
+        self.world.write_line(line)
+    }
     fn log(&self, line: &str) {
         self.world.log(line)
     }

@@ -62,8 +62,13 @@ pub fn keep(
     world.git_commit(bucket, &kept, message).map_err(refused)
 }
 
-/// Commit `text` as the Wiki of the Repo `slug`, at `wiki/<slug>/wiki.json`,
-/// with `message`, the Bucket made first if it is missing.
+/// Where the Bucket keeps the Wiki of the Repo `slug`.
+pub fn wiki(slug: &str) -> String {
+    format!("wiki/{slug}/wiki.json")
+}
+
+/// Commit `text` as the Wiki of the Repo `slug`, at [`wiki`], with
+/// `message`, the Bucket made first if it is missing.
 pub fn keep_wiki(
     ctx: &Context,
     config: &Config,
@@ -73,7 +78,7 @@ pub fn keep_wiki(
 ) -> Result<(), Refusal> {
     let (world, _lock) = (ctx.world, lock(ctx)?);
     made(world, config)?;
-    let (bucket, kept) = (&config.bucket.path, format!("wiki/{slug}/wiki.json"));
+    let (bucket, kept) = (&config.bucket.path, wiki(slug));
     (world.write_file(&format!("{bucket}/{kept}"), text.as_bytes()))
         .and_then(|()| world.git_commit(bucket, &kept, message))
         .map_err(refused)

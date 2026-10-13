@@ -2,7 +2,7 @@
 //! recorded in order as the command it stands for, in `main`'s shapes.
 
 use std::cell::{Cell, RefCell};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::time::{Duration, SystemTime};
 
 use nico_agent::world::*;
@@ -86,6 +86,10 @@ pub struct FakeWorld {
     /// What a headless call answers, by a line its prompt holds; a call
     /// whose prompt holds none of them fails.
     pub headless: RefCell<Vec<(String, String)>>,
+    /// The lines stdin holds still, read in order; closed once they are read.
+    pub stdin: RefCell<VecDeque<String>>,
+    /// The lines written to stdout, in order.
+    pub stdout: RefCell<Vec<String>>,
     workspaces: Cell<u32>,
     tabs: RefCell<HashMap<String, u32>>,
 }
@@ -132,6 +136,8 @@ impl Default for FakeWorld {
             shell_runs: Default::default(),
             utc_offset: Cell::new(0),
             headless: Default::default(),
+            stdin: Default::default(),
+            stdout: Default::default(),
             workspaces: Cell::new(0),
             tabs: Default::default(),
         }
@@ -820,6 +826,15 @@ impl World for FakeWorld {
     fn listen(&self, port: u16, handler: Handler) -> WorldResult<()> {
         self.call(format!("listen 127.0.0.1:{port}"))?;
         *self.listening.borrow_mut() = Some(handler);
+        Ok(())
+    }
+
+    fn read_line(&self) -> WorldResult<Option<String>> {
+        Ok(self.stdin.borrow_mut().pop_front())
+    }
+
+    fn write_line(&self, line: &str) -> WorldResult<()> {
+        self.stdout.borrow_mut().push(line.into());
         Ok(())
     }
 

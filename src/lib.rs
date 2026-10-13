@@ -13,6 +13,7 @@ pub mod http;
 pub mod install;
 pub mod launch;
 pub mod map;
+pub mod mcp;
 pub mod pause;
 pub mod rebase;
 pub mod refresh;

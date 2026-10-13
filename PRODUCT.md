@@ -48,7 +48,9 @@ it binds the rebuild.
   a cheap model through headless Harness calls that code checks, kept in
   the Bucket, read on the Project's tab and by agents through `nico-agent
   mcp`: the Implementer, Reviewer and quality-scan ask about the Libraries
-  their Repo uses, faux-nico and morning about the Repo itself.
+  their Repo uses, faux-nico and morning about the Repo itself, and the
+  user's own Claude Code about all of them once added with `claude mcp add
+  wiki -- nico-agent mcp` (`-s user` for every project).
 - **Local first.** What GitHub or Linear said is kept locally and shown from
   there. A PR is asked about again only while it can still change; merged and
   closed are kept forever. Refresh re-asks on purpose. Rate limits and

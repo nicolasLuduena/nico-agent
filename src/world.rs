@@ -430,6 +430,12 @@ pub trait World {
     /// while this thread goes on; fails when the port cannot be taken.
     fn listen(&self, port: u16, handler: Handler) -> WorldResult<()>;
 
+    // stdio
+    /// The next line on stdin, without its line ending; `None` once stdin is closed.
+    fn read_line(&self) -> WorldResult<Option<String>>;
+    /// Write `line` and a newline to stdout, at once.
+    fn write_line(&self, line: &str) -> WorldResult<()>;
+
     // log
     /// Write a line to `serve`'s log: stderr, which journald keeps for a service.
     fn log(&self, line: &str);
@@ -1692,6 +1698,19 @@ impl World for RealWorld {
             }
         });
         Ok(())
+    }
+    fn read_line(&self) -> WorldResult<Option<String>> {
+        let mut line = String::new();
+        match io::stdin().lock().read_line(&mut line) {
+            Ok(0) => Ok(None),
+            Ok(_) => Ok(Some(line.trim_end_matches(['\n', '\r']).into())),
+            Err(e) => Err(WorldError(format!("could not read stdin: {e}"))),
+        }
+    }
+    fn write_line(&self, line: &str) -> WorldResult<()> {
+        let mut out = io::stdout().lock();
+        (writeln!(out, "{line}").and_then(|()| out.flush()))
+            .map_err(|e| WorldError(format!("could not write stdout: {e}")))
     }
     fn log(&self, line: &str) {
         eprintln!("{line}");
