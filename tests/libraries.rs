@@ -600,6 +600,31 @@ fn serve_lists_a_library_wiki_and_answers_it_by_its_id() {
 }
 
 #[test]
+fn rebuild_queues_a_built_library_version_and_the_tick_starts_it_as_asked() {
+    let t = with_built_library();
+    // Built, a tag's Wiki is never queued again but by a button.
+    assert!(t.tick().is_empty());
+
+    let queued = t.send(
+        "POST",
+        "/api/wiki/Effect-TS%2Feffect%40effect%403.17.0%3Apackages%2Feffect/rebuild",
+        "",
+    );
+    let (said, calls) = calls_after(&t, || t.tick());
+
+    assert_eq!(
+        queued,
+        (
+            200,
+            json!({ "wiki": EFFECT, "build": "rebuild", "waiting": [EFFECT] })
+        )
+    );
+    assert_eq!(said, [format!("{EFFECT}: wiki started on opencode")]);
+    let run = format!("herdr pane run w1:p2 nico-agent wiki build {EFFECT} --rebuild; exit");
+    assert_eq!(started(&calls).last(), Some(&run.as_str()));
+}
+
+#[test]
 fn a_projects_libraries_are_linked_by_its_repos_and_a_repos_own_replace_them() {
     let t = setup();
     std::fs::create_dir_all(&t.config_dir).unwrap();
