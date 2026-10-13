@@ -125,7 +125,8 @@ fn each_failing_check_says_what_will_break_and_the_help_to_fix_it() {
                     install("verdict", "~/.codex/skills, ~/.agents/skills, /src/api/.agents/skills"),
                 ].join("; "),
             ),
-            failing("bot", "the GitHub App is not installed on acme/api", "Install it on acme/api, or its PRs are opened as you, not the bot"),
+            // Without the App its PRs are opened as the user, a choice, not a failure.
+            { "name": "bot", "ok": true, "said": "the GitHub App is not installed on acme/api, so its PRs are opened as you", "help": null },
         ])
     );
     // origin did not answer: the Base's tip is the clone's, unfetched.
@@ -282,9 +283,23 @@ fn the_skills_check_asks_for_faux_nico_and_quality_scan_only_while_their_switche
         ]
     );
     assert_eq!(
-        results[4]["said"],
+        results[3]["said"],
         "no faux-nico skill for opencode, faux-nico's Harness"
     );
+}
+
+#[test]
+fn a_repo_that_does_not_review_has_no_verification_check() {
+    let t = ready();
+    set_repo(&t, "switches = { review = false }\n");
+
+    let results = served(&t);
+
+    let names: Vec<&str> = (results.as_array().unwrap().iter())
+        .map(|r| r["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(names, ["clone", "fetch", "evidence", "skills", "bot"]);
+    assert!(!t.world.calls().iter().any(|c| c.contains(" ls-tree ")));
 }
 
 #[test]

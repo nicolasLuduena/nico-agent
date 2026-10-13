@@ -84,9 +84,11 @@ Readiness check. _Avoid_: inbox, alerts.
 **Readiness check**: one of the things a Repo needs before the Loop works it,
 checked when `serve` starts, on Refresh, after a write to its or its
 Project's settings and after its Install: its clone, a fetch that asks
-nothing, `.evidence/` ignored and a Verification skill on its Base, the
-skills its steps' prompts name for their Harness, the GitHub App on it. A
-failing one is in needs-you with its help, and stops nothing. _Avoid_:
+nothing, `.evidence/` ignored and, while it reviews, a Verification skill
+on its Base, the skills its steps' prompts name for their Harness, and
+whether the GitHub App is on it (without it, its PRs are opened as the
+user, which passes). A failing one is in needs-you with its help, and
+stops nothing. _Avoid_:
 health, doctor.
 
 **Install**: the command a Repo runs in its clone after a PR merges into its
