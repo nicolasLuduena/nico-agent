@@ -5,14 +5,16 @@
   // the window is too narrow for them beside the Component.
   import { onMount } from "svelte";
   import { MediaQuery } from "svelte/reactivity";
-  import { watch } from "../live";
+  import Refused, { ticked } from "../controls/Refused.svelte";
+  import { send, type Sent } from "../controls/send";
+  import { reload, watch } from "../live";
   import { hash } from "../route";
   import { selection } from "../selection.svelte";
   import type { Project } from "../status";
   import { clock } from "../time";
   import Reading from "./Reading.svelte";
   import Sheet from "./Sheet.svelte";
-  import { byKind, freshness, search, type Component, type Hit, type Listed, type Wiki } from "./wiki";
+  import { byKind, freshness, search, unexplored, type Component, type Hit, type Listed, type Wiki } from "./wiki";
 
   let { project }: { project: Project } = $props();
 
@@ -45,7 +47,20 @@
 
   const wikis = $derived((listed ?? []).filter((w) => project.repos.includes(w.target.repo)));
   /** The Wiki the hash names, or the Project's first. */
-  const id = $derived((wikis.find((w) => w.id === selection.wiki) ?? wikis[0])?.id ?? null);
+  const picked = $derived(wikis.find((w) => w.id === selection.wiki) ?? wikis[0] ?? null);
+  const id = $derived(picked?.id ?? null);
+  /** The build a button is asking for, and the answer to the last one asked. */
+  let asking = $state<string | null>(null);
+  let sent = $state<Sent | null>(null);
+
+  /** Queue the open Wiki's build first, `how` the button asks it. */
+  async function build(how: "update" | "rebuild" | "continue") {
+    asking = how;
+    sent = null;
+    sent = await send("POST", `/api/wiki/${encodeURIComponent(id ?? "")}/${how}`);
+    asking = null;
+    reload("/api/wikis");
+  }
 
   $effect(() => {
     if (id === null) return;
@@ -95,6 +110,7 @@
 
   function pick(chosen: string) {
     found = null;
+    sent = null;
     Object.assign(selection, { wiki: chosen, component: null });
   }
   function follow(hit: Hit) {
@@ -163,6 +179,41 @@
           >
           · Built {clock(wiki.builtAt)} · {freshness(wiki)}
         </p>
+      {/if}
+      {#if picked}
+        <div class="build">
+          {#if picked.state === "building"}
+            <p role="status">
+              <span class="label">Building</span>
+              {#if picked.pane}<span class="muted">in herdr pane {picked.pane}</span>{/if}
+            </p>
+          {:else if picked.state === "queued"}
+            <p role="status"><span class="label">Queued</span></p>
+          {:else if picked.state === "failed"}
+            <p class="errata" role="status"><strong>Last build failed</strong> {@render ticked(picked.why ?? "")}</p>
+          {/if}
+          <div class="buttons">
+            {#if !picked.target.tag}
+              <button type="button" class="quiet" disabled={asking !== null} aria-busy={asking === "update"} onclick={() => build("update")}
+                >Update</button
+              >
+            {/if}
+            <button type="button" class="quiet" disabled={asking !== null} aria-busy={asking === "rebuild"} onclick={() => build("rebuild")}
+              >Rebuild</button
+            >
+            {#if picked.budget > 0}
+              <span class="muted">{unexplored(picked.budget)} ·</span>
+              <button type="button" class="quiet" disabled={asking !== null} aria-busy={asking === "continue"} onclick={() => build("continue")}
+                >Continue +{picked.calls} calls</button
+              >
+            {/if}
+          </div>
+          {#if sent && !sent.ok}
+            <div class="refused">
+              <Refused error={sent.error} help={sent.help} />
+            </div>
+          {/if}
+        </div>
       {/if}
       {#if open && toggles.length > 0}
         <div class="toggles">
@@ -269,6 +320,30 @@
   }
   .built a {
     font-weight: 600;
+  }
+  /* The build's state on the left, its buttons on the right, a refusal under both. */
+  .build {
+    display: flex;
+    flex-basis: 100%;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 16px;
+  }
+  .build .errata {
+    display: block;
+  }
+  .muted {
+    color: var(--ink-muted);
+  }
+  .buttons {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+  }
+  .refused {
+    flex-basis: 100%;
   }
 
   /* The tree, the Component and its outline, side by side. */
@@ -377,7 +452,8 @@
   }
   /* The tree too; the header's two lines stack. */
   @media (width < 720px) {
-    .built {
+    .built,
+    .buttons {
       margin-left: 0;
       text-align: left;
     }

@@ -3,10 +3,18 @@ import { spans } from "../markdown";
 /** A Wiki as `GET /api/wikis` lists it. */
 export interface Listed {
   id: string;
-  target: { repo: string };
+  /** A Library version's names its tag; a Repo's has none. */
+  target: { repo: string; tag?: string };
   commit: string;
   builtAt: string;
   gaps: number;
+  /** How many of its Gaps the budget left, which Continue asks about with a fresh budget of `calls`. */
+  budget: number;
+  calls: number;
+  /** Its build: open in the herdr `pane`, waiting its turn, or failed for `why`. */
+  state: "built" | "building" | "queued" | "failed";
+  pane: string | null;
+  why: string | null;
 }
 
 /** A Wiki as `GET /api/wiki/<id>` answers it: the Bucket's `wiki.json`, only the fields the page reads, marked against its Repo's Base. */
@@ -141,4 +149,9 @@ export function search(wiki: Pick<Wiki, "components">, query: string): Hit[] {
       c.interpretations.map((i) => ({ component: c, interpretation: i, text: shown(i.text) })).filter((h) => holds(h.text)),
     ),
   ];
+}
+
+/** What Continue asks about, before its button: "6 parts not explored (budget)". */
+export function unexplored(budget: number): string {
+  return `${budget} part${budget === 1 ? "" : "s"} not explored (budget)`;
 }

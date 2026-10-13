@@ -951,6 +951,11 @@ fn serve_answers_each_built_wiki_and_a_wiki_by_its_id_and_404s_one_it_has_not() 
         "commit": "abc1234",
         "builtAt": "2026-09-30T12:00:00Z",
         "gaps": 1,
+        "budget": 0,
+        "calls": 48,
+        "state": "built",
+        "pane": null,
+        "why": null,
     });
     assert_eq!(listed, (200, json!([built])));
     let mut marked = wiki(&t);
@@ -1454,4 +1459,98 @@ fn update_never_asks_about_a_part_left_with_no_files_when_two_parts_shared_a_rem
         .map(|c| c["id"].as_str().unwrap())
         .collect();
     assert_eq!(ids, ["index", "core", "web", "web/page"]);
+}
+
+#[test]
+fn continue_asks_only_the_budget_gaps_with_a_fresh_budget_and_fills_them_in_place_at_the_wiki_s_commit()
+ {
+    let t = with_repo("[wiki]\ncalls = 2");
+    divided(&t);
+    answer(
+        &t,
+        "acme/api > Core",
+        json!({ "kind": "leaf", "overview": "The crate's modules." }),
+    );
+    let ran = t.cli(&["wiki", "build", "acme/api", "--json"]);
+    assert_eq!(ran.json()["gaps"], json!({ "budget": 1 }));
+    let before = wiki(&t);
+    // Its Base moved on since: Continue reads the commit the Wiki describes.
+    for (file, text) in [
+        ("src/lib.rs", LIB),
+        ("src/config.rs", CONFIG),
+        ("web/app.ts", WEB),
+    ] {
+        t.world.add_tree_file("/src/api", "abc1234", file, text);
+    }
+    t.world
+        .add_tree_file("/src/api", "origin/main", "web/app.ts", NEW_WEB);
+    (t.world.heads.borrow_mut()).insert("/src/api origin/main".into(), "def5678".into());
+    t.world.calls.borrow_mut().clear();
+    let port = interpretation("effect", "The page serves on port 80.", "web/app.ts", 2, 2);
+    answer(
+        &t,
+        "acme/api > Web",
+        json!({ "kind": "leaf", "overview": "The page.", "interpretations": [port] }),
+    );
+
+    let ran = t.cli(&["wiki", "build", "acme/api", "--continue", "--json"]);
+
+    assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
+    assert_eq!(
+        (&ran.json()["commit"], &ran.json()["gaps"]),
+        (&json!("abc1234"), &json!({}))
+    );
+    assert_eq!(asked(&t), ["acme/api > Web"]);
+    let dir = checkout(&t);
+    assert!(t.world.calls().contains(&format!(
+        "git -C /src/api worktree add --detach --quiet {dir} abc1234"
+    )));
+    let mut after = before.clone();
+    after["components"][2]["interpretations"] = json!([{ "id": 1, "kind": "effect", "text": "The page serves on port 80.", "anchors": [{ "path": "web/app.ts", "start": 2, "end": 2 }] }]);
+    after["components"][2]["gaps"] = json!([]);
+    assert_eq!(wiki(&t), after);
+}
+
+#[test]
+fn continue_is_refused_for_a_repo_with_no_wiki_and_one_build_kind_is_asked_at_a_time() {
+    let t = with_repo("");
+
+    let none = t.cli(&["wiki", "build", "acme/api", "--continue", "--json"]);
+    let both = t.cli(&[
+        "wiki",
+        "build",
+        "acme/api",
+        "--update",
+        "--rebuild",
+        "--json",
+    ]);
+
+    assert_eq!(none.exit_code, 1, "{}", none.stdout);
+    assert_eq!(
+        none.json()["error"],
+        "could not build the Wiki of acme/api: acme/api has no Wiki to continue"
+    );
+    assert_eq!(both.exit_code, 2, "{}", both.stdout);
+    assert_eq!(
+        both.json()["error"],
+        "--update, --rebuild and --continue are one at a time"
+    );
+}
+
+#[test]
+fn rebuild_asks_about_every_part_again_without_reading_the_wiki_before_it() {
+    let t = with_repo("");
+    divided(&t);
+    for part in ["Core", "Web"] {
+        let trail = format!("acme/api > {part}");
+        answer(&t, &trail, json!({ "kind": "leaf", "overview": part }));
+    }
+    t.cli(&["wiki", "build", "acme/api", "--json"]);
+    t.world.calls.borrow_mut().clear();
+
+    let ran = t.cli(&["wiki", "build", "acme/api", "--rebuild", "--json"]);
+
+    assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
+    assert_eq!(asked(&t), ["acme/api", "acme/api > Core", "acme/api > Web"]);
+    assert!(!t.world.calls().contains(&format!("read {WIKI}")));
 }

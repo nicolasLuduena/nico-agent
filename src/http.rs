@@ -44,7 +44,7 @@ const ROUTES: &[(&str, &str)] = &[
     ),
     (
         "GET /api/wikis",
-        "each Repo's Wiki, with the commit it describes, when it was built and its Gaps",
+        "each Repo's Wiki, with the commit it describes, when it was built, its Gaps and the state of its build",
     ),
     (
         "GET /api/wiki/<id>",
@@ -55,6 +55,10 @@ const ROUTES: &[(&str, &str)] = &[
         "`nico-agent dispatch` of the issue",
     ),
     ("POST /api/refresh", "`nico-agent refresh`"),
+    (
+        "POST /api/wiki/<id>/update|rebuild|continue",
+        "queue the Wiki's build first: an Update, one from nothing, or one asking only its budget Gaps",
+    ),
     (
         "PATCH /api/repo/<owner/name>/switches {name: bool}",
         "set the Repo's switches; null takes its Project's or the default",
@@ -125,6 +129,13 @@ pub fn answer(ctx: &Context, port: u16, request: &HttpRequest) -> Answer {
         }
         ("POST", "/api/dispatch") => ran(dispatch(ctx, request)),
         ("POST", "/api/refresh") => ran(refresh::refresh(&[], ctx)),
+        ("POST", path)
+            if let Some((id, how)) = (path.strip_prefix("/api/wiki/"))
+                .and_then(|path| path.rsplit_once('/'))
+                .filter(|(_, how)| wiki::BUILDS.contains(how)) =>
+        {
+            ran(wiki::queue(ctx, &unescaped(id), how))
+        }
         ("PATCH", path)
             if let Some(slug) = (path.strip_prefix("/api/repo/"))
                 .and_then(|path| path.strip_suffix("/switches")) =>
