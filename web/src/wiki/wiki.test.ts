@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { anchorUrl, freshness, search, unexplored } from "./wiki";
+import { anchorUrl, freshness, libraryId, search, unexplored } from "./wiki";
 
 test("an Anchor opens GitHub at the Wiki's commit, at its lines, its path escaped", () => {
   const wiki = { target: { repo: "acme/api" }, commit: "abc1234" };
@@ -56,4 +56,9 @@ test("freshness says how far behind its Base a Wiki is, and how many Interpretat
 test("what Continue asks about counts the parts the budget left unexplored", () => {
   expect(unexplored(1)).toBe("1 part not explored (budget)");
   expect(unexplored(6)).toBe("6 parts not explored (budget)");
+});
+
+test("a Library version's Wiki is named by its slug and tag, then its subfolder when it has one", () => {
+  expect(libraryId({ repo: "Effect-TS/effect", tag: "effect@3.17.0", path: "packages/effect" })).toBe("Effect-TS/effect@effect@3.17.0:packages/effect");
+  expect(libraryId({ repo: "acme/kit", tag: "v1" })).toBe("acme/kit@v1");
 });

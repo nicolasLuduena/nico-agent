@@ -797,9 +797,11 @@ fn tag<'de, D: Deserializer<'de>>(d: D) -> Result<String, D::Error> {
     Ok(tag)
 }
 
-/// A subfolder of a repository, from its root: `packages/effect`.
+/// A subfolder of a repository, from its root: `packages/effect`; null, none.
 fn subfolder<'de, D: Deserializer<'de>>(d: D) -> Result<Option<String>, D::Error> {
-    let path = String::deserialize(d)?;
+    let Some(path) = Option::<String>::deserialize(d)? else {
+        return Ok(None);
+    };
     if !plain(&path) {
         return Err(serde::de::Error::invalid_value(
             serde::de::Unexpected::Str(&path),

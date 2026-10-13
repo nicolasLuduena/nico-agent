@@ -13,6 +13,7 @@ pub mod flip;
 pub mod http;
 pub mod install;
 pub mod launch;
+pub mod library;
 pub mod map;
 pub mod mcp;
 pub mod pause;

@@ -15,6 +15,7 @@ use crate::bucket;
 use crate::cli::{Context, Refusal, bad_invocation};
 use crate::config;
 use crate::dispatch;
+use crate::library;
 use crate::map;
 use crate::refresh;
 use crate::repo;
@@ -64,7 +65,7 @@ const ROUTES: &[(&str, &str)] = &[
         "set the Repo's switches; null takes its Project's or the default",
     ),
     (
-        "PATCH /api/repo/<owner/name> {implementer, reviewer, room, base, project, install, switches}",
+        "PATCH /api/repo/<owner/name> {implementer, reviewer, room, base, project, install, switches, libraries}",
         "set the Repo's own settings; null takes its Project's or the default",
     ),
     (
@@ -82,6 +83,14 @@ const ROUTES: &[(&str, &str)] = &[
     (
         "DELETE /api/repo/<owner/name>",
         "`nico-agent repo rm`, refused while the Repo has a Dispatch In flight",
+    ),
+    (
+        "POST /api/libraries {repo, tag, path}",
+        "add a Library version no Repo links, under [wiki] libraries, and queue its Wiki",
+    ),
+    (
+        "DELETE /api/libraries/<owner/name@tag[:path]>",
+        "remove a Library version [wiki] libraries adds, its Wiki taken out of the Bucket's files; refused while a Repo links it",
     ),
     (
         "GET /bucket/<path>",
@@ -156,6 +165,10 @@ pub fn answer(ctx: &Context, port: u16, request: &HttpRequest) -> Answer {
         ("DELETE", path) if let Some(slug) = path.strip_prefix("/api/repo/") => {
             ran(repo::rm_idle(ctx, &unescaped(slug)))
         }
+        ("POST", "/api/libraries") => ran(body(request).and_then(|b| library::add(ctx, &b))),
+        ("DELETE", path) if let Some(id) = path.strip_prefix("/api/libraries/") => {
+            ran(library::rm(ctx, &unescaped(id)))
+        }
         ("GET", path) if let Some(path) = path.strip_prefix("/bucket/") => {
             bucket::file(ctx, &unescaped(path))
         }
@@ -215,7 +228,8 @@ fn host_of(url: &str) -> &str {
 }
 
 /// `status`'s answer from the Sources' caches alone, plus per Repo when its
-/// PRs were last read and the Harnesses its Dispatch form offers.
+/// PRs were last read and the Harnesses its Dispatch form offers, and the
+/// Library versions `[wiki]` adds that no Repo links, for the Libraries tab.
 fn status(ctx: &Context) -> Result<Value, Refusal> {
     let config = config::load(&ctx.config_dir)?;
     let prs = stage::load(&ctx.config_dir)?;
@@ -247,6 +261,12 @@ fn status(ctx: &Context) -> Result<Value, Refusal> {
         }
     }
     shown["wiki_settings"] = wiki::settings(&config);
+    // Each once, though written twice.
+    let mut listed = std::collections::HashSet::new();
+    let unlinked = (config.wiki.libraries.iter())
+        .filter(|l| library::linked_by(&config, &l.id()).is_none() && listed.insert(l.id()))
+        .collect::<Vec<_>>();
+    shown["libraries"] = json!(unlinked);
     // shortcut: an unreadable morning.md shows as none, like a missing one; say why if one ever is.
     shown["morning_summary"] = json!(fs::read_to_string(ctx.config_dir.join(away::SUMMARY)).ok());
     Ok(shown)

@@ -79,6 +79,23 @@ pub fn keep_wiki(
         .map_err(refused)
 }
 
+/// Commit the removal of the Wiki kept in the folder `folder` with
+/// `message`, its history keeping it, if the Bucket holds it; whether it did.
+pub fn drop_wiki(
+    ctx: &Context,
+    config: &Config,
+    folder: &str,
+    message: &str,
+) -> Result<bool, Refusal> {
+    let (world, _lock) = (ctx.world, lock(ctx)?);
+    if wiki(world, config, folder).map_err(refused)?.is_none() {
+        return Ok(false);
+    }
+    (world.git_remove(&config.bucket.path, &wiki_file(folder), message))
+        .map_err(refused)
+        .map(|()| true)
+}
+
 /// The text of the Wiki kept in the folder `folder` the Bucket holds; none
 /// before its first build.
 pub fn wiki(world: &dyn World, config: &Config, folder: &str) -> WorldResult<Option<Vec<u8>>> {

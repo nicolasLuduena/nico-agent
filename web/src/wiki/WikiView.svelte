@@ -1,5 +1,6 @@
 <script lang="ts">
-  // A Project's Wiki view: a picker of its Repos' Wikis, the open one's
+  // A Project's Wiki view: a picker of its Repos' Wikis and of the Library
+  // versions they link, the open one's
   // header, its Component tree with search over it, the open Component in a
   // reading column and its outline; the tree and the outline as sheets once
   // the window is too narrow for them beside the Component. The header opens
@@ -18,7 +19,7 @@
   import { byKind, freshness, search, unexplored, type Component, type Hit, type Listed, type Wiki } from "./wiki";
   import SettingsForm from "./SettingsForm.svelte";
 
-  let { project, settings }: { project: Project; settings: WikiSettings } = $props();
+  let { project, libraries, settings }: { project: Project; libraries: string[]; settings: WikiSettings } = $props();
 
   let listed = $state<Listed[] | null>(null);
   let wiki = $state<Wiki | null>(null);
@@ -47,7 +48,8 @@
     ),
   );
 
-  const wikis = $derived((listed ?? []).filter((w) => project.repos.includes(w.target.repo)));
+  /** The built Wikis of its Repos, then of the Library versions they link, by id. */
+  const wikis = $derived([...project.repos, ...libraries].flatMap((id) => (listed ?? []).filter((w) => w.id === id)));
   /** The Wiki the hash names, or the Project's first. */
   const picked = $derived(wikis.find((w) => w.id === selection.wiki) ?? wikis[0] ?? null);
   const id = $derived(picked?.id ?? null);
@@ -169,7 +171,7 @@
         Describes <a href="https://github.com/{wiki.target.repo}/commit/{wiki.commit}" target="_blank" rel="noreferrer"
           >{wiki.commit.slice(0, 7)}</a
         >
-        · Built {clock(wiki.builtAt)} · {freshness(wiki)}
+        · Built {clock(wiki.builtAt)}{#if !wiki.target.tag}{" "}· {freshness(wiki)}{/if}
       </p>
     {/if}
     {#if picked}

@@ -26,7 +26,8 @@ at the wiki hour. `status`, `GET /api/wikis`, `GET /api/wiki/<id>` and the MCP s
 
 - The user links a Library version to a Repo in `config.toml` (`libraries = [{ repo = "Effect-TS/effect",
   tag = "effect@3.17.0", path = "packages/effect" }]` under `[repos."<slug>"]` or a Project), or adds one
-  under `[wiki] libraries`, then waits for the next tick or presses Refresh.
+  under `[wiki] libraries`, then waits for the next tick or presses Refresh; or does either on the
+  page, which queues it at once ([library-links.md](./library-links.md)).
 - The user runs `nico-agent wiki build <owner/name>@<tag>[:<path>]` by hand.
 - Agents and the user's own Claude Code read it through `nico-agent mcp`; the user sees it in `status`.
 

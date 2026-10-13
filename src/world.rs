@@ -274,6 +274,9 @@ pub trait World {
     /// Commit what `add`, a path in the clone at `path`, holds, new files
     /// included, if it is there; even when nothing changed.
     fn git_commit(&self, path: &str, add: &str, message: &str) -> WorldResult<()>;
+    /// Commit the removal of `file`, a path in the clone at `path`, with
+    /// `message`: gone from its files, kept in its history.
+    fn git_remove(&self, path: &str, file: &str, message: &str) -> WorldResult<()>;
     /// Whether what `folder`, a path in the clone at `path`, holds is not its
     /// last commit's: a file new, changed or staged in it.
     fn git_changed(&self, path: &str, folder: &str) -> WorldResult<bool>;
@@ -1171,6 +1174,10 @@ impl World for RealWorld {
             "--no-gpg-sign",
         ];
         git_ok(path, &[&commit[..], &["-m", message]].concat()).map(drop)
+    }
+    fn git_remove(&self, path: &str, file: &str, message: &str) -> WorldResult<()> {
+        git_ok(path, &["rm", "--quiet", "-r", "--", file])?;
+        self.git_commit(path, file, message)
     }
     fn git_changed(&self, path: &str, folder: &str) -> WorldResult<bool> {
         git_ok(path, &["status", "--porcelain", "--", folder]).map(|out| !out.is_empty())
