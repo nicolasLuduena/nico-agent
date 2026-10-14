@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { Assigning, asksToAssign, assignable, named } from "./assign.svelte";
+import { asksToAssign, assignMe, assignable, named } from "./assign";
+import { Pressing } from "./press.svelte";
 import type { Sent } from "./send";
 
 const you = { name: "nico", you: true };
@@ -37,7 +38,7 @@ function pending() {
 describe("the Assign to me button", () => {
   it("reads Assigning… and is busy while serve assigns the issue, then is done", async () => {
     const serve = pending();
-    const assigning = new Assigning(serve.write);
+    const assigning = new Pressing({ ...assignMe, write: serve.write });
     expect([assigning.label, assigning.busy]).toEqual(["Assign to me", false]);
 
     const assigned = assigning.run("acme/api#1");
@@ -51,14 +52,14 @@ describe("the Assign to me button", () => {
 
   it("keeps a refusal to show under it, until the next try", async () => {
     const paused = { ok: false as const, error: "could not assign acme/api#1 to you: GitHub is paused", help: ["try again once it answers"] };
-    const assigning = new Assigning(async () => paused);
+    const assigning = new Pressing({ ...assignMe, write: async () => paused });
 
     await assigning.run("acme/api#1");
     expect(assigning.refused).toEqual({ error: paused.error, help: paused.help });
     expect(assigning.busy).toBe(false);
 
     const again = pending();
-    const retry = new Assigning(again.write);
+    const retry = new Pressing({ ...assignMe, write: again.write });
     retry.refused = assigning.refused;
     const running = retry.run("acme/api#1");
     expect(retry.refused).toBeNull();

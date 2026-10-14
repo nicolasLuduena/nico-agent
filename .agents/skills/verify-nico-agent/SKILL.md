@@ -19,7 +19,8 @@ driven: a verification never reaches it. Features that need it are driven to the
 their cached-state behaviour, which is what the user sees when GitHub or herdr is down. The one
 exception is `seed herdr <agent>`, for a feature that needs a real agent's screen (answer.md): the
 real herdr's list of agents, and what is asked of that one agent, which the verification started
-itself with `seed dialog`.
+itself with `seed dialog`. `seed reviewer <n>` stands in for herdr starting one Reviewer
+(review.md), as `seed` stands in for what GitHub says.
 
 Decisions this skill was generated from (the interview of the repo):
 
@@ -70,6 +71,9 @@ $C seed herdr <agent>|none      # the real herdr's list of agents, and what is a
 $C seed dialog <n>|none         # a real Claude in a herdr tab of its own, impl-fixture-<n> (a Dispatch seeded `asking`'s
                                 # Implementer), Asking two questions in a choice dialog, reached through seed herdr;
                                 # none (or cleanup) closes its tab. Needs herdr and claude
+$C seed reviewer <n>|none        # herdr answers the start of rev-fixture-<n> (a Dispatch seeded `pr`'s Reviewer):
+                                # its tab, start and prompt, then lists it working beside impl-fixture-<n>, idle;
+                                # none: herdr all a stub again. Not with seed herdr
 $C seed wiki <wiki.json> <clone>  # a Repo's Wiki built elsewhere committed to the Bucket, and that Repo cloned from
                                 # <clone> for `repo add`: a real Wiki to read on its page; prints {repo, clone, commit}
 $C drift push <n>|stale|pause   # what GitHub would change: a new PR head, an old read, a rate limit

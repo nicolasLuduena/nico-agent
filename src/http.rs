@@ -20,6 +20,7 @@ use crate::library;
 use crate::map;
 use crate::refresh;
 use crate::repo;
+use crate::review;
 use crate::stage;
 use crate::status;
 use crate::wiki;
@@ -64,6 +65,10 @@ const ROUTES: &[(&str, &str)] = &[
     (
         "POST /api/assign {issue}",
         "assign the issue to the user on its Source, unless someone else has it, and keep that in its Repo's last read",
+    ),
+    (
+        "POST /api/review {issue}",
+        "start a Reviewer on the head of the issue's PR now, its failed starts for that head cleared, whatever the review switch says",
     ),
     (
         "POST /api/answer {issue, text|keys}",
@@ -160,7 +165,10 @@ pub fn answer(ctx: &Context, port: u16, request: &HttpRequest) -> Answer {
         }
         ("POST", "/api/dispatch") => ran(dispatch(ctx, request)),
         ("POST", "/api/refresh") => ran(refresh::refresh(&[], ctx)),
-        ("POST", "/api/assign") => ran(assign(ctx, request)),
+        ("POST", "/api/assign") => {
+            ran(issue(request, "assign").and_then(|i| dispatch::assign(ctx, &i)))
+        }
+        ("POST", "/api/review") => ran(issue(request, "review").and_then(|i| review::now(ctx, &i))),
         ("POST", "/api/answer") => ran(answer_asking(ctx, request)),
         ("POST", path)
             if let Some((id, how)) = (path.strip_prefix("/api/wiki/"))
@@ -396,13 +404,13 @@ fn dispatch(ctx: &Context, request: &HttpRequest) -> Result<Value, Refusal> {
     dispatch::dispatch(&argv, ctx)
 }
 
-/// The issue the body's `{issue}` names, assigned to the user.
-fn assign(ctx: &Context, request: &HttpRequest) -> Result<Value, Refusal> {
+/// The issue the body's `{issue}` names, for `command`.
+fn issue(request: &HttpRequest, command: &str) -> Result<String, Refusal> {
     match &body(request)?["issue"] {
-        Value::String(issue) => dispatch::assign(ctx, issue),
+        Value::String(issue) => Ok(issue.clone()),
         other => Err(bad_invocation(
             format!("issue is a string, not {other}"),
-            "assign",
+            command,
         )),
     }
 }

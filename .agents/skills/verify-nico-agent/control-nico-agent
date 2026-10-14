@@ -29,6 +29,8 @@
 #                                 the real herdr; with none, herdr is all a stub again
 #   seed dialog <n>|none          a real Claude in a herdr tab of its own, impl-fixture-<n>, Asking two questions
 #                                 in a choice dialog, reached through seed herdr; none closes it
+#   seed reviewer <n>|none        herdr answers the start of rev-fixture-<n>, a Reviewer of a Dispatch seeded `pr`,
+#                                 as it would, and lists it working beside its idle Implementer; none, a stub again
 #   seed wiki <wiki.json> <clone> a Repo's Wiki built elsewhere committed to the Bucket, and that Repo cloned
 #                                 on disk from <clone> for `repo add`; prints { repo, clone, commit }
 #   drift push <n>|stale|pause|below merged|closed|base [<file>]|tag <tag>
@@ -145,6 +147,25 @@ case "\$name" in
     if [ -n "\$agent" ] && [ "\${1:-}" = agent ] \
       && { [ "\${2:-}" = list ] || { [ "\${3:-}" = "\$agent" ] && [[ "\${2:-}" =~ ^(read|send-keys|prompt|wait)\$ ]]; }; }; then
       HERDR_SOCKET_PATH=$real_socket exec $real_herdr "\$@"
+    fi
+    # \`seed reviewer <n>\`: herdr starts rev-fixture-<n> as it would, in a tab of its own, and lists it
+    # working once started, beside its Dispatch's Implementer, idle, which is never restarted for it.
+    n="\$(cat "$RUN_DIR/herdr-reviewer" 2>/dev/null || true)"
+    if [ -n "\$n" ]; then
+      rev="rev-fixture-\$n"
+      case "\${1:-} \${2:-}" in
+        "tab create") if [[ " \$* " == *" --label reviewer "* ]]; then
+            echo '{"result":{"tab":{"tab_id":"verify:t-rev"},"root_pane":{"pane_id":"verify:p-rev"}}}'; exit 0
+          fi ;;
+        "tab close") if [ "\${3:-}" = verify:t-rev ]; then rm -f "$RUN_DIR/herdr-reviewer-started"; exit 0; fi ;;
+        "agent start") if [ "\${3:-}" = "\$rev" ]; then : > "$RUN_DIR/herdr-reviewer-started"; echo '{"result":{}}'; exit 0; fi ;;
+        "agent prompt") if [ "\${3:-}" = "\$rev" ]; then echo '{"result":{}}'; exit 0; fi ;;
+        "agent list")
+          started="\$([ -f "$RUN_DIR/herdr-reviewer-started" ] && echo true || echo false)"
+          jq -cn --arg n "\$n" --argjson started "\$started" '{result: {agents: ([{name: "impl-fixture-\(\$n)", agent_status: "idle"}]
+            + if \$started then [{name: "rev-fixture-\(\$n)", agent_status: "working"}] else [] end)}}'
+          exit 0 ;;
+      esac
     fi
     echo '{"error":{"code":"verify_stub","message":"herdr is a stub in this verification run"}}' >&2; exit 1 ;;
   # Recorded, never shown on the desktop.
@@ -371,8 +392,9 @@ cmd_seed() {
     assign) seed_assign "$@" ;;
     herdr) seed_herdr "$@" ;;
     dialog) seed_dialog "$@" ;;
+    reviewer) seed_reviewer "$@" ;;
     wiki) seed_wiki "$@" ;;
-    *) die "seed: usage: seed issues [second] | seed dispatch <n> pr|asking|stacked | seed run quality-scan|morning|faux-nico <n> | seed morning <file>|none | seed answer <file>|none [<part>] | seed correction <file>|none | seed pace <seconds>|none | seed assign answers|none | seed herdr <agent>|none | seed dialog <n>|none | seed wiki <wiki.json> <clone>" ;;
+    *) die "seed: usage: seed issues [second] | seed dispatch <n> pr|asking|stacked | seed run quality-scan|morning|faux-nico <n> | seed morning <file>|none | seed answer <file>|none [<part>] | seed correction <file>|none | seed pace <seconds>|none | seed assign answers|none | seed herdr <agent>|none | seed dialog <n>|none | seed reviewer <n>|none | seed wiki <wiki.json> <clone>" ;;
   esac
 }
 
@@ -573,6 +595,17 @@ seed_herdr() {
     none) rm -f "$RUN_DIR/herdr-agent" ;;
     ""|-*) die "seed: usage: seed herdr <agent>|none" ;;
     *) printf '%s\n' "$1" > "$RUN_DIR/herdr-agent" ;;
+  esac
+}
+
+# herdr answering the start of rev-fixture-<n>, the Reviewer of a Dispatch seeded `pr`, from now on:
+# its tab, its start and its prompt, then listing it working beside its Implementer, idle; with none,
+# herdr is all a stub again. Not with `seed herdr`, whose list of agents is the real herdr's.
+seed_reviewer() {
+  case "${1:-}" in
+    none) rm -f "$RUN_DIR/herdr-reviewer" "$RUN_DIR/herdr-reviewer-started" ;;
+    ""|-*|*[!0-9]*) die "seed: usage: seed reviewer <n>|none" ;;
+    *) printf '%s\n' "$1" > "$RUN_DIR/herdr-reviewer" ;;
   esac
 }
 
