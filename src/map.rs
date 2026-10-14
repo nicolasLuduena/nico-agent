@@ -190,7 +190,8 @@ pub fn map(ctx: &Context, name: &str) -> Result<Option<Value>, Refusal> {
 
 /// `GET /api/node/<issue>`: the issue's last Dispatch as `status` shows it,
 /// its restarts and Verdict with findings among it, and every file of the
-/// issue's Bucket folder; `None` when the issue has no Dispatch.
+/// issue's Bucket folder, and while it is Asking its Implementer's pane;
+/// `None` when the issue has no Dispatch.
 pub fn node(ctx: &Context, issue: &str) -> Result<Option<Value>, Refusal> {
     let config = config::load(&ctx.config_dir)?;
     let dispatches = dispatch::load(&ctx.config_dir)?;
@@ -213,5 +214,14 @@ pub fn node(ctx: &Context, issue: &str) -> Result<Option<Value>, Refusal> {
         .collect();
     node["evidence_folder"] = json!(format!("/bucket/{}/", http::escaped(&folder)));
     node["evidence"] = json!(evidence);
+    // What the Asking Implementer shows, as herdr has it, for the user to answer
+    // from; Asking as the band says it, herdr's blocked before a tick records it.
+    let blocked = node["agent_state"]["implementer"] == "blocked";
+    if d.closed_at.is_none() && (d.asking.is_some() || blocked) {
+        match ctx.world.herdr_agent_read(&d.implementer.agent) {
+            Ok(pane) => node["pane"] = json!(pane),
+            Err(e) => node["pane_error"] = json!(e.0),
+        }
+    }
     Ok(Some(node))
 }

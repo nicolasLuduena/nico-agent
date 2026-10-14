@@ -56,8 +56,10 @@
 
   const drawn = $derived(shown.map && layout(hideMerged ? withoutMerged(shown.map) : shown.map));
 
+  // The Project's name, not its object: each status read makes a new one, and the map
+  // (and the panel reading it) must not start over on every change.
+  const name = $derived(project.name);
   $effect(() => {
-    const name = project.name;
     shown.map = null;
     failure = null;
     return watch<MapData>(

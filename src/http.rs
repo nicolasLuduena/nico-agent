@@ -10,6 +10,7 @@ use std::time::Duration;
 use serde::Serialize;
 use serde_json::{Map, Value, json};
 
+use crate::answer;
 use crate::away;
 use crate::bucket;
 use crate::cli::{Context, Refusal, bad_invocation};
@@ -41,7 +42,7 @@ const ROUTES: &[(&str, &str)] = &[
     ),
     (
         "GET /api/node/<issue>",
-        "the issue's Dispatch, its restarts, its Verdict's findings and its Evidence",
+        "the issue's Dispatch, its restarts, its Verdict's findings, its Evidence and, while it is Asking, its Implementer's pane",
     ),
     (
         "GET /api/events",
@@ -63,6 +64,10 @@ const ROUTES: &[(&str, &str)] = &[
     (
         "POST /api/assign {issue}",
         "assign the issue to the user on its Source, unless someone else has it, and keep that in its Repo's last read",
+    ),
+    (
+        "POST /api/answer {issue, text|keys}",
+        "`nico-agent answer` of the issue, in words or keys",
     ),
     (
         "POST /api/wiki/<id>/update|rebuild|continue",
@@ -156,6 +161,7 @@ pub fn answer(ctx: &Context, port: u16, request: &HttpRequest) -> Answer {
         ("POST", "/api/dispatch") => ran(dispatch(ctx, request)),
         ("POST", "/api/refresh") => ran(refresh::refresh(&[], ctx)),
         ("POST", "/api/assign") => ran(assign(ctx, request)),
+        ("POST", "/api/answer") => ran(answer_asking(ctx, request)),
         ("POST", path)
             if let Some((id, how)) = (path.strip_prefix("/api/wiki/"))
                 .and_then(|path| path.rsplit_once('/'))
@@ -399,6 +405,28 @@ fn assign(ctx: &Context, request: &HttpRequest) -> Result<Value, Refusal> {
             "assign",
         )),
     }
+}
+
+/// `answer <issue> --text <text>`, or `--keys <key>...`, from the body's
+/// `{issue, text}` or `{issue, keys}`: the user's, never faux-nico's.
+fn answer_asking(ctx: &Context, request: &HttpRequest) -> Result<Value, Refusal> {
+    let mut argv = argv(request, "answer", &["issue", "text"])?;
+    match &body(request)?["keys"] {
+        Value::Null => {}
+        // No key herdr names starts with `--`: one that does would be a flag of `answer`.
+        Value::Array(keys)
+            if (keys.iter()).all(|k| k.as_str().is_some_and(|k| !k.starts_with("--"))) =>
+        {
+            argv.push("--keys".into());
+            argv.extend(keys.iter().filter_map(Value::as_str).map(String::from));
+        }
+        other => {
+            let error = format!("keys is a list of key names, not {other}");
+            return Err(bad_invocation(error, "answer"));
+        }
+    }
+    let argv: Vec<&str> = argv.iter().map(String::as_str).collect();
+    answer::answer(&argv, ctx)
 }
 
 /// `repo add <slug> --path --project`, from the body's `{slug, path, project}`.

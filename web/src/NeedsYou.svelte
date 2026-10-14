@@ -10,11 +10,12 @@
 
   let { needs, projects }: { needs: Need[]; projects: Project[] } = $props();
 
-  /** Show the tab of the item's Repo's Project with its node open. */
+  /** Show the tab of the item's Repo's Project with its node open; an Asking's, ready to answer. */
   function open(need: Need) {
     selection.project = need.repo && (projectOf(need.repo, projects)?.name ?? null);
     selection.issue = need.issue;
     selection.view = "map";
+    selection.answering = need.kind === "Asking" ? need.issue : null;
   }
 
   /** A row the band did not have: it flashes once as it arrives. Not on the first read, nor as the band turns yellow, which says it already. */

@@ -1,10 +1,12 @@
-//! `answer`: unblock an Asking Implementer by typing an answer into its pane
-//! through herdr, then keep it on its Dispatch with the question it answers.
+//! `answer`: unblock an Asking Implementer by typing an answer into its pane,
+//! or pressing keys there, through herdr, then keep it on its Dispatch with
+//! the question it answers.
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::args::Args;
+use crate::asking;
 use crate::cli::{Context, Refusal, bad_invocation};
 use crate::config;
 use crate::dispatch;
@@ -30,12 +32,23 @@ pub enum By {
 }
 
 pub fn answer(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
-    let args = Args::parse("answer", args, &["--text", "--by"])?;
+    let (args, keys) = split_keys(args);
+    let args = Args::parse("answer", &args, &["--text", "--by"])?;
     let &[text_ref] = args.positionals(&["<issue>"])? else {
         unreachable!("one positional")
     };
-    let Some(text) = args.flag("--text") else {
-        return Err(bad_invocation("--text is required".into(), "answer"));
+    let text = match (args.flag("--text"), &keys) {
+        (Some(text), None) => text.to_string(),
+        (None, Some(keys)) if !keys.is_empty() => keys.join(" "),
+        (None, Some(_)) => return Err(bad_invocation("--keys needs a key".into(), "answer")),
+        (Some(_), Some(_)) => {
+            let error = "give --text or --keys, not both".into();
+            return Err(bad_invocation(error, "answer"));
+        }
+        (None, None) => {
+            let error = "--text or --keys is required".into();
+            return Err(bad_invocation(error, "answer"));
+        }
     };
     let by = args.flag("--by").unwrap_or("user");
     let author = match by {
@@ -59,7 +72,7 @@ pub fn answer(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
             ],
         ));
     };
-    let Some(asking) = d.asking else {
+    let Some(asking) = asking::current(ctx, &d)? else {
         return Err(Refusal::new(
             format!("{issue} is not Asking"),
             vec![
@@ -69,16 +82,20 @@ pub fn answer(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
         ));
     };
     let said = format!("{issue} answered by {by}");
-    if (d.answers.iter()).any(|a| (&a.since, &*a.text) == (&asking.since, text)) {
+    let agent = &d.implementer.agent;
+    if let Some(keys) = keys {
+        ctx.world.herdr_agent_send_keys(agent, &keys)?;
+    } else if (d.answers.iter()).any(|a| (&a.since, &a.text) == (&asking.since, &text)) {
         return Ok(json!({ "answer": format!("{said} already recorded (no-op)") }));
+    } else {
+        let harness = &config.harnesses[&d.implementer.harness];
+        launch::prompt(ctx.world, harness, agent, &text)?;
     }
-    let harness = &config.harnesses[&d.implementer.harness];
-    launch::prompt(ctx.world, harness, &d.implementer.agent, text)?;
     let new = Answer {
         since: asking.since,
         at: state::iso(ctx.world.now()),
         question: asking.question,
-        text: text.into(),
+        text,
         by: author,
     };
     dispatch::update(&ctx.config_dir, |all| {
@@ -87,4 +104,23 @@ pub fn answer(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
         }
     })?;
     Ok(json!({ "answer": said }))
+}
+
+/// `args` without `--keys` and the keys after it, up to the next flag (no
+/// key herdr names starts with `--`), and those keys, the first of them
+/// joined as `--keys=<key>` too; none without `--keys`.
+fn split_keys<'a>(args: &[&'a str]) -> (Vec<&'a str>, Option<Vec<String>>) {
+    let flag = |a: &&str| *a == "--keys" || a.starts_with("--keys=");
+    let Some(at) = args.iter().position(flag) else {
+        return (args.to_vec(), None);
+    };
+    let after: Vec<&str> = (args[at + 1..].iter().copied())
+        .take_while(|a| !a.starts_with("--"))
+        .collect();
+    let rest = [&args[..at], &args[at + 1 + after.len()..]].concat();
+    let keys = (args[at].strip_prefix("--keys=").into_iter().chain(after))
+        .filter(|key| !key.is_empty())
+        .map(String::from)
+        .collect();
+    (rest, Some(keys))
 }

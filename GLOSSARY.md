@@ -72,6 +72,11 @@ Verdict. _Avoid_: checker.
 shows. faux-nico answers it when the Repo's docs settle it; otherwise the
 user is notified. _Avoid_: stuck, blocked.
 
+**Answer**: what the user or faux-nico sends an Asking Implementer, in words
+(typed and submitted) or keys (pressed in its pane, as a choice dialog takes
+them), kept on its Dispatch with the question it answers. _Avoid_: reply,
+response.
+
 **Restart**: the one recovery action: start a fresh agent in the issue's
 existing worktree with a note of what happened. _Avoid_: resume, repair,
 garden.
