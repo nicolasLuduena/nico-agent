@@ -3,7 +3,7 @@
   // Harness, model and Effort that start on the last launch used.
   import { reload } from "../live";
   import { number, type Repo, type Status } from "../status";
-  import { asksToAssign, assignMe } from "./assign.svelte";
+  import { asksToAssign, assignMe } from "./assign";
   import Press from "./Press.svelte";
   import LaunchPicker from "./LaunchPicker.svelte";
   import { startingLaunch } from "./launch";

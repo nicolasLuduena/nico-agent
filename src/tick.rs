@@ -79,7 +79,7 @@ fn list_agents(ctx: &Context, said: &mut Vec<String>) -> io::Result<Option<Vec<A
 
 /// Take the tick lock and write our pid in it, or say the pid of the tick
 /// holding it. An flock: the lock of a process that died is released with it.
-fn lock(ctx: &Context) -> io::Result<Result<File, String>> {
+pub(crate) fn lock(ctx: &Context) -> io::Result<Result<File, String>> {
     fs::create_dir_all(&ctx.config_dir)?;
     let mut file = OpenOptions::new()
         .create(true)

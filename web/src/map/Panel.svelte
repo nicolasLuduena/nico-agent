@@ -7,7 +7,7 @@
   // with findings, and Evidence in the Bucket.
   import { onMount } from "svelte";
   import Answer from "../controls/Answer.svelte";
-  import { assignMe, assignable, named } from "../controls/assign.svelte";
+  import { assignMe, assignable, named } from "../controls/assign";
   import Press from "../controls/Press.svelte";
   import { ticked } from "../controls/Refused.svelte";
   import { watch } from "../live";
@@ -208,8 +208,9 @@
             </p>
           {/snippet}
           <!-- A start that failed is counted, and the tick tries again: its refusal stays till then. -->
-          {#if review.offered(r) || r.state === "retrying"}
-            <Press {issue} action={review.reviewNow} offered={review.offered(r)}>{@render stands()}</Press>
+          {@const offered = review.offered(r, full.verdict?.sha)}
+          {#if offered || r.state === "retrying"}
+            <Press {issue} action={review.reviewNow} {offered}>{@render stands()}</Press>
           {:else}
             {@render stands()}
           {/if}

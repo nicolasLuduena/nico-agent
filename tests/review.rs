@@ -1120,6 +1120,44 @@ fn review_now_starts_a_reviewer_on_a_head_given_up_on_and_the_tick_may_try_the_w
 }
 
 #[test]
+fn review_now_is_said_in_serve_s_log_as_the_tick_s_starts_are() {
+    let t = gave_up();
+
+    review_now(&t);
+
+    let logged = t.world.logged();
+    let last = logged.last().map(|line| &line[21..]);
+    assert_eq!(last, Some("acme/api#7: Reviewer started on codex for sha9"));
+}
+
+#[test]
+fn review_now_is_refused_while_a_tick_runs_and_starts_nothing() {
+    let t = gave_up();
+    let tick = std::fs::OpenOptions::new()
+        .write(true)
+        .open(t.config_dir.join("tick.lock"))
+        .unwrap();
+    tick.lock().unwrap();
+    std::fs::write(t.config_dir.join("tick.lock"), "4242").unwrap();
+    let before = dispatches(&t);
+
+    let (refused, calls) = calls_after(&t, || review_now(&t));
+
+    assert_eq!(
+        refused,
+        (
+            409,
+            json!({
+                "error": "a tick is running (pid 4242)",
+                "help": ["Try again once it ends: it may start the Reviewer itself"],
+            })
+        )
+    );
+    assert_eq!(herdr(&calls), Vec::<&str>::new());
+    assert_eq!(dispatches(&t), before);
+}
+
+#[test]
 fn with_review_off_review_now_starts_a_reviewer_that_shows_as_with_review_on_and_the_tick_starts_none()
  {
     let t = with_pr("switches = { review = false }");
@@ -1182,6 +1220,24 @@ fn review_now_is_refused_changing_nothing_off_a_live_dispatch_s_open_pr_draft_on
     stopped
         .world
         .fail_call("herdr tab close", "tab_close_failed: herdr is busy");
+    let merged = reviewing();
+    merged
+        .world
+        .fail_call("herdr worktree remove", "worktree_busy: in use");
+    merged.world.activity.borrow_mut().insert(
+        "acme/api#9".into(),
+        PullRequestActivity {
+            state: PrState::Merged,
+            draft: false,
+            head_sha: "sha9".into(),
+            base_branch: "main".into(),
+            mergeable: Mergeable::Mergeable,
+            updated_at: "2026-09-30T12:30:00Z".into(),
+            merged_at: Some("2026-09-30T12:30:00Z".into()),
+        },
+    );
+    merged.world.advance(TICK);
+    merged.tick();
     let herdr_down = reviewing();
     herdr_down
         .world
@@ -1198,6 +1254,15 @@ fn review_now_is_refused_changing_nothing_off_a_live_dispatch_s_open_pr_draft_on
         ),
         (
             &no_pr,
+            r#"{"issue": "acme/api#7"}"#,
+            409,
+            json!({
+                "error": "acme/api#7 has no open PR",
+                "help": ["A Reviewer reviews the head of an open PR", see],
+            }),
+        ),
+        (
+            &merged,
             r#"{"issue": "acme/api#7"}"#,
             409,
             json!({

@@ -13,6 +13,11 @@ describe("Review now, in a node's panel", () => {
     expect(offered(null)).toBe(false);
   });
 
+  it("is not offered with review off once the head has a Verdict: a push asks for a new review", () => {
+    expect(offered(at("off"), "abc1234def")).toBe(false);
+    expect(offered(at("off"), "an0ld0head")).toBe(true);
+  });
+
   it("reads Starting… and is busy while serve starts the Reviewer, then keeps serve's refusal under it", async () => {
     let answer!: (sent: Sent) => void;
     const asked: string[] = [];

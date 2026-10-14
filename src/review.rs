@@ -14,6 +14,7 @@ use crate::config::{self, Config, Repo, fill_in};
 use crate::dispatch::{self, Dispatch};
 use crate::launch::{self, AgentLaunch};
 use crate::stage::{self, Pr, Stage, Standing};
+use crate::tick;
 use crate::verdict::Outcome;
 use crate::wiki;
 use crate::world::{self, Agent, AgentState, PrState};
@@ -111,6 +112,13 @@ pub fn start_reviewers(
 /// head and no Reviewer herdr reports working; a start that fails is
 /// counted, as the tick's are, and refused.
 pub fn now(ctx: &Context, text: &str) -> Result<Value, Refusal> {
+    // A tick's own start would race this one, for the same agent name and record.
+    let _held = tick::lock(ctx)?.map_err(|pid| {
+        Refusal::new(
+            format!("a tick is running (pid {pid})"),
+            vec!["Try again once it ends: it may start the Reviewer itself".into()],
+        )
+    })?;
     let config = config::load(&ctx.config_dir)?;
     let dispatches = dispatch::load(&ctx.config_dir)?;
     let issue = dispatch::key(&config, &dispatches, text)?;
@@ -137,13 +145,12 @@ pub fn now(ctx: &Context, text: &str) -> Result<Value, Refusal> {
     };
     let head = &pr.head_sha;
     if let Some(v) = standing.verdict_on_head() {
-        let result = if v.result == Outcome::Pass {
-            "pass"
-        } else {
-            "fail"
-        };
+        let result = json!(v.result);
         return Err(Refusal::new(
-            format!("{head} of {url} already has a Verdict: {result}"),
+            format!(
+                "{head} of {url} already has a Verdict: {}",
+                result.as_str().unwrap_or_default()
+            ),
             vec!["A push is what asks for a new review: a Reviewer starts on the new head".into()],
         ));
     }
@@ -177,8 +184,11 @@ pub fn now(ctx: &Context, text: &str) -> Result<Value, Refusal> {
     close_last(ctx, &d).map_err(|line| Refusal::new(line, vec![]))?;
     let mut failures = (d.reviewer.as_ref()).map_or(vec![], |r| r.failures.clone());
     failures.retain(|sha| sha != head);
-    let said = start_on_head(ctx, &config, &d, url, pr, &mut failures)??;
-    Ok(json!({ "review": said }))
+    // Said in serve's log as the tick's are. Past a cap of 0 no one is notified: the user sees it.
+    let started = start_on_head(ctx, &config, &d, url, pr, &mut failures)?;
+    ctx.world
+        .log(started.as_ref().unwrap_or_else(|no| &no.error));
+    Ok(json!({ "review": started? }))
 }
 
 /// Close the tab of `d`'s last Reviewer, if it has one: its agent name is
@@ -189,9 +199,9 @@ fn close_last(ctx: &Context, d: &Dispatch) -> Result<(), String> {
         .map_err(|e| format!("could not close the last Reviewer of {}: {e}", d.issue))
 }
 
-/// Start a new Reviewer of `d` on the head of its PR `pr` at `url`, its last
-/// one's tab closed, and record it on `d` with `failures`, that head added
-/// when the start fails: what it says, or why it failed.
+/// Start a new Reviewer of `d` on the head of its PR `pr` at `url`, once
+/// [`close_last`] closed its last one's tab, and record it on `d` with
+/// `failures`, that head added when the start fails: what it says, or why it failed.
 fn start_on_head(
     ctx: &Context,
     config: &Config,

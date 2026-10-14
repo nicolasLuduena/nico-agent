@@ -41,8 +41,11 @@ export const short: Record<Review["state"], string> = {
 /** A review only the user can move on: its Reviewer stopped without a Verdict, or the loop gave up starting one. */
 export const needsYou = (r: Review | null) => r?.state === "stopped" || r?.state === "gave_up";
 
-/** Whether the panel offers "Review now": the review is off, or only the user can move it on. */
-export const offered = (r: Review | null) => r?.state === "off" || needsYou(r);
+/**
+ * Whether the panel offers "Review now": the review is off with no Verdict on the head (the
+ * sha of the latest Verdict, if any), or only the user can move it on.
+ */
+export const offered = (r: Review | null, verdict?: string) => (r?.state === "off" && verdict !== r.sha) || needsYou(r);
 
 /** "Review now": serve starts a Reviewer on the PR's head. */
 export const reviewNow: Action = { write: (issue) => send("POST", "/api/review", { issue }), idle: "Review now", running: "Starting…" };

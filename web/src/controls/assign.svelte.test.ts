@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { asksToAssign, assignMe, assignable, named } from "./assign.svelte";
+import { asksToAssign, assignMe, assignable, named } from "./assign";
 import { Pressing } from "./press.svelte";
 import type { Sent } from "./send";
 
