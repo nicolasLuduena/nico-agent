@@ -121,8 +121,9 @@ Pre-approved for quality-scan to file as `gardening`:
 ## What it writes to a Source
 
 Three things only: the Claim (assigning the issue to the user), the Evidence
-summary in the PR body, and the draft-to-ready flip on a passing Verdict.
-Findings, retries and Verdicts stay local.
+summary in the PR body (with, after a failing Verdict, a line counting the
+Rulings and linking them in the Bucket), and the draft-to-ready flip on a
+passing Verdict. Findings, retries and Verdicts stay local.
 
 ## Principles
 

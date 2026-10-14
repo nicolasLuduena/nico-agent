@@ -10,6 +10,7 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
+use crate::bucket;
 use crate::cli::{Context, Refusal};
 use crate::config::{Config, fill_in};
 use crate::dispatch::{self, Dispatch, Failure, STEPS};
@@ -280,28 +281,32 @@ fn relaunch(
     launch::prompt(world, harness, &launch.agent, text).map_err(|no| ("prompt", no))
 }
 
-/// The restart prompt for `reason`: the prefix, then the reason's own text.
-/// `manual` is sent `rebooted`'s, the text for an agent gone from herdr.
+/// The restart prompt for `reason`: the prefix, then the reason's own text;
+/// `verdict`'s followed by `rulings`. `manual` is sent `rebooted`'s, the
+/// text for an agent gone from herdr.
 fn prompt(ctx: &Context, config: &Config, record: &Dispatch, reason: Reason) -> io::Result<String> {
     let texts = &config.prompts.restart;
-    let text = match reason {
-        Reason::Rebooted | Reason::Manual => &texts.rebooted,
-        Reason::Stalled => &texts.stalled,
-        Reason::Conflict => &texts.conflict,
-        Reason::Retarget => &texts.retarget,
-        Reason::Verdict => &texts.verdict,
+    let (text, then) = match reason {
+        Reason::Rebooted | Reason::Manual => (&texts.rebooted, ""),
+        Reason::Stalled => (&texts.stalled, ""),
+        Reason::Conflict => (&texts.conflict, ""),
+        Reason::Retarget => (&texts.retarget, ""),
+        Reason::Verdict => (&texts.verdict, texts.rulings.as_str()),
     };
     let verdict = verdict::load(&ctx.config_dir, &record.issue)?;
     let findings = verdict::file(&ctx.config_dir, &record.issue);
     let values = [
-        ("issueUrl", record.url.as_str()),
+        ("issue", record.issue.as_str()),
+        ("issueUrl", &record.url),
         ("branch", &record.branch),
         ("prUrl", record.pr.as_deref().unwrap_or("(none yet)")),
         ("baseBranch", &record.base),
         ("sha", verdict.as_ref().map_or("", |v| &v.sha)),
         ("findingsPath", &findings.display().to_string()),
+        ("evidenceFolder", &bucket::evidence(record)),
+        ("bucketUrl", &bucket::url(config, record)),
     ];
-    Ok(fill_in(&format!("{} {text}", texts.prefix), &values))
+    Ok(fill_in(&format!("{} {text}{then}", texts.prefix), &values))
 }
 
 /// Tell the user that `record` is Failed, if it is; called once, as it

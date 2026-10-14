@@ -58,7 +58,7 @@ $C restart                      # stop serve and start it again on the same HOME
 $C doctor                       # read-only health check of this run
 . "$($C env)"                   # this run's paths: $FIXTURE_CLONE, $SECOND_CLONE, $CONFIG_DIR, $BUCKET, $URL, $OUTSIDE_LOG
 $C seed issues [second]         # a fresh read of verify/fixture's issues (or verify/second's), as the Source would cache it
-$C seed dispatch <n> pr|asking|stacked  # a Dispatch of verify/fixture#<n> as the loop records one; prints JSON
+$C seed dispatch <n> pr|asking|stacked|restarted  # a Dispatch of verify/fixture#<n> as the loop records one; prints JSON
 $C seed run quality-scan|morning|faux-nico <n>  # a Run of the loop's own agent, blocked; prints JSON
 $C seed morning <file>|none     # the Morning summary the morning agent leaves: <file> as morning.md, or none
 $C seed answer <file>|none [<part>]  # what the wiki model (the opencode2 stub) answers every call: <file>'s text, or none;
@@ -215,7 +215,9 @@ What the fixtures hold:
   Asking "Should the fixture keep its README? (seeded by verify-nico-agent)". `stacked` records the
   same as `pr`, but Stacked on `#9`'s open PR `https://github.com/verify/fixture/pull/109` (head
   `agent/fixture-9`, on `main`, also put in `prs.json`): its Base and its PR's base are
-  `agent/fixture-9`. Use numbers above 6.
+  `agent/fixture-9`. `restarted` records the same as `pr`, its Implementer restarted by the loop for
+  two failing Verdicts an hour ago, as herdr lets it do: the next failing Verdict uses the restarts up.
+  Use numbers above 6.
 - `seed run` records a Run open and blocked since now, as the loop does once herdr reports its
   agent blocked: `quality-scan` of verify/fixture (agent `quality-scan-fixture`), `morning` (agent
   `morning`), or `faux-nico <n>` (agent `faux-nico-fixture-<n>`) on the Asking of a Dispatch seeded

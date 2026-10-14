@@ -18,7 +18,7 @@ select named Project. A strip row opens its Repo's Project's tab with the node's
 - `tabs-phone` under 720px the tablist is replaced by `combobox "Project"` with an option per Project.
 - `strip-asking` an Asking Implementer is a row `Asking <repo> #<n> <question> <since>`.
 - `strip-blocked` a blocked Run is a row `Blocked <agent> <since>`, under `<repo> #<n>` for a faux-nico, whose row opens its Dispatch's node.
-- `strip-failed` a Failed Dispatch is a row `Failed <repo> #<n> <title> <updated>`.
+- `strip-failed` a Failed Dispatch is a row `Failed <repo> #<n> <title> <updated>`; one the Reviewer kept failing says so instead (see rulings.md).
 - `strip-review` a review given up on or stopped is a row `Review <repo> #<n> <where it stands>: review it by hand with nico-agent verdict ...` (see review.md).
 - `strip-verified` a Verified PR is a row `Verified <repo> #<n> <title> <verdict time>`.
 - `strip-paused` a paused GitHub is a row `Paused GitHub until <time>`, with nothing to open.

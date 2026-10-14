@@ -57,16 +57,21 @@ fn pr_opened(t: Setup) -> Setup {
 
 /// The Implementer pushes: PR 9's head is now `sha`.
 fn push(t: &Setup, sha: &str) {
+    pr_is(t, sha, PrState::Open);
+}
+
+/// GitHub says PR 9 is at `sha`, and `state`.
+fn pr_is(t: &Setup, sha: &str, state: PrState) {
     t.world.activity.borrow_mut().insert(
         "acme/api#9".into(),
         PullRequestActivity {
-            state: PrState::Open,
+            state,
             draft: true,
             head_sha: sha.into(),
             base_branch: "main".into(),
             mergeable: Mergeable::Mergeable,
             updated_at: "2026-09-30T12:30:00Z".into(),
-            merged_at: None,
+            merged_at: (state == PrState::Merged).then(|| "2026-09-30T12:30:00Z".into()),
         },
     );
 }
@@ -506,6 +511,13 @@ fn findings(t: &Setup, text: &str) -> String {
     file.display().to_string()
 }
 
+/// The default `[prompts.restart] rulings` after a failing Verdict at `sha` on issue 7.
+fn rulings(sha: &str) -> String {
+    format!(
+        " Before you push, rule on each Finding, numbered F1, F2 and on as the findings number them, else in the order they list them: fixed, with the commit that fixes it, or dismissed, with why (what the issue, a feature file or PRODUCT.md says that the Finding misreads); a Finding saying an earlier dismissal does not hold is ruled on again. Append the Rulings to .evidence/7/rulings.md as a new section, never rewriting an earlier one, the file headed `# Rulings: acme/api#7`: `## Findings at {sha}`, then a line per Finding, `- **F1** \"<its title>\": fixed in <commit sha>` or `- **F2** \"<its title>\": dismissed. <why>`. Once pushed, add or update a `## Findings` section right after `## Evidence` in the PR body, one line counting every section of rulings.md: `<N> fixed, <M> dismissed over <R> rounds: [Rulings](http://127.0.0.1:42069/bucket/acme/api/7/)`."
+    )
+}
+
 fn verdict_file(t: &Setup) -> Value {
     let file = t.config_dir.join("verdicts/acme/api#7.json");
     serde_json::from_str(&std::fs::read_to_string(file).unwrap()).unwrap()
@@ -543,8 +555,9 @@ fn a_failing_verdict_keeps_its_findings_restarts_the_implementer_once_and_no_rev
             "herdr tab create --workspace w1 --cwd /worktrees/api-7 --label implementer --no-focus",
             "herdr agent start impl-api-7 --kind claude --pane w1:p4 -- ",
             &format!(
-                "herdr agent prompt impl-api-7 You are continuing https://github.com/acme/api/issues/7 on branch agent/api-7 in this worktree. Read git status, git log and the PR https://github.com/acme/api/pull/9 first. The Reviewer failed the PR at sha9. Its findings are in {}. Address each, run the verification, push.",
-                findings_path.display()
+                "herdr agent prompt impl-api-7 You are continuing https://github.com/acme/api/issues/7 on branch agent/api-7 in this worktree. Read git status, git log and the PR https://github.com/acme/api/pull/9 first. The Reviewer failed the PR at sha9. Its findings are in {}. Address each, run the verification, push.{}",
+                findings_path.display(),
+                rulings("sha9")
             ),
         ]
     );
@@ -579,33 +592,47 @@ fn a_failing_verdict_on_a_head_pushed_over_before_the_tick_restarts_nothing_and_
     assert_eq!(stage(&t), "PR draft");
 }
 
-#[test]
-fn a_third_failing_verdict_marks_the_dispatch_failed_notifies_once_and_starts_no_reviewer_after() {
-    let t = reviewing();
-    let file = findings(&t, "Signing in shows a 500.\n");
-
+/// Three failing Verdicts on `t`, each on the head the Implementer pushed
+/// after the last with its Rulings in its Evidence, a tick after each Verdict
+/// and push: what the ticks said. The third marks the Dispatch Failed.
+fn failed_by_the_reviewer(t: &Setup) -> Vec<String> {
+    let file = findings(t, "Signing in shows a 500.\n");
     let mut said = vec![];
     for (head, next) in [("sha9", "sha10"), ("sha10", "sha11"), ("sha11", "sha12")] {
         verdict(
-            &t,
+            t,
             &["acme/api#7", "fail", "--sha", head, "--findings", &file],
         );
         t.world.advance(TICK);
         said.extend(t.tick());
-        // The Implementer pushes a fix, and the next tick sees it.
-        push(&t, next);
+        // The Implementer rules on the Findings and pushes, and the next tick sees it.
+        let ruled = format!("## Findings at {head}\n\n- **F1** \"Signing in shows a 500\": dismissed.\n");
+        t.world
+            .add_file("/worktrees/api-7/.evidence/7/rulings.md", ruled.as_bytes());
+        push(t, next);
         t.world.advance(TICK);
         said.extend(t.tick());
     }
+    said
+}
+
+#[test]
+fn a_third_failing_verdict_marks_the_dispatch_failed_notifies_once_and_starts_no_reviewer_after() {
+    let t = reviewing();
+
+    let said = failed_by_the_reviewer(&t);
 
     assert_eq!(
         said,
         [
             "acme/api#7 restarted: verdict",
+            "acme/api#7: Evidence at sha10 kept in the Bucket",
             "acme/api#7: Reviewer started on codex for sha10",
             "acme/api#7 restarted: verdict",
+            "acme/api#7: Evidence at sha11 kept in the Bucket",
             "acme/api#7: Reviewer started on codex for sha11",
             "acme/api#7 Failed: verdict again after 2 restarts for it",
+            "acme/api#7: Evidence at sha12 kept in the Bucket",
         ]
     );
     assert_eq!(
@@ -616,6 +643,83 @@ fn a_third_failing_verdict_marks_the_dispatch_failed_notifies_once_and_starts_no
         )]
     );
     assert_eq!(stage(&t), "Failed");
+}
+
+#[test]
+fn a_dispatch_the_reviewer_kept_failing_says_so_in_api_status_with_its_findings_and_rulings_in_its_evidence()
+ {
+    let t = reviewing();
+    failed_by_the_reviewer(&t);
+
+    let (_, status) = t.get("/api/status");
+    let (_, node) = t.get("/api/node/acme%2Fapi%237");
+
+    let failed = &status["dispatches"][0];
+    assert_eq!(
+        failed["failure"],
+        json!({ "step": "restart", "error": "verdict again after 2 restarts for it", "reason": "verdict" })
+    );
+    let reasons = (failed["restarts"].as_array().unwrap().iter()).map(|r| &r["reason"]);
+    assert_eq!(reasons.collect::<Vec<_>>(), ["verdict", "verdict"]);
+    let kept = (node["evidence"].as_array().unwrap().iter())
+        .filter_map(|e| e["path"].as_str()?.strip_prefix("sha11/"));
+    assert_eq!(kept.collect::<Vec<_>>(), ["findings.md", "rulings.md"]);
+}
+
+#[test]
+fn a_dispatch_the_reviewer_kept_failing_closes_once_its_pr_is_merged_or_closed_on_github() {
+    for (state, said) in [(PrState::Merged, "merged"), (PrState::Closed, "closed")] {
+        let t = reviewing();
+        failed_by_the_reviewer(&t);
+        pr_is(&t, "sha12", state);
+        t.world.advance(TICK);
+
+        let ticked = t.tick();
+
+        assert!(
+            ticked.contains(&format!(
+                "acme/api#7 Closed: its PR https://github.com/acme/api/pull/9 {said}"
+            )),
+            "{ticked:?}"
+        );
+        let shown = &t.cli(&["status", "--json"]).json()["dispatches"][0];
+        assert!(shown["closed_at"].is_string(), "{shown}");
+    }
+}
+
+#[test]
+fn a_config_holding_its_own_restart_prompts_without_rulings_still_sends_the_default_rulings() {
+    // As this install's config.toml holds them: every key [prompts.restart] had before rulings.
+    let own = r#"
+[prompts.restart]
+prefix = "You are continuing {issueUrl} on branch {branch} in this worktree. Read git status, git log and the PR {prUrl} first."
+rebooted = "The machine restarted. Continue where the branch left off."
+stalled = "You stopped with no PR open. Continue to a draft PR."
+conflict = "The PR conflicts with {baseBranch}. Rebase onto it, resolve, run the tests and the verification, push."
+retarget = "The PR below yours merged. Retarget the PR onto {baseBranch}, rebase, push."
+verdict = "The Reviewer failed {prUrl} at {sha}: read {findingsPath}."
+"#;
+    let t = with_pr(own);
+    t.tick();
+    let file = findings(&t, "Signing in shows a 500.\n");
+    verdict(
+        &t,
+        &["acme/api#7", "fail", "--sha", "sha9", "--findings", &file],
+    );
+    t.world.advance(TICK);
+
+    let (said, calls) = calls_after(&t, || t.tick());
+
+    assert_eq!(said, ["acme/api#7 restarted: verdict"]);
+    let findings_path = t.config_dir.join("verdicts/acme/api#7.json");
+    assert_eq!(
+        herdr(&calls).last().unwrap(),
+        &format!(
+            "herdr agent prompt impl-api-7 You are continuing https://github.com/acme/api/issues/7 on branch agent/api-7 in this worktree. Read git status, git log and the PR https://github.com/acme/api/pull/9 first. The Reviewer failed https://github.com/acme/api/pull/9 at sha9: read {}.{}",
+            findings_path.display(),
+            rulings("sha9")
+        )
+    );
 }
 
 #[test]

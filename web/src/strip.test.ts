@@ -18,6 +18,8 @@ const status = (dispatches: Partial<Dispatch>[], githubPausedUntil: string | nul
     asking: null,
     review: null,
     verdict: null,
+    failure: null,
+    restarts: [],
     updated_at: "2026-09-30T11:00:00Z",
     closed_at: null,
     ...d,
@@ -85,6 +87,40 @@ describe("the needs-you strip", () => {
 
     expect(needsYou(failed)).toEqual([
       { kind: "Failed", repo: "acme/web", issue: "BLE-12", text: "Retry the webhook", at: "2026-09-30T03:40:00Z" },
+    ]);
+  });
+
+  it("lists a Dispatch the Reviewer kept failing with how many rounds, where the Findings and Rulings are, and what ends it", () => {
+    const verdict = { at: "2026-09-30T02:00:00Z", reason: "verdict", by: "loop" };
+    const failed = status([
+      {
+        stage: "Failed",
+        failure: { step: "restart", error: "verdict again after 2 restarts for it", reason: "verdict" },
+        restarts: [verdict, { ...verdict, reason: "rebooted" }, verdict],
+      },
+    ]);
+
+    expect(needsYou(failed)).toEqual([
+      {
+        kind: "Failed",
+        repo: "acme/api",
+        issue: "acme/api#7",
+        text: "The Reviewer failed it 3 rounds running; the Findings and Rulings are in its Evidence",
+        help: "Merge its PR or close it on GitHub, and the loop Closes the Dispatch",
+        at: "2026-09-30T11:00:00Z",
+      },
+    ]);
+  });
+
+  it("lists a Dispatch Failed for any other reason by its title, a verdict restart that failed at a step included", () => {
+    const failed = status([
+      { stage: "Failed", failure: { step: "restart", error: "stalled again after 2 restarts for it", reason: "stalled" } },
+      { issue: "acme/api#8", title: "Page the export", stage: "Failed", failure: { step: "tab", error: "herdr is down", reason: "verdict" } },
+    ]);
+
+    expect(needsYou(failed)).toEqual([
+      { kind: "Failed", repo: "acme/api", issue: "acme/api#7", text: "Add the export endpoint", at: "2026-09-30T11:00:00Z" },
+      { kind: "Failed", repo: "acme/api", issue: "acme/api#8", text: "Page the export", at: "2026-09-30T11:00:00Z" },
     ]);
   });
 

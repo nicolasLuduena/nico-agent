@@ -14,7 +14,8 @@
   import { selection } from "../selection.svelte";
   import { harnessHue, stageHue } from "../hues";
   import * as review from "../review";
-  import { number, repoName, type Project, type Review, type Stage } from "../status";
+  import { reviewerKeptFailing } from "../failure";
+  import { number, repoName, type Failure, type Project, type Restart, type Review, type Stage } from "../status";
   import { clock } from "../time";
   import Mark from "./Mark.svelte";
   import { shown } from "./ProjectMap.svelte";
@@ -22,10 +23,10 @@
   /** What `GET /api/node/<issue>` answers: the issue's last Dispatch, as /api/status shows it, with its Evidence. */
   interface Node {
     pr: { url: string; draft: boolean; state: string; merged_at: string | null } | null;
-    restarts: { at: string; reason: string; by: string }[];
+    restarts: Restart[];
     verdict: { result: "pass" | "fail"; sha: string; at: string; findings: string | null } | null;
     review: Review | null;
-    failure: { step: string; error: string } | null;
+    failure: Failure | null;
     evidence_folder: string;
     evidence: { path: string; url: string }[];
     /** While it is Asking: its Implementer's pane, or why herdr could not read it. */
@@ -170,11 +171,17 @@
       {#if !failure}<p class="note section">Reading the Dispatch…</p>{/if}
     {:else}
       {#if full.failure}
+        {@const kept = reviewerKeptFailing(full.failure, full.restarts)}
         <section>
           <h3 class="label">Failure</h3>
           <div class="errata">
-            <p><strong>{@render ticked(full.failure.error)}</strong></p>
-            <p>At the {full.failure.step} step.</p>
+            {#if kept}
+              <p><strong>{kept.said}</strong></p>
+              <p>{kept.help}</p>
+            {:else}
+              <p><strong>{@render ticked(full.failure.error)}</strong></p>
+              <p>At the {full.failure.step} step.</p>
+            {/if}
           </div>
         </section>
       {/if}

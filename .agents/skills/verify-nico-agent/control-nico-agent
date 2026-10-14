@@ -12,7 +12,7 @@
 #   doctor                        read-only: is this run worth driving?
 #   env                           print the path of run.env, to source: . "$(control-nico-agent env)"
 #   seed issues                   a fresh Source read of verify/fixture (issues 1-6)
-#   seed dispatch <n> pr|asking|stacked
+#   seed dispatch <n> pr|asking|stacked|restarted
 #                                 a Dispatch of verify/fixture#<n> as the loop records it
 #   seed run quality-scan|morning|faux-nico <n>
 #                                 a Run of the loop's own agent, blocked, as the loop records it
@@ -394,7 +394,7 @@ cmd_seed() {
     dialog) seed_dialog "$@" ;;
     reviewer) seed_reviewer "$@" ;;
     wiki) seed_wiki "$@" ;;
-    *) die "seed: usage: seed issues [second] | seed dispatch <n> pr|asking|stacked | seed run quality-scan|morning|faux-nico <n> | seed morning <file>|none | seed answer <file>|none [<part>] | seed correction <file>|none | seed pace <seconds>|none | seed assign answers|none | seed herdr <agent>|none | seed dialog <n>|none | seed reviewer <n>|none | seed wiki <wiki.json> <clone>" ;;
+    *) die "seed: usage: seed issues [second] | seed dispatch <n> pr|asking|stacked|restarted | seed run quality-scan|morning|faux-nico <n> | seed morning <file>|none | seed answer <file>|none [<part>] | seed correction <file>|none | seed pace <seconds>|none | seed assign answers|none | seed herdr <agent>|none | seed dialog <n>|none | seed reviewer <n>|none | seed wiki <wiki.json> <clone>" ;;
   esac
 }
 
@@ -446,9 +446,11 @@ seed_second_issues() {
 # the fixture on agent/fixture-<n> holding .evidence/<n>/proof.txt. `pr`: its draft PR #(100+n) open
 # on the worktree's head, as GitHub last said. `asking`: no PR, its Implementer Asking. `stacked`:
 # as `pr`, but Stacked on #9's open PR #109 (head agent/fixture-9), its Base and its PR's base.
+# `restarted`: as `pr`, its Implementer restarted by the loop for two failing Verdicts an hour ago,
+# as herdr lets the loop do (here herdr is a stub, and every restart fails at its tab).
 seed_dispatch() {
   local n="${1:-}" kind="${2:-}"
-  [[ "$n" =~ ^[0-9]+$ ]] && [[ "$kind" =~ ^(pr|asking|stacked)$ ]] || die "seed: usage: seed dispatch <n> pr|asking|stacked"
+  [[ "$n" =~ ^[0-9]+$ ]] && [[ "$kind" =~ ^(pr|asking|stacked|restarted)$ ]] || die "seed: usage: seed dispatch <n> pr|asking|stacked|restarted"
   local issue="$SLUG#$n" branch="agent/fixture-$n" worktree="$RUN_DIR/worktrees/fixture-$n"
   [ ! -e "$worktree" ] || die "seed: verify/fixture#$n is already seeded at $worktree"
   if [ -f "$CONFIG_DIR/dispatches.json" ] && jq -e --arg i "$issue" 'any(.[]; .issue == $i and .closed_at == null)' "$CONFIG_DIR/dispatches.json" >/dev/null; then
@@ -462,7 +464,10 @@ seed_dispatch() {
   mkdir -p "$worktree/.evidence/$n"
   printf 'Evidence of %s at %s, seeded by verify-nico-agent\n' "$issue" "$head" > "$worktree/.evidence/$n/proof.txt"
 
-  local at pr=null asking=null base=main stacked_on=null; at="$(now)"
+  local at pr=null asking=null base=main stacked_on=null restarts="[]"; at="$(now)"
+  if [ "$kind" = restarted ]; then
+    restarts="$(jq -nc --arg at "$(date -u -d '-1 hour' +%Y-%m-%dT%H:%M:%SZ)" '[range(2) | { at: $at, reason: "verdict", by: "loop" }]')"
+  fi
   local url="https://github.com/$SLUG/pull/$((100 + n))" below="https://github.com/$SLUG/pull/109"
   if [ "$kind" = stacked ]; then
     base=agent/fixture-9
@@ -486,7 +491,8 @@ seed_dispatch() {
   [ -f "$CONFIG_DIR/dispatches.json" ] && all="$(cat "$CONFIG_DIR/dispatches.json")"
   write_state "$CONFIG_DIR/dispatches.json" "$(jq --arg issue "$issue" --arg n "$n" --arg s "$SLUG" \
     --arg clone "$FIXTURE_CLONE" --arg branch "$branch" --arg worktree "$worktree" --arg at "$at" \
-    --argjson pr "$pr" --argjson asking "$asking" --arg base "$base" --argjson stacked_on "$stacked_on" '. + [{
+    --argjson pr "$pr" --argjson asking "$asking" --arg base "$base" --argjson stacked_on "$stacked_on" \
+    --argjson restarts "$restarts" '. + [{
       issue: $issue, title: "Verify: seeded Dispatch \($n)", url: "https://github.com/\($s)/issues/\($n)",
       repo: $s, repo_path: $clone, branch: $branch, base: $base, worktree: $worktree,
       workspace: "verify-workspace-\($n)", pr: $pr,
@@ -494,7 +500,7 @@ seed_dispatch() {
         tab: "verify-tab-\($n)", pane: "verify-pane-\($n)" },
       reviewer: null, research: false, asking: $asking,
       completed: ["claim", "fetch", "worktree", "tab", "agent start", "agent ready", "prompt"],
-      failure: null, claimed: true, warnings: [], restarts: [],
+      failure: null, claimed: true, warnings: [], restarts: $restarts,
       created_at: $at, updated_at: $at, closed_at: null }
       + if $stacked_on == null then {} else { stacked_on: $stacked_on } end]' <<<"$all")"
   jq -n --arg issue "$issue" --arg worktree "$worktree" --arg branch "$branch" --arg head "$head" \
