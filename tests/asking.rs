@@ -165,6 +165,11 @@ fn the_question_is_the_panes_last_meaningful_line() {
             "│ Do you want to make this edit to peek.ts? │\n╰────╯",
             "Do you want to make this edit to peek.ts?",
         ),
+        // A choice: its question is above its options and key hints.
+        (
+            "● Asking once before building.\n────\n←  ☐ Node tint  ✔ Submit  →\n\n│ Should map nodes carry a tint?\n\n❯ 1. Faint tint (Recommended)     ┌────┐\n  2. No tint                      │ #12 │\n                                  └────┘\n\n  Notes: press n to add notes\n────\n  Chat about this\n\nEnter to select · ↑/↓ to navigate · n to add notes · Tab to switch questions · Esc to cancel",
+            "Should map nodes carry a tint?",
+        ),
     ];
     let t = dispatched();
 

@@ -80,14 +80,18 @@ fn record(ctx: &Context, issue: &str, asking: Option<Asking>) -> io::Result<()> 
     })
 }
 
-/// The last line of `screen` that says something: not blank, and not a box's
-/// edge, an empty prompt, a spinner or a key hint. Ported from `main`'s
-/// screen-line.ts, without its regexes' word boundaries.
+/// The last line of `screen` that asks something, else the last that says
+/// something: not blank, and not a box's edge, an empty prompt, a spinner or
+/// a key hint. Ported from `main`'s screen-line.ts, without its regexes' word
+/// boundaries.
 fn meaningful_line(screen: &str) -> Option<&str> {
     let edge = |c: char| c.is_whitespace() || ('─'..='╿').contains(&c);
-    (screen.lines())
+    let said: Vec<&str> = (screen.lines())
         .map(|line| line.trim_matches(edge))
-        .rfind(|line| !line.is_empty() && !is_chrome(line))
+        .filter(|line| !line.is_empty() && !is_chrome(line))
+        .collect();
+    // A choice draws its options and key hints under its question.
+    (said.iter().rfind(|line| line.ends_with('?')).or(said.last())).copied()
 }
 
 /// What a Harness draws around the work: an empty prompt, a spinner, a key hint.
