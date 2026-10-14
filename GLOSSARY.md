@@ -132,8 +132,16 @@ transcripts. Summarised in the PR body, stored in the Bucket. _Avoid_:
 proof, test results.
 
 **Verdict**: the Reviewer's pass or fail on one commit of a PR, with
-findings, recorded locally by a typed command. A new push invalidates it.
+Findings, recorded locally by a typed command. A new push invalidates it.
 _Avoid_: approval, review.
+
+**Finding**: one numbered item of a failing Verdict: what the Reviewer
+observed against what a feature file or the PR's Evidence says. _Avoid_:
+issue, comment.
+
+**Ruling**: the Implementer's fixed (with its commit) or dismissed (with
+why) on one Finding, kept in `rulings.md` in the Evidence. _Avoid_:
+response, reply, triage.
 
 **Verified**: a PR whose latest commit has a passing Verdict; nico-agent
 flips it from draft to ready. _Avoid_: approved, green.

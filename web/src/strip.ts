@@ -1,3 +1,4 @@
+import { reviewerKeptFailing } from "./failure";
 import * as review from "./review";
 import type { Dispatch, Run, Status } from "./status";
 
@@ -7,9 +8,9 @@ export interface Need {
   /** The Repo and issue whose node the row opens; neither for a paused Source or the morning agent, no issue for a quality-scan, an Install or a check. */
   repo: string | null;
   issue: string | null;
-  /** The question's first line, the issue's title, the blocked agent's name, where its review stands, the paused Source, a failed Install's last line of output, or what a failing check says. */
+  /** The question's first line, the issue's title, the blocked agent's name, why the Reviewer's failing Verdicts Failed it, where its review stands, the paused Source, a failed Install's last line of output, or what a failing check says. */
   text: string;
-  /** A failed Install's or a failing check's help. */
+  /** The help of a Dispatch the Reviewer kept failing, a failed Install or a failing check. */
   help?: string | null;
   /** Since when it is Asking (null till a tick sees it) or blocked, when it last changed (a check: when its Repo's checks last did), its Verdict's time, when a failed Install started, or the pause's end; null for a review. */
   at: string | null;
@@ -30,7 +31,12 @@ export function needsYou(status: Status): Need[] {
     ...live.flatMap((d) => blocked(d.faux_nico, d.repo, d.issue)),
     ...status.repos.flatMap((r) => blocked(r.last_scan, r.slug, null)),
     ...blocked(status.morning, null, null),
-    ...live.filter((d) => d.stage === "Failed").map((d) => row("Failed", d, d.updated_at)),
+    ...live
+      .filter((d) => d.stage === "Failed")
+      .map((d): Need => {
+        const kept = reviewerKeptFailing(d.failure, d.restarts);
+        return kept ? { ...row("Failed", d, d.updated_at, kept.said), help: kept.help } : row("Failed", d, d.updated_at);
+      }),
     ...live.filter((d) => review.needsYou(d.review)).map((d) => row("Review", d, null, review.said(d.issue, d.review!))),
     ...live.filter((d) => d.stage === "Verified").map((d) => row("Verified", d, d.verdict?.at ?? null)),
     ...status.repos.flatMap((r): Need[] => {

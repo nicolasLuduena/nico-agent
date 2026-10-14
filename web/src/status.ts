@@ -178,8 +178,26 @@ export interface Dispatch {
   /** Its last faux-nico's Run, while it is live. */
   faux_nico?: Run;
   verdict: { result: "pass" | "fail"; sha: string; at: string } | null;
+  /** The step that failed last, until it is done. */
+  failure: Failure | null;
+  /** Each restart of its Implementer, oldest first. */
+  restarts: Restart[];
   updated_at: string;
   closed_at: string | null;
+}
+
+/** Why a Dispatch is Failed: the step it stopped at, and the restart reason a restart failed on or used up. */
+export interface Failure {
+  step: string;
+  error: string;
+  reason?: string;
+}
+
+/** One restart of a Dispatch's Implementer, by `loop` or `user`. */
+export interface Restart {
+  at: string;
+  reason: string;
+  by: string;
 }
 
 /** Where the review of a Dispatch's PR stands for its head; serve derives it, first match wins. */

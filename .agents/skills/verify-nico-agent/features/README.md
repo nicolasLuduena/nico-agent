@@ -82,6 +82,11 @@ commands, and observable proof.
   Blocker in another Repo to close and then on that Repo's Install, the Project's defaults
   edited on the tab reaching every Repo that does not set its own, the phone select and a strip row
   opening the Project's tab.
+- [A Dispatch the Reviewer kept failing](./rulings.md) covers `rulings.md` kept in the Bucket with
+  a PR head, a failing Verdict once the `verdict` restarts are used up marking the Dispatch Failed
+  with its reason in `/api/status`, the strip's Failed row and the panel's Failure section saying
+  "The Reviewer failed it N rounds running" with what ends it, and a `verdict` restart failed at
+  its tab reading as before.
 - [Where each PR's review stands](./review.md) covers `review` in `status` and the page: the node's
   line under a PR draft Stage, the panel's Review section with its Review now button, and the
   strip's Review row for a review given up on.

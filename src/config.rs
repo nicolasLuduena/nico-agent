@@ -95,6 +95,8 @@ stalled = "You stopped with no PR open. Continue to a draft PR."
 conflict = "The PR conflicts with {baseBranch}. Rebase onto it, resolve, run the tests and the verification, push."
 retarget = "The PR below yours merged. Retarget the PR onto {baseBranch}, rebase, push."
 verdict = "The Reviewer failed the PR at {sha}. Its findings are in {findingsPath}. Address each, run the verification, push."
+# Appended to verdict, as bot_suffix is to implement: the Rulings on its Findings.
+rulings = ' Before you push, rule on each Finding, numbered as the findings number them, else F1, F2 and on in the order they list them: fixed, with the commit that fixes it, or dismissed, with why (what the issue, a feature file or PRODUCT.md says that the Finding misreads); a Finding saying an earlier dismissal does not hold is ruled on again. Append the Rulings to {evidenceFolder}/rulings.md as a new section, never rewriting an earlier one, the file headed `# Rulings: {issue}`: `## Findings at {sha}`, then a line per Finding, `- **F1** "<its title>": fixed in <commit sha>` or `- **F2** "<its title>": dismissed. <why>`. Once pushed, add or update a `## Findings` section right after `## Evidence` in the PR body, one line counting every section of rulings.md: `<N> fixed, <M> dismissed over <R> rounds: [Rulings]({bucketUrl})`.'
 
 [harnesses.claude]
 launch_mode = "herdr-kind"
@@ -474,6 +476,8 @@ pub struct RestartPrompts {
     pub conflict: String,
     pub retarget: String,
     pub verdict: String,
+    /// Appended to `verdict`'s text.
+    pub rulings: String,
 }
 
 /// `template` with each `{name}` of `values` replaced; any other `{...}` is left as is.

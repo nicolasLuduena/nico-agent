@@ -36,7 +36,10 @@
   {#if need.repo && need.issue}
     <!-- `acme/api #7`, or `acme/api BLE-12` for a Linear issue. -->
     <span class="ref">{@render swatch(need.repo)}{need.repo} {need.issue.replace(need.repo, "")}</span>
-    <span class="text">{@render ticked(need.text)}</span>
+    <!-- A Dispatch the Reviewer kept failing: why, and under it what ends it, both read whole. -->
+    <span class="text" class:full={need.help}
+      >{@render ticked(need.text)}{#if need.help}<span class="help">{@render ticked(need.help)}</span>{/if}</span
+    >
   {:else if need.kind === "Check" || need.kind === "Install"}
     <!-- `acme/api: what it says`, and under it what to do about it. -->
     <span class="ref">{@render swatch(need.repo ?? "")}{need.repo}:</span>
@@ -139,7 +142,7 @@
   .at {
     text-align: right;
   }
-  /* A check's help is the fix: read whole, never cut. */
+  /* A help is the fix: read whole, never cut. */
   .text.full {
     white-space: normal;
     overflow-wrap: anywhere;
