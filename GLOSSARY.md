@@ -21,9 +21,9 @@ Source's native dependency relation records it. One in another Repo of the
 Project is resolved once closed and, when that Repo has an Install, installed
 since; it is never stacked on. _Avoid_: dependency.
 
-**Ready**: an open, unstarted issue labelled `ready-for-agent`, unassigned or
-assigned only to the user, whose Blockers are all resolved. _Avoid_:
-available, todo.
+**Ready**: an open, unstarted issue labelled `ready-for-agent`, assigned only
+to the user, or also unassigned when its Repo's `mine` Switch is off, whose
+Blockers are all resolved. _Avoid_: available, todo.
 
 **Stackable**: an issue that would be Ready except that each unresolved
 Blocker has an open PR in the same Repo, so work can start on top of that PR.
@@ -106,8 +106,8 @@ provider.
 budget.
 
 **Switch**: a Repo's on/off, or its Project's default, for one automatic
-step: dispatch, stack, review, restart, flip to ready, faux-nico answers,
-gardening, quality-scan, wiki.
+step: dispatch, mine (only issues assigned to the user), stack, review,
+restart, flip to ready, faux-nico answers, gardening, quality-scan, wiki.
 _Avoid_: standing order, manual mode.
 
 **Close**: end a Dispatch, removing its worktree and workspace; the branch

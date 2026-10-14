@@ -23,6 +23,8 @@
 #   seed correction <file>|none   what the wiki model answers each correction (a call with -s): <file>'s text,
 #                                 or none (then the answer for its part)
 #   seed pace <seconds>|none      how long the wiki model takes over each call before it answers, or none
+#   seed assign answers|none      whether GitHub answers an assign to the user (gh issue edit --add-assignee @me),
+#                                 as once signed in; none, it fails as gh with no login does
 #   seed wiki <wiki.json> <clone> a Repo's Wiki built elsewhere committed to the Bucket, and that Repo cloned
 #                                 on disk from <clone> for `repo add`; prints { repo, clone, commit }
 #   drift push <n>|stale|pause|below merged|closed|base [<file>]|tag <tag>
@@ -125,8 +127,11 @@ line="\$name\$(printf ' %q' "\$@")"
 [ -z "\${OPENCODE_CONFIG_CONTENT:-}" ] || line="OPENCODE_CONFIG_CONTENT=\$(printf '%q' "\$OPENCODE_CONFIG_CONTENT") \$line"
 printf '%s\\n' "\$line" >> "$log"
 case "\$name" in
+  # Seeded to answer: an assign to the user, as GitHub would take it.
+  gh) if [ -f "$RUN_DIR/gh-assign" ] && [ "\$1 \$2" = "issue edit" ] && [ "\${*: -2}" = "--add-assignee @me" ]; then exit 0; fi
+    echo "To get started with GitHub CLI, please run:  gh auth login" >&2; exit 4 ;;
   # What the real gh says in a HOME that never ran \`gh auth login\`.
-  gh|ghbot) echo "To get started with GitHub CLI, please run:  gh auth login" >&2; exit 4 ;;
+  ghbot) echo "To get started with GitHub CLI, please run:  gh auth login" >&2; exit 4 ;;
   herdr) echo '{"error":{"code":"verify_stub","message":"herdr is a stub in this verification run"}}' >&2; exit 1 ;;
   # Recorded, never shown on the desktop.
   notify-send) exit 0 ;;
@@ -349,13 +354,14 @@ cmd_seed() {
     answer) seed_answer "$@" ;;
     correction) seed_correction "$@" ;;
     pace) seed_pace "$@" ;;
+    assign) seed_assign "$@" ;;
     wiki) seed_wiki "$@" ;;
-    *) die "seed: usage: seed issues [second] | seed dispatch <n> pr|asking|stacked | seed run quality-scan|morning|faux-nico <n> | seed morning <file>|none | seed answer <file>|none [<part>] | seed correction <file>|none | seed pace <seconds>|none | seed wiki <wiki.json> <clone>" ;;
+    *) die "seed: usage: seed issues [second] | seed dispatch <n> pr|asking|stacked | seed run quality-scan|morning|faux-nico <n> | seed morning <file>|none | seed answer <file>|none [<part>] | seed correction <file>|none | seed pace <seconds>|none | seed assign answers|none | seed wiki <wiki.json> <clone>" ;;
   esac
 }
 
-# What a read of verify/fixture's GitHub issues would cache, read now: one Ready, one Research,
-# one Stackable on an open PR, and three that are not Ready, each for its own reason. With
+# What a read of verify/fixture's GitHub issues would cache, read now: one Ready, one Research
+# (assigned to the user), one Stackable on an open PR, and three that are not Ready, each for its own reason. With
 # `second`, verify/second's instead: #1 waiting on verify/fixture#1, a Blocker in another Repo,
 # #2 on verify/outside#7, in no Repo, and #3 on verify/fixture#20, closed as it is read.
 seed_issues() {
@@ -373,7 +379,7 @@ seed_issues() {
       (issue(3; "Verify: waits on #1"; ["ready-for-agent"])
         | .blockers = [{key: "\($s)#1", title: "Verify: a Ready issue", resolved: false, prs: []}]),
       (issue(4; "Verify: assigned to someone else"; ["ready-for-agent"]) | .assignees = ["someone-else"]),
-      issue(5; "Verify: a Research issue"; ["ready-for-agent", "research"]),
+      (issue(5; "Verify: a Research issue"; ["ready-for-agent", "research"]) | .assignees = ["verify-nico"]),
       (issue(6; "Verify: stacks on #9 PR"; ["ready-for-agent"])
         | .blockers = [{key: "\($s)#9", title: "Verify: a Blocker in review", resolved: false,
             prs: [{number: 109, url: "https://github.com/\($s)/pull/109", head_branch: "agent/fixture-9"}]}])
@@ -531,6 +537,16 @@ seed_pace() {
     none) rm -f "$RUN_DIR/opencode-pace" ;;
     *[!0-9]*|"") die "seed: usage: seed pace <seconds>|none" ;;
     *) printf '%s\n' "$1" > "$RUN_DIR/opencode-pace" ;;
+  esac
+}
+
+# Whether the gh stub answers an assign to the user, `gh issue edit <n> --repo <slug> --add-assignee
+# @me`, from now on, as GitHub does once signed in; with none, it fails as every gh call does.
+seed_assign() {
+  case "${1:-}" in
+    answers) : > "$RUN_DIR/gh-assign" ;;
+    none) rm -f "$RUN_DIR/gh-assign" ;;
+    *) die "seed: usage: seed assign answers|none" ;;
   esac
 }
 

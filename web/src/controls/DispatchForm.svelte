@@ -3,6 +3,7 @@
   // Harness, model and Effort that start on the last launch used.
   import { reload } from "../live";
   import { number, type Repo, type Status } from "../status";
+  import AssignMe from "./AssignMe.svelte";
   import LaunchPicker from "./LaunchPicker.svelte";
   import { startingLaunch } from "./launch";
   import Refused from "./Refused.svelte";
@@ -70,6 +71,10 @@
     <p role="status">Dispatched {number(sent.issue, repo.slug)}.</p>
   {:else if sent && !sent.outcome.ok}
     <Refused error={sent.outcome.error} help={sent.outcome.help} />
+    <!-- An issue no one has, in a Repo with `mine` on: its help says to take it, which this does. -->
+    {#if sent.outcome.help.some((line) => line.includes("turn `mine` off"))}
+      <AssignMe issue={sent.issue} onassigned={() => (sent = null)} />
+    {/if}
   {/if}
 </section>
 

@@ -1,6 +1,6 @@
 import dagre from "@dagrejs/dagre";
 import * as review from "../review";
-import type { Review } from "../status";
+import type { Assignee, Review } from "../status";
 
 /** What `GET /api/map/<project>` answers. */
 export interface MapData {
@@ -17,6 +17,8 @@ export interface MapNode {
   title: string | null;
   url: string | null;
   kind: "code" | "research";
+  /** Who it is assigned to, as its Source was last read; null when no read holds it, as a Blocker outside them. */
+  assignees: Assignee[] | null;
   /** A Dispatch's Stage, or Ready, Stackable or Waiting without one; null for a Blocker not offered to the loop. */
   stage: string | null;
   agent_state: { implementer: string; reviewer: string | null } | null;
@@ -26,8 +28,10 @@ export interface MapNode {
   restarts: number;
   created_at: string | null;
   merged_at: string | null;
-  /** Why a Waiting node waits, as `status` says it. */
+  /** Why a Waiting node waits, as `status` says it, or as a hand Dispatch is refused. */
   waits?: string;
+  /** Whether who it is assigned to is what keeps it from Ready: someone else, or no one in a Repo with `mine` on. */
+  assignee_holds?: true;
 }
 
 export interface MapEdge {
@@ -52,9 +56,13 @@ export interface Point {
  */
 export type Placed = MapNode & Point & { height: number; line: string | null; faded: boolean; needs: boolean };
 
-/** The short line under a node's Stage: its review's while PR draft, why it waits while Waiting, less its own key. */
+/** The short line under a node's Stage: its review's while PR draft, why it waits while Waiting, less its own key, or who has it. */
 function line(n: MapNode) {
   if (n.stage === "PR draft" && n.review) return review.short[n.review.state];
+  if (n.stage === "Waiting" && n.assignee_holds) {
+    const others = (n.assignees ?? []).filter((a) => !a.you);
+    return others.length ? `assigned to ${others.map((a) => `@${a.name}`).join(", ")}` : "unassigned";
+  }
   if (n.stage === "Waiting" && n.waits) return n.waits.startsWith(`${n.key} `) ? n.waits.slice(n.key.length + 1) : n.waits;
   return null;
 }

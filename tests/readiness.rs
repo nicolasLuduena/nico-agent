@@ -58,8 +58,8 @@ fn ready_github_issues_are_listed_oldest_first_with_their_kind() {
     assert_eq!(
         status["repos"][0]["ready"],
         json!([
-            { "key": "acme/api#9", "title": "Issue 9", "url": "https://github.com/acme/api/issues/9", "kind": "research" },
-            { "key": "acme/api#3", "title": "Add retries", "url": "https://github.com/acme/api/issues/3", "kind": "code" },
+            { "key": "acme/api#9", "title": "Issue 9", "url": "https://github.com/acme/api/issues/9", "kind": "research", "assignees": [] },
+            { "key": "acme/api#3", "title": "Add retries", "url": "https://github.com/acme/api/issues/3", "kind": "code", "assignees": [] },
         ])
     );
     assert_eq!(status["repos"][0]["slug"], "acme/api");
@@ -157,16 +157,16 @@ fn an_issue_whose_blockers_have_one_open_pr_branch_here_is_stackable_on_it() {
     assert_eq!(
         repo["stackable"],
         json!([
-            { "key": "acme/api#20", "title": "Issue 20", "url": "https://github.com/acme/api/issues/20", "kind": "code", "base": "agent/api-6" },
-            { "key": "acme/api#21", "title": "Issue 21", "url": "https://github.com/acme/api/issues/21", "kind": "code", "base": "agent/api-6" },
-            { "key": "acme/api#22", "title": "Issue 22", "url": "https://github.com/acme/api/issues/22", "kind": "code", "base": "agent/api-5" },
-            { "key": "acme/api#25", "title": "Issue 25", "url": "https://github.com/acme/api/issues/25", "kind": "code", "base": "fix-other-4" },
+            { "key": "acme/api#20", "title": "Issue 20", "url": "https://github.com/acme/api/issues/20", "kind": "code", "assignees": [], "base": "agent/api-6" },
+            { "key": "acme/api#21", "title": "Issue 21", "url": "https://github.com/acme/api/issues/21", "kind": "code", "assignees": [], "base": "agent/api-6" },
+            { "key": "acme/api#22", "title": "Issue 22", "url": "https://github.com/acme/api/issues/22", "kind": "code", "assignees": [], "base": "agent/api-5" },
+            { "key": "acme/api#25", "title": "Issue 25", "url": "https://github.com/acme/api/issues/25", "kind": "code", "assignees": [], "base": "fix-other-4" },
         ])
     );
     assert_eq!(
         repo["waiting"][0],
         json!({
-            "key": "acme/api#23", "title": "Issue 23", "url": "https://github.com/acme/api/issues/23", "kind": "code",
+            "key": "acme/api#23", "title": "Issue 23", "url": "https://github.com/acme/api/issues/23", "kind": "code", "assignees": [],
             "reason": "acme/api#23 waits for its Blockers' open PRs https://github.com/acme/api/pull/15, https://github.com/acme/api/pull/16 to merge down to one; they sit on different branches",
         })
     );
@@ -298,7 +298,7 @@ fn a_failed_read_keeps_the_last_cache_and_says_why() {
                 "slug": "acme/api",
                 "read_at": "2026-09-30T12:00:00Z",
                 "error": "GitHub request failed; check your network",
-                "ready": [{ "key": "acme/api#1", "title": "Issue 1", "url": "https://github.com/acme/api/issues/1", "kind": "code" }],
+                "ready": [{ "key": "acme/api#1", "title": "Issue 1", "url": "https://github.com/acme/api/issues/1", "kind": "code", "assignees": [] }],
                 "stackable": [],
                 "gardening": [],
                 "waiting": [],
@@ -420,7 +420,7 @@ fn linear_issues_the_selector_claims_are_ready_or_stackable_beside_github_ones()
         repo["stackable"],
         json!([{
             "key": "BLE-9", "title": "BLE-9", "url": "https://linear.app/bleentr/issue/BLE-9/title",
-            "kind": "research", "base": "nico/ble-1",
+            "kind": "research", "assignees": [], "base": "nico/ble-1",
         }])
     );
     assert_eq!(

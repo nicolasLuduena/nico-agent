@@ -8,6 +8,7 @@ const node = (key: string, rest: Partial<MapNode> = {}): MapNode => ({
   title: `Issue ${key}`,
   url: null,
   kind: "code",
+  assignees: null,
   stage: "Ready",
   agent_state: null,
   pr: null,
@@ -152,6 +153,28 @@ describe("the map's layout", () => {
       ["acme/api#3", "waits on acme/web#1 to be installed in acme/web", 110],
       ["acme/api#4", "acme/api#4's PR https://github.com/acme/api/pull/9 was closed unmerged", 110],
       ["acme/api#5", null, 88],
+    ]);
+  });
+
+  it("says on a Waiting node's row who it is assigned to, when that is what keeps it from Ready", () => {
+    const you = { name: "nico", you: true };
+    const colleague = { name: "colleague", you: false };
+    const held = { stage: "Waiting", assignee_holds: true } as const;
+    const drawn = layout({
+      nodes: [
+        node("acme/api#6", { ...held, assignees: [colleague], waits: "acme/api#6 is assigned to colleague" }),
+        node("acme/api#7", { ...held, assignees: [you, colleague, { name: "ada", you: false }], waits: "acme/api#7 is assigned to colleague, ada" }),
+        node("acme/api#8", { ...held, assignees: [], waits: "acme/api#8 is not assigned to you, and acme/api takes only issues assigned to you" }),
+        node("acme/api#9", { stage: "Ready", assignees: [you] }),
+      ],
+      edges: [],
+    });
+
+    expect(drawn.nodes.map((n) => [n.key, n.line, n.height])).toEqual([
+      ["acme/api#6", "assigned to @colleague", 110],
+      ["acme/api#7", "assigned to @colleague, @ada", 110],
+      ["acme/api#8", "unassigned", 110],
+      ["acme/api#9", null, 88],
     ]);
   });
 });

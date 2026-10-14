@@ -1,0 +1,64 @@
+import { describe, expect, it } from "vitest";
+import { Assigning, assignable, named } from "./assign.svelte";
+import type { Sent } from "./send";
+
+const you = { name: "nico", you: true };
+const colleague = { name: "colleague", you: false };
+
+describe("who an issue is assigned to, in its panel", () => {
+  it("names each assignee, the user as you, and none as Unassigned", () => {
+    expect(named([colleague, you])).toEqual(["colleague", "you"]);
+    expect(named([])).toEqual(["Unassigned"]);
+  });
+
+  it("offers Assign to me only on an issue no one has, before it is dispatched", () => {
+    expect(assignable({ assignees: [], stage: "Ready" })).toBe(true);
+    expect(assignable({ assignees: [], stage: "Waiting" })).toBe(true);
+    expect(assignable({ assignees: [colleague], stage: "Waiting" })).toBe(false);
+    expect(assignable({ assignees: [you], stage: "Ready" })).toBe(false);
+    expect(assignable({ assignees: [], stage: "Implementing" })).toBe(false);
+    // A Blocker outside the Sources read: who has it is not known.
+    expect(assignable({ assignees: null, stage: null })).toBe(false);
+  });
+});
+
+/** An assign still running, answered when the test says. */
+function pending() {
+  let answer!: (sent: Sent) => void;
+  const sent = new Promise<Sent>((resolve) => (answer = resolve));
+  const asked: string[] = [];
+  return { write: (issue: string) => (asked.push(issue), sent), answer, asked };
+}
+
+describe("the Assign to me button", () => {
+  it("reads Assigning… and is busy while serve assigns the issue, then is done", async () => {
+    const serve = pending();
+    const assigning = new Assigning(serve.write);
+    expect([assigning.label, assigning.busy]).toEqual(["Assign to me", false]);
+
+    const assigned = assigning.run("acme/api#1");
+    expect([assigning.label, assigning.busy]).toEqual(["Assigning…", true]);
+    serve.answer({ ok: true, answer: { assigned: "acme/api#1" } });
+
+    expect((await assigned).ok).toBe(true);
+    expect(serve.asked).toEqual(["acme/api#1"]);
+    expect([assigning.label, assigning.busy, assigning.refused]).toEqual(["Assign to me", false, null]);
+  });
+
+  it("keeps a refusal to show under it, until the next try", async () => {
+    const paused = { ok: false as const, error: "could not assign acme/api#1 to you: GitHub is paused", help: ["try again once it answers"] };
+    const assigning = new Assigning(async () => paused);
+
+    await assigning.run("acme/api#1");
+    expect(assigning.refused).toEqual({ error: paused.error, help: paused.help });
+    expect(assigning.busy).toBe(false);
+
+    const again = pending();
+    const retry = new Assigning(again.write);
+    retry.refused = assigning.refused;
+    const running = retry.run("acme/api#1");
+    expect(retry.refused).toBeNull();
+    again.answer({ ok: true, answer: {} });
+    await running;
+  });
+});

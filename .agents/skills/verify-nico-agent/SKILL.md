@@ -61,6 +61,7 @@ $C seed answer <file>|none [<part>]  # what the wiki model (the opencode2 stub) 
                                 # with <part>, a trail such as `verify/fixture > Readme`, only the calls about it
 $C seed correction <file>|none  # what the wiki model answers each correction (a call with -s): <file>'s text, or none
 $C seed pace <seconds>|none     # how long the wiki model takes over each call before it answers, or none: a build to watch
+$C seed assign answers|none     # whether GitHub answers an assign to the user (`gh issue edit <n> ... --add-assignee @me`), or none
 $C seed wiki <wiki.json> <clone>  # a Repo's Wiki built elsewhere committed to the Bucket, and that Repo cloned from
                                 # <clone> for `repo add`: a real Wiki to read on its page; prints {repo, clone, commit}
 $C drift push <n>|stale|pause   # what GitHub would change: a new PR head, an old read, a rate limit
@@ -187,7 +188,7 @@ What the fixtures hold:
 - `seed issues` caches, read now (fresh for a tick, 10 hours here), `verify/fixture#1` "Verify: a
   Ready issue" (Ready), `#2` "Verify: not labelled", `#3` "Verify: waits on #1" (unresolved Blocker
   `#1`, no PR), `#4` "Verify: assigned to someone else" (assignee `someone-else`), `#5` "Verify: a
-  Research issue" (Ready, `research`), `#6` "Verify: stacks on #9 PR" (Stackable on PR #109, head
+  Research issue" (Ready, `research`, assigned to the user), `#6` "Verify: stacks on #9 PR" (Stackable on PR #109, head
   `agent/fixture-9`, which the fixture's origin does not have). The user is `verify-nico`.
   `seed issues second` caches, read now, `verify/second#1` "Verify: waits on fixture #1"
   (unresolved Blocker `verify/fixture#1`, a Blocker in another Repo), `#2` "Verify: waits on an
@@ -219,6 +220,9 @@ What the fixtures hold:
   model does. `seed pace <seconds>` has every call after it wait that long before it answers (or
   fails), so a build lasts long enough to watch from the page; `seed pace none` answers at once
   again. The stub logs each call after the `OPENCODE_CONFIG_CONTENT` it was given.
+- `seed assign answers` makes the `gh` stub answer `gh issue edit <n> --repo <slug> --add-assignee @me`
+  with success, as GitHub does once the user is signed in, so the Claim and "Assign to me" go
+  through; `seed assign none` fails it again, as every other `gh` call fails.
 - `drift push <n>` commits to the seeded worktree and moves the PR's `head_sha`, as a push would;
   `drift stale` dates the cached read 2000-01-01, so the next `status` or `dispatch` asks GitHub;
   `drift pause` writes GitHub paused for an hour, as a rate limit does; `drift below merged|closed`
@@ -240,11 +244,11 @@ unknown path's `help`, and on the page the ARIA roles and names: `tablist "Proje
 a Repo's own, then a `region "<slug>"` per Repo, holding in order `region "Dispatch"` with `button
 "Dispatch"`, then `region "Readiness"`, `"Room"`, `"Switches"`, `"Settings"`, `"Libraries"` and
 `"Install"`, each folded to a `group` reading its head and what is set (`Readiness 2 of 6 pass`,
-`Room 3 · 0 in flight`, `Switches 4 of 9 on`, `Settings Implementer claude`, `Libraries None linked`,
+`Room 3 · 0 in flight`, `Switches 4 of 10 on`, `Settings Implementer claude`, `Libraries None linked`,
 `Install None`) until a `--click "region=<Section>"` opens it (one with a failing check or a refusal
 opens by itself), then `button "Remove <slug>…"`. Opened: `region "Room"` has `spinbutton "Room"`,
 `region "Switches"` a `switch` per switch (`Dispatch`, `Faux-nico answers`, `Flip to ready`,
-`Gardening`, `Quality-scan`, `Restart`, `Review`, `Stack`, `Wiki`), `region "Settings"` `group
+`Gardening`, `Only issues assigned to me`, `Quality-scan`, `Restart`, `Review`, `Stack`, `Wiki`), `region "Settings"` `group
 "Implementer"` and `group "Reviewer"` (`combobox "<Role> Harness"`, then `combobox` or, where the
 Harness lists none, `textbox` `"<Role> model"` and `"<Role> Effort"`), `textbox "Base"` and
 `combobox "Project"` (a Repo's only), `region "Libraries"` `button "Unlink <id>"` per version and

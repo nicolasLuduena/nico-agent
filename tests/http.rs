@@ -153,6 +153,7 @@ fn an_unknown_path_or_method_answers_404_with_the_routes_as_help() {
         "GET /api/wiki/<id>: the Wiki, a Repo's by its slug or a Library version's as owner/name@tag[:path]: its Components, Interpretations, Anchors and Gaps",
         "POST /api/dispatch {issue, harness, model, effort}: `nico-agent dispatch` of the issue",
         "POST /api/refresh: `nico-agent refresh`",
+        "POST /api/assign {issue}: assign the issue to the user on its Source, unless someone else has it, and keep that in its Repo's last read",
         "POST /api/wiki/<id>/update|rebuild|continue: queue the Wiki's build first: an Update, one from nothing, or one asking only its budget Gaps",
         "PATCH /api/repo/<owner/name>/switches {name: bool}: set the Repo's switches; null takes its Project's or the default",
         "PATCH /api/repo/<owner/name> {implementer, reviewer, room, base, project, install, switches, libraries}: set the Repo's own settings; null takes its Project's or the default",
@@ -541,7 +542,7 @@ fn patch_switches_writes_only_the_named_switches_and_answers_the_repo_s_switches
     );
 
     let defaults = json!({
-        "dispatch": true, "stack": true, "review": true, "restart": true, "flip": true,
+        "dispatch": true, "mine": false, "stack": true, "review": true, "restart": true, "flip": true,
         "answer": false, "gardening": false, "quality_scan": false, "wiki": false,
     });
     let mut no_review = defaults.clone();
@@ -570,7 +571,7 @@ fn patch_switches_refuses_an_unknown_switch_slug_or_value_and_writes_nothing() {
     let t = written();
     let patch = |path: &str, body: &str| t.send("PATCH", path, body);
     let help = json!([
-        "Switches: dispatch, stack, review, restart, flip, answer, gardening, quality_scan, wiki"
+        "Switches: dispatch, mine, stack, review, restart, flip, answer, gardening, quality_scan, wiki"
     ]);
 
     let unknown_switch = patch(
@@ -755,8 +756,7 @@ fn patch_repo_refuses_a_bad_value_of_any_setting_and_writes_nothing() {
     let t = written();
     let room = "room is how many Dispatches the Repo may have In flight at once, a whole number of at least 1";
     let settings = "Settings: implementer, reviewer, room, base, project, install, switches, libraries; null takes the Project's or the default";
-    let switches =
-        "Switches: dispatch, stack, review, restart, flip, answer, gardening, quality_scan, wiki";
+    let switches = "Switches: dispatch, mine, stack, review, restart, flip, answer, gardening, quality_scan, wiki";
     let harnesses = "Harnesses: claude, codex, opencode";
 
     let bodies = [

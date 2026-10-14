@@ -7,14 +7,10 @@
   import Refused from "./Refused.svelte";
   import Save from "./Save.svelte";
   import { Saves } from "./saves.svelte";
-  import { type Holder, unset } from "./settings";
+  import { type Holder, switchLabel as label, unset } from "./settings";
 
   let { holder }: { holder: Holder } = $props();
   const id = $props.id();
-
-  /** A switch's name as the Glossary says it, capitalised. */
-  const said: Record<string, string> = { flip: "Flip to ready", answer: "Faux-nico answers", quality_scan: "Quality-scan" };
-  const label = (name: string) => said[name] ?? name[0].toUpperCase() + name.slice(1);
 
   // The PATCH's answer, until /api/status's next one.
   let switches = $derived(holder.settings.switches);
@@ -63,6 +59,10 @@
   }
   li + li {
     border-top: 1px solid var(--hairline);
+  }
+  /* A long name wraps, its chip under it, and leaves the toggle on its right. */
+  li > span {
+    flex: 1 1 0;
   }
   label {
     cursor: pointer;

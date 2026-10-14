@@ -34,6 +34,15 @@ export function undoLabel(setting: Setting<unknown>, project: Project | undefine
   return sets ? "Use the Project's" : "Use the default";
 }
 
+/** A switch's name as the Glossary says it, capitalised; `mine` as what it does. */
+const said: Record<string, string> = {
+  mine: "Only issues assigned to me",
+  flip: "Flip to ready",
+  answer: "Faux-nico answers",
+  quality_scan: "Quality-scan",
+};
+export const switchLabel = (name: string) => said[name] ?? name[0].toUpperCase() + name.slice(1);
+
 /** The PATCH body that removes the own value at `keys`. */
 export const unset = (keys: string[]) => keys.reduceRight<unknown>((body, key) => ({ [key]: body }), null) as Record<string, unknown>;
 

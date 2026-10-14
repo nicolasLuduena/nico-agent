@@ -22,7 +22,7 @@ const ISSUES_QUERY: &str = "query($filter: IssueFilter!, $cursor: String) {
   issues(first: 100, after: $cursor, filter: $filter) {
     nodes {
       id identifier title url branchName createdAt team { id key name } project { id name }
-      state { type } assignee { id }
+      state { type } assignee { id displayName }
       labels(first: 100) { nodes { name } pageInfo { hasNextPage endCursor } }
       inverseRelations(first: 100) { nodes { type issue { identifier title state { type } completedAt canceledAt } } pageInfo { hasNextPage endCursor } }
       children(first: 1) { nodes { id } }
@@ -43,10 +43,11 @@ struct IssueNode {
     team: LinearTeam,
     project: Option<LinearProject>,
     state: StateNode,
-    assignee: Option<IdNode>,
+    assignee: Option<UserNode>,
     labels: Page<Named>,
     inverse_relations: Page<RelationNode>,
-    children: Nodes<IdNode>,
+    /// Only whether there is one is read.
+    children: Nodes<serde::de::IgnoredAny>,
 }
 
 #[derive(Deserialize)]
@@ -56,8 +57,10 @@ struct StateNode {
 }
 
 #[derive(Deserialize)]
-struct IdNode {
+#[serde(rename_all = "camelCase")]
+struct UserNode {
     id: String,
+    display_name: String,
 }
 
 #[derive(Deserialize)]
@@ -161,6 +164,7 @@ fn to_issue(world: &RealWorld, node: IssueNode) -> WorldResult<LinearIssue> {
         project: node.project,
         labels: labels.into_iter().map(|l| l.name).collect(),
         state: node.state.kind,
+        assignee_name: node.assignee.as_ref().map(|a| a.display_name.clone()),
         assignee: node.assignee.map(|a| a.id),
         // An inverse `blocks` relation of X is "Y blocks X": Y is X's Blocker.
         blockers: relations

@@ -49,7 +49,7 @@ fn add_reads_the_remotes_and_list_shows_the_repo_with_defaults_filled_in() {
             "implementer": { "harness": "claude", "model": null, "effort": null },
             "reviewer": { "harness": "codex", "model": null, "effort": null },
             "switches": {
-                "dispatch": true, "stack": true, "review": true, "restart": true, "flip": true,
+                "dispatch": true, "mine": false, "stack": true, "review": true, "restart": true, "flip": true,
                 "answer": false, "gardening": false, "quality_scan": false, "wiki": false,
             },
         }] })

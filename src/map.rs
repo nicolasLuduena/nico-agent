@@ -55,16 +55,20 @@ pub fn map(ctx: &Context, name: &str) -> Result<Option<Value>, Refusal> {
     }
     let week_ago = state::iso(ctx.world.now() - Duration::from_secs(7 * 86_400));
     last.retain(|_, (d, _)| d.closed_at.is_none() || merged_at(d) >= Some(&week_ago));
-    // The issues the Project's Sources hold, and the Repo each is in.
+    // The issues the Project's Sources hold, and the Repo each is in, with
+    // the user each read and the Repo's slug while its `mine` Switch is on.
     let mut issues: Vec<Issue> = vec![];
     let mut held: BTreeMap<String, &str> = BTreeMap::new();
+    let mut readers: BTreeMap<&str, (Vec<String>, Option<String>)> = BTreeMap::new();
     for slug in &slugs {
-        for issue in
-            source::cached(&ctx.config_dir, &config, slug)?.map_or(vec![], |read| read.issues)
-        {
+        let Some(read) = source::cached(&ctx.config_dir, &config, slug)? else {
+            continue;
+        };
+        for issue in read.issues {
             held.insert(issue.key.clone(), slug);
             issues.push(issue);
         }
+        readers.insert(slug, (read.user, read.mine));
     }
     // A Blocker in another Repo of the Project is keyed in GitHub's casing; its node, in the config's.
     for blocker in issues.iter_mut().flat_map(|i| &mut i.blockers) {
@@ -115,6 +119,7 @@ pub fn map(ctx: &Context, name: &str) -> Result<Option<Value>, Refusal> {
     let mut nodes = BTreeMap::new();
     for key in keys {
         let issue = issues.iter().find(|i| i.key == key);
+        let reader = held.get(key).map(|slug| &readers[slug]);
         let (d, shown) = last.get(key).copied().unzip();
         let shown = shown.unwrap_or(&Value::Null);
         let stage = match issue {
@@ -153,6 +158,7 @@ pub fn map(ctx: &Context, name: &str) -> Result<Option<Value>, Refusal> {
             "title": title,
             "url": url,
             "kind": if research { "research" } else { "code" },
+            "assignees": issue.zip(reader).map(|(i, (user, _))| source::assignees(i, user)),
             "stage": stage,
             "agent_state": shown["agent_state"],
             "pr": pr,
@@ -164,9 +170,15 @@ pub fn map(ctx: &Context, name: &str) -> Result<Option<Value>, Refusal> {
             "created_at": issue.map(|i| &i.created_at),
             "merged_at": d.and_then(merged_at),
         });
-        // Why a Waiting node waits, as `status` says it.
+        // Why a Waiting node waits, as `status` says it, or as a hand Dispatch
+        // is refused when it is who it is assigned to.
+        let yours = (issue.zip(reader))
+            .and_then(|(i, (user, mine))| source::why_not_yours(i, user, mine.as_deref()));
         if let Some(waiting) = row("waiting", key).filter(|_| stage == "Waiting") {
             node["waits"] = waiting["reason"].clone();
+        } else if let Some(why) = yours.filter(|_| stage == "Waiting") {
+            node["waits"] = json!(why);
+            node["assignee_holds"] = json!(true);
         }
         nodes.insert(key, node);
     }

@@ -184,6 +184,10 @@ pub fn issue(ctx: &Context, config: &Config, key: &str, flags: Flags) -> Result<
     let (slug, repo, read) = source_of(ctx, config, key)?;
     let launch = launch_of(config, repo, flags)?;
     if let Some(why) = source::why_not_ready(&read, key) {
+        if why == source::not_yours(key, slug) {
+            let help = format!("Assign it to yourself, or turn `mine` off for {slug}");
+            return Err(Refusal::new(why, vec![help]));
+        }
         return Err(Refusal::new(
             format!("{key} is not Ready"),
             vec![

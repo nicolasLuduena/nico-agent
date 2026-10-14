@@ -148,7 +148,7 @@ skill_dirs = [
 const REPO_DEFAULTS: &str = r#"
 room = 3
 implementer = { harness = "claude" }
-switches = { dispatch = true, stack = true, review = true, restart = true, flip = true, answer = false, gardening = false, quality_scan = false, wiki = false }
+switches = { dispatch = true, mine = false, stack = true, review = true, restart = true, flip = true, answer = false, gardening = false, quality_scan = false, wiki = false }
 libraries = []
 "#;
 
@@ -360,8 +360,9 @@ pub struct Launch {
 }
 
 /// The switches the app shows and sets.
-pub const SWITCHES: [&str; 9] = [
+pub const SWITCHES: [&str; 10] = [
     "dispatch",
+    "mine",
     "stack",
     "review",
     "restart",
@@ -376,6 +377,8 @@ pub const SWITCHES: [&str; 9] = [
 #[serde(deny_unknown_fields)]
 pub struct Switches {
     pub dispatch: bool,
+    /// Only the issues assigned to the user are Ready; off, unassigned ones are too.
+    pub mine: bool,
     pub stack: bool,
     pub review: bool,
     pub restart: bool,
