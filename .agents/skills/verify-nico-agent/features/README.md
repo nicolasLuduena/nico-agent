@@ -83,8 +83,8 @@ commands, and observable proof.
   edited on the tab reaching every Repo that does not set its own, the phone select and a strip row
   opening the Project's tab.
 - [Where each PR's review stands](./review.md) covers `review` in `status` and the page: the node's
-  line under a PR draft Stage, the panel's Review section, and the strip's Review row for a review
-  given up on.
+  line under a PR draft Stage, the panel's Review section with its Review now button, and the
+  strip's Review row for a review given up on.
 - [Settings](./settings.md) covers the Settings section of a Repo's tab (Implementer and Reviewer
   launches, Base, Project), each setting's `default`/`from Project`/`set here` chip and its Use the default (or the
   Project's), `PATCH /api/repo/<slug>` and `PATCH /api/project/<name>`, their refusals, and a launch

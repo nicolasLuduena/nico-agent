@@ -3,8 +3,8 @@
   // Harness, model and Effort that start on the last launch used.
   import { reload } from "../live";
   import { number, type Repo, type Status } from "../status";
-  import { asksToAssign } from "./assign.svelte";
-  import AssignMe from "./AssignMe.svelte";
+  import { asksToAssign, assignMe } from "./assign.svelte";
+  import Press from "./Press.svelte";
   import LaunchPicker from "./LaunchPicker.svelte";
   import { startingLaunch } from "./launch";
   import Refused from "./Refused.svelte";
@@ -73,7 +73,7 @@
   {:else if sent && !sent.outcome.ok}
     <Refused error={sent.outcome.error} help={sent.outcome.help} />
     {#if asksToAssign(sent.outcome.help)}
-      <AssignMe issue={sent.issue} onassigned={() => (sent = null)} />
+      <Press issue={sent.issue} action={assignMe} ondone={() => (sent = null)} />
     {/if}
   {/if}
 </section>

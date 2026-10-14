@@ -2,12 +2,13 @@
   // The open node's panel (desktop) or bottom sheet (phone): what the map
   // node knows, who it is assigned to with "Assign to me" while no one is,
   // and for an issue with a Dispatch, /api/node/<issue>: while it is Asking
-  // its Implementer's pane, to answer from, then its PR, restarts, review and
-  // Verdict with findings, and Evidence in the Bucket.
+  // its Implementer's pane, to answer from, then its PR, restarts, review
+  // with "Review now" while it is off, stopped or given up on, and Verdict
+  // with findings, and Evidence in the Bucket.
   import { onMount } from "svelte";
   import Answer from "../controls/Answer.svelte";
-  import { assignable, named } from "../controls/assign.svelte";
-  import AssignMe from "../controls/AssignMe.svelte";
+  import { assignMe, assignable, named } from "../controls/assign.svelte";
+  import Press from "../controls/Press.svelte";
   import { ticked } from "../controls/Refused.svelte";
   import { watch } from "../live";
   import { selection } from "../selection.svelte";
@@ -140,7 +141,7 @@
       <section>
         <h3 class="label">Assigned</h3>
         {#if assignable(node.assignees, dispatched)}
-          <AssignMe {issue}><span class="note">Unassigned</span></AssignMe>
+          <Press {issue} action={assignMe}><span class="note">Unassigned</span></Press>
         {:else}
           <p class:note={!node.assignees.length}>{named(node.assignees).join(", ")}</p>
         {/if}
@@ -195,14 +196,23 @@
         <h3 class="label">Review</h3>
         <!-- A Verdict on the head says it itself, below. -->
         {#if full.review && full.review.state !== "passed" && full.review.state !== "failed"}
+          {@const r = full.review}
           <!-- A line naming its Reviewer's Harness carries its diamond, as everywhere a Harness is named. -->
-          <p class="said">
-            {#if full.review.harness && ["reviewing", "stopped"].includes(full.review.state)}<span
-                class="harness"
-                style:--harness={harnessHue(full.review.harness)}
-                aria-hidden="true"
-              ></span>{/if}{@render ticked(review.said(issue, full.review))}
-          </p>
+          {#snippet stands()}
+            <p class="said">
+              {#if r.harness && ["reviewing", "stopped"].includes(r.state)}<span
+                  class="harness"
+                  style:--harness={harnessHue(r.harness)}
+                  aria-hidden="true"
+                ></span>{/if}{@render ticked(review.said(issue, r))}
+            </p>
+          {/snippet}
+          <!-- A start that failed is counted, and the tick tries again: its refusal stays till then. -->
+          {#if review.offered(r) || r.state === "retrying"}
+            <Press {issue} action={review.reviewNow} offered={review.offered(r)}>{@render stands()}</Press>
+          {:else}
+            {@render stands()}
+          {/if}
         {/if}
         {#if full.verdict}
           <p class="row">

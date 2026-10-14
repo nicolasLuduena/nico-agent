@@ -64,9 +64,9 @@ in progress.
 **Implementer**: the agent a Dispatch starts to implement the issue and open
 a draft PR with Evidence. _Avoid_: worker.
 
-**Reviewer**: the agent started in the same workspace once a PR exists, on a
-different Harness by default, to re-run the verification and record a
-Verdict. _Avoid_: checker.
+**Reviewer**: the agent started in the same workspace once a PR exists, or
+by hand from the Board, on a different Harness by default, to re-run the
+verification and record a Verdict. _Avoid_: checker.
 
 **Asking**: an Implementer waiting on a human, with the question its screen
 shows. faux-nico answers it when the Repo's docs settle it; otherwise the

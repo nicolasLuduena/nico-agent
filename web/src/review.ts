@@ -1,3 +1,5 @@
+import type { Action } from "./controls/press.svelte";
+import { send } from "./controls/send";
 import type { Review } from "./status";
 
 /** Where the review of `issue`'s PR stands, in a line; the ones that need you say how to record a Verdict by hand. */
@@ -38,3 +40,9 @@ export const short: Record<Review["state"], string> = {
 
 /** A review only the user can move on: its Reviewer stopped without a Verdict, or the loop gave up starting one. */
 export const needsYou = (r: Review | null) => r?.state === "stopped" || r?.state === "gave_up";
+
+/** Whether the panel offers "Review now": the review is off, or only the user can move it on. */
+export const offered = (r: Review | null) => r?.state === "off" || needsYou(r);
+
+/** "Review now": serve starts a Reviewer on the PR's head. */
+export const reviewNow: Action = { write: (issue) => send("POST", "/api/review", { issue }), idle: "Review now", running: "Starting…" };
