@@ -53,7 +53,7 @@
       {/each}
     </div>
   {/if}
-  <button type="button" onclick={() => setHidden(!hidden)}>{hidden ? "Show" : "Hide"}</button>
+  <button type="button" class="quiet" onclick={() => setHidden(!hidden)}>{hidden ? "Show" : "Hide"}</button>
 </section>
 
 <style>
@@ -105,19 +105,5 @@
   }
   li {
     padding-block: 2px;
-  }
-  /* DESIGN.md's button-quiet, as Refresh. */
-  button {
-    flex: none;
-    min-height: 36px;
-    padding: 8px 16px;
-    border: 1px solid var(--rule);
-    border-radius: 2px;
-    background: var(--surface);
-    font-weight: 600;
-    cursor: pointer;
-  }
-  button:hover {
-    background: var(--ground);
   }
 </style>

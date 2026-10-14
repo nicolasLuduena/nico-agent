@@ -1,5 +1,6 @@
 import { svelte } from "@sveltejs/vite-plugin-svelte";
-import { defineConfig, type ProxyOptions } from "vite";
+import type { ProxyOptions } from "vite";
+import { defineConfig } from "vitest/config";
 
 // serve answers only on its own host, and a write only from a page there:
 // the app served here is one, a page on any other origin stays refused.
@@ -17,4 +18,7 @@ const serve: ProxyOptions = {
 export default defineConfig({
   plugins: [svelte()],
   server: { proxy: { "/api": serve, "/bucket": serve } },
+  // Tests run Svelte as the browser does, so a rune's effects run in them.
+  resolve: process.env.VITEST ? { conditions: ["browser"] } : undefined,
+  test: { environment: "./src/runes.environment.ts" },
 });

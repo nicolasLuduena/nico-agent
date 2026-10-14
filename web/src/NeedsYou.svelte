@@ -1,6 +1,7 @@
 <script lang="ts">
   import { ticked } from "./controls/Refused.svelte";
   import { projectOf } from "./controls/settings";
+  import { repoLine } from "./hues";
   import { flash } from "./motion";
   import { selection } from "./selection.svelte";
   import type { Project } from "./status";
@@ -23,15 +24,21 @@
   }
 </script>
 
+<!-- The Repo's line colour, in a Project of more than one, before its name. -->
+{#snippet swatch(repo: string)}
+  {@const line = repoLine(repo, projectOf(repo, projects))}
+  {#if line}<span class="swatch" style:--line={line}></span>{/if}
+{/snippet}
+
 {#snippet cells(need: Need)}
   <span class="label kind">{need.kind}</span>
   {#if need.repo && need.issue}
     <!-- `acme/api #7`, or `acme/api BLE-12` for a Linear issue. -->
-    <span class="ref">{need.repo} {need.issue.replace(need.repo, "")}</span>
+    <span class="ref">{@render swatch(need.repo)}{need.repo} {need.issue.replace(need.repo, "")}</span>
     <span class="text">{@render ticked(need.text)}</span>
   {:else if need.kind === "Check" || need.kind === "Install"}
     <!-- `acme/api: what it says`, and under it what to do about it. -->
-    <span class="ref">{need.repo}:</span>
+    <span class="ref">{@render swatch(need.repo ?? "")}{need.repo}:</span>
     <span class="text full">{@render ticked(need.text)}<span class="help">{@render ticked(need.help ?? "")}</span></span>
   {:else}
     <span class="ref">{need.text}</span>
@@ -112,6 +119,11 @@
   }
   .ref {
     font-weight: 600;
+  }
+  /* On the band's yellow in both themes: framed in its ink, so a light line colour still shows. */
+  .swatch {
+    margin-right: 8px;
+    outline: 1px solid var(--signal-ink);
   }
   /* A command keeps the band's own ink: the page's would be white on yellow in Dark. */
   .text :global(code) {

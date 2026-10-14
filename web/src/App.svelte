@@ -266,11 +266,6 @@
     select {
       flex: 1;
       min-width: 0;
-      min-height: 36px;
-      padding: 0 8px;
-      border: 1px solid var(--ink-muted);
-      border-radius: 2px;
-      background: var(--surface);
       font-weight: 600;
     }
     .times {

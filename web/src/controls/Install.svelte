@@ -1,43 +1,52 @@
 <script lang="ts">
-  // The Repo's Install as /api/status shows it: its command, written to
-  // config.toml on change (emptied, removed), and how the last one went, a
-  // failed or refused one on the errata rule with what it printed.
+  // The Repo's Install as /api/status shows it, folded under how the last one
+  // went: its command, written to config.toml as it is entered (emptied,
+  // removed), and the last Install, a failed or refused one on the errata rule
+  // with what it printed, which opens the section by itself.
   import { reload } from "../live";
   import type { Repo } from "../status";
   import { clock } from "../time";
+  import { entered } from "./field";
+  import Fold from "./Fold.svelte";
   import Refused, { ticked } from "./Refused.svelte";
-  import { patch, type Sent } from "./send";
+  import Save from "./Save.svelte";
+  import { Saves } from "./saves.svelte";
+  import { patch } from "./send";
 
-  let { repo }: { repo: Repo } = $props();
+  let { repo, panel }: { repo: Repo; panel: string } = $props();
+  const id = $props.id();
 
-  let saving = $state(false);
-  let refused = $state<Sent | null>(null);
+  const saves = new Saves();
   const last = $derived(repo.install?.last ?? null);
+  const summary = $derived(
+    last?.ok ? `Installed ${last.sha?.slice(0, 7)}` : last ? `Failed at ${clock(last.at)}` : repo.install ? "Not run yet" : "None",
+  );
 
-  async function save(input: HTMLInputElement) {
-    saving = true;
-    refused = null;
-    const sent = await patch(repo.slug, { install: input.value.trim() || null });
-    saving = false;
+  async function save(value: string, input: HTMLInputElement) {
+    const sent = await saves.run("install", () => patch(repo.slug, { install: value.trim() || null }));
     if (sent.ok) reload();
-    else {
-      refused = sent;
-      input.value = repo.install?.command ?? "";
-    }
+    else input.value = repo.install?.command ?? "";
   }
 </script>
 
-<section aria-labelledby="install-head">
-  <h2 class="label" id="install-head">Install</h2>
-  <input
-    aria-labelledby="install-head"
-    value={repo.install?.command ?? ""}
-    placeholder="none: nothing runs after a merge"
-    disabled={saving}
-    onchange={(e) => save(e.currentTarget)}
-  />
-  {#if refused && !refused.ok}
-    <Refused error={refused.error} help={refused.help} />
+<Fold {panel} title="Install" {summary} alarm={saves.refused !== null || (last !== null && !last.ok)}>
+  <div class="field">
+    <div class="field-head">
+      <label class="field-name" for="{id}-command">Install command</label>
+      <Save state={saves.of("install")} />
+    </div>
+    <input
+      id="{id}-command"
+      value={repo.install?.command ?? ""}
+      placeholder="none: nothing runs after a merge"
+      autocomplete="off"
+      aria-invalid={saves.invalid("install")}
+      aria-busy={saves.busy("install")}
+      use:entered={{ set: repo.install?.command ?? "", save }}
+    />
+  </div>
+  {#if saves.refused}
+    <Refused error={saves.refused.error} help={saves.refused.help} />
   {/if}
   {#if last?.ok}
     <p class="muted">Installed {last.sha?.slice(0, 7)} at {clock(last.at)}</p>
@@ -50,30 +59,14 @@
   {:else if repo.install}
     <p class="muted">Runs in its clone after each merge into its Base</p>
   {/if}
-</section>
+</Fold>
 
 <style>
-  section {
-    display: grid;
-    gap: 8px;
-  }
-  input {
-    width: 100%;
-    min-height: 36px;
-    padding: 0 8px;
-    border: 1px solid var(--ink-muted);
-    border-radius: 2px;
-    background: var(--surface);
-    text-overflow: ellipsis;
-  }
-  input:disabled {
-    opacity: 0.5;
-    cursor: progress;
-  }
   .said {
     font-weight: 600;
   }
   pre {
+    margin: 0;
     font: inherit;
     white-space: pre-wrap;
     overflow-wrap: anywhere;

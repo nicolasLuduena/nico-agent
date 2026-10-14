@@ -12,7 +12,7 @@ view lists the Wikis of its Repos, then of the Library versions they link, each 
 
 ## Sub-features
 
-- `link-settings` the Repo panel's Libraries form sends `PATCH /api/repo/<slug>` with the whole list; `config.toml` gains `libraries = [{ repo = "...", tag = "...", path = "..." }]` under the Repo, `wiki-queue.json` waits on the version's id, and its row reads `Wiki queued`; Unlink sends the list without it, Use the default removes the Repo's own list.
+- `link-settings` the Repo panel's Libraries form sends `PATCH /api/repo/<slug>` with the whole list; `config.toml` gains `libraries = [{ repo = "...", tag = "...", path = "..." }]` under the Repo, `wiki-queue.json` waits on the version's id, and its row reads `Wiki queued`, the chip beside `Linked versions` reading `set here`; Unlink sends the list without it, the chip's × (`button "Use the default Libraries"`) removes the Repo's own list and the chip reads `default`.
 - `picker` the Wiki view's `list "Wikis"` lists the Repo's Wiki, then each Library version it links, each a `link` to its page, `/wiki/<owner>/<name>@<tag>[:<path>]`, its `@` and `:` as written; an old link naming one on the Board (`#<project>/wiki/<id>`) opens that page.
 - `tab-add` the Libraries tab's Add sends `POST /api/libraries {repo, tag, path}` (no `path` when Subfolder is empty), answers `<id> added`, writes `[wiki] libraries`, queues it, and lists it; a version a Repo links answers `<id> already linked by <slug> (no-op)` and writes nothing.
 - `tab-remove` `Remove <id>…`, then `Remove <id>`, sends `DELETE /api/libraries/<id>`: `config.toml` drops the entry, `wikis.json` forgets its builds, the Bucket's one commit `wiki <id> removed` deletes its `wiki.json`, which `git show` still finds at the commit before; `/bucket/` answers 404 for it.
@@ -20,7 +20,7 @@ view lists the Wikis of its Repos, then of the Library versions they link, each 
 
 ## How to get to it (user POV)
 
-- A Repo's panel on its Project's tab: the Libraries section under Settings.
+- A Repo's panel on its Project's tab: the Libraries section under Settings, folded to one line reading `None linked` or `N linked`; click it open.
 - The Libraries tab after the Project tabs (the phone's Project select's last option, `Libraries`), or a link to `#/libraries`.
 - The Wiki view of a Project tab: its list, each Wiki a link to its page.
 - `/api` directly, as the page sends it.
@@ -35,11 +35,12 @@ Preconditions:
 - `$C state > "$E/state.before.txt"`.
 
 - **Link from the Repo's settings.** `$C page --evidence "$E/01-link-from-settings" --within
-  "region=verify/fixture" --click "textbox=Library" --type verify/second --click "textbox=Tag" --type
+  "region=verify/fixture" --click "region=Libraries" --click "textbox=Library" --type verify/second --click "textbox=Tag" --type
   v1.0 --click "textbox=Subfolder" --type lib --click "button=Link" --expect "Wiki queued"`:
   `.requests.txt` holds `PATCH /api/repo/verify/fixture
   {"libraries":[{"repo":"verify/second","tag":"v1.0","path":"lib"}]} -> 200`; the ARIA snapshot's
-  `region "Libraries"` lists `verify/second`, `v1.0 · lib Wiki queued` and `button "Unlink
+  `region "Libraries"` reads `Libraries 1 linked`, its chip `set here` with `button "Use the default
+  Libraries"`, and `list "Linked versions"` holds `verify/second`, `v1.0 · lib Wiki queued` and `button "Unlink
   verify/second@v1.0:lib"`. `$C state` diff: `config.toml` gains `libraries = [{ repo =
   "verify/second", tag = "v1.0", path = "lib" }]` under `[repos."verify/fixture"]`, and
   `wiki-queue.json` waits on `verify/second@v1.0:lib`.
@@ -73,9 +74,10 @@ Preconditions:
   of it answers `already linked by verify/fixture (no-op)`; one with `"path":"../.."` is 400; the
   `state` diff around them is empty.
 - **Unlink.** After the refusals, `$C page --evidence "$E/14-unlink" --within "region=verify/fixture"
-  --click "button=Unlink verify/second@v1.0:lib" --expect "None linked" --click "button=Use the
-  default Libraries" --gone "Use the default"`: `.requests.txt` holds `PATCH
-  /api/repo/verify/fixture {"libraries":[]}` then `{"libraries":null}`; `$C state` diff: the
+  --click "region=Libraries" --click "button=Unlink verify/second@v1.0:lib" --expect "None linked" --click "button=Use the
+  default Libraries" --gone "set here"`: `.requests.txt` holds `PATCH
+  /api/repo/verify/fixture {"libraries":[]}` then `{"libraries":null}`; the section reads `None linked`,
+  `status` `Saved` where the chip was, which reads `default` once `Saved` goes (2 seconds); `$C state` diff: the
   Repo's `libraries` line gone from `config.toml`; its Wiki stays in the Bucket, as `wikis.json`
   keeps its build, so linking it again builds nothing.
 - **Phone.** `$C page --evidence "$E/13-tab-phone" --width 390 --hash "#/libraries" --expect "None
@@ -89,5 +91,9 @@ Preconditions:
   its Run closes failed at a later tick: drive the tab before any refresh, or expect those lines.
 - The Libraries tab shows two `button "Add"`, Add a Library's then Add a Repo's: `--click
   button=Add` takes the first, the Library's.
+- The chip's × is named `Use the default Libraries` but shows no text: `--gone "Use the default"` passes at
+  once; wait for its `set here` to go instead.
+- A Repo's `region "Libraries"` is folded: a `--click "textbox=Library"` or `"button=Unlink ..."` on it
+  times out. Open it first with `--within "region=<slug>" --click "region=Libraries"`.
 - The tab lists only the versions no Repo links: a linked one is removed by unlinking it in its
   Repo's settings, never from the tab.

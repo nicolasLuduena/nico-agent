@@ -1,14 +1,18 @@
 <script lang="ts">
   // A Repo's launches, Base and Project, or a Project's launches and Base, as
-  // /api/status shows them, each written to config.toml on change; its own
-  // launch or Base goes back to its Project's or the default.
+  // /api/status shows them, folded under the Implementer's launch; each
+  // written to config.toml as it changes, a text field on Enter or on leaving
+  // it; its own launch or Base goes back to its Project's or the default.
   import { reload } from "../live";
   import { selection } from "../selection.svelte";
-  import type { Project, Repo } from "../status";
+  import type { Launch, Project, Repo } from "../status";
+  import { entered } from "./field";
+  import Fold from "./Fold.svelte";
   import From from "./From.svelte";
-  import { choices } from "./launch";
+  import LaunchPicker from "./LaunchPicker.svelte";
   import Refused from "./Refused.svelte";
-  import type { Sent } from "./send";
+  import Save from "./Save.svelte";
+  import { Saves } from "./saves.svelte";
   import { type Holder, picked, unset } from "./settings";
 
   let {
@@ -21,8 +25,7 @@
 
   // The PATCH's answer, until /api/status's next one.
   let shown = $derived({ implementer: holder.settings.implementer, reviewer: holder.settings.reviewer, base: holder.settings.base });
-  let saving = $state<string | null>(null);
-  let refused = $state<Sent | null>(null);
+  const saves = new Saves();
 
   /** The Project the Repo names; none while it is its own. */
   const joined = $derived(repo && holder.under && holder.under.name !== repo.slug ? holder.under.name : null);
@@ -30,10 +33,7 @@
 
   /** PATCH `body` as the setting `key`; `back` puts a refused field back to what is set. */
   async function save(key: string, body: Record<string, unknown>, back?: () => void) {
-    saving = key;
-    refused = null;
-    const sent = await holder.patch(body);
-    saving = null;
+    const sent = await saves.run(key, () => holder.patch(body));
     if (sent.ok) {
       shown = { implementer: sent.answer.implementer, reviewer: sent.answer.reviewer, base: sent.answer.base };
       // Its Project, and so its tab and what it takes from it, shows from /api/status; the
@@ -42,149 +42,117 @@
         selection.project = (body.project as string | null) ?? repo.slug;
         reload("/api/status");
       }
-    } else {
-      refused = sent;
-      back?.();
-    }
+    } else back?.();
   }
 
   /** What a text field sends: its name, or null to take the Project's or the default. */
-  const named = (input: HTMLInputElement) => input.value.trim() || null;
+  const named = (value: string) => value.trim() || null;
+  /** A launch in a line, kept whole where the line wraps: its Harness, then its model and Effort when set. */
+  const said = (l: Launch) => [l.harness, l.model, l.effort].filter(Boolean).join("\u00a0·\u00a0");
 </script>
 
 {#snippet launch(key: "implementer" | "reviewer", title: string)}
   {@const setting = shown[key]}
-  {@const takes = harnesses[setting.value.harness] ?? { models: null, efforts: null }}
-  {@const pick = (field: "harness" | "model" | "effort", select: HTMLSelectElement) =>
-    save(key, { [key]: picked(setting.value, field, select.value || null) }, () => (select.value = setting.value[field] ?? ""))}
-  <div class="launch" role="group" aria-labelledby="{id}-{key}">
-    <div class="row">
-      <span class="name" id="{id}-{key}">{title}</span>
-      <From {setting} {holder} keys={[key]} name={title} busy={saving === key} onundo={() => save(key, unset([key]))} />
+  <div class="field" role="group" aria-labelledby="{id}-{key}">
+    <div class="field-head">
+      <strong id="{id}-{key}">{title}</strong>
+      <Save state={saves.of(key)}>
+        <From {setting} {holder} keys={[key]} name={title} onundo={() => save(key, unset([key]))} />
+      </Save>
     </div>
-    <label class="wide">
-      <span class="label">Harness</span>
-      <select aria-label="{title} Harness" value={setting.value.harness} disabled={saving === key} onchange={(e) => pick("harness", e.currentTarget)}>
-        {#each Object.keys(harnesses) as name (name)}
-          <option value={name}>{name}</option>
-        {/each}
-      </select>
-    </label>
-    <label>
-      <span class="label">Model</span>
-      <select aria-label="{title} model" value={setting.value.model ?? ""} disabled={saving === key} onchange={(e) => pick("model", e.currentTarget)}>
-        {#each choices(takes.models, setting.value.model) as m (m)}
-          <option value={m ?? ""}>{m ?? "default"}</option>
-        {/each}
-      </select>
-    </label>
-    <label>
-      <span class="label">Effort</span>
-      <select aria-label="{title} Effort" value={setting.value.effort ?? ""} disabled={saving === key} onchange={(e) => pick("effort", e.currentTarget)}>
-        {#each choices(takes.efforts, setting.value.effort) as m (m)}
-          <option value={m ?? ""}>{m ?? "default"}</option>
-        {/each}
-      </select>
-    </label>
+    <LaunchPicker
+      {harnesses}
+      launch={setting.value}
+      named={title}
+      invalid={!!saves.invalid(key)}
+      busy={saves.busy(key)}
+      pick={(field, value, back) => save(key, { [key]: picked(setting.value, field, value) }, back)}
+    />
   </div>
 {/snippet}
 
-<section aria-labelledby="{id}-head">
-  <h2 class="label" id="{id}-head">Settings</h2>
+<Fold panel={holder.panel} title="Settings" summary="Implementer {said(shown.implementer.value)}" alarm={saves.refused !== null}>
   {@render launch("implementer", "Implementer")}
   {@render launch("reviewer", "Reviewer")}
-  <div class="row">
-    <label class="name" for="{id}-base">Base</label>
-    <From setting={shown.base} {holder} keys={["base"]} name="Base" busy={saving === "base"} onundo={() => save("base", unset(["base"]))} />
-  </div>
-  <input
-    id="{id}-base"
-    value={shown.base.value ?? ""}
-    placeholder="origin's default branch"
-    disabled={saving === "base"}
-    onchange={async (e) => {
-      const input = e.currentTarget;
-      await save("base", { base: named(input) });
-      // Emptied, it shows what takes its place, which may be the value it last showed.
-      input.value = shown.base.value ?? "";
-    }}
-  />
-  {#if repo}
-    <div class="row">
-      <label class="name" for="{id}-project">Project</label>
-      {#if joined}
-        <button type="button" class="quiet" disabled={saving === "project"} onclick={() => save("project", { project: null })}>Leave {joined}</button>
-      {/if}
+  <div class="field">
+    <div class="field-head">
+      <label class="field-name" for="{id}-base">Base</label>
+      <Save state={saves.of("base")}>
+        <From setting={shown.base} {holder} keys={["base"]} name="Base" onundo={() => save("base", unset(["base"]))} />
+      </Save>
     </div>
     <input
-      id="{id}-project"
-      list="{id}-projects"
-      value={joined ?? ""}
-      placeholder="its own"
-      disabled={saving === "project"}
-      onchange={(e) => {
-        const input = e.currentTarget;
-        save("project", { project: named(input) }, () => (input.value = joined ?? ""));
+      id="{id}-base"
+      value={shown.base.value ?? ""}
+      placeholder="origin's default branch"
+      autocomplete="off"
+      aria-invalid={saves.invalid("base")}
+      aria-busy={saves.busy("base")}
+      use:entered={{
+        set: shown.base.value ?? "",
+        save: async (value, input) => {
+          await save("base", { base: named(value) });
+          // Emptied, it shows what takes its place, which may be the value it last showed.
+          input.value = shown.base.value ?? "";
+        },
       }}
     />
-    <datalist id="{id}-projects">
-      {#each others as name (name)}
-        <option value={name}></option>
-      {/each}
-    </datalist>
+  </div>
+  {#if repo}
+    <div class="field">
+      <div class="field-head">
+        <label class="field-name" for="{id}-project">Project</label>
+        <Save state={saves.of("project")} />
+      </div>
+      <div class="project">
+        <input
+          id="{id}-project"
+          list="{id}-projects"
+          value={joined ?? ""}
+          placeholder="its own"
+          autocomplete="off"
+          aria-invalid={saves.invalid("project")}
+          aria-busy={saves.busy("project")}
+          use:entered={{
+            set: joined ?? "",
+            save: (value, input) => save("project", { project: named(value) }, () => (input.value = joined ?? "")),
+          }}
+        />
+        {#if joined}
+          <button type="button" class="quiet" onclick={() => save("project", { project: null })}>Leave {joined}</button>
+        {/if}
+      </div>
+      <datalist id="{id}-projects">
+        {#each others as name (name)}
+          <option value={name}></option>
+        {/each}
+      </datalist>
+    </div>
   {/if}
-  {#if refused && !refused.ok}
-    <Refused error={refused.error} help={refused.help} />
+  {#if saves.refused}
+    <Refused error={saves.refused.error} help={saves.refused.help} />
   {/if}
-</section>
+</Fold>
 
 <style>
-  section {
-    display: grid;
+  /* The Implementer and the Reviewer, each a group set off from what follows. */
+  [role="group"] {
     gap: 8px;
-  }
-  .launch {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    gap: 8px 12px;
     padding-bottom: 8px;
+    border-bottom: 1px solid var(--hairline);
   }
-  .row,
-  .wide {
-    grid-column: 1 / -1;
-  }
-  .row {
+  .project {
     display: flex;
     flex-wrap: wrap;
-    align-items: center;
-    gap: 4px 12px;
-    min-height: 36px;
+    gap: 8px;
   }
-  .name {
-    margin-right: auto;
-    font-weight: 600;
-  }
-  label:not(.name) {
-    display: grid;
-    gap: 4px;
+  .project input {
+    flex: 1 1 140px;
+    width: auto;
     min-width: 0;
   }
-  label .label {
-    color: var(--ink-muted);
-  }
-  select,
-  input {
-    width: 100%;
-    min-height: 36px;
-    padding: 0 8px;
-    border: 1px solid var(--ink-muted);
-    border-radius: 2px;
-    background: var(--surface);
-    text-overflow: ellipsis;
-  }
-  select:disabled,
-  input:disabled {
-    opacity: 0.5;
-    cursor: progress;
+  .project button {
+    max-width: 100%;
+    overflow-wrap: anywhere;
   }
 </style>

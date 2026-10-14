@@ -7,6 +7,8 @@ export type Own = "repo" | "project";
 /** What a panel of settings edits: a Repo's, over its Project's and the defaults, or a Project's, over the defaults. */
 export interface Holder {
   own: Own;
+  /** The panel showing it, by which this browser remembers which of its sections are open: `repo <slug>`, `project <name>`. */
+  panel: string;
   settings: Settings;
   /** The Project a Repo's own value falls back to; none for a Project's. */
   under: Project | undefined;
@@ -17,8 +19,9 @@ export interface Holder {
 /** The Project the Repo `slug` is in, as /api/status lists them: its own, named by its slug, unless it names one. */
 export const projectOf = (slug: string, projects: Project[]) => projects.find((p) => p.repos.includes(slug));
 
-/** A setting's tag: where it comes from while the layer `own` does not set it; none once it does. */
-export const tag = (setting: Setting<unknown>, own: Own = "repo") => (setting.from === own ? null : setting.from);
+/** A setting's chip: where it comes from while the layer `own` does not set it; none once it does. */
+export const tag = (setting: Setting<unknown>, own: Own = "repo") =>
+  setting.from === own ? null : setting.from === "project" ? "from Project" : "default";
 
 /**
  * The button that removes the `own` layer's value of the setting at `keys`

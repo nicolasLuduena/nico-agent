@@ -5,6 +5,7 @@
   // before any is built too.
   import { onMount } from "svelte";
   import { ticked } from "../controls/Refused.svelte";
+  import { repoLine } from "../hues";
   import { watch } from "../live";
   import { page } from "../route";
   import type { Project, WikiSettings } from "../status";
@@ -59,8 +60,9 @@
   {:else}
     <ul class="wikis" aria-label="Wikis">
       {#each wikis as w (w.id)}
+        {@const line = repoLine(w.id, project)}
         <li>
-          <a class="name" href={page(w.id)}>{w.id}</a>
+          <a class="name" href={page(w.id)}>{#if line}<span class="swatch" style:--line={line}></span>{/if}{w.id}</a>
           <p class="stands">
             {#if w.state === "building"}
               <span class="label">Building</span>{#if w.progress}{" "}since {clock(w.progress.at)}{/if}
@@ -120,6 +122,9 @@
   .name {
     font-weight: 600;
     overflow-wrap: anywhere;
+  }
+  .swatch {
+    margin-right: 8px;
   }
   .stands {
     display: flex;

@@ -6,10 +6,11 @@
   import { ticked } from "../controls/Refused.svelte";
   import { watch } from "../live";
   import { selection } from "../selection.svelte";
+  import { harnessHue, stageHue } from "../hues";
   import * as review from "../review";
   import { number, repoName, type Project, type Review, type Stage } from "../status";
   import { clock } from "../time";
-  import Mark, { worded } from "./Mark.svelte";
+  import Mark from "./Mark.svelte";
   import { shown } from "./ProjectMap.svelte";
 
   /** What `GET /api/node/<issue>` answers: the issue's last Dispatch, as /api/status shows it, with its Evidence. */
@@ -104,7 +105,7 @@
     {#if node}
       <p class="stage">
         <svg width="14" height="14" viewBox="0 0 14 14"><Mark stage={node.stage} /></svg>
-        <strong class={worded(node.stage)}>{node.stage ?? "Blocker"}</strong>
+        <strong style:color={stageHue(node.stage)}>{node.stage ?? "Blocker"}</strong>
         <span class="label kind">{node.kind}</span>
       </p>
     {/if}
@@ -163,7 +164,14 @@
         <h3 class="label">Review</h3>
         <!-- A Verdict on the head says it itself, below. -->
         {#if full.review && full.review.state !== "passed" && full.review.state !== "failed"}
-          <p class="said">{@render ticked(review.said(issue, full.review))}</p>
+          <!-- A line naming its Reviewer's Harness carries its diamond, as everywhere a Harness is named. -->
+          <p class="said">
+            {#if full.review.harness && ["reviewing", "stopped"].includes(full.review.state)}<span
+                class="harness"
+                style:--harness={harnessHue(full.review.harness)}
+                aria-hidden="true"
+              ></span>{/if}{@render ticked(review.said(issue, full.review))}
+          </p>
         {/if}
         {#if full.verdict}
           <p class="row">
@@ -295,16 +303,14 @@
   .by {
     color: var(--ink-muted);
   }
-  .pass,
-  .verified {
+  .pass {
     color: var(--verified);
   }
-  .fail,
-  .failed {
+  .fail {
     color: var(--failed);
   }
-  .live {
-    color: var(--live);
+  .said .harness {
+    margin: 0 8px 1px 2px;
   }
   .sha {
     margin-left: 8px;
@@ -327,19 +333,6 @@
   }
   header + .errata {
     margin-top: 16px;
-  }
-  .quiet {
-    flex: none;
-    min-height: 36px;
-    padding: 0 16px;
-    border: 1px solid var(--rule);
-    border-radius: 2px;
-    background: var(--surface);
-    font-weight: 600;
-    cursor: pointer;
-  }
-  .quiet:hover {
-    background: var(--ground);
   }
   a.quiet {
     display: inline-flex;

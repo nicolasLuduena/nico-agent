@@ -2,7 +2,7 @@
 // page.mjs — open serve's page in headless Chromium, act on it as a user does, capture what it shows.
 // Called by `control-nico-agent page`, which passes the run's URL first and sets VERIFY_PLAYWRIGHT:
 //   page.mjs <url> [--evidence PREFIX] [--width PX] [--scheme light|dark] [--storage FILE|none] [--path PATH] [--hash HASH] [--within ROLE=NAME | --click ROLE=NAME | --click ROLE~NAME
-//            | --press KEY | --type TEXT | --expect TEXT | --gone TEXT | --wait SECONDS | --history back|forward | --mode pass|502|signed-out]...
+//            | --press KEY | --type TEXT | --expect TEXT | --gone TEXT | --wait SECONDS | --history back|forward | --mode pass|502|signed-out | --hold SECONDS]...
 // --path PATH opens <url>PATH (a Wiki's page, /wiki/<id>) for the Board at /; --hash HASH opens it at HASH, as a
 // link does; --history back|forward is the browser's Back or Forward. --scheme dark is a browser whose system
 // colours are dark, as the theme System follows; light, the default, a light one.
@@ -10,6 +10,8 @@
 // --storage FILE starts the browser with the storage FILE holds and saves it back after the last step, so
 // another call opens the page again as this browser would; --storage none is a browser whose localStorage throws.
 // Steps run in the order given; `--mode` asks the tunnel stand-in at <url> (tunnel.mjs) to answer so.
+// --hold SECONDS holds each later write to /api (not a GET) that long before it reaches serve, as a slow link
+// would, and no step waits for it: the capture shows the write under way; it is listed only if it ends in time.
 // With --evidence it writes PREFIX.aria.txt (the ARIA snapshot after the last step), PREFIX.png,
 // PREFIX.requests.txt (each /api request the page made, with its status; each /api/events stream as
 // it is answered) and PREFIX.console.txt (console errors). It exits 1 when a step fails, after capturing.
@@ -47,11 +49,12 @@ for (let i = 0; i < argv.length; i++) {
   else if (flag === "--wait" && Number(value) >= 0) steps.push({ wait: Number(value) });
   else if (flag === "--history" && ["back", "forward"].includes(value)) steps.push({ history: value });
   else if (flag === "--mode") steps.push({ mode: value });
+  else if (flag === "--hold" && Number(value) >= 0) steps.push({ hold: Number(value) });
   else usage(`unknown argument ${flag} ${value}`);
 }
 
 function usage(why) {
-  console.error(`page: ${why}\nusage: page [--evidence PREFIX] [--width PX] [--scheme light|dark] [--storage FILE|none] [--path PATH] [--hash HASH] [--within ROLE=NAME|page] [--click ROLE=NAME | --click ROLE~NAME | --press KEY | --type TEXT | --expect TEXT | --gone TEXT | --wait SECONDS | --history back|forward | --mode pass|502|signed-out]...`);
+  console.error(`page: ${why}\nusage: page [--evidence PREFIX] [--width PX] [--scheme light|dark] [--storage FILE|none] [--path PATH] [--hash HASH] [--within ROLE=NAME|page] [--click ROLE=NAME | --click ROLE~NAME | --press KEY | --type TEXT | --expect TEXT | --gone TEXT | --wait SECONDS | --history back|forward | --mode pass|502|signed-out | --hold SECONDS]...`);
   process.exit(2);
 }
 
@@ -70,15 +73,18 @@ try {
   if (storage === "none") await context.addInitScript(() => Object.defineProperty(window, "localStorage", { get: () => { throw new DOMException("The user denied storage", "SecurityError"); } }));
   const page = await context.newPage();
   let inFlight = 0;
+  /** Seconds each write to /api is held, once a --hold step said so; the requests a step waits for. */
+  let held = 0;
+  const waited = new WeakSet();
   const api = (r) => new URL(r.url()).pathname.startsWith("/api/") && !r.url().endsWith("/api/events");
-  page.on("request", (r) => api(r) && inFlight++);
+  page.on("request", (r) => api(r) && !(held && r.method() !== "GET") && (waited.add(r), inFlight++));
   page.on("requestfinished", async (r) => {
     if (!api(r)) return;
     const response = await r.response();
     requests.push(`${r.method()} ${new URL(r.url()).pathname} ${r.postData() ?? ""} -> ${response?.status()}`.replace("  ", " "));
-    inFlight--;
+    if (waited.has(r)) inFlight--;
   });
-  page.on("requestfailed", (r) => api(r) && (requests.push(`${r.method()} ${r.url()} -> failed`), inFlight--));
+  page.on("requestfailed", (r) => api(r) && (requests.push(`${r.method()} ${r.url()} -> failed`), waited.has(r) && inFlight--));
   // A stream never finishes: it is listed as it is answered, a reconnect being another line.
   page.on("response", (r) => r.url().endsWith("/api/events") && requests.push(`GET /api/events -> ${r.status()}`));
   page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
@@ -116,6 +122,12 @@ try {
         await page.waitForTimeout(step.wait * 1000);
       } else if (step.history) {
         await (step.history === "back" ? page.goBack() : page.goForward());
+      } else if (step.hold !== undefined) {
+        held = step.hold;
+        await page.route("**/api/**", async (route) => {
+          if (route.request().method() !== "GET") await new Promise((done) => setTimeout(done, held * 1000));
+          await route.continue().catch(() => {});
+        });
       } else if (step.mode) {
         const set = await fetch(new URL("/__tunnel/mode", url), { method: "PUT", body: step.mode });
         if (!set.ok) throw new Error(`the tunnel stand-in answered ${set.status}: ${await set.text()}`);

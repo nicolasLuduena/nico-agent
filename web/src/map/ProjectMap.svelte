@@ -8,16 +8,19 @@
 <script lang="ts">
   // The Project's map from /api/map/<project>, refetched on every `changed`:
   // dagre lays it out left to right, the field pans and zooms, a node opens its
-  // panel. With more than one Repo, each node names its Repo after its number.
+  // panel. Each node is tinted with its Stage's hue; with more than one Repo,
+  // it names its Repo after its number, on that Repo's line colour; an agent
+  // at work is a diamond in its Harness's hue.
   import { tick, untrack } from "svelte";
   import { watch } from "../live";
   import { still } from "../motion";
   import { selection } from "../selection.svelte";
-  import { number, repoName, type Project } from "../status";
+  import { harnessHue, repoLine, stageHue } from "../hues";
+  import { number, repoName, type Dispatch, type Project } from "../status";
   import { layout, NODE, withoutMerged, type Placed } from "./layout";
-  import Mark, { worded } from "./Mark.svelte";
+  import Mark from "./Mark.svelte";
 
-  let { project }: { project: Project } = $props();
+  let { project, dispatches }: { project: Project; dispatches: Dispatch[] } = $props();
 
   const PAD = 16;
   let failure = $state<string | null>(null);
@@ -205,6 +208,23 @@
     };
   }
 
+  /** The room a Repo's 10px square takes before its name: its own width and 4px to the name. */
+  const SQUARE = 14;
+
+  /**
+   * Set the Repo's square, drawn right after the first row's text, just before
+   * the Repo's name in it, once the name is laid out; again as `_node` changes.
+   */
+  function beforeRepoName(square: SVGRectElement, _node: string) {
+    const place = () => {
+      const name = square.previousElementSibling?.querySelector<SVGTextContentElement>(".repo");
+      if (name?.getNumberOfChars()) square.setAttribute("x", String(name.getStartPositionOfChar(0).x - SQUARE));
+    };
+    place();
+    void document.fonts.ready.then(place);
+    return { update: place };
+  }
+
   const prNumber = (url: string) => url.split("/").pop();
 
   /** The Agent state mark: Asking, working, idle, or no agent. */
@@ -217,14 +237,22 @@
     return null;
   }
 
+  /** The Harness of the agent at work on `n`: its Reviewer's while that one works alone, else its Implementer's. */
+  function harnessAt(n: Placed): string | null {
+    const d = dispatches.filter((d) => d.issue === n.key && d.closed_at === null).at(-1);
+    const reviewing = n.agent_state?.implementer !== "working" && n.agent_state?.reviewer === "working";
+    return (reviewing ? d?.review?.harness : d?.implementer.harness) ?? null;
+  }
+
   /** What a screen reader hears for a node: the same rows, in words. */
   function said(n: Placed) {
     const a = agent(n);
+    const harness = a && harnessAt(n);
     return [
       [number(n.key, n.repo ?? ""), repoName(n.repo, project.repos)].filter(Boolean).join(" "),
       n.title ?? "",
       n.stage ?? "Blocker",
-      a && `agent ${a}`,
+      a && `agent ${a}${harness ? ` on ${harness}` : ""}`,
       n.pr && `PR ${prNumber(n.pr.url)}${n.pr.draft ? " draft" : ""}`,
       n.line,
       n.needs && "needs you",
@@ -278,12 +306,14 @@
         {#each drawn.nodes as n (n.key)}
           {@const a = agent(n)}
           {@const repo = repoName(n.repo, project.repos)}
+          {@const line = repoLine(n.repo, project)}
           <g
             class="node"
             data-key={n.key}
             class:selected={selection.issue === n.key}
             class:faded={n.faded}
             transform="translate({n.x} {n.y})"
+            style:--hue={stageHue(n.stage)}
             role="button"
             tabindex="0"
             aria-label={said(n)}
@@ -298,9 +328,10 @@
             {#if n.stage === "Failed"}<rect class="failed" width="4" height={n.height} />{/if}
             {#if repo}
               <text x="12" y="30"
-                ><tspan class="number">{number(n.key, n.repo ?? "")}</tspan><tspan class="repo" dx="8" use:fit_text={[repo, 152]}
+                ><tspan class="number">{number(n.key, n.repo ?? "")}</tspan><tspan class="repo" dx={line ? 8 + SQUARE : 8} use:fit_text={[repo, 152]}
                 ></tspan></text
               >
+              {#if line}<rect class="swatch" y="20" width="10" height="10" style:--line={line} use:beforeRepoName={`${n.key} ${repo}`} />{/if}
             {:else}
               <text class="number" x="12" y="30" use:fit_text={[number(n.key, n.repo ?? ""), 152]}></text>
             {/if}
@@ -315,19 +346,27 @@
               <rect class="flash" class:on={flashed.has(n.key)} x="4" y="60" width={NODE.width - 8} height="22" />
             {/key}
             <g transform="translate(12 64)"><Mark stage={n.stage} /></g>
-            <text class="stage {worded(n.stage)}" class:unknown={!n.stage} x="32" y="76">{n.stage ?? "Blocker"}</text>
+            <text class="stage" class:unknown={!n.stage} x="32" y="76">{n.stage ?? "Blocker"}</text>
             {#if n.pr}
               <text class="pr" x="218" y="76"
                 >PR {prNumber(n.pr.url)}{#if n.pr.draft}<tspan class="draft" dx="4">draft</tspan>{/if}</text
               >
             {/if}
-            {#if a}<circle class="agent {a}" cx="231" cy="71" r="4" />{/if}
+            {#if a}<rect
+                class="agent {a}"
+                x="-4"
+                y="-4"
+                width="8"
+                height="8"
+                transform="translate(231 71) rotate(45)"
+                style:--harness={harnessHue(harnessAt(n))}
+              />{/if}
             {#if n.line}<text class="line" x="32" y="98" use:fit_text={[n.line, 236]}></text>{/if}
           </g>
         {/each}
       </g>
     </svg>
-    <button type="button" class="fit" onclick={() => glide(home())}>Fit</button>
+    <button type="button" class="quiet fit" onclick={() => glide(home())}>Fit</button>
   {:else if drawn}
     {#if hideMerged && merged > 0}
       <p class="note">Nothing on this map but merged issues.</p>
@@ -338,7 +377,7 @@
     <p class="note">{failure ?? "Reading the map…"}</p>
   {/if}
   {#if merged > 0}
-    <button type="button" class="fit merged" onclick={toggleMerged}>{hideMerged ? `Show ${merged} merged` : "Hide merged"}</button>
+    <button type="button" class="quiet fit merged" onclick={toggleMerged}>{hideMerged ? `Show ${merged} merged` : "Hide merged"}</button>
   {/if}
 </section>
 
@@ -375,16 +414,6 @@
     position: absolute;
     right: 8px;
     bottom: 8px;
-    min-height: 36px;
-    padding: 0 16px;
-    border: 1px solid var(--rule);
-    border-radius: 2px;
-    background: var(--surface);
-    font-weight: 600;
-    cursor: pointer;
-  }
-  .fit:hover {
-    background: var(--ground);
   }
   .merged {
     right: auto;
@@ -421,8 +450,9 @@
   .node.faded {
     opacity: 0.45;
   }
+  /* A light tint of its Stage's hue; a Blocker with none stays the sheet's white. */
   .frame {
-    fill: var(--surface);
+    fill: color-mix(in srgb, var(--hue, var(--surface)) var(--tint), var(--surface));
     stroke: var(--hairline);
   }
   .node:hover .frame {
@@ -461,17 +491,13 @@
     letter-spacing: 0.06em;
     text-anchor: end;
   }
+  /* The Stage word in its mark's hue, like a departures board's status column. */
   .stage {
+    fill: var(--hue, var(--ink));
     font-weight: 600;
   }
-  .stage.live {
-    fill: var(--live);
-  }
-  .stage.verified {
-    fill: var(--verified);
-  }
-  .stage.failed {
-    fill: var(--failed);
+  .swatch {
+    fill: var(--line);
   }
   .unknown,
   .draft,
@@ -485,12 +511,12 @@
     stroke-width: 1.5;
   }
   .agent.working {
-    fill: var(--live);
-    stroke: var(--live);
+    fill: var(--harness);
+    stroke: var(--harness);
   }
   .agent.idle {
     fill: none;
-    stroke: var(--live);
+    stroke: var(--harness);
   }
   .agent.asking {
     fill: var(--signal);

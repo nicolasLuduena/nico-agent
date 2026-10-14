@@ -35,16 +35,16 @@
 <section aria-labelledby="add-head">
   <h2 class="label" id="add-head">Add a Repo</h2>
   <form onsubmit={submit}>
-    <label>
-      <span class="label">Repo</span>
+    <label class="field">
+      <span class="field-name">Repo</span>
       <input name="slug" placeholder="owner/name" required autocomplete="off" />
     </label>
-    <label>
-      <span class="label">Its clone</span>
+    <label class="field">
+      <span class="field-name">Its clone</span>
       <input name="path" placeholder="/path/to/its/clone" required autocomplete="off" />
     </label>
-    <label>
-      <span class="label">Its Project</span>
+    <label class="field">
+      <span class="field-name">Its Project</span>
       <input name="project" list="add-projects" placeholder="its own" autocomplete="off" />
     </label>
     <datalist id="add-projects">
@@ -52,7 +52,7 @@
         <option value={p.name}></option>
       {/each}
     </datalist>
-    <button type="submit" disabled={running} aria-busy={running}>{running ? "Adding…" : "Add"}</button>
+    <button type="submit" class="button" disabled={running} aria-busy={running}>{running ? "Adding…" : "Add"}</button>
   </form>
   {#if sent?.outcome.ok}
     <p role="status">{sent.outcome.answer.repo}.</p>
@@ -70,9 +70,6 @@
     background: var(--surface);
     border: 1px solid var(--hairline);
   }
-  h2 {
-    font-size: 14px;
-  }
   form {
     display: flex;
     flex-wrap: wrap;
@@ -80,37 +77,6 @@
     gap: 12px;
   }
   label {
-    display: grid;
-    gap: 4px;
     flex: 1 1 200px;
-    min-width: 0;
-  }
-  label .label {
-    color: var(--ink-muted);
-  }
-  input {
-    width: 100%;
-    min-height: 36px;
-    padding: 0 8px;
-    border: 1px solid var(--ink-muted);
-    border-radius: 2px;
-    background: var(--surface);
-  }
-  button {
-    min-height: 36px;
-    padding: 8px 16px;
-    border: 0;
-    border-radius: 2px;
-    background: var(--ink);
-    color: var(--surface);
-    font-weight: 600;
-    cursor: pointer;
-  }
-  button:hover:not(:disabled) {
-    opacity: 0.85;
-  }
-  button:disabled {
-    opacity: 0.5;
-    cursor: progress;
   }
 </style>

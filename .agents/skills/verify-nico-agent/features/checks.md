@@ -13,7 +13,7 @@ section, with its help; once the user does what the help says, the next run pass
 - `checks-status` `status --json` and `GET /api/status` show per Repo `checks: {at, results: [{name, ok, said, help}]}`, in the order clone, fetch, evidence, verification (while Review is on), skills, bot; `checks.json` holds the same.
 - `checks-refresh` Refresh (CLI or button) runs them for every Repo; a Repo added by `repo add` has none until then.
 - `checks-strip` each failing one is a `Check <slug>: <said>` row in `region "Needs you"`, its help under it.
-- `checks-panel` the tab's `region "Readiness"` shows each failing one with its help, the passing ones folded under `N of M pass`, and `Unchanged since <time>`.
+- `checks-panel` the tab's `region "Readiness"`, folded to `N of M pass` and open by itself while one fails, shows each failing one with its help, the passing ones as `list "Passing"`, and `Unchanged since <time>`.
 - `checks-settings-write` a PATCH of the Repo's settings or switches checks it again: with Review off, the Reviewer's `verdict` skill is no longer asked for, and there is no verification check.
 - `checks-flip` a fixed one passes on the next run, and `at` moves only when a result changed.
 - `checks-fetch-base` the evidence and verification checks read the Base's tip after fetching it, so a fix pushed from elsewhere passes on Refresh.
@@ -47,8 +47,8 @@ Preconditions:
   /installation/repositories ...` (git is real, on the run's repos, so not in it).
 - **Page.** Run `$C page --evidence "$E/03-page" --expect "Readiness"`: `region "Needs you"` has a
   `Check verify/fixture:` row for each of the four failing checks, its help under what it says;
-  `region "Readiness"` has the four on the errata rule, a `group` reading `2 of 6 pass` and `Unchanged since
-  <time>`.
+  `region "Readiness"` is open by itself, its `group` reading `Readiness 2 of 6 pass`, with the four on the
+  errata rule, `list "Passing"` holding the clone and fetch ones, and `Unchanged since <time>`.
 - **Settings write.** Install the two skills the help names, as the user would, in the scratch HOME:
   `for s in implement research; do mkdir -p "$R/home/.claude/skills/$s" && echo "---" > "$R/home/.claude/skills/$s/SKILL.md"; done`.
   `: > "$OUTSIDE_LOG"`; run `$C http --evidence "$E/05-review-off" PATCH /api/repo/verify/fixture/switches '{"review":false}'`:
@@ -60,7 +60,8 @@ Preconditions:
   `git -C "$FIXTURE_CLONE" rev-parse origin/main` is still the old tip. Run
   `$C page --evidence "$E/08-refresh" --click "button=Refresh" --gone ".evidence/ is not ignored on main"`:
   `ok` for both steps; `.requests.txt` has `POST /api/refresh -> 200`; the strip keeps the
-  bot row only; a `group` reading `4 of 5 pass`. `git -C "$FIXTURE_CLONE" rev-parse origin/main`
+  bot row only; `region "Readiness"` reads `Readiness 4 of 5 pass`, the bot on the errata rule and
+  four in `list "Passing"`. `git -C "$FIXTURE_CLONE" rev-parse origin/main`
   is now the pushed commit: the check fetched the Base first.
 - **Proof.** `$C run --evidence "$E/09-status-end" -- status --json`: `evidence` ok (`.evidence/ is
   ignored on main`). `$C state > "$E/state.after.txt"`, diff it against `state.before.txt`:

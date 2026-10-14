@@ -13,7 +13,7 @@ lists the Projects and shows each setting of a Repo with where it comes from: `r
 - `projects-switches` a Project's switch reaches its Repos while the Repos' other switches stay their defaults.
 - `projects-list` `repo list` shows each Repo's `project`: the one it names, else its slug.
 - `projects-status` `status` and `GET /api/status` hold `projects: [{name, repos, defaults}]` and, per Repo, each setting as `{value, from}`, the Reviewer's default launch included.
-- `projects-page` the Project's tab shows its defaults, then each Repo's effective Room, switches and settings, a Project's included and tagged `project`.
+- `projects-page` the Project's tab shows its defaults, then each Repo's effective Room, switches and settings, a Project's included and chipped `from Project`.
 - `projects-refused` an unknown key, or a launch naming no Harness, in `projects.<name>` is refused (exit 1) naming its line.
 
 ## How to get to it (user POV)
@@ -48,12 +48,12 @@ Preconditions:
   `base` `{"value":null,"from":"default"}`.
 - **API.** Run `$C http --evidence "$E/03-api" GET /api/status`. HTTP `200`; `projects` equals the
   command's, and each Repo has the same `{value, from}` settings plus `harnesses`.
-- **Page.** Run `$C page --evidence "$E/04-page" --click "tab=verify" --expect "Defaults for its Repos" --within "region=verify" --click "region=Switches" --within "region=verify/fixture" --click "region=Switches" --within "region=verify/second" --click "region=Switches" --expect "Faux-nico answers"`:
+- **Page.** Run `$C page --evidence "$E/04-page" --click "tab=verify" --expect "Defaults for its Repos" --within "region=verify" --click "region=Room" --click "region=Switches" --within "region=verify/fixture" --click "region=Room" --click "region=Switches" --within "region=verify/second" --click "region=Room" --click "region=Switches" --expect "Faux-nico answers"`:
   `tablist "Projects"` has `tab "verify"` alone; each panel's Switches read `4 of 9 on`.
-  `region "verify"` (the Project's defaults) has `text: Room` with `button "Use the default Room"`
+  `region "verify"` (the Project's defaults) has `text: set here` with `button "Use the default Room"`
   and `spinbutton "Room": "2"`, and `switch "Review"` unchecked beside `button "Use the default
-  Review"`; `region "verify/fixture"` has `text: Room project`, `spinbutton "Room": "2"`, `switch
-  "Review"` unchecked beside `text: Review project` and `switch "Dispatch" [checked]`; `region
+  Review"`; `region "verify/fixture"` has `text: from Project` beside `spinbutton "Room": "2"`, `switch
+  "Review"` unchecked beside `text: from Project` and `switch "Dispatch" [checked]`; `region
   "verify/second"` has `button "Use the Project's Room"`, `spinbutton "Room": "4"` and `switch
   "Review"` unchecked. `.console.txt` is empty.
 - **Refused.** Rename `room = 2` under `[projects.verify]` to `rom = 2` and run
@@ -76,3 +76,5 @@ Preconditions:
   that Project.
 - A launch is replaced whole: a Repo's `implementer = { harness = "claude" }` drops the Project's
   model and Effort.
+- Room, Switches and Settings are folded to one line in every panel of a new browser: open each
+  with `--click "region=<Section>"` after `--within "region=<panel>"`.

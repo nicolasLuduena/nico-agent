@@ -14,9 +14,9 @@ const defaults: Settings = {
 const shop: Project = { ...defaults, name: "shop", repos: ["acme/api", "acme/web"], defaults: { room: 4, switches: { review: false } } };
 const own: Project = { ...defaults, name: "acme/cli", repos: ["acme/cli"], defaults: {} };
 
-describe("a setting's tag", () => {
+describe("a setting's chip", () => {
   it("says where it comes from while the Repo does not set it", () => {
-    expect(tag({ value: 4, from: "project" })).toBe("project");
+    expect(tag({ value: 4, from: "project" })).toBe("from Project");
     expect(tag({ value: 3, from: "default" })).toBe("default");
   });
 

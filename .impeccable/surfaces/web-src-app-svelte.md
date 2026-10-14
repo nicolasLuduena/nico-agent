@@ -16,7 +16,7 @@ Unresolved: exact node size once real titles are laid out; the morning slot's co
 ## Direction contract
 
 THESIS: Each Repo reads like a printed railway timetable: Blocker chains run left to right like a train's calling pattern, issue numbers set bold and tabular like departure times. It refuses the SaaS card grid, the hacker terminal, and the airy marketing page.
-OWN-WORLD: Arrivals-sheet white (night-board blue in Dark), full-ink type and hard rules, Barlow with tabular figures, square corners. Signal yellow belongs to what needs you and nothing else; blue is live, green Verified, red Failed. Stage is a mark in a fixed cell, readable without colour.
+OWN-WORLD: Arrivals-sheet white (night-board blue in Dark), full-ink type and hard rules, Barlow with tabular figures, square corners. Signal yellow belongs to what needs you and nothing else; every Stage has its status colour (blue live, green Verified, red Failed, teal Ready, purple Merged, …), every Repo of a Project its line colour, every Harness its own (#365). A ring is a Stage, a square a Repo, a diamond a Harness: readable without colour.
 STORY: In one glance the user sees what needs them, then each Repo's shape and how stale it is, then opens a node for its restarts, Verdict and Evidence.
 FIRST VIEWPORT: Header (wordmark, theme switch); morning slot (empty until spec 3); the needs-you band full width; Repo tabs with read times and Refresh right-aligned; the map filling the work area left, switches and Dispatch form in a 320px column right; the node panel replaces that column.
 FORM: Station Timetable, candidate 4 of 7 on the ordered list, seed key 6cb4e308.
