@@ -393,7 +393,8 @@ fn assert_is_the_answer_shape(schema: &Value) {
             "interpretations",
             "kind",
             "overview",
-            "relationships"
+            "relationships",
+            "terms"
         ]
     );
 }
@@ -1425,6 +1426,94 @@ fn an_explainer_citing_no_real_anchor_with_an_arrow_to_no_step_or_over_8_steps_i
     }
 }
 
+fn term(name: &str, meaning: &str, path: &str, start: u64, end: u64) -> Value {
+    json!({ "name": name, "meaning": meaning, "anchors": [{ "path": path, "start": start, "end": end }] })
+}
+
+#[test]
+fn a_term_its_component_s_text_uses_and_its_lines_declare_lands_on_its_component() {
+    let t = with_repo("");
+    let config = term(
+        "Config",
+        "The settings the API runs with.",
+        "src/config.rs",
+        1,
+        1,
+    );
+    answer(
+        &t,
+        "acme/api",
+        json!({
+            "kind": "leaf",
+            "overview": "A small API.",
+            "interpretations": [interpretation("invariant", "Config is a unit struct.", "src/config.rs", 1, 1)],
+            "terms": [config],
+        }),
+    );
+
+    let ran = t.cli(&["wiki", "build", "acme/api", "--json"]);
+
+    assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
+    assert_eq!(ran.json()["gaps"], json!({}));
+    assert_eq!(wiki(&t)["components"][0]["terms"], json!([config]));
+    // Both shapes of answer ask for them.
+    let asked = &whole_headless_calls(&t)[0];
+    let shape = r#""terms": [{"name": "...", "meaning": "...", "anchors": [{"path": "#;
+    assert_eq!(asked.matches(shape).count(), 2, "{asked}");
+}
+
+#[test]
+fn a_term_its_text_never_uses_or_its_lines_never_declare_is_sent_back_and_corrected() {
+    let t = with_repo("");
+    let leaf = |terms: &[&Value]| {
+        json!({
+            "kind": "leaf",
+            "overview": "A small API: Run starts it, and its web page serves.",
+            "interpretations": [interpretation("invariant", "Config is a unit struct.", "src/config.rs", 1, 1)],
+            "terms": terms,
+        })
+    };
+    // Used only in an Interpretation.
+    let config = term(
+        "Config",
+        "The settings the API runs with.",
+        "src/config.rs",
+        1,
+        1,
+    );
+    let router = term("Router", "Where requests go.", "src/lib.rs", 1, 2);
+    // Used in another case: the text is read case aside, the lines as written.
+    let run = |line| term("run", "The API's entry point.", "src/lib.rs", line, line);
+    let web = |path, start, end| term("web", "The page in front of the API.", path, start, end);
+    let (wrong_run, wrong_web) = (run(1), web("web/app.ts", 2, 3));
+    answer(
+        &t,
+        "acme/api",
+        leaf(&[&config, &router, &wrong_run, &wrong_web]),
+    );
+    let (run, web) = (run(4), web("src/lib.rs", 2, 2));
+    corrected(&t, "acme/api", leaf(&[&config, &run, &web]));
+
+    let ran = t.cli(&["wiki", "build", "acme/api", "--json"]);
+
+    assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
+    assert_eq!(ran.json()["gaps"], json!({}));
+    assert_eq!(
+        wiki(&t)["components"][0]["terms"],
+        json!([config, run, web])
+    );
+    let correction = &whole_headless_calls(&t)[1];
+    for failed in [
+        format!(
+            "- term 2 {router}: Router is not used in this Component's text, so it is no Term\n"
+        ),
+        format!("- term 3 {wrong_run}: run is not in the lines it cites, which must declare it\n"),
+        format!("- term 4 {wrong_web}: lines 2-3 are not inside web/app.ts (2 lines)\n"),
+    ] {
+        assert!(correction.contains(&failed), "{failed} in {correction}");
+    }
+}
+
 /// `acme/api` built at abc1234, divided into Core (`src/lib.rs` and
 /// `src/config.rs`) and Web (`web/app.ts`), each a leaf of one role; then
 /// its Base moved on to def5678, as `files` say, and the model's script
@@ -1691,6 +1780,80 @@ fn an_interpretation_citing_a_file_changed_on_the_base_is_stale_until_an_update_
     let core = &updated["components"][1];
     assert_eq!(core["id"], "core");
     assert!(core["interpretations"][0].get("stale").is_none(), "{core}");
+}
+
+#[test]
+fn a_term_citing_a_file_changed_on_the_base_is_stale_and_an_update_keeps_it_so_where_it_copies_it()
+{
+    let t = with_repo("");
+    // The top part's Term cites src/config.rs, which none of its Interpretations does.
+    let settings = term(
+        "Config",
+        "The settings the API runs with.",
+        "src/config.rs",
+        1,
+        1,
+    );
+    answer(
+        &t,
+        "acme/api",
+        json!({
+            "kind": "division",
+            "overview": "An API and its Config.",
+            "terms": [settings],
+            "components": [
+                { "name": "Core", "summary": "The crate.", "files": ["src/lib.rs", "src/config.rs"] },
+                { "name": "Web", "summary": "The page.", "files": ["web/app.ts"] },
+            ],
+            "interpretations": [across()],
+        }),
+    );
+    answer(
+        &t,
+        "acme/api > Core",
+        json!({ "kind": "leaf", "overview": "The crate.", "interpretations": [interpretation("role", "run is the entry point.", "src/lib.rs", 4, 4)] }),
+    );
+    let port = term("port", "Where the page listens.", "web/app.ts", 2, 2);
+    answer(
+        &t,
+        "acme/api > Web",
+        json!({ "kind": "leaf", "overview": "The page, on its port.", "terms": [port], "interpretations": [] }),
+    );
+    let ran = t.cli(&["wiki", "build", "acme/api", "--json"]);
+    assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
+    let new_config = "pub struct Config { port: u16 }\n";
+    t.world
+        .add_tree_file("/src/api", "origin/main", "src/config.rs", new_config);
+    (t.world.heads.borrow_mut()).insert(format!("{} HEAD", checkout(&t)), "def5678".into());
+    t.world.headless.borrow_mut().clear();
+    t.world.calls.borrow_mut().clear();
+    t.tick();
+
+    let ((status, moved), _) = served(&t, "/api/wiki/acme/api");
+
+    assert_eq!(status, 200);
+    let mut stale = settings.clone();
+    stale["stale"] = json!(true);
+    assert_eq!(moved["components"][0]["terms"], json!([stale]));
+    assert_eq!(moved["components"][2]["terms"], json!([port]));
+    // Only Interpretations are counted.
+    assert_eq!(moved["stale"], 0);
+
+    // An Update asks Core again; the top part, kept, keeps its Term, Stale, and Web, copied, its own.
+    answer(
+        &t,
+        "acme/api > Core",
+        json!({ "kind": "leaf", "overview": "The crate.", "interpretations": [] }),
+    );
+    let ran = t.cli(&["wiki", "build", "acme/api", "--update", "--json"]);
+    assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
+    assert_eq!(asked(&t), ["acme/api > Core"]);
+    let index = &wiki(&t)["components"][0];
+    assert_eq!(index["terms"], json!([settings]));
+    assert_eq!(index["blobs"], json!({ "src/config.rs": blob(CONFIG) }));
+    let ((_, updated), _) = served(&t, "/api/wiki/acme/api");
+    assert_eq!(updated["components"][0]["terms"], json!([stale]));
+    assert_eq!(updated["components"][2]["terms"], json!([port]));
 }
 
 #[test]

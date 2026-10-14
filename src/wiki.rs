@@ -14,8 +14,8 @@
 //! the Board's buttons queue theirs first.
 //!
 //! Between builds, whoever serves a Repo's Wiki marks Stale each
-//! Interpretation citing a file whose blob at `origin/<base>` is not the one
-//! it was written against.
+//! Interpretation and Term citing a file whose blob at `origin/<base>` is not
+//! the one it was written against.
 
 use std::cmp::Reverse;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -626,6 +626,10 @@ struct File {
     path: String,
     blob: String,
     lines: usize,
+    /// What it holds, read for the build's checks and never kept.
+    // shortcut: every file's text is held while a build runs; read only the cited lines if a Repo outgrows memory.
+    #[serde(skip)]
+    text: String,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -634,14 +638,17 @@ struct Component {
     name: String,
     parent: Option<String>,
     overview: String,
+    /// None in a Wiki built before Components had them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    terms: Vec<Term>,
     files: Vec<String>,
     interpretations: Vec<Interpretation>,
     relationships: Vec<Relationship>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     explainer: Option<Explainer>,
     gaps: Vec<Gap>,
-    /// The blob each file its Interpretations cite had when they were
-    /// written, where the Wiki's has moved on since: one an Update kept.
+    /// The blob each file its Interpretations and Terms cite had when they
+    /// were written, where the Wiki's has moved on since: one an Update kept.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     blobs: BTreeMap<String, String>,
 }
@@ -653,6 +660,15 @@ struct Interpretation {
     id: usize,
     kind: String,
     text: String,
+    anchors: Vec<Anchor>,
+}
+
+/// A name its Component's text uses, with what it stands for, citing the
+/// lines that declare it.
+#[derive(Serialize, Deserialize)]
+struct Term {
+    name: String,
+    meaning: String,
     anchors: Vec<Anchor>,
 }
 
@@ -718,6 +734,8 @@ struct Answer {
     interpretations: Vec<Value>,
     #[serde(default)]
     explainer: Option<Value>,
+    #[serde(default)]
+    terms: Vec<Value>,
 }
 
 /// A Component a division names.
@@ -742,6 +760,7 @@ struct Said {
 /// The claims of an answer that pass every check.
 struct Checked {
     overview: String,
+    terms: Vec<Term>,
     interpretations: Vec<Interpretation>,
     named: Vec<Named>,
     said: Vec<Said>,
@@ -928,9 +947,9 @@ pub fn get(ctx: &Context, id: &str) -> Result<Option<Value>, Refusal> {
 
 /// Mark `wiki`, the Wiki of `repo` as the Bucket holds it, against the
 /// Repo's `origin/<base>` as its clone last fetched it: `stale` on each
-/// Interpretation citing a file whose blob there is not the one it was
-/// written against, with how many are, and how many commits the Wiki's is
-/// `behind` the Base.
+/// Interpretation and Term citing a file whose blob there is not the one it
+/// was written against, with how many Interpretations are, and how many
+/// commits the Wiki's is `behind` the Base.
 pub fn marked(world: &dyn World, repo: &Repo, wiki: &mut Value) -> WorldResult<()> {
     let base = base(world, repo)?;
     let head = format!("origin/{base}");
@@ -950,15 +969,24 @@ pub fn marked(world: &dyn World, repo: &Repo, wiki: &mut Value) -> WorldResult<(
     let mut stale = 0;
     for c in wiki["components"].as_array_mut().into_iter().flatten() {
         let pins = c["blobs"].clone();
-        for i in c["interpretations"].as_array_mut().into_iter().flatten() {
-            let moved = (i["anchors"].as_array().into_iter().flatten()).any(|a| {
+        let moved = |claim: &Value| {
+            (claim["anchors"].as_array().into_iter().flatten()).any(|a| {
                 let path = a["path"].as_str().unwrap_or_default();
                 let written = pins.get(path).or(files.get(path)).and_then(Value::as_str);
                 written != now.get(path).map(String::as_str)
-            });
-            if moved {
+            })
+        };
+        for i in c["interpretations"].as_array_mut().into_iter().flatten() {
+            if moved(i) {
                 i["stale"] = json!(true);
                 stale += 1;
+            }
+        }
+        // Not `c["terms"]`: indexing would add null to a Component with none.
+        let terms = c.get_mut("terms").and_then(Value::as_array_mut);
+        for t in terms.into_iter().flatten() {
+            if moved(t) {
+                t["stale"] = json!(true);
             }
         }
     }
@@ -1216,7 +1244,7 @@ fn described(
             )],
         ));
     }
-    let lines: HashMap<&str, usize> = (files.iter()).map(|f| (f.path.as_str(), f.lines)).collect();
+    let code: HashMap<&str, &File> = (files.iter()).map(|f| (f.path.as_str(), f)).collect();
     world.log(&format!(
         "building the Wiki of {id} at {commit}: {} calls, {} deep, {} at once",
         budget.calls, budget.depth, budget.concurrency
@@ -1291,7 +1319,7 @@ fn described(
             .collect();
         let calls: Vec<Headless> = (called.iter())
             .map(|part| Headless {
-                prompt: prompt(id, part, &lines),
+                prompt: prompt(id, part, &code),
                 ..call.clone()
             })
             .collect();
@@ -1320,7 +1348,7 @@ fn described(
                 let Some(answered) = &a.answered else {
                     continue;
                 };
-                let (_, mut failed) = checked(&a.part, &answered.text, &lines);
+                let (_, mut failed) = checked(&a.part, &answered.text, &code);
                 if failed.is_empty() {
                     continue;
                 }
@@ -1379,7 +1407,7 @@ fn described(
                 continue;
             };
             let trail = part.trail.clone();
-            let (component, parts, dropped) = read(part, &answered.text, &lines, &mut ids, reason);
+            let (component, parts, dropped) = read(part, &answered.text, &code, &mut ids, reason);
             if !component.gaps.is_empty() {
                 progress.gaps += component.gaps.len();
                 progress.keep(&file);
@@ -1528,6 +1556,7 @@ fn updated(previous: Wiki, files: &[File], continuing: bool) -> (Vec<Component>,
             Fate::Copied | Fate::Kept => {
                 // Pinned where it changed: the blob each cited file had when written.
                 let cited = (c.interpretations.iter()).flat_map(|i| &i.anchors);
+                let cited = cited.chain(c.terms.iter().flat_map(|t| &t.anchors));
                 let pins = cited
                     .filter_map(|a| {
                         let written = c.blobs.get(&a.path).or(was.get(&a.path))?;
@@ -1558,7 +1587,13 @@ fn files(world: &dyn World, dir: &str, under: Option<&str>) -> WorldResult<Vec<F
         // A last line without its newline counts.
         let lines = held.split(|b| *b == b'\n').count()
             - usize::from(held.is_empty() || held.ends_with(b"\n"));
-        files.push(File { path, blob, lines });
+        let text = String::from_utf8_lossy(&held).into_owned();
+        files.push(File {
+            path,
+            blob,
+            lines,
+            text,
+        });
     }
     files.sort_by(|a, b| a.path.cmp(&b.path));
     Ok(files)
@@ -1712,6 +1747,7 @@ fn schema() -> Value {
     object(json!({
         "kind": one_of(&["leaf", "division"]),
         "overview": string,
+        "terms": list(object(json!({ "name": string, "meaning": string, "anchors": anchors }))),
         "components": list(object(json!({ "name": string, "summary": string, "files": list(string.clone()) }))),
         "relationships": list(object(json!({
             "from": string, "to": string, "kind": one_of(&RELATIONSHIPS), "description": string,
@@ -1755,28 +1791,30 @@ Where to divide:
 
 How much to write: each limit below is the most, not a target. Write less whenever less is enough.
 
-- Spend your reads on code: its invariants, contracts, effects and control flow. Lockfiles and generated files need only a glance.
+- Spend your reads on code: what its names stand for, its invariants, contracts, effects and control flow. Lockfiles and generated files need only a glance.
 - Read only files from the list, and read a file before claiming anything about it. Write each path exactly as listed.
-- An overview is plain prose of at most 3 sentences: what the part is for, and where to start reading it. The root's names its units and how they work together.
+- An overview is plain prose of at most 3 sentences: what the part is for, and where to start reading it, saying what is there rather than pointing at lines. The root's names its units and how they work together.
 - An Interpretation is one plain sentence of at most 25 words, claiming one thing, of one kind: invariant, precondition, postcondition, effect or role. It is not a list of identifiers joined by semicolons or dashes. It cites at least one Anchor.
 - A leaf has at most 5 Interpretations: the ones a newcomer most needs, or would most likely get wrong.
 - A division has at most 3 Interpretations, each about how its Components work together. One whose Anchors all fall in the files of one Component is about that Component, and fails.
+- A Term is a name your overview, Interpretations, Explainer or Relationships use that a newcomer could not know: a field, type, parameter or constant the code declares, or an ordinary word the code uses in its own sense. Its meaning is one plain sentence of at most 25 words saying what the name stands for or is for, never its type or byte layout; the code's own doc comment is the first source. It cites the lines that declare the name.
+- Terms have no fixed number and are not Interpretations: give one for each such name your text uses, and none for a name it doesn't.
 - An Anchor is lines of a listed file, 1-based and inclusive: start <= end <= the file's line count.
 - Most leaves have no Explainer. A leaf has one only for a flow, in order, that its Interpretations don't already state, and its steps don't restate them: a title, at most 8 steps numbered from 1, each a one-sentence caption citing at least one Anchor, with an optional lane naming where the step happens, and arrows from step to step by number, each with an optional label.
 
 Answer with one JSON object and nothing else, in one of two shapes:
 
-{"kind": "leaf", "overview": "...", "interpretations": [{"kind": "role", "text": "...", "anchors": [{"path": "...", "start": 1, "end": 2}]}], "explainer": null}
+{"kind": "leaf", "overview": "...", "terms": [{"name": "...", "meaning": "...", "anchors": [{"path": "...", "start": 1, "end": 2}]}], "interpretations": [{"kind": "role", "text": "...", "anchors": [{"path": "...", "start": 1, "end": 2}]}], "explainer": null}
 
-{"kind": "division", "overview": "...", "components": [{"name": "...", "summary": "...", "files": ["..."]}], "relationships": [{"from": "...", "to": "...", "kind": "uses", "description": "..."}], "interpretations": [{"kind": "invariant", "text": "...", "anchors": [{"path": "...", "start": 1, "end": 2}]}]}
+{"kind": "division", "overview": "...", "terms": [{"name": "...", "meaning": "...", "anchors": [{"path": "...", "start": 1, "end": 2}]}], "components": [{"name": "...", "summary": "...", "files": ["..."]}], "relationships": [{"from": "...", "to": "...", "kind": "uses", "description": "..."}], "interpretations": [{"kind": "invariant", "text": "...", "anchors": [{"path": "...", "start": 1, "end": 2}]}]}
 
 A leaf that has an Explainer gives it in place of null: {"title": "...", "steps": [{"n": 1, "caption": "...", "anchors": [{"path": "...", "start": 1, "end": 2}], "lane": "..."}], "arrows": [{"from": 1, "to": 2, "label": "..."}]}
 "#;
 
-/// What the model is asked of `part`.
-fn prompt(slug: &str, part: &Part, lines: &HashMap<&str, usize>) -> String {
+/// What the model is asked of `part`, of the code whose files are `code`.
+fn prompt(slug: &str, part: &Part, code: &HashMap<&str, &File>) -> String {
     let files: String = (part.files.iter())
-        .map(|f| format!("- {f} ({} lines)\n", lines[f.as_str()]))
+        .map(|f| format!("- {f} ({} lines)\n", code[f.as_str()].lines))
         .collect();
     let context = match part.trail.rsplit_once(" > ") {
         Some((above, _)) => format!(
@@ -1811,13 +1849,14 @@ fn correction(part: &Part, failed: &[String]) -> String {
 fn read(
     part: Part,
     answer: &str,
-    lines: &HashMap<&str, usize>,
+    code: &HashMap<&str, &File>,
     ids: &mut HashSet<String>,
     reason: &'static str,
 ) -> (Component, Vec<Part>, Vec<String>) {
-    let (checked, dropped) = checked(&part, answer, lines);
+    let (checked, dropped) = checked(&part, answer, code);
     let Some(Checked {
         overview,
+        terms,
         mut interpretations,
         named,
         said,
@@ -1864,6 +1903,7 @@ fn read(
         name: part.name,
         parent: part.parent,
         overview,
+        terms,
         files: part.files,
         interpretations,
         relationships: part.relationships,
@@ -1875,12 +1915,12 @@ fn read(
 }
 
 /// The claims of the model's `answer` about `part` that pass every check,
-/// none when it is no answer of either shape, and why each other one
-/// failed, by its id.
+/// against the code whose files are `code`, none when it is no answer of
+/// either shape, and why each other one failed, by its id.
 fn checked(
     part: &Part,
     answer: &str,
-    lines: &HashMap<&str, usize>,
+    code: &HashMap<&str, &File>,
 ) -> (Option<Checked>, Vec<String>) {
     let Some(answer) = parsed(answer) else {
         let why = "the answer: it is no JSON object of either shape, leaf or division";
@@ -1919,7 +1959,7 @@ fn checked(
                     KINDS.join(", ")
                 ));
             }
-            unanchored(&i.anchors, lines).or_else(|| {
+            unanchored(&i.anchors, code).or_else(|| {
                 let within = |c: &&Named| (i.anchors.iter()).all(|a| c.files.contains(&a.path));
                 named.iter().find(within).map(|c| {
                     format!(
@@ -1939,7 +1979,7 @@ fn checked(
             return Some(format!("its steps are not numbered 1 to {steps} in order"));
         }
         if let Some(why) = (e.steps.iter())
-            .find_map(|s| unanchored(&s.anchors, lines).map(|why| format!("step {}: {why}", s.n)))
+            .find_map(|s| unanchored(&s.anchors, code).map(|why| format!("step {}: {why}", s.n)))
         {
             return Some(why);
         }
@@ -1969,8 +2009,37 @@ fn checked(
                 .map(|name| format!("{name} is not a Component of the division"))
         },
     );
+    // What the Component says, every claim that passed: where a Term must be used.
+    let captions = explainer.iter().flat_map(|e| &e.steps).map(|s| &s.caption);
+    let descriptions = (said.iter().map(|r| &r.description))
+        .chain(part.relationships.iter().map(|r| &r.description));
+    let text = (interpretations.iter().map(|i| &i.text))
+        .chain(captions)
+        .chain(descriptions)
+        .fold(answer.overview.to_lowercase(), |text, more| {
+            text + "\n" + &more.to_lowercase()
+        });
+    let terms = claims("term", &answer.terms, &mut dropped, |t: &Term| {
+        let name = &t.name;
+        // Used case aside; declared as written.
+        if name.is_empty() || !text.contains(&name.to_lowercase()) {
+            return Some(format!(
+                "{name} is not used in this Component's text, so it is no Term"
+            ));
+        }
+        unanchored(&t.anchors, code).or_else(|| {
+            let declared = (t.anchors.iter()).any(|a| {
+                let cited = code[a.path.as_str()].text.lines();
+                let cited: Vec<&str> = cited.skip(a.start - 1).take(a.end + 1 - a.start).collect();
+                cited.join("\n").contains(name.as_str())
+            });
+            (!declared)
+                .then(|| format!("{name} is not in the lines it cites, which must declare it"))
+        })
+    });
     let checked = Checked {
         overview: answer.overview,
+        terms,
         interpretations,
         named,
         said,
@@ -2008,13 +2077,13 @@ fn unique(parent: &str, name: &str, ids: &mut HashSet<String>) -> String {
 }
 
 /// Why a claim citing `anchors` rests on no real lines: it cites none, or
-/// one not inside a file of the Wiki, as `lines` counts them.
-fn unanchored(anchors: &[Anchor], lines: &HashMap<&str, usize>) -> Option<String> {
+/// one not inside a file of the Wiki, its files by path in `code`.
+fn unanchored(anchors: &[Anchor], code: &HashMap<&str, &File>) -> Option<String> {
     if anchors.is_empty() {
         return Some("it cites no Anchor".into());
     }
-    (anchors.iter()).find_map(|a| match lines.get(a.path.as_str()) {
-        Some(&n) => (a.start < 1 || a.start > a.end || a.end > n).then(|| {
+    (anchors.iter()).find_map(|a| match code.get(a.path.as_str()).map(|f| f.lines) {
+        Some(n) => (a.start < 1 || a.start > a.end || a.end > n).then(|| {
             format!(
                 "lines {}-{} are not inside {} ({n} lines)",
                 a.start, a.end, a.path
@@ -2070,6 +2139,7 @@ fn gap(part: Part, reason: &'static str) -> Component {
         name: part.name,
         parent: part.parent,
         overview: part.summary,
+        terms: vec![],
         files: part.files,
         interpretations: vec![],
         relationships: part.relationships,

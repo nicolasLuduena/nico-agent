@@ -26,6 +26,7 @@ between Components. serve answers the Wikis at `GET /api/wikis` and one at `GET 
 - `wiki-old-link` `/#<project>/wiki/<owner%2Fname>/<component>` lands at `/wiki/<owner>/<name>#<component>`; `#<project>/wiki` alone stays the Board's Wiki view.
 - `wiki-unknown` `/wiki/<id>` of no Wiki says `No Wiki is named <id>.` with a `link "Board"`.
 - `wiki-trail` `navigation "Trail"` holds a `link` per Component above the open one, from the top down; the top one has none.
+- `wiki-terms` `region "Terms"`, only on a Component with any, between its overview and its Interpretations: see [wiki-terms.md](./wiki-terms.md).
 - `wiki-interpretations` `region "Interpretations"`, only on a Component with any, is one list in the build's order, each `listitem` its kind (`role`, `invariant`, …), then its sentence (`Stale` first when it is), then its Anchors.
 - `wiki-anchor` each Anchor is a link to `https://github.com/<repo>/blob/<commit>/<path>#L<start>-L<end>` titled and named by its full path: `<path> <lines>` showing `<file's name> <lines>` (with the folders that tell two of a name apart); when every Anchor of the Component is in one file, `Every line it cites is in <path>` (a `link` to the file) and each named `<path> line <n>` / `<path> lines <a>–<b>`, showing `line <n>` / `lines <a>–<b>`.
 - `wiki-relationships` `region "Relationships"`, only on a Component a Relationship joins to another either way, draws the Component and each Component a Relationship joins it to, each a `link "<from> <kind> <to>: <description>"` opening that Component.

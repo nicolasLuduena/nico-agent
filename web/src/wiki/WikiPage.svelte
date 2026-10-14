@@ -14,7 +14,7 @@
   import { clock } from "../time";
   import Reading from "./Reading.svelte";
   import Sheet from "./Sheet.svelte";
-  import { freshness, progressed, search, unexplored, type Component, type Hit, type Listed, type Wiki } from "./wiki";
+  import { freshness, outline, progressed, search, unexplored, type Component, type Hit, type Listed, type Wiki } from "./wiki";
 
   /** The Wiki the path names, and the Component the fragment does, which back and forward change. */
   const start = reading(location.pathname, location.hash);
@@ -92,18 +92,7 @@
 
   const hits = $derived(wiki && query.trim() ? search(wiki, query) : []);
   /** The open Component's name, then each section it shows, with how many it holds: the heads Reading gives ids. */
-  const outline = $derived(
-    open
-      ? [
-          { id: "component-name", name: open.name, count: null },
-          ...(open.interpretations.length > 0 ? [{ id: "head-interpretations", name: "Interpretations", count: open.interpretations.length }] : []),
-          ...(related ? [{ id: "head-relationships", name: "Relationships", count: null }] : []),
-          ...(open.explainer ? [{ id: "head-explainer", name: "Explainer", count: open.explainer.steps.length }] : []),
-          ...(parts.length > 0 ? [{ id: "head-parts", name: "Components", count: parts.length }] : []),
-          ...(open.gaps.length > 0 ? [{ id: "head-gaps", name: "Gaps", count: open.gaps.length }] : []),
-        ]
-      : [],
-  );
+  const heads = $derived(open ? outline(open, related, parts.length) : []);
 
   function follow(hit: Hit) {
     opened = null;
@@ -222,14 +211,16 @@
           {#if hits.length > 0}
             <nav aria-label="Found">
               <ul class="hits">
-                {#each hits as hit (`${hit.component.id} ${hit.interpretation?.id ?? ""}`)}
+                {#each hits as hit, n (n)}
                   <li>
                     <a href={fragment(hit.component.id)} onclick={() => follow(hit)}>
                       <span class="where"
                         ><strong>{hit.component.name}</strong>
-                        {#if hit.interpretation}<span class="label">{hit.interpretation.kind}</span>{/if}</span
+                        {#if hit.interpretation}<span class="label">{hit.interpretation.kind}</span>{:else if hit.term}<span class="label">Term</span>{/if}</span
                       >
-                      <span class="text">{hit.text}</span>
+                      <span class="text"
+                        >{#if hit.term}<b>{hit.term.name}</b>:{" "}{/if}{hit.text}</span
+                      >
                     </a>
                   </li>
                 {/each}
@@ -246,7 +237,7 @@
       <Sheet id="wiki-outline" title={TITLES.outline} folded={narrow.current} open={opened === "outline"} close={() => (opened = null)}>
         <nav aria-label="Outline">
           <ul class="outline">
-            {#each outline as head (head.id)}
+            {#each heads as head (head.id)}
               <li>
                 <button type="button" onclick={() => bring(head.id)}
                   >{head.name}{#if head.count !== null}{" "}<span class="count">{head.count}</span>{/if}</button
@@ -404,6 +395,11 @@
   .where .label,
   .text {
     color: var(--ink-muted);
+  }
+  /* A Term's name in its hit, as the sheet sets it. */
+  .text b {
+    font-weight: 600;
+    color: var(--ink);
   }
   .text {
     display: -webkit-box;

@@ -250,7 +250,7 @@ with `link "Board"`, the id, its build and `button "Update"`, `button "Rebuild"`
 budget left Gaps, `button "Continue +N calls"`; `searchbox "Search this Wiki"` with, while it holds
 words, a `status` `N found` and `navigation "Found"` with a `link` per hit in place of `navigation
 "Components"` with a `link` per Component; `article "<Component>"` with `navigation "Trail"`,
-`heading` level 1, a `region` per section it has (`"Interpretations"`, `"Relationships"`,
+`heading` level 1, a `region` per section it has (`"Terms"`, `"Interpretations"`, `"Relationships"`,
 `"Explainer"`, `"Components"`, `"Gaps"`) and `link "Next <name>"`; `navigation "Outline"` with a
 `button` per head; under 1080px `button "Outline"`, under 720px `button "Components"` too, each
 opening its sheet with `button "Close"`. `run` executes with the run's `work/` as cwd: pass absolute paths (`--findings`).
