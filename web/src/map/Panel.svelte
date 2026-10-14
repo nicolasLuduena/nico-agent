@@ -122,7 +122,7 @@
     {#if node.assignees}
       <section>
         <h3 class="label">Assigned</h3>
-        {#if assignable(node)}
+        {#if assignable(node.assignees, dispatched)}
           <AssignMe {issue}><span class="note">Unassigned</span></AssignMe>
         {:else}
           <p class:note={!node.assignees.length}>{named(node.assignees).join(", ")}</p>

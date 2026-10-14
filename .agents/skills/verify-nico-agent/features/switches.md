@@ -68,10 +68,11 @@ Preconditions:
 
 ## Gotchas
 
-- `answer`, `gardening`, `mine`, `quality_scan` and `wiki` start off (`mine` is driven in [mine](./mine.md)). Turning one of the first three on in a
-  run starts nothing visible (no Asking from herdr, no gardening issue, no scan hour), so prove those
-  through `cargo test`, and here only that the PATCH writes them; `wiki` on queues a build at the
-  next refresh, driven in [wiki-runs](./wiki-runs.md).
+- `answer`, `gardening`, `mine`, `quality_scan` and `wiki` start off. Turning `answer`, `gardening`
+  or `quality_scan` on in a run starts nothing visible (no Asking from herdr, no gardening issue, no
+  scan hour), so prove those through `cargo test`, and here only that the PATCH writes them; `mine`
+  on narrows what is Ready, driven in [mine](./mine.md); `wiki` on queues a build at the next
+  refresh, driven in [wiki-runs](./wiki-runs.md).
 - A switch acts on the next tick, and in a run ticks happen only on refresh: prove it through a
   refresh, not by waiting.
 - The PATCH writes an inline table with toml_edit's spacing (`{ dispatch = true , review = false }`):

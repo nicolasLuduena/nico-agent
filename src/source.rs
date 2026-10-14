@@ -4,14 +4,12 @@
 use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
 
-use crate::cli::{Context, Refusal};
-use crate::config::{self, Config, Linear, Repo};
+use crate::config::{Config, Linear, Repo};
 use crate::dispatch::Dispatch;
 use crate::install::{self, Install};
 use crate::pause;
@@ -33,6 +31,17 @@ pub struct Read {
     /// config: then an issue assigned to no one is not Ready.
     #[serde(skip)]
     pub mine: Option<String>,
+}
+
+impl Read {
+    /// The user on the Source of the issue `key`: GitHub's for a GitHub
+    /// issue, else Linear's, as [`read`] asks them.
+    pub fn user_on(&self, key: &str) -> &str {
+        match github_ref(key) {
+            Some(_) => &self.user[0],
+            None => self.user.last().expect("a read of Linear asked its viewer"),
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -205,7 +214,7 @@ fn fresh(
     repo: &Repo,
     max_age: Duration,
 ) -> io::Result<(Option<Read>, Option<WorldError>)> {
-    let file = config_dir.join("issues").join(format!("{slug}.json"));
+    let file = cache_file(config_dir, slug);
     let cached = cache(config_dir, slug);
     let oldest = state::iso(world.now() - max_age);
     if cached.as_ref().is_some_and(|c| c.read_at > oldest) {
@@ -227,63 +236,41 @@ fn fresh(
     }
 }
 
+/// Where the Repo `slug`'s last read is kept.
+fn cache_file(config_dir: &Path, slug: &str) -> PathBuf {
+    config_dir.join("issues").join(format!("{slug}.json"))
+}
+
 fn cache(config_dir: &Path, slug: &str) -> Option<Read> {
-    let file = config_dir.join("issues").join(format!("{slug}.json"));
+    let file = cache_file(config_dir, slug);
     // A cache that doesn't parse is no cache: the Source is the truth.
     fs::read_to_string(file)
         .ok()
         .and_then(|text| serde_json::from_str(&text).ok())
 }
 
-/// `POST /api/assign {issue}`: assign the issue `key`, as a Repo's kept read
-/// holds it, to the user on its Source, unless it is someone else's; then
-/// keep the user among its assignees in that read, so the Board shows it
-/// before the next read. A refusal changes nothing here.
-pub fn assign(ctx: &Context, key: &str) -> Result<Value, Refusal> {
-    let config = config::load(&ctx.config_dir)?;
-    let found = (config.repos.keys()).find_map(|slug| {
-        let read = cache(&ctx.config_dir, slug)?;
-        let at = read.issues.iter().position(|i| i.key == key)?;
-        Some((slug, read, at))
-    });
-    let Some((slug, read, at)) = found else {
-        return Err(Refusal::new(
-            format!("{key} is in no Repo's last read of its Source"),
-            vec!["Assign an issue the map shows, or Refresh to read the Sources again".into()],
-        ));
-    };
-    if let Some(theirs) = why_not_yours(&read.issues[at], &read.user, None) {
-        // Linear's assign replaces the assignee: taking an issue is the user's call.
-        return Err(Refusal::new(
-            theirs,
-            vec!["Take it from them on GitHub or Linear: nico-agent assigns you only an issue no one has".into()],
-        ));
-    }
-    // The user each Source read: GitHub's first, then Linear's.
-    let (asked, user) = match github_ref(key) {
-        Some((repo, number)) => (ctx.world.github_assign_self(repo, number), &read.user[0]),
-        None => (
-            ctx.world.linear_assign_self(key),
-            read.user.last().expect("a read of Linear asked its viewer"),
-        ),
-    };
-    asked.map_err(|e| {
-        Refusal::new(
-            format!("could not assign {key} to you: {}", e.0),
-            vec!["Assign it to yourself on GitHub or Linear, or try again once it answers".into()],
-        )
-    })?;
-    let file = ctx.config_dir.join("issues").join(format!("{slug}.json"));
-    state::update(&file, |text| {
+/// Keep `user` among the assignees of the issue `key` in the Repo `slug`'s
+/// last read, as its Source has it once assigned, so the Board shows it
+/// before the next read.
+pub fn keep_assigned(config_dir: &Path, slug: &str, key: &str, user: &str) -> io::Result<()> {
+    state::update(&cache_file(config_dir, slug), |text| {
         let mut read: Read = serde_json::from_str(text).map_err(io::Error::other)?;
+        // A Linear user by their id till the next read names them; the Board says "you".
         if let Some(issue) = read.issues.iter_mut().find(|i| i.key == key)
-            && !issue.assignees.contains(user)
+            && !issue.assignees.iter().any(|a| a == user)
         {
-            issue.assignees.push(user.clone());
+            issue.assignees.push(user.into());
         }
-        Ok::<_, io::Error>((state::text(&read), ()))
-    })?;
-    Ok(json!({ "assigned": key }))
+        Ok((state::text(&read), ()))
+    })
+}
+
+/// Assign the issue `key` to the user on its Source.
+pub fn assign_self(world: &dyn World, key: &str) -> WorldResult<()> {
+    match github_ref(key) {
+        Some((slug, number)) => world.github_assign_self(slug, number),
+        None => world.linear_assign_self(key),
+    }
 }
 
 fn read(world: &dyn World, slug: &str, repo: &Repo) -> WorldResult<Read> {
@@ -479,7 +466,7 @@ fn can_start(issue: &Issue, user: &[String], mine: Option<&str>) -> bool {
 }
 
 /// Why the issue may not start, its Blockers aside; `None` when it may.
-fn why_not_startable(issue: &Issue, user: &[String], mine: Option<&str>) -> Option<String> {
+pub fn why_not_startable(issue: &Issue, user: &[String], mine: Option<&str>) -> Option<String> {
     let key = &issue.key;
     if !issue.open {
         Some(format!("{key} is closed or already started"))

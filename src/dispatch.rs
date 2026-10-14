@@ -260,6 +260,43 @@ pub fn issue(ctx: &Context, config: &Config, key: &str, flags: Flags) -> Result<
     run(ctx, config, repo, record, key.into())
 }
 
+/// `POST /api/assign {issue}`: assign the issue `key`, as a Repo's last read
+/// holds it, to the user on its Source, unless someone else has it, and keep
+/// that in the read. A refusal changes nothing here.
+pub fn assign(ctx: &Context, key: &str) -> Result<Value, Refusal> {
+    let config = config::load(&ctx.config_dir)?;
+    let mut found = None;
+    for slug in config.repos.keys() {
+        let read = source::cached(&ctx.config_dir, &config, slug)?;
+        if let Some(read) = read.filter(|r| r.issues.iter().any(|i| i.key == key)) {
+            found = Some((slug, read));
+            break;
+        }
+    }
+    let Some((slug, read)) = found else {
+        return Err(Refusal::new(
+            format!("{key} is in no Repo's last read of its Source"),
+            vec!["Assign an issue the map shows, or Refresh to read the Sources again".into()],
+        ));
+    };
+    let issue = read.issues.iter().find(|i| i.key == key).expect("found");
+    // Linear's assign replaces the assignee: taking an issue is the user's call.
+    if let Some(theirs) = source::why_not_yours(issue, &read.user, None) {
+        return Err(Refusal::new(
+            theirs,
+            vec!["Take it from them on GitHub or Linear: nico-agent assigns you only an issue no one has".into()],
+        ));
+    }
+    source::assign_self(ctx.world, key).map_err(|e| {
+        Refusal::new(
+            format!("could not assign {key} to you: {e}"),
+            vec!["Assign it to yourself on GitHub or Linear, or try again once it answers".into()],
+        )
+    })?;
+    source::keep_assigned(&ctx.config_dir, slug, key, read.user_on(key))?;
+    Ok(json!({ "assigned": key }))
+}
+
 /// Continue the Dispatch from its first step not done, unless another process
 /// runs it or nothing is left: then a no-op.
 fn pick_up(
@@ -435,11 +472,7 @@ fn run_step(
 
 /// Assign the issue to the user; a failure is only a warning.
 fn claim(ctx: &Context, record: &mut Dispatch) {
-    let claimed = match source::github_ref(&record.issue) {
-        Some((slug, number)) => ctx.world.github_assign_self(slug, number),
-        None => ctx.world.linear_assign_self(&record.issue),
-    };
-    match claimed {
+    match source::assign_self(ctx.world, &record.issue) {
         Ok(()) => record.claimed = true,
         Err(e) => record.warnings.push(format!(
             "could not Claim {}: {e}; assign it to yourself by hand",

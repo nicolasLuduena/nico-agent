@@ -19,7 +19,6 @@ use crate::library;
 use crate::map;
 use crate::refresh;
 use crate::repo;
-use crate::source;
 use crate::stage;
 use crate::status;
 use crate::wiki;
@@ -394,7 +393,7 @@ fn dispatch(ctx: &Context, request: &HttpRequest) -> Result<Value, Refusal> {
 /// The issue the body's `{issue}` names, assigned to the user.
 fn assign(ctx: &Context, request: &HttpRequest) -> Result<Value, Refusal> {
     match &body(request)?["issue"] {
-        Value::String(issue) => source::assign(ctx, issue),
+        Value::String(issue) => dispatch::assign(ctx, issue),
         other => Err(bad_invocation(
             format!("issue is a string, not {other}"),
             "assign",

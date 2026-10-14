@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { Assigning, assignable, named } from "./assign.svelte";
+import { Assigning, asksToAssign, assignable, named } from "./assign.svelte";
 import type { Sent } from "./send";
 
 const you = { name: "nico", you: true };
@@ -12,13 +12,17 @@ describe("who an issue is assigned to, in its panel", () => {
   });
 
   it("offers Assign to me only on an issue no one has, before it is dispatched", () => {
-    expect(assignable({ assignees: [], stage: "Ready" })).toBe(true);
-    expect(assignable({ assignees: [], stage: "Waiting" })).toBe(true);
-    expect(assignable({ assignees: [colleague], stage: "Waiting" })).toBe(false);
-    expect(assignable({ assignees: [you], stage: "Ready" })).toBe(false);
-    expect(assignable({ assignees: [], stage: "Implementing" })).toBe(false);
+    expect(assignable([], false)).toBe(true);
+    expect(assignable([colleague], false)).toBe(false);
+    expect(assignable([you], false)).toBe(false);
+    expect(assignable([], true)).toBe(false);
     // A Blocker outside the Sources read: who has it is not known.
-    expect(assignable({ assignees: null, stage: null })).toBe(false);
+    expect(assignable(null, false)).toBe(false);
+  });
+
+  it("offers it under a refused Dispatch whose help says to take the issue, and under no other", () => {
+    expect(asksToAssign(["Assign it to yourself, or turn `mine` off for acme/api"])).toBe(true);
+    expect(asksToAssign(["acme/api#3 is assigned to colleague", "Run `nico-agent status` to see the Ready issues"])).toBe(false);
   });
 });
 

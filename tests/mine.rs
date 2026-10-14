@@ -86,11 +86,12 @@ fn patch_sets_mine_and_null_takes_the_project_s_again() {
     );
 }
 
-/// Repo `acme/api`, reading Linear's team BLE too, set as `toml` sets it:
-/// its GitHub issue #1 and Linear BLE-1 unassigned, #2 and BLE-2 the user's.
-fn with_assigned(toml: &str) -> Setup {
+/// Repo `acme/api`, reading Linear's team BLE too, set as `toml` sets it,
+/// in the Project `shop` whose defaults `shop` sets: its GitHub issue #1 and
+/// Linear BLE-1 unassigned, #2 and BLE-2 the user's.
+fn in_shop(shop: &str, toml: &str) -> Setup {
     let t = with_config(&format!(
-        "[repos.\"acme/api\"]\npath = \"/src/api\"\nlinear = {{ team = \"BLE\" }}\nroom = 4\n{toml}\n"
+        "[projects.shop]\n{shop}\n\n[repos.\"acme/api\"]\npath = \"/src/api\"\nproject = \"shop\"\nlinear = {{ team = \"BLE\" }}\nroom = 4\n{toml}\n"
     ));
     t.world
         .add_clone("/src/api", &["git@github.com:acme/api.git"]);
@@ -109,6 +110,12 @@ fn with_assigned(toml: &str) -> Setup {
     t
 }
 
+/// [`in_shop`] with no Project defaults.
+fn with_assigned(toml: &str) -> Setup {
+    in_shop("", toml)
+}
+
+/// What a tick said, in order of the text.
 fn sorted(mut said: Vec<String>) -> Vec<String> {
     said.sort();
     said
@@ -116,7 +123,8 @@ fn sorted(mut said: Vec<String>) -> Vec<String> {
 
 #[test]
 fn with_mine_on_a_tick_dispatches_the_issues_assigned_to_the_user_and_leaves_the_unassigned() {
-    let t = with_assigned("switches = { mine = true }");
+    // On as its Project's default.
+    let t = in_shop("switches = { mine = true }", "");
 
     let said = t.tick();
 
@@ -245,7 +253,7 @@ fn status_and_the_map_name_each_issue_s_assignees_and_mark_the_user() {
     t.tick();
 
     let status = t.get("/api/status").1;
-    let (_, map) = t.get("/api/map/acme/api");
+    let (_, map) = t.get("/api/map/shop");
 
     let you = |name: &str| json!([{ "name": name, "you": true }]);
     assert_eq!(
@@ -289,7 +297,7 @@ fn in_a_mine_repo_the_map_shows_an_unassigned_issue_waiting_on_its_assignee_with
     let t = with_assigned("switches = { mine = true, dispatch = false }");
     t.tick();
 
-    let (_, map) = t.get("/api/map/acme/api");
+    let (_, map) = t.get("/api/map/shop");
 
     let unassigned = node(&map, "acme/api#1");
     assert_eq!(unassigned["stage"], "Waiting");
@@ -400,4 +408,23 @@ fn a_failed_or_paused_assign_and_one_of_an_issue_someone_else_has_are_refused_ch
     );
     assert_eq!(t.world.calls(), ["github assign acme/api#1 @me"]);
     assert_eq!(kept(&t), before);
+}
+
+#[test]
+fn a_parent_issue_no_one_has_in_a_mine_repo_is_not_held_by_its_assignee_on_the_map() {
+    let mut parent = issue(3, &[], &[]);
+    parent.has_sub_issues = true;
+    let t = with_mine(", dispatch = false", vec![parent]);
+    t.tick();
+
+    let (_, map) = t.get("/api/map/acme/api");
+
+    let parent = node(&map, "acme/api#3");
+    assert_eq!(parent["stage"], "Waiting");
+    assert_eq!(parent.get("assignee_holds"), None);
+    let refused = t.cli(&["dispatch", "acme/api#3", "--json"]).json();
+    assert_eq!(
+        refused["help"][0],
+        "acme/api#3 is a parent issue; dispatch its sub-issues instead"
+    );
 }

@@ -171,9 +171,11 @@ pub fn map(ctx: &Context, name: &str) -> Result<Option<Value>, Refusal> {
             "merged_at": d.and_then(merged_at),
         });
         // Why a Waiting node waits, as `status` says it, or as a hand Dispatch
-        // is refused when it is who it is assigned to.
-        let yours = (issue.zip(reader))
-            .and_then(|(i, (user, mine))| source::why_not_yours(i, user, mine.as_deref()));
+        // is refused when that is for who it is assigned to.
+        let yours = (issue.zip(reader)).and_then(|(i, (user, mine))| {
+            let why = source::why_not_startable(i, user, mine.as_deref())?;
+            source::why_not_yours(i, user, mine.as_deref()).filter(|yours| *yours == why)
+        });
         if let Some(waiting) = row("waiting", key).filter(|_| stage == "Waiting") {
             node["waits"] = waiting["reason"].clone();
         } else if let Some(why) = yours.filter(|_| stage == "Waiting") {
