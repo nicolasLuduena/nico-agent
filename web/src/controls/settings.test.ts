@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Project, Settings } from "../status";
-import { picked, projectOf, tag, undoLabel, unset } from "./settings";
+import { picked, projectOf, switchLabel, tag, undoLabel, unset } from "./settings";
 
 const claude = { harness: "claude", model: null, effort: null };
 const defaults: Settings = {
@@ -80,5 +80,14 @@ describe("a launch picked on the page", () => {
 
   it("starts another Harness on its own model and Effort", () => {
     expect(picked(launch, "harness", "codex")).toEqual({ harness: "codex", model: null, effort: null });
+  });
+});
+
+describe("a switch's row", () => {
+  it("is named as the Glossary says it, mine for what it does", () => {
+    expect(switchLabel("mine")).toBe("Only issues assigned to me");
+    expect(switchLabel("flip")).toBe("Flip to ready");
+    expect(switchLabel("quality_scan")).toBe("Quality-scan");
+    expect(switchLabel("stack")).toBe("Stack");
   });
 });

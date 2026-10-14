@@ -61,6 +61,10 @@ const ROUTES: &[(&str, &str)] = &[
     ),
     ("POST /api/refresh", "`nico-agent refresh`"),
     (
+        "POST /api/assign {issue}",
+        "assign the issue to the user on its Source, unless someone else has it, and keep that in its Repo's last read",
+    ),
+    (
         "POST /api/wiki/<id>/update|rebuild|continue",
         "queue the Wiki's build first: an Update, one from nothing, or one asking only its budget Gaps",
     ),
@@ -151,6 +155,7 @@ pub fn answer(ctx: &Context, port: u16, request: &HttpRequest) -> Answer {
         }
         ("POST", "/api/dispatch") => ran(dispatch(ctx, request)),
         ("POST", "/api/refresh") => ran(refresh::refresh(&[], ctx)),
+        ("POST", "/api/assign") => ran(assign(ctx, request)),
         ("POST", path)
             if let Some((id, how)) = (path.strip_prefix("/api/wiki/"))
                 .and_then(|path| path.rsplit_once('/'))
@@ -383,6 +388,17 @@ fn dispatch(ctx: &Context, request: &HttpRequest) -> Result<Value, Refusal> {
     )?;
     let argv: Vec<&str> = argv.iter().map(String::as_str).collect();
     dispatch::dispatch(&argv, ctx)
+}
+
+/// The issue the body's `{issue}` names, assigned to the user.
+fn assign(ctx: &Context, request: &HttpRequest) -> Result<Value, Refusal> {
+    match &body(request)?["issue"] {
+        Value::String(issue) => dispatch::assign(ctx, issue),
+        other => Err(bad_invocation(
+            format!("issue is a string, not {other}"),
+            "assign",
+        )),
+    }
 }
 
 /// `repo add <slug> --path --project`, from the body's `{slug, path, project}`.

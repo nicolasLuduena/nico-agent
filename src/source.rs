@@ -4,7 +4,7 @@
 use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
@@ -27,6 +27,21 @@ pub struct Read {
     /// The user on each Source read: a GitHub login, a Linear user id.
     pub user: Vec<String>,
     pub issues: Vec<Issue>,
+    /// The Repo's slug while its `mine` Switch is on, as [`settle`] reads the
+    /// config: then an issue assigned to no one is not Ready.
+    #[serde(skip)]
+    pub mine: Option<String>,
+}
+
+impl Read {
+    /// The user on the Source of the issue `key`: GitHub's for a GitHub
+    /// issue, else Linear's, as [`read`] asks them.
+    pub fn user_on(&self, key: &str) -> &str {
+        match github_ref(key) {
+            Some(_) => &self.user[0],
+            None => self.user.last().expect("a read of Linear asked its viewer"),
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -40,7 +55,11 @@ pub struct Issue {
     pub created_at: String,
     pub open: bool,
     pub labels: Vec<String>,
+    /// A GitHub login or a Linear user id each, as compared with the user.
     pub assignees: Vec<String>,
+    /// Each assignee's name where it is not its id: a Linear display name.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub assignee_names: Vec<String>,
     pub has_sub_issues: bool,
     pub blockers: Vec<Blocker>,
 }
@@ -73,6 +92,14 @@ pub struct BlockerPr {
     pub head_branch: String,
 }
 
+/// Who an issue is assigned to, as the Board shows it.
+#[derive(Debug, Serialize)]
+pub struct Assignee {
+    pub name: String,
+    /// Whether it is the user.
+    pub you: bool,
+}
+
 /// An issue the loop may start, as `status` lists it.
 #[derive(Debug, Serialize)]
 pub struct Row {
@@ -81,6 +108,7 @@ pub struct Row {
     pub url: String,
     /// `code`, or `research` for a Research issue.
     pub kind: &'static str,
+    pub assignees: Vec<Assignee>,
     /// For a Stackable issue, the branch its Dispatch starts from.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub base: Option<String>,
@@ -144,6 +172,7 @@ fn settled(
 /// Repo of its Project with an Install, until that Repo's last Install ran ok
 /// at or after the close. None in another Repo is stacked on.
 fn settle(read: &mut Read, config: &Config, slug: &str, installs: &BTreeMap<String, Install>) {
+    read.mine = config.repos[slug].switches.mine.then(|| slug.to_string());
     for blocker in read.issues.iter_mut().flat_map(|i| &mut i.blockers) {
         let Some(other) = repo_in(config, slug, &blocker.key).filter(|s| *s != slug) else {
             continue;
@@ -185,7 +214,7 @@ fn fresh(
     repo: &Repo,
     max_age: Duration,
 ) -> io::Result<(Option<Read>, Option<WorldError>)> {
-    let file = config_dir.join("issues").join(format!("{slug}.json"));
+    let file = cache_file(config_dir, slug);
     let cached = cache(config_dir, slug);
     let oldest = state::iso(world.now() - max_age);
     if cached.as_ref().is_some_and(|c| c.read_at > oldest) {
@@ -207,12 +236,41 @@ fn fresh(
     }
 }
 
+/// Where the Repo `slug`'s last read is kept.
+fn cache_file(config_dir: &Path, slug: &str) -> PathBuf {
+    config_dir.join("issues").join(format!("{slug}.json"))
+}
+
 fn cache(config_dir: &Path, slug: &str) -> Option<Read> {
-    let file = config_dir.join("issues").join(format!("{slug}.json"));
+    let file = cache_file(config_dir, slug);
     // A cache that doesn't parse is no cache: the Source is the truth.
     fs::read_to_string(file)
         .ok()
         .and_then(|text| serde_json::from_str(&text).ok())
+}
+
+/// Keep `user` among the assignees of the issue `key` in the Repo `slug`'s
+/// last read, as its Source has it once assigned, so the Board shows it
+/// before the next read.
+pub fn keep_assigned(config_dir: &Path, slug: &str, key: &str, user: &str) -> io::Result<()> {
+    state::update(&cache_file(config_dir, slug), |text| {
+        let mut read: Read = serde_json::from_str(text).map_err(io::Error::other)?;
+        // A Linear user by their id till the next read names them; the Board says "you".
+        if let Some(issue) = read.issues.iter_mut().find(|i| i.key == key)
+            && !issue.assignees.iter().any(|a| a == user)
+        {
+            issue.assignees.push(user.into());
+        }
+        Ok((state::text(&read), ()))
+    })
+}
+
+/// Assign the issue `key` to the user on its Source.
+pub fn assign_self(world: &dyn World, key: &str) -> WorldResult<()> {
+    match github_ref(key) {
+        Some((slug, number)) => world.github_assign_self(slug, number),
+        None => world.linear_assign_self(key),
+    }
 }
 
 fn read(world: &dyn World, slug: &str, repo: &Repo) -> WorldResult<Read> {
@@ -229,7 +287,8 @@ fn read(world: &dyn World, slug: &str, repo: &Repo) -> WorldResult<Read> {
         issues.extend(team.iter().filter(|i| claims(selector, i)).map(from_linear));
     }
     let mut asked: HashMap<String, Vec<BlockerPr>> = HashMap::new();
-    for issue in issues.iter_mut().filter(|i| can_start(i, &user)) {
+    // `mine` aside, so turning it off needs no new read.
+    for issue in issues.iter_mut().filter(|i| can_start(i, &user, None)) {
         for blocker in issue.blockers.iter_mut().filter(|b| !b.resolved) {
             if !asked.contains_key(&blocker.key) {
                 asked.insert(blocker.key.clone(), open_prs(world, slug, &blocker.key)?);
@@ -241,6 +300,7 @@ fn read(world: &dyn World, slug: &str, repo: &Repo) -> WorldResult<Read> {
         read_at,
         user,
         issues,
+        mine: None,
     })
 }
 
@@ -291,7 +351,7 @@ pub fn readiness(read: &Read, dispatches: &[Dispatch], prs: &Prs) -> Readiness {
         .issues
         .iter()
         .filter(|i| {
-            can_start(i, &read.user)
+            can_start(i, &read.user, read.mine.as_deref())
                 && (last.get(i.key.as_str())).is_none_or(|d| d.closed_at.is_some())
         })
         .collect();
@@ -308,6 +368,7 @@ pub fn readiness(read: &Read, dispatches: &[Dispatch], prs: &Prs) -> Readiness {
             title: issue.title.clone(),
             url: issue.url.clone(),
             kind,
+            assignees: assignees(issue, &read.user),
             base: None,
             reason: None,
         };
@@ -399,18 +460,14 @@ pub fn start(issue: &Issue) -> Start<'_> {
     ))
 }
 
-/// Ready but for its Blockers.
-fn can_start(issue: &Issue, user: &[String]) -> bool {
-    why_not_startable(issue, user).is_none()
+/// Ready but for its Blockers, in the Repo `mine` names while its `mine` Switch is on.
+fn can_start(issue: &Issue, user: &[String], mine: Option<&str>) -> bool {
+    why_not_startable(issue, user, mine).is_none()
 }
 
 /// Why the issue may not start, its Blockers aside; `None` when it may.
-fn why_not_startable(issue: &Issue, user: &[String]) -> Option<String> {
+pub fn why_not_startable(issue: &Issue, user: &[String], mine: Option<&str>) -> Option<String> {
     let key = &issue.key;
-    let others: Vec<&str> = (issue.assignees.iter())
-        .filter(|a| !user.iter().any(|u| u.eq_ignore_ascii_case(a)))
-        .map(String::as_str)
-        .collect();
     if !issue.open {
         Some(format!("{key} is closed or already started"))
     } else if !issue.labels.iter().any(|l| l == READY_LABEL) {
@@ -419,11 +476,39 @@ fn why_not_startable(issue: &Issue, user: &[String]) -> Option<String> {
         Some(format!(
             "{key} is a parent issue; dispatch its sub-issues instead"
         ))
-    } else if !others.is_empty() {
-        Some(format!("{key} is assigned to {}", others.join(", ")))
     } else {
-        None
+        why_not_yours(issue, user, mine)
     }
+}
+
+/// Why who the issue is assigned to keeps it from starting: someone else, or
+/// no one in the Repo `mine` names while its `mine` Switch is on; `None` when
+/// that does not.
+pub fn why_not_yours(issue: &Issue, user: &[String], mine: Option<&str>) -> Option<String> {
+    let key = &issue.key;
+    let others: Vec<String> = (assignees(issue, user).into_iter())
+        .filter(|a| !a.you)
+        .map(|a| a.name)
+        .collect();
+    if !others.is_empty() {
+        return Some(format!("{key} is assigned to {}", others.join(", ")));
+    }
+    (mine.filter(|_| issue.assignees.is_empty())).map(|repo| not_yours(key, repo))
+}
+
+/// Each of `issue`'s assignees by name, the one who is the `user` marked.
+pub fn assignees(issue: &Issue, user: &[String]) -> Vec<Assignee> {
+    (issue.assignees.iter().enumerate())
+        .map(|(i, id)| Assignee {
+            name: issue.assignee_names.get(i).unwrap_or(id).clone(),
+            you: user.iter().any(|u| u.eq_ignore_ascii_case(id)),
+        })
+        .collect()
+}
+
+/// Why the unassigned issue `key` of the Repo `repo`, its `mine` Switch on, is not Ready.
+pub fn not_yours(key: &str, repo: &str) -> String {
+    format!("{key} is not assigned to you, and {repo} takes only issues assigned to you")
 }
 
 /// Why the issue `key` of `read` is neither Ready nor Stackable, In flight
@@ -435,7 +520,7 @@ pub fn why_not_ready(read: &Read, key: &str) -> Option<String> {
             read.read_at
         ));
     };
-    why_not_startable(issue, &read.user).or_else(|| match start(issue) {
+    why_not_startable(issue, &read.user, read.mine.as_deref()).or_else(|| match start(issue) {
         Start::Ready | Start::Stacked(_) => None,
         Start::Waits(reason) => Some(reason),
     })
@@ -451,6 +536,7 @@ fn from_github(slug: &str, issue: &GitHubIssue) -> Issue {
         open: issue.state == IssueState::Open,
         labels: issue.labels.clone(),
         assignees: issue.assignees.clone(),
+        assignee_names: vec![],
         has_sub_issues: issue.has_sub_issues,
         blockers: issue
             .blockers
@@ -499,6 +585,7 @@ fn from_linear(issue: &LinearIssue) -> Issue {
         open: ["backlog", "unstarted"].contains(&issue.state.as_str()),
         labels: issue.labels.clone(),
         assignees: issue.assignee.iter().cloned().collect(),
+        assignee_names: issue.assignee_name.iter().cloned().collect(),
         has_sub_issues: issue.has_sub_issues,
         blockers: issue
             .blockers

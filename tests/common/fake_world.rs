@@ -196,6 +196,7 @@ pub fn linear_issue(identifier: &str) -> LinearIssue {
         labels: vec!["ready-for-agent".into()],
         state: "unstarted".into(),
         assignee: None,
+        assignee_name: None,
         blockers: vec![],
         has_sub_issues: false,
     }

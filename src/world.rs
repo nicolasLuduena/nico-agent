@@ -135,7 +135,10 @@ pub struct LinearIssue {
     pub project: Option<LinearProject>,
     pub labels: Vec<String>,
     pub state: String,
+    /// The assignee's user id, which is compared with the viewer's.
     pub assignee: Option<String>,
+    /// The assignee's display name, as the Board shows it.
+    pub assignee_name: Option<String>,
     pub blockers: Vec<LinearBlocker>,
     pub has_sub_issues: bool,
 }

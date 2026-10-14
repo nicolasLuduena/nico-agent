@@ -91,6 +91,10 @@ commands, and observable proof.
   set on the page surviving a restart of serve.
 - [Switches](./switches.md) covers `PATCH /api/repo/<slug>/switches`, the page's toggles, what is
   written to `config.toml`, and the loop obeying a switch turned off.
+- [Mine](./mine.md) covers the `mine` Switch ("Only issues assigned to me"): only the user's issues
+  Ready, an unassigned one Waiting on the map with why, the refused hand Dispatch, the assignees
+  in `/api/status` and `/api/map`, the node panel's Assigned section and "Assign to me" through
+  `POST /api/assign`, refused for someone else's issue and while GitHub is paused.
 - [Room](./room.md) covers `PATCH /api/repo/<slug>` with `{room}`, the page's Room input and its
   in-flight line, what is written to `config.toml`, and the loop filling a raised room.
 - [Readiness checks](./checks.md) covers each Repo's checks (clone, fetch, `.evidence/` ignored,

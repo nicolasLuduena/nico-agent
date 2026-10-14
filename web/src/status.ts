@@ -44,7 +44,7 @@ export interface WikiState {
 
 /** The settings of a Repo, or the defaults of a Project, each as it takes effect. */
 export interface Settings {
-  /** dispatch, stack, review, restart, flip, answer, gardening, quality_scan, wiki. */
+  /** dispatch, mine, stack, review, restart, flip, answer, gardening, quality_scan, wiki. */
   switches: Record<string, Setting<boolean>>;
   /** How many Dispatches a Repo may have In flight at once. */
   room: Setting<number>;
@@ -137,6 +137,13 @@ export interface Launch {
 export interface Issue {
   key: string;
   title: string;
+  assignees: Assignee[];
+}
+
+/** Who an issue is assigned to: a GitHub login or a Linear display name, and whether it is the user. */
+export interface Assignee {
+  name: string;
+  you: boolean;
 }
 
 /** `#7` for an issue of the Repo `slug`, else its whole key: another Repo's issue, or a Linear id. */

@@ -453,7 +453,7 @@ fn with_gardening_off_a_gardening_issue_is_listed_apart_never_dispatched_but_dis
     assert_eq!(status["repos"][0]["ready"], serde_json::json!([]));
     assert_eq!(
         status["repos"][0]["gardening"],
-        serde_json::json!([{ "key": "acme/api#1", "title": "Issue 1", "url": "https://github.com/acme/api/issues/1", "kind": "code" }])
+        serde_json::json!([{ "key": "acme/api#1", "title": "Issue 1", "url": "https://github.com/acme/api/issues/1", "kind": "code", "assignees": [] }])
     );
     assert_eq!(map["nodes"][0]["stage"], "Ready");
     assert_eq!(by_hand.exit_code, 0, "{}", by_hand.stdout);
@@ -507,7 +507,7 @@ fn a_stackable_gardening_issue_is_never_stacked_and_waits_with_the_reason_shown(
     assert_eq!(
         status["repos"][0]["waiting"],
         serde_json::json!([{
-            "key": "acme/api#2", "title": "Issue 2", "url": "https://github.com/acme/api/issues/2", "kind": "code",
+            "key": "acme/api#2", "title": "Issue 2", "url": "https://github.com/acme/api/issues/2", "kind": "code", "assignees": [],
             "reason": "acme/api#2 waits for its Blockers' open PR https://github.com/acme/api/pull/11 to merge; a Gardening issue is never stacked",
         }])
     );

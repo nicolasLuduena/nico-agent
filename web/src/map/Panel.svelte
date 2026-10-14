@@ -1,8 +1,11 @@
 <script lang="ts">
   // The open node's panel (desktop) or bottom sheet (phone): what the map
-  // node knows, and for an issue with a Dispatch, /api/node/<issue>: its PR,
-  // restarts, review and Verdict with findings, and Evidence in the Bucket.
+  // node knows, who it is assigned to with "Assign to me" while no one is,
+  // and for an issue with a Dispatch, /api/node/<issue>: its PR, restarts,
+  // review and Verdict with findings, and Evidence in the Bucket.
   import { onMount } from "svelte";
+  import { assignable, named } from "../controls/assign.svelte";
+  import AssignMe from "../controls/AssignMe.svelte";
   import { ticked } from "../controls/Refused.svelte";
   import { watch } from "../live";
   import { selection } from "../selection.svelte";
@@ -115,6 +118,17 @@
     <p class="note">{shown.map ? `${issue} is not on this Project's map.` : "Reading the map…"}</p>
   {:else}
     {#if failure}<p class="errata"><strong>{failure}</strong></p>{/if}
+
+    {#if node.assignees}
+      <section>
+        <h3 class="label">Assigned</h3>
+        {#if assignable(node.assignees, dispatched)}
+          <AssignMe {issue}><span class="note">Unassigned</span></AssignMe>
+        {:else}
+          <p class:note={!node.assignees.length}>{named(node.assignees).join(", ")}</p>
+        {/if}
+      </section>
+    {/if}
 
     <section>
       <h3 class="label">PR</h3>
