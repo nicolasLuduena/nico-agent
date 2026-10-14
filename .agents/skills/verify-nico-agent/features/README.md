@@ -108,8 +108,10 @@ commands, and observable proof.
 - [Refresh](./refresh.md) covers the page's Refresh button, `POST /api/refresh` and `nico-agent
   refresh`, and what the tick it runs does, down to a Stacked dispatch whose PR below merged or
   closed unmerged.
-- [Answer an Asking Implementer](./answer.md) covers `answer`, its refusals, a text starting with
-  `--`, and the answer typed through herdr (stubbed, so not recorded in a run).
+- [Answer an Asking Implementer](./answer.md) covers `answer` in words (`--text`) and keys
+  (`--keys`), its refusals, a text starting with `--`, `POST /api/answer`, the pane on `GET
+  /api/node/<issue>`, and the node panel's Answer: a real Claude choice dialog answered from the
+  Board (`seed herdr`), and its refusals with herdr stubbed.
 - [Live updates](./live-updates.md) covers `GET /api/events` (`changed`, and a keepalive otherwise),
   the page left open behind the tunnel, its reconnecting after the stream is lost, and the
   signed-out line when Access's session lapses.

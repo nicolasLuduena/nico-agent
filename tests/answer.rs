@@ -82,7 +82,44 @@ fn the_same_answer_to_the_same_asking_is_typed_and_recorded_once() {
     assert_eq!(at, ["2026-09-30T12:01:00Z"]);
 }
 
-const USAGE: &str = "Run `nico-agent answer <issue> --text <text> [--by faux-nico]` to type an answer into the issue's Asking Implementer and record it on its Dispatch";
+#[test]
+fn keys_are_sent_to_the_asking_implementer_and_recorded_as_an_answer_each_time() {
+    let t = asking();
+
+    let ran = t.cli(&["answer", "acme/api#7", "--keys", "down", "enter", "--json"]);
+    t.world.advance(MINUTE);
+    let again = t.cli(&["answer", "acme/api#7", "--keys", "down", "enter", "--json"]);
+
+    assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
+    assert_eq!(ran.json(), json!({"answer": "acme/api#7 answered by user"}));
+    // A key moves the dialog on each time it is pressed: never a no-op.
+    assert_eq!(again.json(), ran.json());
+    assert_eq!(
+        t.world.calls(),
+        [
+            "herdr agent send-keys impl-api-7 down enter",
+            "herdr agent send-keys impl-api-7 down enter",
+        ]
+    );
+    let answer = |at| {
+        json!({
+            "since": "2026-09-30T12:00:00Z",
+            "at": at,
+            "question": "Should I keep the old endpoint?",
+            "text": "down enter",
+            "by": "user",
+        })
+    };
+    assert_eq!(
+        answers(&t),
+        json!([
+            answer("2026-09-30T12:01:00Z"),
+            answer("2026-09-30T12:02:00Z")
+        ])
+    );
+}
+
+const USAGE: &str = "Run `nico-agent answer <issue> --text <text>|--keys <key>... [--by faux-nico]` to type an answer into the issue's Asking Implementer, or press keys in its pane, and record it on its Dispatch";
 
 #[test]
 fn an_answer_by_faux_nico_is_recorded_as_faux_nicos() {
@@ -106,10 +143,20 @@ fn an_answer_by_faux_nico_is_recorded_as_faux_nicos() {
 }
 
 #[test]
-fn an_answer_with_no_text_or_another_author_is_refused_with_its_usage() {
+fn an_answer_with_no_text_or_keys_both_or_another_author_is_refused_with_its_usage() {
     let t = asking();
 
     let untexted = t.cli(&["answer", "acme/api#7", "--json"]);
+    let keyless = t.cli(&["answer", "acme/api#7", "--keys", "--json"]);
+    let both = t.cli(&[
+        "answer",
+        "acme/api#7",
+        "--keys",
+        "enter",
+        "--text",
+        "Keep it.",
+        "--json",
+    ]);
     let someone = t.cli(&[
         "answer",
         "acme/api#7",
@@ -122,7 +169,21 @@ fn an_answer_with_no_text_or_another_author_is_refused_with_its_usage() {
 
     assert_eq!(
         (untexted.exit_code, untexted.json()),
-        (2, json!({"error": "--text is required", "help": [USAGE]}))
+        (
+            2,
+            json!({"error": "--text or --keys is required", "help": [USAGE]})
+        )
+    );
+    assert_eq!(
+        (keyless.exit_code, keyless.json()),
+        (2, json!({"error": "--keys needs a key", "help": [USAGE]}))
+    );
+    assert_eq!(
+        (both.exit_code, both.json()),
+        (
+            2,
+            json!({"error": "give --text or --keys, not both", "help": [USAGE]})
+        )
     );
     assert_eq!(
         (someone.exit_code, someone.json()),
@@ -231,4 +292,137 @@ fn an_answer_to_an_issue_not_asking_closed_or_unknown_is_refused_with_help() {
         (t.world.calls().into_iter()).filter(|c| c.starts_with("herdr agent prompt impl-api-7"));
     assert_eq!(typed.count(), 0);
     assert_eq!(answers(&t), Value::Null);
+}
+
+#[test]
+fn the_app_answers_in_words_or_keys_as_the_cli_does() {
+    let t = asking();
+
+    let typed = t.send(
+        "POST",
+        "/api/answer",
+        r#"{"issue": "acme/api#7", "text": "Keep it."}"#,
+    );
+    let pressed = t.send(
+        "POST",
+        "/api/answer",
+        r#"{"issue": "acme/api#7", "keys": ["2", "enter"]}"#,
+    );
+
+    let said = json!({"answer": "acme/api#7 answered by user"});
+    assert_eq!((typed, pressed), ((200, said.clone()), (200, said)));
+    assert_eq!(
+        t.world.calls(),
+        [
+            "herdr agent prompt impl-api-7 Keep it.",
+            "herdr agent send-keys impl-api-7 2 enter",
+        ]
+    );
+    let texts: Vec<Value> = (answers(&t).as_array().unwrap().iter())
+        .map(|a| json!([a["text"], a["by"]]))
+        .collect();
+    assert_eq!(
+        texts,
+        [json!(["Keep it.", "user"]), json!(["2 enter", "user"])]
+    );
+}
+
+#[test]
+fn the_app_s_answer_is_refused_as_the_cli_s_is_and_records_nothing() {
+    let t = asking();
+    let post = |body: &str| t.send("POST", "/api/answer", body);
+
+    let unknown = post(r#"{"issue": "acme/api#8", "keys": ["enter"]}"#);
+    let neither = post(r#"{"issue": "acme/api#7"}"#);
+    let not_keys = post(r#"{"issue": "acme/api#7", "keys": "enter"}"#);
+    t.world.fail_call(
+        "herdr agent send-keys",
+        "`herdr agent send-keys` failed: gone",
+    );
+    let herdr_down = post(r#"{"issue": "acme/api#7", "keys": ["enter"]}"#);
+    t.world.clear_failures();
+    (t.world.agents.borrow_mut()).insert("impl-api-7".into(), "working".into());
+    t.tick();
+    t.world.calls.borrow_mut().clear();
+    let not_asking = post(r#"{"issue": "acme/api#7", "keys": ["enter"]}"#);
+
+    let see_status = "Run `nico-agent status` to see the Dispatch";
+    assert_eq!(
+        unknown,
+        (
+            409,
+            json!({
+                "error": "acme/api#8 has no live Dispatch",
+                "help": ["An answer goes to the Asking Implementer of an issue In flight", see_status],
+            })
+        )
+    );
+    assert_eq!(
+        neither,
+        (
+            400,
+            json!({"error": "--text or --keys is required", "help": [USAGE]})
+        )
+    );
+    assert_eq!(
+        not_keys,
+        (
+            400,
+            json!({"error": "keys is a list of strings, not \"enter\"", "help": [USAGE]})
+        )
+    );
+    assert_eq!(
+        herdr_down,
+        (
+            409,
+            json!({"error": "`herdr agent send-keys` failed: gone", "help": []})
+        )
+    );
+    assert_eq!(
+        not_asking,
+        (
+            409,
+            json!({
+                "error": "acme/api#7 is not Asking",
+                "help": ["An answer goes to an Implementer herdr reports blocked on a question", see_status],
+            })
+        )
+    );
+    assert_eq!(t.world.calls(), Vec::<String>::new());
+    assert_eq!(answers(&t), Value::Null);
+}
+
+#[test]
+fn the_node_of_an_asking_dispatch_holds_its_implementer_s_pane_and_no_other_does() {
+    let t = asking();
+    let dialog = "│ Should I keep the old endpoint?\n\n❯ 1. Keep it\n  2. Drop it\n\nEnter to select · Esc to cancel";
+    (t.world.screens.borrow_mut()).insert("impl-api-7".into(), dialog.into());
+
+    let (status, asking) = t.get("/api/node/acme%2Fapi%237");
+    let read = t.world.calls();
+    t.world
+        .fail_call("herdr agent read", "`herdr agent read` failed: gone");
+    let (_, unread) = t.get("/api/node/acme%2Fapi%237");
+    t.world.clear_failures();
+    (t.world.agents.borrow_mut()).insert("impl-api-7".into(), "working".into());
+    t.tick();
+    t.world.calls.borrow_mut().clear();
+    let (_, working) = t.get("/api/node/acme%2Fapi%237");
+
+    assert_eq!(status, 200, "{asking}");
+    assert_eq!(asking["pane"], dialog);
+    assert!(
+        read.contains(&"herdr agent read impl-api-7 --source visible".to_string()),
+        "{read:?}"
+    );
+    assert_eq!(
+        (unread.get("pane"), &unread["pane_error"]),
+        (None, &json!("`herdr agent read` failed: gone"))
+    );
+    assert_eq!(
+        (working.get("pane"), working.get("pane_error")),
+        (None, None)
+    );
+    let reads = (t.world.calls().into_iter()).filter(|c| c.starts_with("herdr agent read"));
+    assert_eq!(reads.count(), 0);
 }

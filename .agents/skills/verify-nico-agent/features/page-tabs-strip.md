@@ -22,7 +22,7 @@ select named Project. A strip row opens its Repo's Project's tab with the node's
 - `strip-review` a review given up on or stopped is a row `Review <repo> #<n> <where it stands>: review it by hand with nico-agent verdict ...` (see review.md).
 - `strip-verified` a Verified PR is a row `Verified <repo> #<n> <title> <verdict time>`.
 - `strip-paused` a paused GitHub is a row `Paused GitHub until <time>`, with nothing to open.
-- `strip-open` clicking a row selects its Repo's Project's tab and opens that node's panel (`GET /api/node/<issue>`).
+- `strip-open` clicking a row selects its Repo's Project's tab and opens that node's panel (`GET /api/node/<issue>`); an Asking row's with its Answer's text box focused (see answer.md).
 
 ## How to get to it (user POV)
 

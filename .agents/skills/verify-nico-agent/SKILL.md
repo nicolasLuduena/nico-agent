@@ -16,7 +16,10 @@ nico-agent is one Rust binary with two user surfaces, and this skill drives both
 
 The loop's outside world (herdr's panes and agents, GitHub, Linear, desktop notifications) is not
 driven: a verification never reaches it. Features that need it are driven to their refusal or to
-their cached-state behaviour, which is what the user sees when GitHub or herdr is down.
+their cached-state behaviour, which is what the user sees when GitHub or herdr is down. The one
+exception is `seed herdr <agent>`, for a feature that needs a real agent's screen (answer.md): the
+real herdr's list of agents, and what is asked of that one agent, which the verification started
+itself.
 
 Decisions this skill was generated from (the interview of the repo):
 
@@ -62,6 +65,8 @@ $C seed answer <file>|none [<part>]  # what the wiki model (the opencode2 stub) 
 $C seed correction <file>|none  # what the wiki model answers each correction (a call with -s): <file>'s text, or none
 $C seed pace <seconds>|none     # how long the wiki model takes over each call before it answers, or none: a build to watch
 $C seed assign answers|none     # whether GitHub answers an assign to the user (`gh issue edit <n> ... --add-assignee @me`), or none
+$C seed herdr <agent>|none      # the real herdr's list of agents, and what is asked of <agent> there, reach the real
+                                # herdr (an agent the verification started itself); none: herdr all a stub again
 $C seed wiki <wiki.json> <clone>  # a Repo's Wiki built elsewhere committed to the Bucket, and that Repo cloned from
                                 # <clone> for `repo add`: a real Wiki to read on its page; prints {repo, clone, commit}
 $C drift push <n>|stale|pause   # what GitHub would change: a new PR head, an old read, a rate limit

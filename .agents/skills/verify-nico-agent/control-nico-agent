@@ -25,6 +25,8 @@
 #   seed pace <seconds>|none      how long the wiki model takes over each call before it answers, or none
 #   seed assign answers|none      whether GitHub answers an assign to the user (gh issue edit --add-assignee @me),
 #                                 as once signed in; none, it fails as gh with no login does
+#   seed herdr <agent>|none       the real herdr's list of agents, and what is asked of <agent> there, reach
+#                                 the real herdr; with none, herdr is all a stub again
 #   seed wiki <wiki.json> <clone> a Repo's Wiki built elsewhere committed to the Bucket, and that Repo cloned
 #                                 on disk from <clone> for `repo add`; prints { repo, clone, commit }
 #   drift push <n>|stale|pause|below merged|closed|base [<file>]|tag <tag>
@@ -115,6 +117,9 @@ playwright_dir() {
 
 write_stubs() {
   local stubs="$RUN_DIR/stubs" log="$RUN_DIR/outside.log"
+  local real_herdr; real_herdr="$(printf '%q' "$(command -v herdr || echo herdr-is-not-installed)")"
+  # The real herdr's socket, which herdr would look for under the scratch HOME.
+  local real_socket; real_socket="$(printf '%q' "${HERDR_SOCKET_PATH:-$REAL_HOME/.config/herdr/herdr.sock}")"
   mkdir -p "$stubs"
   : > "$log"
   cat > "$stubs/outside-stub" <<EOF
@@ -132,7 +137,14 @@ case "\$name" in
     echo "To get started with GitHub CLI, please run:  gh auth login" >&2; exit 4 ;;
   # What the real gh says in a HOME that never ran \`gh auth login\`.
   ghbot) echo "To get started with GitHub CLI, please run:  gh auth login" >&2; exit 4 ;;
-  herdr) echo '{"error":{"code":"verify_stub","message":"herdr is a stub in this verification run"}}' >&2; exit 1 ;;
+  # \`seed herdr <agent>\`: the list of agents, and what is asked of that one agent, reach the real herdr.
+  herdr)
+    agent="\$(cat "$RUN_DIR/herdr-agent" 2>/dev/null || true)"
+    if [ -n "\$agent" ] && [ "\${1:-}" = agent ] \
+      && { [ "\${2:-}" = list ] || { [ "\${3:-}" = "\$agent" ] && [[ "\${2:-}" =~ ^(read|send-keys|prompt|wait)\$ ]]; }; }; then
+      HERDR_SOCKET_PATH=$real_socket exec $real_herdr "\$@"
+    fi
+    echo '{"error":{"code":"verify_stub","message":"herdr is a stub in this verification run"}}' >&2; exit 1 ;;
   # Recorded, never shown on the desktop.
   notify-send) exit 0 ;;
   curl) echo "curl: (6) verify-nico-agent: no network in this run" >&2; exit 6 ;;
@@ -355,8 +367,9 @@ cmd_seed() {
     correction) seed_correction "$@" ;;
     pace) seed_pace "$@" ;;
     assign) seed_assign "$@" ;;
+    herdr) seed_herdr "$@" ;;
     wiki) seed_wiki "$@" ;;
-    *) die "seed: usage: seed issues [second] | seed dispatch <n> pr|asking|stacked | seed run quality-scan|morning|faux-nico <n> | seed morning <file>|none | seed answer <file>|none [<part>] | seed correction <file>|none | seed pace <seconds>|none | seed assign answers|none | seed wiki <wiki.json> <clone>" ;;
+    *) die "seed: usage: seed issues [second] | seed dispatch <n> pr|asking|stacked | seed run quality-scan|morning|faux-nico <n> | seed morning <file>|none | seed answer <file>|none [<part>] | seed correction <file>|none | seed pace <seconds>|none | seed assign answers|none | seed herdr <agent>|none | seed wiki <wiki.json> <clone>" ;;
   esac
 }
 
@@ -547,6 +560,16 @@ seed_assign() {
     answers) : > "$RUN_DIR/gh-assign" ;;
     none) rm -f "$RUN_DIR/gh-assign" ;;
     *) die "seed: usage: seed assign answers|none" ;;
+  esac
+}
+
+# The one agent of the real herdr the run reaches from now on, an Implementer the user started
+# there, and herdr's list of agents, the real one; with none, herdr is all a stub again.
+seed_herdr() {
+  case "${1:-}" in
+    none) rm -f "$RUN_DIR/herdr-agent" ;;
+    ""|-*) die "seed: usage: seed herdr <agent>|none" ;;
+    *) printf '%s\n' "$1" > "$RUN_DIR/herdr-agent" ;;
   esac
 }
 

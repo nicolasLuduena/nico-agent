@@ -1,9 +1,11 @@
 <script lang="ts">
   // The open node's panel (desktop) or bottom sheet (phone): what the map
   // node knows, who it is assigned to with "Assign to me" while no one is,
-  // and for an issue with a Dispatch, /api/node/<issue>: its PR, restarts,
-  // review and Verdict with findings, and Evidence in the Bucket.
+  // and for an issue with a Dispatch, /api/node/<issue>: while it is Asking
+  // its Implementer's pane, to answer from, then its PR, restarts, review and
+  // Verdict with findings, and Evidence in the Bucket.
   import { onMount } from "svelte";
+  import Answer from "../controls/Answer.svelte";
   import { assignable, named } from "../controls/assign.svelte";
   import AssignMe from "../controls/AssignMe.svelte";
   import { ticked } from "../controls/Refused.svelte";
@@ -25,6 +27,9 @@
     failure: { step: string; error: string } | null;
     evidence_folder: string;
     evidence: { path: string; url: string }[];
+    /** While it is Asking: its Implementer's pane, or why herdr could not read it. */
+    pane?: string;
+    pane_error?: string;
   }
 
   let { issue, project }: { issue: string; project: Project } = $props();
@@ -118,6 +123,12 @@
     <p class="note">{shown.map ? `${issue} is not on this Project's map.` : "Reading the map…"}</p>
   {:else}
     {#if failure}<p class="errata"><strong>{failure}</strong></p>{/if}
+
+    {#if full && (full.pane !== undefined || full.pane_error)}
+      <div class="section">
+        <Answer {issue} pane={full.pane} error={full.pane_error} />
+      </div>
+    {/if}
 
     {#if node.assignees}
       <section>
