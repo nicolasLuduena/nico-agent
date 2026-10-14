@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::args::Args;
+use crate::asking;
 use crate::cli::{Context, Refusal, bad_invocation};
 use crate::config;
 use crate::dispatch;
@@ -71,7 +72,7 @@ pub fn answer(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
             ],
         ));
     };
-    let Some(asking) = d.asking else {
+    let Some(asking) = asking::current(ctx, &d)? else {
         return Err(Refusal::new(
             format!("{issue} is not Asking"),
             vec![
@@ -106,15 +107,20 @@ pub fn answer(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
 }
 
 /// `args` without `--keys` and the keys after it, up to the next flag (no
-/// key herdr names starts with `--`), and those keys; none without `--keys`.
+/// key herdr names starts with `--`), and those keys, the first of them
+/// joined as `--keys=<key>` too; none without `--keys`.
 fn split_keys<'a>(args: &[&'a str]) -> (Vec<&'a str>, Option<Vec<String>>) {
-    let Some(at) = args.iter().position(|a| *a == "--keys") else {
+    let flag = |a: &&str| *a == "--keys" || a.starts_with("--keys=");
+    let Some(at) = args.iter().position(flag) else {
         return (args.to_vec(), None);
     };
-    let keys: Vec<String> = (args[at + 1..].iter())
+    let after: Vec<&str> = (args[at + 1..].iter().copied())
         .take_while(|a| !a.starts_with("--"))
-        .map(|key| key.to_string())
         .collect();
-    let rest = [&args[..at], &args[at + 1 + keys.len()..]].concat();
+    let rest = [&args[..at], &args[at + 1 + after.len()..]].concat();
+    let keys = (args[at].strip_prefix("--keys=").into_iter().chain(after))
+        .filter(|key| !key.is_empty())
+        .map(String::from)
+        .collect();
     (rest, Some(keys))
 }

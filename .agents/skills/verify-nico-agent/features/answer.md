@@ -17,7 +17,7 @@ numbered option it shows, the keys ↑ ↓ Tab Enter Esc, and a text box with Se
 - `answer-typed` an answer, by the user or `--by faux-nico`, is typed as `herdr agent prompt <implementer> <text> --wait --until working --timeout 30000`.
 - `answer-keys` `--keys <key>...` (herdr's key names: `up`, `down`, `tab`, `enter`, `esc`, a digit) is sent as `herdr agent send-keys <implementer> <key>...` and recorded with the keys as its text, each time.
 - `answer-route` `POST /api/answer {issue, text}` or `{issue, keys}` runs `answer`: 200 with its answer; a refusal 409 (400 for a bad body), as `{error, help}`.
-- `answer-pane` `GET /api/node/<issue>` of an Asking Dispatch has `pane`, the Implementer's screen as `herdr agent read --source visible` gives it, or `pane_error` when herdr cannot read it; of any other Dispatch, neither.
+- `answer-pane` `GET /api/node/<issue>` of an Asking Dispatch (recorded, or herdr reporting its Implementer blocked before a tick records it, as the band shows it) has `pane`, the Implementer's screen as `herdr agent read --source visible` gives it, or `pane_error` when herdr cannot read it; of any other Dispatch, neither.
 - `answer-board` the panel of an Asking Dispatch opens with `region "Asking"` first: the pane, `group "Options"` with a `button "<n> <option>"` per numbered option, `group "Keys"` (`button "Up"`, `"Down"`, `"Tab"`, `"Enter"`, `"Esc"`), `textbox "Answer in words"` and `button "Send"`. Each answer reads the pane again. An Asking row of the band opens it with the text box focused. A refusal, or a pane herdr cannot read, is on the errata rule. At 360px nothing but the pane's box is wider than the window.
 
 ## How to get to it (user POV)
@@ -75,26 +75,18 @@ Preconditions:
   then the send-keys refusal on the errata rule under them; `.requests.txt` has
   `POST /api/answer {"issue":"verify/fixture#11","keys":["enter"]} -> 409`; `.view.txt` says the page
   is 360px wide in a 360px window.
-- **Proof.** `$C state > "$E/state.after.txt"`; its diff from `state.before.txt` is outside calls only:
+- **Proof.** Before the dialog: `$C state > "$E/state.after.txt"`; its diff from `state.before.txt` is outside calls only:
   `herdr agent prompt impl-fixture-7 Keep\ it. --wait --until working --timeout 30000` twice, the
   two `--force` texts, `herdr agent send-keys impl-fixture-7 down enter`, then the route's and the
   page's `herdr agent send-keys impl-fixture-11 enter` and `herdr agent read impl-fixture-11 --source visible`;
   `dispatches.json` is unchanged. Copy `$OUTSIDE_LOG` to `$E/outside.log`.
 
-### A real Claude choice dialog, answered from the Board
-
-Needs herdr and Claude Code on the machine. `seed herdr impl-fixture-7` lets the run reach the real
-herdr for its list of agents and for what is asked of `impl-fixture-7` alone; every other herdr
-call stays a stub. In a fresh run, `E=.evidence/<issue>/answer-board`, with the Preconditions'
-Repo and Dispatches seeded:
-
-- **A Claude Asking.** In an empty scratch folder `D`:
-  `herdr tab create --workspace "$HERDR_WORKSPACE_ID" --cwd "$D" --label verify-dialog --no-focus` (keep
-  its `tab_id` and `root_pane.pane_id`), `herdr agent start impl-fixture-7 --kind claude --pane <pane> -- --model haiku`,
-  `herdr agent send-keys impl-fixture-7 down enter` (trusting the folder), then
-  `herdr agent prompt impl-fixture-7 "Call the AskUserQuestion tool right now with exactly two questions: 'Should map nodes carry a tint of their Stage hue?' (Faint tint, No tint) and 'Should the panel's sections start folded?' (Folded, Open). Do nothing else. After I answer, reply with one short sentence." --wait --until working --timeout 30000`
-  (send it again if herdr says `agent_prompt_stalled`) and `herdr agent wait impl-fixture-7 --until blocked --timeout 90000`.
-  Then `$C seed herdr impl-fixture-7` and `$C state > "$E/state.before.txt"`.
+- **A Claude Asking.** Needs herdr and Claude Code on the machine (else stop here, and report the
+  Board's own bullets below unreached for want of them). `$C seed dialog 7`: a real Claude, the
+  Implementer `impl-fixture-7`, Asking two questions in a choice dialog in a herdr tab of its own;
+  from now on the run reaches the real herdr for its list of agents and for what is asked of
+  `impl-fixture-7` alone. `E=.evidence/<issue>/answer-board`; `mkdir -p "$E"`;
+  `$C state > "$E/state.before.txt"`.
 - **The pane.** `$C http --evidence "$E/00-node" GET /api/node/verify%2Ffixture%237`: `agent_state.implementer`
   `blocked`, and `pane` holds the dialog: its tabs (`☐ Node tint  ☐ Sections  ✔ Submit`), the
   question, `❯ 1. Faint tint`, `2. No tint`, `3. Type something.`, `4. Chat about this`.
@@ -113,10 +105,11 @@ Repo and Dispatches seeded:
 - **In words.** `--width 360 --scheme dark`: open the row, `--type "Thanks. Reply with the one word: done" --press Enter --expect "Reply with the one word: done" --wait 12`
   (`07-phone-dark-words`): `POST /api/answer {"issue":"verify/fixture#7","text":"..."} -> 200`, the pane
   shows Claude's `done`, and focus is back on the input after the reload.
-- **Proof.** `$C state > "$E/state.after.txt"`; its diff holds `dispatches.json`'s `answers` on
-  `verify/fixture#7`, one per answer (`1`, `down`, `enter`, `1`, the text), each `by` `user`, and the outside calls
-  `herdr agent send-keys impl-fixture-7 ...` and `herdr agent prompt impl-fixture-7 ...`. Copy `$OUTSIDE_LOG`.
-  Then `$C seed herdr none` and `herdr tab close <tab>`.
+- **Its proof.** `$C state > "$E/state.after.txt"`; its diff from `$E/state.before.txt` holds
+  `dispatches.json`'s `answers` on `verify/fixture#7`, one per answer (`1`, `down`, `enter`, `1`, the
+  text), each `by` `user`, and the outside calls `herdr agent send-keys impl-fixture-7 ...` and
+  `herdr agent prompt impl-fixture-7 ...`. Copy `$OUTSIDE_LOG` to `$E/outside.log`. Then
+  `$C seed dialog none`.
 
 ## Gotchas
 
@@ -131,5 +124,8 @@ Repo and Dispatches seeded:
   the agent working or idle.
 - `--gone` on a question fails once the dialog's review screen quotes it; wait for what replaces
   the question instead.
-- A real Claude moves on with each key: drive the steps in order, once; re-open the dialog
-  (`herdr agent send-keys impl-fixture-7 esc`, then the prompt again) to start over.
+- A real Claude moves on with each key: drive the steps in order, once; `$C seed dialog none`,
+  then `$C seed dialog 7`, starts over.
+- `seed dialog` takes about half a minute (Claude starting, trusting the run's folder, then
+  asking), and its tab sits in the herdr workspace the run is driven from until `seed dialog
+  none` or `cleanup` closes it.

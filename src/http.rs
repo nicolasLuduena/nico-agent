@@ -413,12 +413,15 @@ fn answer_asking(ctx: &Context, request: &HttpRequest) -> Result<Value, Refusal>
     let mut argv = argv(request, "answer", &["issue", "text"])?;
     match &body(request)?["keys"] {
         Value::Null => {}
-        Value::Array(keys) if keys.iter().all(Value::is_string) => {
+        // No key herdr names starts with `--`: one that does would be a flag of `answer`.
+        Value::Array(keys)
+            if (keys.iter()).all(|k| k.as_str().is_some_and(|k| !k.starts_with("--"))) =>
+        {
             argv.push("--keys".into());
             argv.extend(keys.iter().filter_map(Value::as_str).map(String::from));
         }
         other => {
-            let error = format!("keys is a list of strings, not {other}");
+            let error = format!("keys is a list of key names, not {other}");
             return Err(bad_invocation(error, "answer"));
         }
     }

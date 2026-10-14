@@ -27,6 +27,8 @@
 #                                 as once signed in; none, it fails as gh with no login does
 #   seed herdr <agent>|none       the real herdr's list of agents, and what is asked of <agent> there, reach
 #                                 the real herdr; with none, herdr is all a stub again
+#   seed dialog <n>|none          a real Claude in a herdr tab of its own, impl-fixture-<n>, Asking two questions
+#                                 in a choice dialog, reached through seed herdr; none closes it
 #   seed wiki <wiki.json> <clone> a Repo's Wiki built elsewhere committed to the Bucket, and that Repo cloned
 #                                 on disk from <clone> for `repo add`; prints { repo, clone, commit }
 #   drift push <n>|stale|pause|below merged|closed|base [<file>]|tag <tag>
@@ -368,8 +370,9 @@ cmd_seed() {
     pace) seed_pace "$@" ;;
     assign) seed_assign "$@" ;;
     herdr) seed_herdr "$@" ;;
+    dialog) seed_dialog "$@" ;;
     wiki) seed_wiki "$@" ;;
-    *) die "seed: usage: seed issues [second] | seed dispatch <n> pr|asking|stacked | seed run quality-scan|morning|faux-nico <n> | seed morning <file>|none | seed answer <file>|none [<part>] | seed correction <file>|none | seed pace <seconds>|none | seed assign answers|none | seed herdr <agent>|none | seed wiki <wiki.json> <clone>" ;;
+    *) die "seed: usage: seed issues [second] | seed dispatch <n> pr|asking|stacked | seed run quality-scan|morning|faux-nico <n> | seed morning <file>|none | seed answer <file>|none [<part>] | seed correction <file>|none | seed pace <seconds>|none | seed assign answers|none | seed herdr <agent>|none | seed dialog <n>|none | seed wiki <wiki.json> <clone>" ;;
   esac
 }
 
@@ -571,6 +574,43 @@ seed_herdr() {
     ""|-*) die "seed: usage: seed herdr <agent>|none" ;;
     *) printf '%s\n' "$1" > "$RUN_DIR/herdr-agent" ;;
   esac
+}
+
+# A real Claude (Haiku) in a herdr tab of its own, in the run's dialog/ folder, named as the
+# Implementer of a Dispatch seeded `asking` (impl-fixture-<n>), its folder trusted, Asking two
+# questions in a choice dialog; the run reaches it through `seed herdr`. Needs herdr and claude.
+# With none, its tab is closed and herdr is all a stub again; cleanup closes it too.
+DIALOG_PROMPT="Call the AskUserQuestion tool right now, before anything else, with exactly two questions. Question 1, header 'Node tint': 'Should map nodes carry a tint of their Stage hue?' with options 'Faint tint' (a wash of the Stage's hue) and 'No tint' (keep the fill white). Question 2, header 'Sections': 'Should the panel's sections start folded?' with options 'Folded' (one line each until opened) and 'Open' (every section shown whole). Do nothing else: no files, no commands. After I answer, reply with one short sentence."
+seed_dialog() {
+  local n="${1:-}" usage="seed: usage: seed dialog <n>|none"
+  if [ "$n" = none ]; then close_dialog; seed_herdr none; return; fi
+  [[ "$n" =~ ^[0-9]+$ ]] || die "$usage"
+  command -v herdr >/dev/null && command -v claude >/dev/null || die "seed: dialog needs herdr and claude on PATH"
+  [ ! -f "$RUN_DIR/dialog-tab" ] || die "seed: a dialog is open already; seed dialog none first"
+  local agent="impl-fixture-$n" dir="$RUN_DIR/dialog" tab
+  mkdir -p "$dir"
+  tab="$(herdr tab create ${HERDR_WORKSPACE_ID:+--workspace "$HERDR_WORKSPACE_ID"} --cwd "$dir" --label "verify-$VERIFY_RUN_ID-dialog" --no-focus)"
+  jq -r .result.tab.tab_id <<<"$tab" > "$RUN_DIR/dialog-tab"
+  # Its startup stops on the trust question for a new folder, which herdr calls not ready.
+  herdr agent start "$agent" --kind claude --pane "$(jq -r .result.root_pane.pane_id <<<"$tab")" -- --model haiku >/dev/null 2>&1 || true
+  herdr agent read "$agent" --source visible | grep -q "trust this folder" || die "seed: $agent did not ask to trust $dir"
+  herdr agent send-keys "$agent" down enter >/dev/null
+  # A prompt sent while it still loads stalls: send it again.
+  local try
+  for try in 1 2 3 4 5; do
+    sleep 2
+    herdr agent prompt "$agent" "$DIALOG_PROMPT" --wait --until working --timeout 30000 >/dev/null 2>&1 && break
+    [ "$try" -lt 5 ] || die "seed: $agent did not take its prompt"
+  done
+  herdr agent wait "$agent" --until blocked --timeout 120000 >/dev/null || die "seed: $agent did not ask"
+  seed_herdr "$agent"
+  echo "seed: $agent Asking in herdr tab $(cat "$RUN_DIR/dialog-tab")"
+}
+
+close_dialog() {
+  [ -f "$RUN_DIR/dialog-tab" ] || return 0
+  herdr tab close "$(cat "$RUN_DIR/dialog-tab")" >/dev/null 2>&1 || true
+  rm -f "$RUN_DIR/dialog-tab"
 }
 
 seed_run() {
@@ -878,6 +918,7 @@ cmd_cleanup() {
   esac
   # shellcheck disable=SC1090
   [ -f "$RUN_ENV" ] && . "$RUN_ENV"
+  close_dialog
   stop_run
   chmod -R u+rwX "$RUN_DIR" 2>/dev/null || true
   rm -rf "$RUN_DIR"
@@ -900,7 +941,7 @@ main() {
     page) cmd_page "$@" ;;
     tunnel) cmd_tunnel "$@" ;;
     cleanup) cmd_cleanup "$@" ;;
-    ""|-h|--help|help) sed -n '2,28p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' ;;
+    ""|-h|--help|help) sed -n '2,/^set -euo pipefail$/p' "${BASH_SOURCE[0]}" | sed '$d; s/^# \{0,1\}//' ;;
     *) die "unknown subcommand '$sub' (launch|restart|doctor|env|seed|drift|state|run|http|page|tunnel|cleanup)" ;;
   esac
 }

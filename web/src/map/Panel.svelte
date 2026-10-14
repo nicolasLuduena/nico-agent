@@ -59,7 +59,13 @@
 
   function close() {
     selection.issue = null;
+    selection.answering = null;
   }
+
+  // The band's call to answer is for the node it opened, not one opened after it.
+  $effect(() => {
+    if (selection.answering !== issue) selection.answering = null;
+  });
 
   // Focus moves into the panel as it opens, so a keyboard needn't cross every node to
   // reach it, and back to what opened it as it closes, unless focus has gone elsewhere.

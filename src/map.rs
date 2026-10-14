@@ -214,8 +214,10 @@ pub fn node(ctx: &Context, issue: &str) -> Result<Option<Value>, Refusal> {
         .collect();
     node["evidence_folder"] = json!(format!("/bucket/{}/", http::escaped(&folder)));
     node["evidence"] = json!(evidence);
-    // What the Asking Implementer shows, as herdr has it, for the user to answer from.
-    if d.closed_at.is_none() && d.asking.is_some() {
+    // What the Asking Implementer shows, as herdr has it, for the user to answer
+    // from; Asking as the band says it, herdr's blocked before a tick records it.
+    let blocked = node["agent_state"]["implementer"] == "blocked";
+    if d.closed_at.is_none() && (d.asking.is_some() || blocked) {
         match ctx.world.herdr_agent_read(&d.implementer.agent) {
             Ok(pane) => node["pane"] = json!(pane),
             Err(e) => node["pane_error"] = json!(e.0),

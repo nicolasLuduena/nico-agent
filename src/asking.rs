@@ -7,7 +7,7 @@ use std::io;
 
 use serde::{Deserialize, Serialize};
 
-use crate::cli::Context;
+use crate::cli::{Context, Refusal};
 use crate::config::Config;
 use crate::dispatch::{self, Dispatch};
 use crate::state;
@@ -37,16 +37,8 @@ pub fn step(ctx: &Context, config: &Config, agents: Option<&[Agent]>) -> io::Res
         let state = world::agent_state(agents, name);
         match (state, &d.asking) {
             (Some(AgentState::Blocked), None) => {
-                let question = match ctx.world.herdr_agent_read(name) {
-                    Ok(screen) => meaningful_line(&screen).unwrap_or_default().into(),
-                    Err(e) => {
-                        said.push(format!("could not read the question of {}: {e}", d.issue));
-                        String::new()
-                    }
-                };
-                let since = state::iso(ctx.world.now());
-                let asking = Asking { since, question };
-                record(ctx, &d.issue, Some(asking.clone()))?;
+                let (asking, unread) = begin(ctx, &d)?;
+                said.extend(unread);
                 said.push(format!("{} is Asking: \"{}\"", d.issue, asking.question));
                 if !config.repo_of(&d).switches.answer {
                     said.extend(tell(ctx, &d, &asking));
@@ -57,6 +49,38 @@ pub fn step(ctx: &Context, config: &Config, agents: Option<&[Agent]>) -> io::Res
         }
     }
     Ok(said)
+}
+
+/// `d`'s Asking: the one recorded, else, when herdr reports its Implementer
+/// blocked before a tick has seen it, one recorded now as the tick would,
+/// without telling the user, who is at it; `None` when it is not Asking.
+pub fn current(ctx: &Context, d: &Dispatch) -> Result<Option<Asking>, Refusal> {
+    if d.asking.is_some() {
+        return Ok(d.asking.clone());
+    }
+    let agents = ctx.world.herdr_agents()?;
+    if world::agent_state(&agents, &d.implementer.agent) != Some(AgentState::Blocked) {
+        return Ok(None);
+    }
+    Ok(Some(begin(ctx, d)?.0))
+}
+
+/// Record `d` Asking from now, with the question its pane shows; what could
+/// not be read, said.
+fn begin(ctx: &Context, d: &Dispatch) -> io::Result<(Asking, Option<String>)> {
+    let (question, unread) = match ctx.world.herdr_agent_read(&d.implementer.agent) {
+        Ok(screen) => (meaningful_line(&screen).unwrap_or_default().into(), None),
+        Err(e) => {
+            let said = format!("could not read the question of {}: {e}", d.issue);
+            (String::new(), Some(said))
+        }
+    };
+    let asking = Asking {
+        since: state::iso(ctx.world.now()),
+        question,
+    };
+    record(ctx, &d.issue, Some(asking.clone()))?;
+    Ok((asking, unread))
 }
 
 /// Tell the user `d` is Asking with a desktop notification quoting the
@@ -91,7 +115,11 @@ fn meaningful_line(screen: &str) -> Option<&str> {
         .filter(|line| !line.is_empty() && !is_chrome(line))
         .collect();
     // A choice draws its options and key hints under its question.
-    (said.iter().rfind(|line| line.ends_with('?')).or(said.last())).copied()
+    (said
+        .iter()
+        .rfind(|line| line.ends_with('?'))
+        .or(said.last()))
+    .copied()
 }
 
 /// What a Harness draws around the work: an empty prompt, a spinner, a key hint.

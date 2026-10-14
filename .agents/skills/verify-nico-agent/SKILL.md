@@ -19,7 +19,7 @@ driven: a verification never reaches it. Features that need it are driven to the
 their cached-state behaviour, which is what the user sees when GitHub or herdr is down. The one
 exception is `seed herdr <agent>`, for a feature that needs a real agent's screen (answer.md): the
 real herdr's list of agents, and what is asked of that one agent, which the verification started
-itself.
+itself with `seed dialog`.
 
 Decisions this skill was generated from (the interview of the repo):
 
@@ -67,6 +67,9 @@ $C seed pace <seconds>|none     # how long the wiki model takes over each call b
 $C seed assign answers|none     # whether GitHub answers an assign to the user (`gh issue edit <n> ... --add-assignee @me`), or none
 $C seed herdr <agent>|none      # the real herdr's list of agents, and what is asked of <agent> there, reach the real
                                 # herdr (an agent the verification started itself); none: herdr all a stub again
+$C seed dialog <n>|none         # a real Claude in a herdr tab of its own, impl-fixture-<n> (a Dispatch seeded `asking`'s
+                                # Implementer), Asking two questions in a choice dialog, reached through seed herdr;
+                                # none (or cleanup) closes its tab. Needs herdr and claude
 $C seed wiki <wiki.json> <clone>  # a Repo's Wiki built elsewhere committed to the Bucket, and that Repo cloned from
                                 # <clone> for `repo add`: a real Wiki to read on its page; prints {repo, clone, commit}
 $C drift push <n>|stale|pause   # what GitHub would change: a new PR head, an old read, a rate limit
@@ -319,7 +322,7 @@ Proof standards:
 
 Stops every process whose executable lives in the run dir (serve, with its session and the `git`
 it runs; any CLI run still going), any browser `page` left with its profile in the run's `tmp/` and
-the tunnel stand-in,
+the tunnel stand-in, and the herdr tab a `seed dialog` opened,
 then removes the run dir: the binary's copy, the scratch HOME and config, the fixtures and their
 worktrees, the Bucket, the stubs and `outside.log`. It refuses paths outside the run root, kills
 nothing by name, and never touches `.evidence/`, where the proof lives after cleanup. Run it after

@@ -125,10 +125,9 @@
     overflow: auto;
     padding: 8px 12px;
     border: 1px solid var(--hairline);
-    border-radius: 2px;
     background: var(--ground);
     color: var(--ink);
-    font: 400 13px/1.35 ui-monospace, "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;
+    font: 400 14px/1.35 ui-monospace, "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;
     white-space: pre;
     tab-size: 8;
   }
@@ -138,7 +137,7 @@
   }
   /* An option says what it picks, whole, wrapping under itself. */
   .picks button {
-    padding: 6px 12px;
+    padding: 8px 12px;
     text-align: left;
     overflow-wrap: anywhere;
   }
