@@ -57,16 +57,21 @@ fn pr_opened(t: Setup) -> Setup {
 
 /// The Implementer pushes: PR 9's head is now `sha`.
 fn push(t: &Setup, sha: &str) {
+    pr_is(t, sha, PrState::Open);
+}
+
+/// GitHub says PR 9 is at `sha`, and `state`.
+fn pr_is(t: &Setup, sha: &str, state: PrState) {
     t.world.activity.borrow_mut().insert(
         "acme/api#9".into(),
         PullRequestActivity {
-            state: PrState::Open,
+            state,
             draft: true,
             head_sha: sha.into(),
             base_branch: "main".into(),
             mergeable: Mergeable::Mergeable,
             updated_at: "2026-09-30T12:30:00Z".into(),
-            merged_at: None,
+            merged_at: (state == PrState::Merged).then(|| "2026-09-30T12:30:00Z".into()),
         },
     );
 }
@@ -509,7 +514,7 @@ fn findings(t: &Setup, text: &str) -> String {
 /// The default `[prompts.restart] rulings` after a failing Verdict at `sha` on issue 7.
 fn rulings(sha: &str) -> String {
     format!(
-        " Before you push, rule on each Finding, numbered as the findings number them, else F1, F2 and on in the order they list them: fixed, with the commit that fixes it, or dismissed, with why (what the issue, a feature file or PRODUCT.md says that the Finding misreads); a Finding saying an earlier dismissal does not hold is ruled on again. Append the Rulings to .evidence/7/rulings.md as a new section, never rewriting an earlier one, the file headed `# Rulings: acme/api#7`: `## Findings at {sha}`, then a line per Finding, `- **F1** \"<its title>\": fixed in <commit sha>` or `- **F2** \"<its title>\": dismissed. <why>`. Once pushed, add or update a `## Findings` section right after `## Evidence` in the PR body, one line counting every section of rulings.md: `<N> fixed, <M> dismissed over <R> rounds: [Rulings](http://127.0.0.1:42069/bucket/acme/api/7/)`."
+        " Before you push, rule on each Finding, numbered F1, F2 and on as the findings number them, else in the order they list them: fixed, with the commit that fixes it, or dismissed, with why (what the issue, a feature file or PRODUCT.md says that the Finding misreads); a Finding saying an earlier dismissal does not hold is ruled on again. Append the Rulings to .evidence/7/rulings.md as a new section, never rewriting an earlier one, the file headed `# Rulings: acme/api#7`: `## Findings at {sha}`, then a line per Finding, `- **F1** \"<its title>\": fixed in <commit sha>` or `- **F2** \"<its title>\": dismissed. <why>`. Once pushed, add or update a `## Findings` section right after `## Evidence` in the PR body, one line counting every section of rulings.md: `<N> fixed, <M> dismissed over <R> rounds: [Rulings](http://127.0.0.1:42069/bucket/acme/api/7/)`."
     )
 }
 
@@ -666,18 +671,7 @@ fn a_dispatch_the_reviewer_kept_failing_closes_once_its_pr_is_merged_or_closed_o
     for (state, said) in [(PrState::Merged, "merged"), (PrState::Closed, "closed")] {
         let t = reviewing();
         failed_by_the_reviewer(&t);
-        t.world.activity.borrow_mut().insert(
-            "acme/api#9".into(),
-            PullRequestActivity {
-                state,
-                draft: true,
-                head_sha: "sha12".into(),
-                base_branch: "main".into(),
-                mergeable: Mergeable::Mergeable,
-                updated_at: "2026-09-30T14:00:00Z".into(),
-                merged_at: (state == PrState::Merged).then(|| "2026-09-30T14:00:00Z".into()),
-            },
-        );
+        pr_is(&t, "sha12", state);
         t.world.advance(TICK);
 
         let ticked = t.tick();

@@ -33,9 +33,9 @@ export function needsYou(status: Status): Need[] {
     ...blocked(status.morning, null, null),
     ...live
       .filter((d) => d.stage === "Failed")
-      .map((d): Need => {
+      .map((d) => {
         const kept = reviewerKeptFailing(d.failure, d.restarts);
-        return kept ? { ...row("Failed", d, d.updated_at, kept.said), help: kept.help } : row("Failed", d, d.updated_at);
+        return { ...row("Failed", d, d.updated_at, kept?.said), help: kept?.help };
       }),
     ...live.filter((d) => review.needsYou(d.review)).map((d) => row("Review", d, null, review.said(d.issue, d.review!))),
     ...live.filter((d) => d.stage === "Verified").map((d) => row("Verified", d, d.verdict?.at ?? null)),

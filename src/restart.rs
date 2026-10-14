@@ -286,12 +286,12 @@ fn relaunch(
 /// text for an agent gone from herdr.
 fn prompt(ctx: &Context, config: &Config, record: &Dispatch, reason: Reason) -> io::Result<String> {
     let texts = &config.prompts.restart;
-    let text = match reason {
-        Reason::Rebooted | Reason::Manual => texts.rebooted.clone(),
-        Reason::Stalled => texts.stalled.clone(),
-        Reason::Conflict => texts.conflict.clone(),
-        Reason::Retarget => texts.retarget.clone(),
-        Reason::Verdict => texts.verdict.clone() + &texts.rulings,
+    let (text, then) = match reason {
+        Reason::Rebooted | Reason::Manual => (&texts.rebooted, ""),
+        Reason::Stalled => (&texts.stalled, ""),
+        Reason::Conflict => (&texts.conflict, ""),
+        Reason::Retarget => (&texts.retarget, ""),
+        Reason::Verdict => (&texts.verdict, texts.rulings.as_str()),
     };
     let verdict = verdict::load(&ctx.config_dir, &record.issue)?;
     let findings = verdict::file(&ctx.config_dir, &record.issue);
@@ -306,7 +306,7 @@ fn prompt(ctx: &Context, config: &Config, record: &Dispatch, reason: Reason) -> 
         ("evidenceFolder", &bucket::evidence(record)),
         ("bucketUrl", &bucket::url(config, record)),
     ];
-    Ok(fill_in(&format!("{} {text}", texts.prefix), &values))
+    Ok(fill_in(&format!("{} {text}{then}", texts.prefix), &values))
 }
 
 /// Tell the user that `record` is Failed, if it is; called once, as it

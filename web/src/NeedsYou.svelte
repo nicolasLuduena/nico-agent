@@ -31,19 +31,23 @@
   {#if line}<span class="swatch" style:--line={line}></span>{/if}
 {/snippet}
 
+<!-- What it says, and, when it has help (what to do about it), the help under it, both read whole. -->
+{#snippet said(need: Need)}
+  <span class="text" class:full={need.help}
+    >{@render ticked(need.text)}{#if need.help}<span class="help">{@render ticked(need.help)}</span>{/if}</span
+  >
+{/snippet}
+
 {#snippet cells(need: Need)}
   <span class="label kind">{need.kind}</span>
   {#if need.repo && need.issue}
     <!-- `acme/api #7`, or `acme/api BLE-12` for a Linear issue. -->
     <span class="ref">{@render swatch(need.repo)}{need.repo} {need.issue.replace(need.repo, "")}</span>
-    <!-- A Dispatch the Reviewer kept failing: why, and under it what ends it, both read whole. -->
-    <span class="text" class:full={need.help}
-      >{@render ticked(need.text)}{#if need.help}<span class="help">{@render ticked(need.help)}</span>{/if}</span
-    >
+    {@render said(need)}
   {:else if need.kind === "Check" || need.kind === "Install"}
     <!-- `acme/api: what it says`, and under it what to do about it. -->
     <span class="ref">{@render swatch(need.repo ?? "")}{need.repo}:</span>
-    <span class="text full">{@render ticked(need.text)}<span class="help">{@render ticked(need.help ?? "")}</span></span>
+    {@render said(need)}
   {:else}
     <span class="ref">{need.text}</span>
     <span class="text"></span>
