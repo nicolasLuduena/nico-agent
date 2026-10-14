@@ -19,11 +19,11 @@ section, with `nico-agent install <slug>` as its help.
 - `install-failed` a command that exits non-zero: exit `1`, `the Install of <slug> failed: <its last line>`, `ok` false with the sha it pulled.
 - `install-checks` the Repo's Readiness checks run after each Install (its `ghbot` call in the outside log).
 - `install-one-at-a-time` `install` asked while another runs refuses with `an Install of <slug> is running (pid N)` and `queued: true`; the next tick (a Refresh) starts the queued one in herdr.
-- `install-strip-panel` a failed or refused last Install is `Install <slug>: <last line>` in `region "Needs you"` with `Run nico-agent install <slug> once it is fixed` under it, and `region "Install"` on the tab shows `Failed at <time>`, the output and the same help; an ok one shows `Installed <sha> at <time>`.
+- `install-strip-panel` a failed or refused last Install is `Install <slug>: <last line>` in `region "Needs you"` with `Run nico-agent install <slug> once it is fixed` under it, and `region "Install"` on the tab opens by itself, its folded line reading `Failed at <time>`, then the output and the same help; an ok one stays folded, its line reading `Installed <short sha>` and, opened, `Installed <short sha> at <time>`; with no command it reads `None`.
 
 ## How to get to it (user POV)
 
-- The tab's `region "Install"`: its `textbox "Install"` (change, then Enter).
+- The tab's `region "Install"`, folded to one line unless its last Install failed: click it open, then its `textbox "Install command"` (change, then Enter or leave the field).
 - `PATCH /api/repo/<slug>` with `{"install": ...}`, as the page sends it.
 - `nico-agent install <slug>`, by hand or in the pane the loop opens after a merge into the Base.
 - The needs-you strip and `nico-agent status --json`'s `repos[].install`.
@@ -52,16 +52,20 @@ Preconditions:
   `README.md`: `... has changes to tracked files: M README.md`.
 - **Strip and panel.** `$C page --evidence "$E/07-page-refused" --expect "has changes to tracked files"`:
   `region "Needs you"` has `Install verify/fixture: <clone> has changes ... M README.md` with `Run
-  nico-agent install verify/fixture once it is fixed` under it; `region "Install"` has `textbox
-  "Install"` reading `seq 1 25`, `Failed at <time>`, the output and the help.
-- **Failed.** Restore `README.md`. `$C page --evidence "$E/08-page-set-command" --click "textbox=Install" --press Control+a --type "echo compiling; echo boom >&2; exit 4" --press Enter --wait 2`:
+  nico-agent install verify/fixture once it is fixed` under it; `region "Install"` is open by itself, its line
+  reading `Install Failed at <time>`, with `textbox "Install command"` reading `seq 1 25`, `Failed at <time>`,
+  the output and the help.
+- **Failed.** Restore `README.md`. `$C page --evidence "$E/08-page-set-command" --click "textbox=Install command" --press Control+a --type "echo compiling; echo boom >&2; exit 4" --press Enter --wait 2`
+  (the section is still open, its last Install refused):
   `.requests.txt` has `PATCH /api/repo/verify/fixture {"install":"echo compiling; echo boom >&2; exit 4"} -> 200`.
   `install`: exit `1`, `the Install of verify/fixture failed: boom`; `last.output` is
   `compiling\nboom`, `last.sha` the clone's HEAD. The strip's row reads `Install verify/fixture: boom`.
 - **One at a time.** `PATCH ... '{"install":"sleep 6; echo slow done"}'`; start `install` in the
   background, and within 6 seconds run it again: exit `1`, `an Install of verify/fixture is running
   (pid N)`, help `One more runs once it ends`; `installs.json` has `runner` N and `queued: true`.
-  The first ends with exit `0`, `last.output` `slow done`, `queued` still true.
+  The first ends with exit `0`, `last.output` `slow done`, `queued` still true. `$C page --evidence
+  "$E/14-page-installed" --within "region=verify/fixture" --click "region=Install" --expect "Installed <short sha>"`:
+  the folded line read `Installed <short sha>`; no `Install` row in the strip.
 - **Queued, then a tick.** `: > "$OUTSIDE_LOG"`; `$C run --evidence "$E/15-refresh-queued" -- refresh --json`:
   `actions` holds `could not start the Install of verify/fixture, queued again: \`herdr workspace
   create\` failed: verify_stub: ...`; `$OUTSIDE_LOG` has `herdr workspace create --cwd <clone>
@@ -72,8 +76,8 @@ Preconditions:
   `[projects.verify]` with `room = 2` and `install = "make"` to `config.toml`: `repo list --json`
   exits `1` with `config.toml line <n>: projects.verify.install: unknown field \`install\`, ...`;
   restore the file.
-- **Remove.** `$C page --evidence "$E/19-page-remove" --click "textbox=Install" --press Control+a --press Backspace --press Enter --wait 2`:
-  `PATCH ... {"install":null} -> 200`; `config.toml` has no `install`; `status`'s `repos[0]` has no
+- **Remove.** `$C page --evidence "$E/19-page-remove" --within "region=verify/fixture" --click "region=Install" --click "textbox=Install command" --press Control+a --press Backspace --press Enter --expect Saved --wait 2`:
+  `PATCH ... {"install":null} -> 200`; the section's line reads `None`; `config.toml` has no `install`; `status`'s `repos[0]` has no
   `install`.
 - **Proof.** `$C state > "$E/state.after.txt"` and diff: `installs.json` new, `checks.json` changed.
   Copy `$OUTSIDE_LOG` to `$E/outside.log`.
@@ -85,7 +89,10 @@ Preconditions:
   branch) is `cargo test`'s (`tests/install.rs`). A run reaches the tick's start of a queued Install
   only up to herdr's stub refusing it.
 - `page --expect` reads text, not an input's value: wait (`--wait 2`) after typing into `textbox
-  "Install"` and read `.requests.txt` and `config.toml` instead.
+  "Install command"` and read `.requests.txt` and `config.toml` instead; `Saved` shows beside it for 2 seconds
+  only, so `--expect Saved` comes before the wait.
+- `region "Install"` is folded unless the last Install failed or was refused: a `--click "textbox=Install
+  command"` on a folded one times out. Open it with `--within "region=<slug>" --click "region=Install"`.
 - `install` runs the command for real, in the fixture clone: keep it harmless (`seq`, `echo`,
   `sleep`). A command that writes untracked files does not stop the next Install; one that changes a
   tracked file does.

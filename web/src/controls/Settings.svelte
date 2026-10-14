@@ -5,14 +5,14 @@
   // it; its own launch or Base goes back to its Project's or the default.
   import { reload } from "../live";
   import { selection } from "../selection.svelte";
-  import type { Launch as Picked, Project, Repo } from "../status";
+  import type { Launch, Project, Repo } from "../status";
   import { entered } from "./field";
   import Fold from "./Fold.svelte";
   import From from "./From.svelte";
-  import Launch from "./Launch.svelte";
+  import LaunchPicker from "./LaunchPicker.svelte";
   import Refused from "./Refused.svelte";
   import Save from "./Save.svelte";
-  import { Saves } from "./save.svelte";
+  import { Saves } from "./saves.svelte";
   import { type Holder, picked, unset } from "./settings";
 
   let {
@@ -48,8 +48,7 @@
   /** What a text field sends: its name, or null to take the Project's or the default. */
   const named = (value: string) => value.trim() || null;
   /** A launch in a line, kept whole where the line wraps: its Harness, then its model and Effort when set. */
-  const said = (l: Picked) => [l.harness, l.model, l.effort].filter(Boolean).join("\u00a0·\u00a0");
-  const invalid = (key: string) => saves.refused?.key === key || undefined;
+  const said = (l: Launch) => [l.harness, l.model, l.effort].filter(Boolean).join("\u00a0·\u00a0");
 </script>
 
 {#snippet launch(key: "implementer" | "reviewer", title: string)}
@@ -61,12 +60,12 @@
         <From {setting} {holder} keys={[key]} name={title} onundo={() => save(key, unset([key]))} />
       </Save>
     </div>
-    <Launch
+    <LaunchPicker
       {harnesses}
       launch={setting.value}
       named={title}
-      invalid={saves.refused?.key === key}
-      busy={saves.of(key) === "saving"}
+      invalid={!!saves.invalid(key)}
+      busy={saves.busy(key)}
       pick={(field, value, back) => save(key, { [key]: picked(setting.value, field, value) }, back)}
     />
   </div>
@@ -87,8 +86,8 @@
       value={shown.base.value ?? ""}
       placeholder="origin's default branch"
       autocomplete="off"
-      aria-invalid={invalid("base")}
-      aria-busy={saves.of("base") === "saving"}
+      aria-invalid={saves.invalid("base")}
+      aria-busy={saves.busy("base")}
       use:entered={{
         set: shown.base.value ?? "",
         save: async (value, input) => {
@@ -112,8 +111,8 @@
           value={joined ?? ""}
           placeholder="its own"
           autocomplete="off"
-          aria-invalid={invalid("project")}
-          aria-busy={saves.of("project") === "saving"}
+          aria-invalid={saves.invalid("project")}
+          aria-busy={saves.busy("project")}
           use:entered={{
             set: joined ?? "",
             save: (value, input) => save("project", { project: named(value) }, () => (input.value = joined ?? "")),

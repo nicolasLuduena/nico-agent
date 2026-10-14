@@ -72,7 +72,7 @@ $C run [--evidence PREFIX] -- <nico-agent args...>       # the CLI in the scratc
 $C http [--evidence PREFIX] [--header 'NAME: VALUE']... <METHOD> <PATH> [BODY]
                                 # ask serve, as the page does (or with other headers); exit 1 on 4xx/5xx
 $C page [--tunnel] [--evidence PREFIX] [--width PX] [--scheme light|dark] [--storage FILE|none] [--path PATH] [--hash HASH] [--within ROLE=NAME|page | --click ROLE=NAME | --click ROLE~NAME | --press KEY | --type TEXT
-        | --expect TEXT | --gone TEXT | --wait SECONDS | --history back|forward | --mode pass|502|signed-out]...
+        | --expect TEXT | --gone TEXT | --wait SECONDS | --history back|forward | --mode pass|502|signed-out | --hold SECONDS]...
                                 # open the page (through the tunnel stand-in), act in order, capture
 $C tunnel start|pass|502|signed-out   # a stand-in for cloudflared and Access in front of serve; $TUNNEL_URL, $TUNNEL_LOG
 $C cleanup                      # stop what the run started, remove the run dir; never touches .evidence/
@@ -93,7 +93,10 @@ page again, `--press ArrowRight` a key, `--type
 dev` text into what has focus,
 `--expect "Source not read yet"` waits for the text, `--gone TEXT` up to a minute for it to go,
 `--wait 120` lets two minutes pass, `--history back` (or `forward`) is the browser's Back (or
-Forward) button, and `--mode 502` switches the tunnel stand-in (with `--tunnel` only). `--path
+Forward) button, `--mode 502` switches the tunnel stand-in (with `--tunnel` only), and `--hold 20`
+holds each later write to `/api` (a PATCH, POST or DELETE) 20 seconds on its way to serve, as a slow
+link would, with no step waiting for it: the capture shows the write under way (`Saving…`), and a
+write still held when the page closes never reaches serve. `--path
 /wiki/verify/fixture` opens a Wiki's page instead of the Board at `/`, and `--hash "#readme"` (or
 `"#shop/wiki"` on the Board) at that fragment, as a link to it does; `--scheme dark` is a browser
 whose system colours are dark, which the theme System follows (the Wiki's page has no theme switch). Each `page` is a new browser with nothing stored: `--storage FILE` starts it with the
@@ -233,17 +236,27 @@ unknown path's `help`, and on the page the ARIA roles and names: `tablist "Proje
 `tabpanel "Libraries"`: `list "Libraries"` with `button "Remove <id>…"` per version, then `region
 "Add a Library"` with `textbox "Library"`, `textbox "Tag"`, `textbox "Subfolder"` and `button
 "Add"`), `region "Needs you"`, `button
-"Refresh"`, a `region "<project>"` of its defaults unless it is a Repo's own, then a `region
-"<slug>"` per Repo, each holding `switch "Dispatch"` (and `Faux-nico answers`,
-`Flip to ready`, `Gardening`, `Quality-scan`, `Restart`, `Review`, `Stack`, `Wiki`), `spinbutton "Room"`,
-`navigation "View"` with `link "Map"` and `link "Wiki"` (the
+"Refresh"`, a `region "<project>"` of its defaults (`region "Room"`, `"Switches"` and `"Settings"`) unless it is
+a Repo's own, then a `region "<slug>"` per Repo, holding in order `region "Dispatch"` with `button
+"Dispatch"`, then `region "Readiness"`, `"Room"`, `"Switches"`, `"Settings"`, `"Libraries"` and
+`"Install"`, each folded to a `group` reading its head and what is set (`Readiness 2 of 6 pass`,
+`Room 3 · 0 in flight`, `Switches 4 of 9 on`, `Settings Implementer claude`, `Libraries None linked`,
+`Install None`) until a `--click "region=<Section>"` opens it (one with a failing check or a refusal
+opens by itself), then `button "Remove <slug>…"`. Opened: `region "Room"` has `spinbutton "Room"`,
+`region "Switches"` a `switch` per switch (`Dispatch`, `Faux-nico answers`, `Flip to ready`,
+`Gardening`, `Quality-scan`, `Restart`, `Review`, `Stack`, `Wiki`), `region "Settings"` `group
+"Implementer"` and `group "Reviewer"` (`combobox "<Role> Harness"`, then `combobox` or, where the
+Harness lists none, `textbox` `"<Role> model"` and `"<Role> Effort"`), `textbox "Base"` and
+`combobox "Project"` (a Repo's only), `region "Libraries"` `button "Unlink <id>"` per version and
+`form "Link a Library"` (`textbox "Library"`, `textbox "Tag"`, `textbox "Subfolder"`, `button
+"Link"`), `region "Install"` `textbox "Install command"`. Beside each setting, `text: from Project`
+or `text: default` while it is taken, else `text: set here` and its × `button "Use the default
+<Setting>"` (or `"Use the Project's <Setting>"`); for two seconds after a save, `status: Saved` in
+their place. `navigation "View"` with `link "Map"` and `link "Wiki"` (the
 Wiki view: `button "Wiki settings"` opening `region "Settings for every Wiki"` with `combobox
 "Harness"`, `combobox` or `textbox` `"Model"` and `"Effort"`, `spinbutton "Hour"`, `"Calls"`,
 `"Depth"` and `"Calls at once"`, and `textbox "Embedding model"`, then `list "Wikis"` with a `link
-"<id>"` per Wiki to its page), `region "Dispatch"` with `button "Dispatch"` (a Repo's only), `region "Readiness"` with a `group` reading `N of M pass` (a Repo's only), `region "Map of <project>"`, `region "Settings"` with
-`combobox "Implementer Harness"` (and `model`, `Effort`, and the same for `Reviewer`), `textbox
-"Base"`, `combobox "Project"` (a Repo's only), `region "Libraries"` with `button "Unlink <id>"` per version and `form "Link a Library"` (`textbox "Library"`, `textbox "Tag"`, `textbox "Subfolder"`, `button "Link"`) (a Repo's only), `region "Install"` with `textbox "Install"` (a Repo's only), `button "Use the default <Setting>"` or `"Use the
-Project's <Setting>"`, `button "Remove <slug>…"`; a `--click` takes the first match, which is the
+"<id>"` per Wiki to its page), `region "Map of <project>"`; a `--click` takes the first match, which is the
 Project's defaults before any Repo's, `region "Add a Repo"` with `textbox "Repo"`, `textbox "Its
 clone"`, `combobox "Its Project"` and `button "Add"`. A Wiki's page (`--path /wiki/<id>`): `banner`
 with `link "Board"`, the id, its build and `button "Update"`, `button "Rebuild"` and, while the

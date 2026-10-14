@@ -86,7 +86,7 @@ commands, and observable proof.
   line under a PR draft Stage, the panel's Review section, and the strip's Review row for a review
   given up on.
 - [Settings](./settings.md) covers the Settings section of a Repo's tab (Implementer and Reviewer
-  launches, Base, Project), each setting's `default`/`project` tag and its Use the default (or the
+  launches, Base, Project), each setting's `default`/`from Project`/`set here` chip and its Use the default (or the
   Project's), `PATCH /api/repo/<slug>` and `PATCH /api/project/<name>`, their refusals, and a launch
   set on the page surviving a restart of serve.
 - [Switches](./switches.md) covers `PATCH /api/repo/<slug>/switches`, the page's toggles, what is
@@ -170,6 +170,14 @@ commands, and observable proof.
   removing the versions no Repo links (`POST /api/libraries`, `DELETE /api/libraries/<id>`, the
   Wiki's removal one Bucket commit), the refusal of a linked one, and the Wiki view listing
   linked Library Wikis beside the Repos'.
+- [The panel's forms](./forms.md) covers a Repo's panel opening with Dispatch and its sections
+  folded to a line each, saying what is set, opening by themselves on a failing check or a refusal and
+  remembered per Repo across a reload (`--storage`), a field's `Saving…` (`--hold`), `Saved` and
+  refusal, Enter and leaving a text field saving it and Escape putting it back, the chip `from
+  Project` / `default` / `set here`, and no field wider than a 390px or 360px window.
+- [The page's colours](./palette.md) covers a hue per Stage on the map, a line colour per Repo of a
+  Project (nodes, band rows, panel rule, Wiki rows) kept across a reload, a hue per Harness (the
+  launch pickers), light and dark, desk and phone, and every hue's AA contrast from `app.css`.
 - [Requests from other sites](./foreign-requests.md) covers the 403 serve answers a foreign or
   missing `Host` and a foreign or `null` `Origin` on a write, and the page, `localhost` and the
   tunnel answered as before.

@@ -27,14 +27,15 @@
   } = $props();
 
   const takes = $derived(harnesses[launch.harness] ?? { models: null, efforts: null });
-  const WORD = { harness: "Harness", model: "model", effort: "Effort" };
-  const called = (field: keyof Launch) => (named ? `${named} ${WORD[field]}` : WORD[field][0].toUpperCase() + WORD[field].slice(1));
+  const LABEL = { harness: "Harness", model: "Model", effort: "Effort" };
+  /** A field's accessible name: its label, or after whose launch it is, `Implementer model`. */
+  const called = (field: keyof Launch) => (named ? `${named} ${field === "model" ? "model" : LABEL[field]}` : LABEL[field]);
 </script>
 
 {#snippet chosen(field: "model" | "effort", listed: string[] | null)}
   {@const value = launch[field]}
   <label class="field">
-    <span class="field-name">{field === "model" ? "Model" : "Effort"}</span>
+    <span class="field-name">{LABEL[field]}</span>
     {#if listed}
       <select
         aria-label={called(field)}
@@ -70,7 +71,7 @@
 <div class="launch">
   <div class="fields">
     <label class="field">
-      <span class="field-name">Harness</span>
+      <span class="field-name">{LABEL.harness}</span>
       <span class="marked" style:--harness={harnessHue(launch.harness)}>
         <span class="harness" aria-hidden="true"></span>
         <select

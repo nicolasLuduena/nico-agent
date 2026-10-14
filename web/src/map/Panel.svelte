@@ -1,15 +1,14 @@
 <script lang="ts">
   // The open node's panel (desktop) or bottom sheet (phone): what the map
   // node knows, and for an issue with a Dispatch, /api/node/<issue>: its PR,
-  // its agents' Harnesses, restarts, review and Verdict with findings, and
-  // Evidence in the Bucket.
+  // restarts, review and Verdict with findings, and Evidence in the Bucket.
   import { onMount } from "svelte";
   import { ticked } from "../controls/Refused.svelte";
   import { watch } from "../live";
   import { selection } from "../selection.svelte";
   import { harnessHue, stageHue } from "../hues";
   import * as review from "../review";
-  import { number, repoName, type Launch, type Project, type Review, type Stage } from "../status";
+  import { number, repoName, type Project, type Review, type Stage } from "../status";
   import { clock } from "../time";
   import Mark from "./Mark.svelte";
   import { shown } from "./ProjectMap.svelte";
@@ -17,7 +16,6 @@
   /** What `GET /api/node/<issue>` answers: the issue's last Dispatch, as /api/status shows it, with its Evidence. */
   interface Node {
     pr: { url: string; draft: boolean; state: string; merged_at: string | null } | null;
-    implementer: Launch;
     restarts: { at: string; reason: string; by: string }[];
     verdict: { result: "pass" | "fail"; sha: string; at: string; findings: string | null } | null;
     review: Review | null;
@@ -149,23 +147,6 @@
         </section>
       {/if}
 
-      <!-- Each Harness named with its diamond, as everywhere it is named. -->
-      {#snippet harness(name: string, rest: (string | null)[] = [])}
-        <span class="harnessed"
-          ><span class="harness" style:--harness={harnessHue(name)} aria-hidden="true"></span>{[name, ...rest].filter(Boolean).join(" · ")}</span
-        >
-      {/snippet}
-      <section>
-        <h3 class="label">Agents</h3>
-        <p class="row">
-          <span>Implementer</span>
-          {@render harness(full.implementer.harness, [full.implementer.model, full.implementer.effort])}
-        </p>
-        {#if full.review?.harness}
-          <p class="row"><span>Reviewer</span>{@render harness(full.review.harness)}</p>
-        {/if}
-      </section>
-
       <section>
         <h3 class="label">Restarts</h3>
         {#if full.restarts.length}
@@ -183,7 +164,14 @@
         <h3 class="label">Review</h3>
         <!-- A Verdict on the head says it itself, below. -->
         {#if full.review && full.review.state !== "passed" && full.review.state !== "failed"}
-          <p class="said">{@render ticked(review.said(issue, full.review))}</p>
+          <!-- A line naming its Reviewer's Harness carries its diamond, as everywhere a Harness is named. -->
+          <p class="said">
+            {#if full.review.harness && ["reviewing", "stopped"].includes(full.review.state)}<span
+                class="harness"
+                style:--harness={harnessHue(full.review.harness)}
+                aria-hidden="true"
+              ></span>{/if}{@render ticked(review.said(issue, full.review))}
+          </p>
         {/if}
         {#if full.verdict}
           <p class="row">
@@ -321,12 +309,8 @@
   .fail {
     color: var(--failed);
   }
-  .harnessed {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-weight: 600;
-    text-align: right;
+  .said .harness {
+    margin: 0 8px 1px 2px;
   }
   .sha {
     margin-left: 8px;

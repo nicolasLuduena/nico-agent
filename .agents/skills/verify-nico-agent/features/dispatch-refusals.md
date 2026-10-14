@@ -20,7 +20,7 @@ reaches.
 - `dispatch-paused` while GitHub is paused, the Claim asks GitHub nothing: its warning names the pause.
 - `dispatch-in-flight` the same issue on another Harness is exit 1 `already In flight with claude`.
 - `dispatch-api` `POST /api/dispatch` answers a refusal 409 (400 for a bad body) with the same `{error, help}`.
-- `dispatch-form` the page's Dispatch form posts the chosen issue and launch and shows the refusal inline under it.
+- `dispatch-form` the page's Dispatch form, `region "Dispatch"` first in a Repo's panel and never folded, posts the chosen issue and launch and shows the refusal inline under it; its Model and Effort are selects on claude and `textbox "Model"` and `textbox "Effort"` (placeholder `default`) on codex and opencode.
 
 ## How to get to it (user POV)
 
@@ -73,13 +73,19 @@ Preconditions:
 - **Form.** Run `$C page --evidence "$E/18-form" --click "button=Dispatch" --expect "failed at worktree"`.
   The form's Issue starts on `#5 Verify: a Research issue` (#1 is In flight); `.requests.txt` has
   `POST /api/dispatch {"issue":"verify/fixture#5","harness":"claude","model":null,"effort":null} -> 409`;
-  the ARIA snapshot has an `alert` under `button "Dispatch"` reading `verify/fixture#5 failed at worktree:`.
+  the ARIA snapshot has `region "verify/fixture"` opening with `region "Dispatch"` (`combobox "Issue"`,
+  `combobox "Harness"`, `combobox "Model"`, `combobox "Effort"`, `button "Dispatch"`) and an `alert` under
+  `button "Dispatch"` reading `verify/fixture#5 failed at worktree:`; `region "Readiness"`, `"Room"`,
+  `"Switches"`, `"Settings"`, `"Libraries"` and `"Install"` follow it, folded.
 - **Paused.** Run `$C drift pause`, then `$C run --evidence "$E/19-paused" -- dispatch verify/fixture#6 --json`.
   Exit `1`, `error` `verify/fixture#6 failed at fetch: ...` (see Gotchas); `$OUTSIDE_LOG` gained
   no line: no `gh issue edit 6`.
 - **Proof.** Copy `$OUTSIDE_LOG` to `$E/outside.log`; `$C run --evidence "$E/20-status" -- status --json`
   shows `#1`, `#5` and `#6` with `stage` `Failed`, `#6`'s `warnings` `could not Claim verify/fixture#6:
   GitHub rate limit exceeded; nico-agent asks it again at <the pause's time>; assign it to yourself by hand`.
+- **Form on codex.** Run `$C page --evidence "$E/21-form-codex" --within "region=Dispatch" --click "combobox=Harness" --press ArrowDown --press Enter`.
+  `combobox "Harness"` on `codex`, then `textbox "Model"` and `textbox "Effort"`, each empty with placeholder `default`;
+  `combobox "Issue" [disabled]` on `Nothing to dispatch` and `button "Dispatch" [disabled]` (#1, #5, #6 Failed); no `POST`.
 
 ## Gotchas
 
@@ -93,3 +99,5 @@ Preconditions:
 - `#6` (Stackable) fails at `fetch`, not `worktree`: the fixture's origin has no `agent/fixture-9`.
 - The browser logs its own `Failed to load resource: ... 409` in `.console.txt` for a refused
   request; that is not an app error.
+- The ARIA snapshot shows `combobox "Issue"` with no options while it has some: they sit in groups
+  (Ready, Stackable), which the snapshot leaves out; `.requests.txt` shows the one sent.

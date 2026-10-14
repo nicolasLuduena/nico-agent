@@ -3,11 +3,11 @@
   // written as it changes through PATCH /api/wiki/settings, a text or number
   // field on Enter or on leaving it. The model and the Effort are picked from
   // the Harness's own where it lists them, and typed where it takes any.
-  import { entered } from "../controls/field";
-  import Launch from "../controls/Launch.svelte";
+  import { entered, whole } from "../controls/field";
+  import LaunchPicker from "../controls/LaunchPicker.svelte";
   import Refused from "../controls/Refused.svelte";
   import Save from "../controls/Save.svelte";
-  import { Saves } from "../controls/save.svelte";
+  import { Saves } from "../controls/saves.svelte";
   import { send } from "../controls/send";
   import { picked } from "../controls/settings";
   import type { WikiSettings } from "../status";
@@ -33,9 +33,6 @@
     ["depth", "Depth"],
     ["concurrency", "Calls at once"],
   ] as const;
-  /** An empty or partial number is sent as "" and refused: null would take the default. */
-  const whole = (value: string) => (value.trim() === "" || Number.isNaN(Number(value)) ? "" : Number(value));
-  const invalid = (key: string) => saves.refused?.key === key || undefined;
 </script>
 
 <section class="settings" aria-label="Settings for every Wiki">
@@ -46,11 +43,11 @@
       <strong id="{id}-launch">Launch</strong>
       <Save state={saves.of("launch")} />
     </div>
-    <Launch
+    <LaunchPicker
       harnesses={shown.harnesses}
       launch={shown.launch}
-      invalid={saves.refused?.key === "launch"}
-      busy={saves.of("launch") === "saving"}
+      invalid={!!saves.invalid("launch")}
+      busy={saves.busy("launch")}
       pick={(field, value, back) => save("launch", { launch: picked(shown.launch, field, value) }, back)}
     />
   </div>
@@ -70,8 +67,8 @@
             min={key === "hour" ? 0 : 1}
             max={key === "hour" ? 23 : undefined}
             value={shown[key]}
-            aria-invalid={invalid(key)}
-            aria-busy={saves.of(key) === "saving"}
+            aria-invalid={saves.invalid(key)}
+            aria-busy={saves.busy(key)}
             use:entered={{
               set: String(shown[key]),
               save: (value, input) => save(key, { [key]: whole(value) }, () => (input.value = String(shown[key]))),
@@ -92,8 +89,8 @@
       id="{id}-embed"
       value={shown.embed_model}
       autocomplete="off"
-      aria-invalid={invalid("embed_model")}
-      aria-busy={saves.of("embed_model") === "saving"}
+      aria-invalid={saves.invalid("embed_model")}
+      aria-busy={saves.busy("embed_model")}
       use:entered={{
         set: shown.embed_model,
         save: (value, input) => save("embed_model", { embed_model: value.trim() }, () => (input.value = shown.embed_model)),

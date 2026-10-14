@@ -3,7 +3,7 @@
   // Harness, model and Effort that start on the last launch used.
   import { reload } from "../live";
   import { number, type Repo, type Status } from "../status";
-  import Launch from "./Launch.svelte";
+  import LaunchPicker from "./LaunchPicker.svelte";
   import { startingLaunch } from "./launch";
   import Refused from "./Refused.svelte";
   import { send, type Sent } from "./send";
@@ -57,7 +57,7 @@
         {/each}
       </select>
     </label>
-    <Launch
+    <LaunchPicker
       harnesses={repo.harnesses}
       launch={{ harness: launch.harness, model, effort }}
       pick={(field, value) => (pick = field === "harness" ? { issue: pick.issue, harness: value ?? launch.harness } : { ...pick, [field]: value })}

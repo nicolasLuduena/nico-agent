@@ -49,7 +49,8 @@ Preconditions:
   `.requests.txt` has `GET /api/map/verify%2Fsecond -> 200`.
 - **Keys.** Run `$C page --evidence "$E/04-keys" --click "tab=verify/fixture" --press ArrowRight`:
   `tab "verify/second" [selected]`. Then `--click "tab=verify/second" --press ArrowRight`
-  (`05-keys-wrap`): `tab "verify/fixture" [selected]`.
+  (`05-keys-wrap`): `tab "Libraries" [selected]`, the last; and `--click "tab=Libraries" --press ArrowRight`
+  (`05b-keys-wrap`): `tab "verify/fixture" [selected]`, wrapped to the first.
 - **Phone.** Run `$C page --evidence "$E/06-phone" --width 390`. No `tablist`; `combobox "Project"`
   with `option "verify/fixture" [selected]` and `option "verify/second"`; the screenshot is one column.
 - **Fill the strip.** Run `$C run -- dispatch verify/fixture#1 --json` (Failed at worktree),
@@ -62,7 +63,8 @@ Preconditions:
   and `listitem: Paused GitHub until <time>`. The map's nodes `#1`, `#10` end `needs you`.
 - **Open a row.** Run `$C page --evidence "$E/08-open" --click "button~Failed verify/fixture #1"`.
   `.requests.txt` has `GET /api/node/verify%2Ffixture%231 -> 200`; the map's `#1` node is
-  `[pressed]` and a `region "Verify: a Ready issue #1"` panel replaces the switches.
+  `[pressed]` and a `region "Verify: a Ready issue #1"` panel replaces the Repo's panel (Dispatch and its folded
+  sections).
 - **Proof.** Copy `$OUTSIDE_LOG` to `$E/outside.log`. Each `.console.txt` is empty.
 
 ## Gotchas
@@ -76,3 +78,6 @@ Preconditions:
 - `seed issues` caches only `verify/fixture`; `verify/second` stays `Source not read yet`.
 - While the page is open with a live Dispatch, serve's event stream asks herdr every 10 seconds:
   expect `herdr agent list` lines in `$OUTSIDE_LOG`.
+- Back on a map from the Libraries tab or the Wiki view, `.console.txt` holds `IndexSizeError: Failed to execute
+  'getStartPositionOfChar'` lines from the map's title fitting: they come from before #365 (the same on db3fc21) and are
+  not this feature's; any other line is.

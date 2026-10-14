@@ -6,7 +6,7 @@
   import From from "./From.svelte";
   import Refused from "./Refused.svelte";
   import Save from "./Save.svelte";
-  import { Saves } from "./save.svelte";
+  import { Saves } from "./saves.svelte";
   import { type Holder, unset } from "./settings";
 
   let { holder }: { holder: Holder } = $props();
@@ -44,8 +44,8 @@
           type="checkbox"
           role="switch"
           checked={switches[name].value}
-          aria-invalid={saves.refused?.key === name || undefined}
-          aria-busy={saves.of(name) === "saving"}
+          aria-invalid={saves.invalid(name)}
+          aria-busy={saves.busy(name)}
           onchange={(e) => save(name, { switches: { [name]: e.currentTarget.checked } }, e.currentTarget)}
         />
       </li>

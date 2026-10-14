@@ -3,12 +3,12 @@
   // under its value; written to config.toml as it is entered (Enter or
   // leaving it); its own goes back to its Project's or the default. A Repo's
   // counts its Dispatches In flight.
-  import { entered } from "./field";
+  import { entered, whole } from "./field";
   import Fold from "./Fold.svelte";
   import From from "./From.svelte";
   import Refused from "./Refused.svelte";
   import Save from "./Save.svelte";
-  import { Saves } from "./save.svelte";
+  import { Saves } from "./saves.svelte";
   import { type Holder, unset } from "./settings";
 
   let { holder, live }: { holder: Holder; live?: number } = $props();
@@ -25,9 +25,6 @@
     // A refused value goes back to the room set.
     input.value = String(room.value);
   }
-
-  /** An empty or partial number is sent as "" and refused: null would remove the room. */
-  const whole = (value: string) => (value.trim() === "" || Number.isNaN(Number(value)) ? "" : Number(value));
 </script>
 
 <Fold panel={holder.panel} title="Room" summary={live === undefined ? `${room.value}` : `${room.value} · ${live} in flight`} alarm={saves.refused !== null}>
@@ -43,8 +40,8 @@
       type="number"
       min="1"
       value={room.value}
-      aria-invalid={saves.refused !== null || undefined}
-      aria-busy={saves.of("room") === "saving"}
+      aria-invalid={saves.invalid("room")}
+      aria-busy={saves.busy("room")}
       aria-describedby={live === undefined ? undefined : `${id}-live`}
       bind:this={input}
       use:entered={{ set: String(room.value), save: (value) => save({ room: whole(value) }) }}

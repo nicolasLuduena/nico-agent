@@ -2,9 +2,9 @@
 
 Each Repo has a switch per automatic step of the loop: dispatch, stack, review, restart, flip,
 answer (faux-nico answers), gardening, quality_scan, wiki. The page shows all nine in the Repo's tab, each
-tagged `default` or `project` while the Repo does not set it, and writes a toggle to `config.toml`
-through `PATCH /api/repo/<slug>` with `{"switches": {name: bool}}`, keeping the rest of the file as
-written; "Use the default" beside a switch the Repo sets removes it (see settings). Scripts can
+tagged `default` or `from Project` while the Repo does not set it and `set here` once it does, and
+writes a toggle to `config.toml` through `PATCH /api/repo/<slug>` with `{"switches": {name: bool}}`,
+keeping the rest of the file as written; "Use the default" beside a switch the Repo sets removes it (see settings). Scripts can
 send `{name: bool}` to `PATCH /api/repo/<slug>/switches`. The loop obeys the switch from its next
 tick on.
 
@@ -15,7 +15,7 @@ tick on.
 - `switches-bad-name` a name that is not a switch is 400, listing the nine.
 - `switches-bad-value` a non-boolean value, a body that is not an object, or not JSON is 400.
 - `switches-unknown-repo` a slug that is not a Repo is 409, with the `repo add` to run.
-- `switches-toggle` on the page, clicking `switch "Dispatch"` sends `{"switches":{"dispatch":...}}` and the switch shows the answer, with `button "Use the default Dispatch"` beside it.
+- `switches-toggle` on the page, clicking `switch "Dispatch"` sends `{"switches":{"dispatch":...}}` and the switch shows the answer, a `status` `Saved` for 2 seconds, then `set here` with `button "Use the default Dispatch"` beside it.
 - `switches-obeyed` with Dispatch off, a refresh tick dispatches no Ready issue; on again, it does.
 - `switches-wiki` `switch "Wiki"`, off by default, toggles on like the others (what it starts is in [wiki-runs](./wiki-runs.md)).
 
@@ -54,10 +54,11 @@ Preconditions:
   HTTP `200`, `actions` `[]`; `$OUTSIDE_LOG` holds only `gh api user --jq .login` and the Readiness
   checks' `ghbot api /installation/repositories ...` (no `gh issue edit`, no `herdr worktree
   create`): nothing was dispatched. Copy it to `$E/outside.off.log`.
-- **Toggle on the page.** Run `$C page --evidence "$E/10-toggle" --click "region=Switches" --expect "3 of 9 on" --click "switch=Dispatch" --expect "4 of 9 on"`.
-  `.requests.txt` has `PATCH /api/repo/verify/fixture {"switches":{"dispatch":true}} -> 200`; the ARIA
-  snapshot has `switch "Dispatch" [checked]`, `switch "Review"` unchecked, and `Faux-nico answers`,
-  `Gardening`, `Quality-scan`, `Wiki` unchecked; `config.toml` has `switches = { dispatch = true , review = false }`.
+- **Toggle on the page.** Run `$C page --evidence "$E/10-toggle" --click "region=Switches" --expect "3 of 9 on" --click "switch=Dispatch" --expect "Saved" --expect "4 of 9 on" --gone "Saved"`.
+  `ok` for each step; `.requests.txt` has `PATCH /api/repo/verify/fixture {"switches":{"dispatch":true}} -> 200`; the ARIA
+  snapshot has `switch "Dispatch" [checked]` after `set here` and `button "Use the default Dispatch"`,
+  `switch "Review"` unchecked after `set here`, and `Faux-nico answers`, `Gardening`, `Quality-scan`,
+  `Wiki` unchecked after `default`; `config.toml` has `switches = { dispatch = true , review = false }`.
 - **Obeyed again.** `: > "$OUTSIDE_LOG"`; run `$C http --evidence "$E/11-refresh-on" POST /api/refresh`.
   HTTP `200`; `actions` has `verify/fixture#1 failed at worktree: ...`, `verify/fixture#5 failed at worktree: ...`
   and `verify/fixture#6 failed at fetch: ...` (the Ready issues, then the Stackable one, room 3);
@@ -76,6 +77,8 @@ Preconditions:
   assert on the values, not the spacing.
 - The switches are folded to `<n> of 9 on`: `--click "region=Switches"` opens them first, or a
   `switch` is hidden and its click times out.
+- For 2 seconds after a save the chip's place reads `Saved`, so `set here` and its `Use the default
+  ...` button are not in a snapshot taken at once: wait out `Saved` (`--gone "Saved"`) first.
 - `--click "switch=Dispatch"` (role switch) is the toggle; `button "Dispatch"` is the Dispatch form's.
 - A refresh with Dispatch on dispatches every Ready and Stackable issue up to the room; each fails
   in the run and stays Failed. Relaunch before driving another feature.

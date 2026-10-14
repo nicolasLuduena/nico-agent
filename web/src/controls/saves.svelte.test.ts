@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Saves } from "./save.svelte";
+import { Saves } from "./saves.svelte";
 import type { Sent } from "./send";
 
 /** A PATCH still running, answered when the test says. */
@@ -19,6 +19,7 @@ describe("a field that saves as it changes", () => {
 
     const saved = saves.run("room", patch.write);
     expect(saves.of("room")).toBe("saving");
+    expect(saves.busy("room")).toBe(true);
     expect(saves.of("base")).toBeNull();
 
     patch.answer({ ok: true, answer: { room: { value: 4, from: "repo" } } });
@@ -38,6 +39,8 @@ describe("a field that saves as it changes", () => {
 
     expect(saves.of("room")).toBeNull();
     expect(saves.refused).toEqual({ key: "room", error: "room is a whole number of at least 1, not 0", help: ["room is how many"] });
+    expect(saves.invalid("room")).toBe(true);
+    expect(saves.invalid("base")).toBeUndefined();
   });
 
   it("clears the refusal once another save starts", async () => {

@@ -3,7 +3,7 @@
   // right. Open as this browser remembers it for the panel, and open by itself
   // while `alarm` says it holds a refusal or a failing state.
   import type { Snippet } from "svelte";
-  import { Fold } from "./fold.svelte";
+  import { Fold } from "./folded.svelte";
 
   let { panel, title, summary, alarm = false, children }: { panel: string; title: string; summary: string; alarm?: boolean; children: Snippet } =
     $props();

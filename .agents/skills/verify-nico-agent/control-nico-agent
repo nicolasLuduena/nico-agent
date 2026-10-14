@@ -35,7 +35,7 @@
 #   http [--evidence PREFIX] <METHOD> <PATH> [BODY]
 #                                 ask this run's serve, as the page does
 #   page [--tunnel] [--evidence PREFIX] [--width PX] [--scheme light|dark] [--storage FILE|none] [--path PATH] [--hash HASH] [--within ROLE=NAME|page | --click ROLE=NAME | --click ROLE~NAME | --press KEY
-#        | --type TEXT | --expect TEXT | --gone TEXT | --wait SECONDS | --history back|forward | --mode pass|502|signed-out]...
+#        | --type TEXT | --expect TEXT | --gone TEXT | --wait SECONDS | --history back|forward | --mode pass|502|signed-out | --hold SECONDS]...
 #                                 open serve's page in headless Chromium (through the tunnel stand-in), act, capture
 #   tunnel start|pass|502|signed-out
 #                                 start a stand-in for the cloudflared tunnel and Access in front of serve;

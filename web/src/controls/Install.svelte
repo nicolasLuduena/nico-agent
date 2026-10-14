@@ -10,7 +10,7 @@
   import Fold from "./Fold.svelte";
   import Refused, { ticked } from "./Refused.svelte";
   import Save from "./Save.svelte";
-  import { Saves } from "./save.svelte";
+  import { Saves } from "./saves.svelte";
   import { patch } from "./send";
 
   let { repo, panel }: { repo: Repo; panel: string } = $props();
@@ -40,8 +40,8 @@
       value={repo.install?.command ?? ""}
       placeholder="none: nothing runs after a merge"
       autocomplete="off"
-      aria-invalid={saves.refused !== null || undefined}
-      aria-busy={saves.of("install") === "saving"}
+      aria-invalid={saves.invalid("install")}
+      aria-busy={saves.busy("install")}
       use:entered={{ set: repo.install?.command ?? "", save }}
     />
   </div>

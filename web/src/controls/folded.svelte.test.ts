@@ -1,7 +1,7 @@
 import { flushSync } from "svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Fold } from "./fold.svelte";
-import { Saves } from "./save.svelte";
+import { Fold } from "./folded.svelte";
+import { Saves } from "./saves.svelte";
 
 /** This browser's localStorage, kept across the test's reloads. */
 function storage() {

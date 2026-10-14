@@ -49,3 +49,6 @@ export function entered(input: HTMLInputElement, entry: Entry) {
     },
   };
 }
+
+/** A whole-number field's value as sent: an empty or partial number is sent as "", which serve refuses, as null would take the default. */
+export const whole = (value: string) => (value.trim() === "" || Number.isNaN(Number(value)) ? "" : Number(value));

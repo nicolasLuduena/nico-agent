@@ -18,7 +18,7 @@ colors:
   focus: "#1d4f91"
   ready: "#00747a"
   stackable: "#a32385"
-  waiting: "#56657e"
+  waiting: "#99560f"
   merged: "#8250df"
   closed: "#7a6655"
   harness-claude: "#a94a26"
@@ -26,7 +26,7 @@ colors:
   harness-opencode: "#6a4bd6"
   line-1: "#2560c0"
   line-2: "#c22b62"
-  line-3: "#5b7a12"
+  line-3: "#457b20"
   line-4: "#06779a"
   line-5: "#8d5a2c"
   line-6: "#4b4f9e"
@@ -46,7 +46,7 @@ colors:
   focus-dark: "#7fb0ff"
   ready-dark: "#45cbc5"
   stackable-dark: "#f07fd6"
-  waiting-dark: "#a3b3cc"
+  waiting-dark: "#e8a35a"
   merged-dark: "#a98bfa"
   closed-dark: "#c3ab98"
   harness-claude-dark: "#f2956c"
@@ -54,7 +54,7 @@ colors:
   harness-opencode-dark: "#a996ff"
   line-1-dark: "#7aa7ff"
   line-2-dark: "#f481a8"
-  line-3-dark: "#a7cf5c"
+  line-3-dark: "#94d16c"
   line-4-dark: "#55c2e3"
   line-5-dark: "#d9a674"
   line-6-dark: "#a1a6e8"
@@ -211,10 +211,10 @@ A full working palette on a restrained sheet. The sheet stays tinted neutrals; o
 - **Ink:** `ink` is for everything you read first. `ink-muted` is for field labels, kinds, times and where a setting comes from. It is never used for an issue number, a title or a Stage word.
 - **Signal yellow (`signal`):** what needs you, and nothing else. It fills the needs-you band and the 4px flag on a node that needs you.
 - **Live blue (`live`):** an agent is at work: the Implementing and PR draft Stages, links, focus rings, a toggle that is on, and the `stack` edge.
-- **Stage hues**, one per Stage, on its ring, its Stage word and a light tint of its node (7% of the hue over `surface`, 12% in Dark): Waiting `waiting` (slate), Ready `ready` (teal), Stackable `stackable` (magenta), Implementing and PR draft `live`, Verified `verified` (green, a passing Verdict on the head commit), Merged `merged` (the purple GitHub uses, since the merging happens beside it), Closed `closed` (taupe), Failed `failed` (red). A Blocker not offered to the loop has none: an untinted node, its word in `ink-muted`.
+- **Stage hues**, one per Stage, on its ring, its Stage word and a light tint of its node (7% of the hue over `surface`, 12% in Dark): Waiting `waiting` (amber sienna: pending, never a yellow), Ready `ready` (teal), Stackable `stackable` (magenta), Implementing and PR draft `live`, Verified `verified` (green, a passing Verdict on the head commit), Merged `merged` (the purple GitHub uses, since the merging happens beside it), Closed `closed` (taupe), Failed `failed` (red). A Blocker not offered to the loop has none: an untinted node, its word in `ink-muted`.
 - **Failed red (`failed`)** is also a failing Verdict, a refusal, a refused field's frame, and serve out of reach: the errata rule, the strike, the Stage word and the node's tint, never a solid fill.
 - **Repo line colours** (`line-1` to `line-6`), in a Project of more than one Repo: each Repo takes the next by its order in the Project (its Repos sorted by slug, as serve lists them), so it keeps its colour across reloads; a seventh starts again at `line-1`. It is a 10px square before its name on a node, on its rows in the needs-you band (framed in `signal-ink`, so it shows on the yellow in both themes), and before its Wiki in the Wiki view, and a 3px rule across the top of its panel, as a timetable's column head sits on its rule. A Project of one Repo has none.
-- **Harness hues** (`harness-claude`, `harness-codex`, `harness-opencode`): an 8px diamond wherever a Harness is named: inside its select in every launch picker, beside it in the node panel, and as the agent at work on a node (filled while it works, hollow while it idles). Any other Harness is marked in `ink-muted`.
+- **Harness hues** (`harness-claude`, `harness-codex`, `harness-opencode`): an 8px diamond wherever a Harness is named: inside its select in every launch picker, before the node panel's review line that names its Reviewer's, and as the agent at work on a node (filled while it works, hollow while it idles). Any other Harness is marked in `ink-muted`.
 - **Reversed:** the selected node, full ink with the text reversed out.
 
 **The One Job Rule.** Each hue does one job. Yellow means needs you, and no other hue is a yellow; a yellow pixel anywhere else is a bug. A Stage hue is never a Repo's square, a Repo's line colour is never a ring or a word.
@@ -306,7 +306,7 @@ A node that needs you carries a 4px `signal` flag across its top edge.
 
 **Tabs:** text tabs on a hairline baseline, each Project's name set in `head` (it heads the work below it), 24px apart with no side padding, so the first aligns with the gutter and the underline is as wide as the name. The active tab is `ink` with a 3px `rule` underline; the others are `ink-muted`.
 
-**Panel and sheet:** the `head` title with a `#number` link to the issue (`#number name`, its Repo's, when the Project has more than one), then sections separated by hairlines, each with a `label` head: PR (link, draft flag), then for a Waiting issue why it waits, whole (`body`, no head), Failure when the Dispatch Failed (the error in `strong` on the errata rule, then the step it stopped at), Agents (the Implementer's launch and the Reviewer's Harness, each after its Harness's diamond), Restarts (rows of time, then reason), Review (where the review stands, in a line, unless a Verdict on the head says it; then the Verdict: the result word in its colour, the sha in tabular figures, the time, then the findings text wrapped at a 70-character measure), Evidence (one link per file, under `/bucket/`). Opening it moves focus to its title; closing it returns focus to the node or strip row that opened it.
+**Panel and sheet:** the `head` title with a `#number` link to the issue (`#number name`, its Repo's, when the Project has more than one), then sections separated by hairlines, each with a `label` head: PR (link, draft flag), then for a Waiting issue why it waits, whole (`body`, no head), Failure when the Dispatch Failed (the error in `strong` on the errata rule, then the step it stopped at), Restarts (rows of time, then reason), Review (where the review stands, in a line, after its Reviewer's Harness diamond when it names it, unless a Verdict on the head says it; then the Verdict: the result word in its colour, the sha in tabular figures, the time, then the findings text wrapped at a 70-character measure), Evidence (one link per file, under `/bucket/`). Opening it moves focus to its title; closing it returns focus to the node or strip row that opened it.
 
 ## Components
 

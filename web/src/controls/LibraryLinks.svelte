@@ -10,7 +10,7 @@
   import From from "./From.svelte";
   import Refused from "./Refused.svelte";
   import Save from "./Save.svelte";
-  import { Saves } from "./save.svelte";
+  import { Saves } from "./saves.svelte";
   import { type Holder, unset } from "./settings";
 
   let { holder, wikis }: { holder: Holder; wikis: WikiState[] } = $props();
@@ -19,7 +19,7 @@
   // The PATCH's answer, until /api/status's next one.
   let linked = $derived(holder.settings.libraries);
   const saves = new Saves();
-  const saving = $derived(saves.of("libraries") === "saving");
+  const saving = $derived(saves.busy("libraries"));
 
   async function save(body: Record<string, unknown>) {
     const sent = await saves.run("libraries", () => holder.patch(body));

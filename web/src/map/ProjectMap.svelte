@@ -20,7 +20,7 @@
   import { layout, NODE, withoutMerged, type Placed } from "./layout";
   import Mark from "./Mark.svelte";
 
-  let { project, dispatches = [] }: { project: Project; dispatches?: Dispatch[] } = $props();
+  let { project, dispatches }: { project: Project; dispatches: Dispatch[] } = $props();
 
   const PAD = 16;
   let failure = $state<string | null>(null);
@@ -208,11 +208,17 @@
     };
   }
 
-  /** Set the Repo's square just before its name on the node's first row, once the name is laid out. */
-  function before(square: SVGRectElement, _name: string) {
+  /** The room a Repo's 10px square takes before its name: its own width and 4px to the name. */
+  const SQUARE = 14;
+
+  /**
+   * Set the Repo's square, drawn right after the first row's text, just before
+   * the Repo's name in it, once the name is laid out; again as `_node` changes.
+   */
+  function beforeRepoName(square: SVGRectElement, _node: string) {
     const place = () => {
       const name = square.previousElementSibling?.querySelector<SVGTextContentElement>(".repo");
-      if (name?.getNumberOfChars()) square.setAttribute("x", String(name.getStartPositionOfChar(0).x - 14));
+      if (name?.getNumberOfChars()) square.setAttribute("x", String(name.getStartPositionOfChar(0).x - SQUARE));
     };
     place();
     void document.fonts.ready.then(place);
@@ -322,10 +328,10 @@
             {#if n.stage === "Failed"}<rect class="failed" width="4" height={n.height} />{/if}
             {#if repo}
               <text x="12" y="30"
-                ><tspan class="number">{number(n.key, n.repo ?? "")}</tspan><tspan class="repo" dx={line ? 22 : 8} use:fit_text={[repo, 152]}
+                ><tspan class="number">{number(n.key, n.repo ?? "")}</tspan><tspan class="repo" dx={line ? 8 + SQUARE : 8} use:fit_text={[repo, 152]}
                 ></tspan></text
               >
-              {#if line}<rect class="swatch" y="20" width="10" height="10" style:--line={line} use:before={`${n.key} ${repo}`} />{/if}
+              {#if line}<rect class="swatch" y="20" width="10" height="10" style:--line={line} use:beforeRepoName={`${n.key} ${repo}`} />{/if}
             {:else}
               <text class="number" x="12" y="30" use:fit_text={[number(n.key, n.repo ?? ""), 152]}></text>
             {/if}

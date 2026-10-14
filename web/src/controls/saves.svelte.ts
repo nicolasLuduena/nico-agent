@@ -25,6 +25,16 @@ export class Saves {
     return this.#states[key] ?? null;
   }
 
+  /** Whether the field `key` is saving, for its `aria-busy`. */
+  busy(key: string) {
+    return this.of(key) === "saving";
+  }
+
+  /** Whether serve refused the field `key`'s last save, for its `aria-invalid` (left out while it did not). */
+  invalid(key: string) {
+    return this.refused?.key === key || undefined;
+  }
+
   /** Save the field `key` by `write`, and answer what serve said. */
   async run(key: string, write: () => Promise<Sent>): Promise<Sent> {
     clearTimeout(this.#timers.get(key));
@@ -33,10 +43,7 @@ export class Saves {
     const sent = await write();
     if (sent.ok) {
       this.#states[key] = "saved";
-      this.#timers.set(
-        key,
-        setTimeout(() => delete this.#states[key], SAVED_FOR),
-      );
+      this.#timers.set(key, setTimeout(() => delete this.#states[key], SAVED_FOR));
     } else {
       delete this.#states[key];
       this.refused = { key, error: sent.error, help: sent.help };

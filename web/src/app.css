@@ -38,7 +38,7 @@
   /* A Stage's hue: its ring, its word, its node's tint. Implementing and PR draft are live, Verified verified, Failed failed. */
   --ready: #00747a;
   --stackable: #a32385;
-  --waiting: #56657e;
+  --waiting: #99560f;
   --merged: #8250df;
   --closed: #7a6655;
   /* A Harness's hue: its diamond wherever it is named. */
@@ -48,7 +48,7 @@
   /* A Repo's line colour, by its order in a Project of more than one: its square and its panel's rule. */
   --line-1: #2560c0;
   --line-2: #c22b62;
-  --line-3: #5b7a12;
+  --line-3: #457b20;
   --line-4: #06779a;
   --line-5: #8d5a2c;
   --line-6: #4b4f9e;
@@ -76,7 +76,7 @@
   --focus: #7fb0ff;
   --ready: #45cbc5;
   --stackable: #f07fd6;
-  --waiting: #a3b3cc;
+  --waiting: #e8a35a;
   --merged: #a98bfa;
   --closed: #c3ab98;
   --harness-claude: #f2956c;
@@ -84,7 +84,7 @@
   --harness-opencode: #a996ff;
   --line-1: #7aa7ff;
   --line-2: #f481a8;
-  --line-3: #a7cf5c;
+  --line-3: #94d16c;
   --line-4: #55c2e3;
   --line-5: #d9a674;
   --line-6: #a1a6e8;
