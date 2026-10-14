@@ -10,6 +10,12 @@
 
   let { needs, projects }: { needs: Need[]; projects: Project[] } = $props();
 
+  // A failing check is a toast, not a row: the Repo's Readiness holds it too. Dismissed for this page load only.
+  const key = (need: Need) => `${need.repo} ${need.text}`;
+  let dismissed = $state(new Set<string>());
+  const rows = $derived(needs.filter((n) => n.kind !== "Check"));
+  const toasts = $derived(needs.filter((n) => n.kind === "Check" && !dismissed.has(key(n))));
+
   /** Show the tab of the item's Repo's Project with its node open; an Asking's, ready to answer. */
   function open(need: Need) {
     selection.project = need.repo && (projectOf(need.repo, projects)?.name ?? null);
@@ -55,12 +61,12 @@
   <span class="at">{need.kind === "Paused" ? "until " : ""}{need.at ? clock(need.at) : ""}</span>
 {/snippet}
 
-<section class="band" class:empty={needs.length === 0} aria-label="Needs you">
-  {#if needs.length === 0}
+<section class="band" class:empty={rows.length === 0} aria-label="Needs you">
+  {#if rows.length === 0}
     <p>Nothing needs you</p>
   {:else}
     <ul>
-      {#each needs as need (`${need.kind} ${need.repo} ${need.issue ?? need.text}`)}
+      {#each rows as need (`${need.kind} ${need.repo} ${need.issue ?? need.text}`)}
         <li in:arrive>
           {#if need.issue}
             <button type="button" class="row" onclick={() => open(need)}>{@render cells(need)}</button>
@@ -73,7 +79,71 @@
   {/if}
 </section>
 
+{#if toasts.length}
+  <ul class="toasts" aria-label="Failing checks">
+    {#each toasts as need (key(need))}
+      <li class="toast" role="status" in:arrive>
+        <span class="label kind">{need.kind}</span>
+        <span class="ref">{@render swatch(need.repo ?? "")}{need.repo}</span>
+        <button type="button" class="close" aria-label="Dismiss" onclick={() => (dismissed = new Set(dismissed).add(key(need)))}>×</button>
+        <span class="text full">{@render ticked(need.text)}{#if need.help}<span class="help">{@render ticked(need.help)}</span>{/if}</span>
+      </li>
+    {/each}
+  </ul>
+{/if}
+
 <style>
+  /* Stacked over the page's corner, the band's yellow; across the foot on a phone. */
+  .toasts {
+    position: fixed;
+    right: 16px;
+    bottom: 16px;
+    z-index: 10;
+    display: grid;
+    gap: 8px;
+    width: min(420px, calc(100vw - 32px));
+    padding: 0;
+    list-style: none;
+  }
+  .toast {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr) max-content;
+    grid-template-areas: "kind ref close" "text text text";
+    column-gap: 12px;
+    row-gap: 4px;
+    align-items: baseline;
+    padding: 10px 8px 12px 14px;
+    background: var(--signal);
+    color: var(--signal-ink);
+    border: 1px solid var(--rule);
+    box-shadow: 0 6px 20px color-mix(in srgb, var(--signal-ink) 25%, transparent);
+  }
+  .toast .kind {
+    grid-area: kind;
+  }
+  .toast .ref {
+    grid-area: ref;
+  }
+  .toast .text {
+    grid-area: text;
+  }
+  .close {
+    grid-area: close;
+    min-width: 32px;
+    min-height: 32px;
+    border: 0;
+    background: none;
+    color: inherit;
+    font-size: 20px;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .close:hover {
+    background: color-mix(in srgb, var(--signal-ink) 10%, var(--signal));
+  }
+  .close:focus-visible {
+    outline-color: var(--signal-ink);
+  }
   .band {
     background: var(--signal);
     color: var(--signal-ink);

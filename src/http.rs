@@ -256,6 +256,45 @@ fn host_of(url: &str) -> &str {
     at.split('/').next().unwrap_or_default()
 }
 
+/// The models and Efforts a Harness's own `file` names: codex's models cache
+/// (each listed model and the Efforts it supports) or opencode's model state
+/// (its favourite and recent models, and each one's Effort). One unread or
+/// of neither shape suggests none.
+fn suggested(world: &dyn World, file: &str) -> Value {
+    let read: Value = (world.read_file(file).ok().flatten())
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+        .unwrap_or_default();
+    let mut models: Vec<String> = vec![];
+    let mut efforts: Vec<String> = vec![];
+    let add = |into: &mut Vec<String>, value: Option<&str>| {
+        if let Some(v) = value.filter(|v| !into.iter().any(|had| had == v)) {
+            into.push(v.to_string());
+        }
+    };
+    let list = |key: &str| read[key].as_array().cloned().unwrap_or_default();
+    for model in list("models").iter().filter(|m| m["visibility"] == "list") {
+        add(&mut models, model["slug"].as_str());
+        for level in model["supported_reasoning_levels"]
+            .as_array()
+            .into_iter()
+            .flatten()
+        {
+            add(&mut efforts, level["effort"].as_str());
+        }
+    }
+    for model in list("favorite").iter().chain(&list("recent")) {
+        let (provider, id) = (model["providerID"].as_str(), model["modelID"].as_str());
+        if let (Some(provider), Some(id)) = (provider, id) {
+            add(&mut models, Some(&format!("{provider}/{id}")));
+        }
+    }
+    for (model, effort) in read["variant"].as_object().into_iter().flatten() {
+        add(&mut models, Some(model));
+        add(&mut efforts, effort.as_str());
+    }
+    json!({ "models": models, "efforts": efforts })
+}
+
 /// `status`'s answer from the Sources' caches alone, plus per Repo when its
 /// PRs were last read and the Harnesses its Dispatch form offers, and the
 /// Library versions `[wiki]` adds that no Repo links, for the Libraries tab.
@@ -267,10 +306,11 @@ fn status(ctx: &Context) -> Result<Value, Refusal> {
     let paused = shown["sources"]["github"]["paused_until"].clone();
     let harnesses: Map<String, Value> = (config.harnesses.iter())
         .map(|(name, h)| {
-            (
-                name.clone(),
-                json!({ "models": h.models, "efforts": h.efforts }),
-            )
+            let mut takes = json!({ "models": h.models, "efforts": h.efforts });
+            if let Some(file) = &h.suggestions_file {
+                takes["suggested"] = suggested(ctx.world, file);
+            }
+            (name.clone(), takes)
         })
         .collect();
     // `status` shows a row per Repo of the config, in its order.
