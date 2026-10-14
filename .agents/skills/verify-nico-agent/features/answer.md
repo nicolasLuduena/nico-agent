@@ -18,7 +18,7 @@ numbered option it shows, the keys ↑ ↓ Tab Enter Esc, and a text box with Se
 - `answer-keys` `--keys <key>...` (herdr's key names: `up`, `down`, `tab`, `enter`, `esc`, a digit) is sent as `herdr agent send-keys <implementer> <key>...` and recorded with the keys as its text, each time.
 - `answer-route` `POST /api/answer {issue, text}` or `{issue, keys}` runs `answer`: 200 with its answer; a refusal 409 (400 for a bad body), as `{error, help}`.
 - `answer-pane` `GET /api/node/<issue>` of an Asking Dispatch (recorded, or herdr reporting its Implementer blocked before a tick records it, as the band shows it) has `pane`, the Implementer's screen as `herdr agent read --source visible` gives it, or `pane_error` when herdr cannot read it; of any other Dispatch, neither.
-- `answer-board` the panel of an Asking Dispatch opens with `region "Asking"` first: the pane, `group "Options"` with a `button "<n> <option>"` per numbered option, `group "Keys"` (`button "Up"`, `"Down"`, `"Tab"`, `"Enter"`, `"Esc"`), `textbox "Answer in words"` and `button "Send"`. Each answer reads the pane again. An Asking row of the band opens it with the text box focused. A refusal, or a pane herdr cannot read, is on the errata rule. At 360px nothing but the pane's box is wider than the window.
+- `answer-board` the panel of an Asking Dispatch, kept as the map takes a change elsewhere (a half-typed answer stays), opens with `region "Asking"` first: the pane, `group "Options"` with a `button "<n> <option>"` per numbered option, `group "Keys"` (`button "Up"`, `"Down"`, `"Tab"`, `"Enter"`, `"Esc"`), `textbox "Answer in words"` and `button "Send"`. Each answer reads the pane again. An Asking row of the band opens it with the text box focused. A refusal, or a pane herdr cannot read, is on the errata rule. At 360px nothing but the pane's box is wider than the window.
 
 ## How to get to it (user POV)
 
@@ -65,7 +65,8 @@ Preconditions:
 - **The route.** `$C http --evidence "$E/14-route-not-asking" POST /api/answer '{"issue":"verify/fixture#9","keys":["enter"]}'`
   is `409` `verify/fixture#9 is not Asking`; `'{"issue":"verify/fixture#8","text":"Keep it."}'`
   (`15-route-no-dispatch`) `409` `verify/fixture#8 has no live Dispatch`; `'{"issue":"verify/fixture#7","keys":"enter"}'`
-  (`16-route-bad-keys`) `400` `keys is a list of strings, not "enter"`; `'{"issue":"verify/fixture#11","keys":["enter"]}'`
+  (`16-route-bad-keys`) `400` `keys is a list of key names, not "enter"`; `'{"issue":"verify/fixture#7","keys":["enter","--by","faux-nico"]}'`
+  (`16b-route-flag-key`) `400` too, no key being a flag of `answer`; `'{"issue":"verify/fixture#11","keys":["enter"]}'`
   (`17-route-herdr`) `409` with the send-keys stub error.
 - **The pane, unread.** `$C http --evidence "$E/18-node-11" GET /api/node/verify%2Ffixture%2311` has
   `pane_error` `` `herdr agent read` failed: verify_stub: ... `` and no `pane`; `GET /api/node/verify%2Ffixture%239`
@@ -76,9 +77,11 @@ Preconditions:
   `POST /api/answer {"issue":"verify/fixture#11","keys":["enter"]} -> 409`; `.view.txt` says the page
   is 360px wide in a 360px window.
 - **Proof.** Before the dialog: `$C state > "$E/state.after.txt"`; its diff from `state.before.txt` is outside calls only:
-  `herdr agent prompt impl-fixture-7 Keep\ it. --wait --until working --timeout 30000` twice, the
+  `herdr agent list` (a Dispatch not recorded Asking is looked up in herdr first; herdr refusing,
+  what it records stands), `herdr agent prompt impl-fixture-7 Keep\ it. --wait --until working --timeout 30000` twice, the
   two `--force` texts, `herdr agent send-keys impl-fixture-7 down enter`, then the route's and the
-  page's `herdr agent send-keys impl-fixture-11 enter` and `herdr agent read impl-fixture-11 --source visible`;
+  page's `herdr agent send-keys impl-fixture-11 enter` and `herdr agent read impl-fixture-11 --source visible`,
+  among the `herdr agent list` lines serve's status and event stream make;
   `dispatches.json` is unchanged. Copy `$OUTSIDE_LOG` to `$E/outside.log`.
 
 - **A Claude Asking.** Needs herdr and Claude Code on the machine (else stop here, and report the
@@ -105,6 +108,9 @@ Preconditions:
 - **In words.** `--width 360 --scheme dark`: open the row, `--type "Thanks. Reply with the one word: done" --press Enter --expect "Reply with the one word: done" --wait 12`
   (`07-phone-dark-words`): `POST /api/answer {"issue":"verify/fixture#7","text":"..."} -> 200`, the pane
   shows Claude's `done`, and focus is back on the input after the reload.
+- **A change elsewhere.** `E=.evidence/<issue>/map-live`; with `(sleep 8; $C seed dispatch 13 pr) &`
+  running, `$C page --evidence "$E/01-typing-while-a-dispatch-lands" --click "button~Asking verify/fixture #7" --expect "Answer in words" --type "half-typed answer" --expect "Verify: seeded Dispatch 13"`:
+  the map draws #13 at the next `changed`, and `.aria.txt` still has `textbox "Answer in words": half-typed answer`.
 - **Its proof.** `$C state > "$E/state.after.txt"`; its diff from `$E/state.before.txt` holds
   `dispatches.json`'s `answers` on `verify/fixture#7`, one per answer (`1`, `down`, `enter`, `1`, the
   text), each `by` `user`, and the outside calls `herdr agent send-keys impl-fixture-7 ...` and

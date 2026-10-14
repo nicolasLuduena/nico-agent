@@ -7,7 +7,7 @@ use std::io;
 
 use serde::{Deserialize, Serialize};
 
-use crate::cli::{Context, Refusal};
+use crate::cli::Context;
 use crate::config::Config;
 use crate::dispatch::{self, Dispatch};
 use crate::state;
@@ -53,12 +53,13 @@ pub fn step(ctx: &Context, config: &Config, agents: Option<&[Agent]>) -> io::Res
 
 /// `d`'s Asking: the one recorded, else, when herdr reports its Implementer
 /// blocked before a tick has seen it, one recorded now as the tick would,
-/// without telling the user, who is at it; `None` when it is not Asking.
-pub fn current(ctx: &Context, d: &Dispatch) -> Result<Option<Asking>, Refusal> {
+/// without telling the user, who is at it; `None` when it is not Asking, or
+/// herdr does not answer, as the tick leaves what is recorded then.
+pub fn current(ctx: &Context, d: &Dispatch) -> io::Result<Option<Asking>> {
     if d.asking.is_some() {
         return Ok(d.asking.clone());
     }
-    let agents = ctx.world.herdr_agents()?;
+    let agents = ctx.world.herdr_agents().unwrap_or_default();
     if world::agent_state(&agents, &d.implementer.agent) != Some(AgentState::Blocked) {
         return Ok(None);
     }

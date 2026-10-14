@@ -352,6 +352,11 @@ fn the_app_s_answer_is_refused_as_the_cli_s_is_and_records_nothing() {
     t.world.calls.borrow_mut().clear();
     let not_asking = post(r#"{"issue": "acme/api#7", "keys": ["enter"]}"#);
     let not_asking_text = post(r#"{"issue": "acme/api#7", "text": "Keep it."}"#);
+    // herdr not answering, what the Dispatch records stands.
+    t.world
+        .fail_call("herdr agent list", "`herdr agent list` failed: gone");
+    let unheard = post(r#"{"issue": "acme/api#7", "keys": ["enter"]}"#);
+    t.world.clear_failures();
 
     let see_status = "Run `nico-agent status` to see the Dispatch";
     let no_dispatch = (
@@ -400,9 +405,12 @@ fn the_app_s_answer_is_refused_as_the_cli_s_is_and_records_nothing() {
             "help": ["An answer goes to an Implementer herdr reports blocked on a question", see_status],
         }),
     );
-    assert_eq!((&not_asking, &not_asking_text), (&refused, &refused));
+    assert_eq!(
+        (&not_asking, &not_asking_text, &unheard),
+        (&refused, &refused, &refused)
+    );
     // Not recorded Asking, so herdr is asked whether it is.
-    assert_eq!(t.world.calls(), ["herdr agent list", "herdr agent list"]);
+    assert_eq!(t.world.calls(), ["herdr agent list"; 3]);
     assert_eq!(answers(&t), Value::Null);
 }
 
