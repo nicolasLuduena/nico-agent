@@ -1,7 +1,8 @@
 <script lang="ts">
   // A Project's defaults, above its Repos' panels: its room, switches and
-  // settings as its Repos take them where they set none, each written to its
-  // `projects.<name>` in config.toml; one it sets goes back to the default.
+  // settings as its Repos take them where they set none, each folded to a
+  // line and written to its `projects.<name>` in config.toml; one it sets
+  // goes back to the default.
   import { reload } from "../live";
   import type { Project, Repo } from "../status";
   import Room from "./Room.svelte";
@@ -15,6 +16,7 @@
 
   const holder: Holder = $derived({
     own: "project",
+    panel: `project ${project.name}`,
     settings: project,
     under: undefined,
     patch: async (body) => {

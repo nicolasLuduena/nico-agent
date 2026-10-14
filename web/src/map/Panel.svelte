@@ -1,20 +1,23 @@
 <script lang="ts">
   // The open node's panel (desktop) or bottom sheet (phone): what the map
   // node knows, and for an issue with a Dispatch, /api/node/<issue>: its PR,
-  // restarts, review and Verdict with findings, and Evidence in the Bucket.
+  // its agents' Harnesses, restarts, review and Verdict with findings, and
+  // Evidence in the Bucket.
   import { onMount } from "svelte";
   import { ticked } from "../controls/Refused.svelte";
   import { watch } from "../live";
   import { selection } from "../selection.svelte";
+  import { harnessHue, stageHue } from "../hues";
   import * as review from "../review";
-  import { number, repoName, type Project, type Review, type Stage } from "../status";
+  import { number, repoName, type Launch, type Project, type Review, type Stage } from "../status";
   import { clock } from "../time";
-  import Mark, { worded } from "./Mark.svelte";
+  import Mark from "./Mark.svelte";
   import { shown } from "./ProjectMap.svelte";
 
   /** What `GET /api/node/<issue>` answers: the issue's last Dispatch, as /api/status shows it, with its Evidence. */
   interface Node {
     pr: { url: string; draft: boolean; state: string; merged_at: string | null } | null;
+    implementer: Launch;
     restarts: { at: string; reason: string; by: string }[];
     verdict: { result: "pass" | "fail"; sha: string; at: string; findings: string | null } | null;
     review: Review | null;
@@ -104,7 +107,7 @@
     {#if node}
       <p class="stage">
         <svg width="14" height="14" viewBox="0 0 14 14"><Mark stage={node.stage} /></svg>
-        <strong class={worded(node.stage)}>{node.stage ?? "Blocker"}</strong>
+        <strong style:color={stageHue(node.stage)}>{node.stage ?? "Blocker"}</strong>
         <span class="label kind">{node.kind}</span>
       </p>
     {/if}
@@ -145,6 +148,23 @@
           </div>
         </section>
       {/if}
+
+      <!-- Each Harness named with its diamond, as everywhere it is named. -->
+      {#snippet harness(name: string, rest: (string | null)[] = [])}
+        <span class="harnessed"
+          ><span class="harness" style:--harness={harnessHue(name)} aria-hidden="true"></span>{[name, ...rest].filter(Boolean).join(" · ")}</span
+        >
+      {/snippet}
+      <section>
+        <h3 class="label">Agents</h3>
+        <p class="row">
+          <span>Implementer</span>
+          {@render harness(full.implementer.harness, [full.implementer.model, full.implementer.effort])}
+        </p>
+        {#if full.review?.harness}
+          <p class="row"><span>Reviewer</span>{@render harness(full.review.harness)}</p>
+        {/if}
+      </section>
 
       <section>
         <h3 class="label">Restarts</h3>
@@ -295,16 +315,18 @@
   .by {
     color: var(--ink-muted);
   }
-  .pass,
-  .verified {
+  .pass {
     color: var(--verified);
   }
-  .fail,
-  .failed {
+  .fail {
     color: var(--failed);
   }
-  .live {
-    color: var(--live);
+  .harnessed {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 600;
+    text-align: right;
   }
   .sha {
     margin-left: 8px;
@@ -327,19 +349,6 @@
   }
   header + .errata {
     margin-top: 16px;
-  }
-  .quiet {
-    flex: none;
-    min-height: 36px;
-    padding: 0 16px;
-    border: 1px solid var(--rule);
-    border-radius: 2px;
-    background: var(--surface);
-    font-weight: 600;
-    cursor: pointer;
-  }
-  .quiet:hover {
-    background: var(--ground);
   }
   a.quiet {
     display: inline-flex;

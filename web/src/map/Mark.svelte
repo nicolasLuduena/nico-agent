@@ -1,27 +1,14 @@
 <svelte:options namespace="svg" />
 
-<script module lang="ts">
-  const tone: Record<string, string> = {
-    Waiting: "muted",
-    Implementing: "live",
-    "PR draft": "live",
-    Verified: "verified",
-    Merged: "muted",
-    Closed: "muted",
-    Failed: "failed",
-  };
-
-  /** The Stage word's colour, like a departures board's status column: its mark's working colour, or none (ink) for the rest. */
-  export const worded = (stage: string | null) => (["live", "verified", "failed"].includes(tone[stage ?? ""]) ? tone[stage!] : "");
-</script>
-
 <script lang="ts">
-  // A Stage's mark, DESIGN.md's table: its shape carries the Stage, its colour
+  // A Stage's mark, DESIGN.md's table: its shape carries the Stage, its hue
   // repeats it. A 14px cell; the caller places it. Nothing for no Stage.
+  import { stageHue } from "../hues";
+
   let { stage }: { stage: string | null } = $props();
 </script>
 
-<g class="mark {tone[stage ?? ''] ?? 'ink'}" aria-hidden="true">
+<g class="mark" style:--hue={stageHue(stage)} aria-hidden="true">
   {#if stage === "Waiting"}
     <circle cx="7" cy="7" r="5.75" class="ring" stroke-dasharray="2.5 2" />
   {:else if stage === "Ready" || stage === "Stackable"}
@@ -45,19 +32,7 @@
 
 <style>
   .mark {
-    color: var(--ink);
-  }
-  .muted {
-    color: var(--ink-muted);
-  }
-  .live {
-    color: var(--live);
-  }
-  .verified {
-    color: var(--verified);
-  }
-  .failed {
-    color: var(--failed);
+    color: var(--hue, var(--ink));
   }
   .ring {
     fill: none;

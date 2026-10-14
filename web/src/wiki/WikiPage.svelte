@@ -335,16 +335,7 @@
     padding: 24px var(--gutter) 32px;
   }
   .find {
-    width: 100%;
-    min-height: 36px;
     margin-bottom: 8px;
-    padding: 0 8px;
-    border: 1px solid var(--ink-muted);
-    border-radius: 2px;
-    background: var(--surface);
-  }
-  .find::placeholder {
-    color: var(--ink-muted);
   }
   .found {
     padding-bottom: 4px;

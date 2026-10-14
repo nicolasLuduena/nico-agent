@@ -1,4 +1,4 @@
-/* DESIGN.md's tokens and type, for every component; each component styles itself. */
+/* DESIGN.md's tokens and type, and the one set of controls every form uses; each component lays itself out. */
 
 @font-face {
   font-family: Barlow;
@@ -35,6 +35,25 @@
   --reversed: #111214;
   --reversed-ink: #ffffff;
   --focus: #1d4f91;
+  /* A Stage's hue: its ring, its word, its node's tint. Implementing and PR draft are live, Verified verified, Failed failed. */
+  --ready: #00747a;
+  --stackable: #a32385;
+  --waiting: #56657e;
+  --merged: #8250df;
+  --closed: #7a6655;
+  /* A Harness's hue: its diamond wherever it is named. */
+  --harness-claude: #a94a26;
+  --harness-codex: #0b7b63;
+  --harness-opencode: #6a4bd6;
+  /* A Repo's line colour, by its order in a Project of more than one: its square and its panel's rule. */
+  --line-1: #2560c0;
+  --line-2: #c22b62;
+  --line-3: #5b7a12;
+  --line-4: #06779a;
+  --line-5: #8d5a2c;
+  --line-6: #4b4f9e;
+  /* How much of its Stage's hue a node's fill takes. */
+  --tint: 7%;
   /* 24px on desktop, 16px on phone. */
   --gutter: 24px;
 }
@@ -55,6 +74,21 @@
   --reversed: #eef1f4;
   --reversed-ink: #0b1220;
   --focus: #7fb0ff;
+  --ready: #45cbc5;
+  --stackable: #f07fd6;
+  --waiting: #a3b3cc;
+  --merged: #a98bfa;
+  --closed: #c3ab98;
+  --harness-claude: #f2956c;
+  --harness-codex: #4dd0aa;
+  --harness-opencode: #a996ff;
+  --line-1: #7aa7ff;
+  --line-2: #f481a8;
+  --line-3: #a7cf5c;
+  --line-4: #55c2e3;
+  --line-5: #d9a674;
+  --line-6: #a1a6e8;
+  --tint: 12%;
 }
 
 @media (width < 720px) {
@@ -127,15 +161,92 @@ code {
   overflow-wrap: anywhere;
 }
 
-/* DESIGN.md's `label`: kinds, column heads, strip kinds, field labels. */
+/* DESIGN.md's `label`: kinds, column heads, strip kinds, section heads. */
 .label {
+  font-size: 14px;
   font-weight: 600;
   line-height: 1.2;
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
-/* DESIGN.md's button-quiet, as the panel's: an action beside a setting. */
+/* DESIGN.md's controls: one look for hover, focus, disabled and refused, in every form. */
+
+/* A field's label above its control, sentence case and quieter than the section head over it. */
+.field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
+  min-width: 0;
+}
+.field-name {
+  color: var(--ink-muted);
+}
+/* A field's label, and at its right where the setting comes from, or how its save stands. */
+.field-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 8px;
+  min-height: 24px;
+}
+/* A setting in a row: its name and where it comes from on the left, its control on the right. */
+.setting {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  min-height: 40px;
+}
+.setting > :first-child {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin-right: auto;
+  min-width: 0;
+}
+
+select,
+input:not([type="checkbox"], [type="radio"]) {
+  width: 100%;
+  min-height: 36px;
+  padding: 0 8px;
+  border: 1px solid var(--ink-muted);
+  border-radius: 2px;
+  background: var(--surface);
+  text-overflow: ellipsis;
+}
+input::placeholder {
+  color: var(--ink-muted);
+  opacity: 1;
+}
+select:hover:not(:disabled),
+input:hover:not(:disabled) {
+  border-color: var(--ink);
+}
+/* Refused: the field keeps what is set, framed in the errata's red until the next save. */
+[aria-invalid="true"] {
+  border-color: var(--failed);
+  box-shadow: 0 0 0 1px var(--failed);
+}
+
+/* DESIGN.md's button: the form's one action. */
+.button {
+  min-height: 36px;
+  padding: 0 16px;
+  border: 1px solid var(--ink);
+  border-radius: 2px;
+  background: var(--ink);
+  color: var(--surface);
+  font-weight: 600;
+  cursor: pointer;
+}
+.button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--ink) 82%, var(--surface));
+}
+/* DESIGN.md's button-quiet: an action beside a setting. */
 .quiet {
   flex: none;
   min-height: 36px;
@@ -143,35 +254,172 @@ code {
   border: 1px solid var(--rule);
   border-radius: 2px;
   background: var(--surface);
+  color: var(--ink);
   font-weight: 600;
   cursor: pointer;
 }
 .quiet:hover:not(:disabled) {
   background: var(--ground);
 }
+select:disabled,
+input:disabled,
+.button:disabled,
 .quiet:disabled {
+  border-color: var(--hairline);
+  background: var(--ground);
   color: var(--ink-muted);
+  cursor: not-allowed;
+}
+[aria-busy="true"] {
   cursor: progress;
+}
+
+/* A standard toggle: live when on, a hairline track when off. */
+input[role="switch"] {
+  appearance: none;
+  position: relative;
+  flex: none;
+  width: 40px;
+  height: 22px;
+  margin: 0;
+  border: 1px solid var(--ink-muted);
+  border-radius: 2px;
+  background: var(--hairline);
+  cursor: pointer;
+  transition: background-color 120ms ease-out;
+}
+input[role="switch"]::before {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 1px;
+  background: var(--ink-muted);
+  transition: transform 120ms ease-out;
+}
+/* A finger's target, 44px tall, around the 22px toggle. */
+input[role="switch"]::after {
+  content: "";
+  position: absolute;
+  inset: -12px -4px;
+}
+input[role="switch"]:hover {
+  border-color: var(--ink);
+}
+input[role="switch"]:checked {
+  border-color: var(--live);
+  background: var(--live);
+}
+input[role="switch"]:checked::before {
+  background: var(--surface);
+  transform: translateX(18px);
+}
+
+/* Where a setting comes from, beside it, quieter than its control: plain while taken, framed once set here. */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 22px;
+  color: var(--ink-muted);
+  white-space: nowrap;
+}
+.chip.own {
+  padding: 0 2px 0 6px;
+  border: 1px solid var(--hairline);
+  border-radius: 2px;
+  color: var(--ink);
+}
+.chip button {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 2px;
+  background: none;
+  color: var(--ink-muted);
+  cursor: pointer;
+}
+.chip button:hover {
+  background: var(--ground);
+  color: var(--ink);
+}
+.chip button::after {
+  content: "";
+  position: absolute;
+  inset: -13px -6px;
+}
+/* Beside a field that saves as it changes: Saving…, then Saved for a moment. */
+.save {
+  color: var(--ink-muted);
+  white-space: nowrap;
+}
+.save.saved {
+  color: var(--ink);
+}
+
+/* A Repo's line colour, a Harness's hue: a square, a diamond. */
+.swatch {
+  display: inline-block;
+  flex: none;
+  width: 10px;
+  height: 10px;
+  background: var(--line);
+}
+.harness {
+  display: inline-block;
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin: 0 2px;
+  background: var(--harness);
+  transform: rotate(45deg);
+}
+
+/* A finger's size on a phone: 16px field text, which iOS does not zoom into, and 44px to tap. */
+@media (width < 720px) {
+  select,
+  input:not([type="checkbox"], [type="radio"]) {
+    min-height: 44px;
+    font-size: 16px;
+  }
+  .button,
+  .quiet {
+    min-height: 44px;
+  }
+  .setting {
+    min-height: 44px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  input[role="switch"],
+  input[role="switch"]::before {
+    transition: none;
+  }
 }
 
 /* A panel of the column right of the map: a Repo's, or its Project's defaults. */
 .controls {
   display: grid;
-  gap: 16px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
   padding: 16px;
   background: var(--surface);
   border: 1px solid var(--hairline);
 }
-.controls h2 {
-  font-size: 14px;
+/* A Repo's line colour, on its panel's head as a timetable's column head sits on its rule. */
+.controls.lined {
+  border-top: 3px solid var(--line);
 }
 /* DESIGN.md's `head`: the Repo's or Project's name heading its panel. */
 .controls h2.head {
   font-size: 22px;
   font-weight: 600;
+  line-height: 1.2;
   overflow-wrap: anywhere;
-}
-.controls > section + section {
-  padding-top: 16px;
-  border-top: 1px solid var(--hairline);
 }

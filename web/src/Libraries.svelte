@@ -82,19 +82,19 @@
   <section aria-labelledby="add-library-head">
     <h2 class="label" id="add-library-head">Add a Library</h2>
     <form onsubmit={add}>
-      <label>
-        <span class="label">Library</span>
+      <label class="field">
+        <span class="field-name">Library</span>
         <input name="repo" placeholder="owner/name" required autocomplete="off" />
       </label>
-      <label>
-        <span class="label">Tag</span>
+      <label class="field">
+        <span class="field-name">Tag</span>
         <input name="tag" placeholder="v1.2.3" required autocomplete="off" />
       </label>
-      <label>
-        <span class="label">Subfolder</span>
+      <label class="field">
+        <span class="field-name">Subfolder</span>
         <input name="path" placeholder="the whole repository" autocomplete="off" />
       </label>
-      <button type="submit" disabled={adding} aria-busy={adding}>{adding ? "Adding…" : "Add"}</button>
+      <button type="submit" class="button" disabled={adding} aria-busy={adding}>{adding ? "Adding…" : "Add"}</button>
     </form>
     {#if added?.ok}
       <p role="status">{added.answer.library}.</p>
@@ -154,9 +154,6 @@
     background: var(--surface);
     border: 1px solid var(--hairline);
   }
-  h2 {
-    font-size: 14px;
-  }
   form {
     display: flex;
     flex-wrap: wrap;
@@ -164,37 +161,6 @@
     gap: 12px;
   }
   label {
-    display: grid;
-    gap: 4px;
     flex: 1 1 200px;
-    min-width: 0;
-  }
-  label .label {
-    color: var(--ink-muted);
-  }
-  input {
-    width: 100%;
-    min-height: 36px;
-    padding: 0 8px;
-    border: 1px solid var(--ink-muted);
-    border-radius: 2px;
-    background: var(--surface);
-  }
-  form button {
-    min-height: 36px;
-    padding: 8px 16px;
-    border: 0;
-    border-radius: 2px;
-    background: var(--ink);
-    color: var(--surface);
-    font-weight: 600;
-    cursor: pointer;
-  }
-  form button:hover:not(:disabled) {
-    opacity: 0.85;
-  }
-  form button:disabled {
-    opacity: 0.5;
-    cursor: progress;
   }
 </style>

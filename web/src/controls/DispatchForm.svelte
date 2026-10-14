@@ -3,11 +3,13 @@
   // Harness, model and Effort that start on the last launch used.
   import { reload } from "../live";
   import { number, type Repo, type Status } from "../status";
-  import { choices, startingLaunch } from "./launch";
+  import Launch from "./Launch.svelte";
+  import { startingLaunch } from "./launch";
   import Refused from "./Refused.svelte";
   import { send, type Sent } from "./send";
 
   let { repo, status }: { repo: Repo; status: Status } = $props();
+  const id = $props.id();
 
   // What the user picked; unset, what the form starts on.
   let pick = $state<{ issue?: string; harness?: string; model?: string | null; effort?: string | null }>({});
@@ -20,7 +22,6 @@
   const launch = $derived(startingLaunch(repo, status.dispatches, pick.harness));
   const model = $derived(pick.model !== undefined ? pick.model : launch.model);
   const effort = $derived(pick.effort !== undefined ? pick.effort : launch.effort);
-  const takes = $derived(repo.harnesses[launch.harness] ?? { models: null, efforts: null });
 
   async function submit(event: SubmitEvent) {
     event.preventDefault();
@@ -36,11 +37,11 @@
   }
 </script>
 
-<section aria-labelledby="dispatch-head">
-  <h2 class="label" id="dispatch-head">Dispatch</h2>
+<section aria-labelledby="{id}-head">
+  <h2 class="label" id="{id}-head">Dispatch</h2>
   <form onsubmit={submit}>
-    <label class="wide">
-      <span class="label">Issue</span>
+    <label class="field">
+      <span class="field-name">Issue</span>
       <select value={issue ?? ""} disabled={!issue} onchange={(e) => (pick.issue = e.currentTarget.value)}>
         {#if !issue}
           <option value="">Nothing to dispatch</option>
@@ -56,31 +57,12 @@
         {/each}
       </select>
     </label>
-    <label class="wide">
-      <span class="label">Harness</span>
-      <select value={launch.harness} onchange={(e) => (pick = { issue: pick.issue, harness: e.currentTarget.value })}>
-        {#each Object.keys(repo.harnesses) as name (name)}
-          <option value={name}>{name}</option>
-        {/each}
-      </select>
-    </label>
-    <label>
-      <span class="label">Model</span>
-      <select value={model ?? ""} onchange={(e) => (pick.model = e.currentTarget.value || null)}>
-        {#each choices(takes.models, model) as m (m)}
-          <option value={m ?? ""}>{m ?? "default"}</option>
-        {/each}
-      </select>
-    </label>
-    <label>
-      <span class="label">Effort</span>
-      <select value={effort ?? ""} onchange={(e) => (pick.effort = e.currentTarget.value || null)}>
-        {#each choices(takes.efforts, effort) as m (m)}
-          <option value={m ?? ""}>{m ?? "default"}</option>
-        {/each}
-      </select>
-    </label>
-    <button type="submit" class="wide" disabled={!issue || running} aria-busy={running}>
+    <Launch
+      harnesses={repo.harnesses}
+      launch={{ harness: launch.harness, model, effort }}
+      pick={(field, value) => (pick = field === "harness" ? { issue: pick.issue, harness: value ?? launch.harness } : { ...pick, [field]: value })}
+    />
+    <button type="submit" class="button" disabled={!issue || running} aria-busy={running}>
       {running ? "Dispatching…" : "Dispatch"}
     </button>
   </form>
@@ -92,56 +74,15 @@
 </section>
 
 <style>
+  /* The panel's one action, first, set off from the folded sections under it. */
   section {
     display: grid;
     gap: 8px;
+    padding-bottom: 8px;
   }
   form {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
     gap: 12px;
-  }
-  .wide {
-    grid-column: 1 / -1;
-  }
-  label {
-    display: grid;
-    gap: 4px;
-    min-width: 0;
-  }
-  label .label {
-    color: var(--ink-muted);
-  }
-  select {
-    width: 100%;
-    min-height: 36px;
-    padding: 0 8px;
-    border: 1px solid var(--ink-muted);
-    border-radius: 2px;
-    background: var(--surface);
-    text-overflow: ellipsis;
-  }
-  select:disabled {
-    color: var(--ink-muted);
-  }
-  button {
-    min-height: 36px;
-    padding: 8px 16px;
-    border: 0;
-    border-radius: 2px;
-    background: var(--ink);
-    color: var(--surface);
-    font-weight: 600;
-    cursor: pointer;
-  }
-  button:hover:not(:disabled) {
-    opacity: 0.85;
-  }
-  button:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-  button[aria-busy="true"] {
-    cursor: progress;
   }
 </style>

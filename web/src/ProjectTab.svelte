@@ -37,7 +37,7 @@
   <WikiView {project} libraries={linked} settings={status.wiki_settings} />
 {:else}
   <div class="work" class:open={selection.issue}>
-    <ProjectMap {project} />
+    <ProjectMap {project} dispatches={status.dispatches} />
     <div class="side">
       {#if selection.issue}
         <Panel issue={selection.issue} {project} />

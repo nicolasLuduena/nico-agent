@@ -1,13 +1,16 @@
 <script lang="ts">
-  // The Library versions a Repo links, as /api/status shows them, each with
-  // where its Wiki stands: Unlink takes one out, the form links another;
-  // each written to config.toml as the Repo's own list, which a new version
-  // with no Wiki queues. Its own list goes back to its Project's or the default.
+  // The Library versions a Repo links, as /api/status shows them, folded
+  // under how many, each with where its Wiki stands: Unlink takes one out, the
+  // form links another; each written to config.toml as the Repo's own list,
+  // which a new version with no Wiki queues. Its own list goes back to its
+  // Project's or the default.
   import type { WikiState } from "../status";
   import { type Library, libraryId, standing } from "../wiki/wiki";
+  import Fold from "./Fold.svelte";
   import From from "./From.svelte";
   import Refused from "./Refused.svelte";
-  import type { Sent } from "./send";
+  import Save from "./Save.svelte";
+  import { Saves } from "./save.svelte";
   import { type Holder, unset } from "./settings";
 
   let { holder, wikis }: { holder: Holder; wikis: WikiState[] } = $props();
@@ -15,16 +18,12 @@
 
   // The PATCH's answer, until /api/status's next one.
   let linked = $derived(holder.settings.libraries);
-  let saving = $state(false);
-  let refused = $state<Sent | null>(null);
+  const saves = new Saves();
+  const saving = $derived(saves.of("libraries") === "saving");
 
   async function save(body: Record<string, unknown>) {
-    saving = true;
-    refused = null;
-    const sent = await holder.patch(body);
-    saving = false;
+    const sent = await saves.run("libraries", () => holder.patch(body));
     if (sent.ok) linked = sent.answer.libraries;
-    else refused = sent;
     return sent.ok;
   }
 
@@ -39,15 +38,22 @@
   }
 </script>
 
-<section aria-labelledby="{id}-head">
-  <div class="row">
-    <h2 class="label" id="{id}-head">Libraries</h2>
-    <From setting={linked} {holder} keys={["libraries"]} name="Libraries" busy={saving} onundo={() => save(unset(["libraries"]))} />
+<Fold
+  panel={holder.panel}
+  title="Libraries"
+  summary={linked.value.length === 0 ? "None linked" : `${linked.value.length} linked`}
+  alarm={saves.refused !== null}
+>
+  <div class="field-head">
+    <span class="field-name" id="{id}-linked">Linked versions</span>
+    <Save state={saves.of("libraries")}>
+      <From setting={linked} {holder} keys={["libraries"]} name="Libraries" onundo={() => save(unset(["libraries"]))} />
+    </Save>
   </div>
   {#if linked.value.length === 0}
     <p class="muted">None linked: its agents read Libraries' code themselves</p>
   {:else}
-    <ul>
+    <ul aria-labelledby="{id}-linked">
       {#each linked.value as library, i (i)}
         <li>
           <span class="version">
@@ -67,38 +73,26 @@
     </ul>
   {/if}
   <form onsubmit={link} aria-label="Link a Library">
-    <label>
-      <span class="label">Library</span>
-      <input name="repo" placeholder="owner/name" required autocomplete="off" disabled={saving} />
+    <label class="field">
+      <span class="field-name">Library</span>
+      <input name="repo" placeholder="owner/name" required autocomplete="off" />
     </label>
-    <label>
-      <span class="label">Tag</span>
-      <input name="tag" placeholder="v1.2.3" required autocomplete="off" disabled={saving} />
+    <label class="field">
+      <span class="field-name">Tag</span>
+      <input name="tag" placeholder="v1.2.3" required autocomplete="off" />
     </label>
-    <label class="wide">
-      <span class="label">Subfolder</span>
-      <input name="path" placeholder="the whole repository" autocomplete="off" disabled={saving} />
+    <label class="field wide">
+      <span class="field-name">Subfolder</span>
+      <input name="path" placeholder="the whole repository" autocomplete="off" />
     </label>
-    <button type="submit" class="quiet" disabled={saving} aria-busy={saving}>{saving ? "Saving…" : "Link"}</button>
+    <button type="submit" class="quiet" disabled={saving} aria-busy={saving}>Link</button>
   </form>
-  {#if refused && !refused.ok}
-    <Refused error={refused.error} help={refused.help} />
+  {#if saves.refused}
+    <Refused error={saves.refused.error} help={saves.refused.help} />
   {/if}
-</section>
+</Fold>
 
 <style>
-  section {
-    display: grid;
-    gap: 8px;
-  }
-  .row {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: 4px 12px;
-    min-height: 36px;
-  }
   ul {
     padding: 0;
     list-style: none;
@@ -125,31 +119,10 @@
     align-items: end;
     gap: 8px 12px;
   }
-  label {
-    display: grid;
-    gap: 4px;
-    min-width: 0;
-  }
-  label .label {
-    color: var(--ink-muted);
-  }
   .wide {
     grid-column: 1 / -1;
   }
   form button {
     justify-self: start;
-  }
-  input {
-    width: 100%;
-    min-height: 36px;
-    padding: 0 8px;
-    border: 1px solid var(--ink-muted);
-    border-radius: 2px;
-    background: var(--surface);
-    text-overflow: ellipsis;
-  }
-  input:disabled {
-    opacity: 0.5;
-    cursor: progress;
   }
 </style>

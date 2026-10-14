@@ -42,10 +42,12 @@
 </section>
 
 <style>
+  /* At the column's foot, apart from the sections above it. */
   section {
     display: grid;
     gap: 8px;
     justify-items: start;
+    padding-top: 8px;
   }
   .buttons {
     display: flex;
