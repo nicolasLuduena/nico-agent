@@ -124,6 +124,8 @@ trust_args = ["-c", 'projects={"{repoPath}"={trust_level="trusted"}}']
 startup_questions = ["Hooks need review", "review before"]
 # ~/.codex/skills is where its skill installer still puts them.
 skill_dirs = ["~/.codex/skills", "~/.agents/skills", ".agents/skills"]
+# The models it lists, and their Efforts, which the Board suggests.
+suggestions_file = "~/.codex/models_cache.json"
 # The wiki MCP's tools approved outright, so no call waits on the user.
 mcp_args = [
   "-c", 'mcp_servers.wiki.command="nico-agent"', "-c", "mcp_servers.wiki.args={mcpArgs}",
@@ -137,6 +139,8 @@ mcp_args = [
 launch_mode = "pane-command"
 command = "opencode2"
 variant_file = "~/.local/state/opencode/model.json"
+# Its recent and favourite models, and the Efforts it keeps, which the Board suggests.
+suggestions_file = "~/.local/state/opencode/model.json"
 sigil = "@"
 model_args = []
 effort_args = []
@@ -422,6 +426,10 @@ pub struct Harness {
     /// The models and Efforts it takes; unset, any.
     pub models: Option<Vec<String>>,
     pub efforts: Option<Vec<String>>,
+    /// A file of the Harness's own naming models and Efforts it knows, for
+    /// the Board to suggest where it takes any: codex's models cache, or
+    /// opencode's model state. `~/` is the home directory.
+    pub suggestions_file: Option<String>,
     /// The question it asks before working in a new folder, and the keys that answer yes.
     pub trust_prompt: Option<TrustPrompt>,
     /// Text on a screen it asks the user a question on while herdr reports it ready.

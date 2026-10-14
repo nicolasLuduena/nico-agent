@@ -1371,7 +1371,7 @@ impl World for RealWorld {
     }
     fn read_file(&self, path: &str) -> WorldResult<Option<Vec<u8>>> {
         use io::ErrorKind::{IsADirectory, NotADirectory, NotFound};
-        match fs::read(path) {
+        match fs::read(home(path)) {
             Ok(bytes) => Ok(Some(bytes)),
             Err(e) if matches!(e.kind(), NotFound | IsADirectory | NotADirectory) => Ok(None),
             Err(e) => Err(WorldError(format!("could not read {path}: {e}"))),

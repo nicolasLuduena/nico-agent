@@ -1,8 +1,7 @@
 <script lang="ts">
   // A Repo's panel, in the column right of its Project's map: the Dispatch
-  // form, its one action, first; then its Readiness, room, switches,
-  // settings, Library links and Install, each folded to a line; then its
-  // removal. Headed by its slug, on its line colour, when the tab holds more than its own.
+  // form, its one action, then its Readiness, room, switches, settings,
+  // Library links and Install, each folded to a line; then its removal. Headed by its slug, on its line colour, when the tab holds more than its own.
   import { repoLine } from "../hues";
   import type { Repo, Status } from "../status";
   import Checks from "./Checks.svelte";
@@ -33,7 +32,7 @@
   <!-- A new Repo starts the panel fresh: no other Repo's picks, saves, refusals or open sections. -->
   {#key repo.slug}
     {#if headed}<h2 class="head">{repo.slug}</h2>{/if}
-    <DispatchForm {repo} {status} />
+    <DispatchForm {repo} {status} panel={holder.panel} />
     <Checks {repo} panel={holder.panel} />
     <Room {holder} live={inFlight(repo, status.dispatches)} />
     <Switches {holder} />

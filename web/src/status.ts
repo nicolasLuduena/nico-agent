@@ -69,7 +69,8 @@ export interface Repo extends Settings {
   /** Ready Gardening issues, kept out of `ready`. */
   gardening: Issue[];
   /** Each configured Harness, with the models and Efforts it takes (null: any). */
-  harnesses: Record<string, { models: string[] | null; efforts: string[] | null }>;
+  /** What each takes (null: any) and, of a Harness that keeps a file naming them, what it suggests. */
+  harnesses: Record<string, { models: string[] | null; efforts: string[] | null; suggested?: { models: string[]; efforts: string[] } }>;
   /** Its last quality-scan's Run; none before the first. */
   last_scan?: Run;
   /** Its Readiness checks; none before the first. */

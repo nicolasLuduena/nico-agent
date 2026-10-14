@@ -4,14 +4,14 @@
   import { reload } from "../live";
   import { number, type Repo, type Status } from "../status";
   import { asksToAssign, assignMe } from "./assign";
+  import Fold from "./Fold.svelte";
   import Press from "./Press.svelte";
   import LaunchPicker from "./LaunchPicker.svelte";
   import { startingLaunch } from "./launch";
   import Refused from "./Refused.svelte";
   import { send, type Sent } from "./send";
 
-  let { repo, status }: { repo: Repo; status: Status } = $props();
-  const id = $props.id();
+  let { repo, status, panel }: { repo: Repo; status: Status; panel: string } = $props();
 
   // What the user picked; unset, what the form starts on.
   let pick = $state<{ issue?: string; harness?: string; model?: string | null; effort?: string | null }>({});
@@ -39,8 +39,7 @@
   }
 </script>
 
-<section aria-labelledby="{id}-head">
-  <h2 class="label" id="{id}-head">Dispatch</h2>
+<Fold {panel} title="Dispatch" summary={issues.length ? `${issues.length} to dispatch` : "Nothing to dispatch"} alarm={sent !== null && !sent.outcome.ok}>
   <form onsubmit={submit}>
     <label class="field">
       <span class="field-name">Issue</span>
@@ -76,15 +75,9 @@
       <Press issue={sent.issue} action={assignMe} ondone={() => (sent = null)} />
     {/if}
   {/if}
-</section>
+</Fold>
 
 <style>
-  /* The panel's one action, first, set off from the folded sections under it. */
-  section {
-    display: grid;
-    gap: 8px;
-    padding-bottom: 8px;
-  }
   form {
     display: grid;
     grid-template-columns: minmax(0, 1fr);

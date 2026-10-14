@@ -73,8 +73,8 @@ fn status_is_the_status_command_s_plus_per_repo_its_times_and_harnesses() {
                 "models": ["fable", "opus", "sonnet", "haiku"],
                 "efforts": ["low", "medium", "high", "xhigh", "max"],
             },
-            "codex": { "models": null, "efforts": null },
-            "opencode": { "models": null, "efforts": null },
+            "codex": { "models": null, "efforts": null, "suggested": { "models": [], "efforts": [] } },
+            "opencode": { "models": null, "efforts": null, "suggested": { "models": [], "efforts": [] } },
         },
     });
     for (key, value) in page.as_object().unwrap() {
@@ -82,6 +82,43 @@ fn status_is_the_status_command_s_plus_per_repo_its_times_and_harnesses() {
     }
     assert_eq!(repo["read_at"], "2026-09-30T12:00:00Z");
     assert_eq!(body["repos"], json!([repo]));
+}
+
+#[test]
+fn status_suggests_the_models_and_efforts_codex_and_opencode_name_in_their_own_files() {
+    let t = with_repo();
+    let codex = json!({ "models": [
+        { "slug": "gpt-6-sol", "visibility": "list", "supported_reasoning_levels": [{ "effort": "low" }, { "effort": "high" }] },
+        { "slug": "codex-auto-review", "visibility": "hide", "supported_reasoning_levels": [{ "effort": "max" }] },
+        { "slug": "gpt-6-luna", "visibility": "list", "supported_reasoning_levels": [{ "effort": "low" }, { "effort": "xhigh" }] },
+    ] });
+    let opencode = json!({
+        "recent": [{ "providerID": "opencode-go", "modelID": "glm-5.3" }],
+        "favorite": [{ "providerID": "openrouter", "modelID": "z-ai/glm-5.3-flash" }],
+        "variant": { "opencode-go/glm-5.3": "max", "opencode/hy3-free": "high" },
+    });
+    t.world
+        .add_file("~/.codex/models_cache.json", codex.to_string().as_bytes());
+    t.world.add_file(
+        "~/.local/state/opencode/model.json",
+        opencode.to_string().as_bytes(),
+    );
+    t.tick();
+
+    let harnesses = t.get("/api/status").1["repos"][0]["harnesses"].clone();
+
+    assert_eq!(
+        harnesses["codex"]["suggested"],
+        json!({ "models": ["gpt-6-sol", "gpt-6-luna"], "efforts": ["low", "high", "xhigh"] })
+    );
+    assert_eq!(
+        harnesses["opencode"]["suggested"],
+        json!({
+            "models": ["openrouter/z-ai/glm-5.3-flash", "opencode-go/glm-5.3", "opencode/hy3-free"],
+            "efforts": ["max", "high"],
+        })
+    );
+    assert_eq!(harnesses["claude"].get("suggested"), None);
 }
 
 #[test]
@@ -102,8 +139,13 @@ fn status_asks_no_source_and_shows_its_cache_however_old() {
 
     let (_, old) = t.get("/api/status");
 
-    assert_eq!(asked_never_read, Vec::<String>::new());
-    assert_eq!(t.world.calls(), Vec::<String>::new());
+    // Only the Harnesses' own files, for the models and Efforts they suggest.
+    let suggestions = vec![
+        "read ~/.codex/models_cache.json".to_string(),
+        "read ~/.local/state/opencode/model.json".to_string(),
+    ];
+    assert_eq!(asked_never_read, suggestions);
+    assert_eq!(t.world.calls(), suggestions);
     assert_eq!(never_read["repos"][0]["read_at"], json!(null));
     assert_eq!(never_read["repos"][0]["ready"], json!([]));
     assert_eq!(old["repos"][0]["read_at"], "2026-09-30T12:00:00Z");

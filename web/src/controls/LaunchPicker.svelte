@@ -2,7 +2,7 @@
   // A launch, picked as the Dispatch form, the Implementer, the Reviewer and
   // the Wiki's take it: its Harness, marked in its hue, then its model and
   // Effort, each a select of what the Harness lists, or a text field where it
-  // takes any. `pick` gets each change, and how to put the field back should
+  // takes any, suggesting what the Harness's own files name. `pick` gets each change, and how to put the field back should
   // serve refuse it.
   import { harnessHue } from "../hues";
   import type { Launch, Repo } from "../status";
@@ -26,13 +26,14 @@
     pick: (field: keyof Launch, value: string | null, back: () => void) => unknown;
   } = $props();
 
+  const id = $props.id();
   const takes = $derived(harnesses[launch.harness] ?? { models: null, efforts: null });
   const LABEL = { harness: "Harness", model: "Model", effort: "Effort" };
   /** A field's accessible name: its label, or after whose launch it is, `Implementer model`. */
   const called = (field: keyof Launch) => (named ? `${named} ${field === "model" ? "model" : LABEL[field]}` : LABEL[field]);
 </script>
 
-{#snippet chosen(field: "model" | "effort", listed: string[] | null)}
+{#snippet chosen(field: "model" | "effort", listed: string[] | null, suggested: string[] = [])}
   {@const value = launch[field]}
   <label class="field">
     <span class="field-name">{LABEL[field]}</span>
@@ -57,6 +58,7 @@
         value={value ?? ""}
         placeholder="default"
         autocomplete="off"
+        list={suggested.length ? `${id}-${field}` : undefined}
         aria-invalid={invalid || undefined}
         aria-busy={busy}
         use:entered={{
@@ -64,6 +66,11 @@
           save: async (typed, input) => pick(field, typed.trim() || null, () => (input.value = launch[field] ?? "")),
         }}
       />
+      {#if suggested.length}
+        <datalist id="{id}-{field}">
+          {#each suggested as s (s)}<option value={s}></option>{/each}
+        </datalist>
+      {/if}
     {/if}
   </label>
 {/snippet}
@@ -90,8 +97,8 @@
         </select>
       </span>
     </label>
-    {@render chosen("model", takes.models)}
-    {@render chosen("effort", takes.efforts)}
+    {@render chosen("model", takes.models, takes.suggested?.models)}
+    {@render chosen("effort", takes.efforts, takes.suggested?.efforts)}
   </div>
 </div>
 
