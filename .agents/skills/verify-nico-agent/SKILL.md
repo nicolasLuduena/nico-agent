@@ -72,4 +72,4 @@ Stops everything the run started and removes the run dir, keeping `.evidence/` a
 
 ## Maintenance
 
-`features/` is the maintained list of what this skill verifies. A PR that changes a command, flag, JSON field, route or page control updates the matching feature file in the same PR, and `REFERENCE.md` when a handle changes. A behaviour no file covers gets a file of its own, or a place in the README's "Not yet mapped" line.
+`features/` is the maintained list of what this skill verifies. A PR that changes a command, flag, JSON field, route or page control updates the matching feature file in the same PR, and `REFERENCE.md` when a handle changes. A behaviour no file covers gets a file of its own, or a place in the README's "Not yet mapped" line. `/maintain-verification-skill` re-checks the map against the app.
