@@ -9,6 +9,9 @@ sub-issues; branch from `loop` and open PRs against it.
 The TypeScript build on branch `main` is reference, not code to reuse: read
 it with `git show main:<path>` for call shapes and edge cases.
 
+`DESIGN.md` binds only `web/`: read it before changing anything the page
+shows, and not otherwise.
+
 ## The one seam
 
 Everything outside the process (herdr, git, `gh`, Linear, notifications, the

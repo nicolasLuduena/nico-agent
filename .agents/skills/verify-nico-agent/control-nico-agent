@@ -1,21 +1,27 @@
 #!/usr/bin/env bash
-# control-nico-agent — drive nico-agent (its CLI and serve's page) in a scratch HOME.
+# control-nico-agent: drive nico-agent (its CLI and serve's page) in a scratch HOME.
 #
-# Every subcommand works inside one run directory, chosen by VERIFY_RUN_ID:
+# Every subcommand works inside one run directory, chosen by VERIFY_RUN_ID (normally the issue number):
 #   $VERIFY_RUN_ROOT/$VERIFY_RUN_ID   (VERIFY_RUN_ROOT defaults to ${TMPDIR:-/tmp}/verify-nico-agent)
 # The run has its own HOME (so its own ~/.config/nico-agent), two fixture clones, a Bucket,
 # a free port for serve, and stubs for gh, ghbot, herdr, notify-send, curl and opencode2 first on PATH.
+# Needs cargo, git, jq, curl, node, ss, setsid; `page` needs the playwright CLI on PATH (and its
+# browser, or a chromium on PATH). Run from the repo root.
 #
-# Subcommands (see SKILL.md for when to use each):
-#   launch [--no-build]           build, make the scratch HOME and fixtures, start serve
-#   restart                       stop this run's serve and start it again, as a reboot would
-#   doctor                        read-only: is this run worth driving?
+# Subcommands:
+#   launch [--no-build]           build, make the scratch HOME, fixtures and config, start serve; prints
+#                                 serve's pid and URL once /api/status answers. Refuses to run twice for one
+#                                 VERIFY_RUN_ID (cleanup first). --no-build reuses target/debug/nico-agent.
+#   restart                       stop this run's serve and start it again on the same HOME and port, as a reboot would
+#   doctor                        read-only: is this run worth driving? A failing doctor means "do not drive"
 #   env                           print the path of run.env, to source: . "$(control-nico-agent env)"
-#   seed issues                   a fresh Source read of verify/fixture (issues 1-6)
+#                                 gives $FIXTURE_CLONE, $SECOND_CLONE, $CONFIG_DIR, $BUCKET, $URL, $OUTSIDE_LOG
+#   seed issues [second]          a fresh Source read of verify/fixture (issues 1-6), or verify/second (1-3)
 #   seed dispatch <n> pr|asking|stacked|restarted
-#                                 a Dispatch of verify/fixture#<n> as the loop records it
+#                                 a Dispatch of verify/fixture#<n> as the loop records it; prints
+#                                 { issue, kind, worktree, branch, head, pr, evidence }: keep it, verdict recipes need head
 #   seed run quality-scan|morning|faux-nico <n>
-#                                 a Run of the loop's own agent, blocked, as the loop records it
+#                                 a Run of the loop's own agent, blocked, as the loop records it; prints JSON
 #   seed morning <file>|none      the Morning summary the morning agent leaves: <file> as morning.md, or none
 #   seed answer <file>|none [<part>]  what the wiki model answers every headless call: <file>'s text, or none
 #                                 (then each call fails as opencode2 does with no model); with <part>, a trail
@@ -28,27 +34,53 @@
 #   seed herdr <agent>|none       the real herdr's list of agents, and what is asked of <agent> there, reach
 #                                 the real herdr; with none, herdr is all a stub again
 #   seed dialog <n>|none          a real Claude in a herdr tab of its own, impl-fixture-<n>, Asking two questions
-#                                 in a choice dialog, reached through seed herdr; none closes it
+#                                 in a choice dialog, reached through seed herdr; none closes it. Needs herdr and claude
 #   seed reviewer <n>|none        herdr answers the start of rev-fixture-<n>, a Reviewer of a Dispatch seeded `pr`,
-#                                 as it would, and lists it working beside its idle Implementer; none, a stub again
+#                                 as it would, and lists it working beside its idle Implementer; none, a stub again.
+#                                 Not with seed herdr
 #   seed wiki <wiki.json> <clone> a Repo's Wiki built elsewhere committed to the Bucket, and that Repo cloned
 #                                 on disk from <clone> for `repo add`; prints { repo, clone, commit }
 #   drift push <n>|stale|pause|below merged|closed|base [<file>]|tag <tag>
 #                                 what GitHub would change: a new PR head, an old read, a rate limit,
 #                                 the PR below a Stacked dispatch merged or closed unmerged,
-#                                 verify/fixture's Base moved on (and fetched)
-#   state                         read-only fingerprint of the config dir, Bucket and outside calls
+#                                 verify/fixture's Base moved on (and fetched), verify/second tagged
+#   state                         read-only fingerprint: config dir files, Dispatches, Verdicts, Bucket log, outside calls
 #   run [--evidence PREFIX] -- <nico-agent args...>
-#                                 run the CLI in the scratch HOME; exit code is the CLI's
-#   http [--evidence PREFIX] <METHOD> <PATH> [BODY]
-#                                 ask this run's serve, as the page does
+#                                 run the CLI in the scratch HOME (cwd: the run's work/, so pass absolute paths);
+#                                 exit code is the CLI's
+#   http [--evidence PREFIX] [--header 'NAME: VALUE']... <METHOD> <PATH> [BODY]
+#                                 ask this run's serve, as the page does; exit 1 on 4xx/5xx
 #   page [--tunnel] [--evidence PREFIX] [--width PX] [--scheme light|dark] [--storage FILE|none] [--path PATH] [--hash HASH] [--within ROLE=NAME|page | --click ROLE=NAME | --click ROLE~NAME | --press KEY
 #        | --type TEXT | --expect TEXT | --gone TEXT | --wait SECONDS | --history back|forward | --mode pass|502|signed-out | --hold SECONDS]...
-#                                 open serve's page in headless Chromium (through the tunnel stand-in), act, capture
+#                                 open serve's page in headless Chromium, act in order, capture; prints ok or
+#                                 FAIL per step and exits 1 on the first failure, after capturing
 #   tunnel start|pass|502|signed-out
-#                                 start a stand-in for the cloudflared tunnel and Access in front of serve;
-#                                 pass requests on, answer 502, or answer Access's login redirect
-#   cleanup                       stop this run's serve, remove the run dir (never .evidence/)
+#                                 a stand-in for cloudflared and Access in front of serve ($TUNNEL_URL, $TUNNEL_LOG)
+#   cleanup                       stop everything this run started, remove the run dir (never .evidence/)
+#
+# --evidence PREFIX writes: run: PREFIX.cmd, .stdout, .stderr, .exit; http: .cmd (each --header in brackets
+# first), .stdout (the body), .stderr, .exit (the HTTP status), .headers; page: .cmd, .aria.txt, .png (the whole
+# page), .view.png (the window, as scrolled), .view.txt (address, scroll, page width against the window's, focus),
+# .requests.txt (each /api call, and each /api/events stream as answered: a reconnect is a line), .console.txt.
+# Each still prints what it captured.
+#
+# page steps: --click tab=verify/second clicks the element of that ARIA role whose accessible name is exactly
+# the text; --click "button~Failed verify/fixture #1" one whose name contains it; --within "region=verify/fixture"
+# makes every later --click look only inside that element, --within page the whole page again; --press ArrowRight
+# a key; --type dev text into what has focus; --expect TEXT waits for the text; --gone TEXT up to a minute for it
+# to go; --wait 120 lets two minutes pass; --history back|forward the browser's buttons; --mode 502 switches the
+# tunnel stand-in (with --tunnel only); --hold 20 holds each later write to /api (PATCH, POST, DELETE) 20 seconds
+# on its way to serve, no step waiting for it (a write still held when the page closes never reaches serve);
+# --path /wiki/verify/fixture opens a Wiki's page instead of the Board, --hash "#readme" that fragment; --scheme
+# dark a browser whose system colours are dark. Each page is a new browser with nothing stored: --storage FILE
+# starts it with the storage FILE holds (none the first time) and saves it back, so the next page with the same
+# FILE is a reload in the same browser; --storage none a browser whose localStorage throws.
+#
+# tunnel start sets bucket.url to the stand-in's URL (serve refuses a host not its own) and puts tunnel.mjs between
+# the page and serve, where cloudflared and Access sit: it cuts a response that sends nothing for 100 seconds, as
+# Cloudflare does; 502 answers every request with a 502 and cuts the open streams, as a dropped tunnel does;
+# signed-out answers Access's redirect to its login on another origin and leaves streams open, as a lapse does;
+# pass passes requests on again. Each answer and each stream's end is logged to $TUNNEL_LOG.
 set -euo pipefail
 
 SKILL_DIR="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
