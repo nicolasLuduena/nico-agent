@@ -402,7 +402,7 @@ fn on_codex_the_wiki_mcp_is_a_config_override_with_its_tools_approved() {
 
     assert_eq!(
         launched[0],
-        r#"herdr agent start faux-nico-api-7 --kind codex --pane w2:p2 -- -c projects={"/src/api"={trust_level="trusted"}} -c mcp_servers.wiki.command="nico-agent" -c mcp_servers.wiki.args=["mcp","--wiki","acme/api"] -c mcp_servers.wiki.default_tools_approval_mode="approve""#
+        r#"herdr agent start faux-nico-api-7 --kind codex --pane w2:p2 -- -c projects={"/src/api"={trust_level="trusted"}} -c approvals_reviewer="auto_review" -c mcp_servers.wiki.command="nico-agent" -c mcp_servers.wiki.args=["mcp","--wiki","acme/api"] -c mcp_servers.wiki.default_tools_approval_mode="approve""#
     );
     assert!(launched[1].ends_with(WIKI_LINES), "{}", launched[1]);
 }

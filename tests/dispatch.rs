@@ -84,7 +84,7 @@ fn without_flags_the_launch_and_base_come_from_the_repo() {
             "herdr worktree create --cwd /src/api --branch agent/api-7 --base origin/develop --label api#7 --no-focus",
             "herdr tab create --workspace w1 --cwd /worktrees/api-7 --label implementer --no-focus",
             // codex asks to trust the clone even when herdr reports it ready.
-            r#"herdr agent start impl-api-7 --kind codex --pane w1:p2 -- -m gpt-5 -c model_reasoning_effort=high -c projects={"/src/api"={trust_level="trusted"}}"#,
+            r#"herdr agent start impl-api-7 --kind codex --pane w1:p2 -- -m gpt-5 -c model_reasoning_effort=high -c projects={"/src/api"={trust_level="trusted"}} -c approvals_reviewer="auto_review""#,
             "herdr agent prompt impl-api-7 $implement https://github.com/acme/api/issues/7 as draft PR against develop, saving its Evidence under .evidence/7/ in the worktree and linking it to http://127.0.0.1:42069/bucket/acme/api/7/",
         ]
     );
@@ -107,7 +107,7 @@ fn a_flag_overrides_the_repo_launch_and_a_harness_flag_drops_its_model_and_effor
         starts,
         [
             "herdr agent start impl-api-7 --kind claude --pane w1:p2 -- --model opus --effort max",
-            r#"herdr agent start impl-api-8 --kind codex --pane w2:p2 -- -c projects={"/src/api"={trust_level="trusted"}}"#,
+            r#"herdr agent start impl-api-8 --kind codex --pane w2:p2 -- -c projects={"/src/api"={trust_level="trusted"}} -c approvals_reviewer="auto_review""#,
         ]
     );
 }

@@ -119,6 +119,9 @@ effort_args = ["-c", "model_reasoning_effort={effort}"]
 # codex asks to trust the clone (not the worktree) even when herdr reports it
 # ready; this answers it for the session without writing ~/.codex/config.toml.
 trust_args = ["-c", 'projects={"{repoPath}"={trust_level="trusted"}}']
+# A model rules on what leaves the sandbox (the network, files outside the
+# worktree) instead of the user, as claude's auto mode does.
+extra_args = ["-c", 'approvals_reviewer="auto_review"']
 # Its review of new or changed hooks, which herdr reports ready (#279), takes
 # a prompt's Enter: the user's to answer, so no prompt is sent into it again.
 startup_questions = ["Hooks need review", "review before"]

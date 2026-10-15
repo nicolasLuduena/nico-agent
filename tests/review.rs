@@ -119,7 +119,7 @@ fn a_reviewer_starts_on_another_harness_when_the_pr_first_appears_and_only_then(
         herdr(&calls),
         [
             "herdr tab create --workspace w1 --cwd /worktrees/api-7 --label reviewer --no-focus",
-            r#"herdr agent start rev-api-7 --kind codex --pane w1:p3 -- -c projects={"/src/api"={trust_level="trusted"}}"#,
+            r#"herdr agent start rev-api-7 --kind codex --pane w1:p3 -- -c projects={"/src/api"={trust_level="trusted"}} -c approvals_reviewer="auto_review""#,
             &review_prompt("sha9"),
         ]
     );
@@ -154,7 +154,7 @@ fn a_new_head_waits_for_the_last_reviewer_to_stop_working_then_closes_its_tab_an
         [
             "herdr tab close w1:t3",
             "herdr tab create --workspace w1 --cwd /worktrees/api-7 --label reviewer --no-focus",
-            r#"herdr agent start rev-api-7 --kind codex --pane w1:p4 -- -c projects={"/src/api"={trust_level="trusted"}}"#,
+            r#"herdr agent start rev-api-7 --kind codex --pane w1:p4 -- -c projects={"/src/api"={trust_level="trusted"}} -c approvals_reviewer="auto_review""#,
             &review_prompt("sha10"),
         ]
     );
@@ -204,7 +204,7 @@ fn a_reviewer_gone_from_herdr_before_its_verdict_is_started_again_for_that_head_
         [
             "herdr tab close w1:t3",
             "herdr tab create --workspace w1 --cwd /worktrees/api-7 --label reviewer --no-focus",
-            r#"herdr agent start rev-api-7 --kind codex --pane w1:p4 -- -c projects={"/src/api"={trust_level="trusted"}}"#,
+            r#"herdr agent start rev-api-7 --kind codex --pane w1:p4 -- -c projects={"/src/api"={trust_level="trusted"}} -c approvals_reviewer="auto_review""#,
             &review_prompt("sha9"),
         ]
     );
@@ -327,7 +327,7 @@ fn a_reviewer_of_a_repo_linking_a_built_library_version_starts_with_its_wiki_mcp
     assert_eq!(
         herdr(&calls)[1..],
         [
-            r#"herdr agent start rev-api-7 --kind codex --pane w1:p3 -- -c projects={"/src/api"={trust_level="trusted"}} -c mcp_servers.wiki.command="nico-agent" -c mcp_servers.wiki.args=["mcp","--wiki","acme/kit@v1"] -c mcp_servers.wiki.default_tools_approval_mode="approve""#.to_string(),
+            r#"herdr agent start rev-api-7 --kind codex --pane w1:p3 -- -c projects={"/src/api"={trust_level="trusted"}} -c approvals_reviewer="auto_review" -c mcp_servers.wiki.command="nico-agent" -c mcp_servers.wiki.args=["mcp","--wiki","acme/kit@v1"] -c mcp_servers.wiki.default_tools_approval_mode="approve""#.to_string(),
             format!(
                 "{} Ask the wiki MCP about {KIT} before reading their source.",
                 review_prompt("sha9")
@@ -585,7 +585,7 @@ fn a_failing_verdict_on_a_head_pushed_over_before_the_tick_restarts_nothing_and_
         [
             "herdr tab close w1:t3",
             "herdr tab create --workspace w1 --cwd /worktrees/api-7 --label reviewer --no-focus",
-            r#"herdr agent start rev-api-7 --kind codex --pane w1:p4 -- -c projects={"/src/api"={trust_level="trusted"}}"#,
+            r#"herdr agent start rev-api-7 --kind codex --pane w1:p4 -- -c projects={"/src/api"={trust_level="trusted"}} -c approvals_reviewer="auto_review""#,
             &review_prompt("sha10"),
         ]
     );
@@ -1207,7 +1207,7 @@ fn review_now_starts_a_reviewer_on_a_head_given_up_on_and_the_tick_may_try_the_w
         [
             "herdr tab close w1:t5",
             "herdr tab create --workspace w1 --cwd /worktrees/api-7 --label reviewer --no-focus",
-            r#"herdr agent start rev-api-7 --kind codex --pane w1:p6 -- -c projects={"/src/api"={trust_level="trusted"}}"#,
+            r#"herdr agent start rev-api-7 --kind codex --pane w1:p6 -- -c projects={"/src/api"={trust_level="trusted"}} -c approvals_reviewer="auto_review""#,
             &review_prompt("sha9"),
         ]
     );
@@ -1282,7 +1282,7 @@ fn with_review_off_review_now_starts_a_reviewer_that_shows_as_with_review_on_and
         herdr(&calls),
         [
             "herdr tab create --workspace w1 --cwd /worktrees/api-7 --label reviewer --no-focus",
-            r#"herdr agent start rev-api-7 --kind codex --pane w1:p3 -- -c projects={"/src/api"={trust_level="trusted"}}"#,
+            r#"herdr agent start rev-api-7 --kind codex --pane w1:p3 -- -c projects={"/src/api"={trust_level="trusted"}} -c approvals_reviewer="auto_review""#,
             &review_prompt("sha9"),
         ]
     );
