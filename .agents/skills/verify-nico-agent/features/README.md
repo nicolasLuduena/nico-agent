@@ -1,18 +1,10 @@
 # nico-agent verification map
 
-The maintained source for verifying nico-agent's user-facing behaviour: its CLI and serve's page. Pick the feature files the change touches from the list below and use each as the recipe; its first paragraph says what it covers. [`REFERENCE.md`](./REFERENCE.md) has the fixtures and the stable handles.
-
-## Conventions
-
-- `export VERIFY_RUN_ID=<issue>`, `C=.agents/skills/verify-nico-agent/control-nico-agent`, from the repo root. A fresh run per feature: `$C cleanup; $C launch --no-build` (plain `launch` the first time), then `$C doctor` passes and `. "$($C env)"`. The scratch config has no Repo until the recipe adds one; serve has ticked once, with none.
-- Make the feature's evidence folder first: `E=.evidence/<issue>/<feature>; mkdir -p "$E"`, `<feature>` being the file's name without `.md`.
-- Every command is literal: keep flag names and quoted values unchanged. CLI through `$C run [--evidence PREFIX] -- <args>`, always with `--json` (the plain output is not a contract); `/api` through `$C http`, with the JSON body the page sends; the page through `$C page`, by ARIA role and accessible name (`ROLE~NAME` only where the name carries a time). Outside state changes only through `$C seed` and `$C drift`; read it through `$C state`.
-- Issue numbers: 1 to 6 from `seed issues`, verify/second's 1 to 3 from `seed issues second`, above 6 for `seed dispatch` (not 20).
-- Proof: `.cmd` and output per invocation; `state` before and after and their diff (empty for a read, or only the outside calls the feature names; the written file plus a second view of it for a mutation); for the page, the ARIA snapshot, the screenshot and `.requests.txt`; a copy of `outside.log` in every feature folder. Report an unreachable path with the attempted command and the unmet precondition; never report a skipped entry point as verified through a different path.
+Pick the feature files the change touches from the list below; each is a recipe for the Drive loop in [`SKILL.md`](../SKILL.md), and its first paragraph says what it covers. [`REFERENCE.md`](./REFERENCE.md) has the fixtures and the stable handles.
 
 ## Feature file shape
 
-An H1 title, one paragraph on the user-visible behaviour, then exactly four H2 sections in this order: `Sub-features` (short IDs, one line each), `How to get to it (user POV)` (every entry point), `Driving it with control-nico-agent` (starts with `Preconditions:`, then labelled bullets pairing each user action with an exact command and observable result), `Gotchas`. Name only user paths, stable handles, required state, commands and observable proof; no implementation details.
+An H1 title, one paragraph on the user-visible behaviour, then exactly four H2 sections in this order: `Sub-features` (short IDs, one line each), `How to get to it (user POV)` (every entry point), `Driving it with control-nico-agent` (starts with `Preconditions:`, then labelled bullets pairing each user action with an exact command and observable result), `Gotchas`. Write only user paths, stable handles, required state, commands and observable Evidence.
 
 ## Features
 
