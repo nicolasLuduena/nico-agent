@@ -624,8 +624,8 @@ fn curl(request: &HttpRequest) -> WorldResult<HttpResponse> {
 /// slow fetch, short enough that one hung call can't stop the night.
 const DEADLINE: Duration = Duration::from_secs(300);
 
-/// [`DEADLINE`], or `NICO_AGENT_DEADLINE_SECS` when set: a test's stub that
-/// hangs shouldn't hold it for minutes.
+/// [`DEADLINE`], or `NICO_AGENT_DEADLINE_SECS` when set: no user setting, but
+/// a test's stub that hangs shouldn't hold it for minutes.
 fn deadline() -> Duration {
     (std::env::var("NICO_AGENT_DEADLINE_SECS").ok())
         .and_then(|secs| secs.parse().ok())
@@ -640,8 +640,11 @@ fn run_till(
     shown: &str,
     failed: impl FnOnce(io::Error) -> WorldError,
 ) -> WorldResult<Output> {
+    use std::os::unix::process::CommandExt;
     let started = Instant::now();
+    // In a group of its own, so a kill reaches what it started too (git's ssh).
     let mut child = (command.stdout(Stdio::piped()).stderr(Stdio::piped()))
+        .process_group(0)
         .spawn()
         .map_err(failed)?;
     // Read as it prints: a child that fills a pipe would never end.
@@ -657,15 +660,20 @@ fn run_till(
             break status;
         }
         if started.elapsed() >= deadline {
-            let _ = child.kill();
+            let group = format!("-{}", child.id());
+            let killed = Command::new("kill").args(["-KILL", "--", &group]).status();
+            if !killed.is_ok_and(|s| s.success()) {
+                let _ = child.kill();
+            }
             let _ = child.wait();
             return Err(past());
         }
         thread::sleep(Duration::from_millis(10));
     };
-    // A process it left in the background may hold its pipes past its end.
+    // A process it left in the background may hold its pipes past its end;
+    // a second's grace, so one that ends right at its deadline still answers.
     let read = |pipe: mpsc::Receiver<Vec<u8>>| {
-        pipe.recv_timeout(deadline.saturating_sub(started.elapsed()))
+        (pipe.recv_timeout(deadline.saturating_sub(started.elapsed()) + Duration::from_secs(1)))
             .map_err(|_| past())
     };
     Ok(Output {
@@ -1435,6 +1443,7 @@ impl World for RealWorld {
             .stderr(writer)
             .spawn()
             .map_err(failed)?;
+        // shortcut: no deadline, as a Repo's checks may rightly run long; give it one if one ever hangs `install`.
         // shortcut: a process it leaves in the background holding the pipe holds this till it ends; none we run does.
         let (mut printed, mut chunk, mut shown) = (vec![], [0; 8192], io::stderr());
         loop {

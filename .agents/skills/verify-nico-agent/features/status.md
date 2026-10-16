@@ -71,7 +71,7 @@ Preconditions:
   Each status exits `0` in about 5 s with `repos[0].error` `` `gh api user` ran past its 5s deadline and was killed ``.
   The refresh answers HTTP `200` within a minute (each `gh` call it makes waits out its 5 s), not "tick skipped", its
   `actions` led by `could not read the issues of verify/fixture:` and that error; it tries the cached Ready rows, which
-  fail at worktree (see dispatch-refusals), so the second status lists none Ready. `gh` hangs until cleanup: drive this last but Paused.
+  fail at worktree (see dispatch-refusals), so the second status lists none Ready. `gh` hangs until cleanup: drive this step just before Paused, the last one.
 - **Paused.** Run `$C run -- repo add verify/second --path "$SECOND_CLONE" --json` and `$C drift pause`,
   then `$C run --evidence "$E/06-paused" -- status --json`. `sources.github.paused_until` is the
   pause's time; both Repos (verify/fixture's read is stale, verify/second has none) have `error`
