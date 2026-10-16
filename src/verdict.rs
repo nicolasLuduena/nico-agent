@@ -15,6 +15,7 @@ use crate::bucket;
 use crate::cli::{Context, Refusal, bad_invocation};
 use crate::config;
 use crate::dispatch;
+use crate::review;
 use crate::stage;
 use crate::state;
 use crate::world::PrState;
@@ -117,11 +118,11 @@ pub fn verdict(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
     let file = file(&ctx.config_dir, &issue);
     let recorded = state::update(&file, |text| {
         let old: Option<Verdict> = state::parse(&file, text)?;
-        // The same Verdict again changes nothing, its time included.
-        if old
-            .as_ref()
-            .is_some_and(|old| (old.result, &old.sha) == (result, &new.sha))
-        {
+        // The same Verdict again changes nothing, its time included, unless it
+        // rules on the Rulings that answered it.
+        if old.as_ref().is_some_and(|old| {
+            (old.result, &old.sha) == (result, &new.sha) && !review::answered(&d, old, None)
+        }) {
             return Ok::<_, Refusal>((text.to_string(), false));
         }
         // Kept before it is recorded: the tick acting on it may Close the worktree.

@@ -606,7 +606,8 @@ fn failed_by_the_reviewer(t: &Setup) -> Vec<String> {
         t.world.advance(TICK);
         said.extend(t.tick());
         // The Implementer rules on the Findings and pushes, and the next tick sees it.
-        let ruled = format!("## Findings at {head}\n\n- **F1** \"Signing in shows a 500\": dismissed.\n");
+        let ruled =
+            format!("## Findings at {head}\n\n- **F1** \"Signing in shows a 500\": dismissed.\n");
         t.world
             .add_file("/worktrees/api-7/.evidence/7/rulings.md", ruled.as_bytes());
         push(t, next);
@@ -685,6 +686,51 @@ fn a_dispatch_the_reviewer_kept_failing_closes_once_its_pr_is_merged_or_closed_o
         let shown = &t.cli(&["status", "--json"]).json()["dispatches"][0];
         assert!(shown["closed_at"].is_string(), "{shown}");
     }
+}
+
+#[test]
+fn a_failing_verdict_whose_findings_are_all_dismissed_gets_a_reviewer_on_the_same_head_and_a_second_fail_marks_it_failed()
+ {
+    let t = reviewing();
+    let file = findings(&t, "Signing in shows a 500.\n");
+    verdict(
+        &t,
+        &["acme/api#7", "fail", "--sha", "sha9", "--findings", &file],
+    );
+    t.world.advance(TICK);
+    assert_eq!(t.tick(), ["acme/api#7 restarted: verdict"]);
+    // Every Finding dismissed: the Rulings are in .evidence/, which git ignores, so nothing is pushed.
+    (t.world.agents.borrow_mut()).insert("impl-api-7".into(), "idle".into());
+    t.world.advance(TICK);
+
+    let (said, calls) = calls_after(&t, || t.tick());
+    let shown = review(&t);
+    t.world.advance(TICK);
+    let still = t.tick();
+    let again = verdict(
+        &t,
+        &["acme/api#7", "fail", "--sha", "sha9", "--findings", &file],
+    );
+    t.world.advance(TICK);
+    let failed = t.tick();
+
+    assert_eq!(said, ["acme/api#7: Reviewer started on codex for sha9"]);
+    assert_eq!(herdr(&calls).last().unwrap(), &review_prompt("sha9"));
+    assert_eq!(shown["state"], "reviewing");
+    assert_eq!(still, Vec::<String>::new());
+    assert_eq!(again.json()["verdict"], "acme/api#7 fail at sha9");
+    assert_eq!(
+        failed,
+        ["acme/api#7 Failed: verdict again at sha9 after its Rulings"]
+    );
+    assert_eq!(
+        *t.world.notifications.borrow(),
+        [(
+            "acme/api#7 Failed".to_string(),
+            "restart: verdict again at sha9 after its Rulings".to_string()
+        )]
+    );
+    assert_eq!(stage(&t), "Failed");
 }
 
 #[test]

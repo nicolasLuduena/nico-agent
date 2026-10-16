@@ -93,11 +93,22 @@ pub fn step(
         let seen = d.clone();
         let reason = match rebase::reason(&mut d, &prs) {
             Some(reason) => Some(reason),
-            None if failed_verdict(ctx, &d, &prs)? => Some(Reason::Verdict),
-            None => agents.and_then(|agents| {
-                let stalled = no_pr.contains(&d.issue).then_some(stalled.as_str());
-                agent_reason(&mut d, agents, &now, stalled)
-            }),
+            None => match failed_verdict(ctx, &d, &prs)? {
+                // The Reviewer ruling on the Rulings failed the same head: same reason twice.
+                Some(sha)
+                    if (d.reviewer.as_ref())
+                        .is_some_and(|r| r.rulings && r.sha.as_ref() == Some(&sha)) =>
+                {
+                    let error = format!("verdict again at {sha} after its Rulings");
+                    said.extend(fail(ctx, d, error, Some(Reason::Verdict))?);
+                    continue;
+                }
+                Some(_) => Some(Reason::Verdict),
+                None => agents.and_then(|agents| {
+                    let stalled = no_pr.contains(&d.issue).then_some(stalled.as_str());
+                    agent_reason(&mut d, agents, &now, stalled)
+                }),
+            },
         };
         if d != seen {
             // Only what the reasons noted: a retarget's Base, rebasing, idle since when.
@@ -120,16 +131,17 @@ pub fn step(
     Ok(said)
 }
 
-/// Whether the head of `d`'s open PR has a failing Verdict that no `verdict`
+/// The head of `d`'s open PR, if it has a failing Verdict that no `verdict`
 /// restart came at or after: one restart per failing Verdict.
-fn failed_verdict(ctx: &Context, d: &Dispatch, prs: &Prs) -> io::Result<bool> {
+fn failed_verdict(ctx: &Context, d: &Dispatch, prs: &Prs) -> io::Result<Option<String>> {
     let standing = stage::standing(&ctx.config_dir, prs, d)?;
     if standing.pr.is_none_or(|(_, pr)| pr.r#final) {
-        return Ok(false);
+        return Ok(None);
     }
     let failed = (standing.verdict_on_head()).filter(|v| v.result == Outcome::Fail);
     Ok(failed
-        .is_some_and(|v| !(d.restarts.iter()).any(|r| r.reason == Reason::Verdict && r.at >= v.at)))
+        .filter(|v| !(d.restarts.iter()).any(|r| r.reason == Reason::Verdict && r.at >= v.at))
+        .map(|v| v.sha.clone()))
 }
 
 /// `rebooted` when `d`'s Implementer is missing from `agents`; `stalled` when

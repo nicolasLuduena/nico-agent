@@ -6,7 +6,10 @@ Evidence, which reaches the Bucket with each PR head as the rest of the Evidence
 `status` and `/api/status` say so in its `failure`, and the needs-you strip and the node's panel say
 "The Reviewer failed it N rounds running; the Findings and Rulings are in its Evidence", with what
 ends it under that. A Dispatch Failed for any other reason, a `verdict` restart that failed at a
-step included, reads as before.
+step included, reads as before. A restarted Implementer that dismisses every Finding pushes nothing
+(its Rulings are in the gitignored Evidence): once it is idle on the same head, the tick starts a
+Reviewer on that head to rule on the Rulings, and if that Reviewer fails it again the Dispatch is
+Failed on `verdict` at once, same reason twice.
 
 ## Sub-features
 
@@ -14,6 +17,7 @@ step included, reads as before.
 - `failed-verdict-status` a failing Verdict on a Dispatch whose `verdict` restarts are used up: the refresh says `<issue> Failed: verdict again after 2 restarts for it`, and `/api/status` has its `failure` `{step: "restart", error, reason: "verdict"}`.
 - `failed-verdict-strip` its strip row is `Failed <repo> #<n> The Reviewer failed it N rounds running; the Findings and Rulings are in its Evidence Merge its PR or close it on GitHub, and the loop Closes the Dispatch <updated>`, N being its `verdict` restarts plus one.
 - `failed-verdict-panel` its panel's Failure section says the same line in `strong` and the help under it; its Evidence holds `findings.md` and `rulings.md` at the failing head.
+- `rulings-rereview` a failing Verdict answered by a `verdict` restart whose Implementer went idle on the same head: the refresh says `<issue>: Reviewer started on codex for <head>`, `status` gives `review.state` `reviewing` and `reviewer.rulings` `true`; a second fail on that head records anew (not a no-op), and the next refresh says `<issue> Failed: verdict again at <head> after its Rulings`, its strip row `The Reviewer failed it 2 rounds running; ...`.
 - `failed-other` a `verdict` restart that failed at its tab is a row `Failed <repo> #<n> <title> <updated>`, its panel's Failure the error and `At the tab step.`
 
 ## How to get to it (user POV)
@@ -70,6 +74,21 @@ Preconditions:
   `rulings.md` and a `verdict` commit each with `findings.md`), and `outside.log` one `notify-send`
   per Failed Dispatch.
   Copy `$OUTSIDE_LOG` to `$E/outside.log`. Each `.console.txt` is empty.
+
+- **All dismissed, ruled on again.** A fresh run; `repo add` as above, then
+  `$C seed dispatch 10 ruled > "$E/seed10.json"`, `HEAD=$(jq -r .head "$E/seed10.json")` and
+  `$C seed reviewer 10`; `$C state > "$E/state.before.txt"`. Run
+  `$C run --evidence "$E/01-refresh-rereview" -- refresh --json`: `actions` hold
+  `verify/fixture#10: Reviewer started on codex for $HEAD`. Run `$C run --evidence "$E/02-status" -- status --json`:
+  `#10`'s `review.state` `reviewing`, `reviewer.rulings` `true`. Run `refresh --json` again
+  (`03-refresh-reviewing`): no Reviewer started. Write `$E/findings.md`, then run
+  `$C run --evidence "$E/04-fail-again" -- verdict verify/fixture#10 fail --sha "$HEAD" --findings "$PWD/$E/findings.md" --json`:
+  `verdict` `verify/fixture#10 fail at $HEAD`, no `(no-op)`. Run `$C run --evidence "$E/05-refresh-failed" -- refresh --json`:
+  `actions` hold `verify/fixture#10 Failed: verdict again at $HEAD after its Rulings`;
+  `$C http --evidence "$E/06-api-status" GET /api/status` its `failure` `{step: "restart", reason: "verdict", ...}`,
+  one `verdict` restart. Run `$C page --evidence "$E/07-strip" --expect "rounds running"`: `button
+  "Failed verify/fixture #10 The Reviewer failed it 2 rounds running; ..."`. `state.diff` and
+  `outside.log` as above: one `--label reviewer` tab, one `notify-send`.
 
 ## Gotchas
 
