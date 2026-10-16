@@ -1,8 +1,9 @@
 <script lang="ts">
   // A Repo's panel, in the column right of its Project's map: who its agents
-  // post as, from its bot check, then the Dispatch
-  // form, its one action, then its Readiness, room, switches, settings,
-  // Library links and Install, each folded to a line; then its removal. Headed by its slug, on its line colour, when the tab holds more than its own.
+  // post as, from its bot check, then the Dispatch form, its one action, then
+  // its Readiness, room, switches, settings, Library links and Install, each
+  // folded to a line; then its removal. Headed by its slug, on its line colour,
+  // when the tab holds more than its own.
   import { repoLine } from "../hues";
   import type { Repo, Status } from "../status";
   import Checks from "./Checks.svelte";

@@ -285,8 +285,8 @@ pub const BOT: &str = "nicolasluduena-coding-agent[bot]";
 
 const INSTALLED: &str = "the GitHub App is installed on ";
 
-/// Who the Repo's agents post as, by its bot check: the bot only once that
-/// found the App on it, as Dispatch adds the bot suffix only then; else you.
+/// Who the Repo's agents post as, by its last bot check: the bot once that
+/// found the App on it, else you. Dispatch asks again at each launch.
 pub fn posts_as(checks: &Checks) -> &'static str {
     let installed = |c: &Check| c.name == "bot" && c.said.starts_with(INSTALLED);
     match checks.results.iter().any(installed) {

@@ -76,9 +76,9 @@ Preconditions:
 
 ## Gotchas
 
-- In a run `ghbot` is a stub that fails, so `posts_as` is always `"you"`; the bot's side is `cargo test`'s (`tests/checks.rs`).
 - In a run `ghbot` is a stub that fails, so the bot check always fails with `gh auth login`'s text;
-  that is the check working, not a broken run. So does the herdr check, with the stub's `verify_stub`.
+  that is the check working, not a broken run. So `posts_as` is always `"you"`; the bot's side is
+  `cargo test`'s (`tests/checks.rs`). The herdr check fails too, with the stub's `verify_stub`.
 - The scratch HOME has no skills, and its `~/` is what the skills check reads: install them under
   `$R/home`, never your own `~/.claude/skills`.
 - serve checks at start, before any Repo exists in a fresh run, so `checks.json` is `{}` until a
