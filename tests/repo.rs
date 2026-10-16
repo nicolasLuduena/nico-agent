@@ -2,7 +2,7 @@ mod common;
 
 use std::time::Duration;
 
-use common::{Setup, github_issue, pull_request, setup};
+use common::{Setup, github_issue, implementer_idle, pull_request, setup};
 use nico_agent::world::{PrState, PullRequest};
 use serde_json::json;
 
@@ -220,6 +220,7 @@ fn a_removed_repos_work_in_flight_is_still_watched_reviewed_flipped_restarted_an
     let removed = t.cli(&["repo", "rm", "acme/api", "--json"]);
     // Ready now, but the Repo takes no new work.
     t.world.add_issue("acme/api", github_issue("acme/api", 8));
+    implementer_idle(&t, 7);
     t.world.add_pr(PullRequest {
         head_branch: Some("agent/api-7".into()),
         ..pull_request("acme/api", 9)

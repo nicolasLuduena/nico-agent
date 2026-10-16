@@ -45,8 +45,10 @@ fn with_pr(toml: &str) -> Setup {
     pr_opened(dispatched(toml))
 }
 
-/// `t` with PR 9 opened on issue 7's branch, a tick later.
+/// `t` with PR 9 opened on issue 7's branch, a tick later, its
+/// Implementer idle.
 fn pr_opened(t: Setup) -> Setup {
+    implementer_state(&t, "idle");
     t.world.add_pr(PullRequest {
         head_branch: Some("agent/api-7".into()),
         ..pull_request("acme/api", 9)
@@ -90,6 +92,11 @@ fn herdr(calls: &[String]) -> Vec<&str> {
         .collect()
 }
 
+/// herdr reports the Implementer, `impl-api-7`, in `state`.
+fn implementer_state(t: &Setup, state: &str) {
+    (t.world.agents.borrow_mut()).insert("impl-api-7".into(), state.into());
+}
+
 /// herdr reports `rev-api-7` in `state`.
 fn reviewer_state(t: &Setup, state: &str) {
     (t.world.agents.borrow_mut()).insert("rev-api-7".into(), state.into());
@@ -131,6 +138,28 @@ fn a_reviewer_starts_on_another_harness_when_the_pr_first_appears_and_only_then(
     assert_eq!(reviewer["harness"], "codex");
     assert_eq!(reviewer["tab"], "w1:t3");
     assert_eq!(reviewer["sha"], "sha9");
+}
+
+#[test]
+fn a_reviewer_waits_for_its_implementer_to_stop_working_before_starting() {
+    let t = with_pr("");
+    implementer_state(&t, "working");
+
+    let (said, calls) = calls_after(&t, || t.tick());
+    implementer_state(&t, "idle");
+    t.world.advance(TICK);
+    let (later, started) = calls_after(&t, || t.tick());
+
+    assert_eq!(
+        said,
+        ["acme/api#7: PR https://github.com/acme/api/pull/9 found"]
+    );
+    assert_eq!(herdr(&calls), Vec::<&str>::new());
+    assert_eq!(later, ["acme/api#7: Reviewer started on codex for sha9"]);
+    assert_eq!(
+        herdr(&started).last(),
+        Some(&review_prompt("sha9").as_str())
+    );
 }
 
 #[test]
@@ -606,10 +635,12 @@ fn failed_by_the_reviewer(t: &Setup) -> Vec<String> {
         t.world.advance(TICK);
         said.extend(t.tick());
         // The Implementer rules on the Findings and pushes, and the next tick sees it.
-        let ruled = format!("## Findings at {head}\n\n- **F1** \"Signing in shows a 500\": dismissed.\n");
+        let ruled =
+            format!("## Findings at {head}\n\n- **F1** \"Signing in shows a 500\": dismissed.\n");
         t.world
             .add_file("/worktrees/api-7/.evidence/7/rulings.md", ruled.as_bytes());
         push(t, next);
+        implementer_state(t, "idle");
         t.world.advance(TICK);
         said.extend(t.tick());
     }
@@ -858,7 +889,7 @@ fn a_reviewer_on_the_implementers_harness_starts_there_with_a_warning_in_status(
 }
 
 /// Repo `acme/api`, as `toml` sets it, with issue 7 dispatched by hand on
-/// codex and its PR 9 opened since.
+/// codex and its PR 9 opened since, its Implementer idle.
 fn dispatched_on_codex(toml: &str) -> Setup {
     let t = setup();
     t.world
@@ -869,6 +900,7 @@ fn dispatched_on_codex(toml: &str) -> Setup {
     t.world.add_issue("acme/api", github_issue("acme/api", 7));
     let ran = t.cli(&["dispatch", "acme/api#7", "--harness", "codex"]);
     assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
+    implementer_state(&t, "idle");
     t.world.add_pr(PullRequest {
         head_branch: Some("agent/api-7".into()),
         ..pull_request("acme/api", 9)
