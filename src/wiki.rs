@@ -1799,7 +1799,7 @@ How much to write: each limit below is the most, not a target. Write less whenev
 - A division has at most 3 Interpretations, each about how its Components work together. One whose Anchors all fall in the files of one Component is about that Component, and fails.
 - A Term is a name your overview, Interpretations, Explainer or Relationships use that a newcomer could not know: a field, type, parameter or constant the code declares, or an ordinary word the code uses in its own sense. Its meaning is one plain sentence of at most 25 words saying what the name stands for or is for, never its type or byte layout; the code's own doc comment is the first source. It cites the lines that declare the name.
 - Terms have no fixed number and are not Interpretations: give one for each such name your text uses, and none for a name it doesn't.
-- An Anchor is lines of a listed file, 1-based and inclusive: start <= end <= the file's line count.
+- An Anchor is lines of a listed file, 1-based and inclusive: start <= end <= the file's line count, and at most 60 lines.
 - Most leaves have no Explainer. A leaf has one only for a flow, in order, that its Interpretations don't already state, and its steps don't restate them: a title, at most 8 steps numbered from 1, each a one-sentence caption citing at least one Anchor, with an optional lane naming where the step happens, and arrows from step to step by number, each with an optional label.
 
 Answer with one JSON object and nothing else, in one of two shapes:
@@ -2077,11 +2077,11 @@ fn unique(parent: &str, name: &str, ids: &mut HashSet<String>) -> String {
 }
 
 /// The most lines one Anchor cites: a whole file shows no claim.
-const ANCHOR_LINES: usize = 60;
+const MOST_ANCHOR_LINES: usize = 60;
 
 /// Why a claim citing `anchors` rests on no real lines: it cites none, one
 /// not inside a file of the Wiki, its files by path in `code`, or one over
-/// `ANCHOR_LINES` long.
+/// `MOST_ANCHOR_LINES` long.
 fn unanchored(anchors: &[Anchor], code: &HashMap<&str, &File>) -> Option<String> {
     if anchors.is_empty() {
         return Some("it cites no Anchor".into());
@@ -2091,9 +2091,9 @@ fn unanchored(anchors: &[Anchor], code: &HashMap<&str, &File>) -> Option<String>
             "lines {}-{} are not inside {} ({n} lines)",
             a.start, a.end, a.path
         )),
-        Some(_) => (a.end + 1 - a.start > ANCHOR_LINES).then(|| {
+        Some(_) => (a.end + 1 - a.start > MOST_ANCHOR_LINES).then(|| {
             format!(
-                "lines {}-{} of {} are over {ANCHOR_LINES}, too many to show a claim",
+                "lines {}-{} of {} are over {MOST_ANCHOR_LINES} lines, too many to show a claim",
                 a.start, a.end, a.path
             )
         }),
