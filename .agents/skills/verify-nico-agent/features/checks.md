@@ -2,7 +2,8 @@
 
 Each Repo's Readiness checks say what will break it before the loop hits it: its clone, a fetch that
 asks nothing, `.evidence/` ignored and, while Review is on, a Verification skill on its Base's tip,
-the skills its steps' prompts name for their Harness, whether the GitHub App is on it (it passes
+the skills its steps' prompts name for their Harness (and the skills each of those calls, one
+level deep; claude's installed plugins count for claude), whether the GitHub App is on it (it passes
 without, saying its PRs are opened as you; only failing to ask fails), and whether herdr's server
 answers its client (after an upgrade a server on the old protocol refuses every call). They run when serve starts, on Refresh and
 after a write to the Repo's or its Project's settings, never on a plain tick, and stop nothing. Each
@@ -16,6 +17,7 @@ section, with its help; once the user does what the help says, the next run pass
 - `checks-strip` each failing one is a `Check <slug>: <said>` row in `region "Needs you"`, its help under it.
 - `checks-panel` the tab's `region "Readiness"`, folded to `N of M pass` and open by itself while one fails, shows each failing one with its help, the passing ones as `list "Passing"`, and `Unchanged since <time>`.
 - `checks-settings-write` a PATCH of the Repo's settings or switches checks it again: with Review off, the Reviewer's `verdict` skill is no longer asked for, and there is no verification check.
+- `checks-called-skills` each skill a prompted skill's `SKILL.md` calls (each name quoted in the clause after `Skill tool`: `with "x"`, `and "x"`, `` with `x` ``, `twice, for "x" and "y"`) is asked for the same Harness, one level deep, said as `no <name> skill for <harness>, <whose> Harness, which <skill> calls`; for claude a plugin's `skills/` in `~/.claude/plugins/installed_plugins.json` counts, and another Harness missing a skill only a claude plugin has adds `; it is installed only as a claude plugin`.
 - `checks-flip` a fixed one passes on the next run, and `at` moves only when a result changed.
 - `checks-fetch-base` the evidence and verification checks read the Base's tip after fetching it, so a fix pushed from elsewhere passes on Refresh.
 
@@ -58,6 +60,22 @@ Preconditions:
   HTTP `200`; `$OUTSIDE_LOG` is one `ghbot api /installation/repositories ...` line and one `herdr agent list`. Run
   `$C run --evidence "$E/06-status-after-patch" -- status --json`: `skills` is ok (`each skill a
   step names is installed for its Harness`), there is no `verification` check, and `at` is now.
+- **Called skill.** Make the implement skill call another:
+  `printf -- '---\nname: implement\n---\nCall the Skill tool with "tdd" where possible.\n' > "$R/home/.claude/skills/implement/SKILL.md"`.
+  Run `$C run --evidence "$E/07a-refresh-called" -- refresh --json` and
+  `$C run --evidence "$E/07b-status-called" -- status --json`: `skills` fails, `no tdd skill for
+  claude, the Implementer's Harness, which implement calls`, help `Install tdd in one of
+  ~/.claude/skills, <clone>/.claude/skills`.
+- **Claude plugin.** Install `tdd` only as a claude plugin:
+  `P="$R/home/.claude/plugins/cache/kit/kit/1.0.0"; mkdir -p "$P/skills/tdd" && echo "---" > "$P/skills/tdd/SKILL.md" && printf '{"version":2,"plugins":{"kit@kit":[{"installPath":"%s"}]}}\n' "$P" > "$R/home/.claude/plugins/installed_plugins.json"`.
+  `$C run --evidence "$E/07c-refresh-plugin" -- refresh --json`, then
+  `$C run --evidence "$E/07d-status-plugin" -- status --json`: `skills` is ok. Copy the two skills
+  for codex, `mkdir -p "$R/home/.agents/skills" && cp -r "$R/home/.claude/skills/"{implement,research} "$R/home/.agents/skills/"`,
+  and run `$C http --evidence "$E/07e-implementer-codex" PATCH /api/repo/verify/fixture '{"implementer":{"harness":"codex"}}'`
+  and `$C run --evidence "$E/07f-status-codex" -- status --json`: `skills` fails, `no tdd skill for
+  codex, the Implementer's Harness, which implement calls; it is installed only as a claude plugin`.
+  Put it back with `$C http --evidence "$E/07g-implementer-claude" PATCH /api/repo/verify/fixture '{"implementer":null}'`;
+  `$C run --evidence "$E/07h-status-claude" -- status --json`: `skills` is ok again.
 - **Fix pushed elsewhere.** Push `.evidence/` ignored to `main` from another clone:
   `P=$R/tmp/push; HOME=$R/home git clone -q https://github.com/verify/fixture.git "$P" && printf '.evidence/\n' > "$P/.gitignore" && HOME=$R/home git -C "$P" add .gitignore && HOME=$R/home git -C "$P" commit -qm "Ignore .evidence/" && HOME=$R/home git -C "$P" push -q origin HEAD:main`.
   `git -C "$FIXTURE_CLONE" rev-parse origin/main` is still the old tip. Run

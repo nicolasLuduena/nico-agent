@@ -4,6 +4,7 @@
 //! tick, and never stopping a step. Kept in `checks.json`, a Repo's rewritten
 //! only when its results change, so `changed` is sent only then.
 
+use std::cell::OnceCell;
 use std::collections::BTreeMap;
 use std::io;
 use std::path::Path;
@@ -202,7 +203,8 @@ fn verification(world: &dyn World, path: &str, base: &WorldResult<String>) -> Ch
 }
 
 /// Each skill a prompt names for a step the Repo has on, found for the
-/// Harness that step runs on in one of its `skill_dirs`.
+/// Harness that step runs on in one of its `skill_dirs` or its plugins, and
+/// each skill that one's `SKILL.md` calls, one level deep.
 fn skills(world: &dyn World, config: &Config, repo: &Repo) -> Check {
     let (prompts, on) = (&config.prompts, &repo.switches);
     let reviewer = config.reviewer(repo, &repo.implementer.harness);
@@ -232,11 +234,13 @@ fn skills(world: &dyn World, config: &Config, repo: &Repo) -> Check {
             &quality_scan,
         ),
     ];
+    // Read only once a skill is not in a Harness's skill_dirs.
+    let plugins = OnceCell::new();
+    let plugins = || plugins.get_or_init(|| plugin_dirs(world, config));
     let (mut missing, mut help) = (vec![], vec![]);
     for (_, prompt, whose, launch) in steps.iter().filter(|(on, ..)| *on) {
-        let (Some(skill), Some(harness)) =
-            (skill_of(prompt), config.harnesses.get(&launch.harness))
-        else {
+        let name = &launch.harness;
+        let (Some(skill), Some(harness)) = (skill_of(prompt), config.harnesses.get(name)) else {
             continue;
         };
         let dirs: Vec<String> = (harness.skill_dirs.iter())
@@ -245,15 +249,44 @@ fn skills(world: &dyn World, config: &Config, repo: &Repo) -> Check {
                 false => format!("{}/{dir}", repo.path),
             })
             .collect();
-        if dirs.iter().any(|dir| world.has_skill(dir, skill)) {
+        let find = |skill: &str| {
+            (dirs.iter().find(|dir| world.has_skill(dir, skill))).or_else(|| {
+                (plugins().iter())
+                    .filter(|(of, _)| of == name)
+                    .map(|(_, dir)| dir)
+                    .find(|dir| world.has_skill(dir, skill))
+            })
+        };
+        let mut lacking = |skill: &str, caller: Option<&str>| {
+            let mut said = format!("no {skill} skill for {name}, {whose} Harness");
+            if let Some(caller) = caller {
+                said += &format!(", which {caller} calls");
+            }
+            let plugin =
+                (plugins().iter()).find(|(of, dir)| of != name && world.has_skill(dir, skill));
+            if let Some((of, _)) = plugin {
+                said += &format!("; it is installed only as a {of} plugin");
+            }
+            missing.push(said);
+            help.push(match dirs.is_empty() {
+                true => format!("Set harnesses.{name}.skill_dirs to where {name} reads skills"),
+                false => format!("Install {skill} in one of {}", dirs.join(", ")),
+            });
+        };
+        let Some(dir) = find(skill) else {
+            lacking(skill, None);
             continue;
+        };
+        let text = (world
+            .read_file(&format!("{dir}/{skill}/SKILL.md"))
+            .ok()
+            .flatten())
+        .map(|bytes| String::from_utf8_lossy(&bytes).into_owned());
+        for called in calls_of(text.as_deref().unwrap_or_default()) {
+            if find(called).is_none() {
+                lacking(called, Some(skill));
+            }
         }
-        let name = &launch.harness;
-        missing.push(format!("no {skill} skill for {name}, {whose} Harness"));
-        help.push(match dirs.is_empty() {
-            true => format!("Set harnesses.{name}.skill_dirs to where {name} reads skills"),
-            false => format!("Install {skill} in one of {}", dirs.join(", ")),
-        });
     }
     match missing.is_empty() {
         true => ok(
@@ -271,6 +304,48 @@ fn skill_of(prompt: &str) -> Option<&str> {
         .split(|c: char| !(c.is_ascii_alphanumeric() || "-_".contains(c)))
         .next()?;
     (!name.is_empty()).then_some(name)
+}
+
+/// The skills a `SKILL.md` calls, each once: every name quoted (`"x"` or
+/// `` `x` ``) in the clause after each `Skill tool`, the words the skills
+/// call one with (`with "x"`, `and "x"`, `twice, for "x" and "y"`).
+fn calls_of(text: &str) -> Vec<&str> {
+    let is_name = |name: &&str| {
+        !name.is_empty() && (name.chars()).all(|c| c.is_ascii_alphanumeric() || "-_:".contains(c))
+    };
+    let mut called: Vec<&str> = (text.split("Skill tool").skip(1))
+        .flat_map(|after| {
+            let clause = after.split(['.', ';', '\n']).next().unwrap_or_default();
+            clause.split(['"', '`']).skip(1).step_by(2).filter(is_name)
+        })
+        .collect();
+    called.sort();
+    called.dedup();
+    called
+}
+
+/// Each Harness's plugin skill dirs, by its name: `<installPath>/skills` of
+/// each plugin its `plugins_file` lists; none when it cannot be read.
+fn plugin_dirs(world: &dyn World, config: &Config) -> Vec<(String, String)> {
+    let mut dirs = vec![];
+    for (name, harness) in &config.harnesses {
+        let Some(file) = &harness.plugins_file else {
+            continue;
+        };
+        let Some(json) = (world.read_file(file).ok().flatten())
+            .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
+        else {
+            continue;
+        };
+        let installs = (json["plugins"].as_object().into_iter())
+            .flat_map(|plugins| plugins.values())
+            .filter_map(|installs| installs.as_array())
+            .flatten();
+        for path in installs.filter_map(|install| install["installPath"].as_str()) {
+            dirs.push((name.clone(), format!("{path}/skills")));
+        }
+    }
+    dirs
 }
 
 /// Whether the GitHub App is installed on the Repo `slug`, which the

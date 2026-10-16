@@ -108,6 +108,8 @@ models = ["fable", "opus", "sonnet", "haiku"]
 efforts = ["low", "medium", "high", "xhigh", "max"]
 trust_prompt = { text = "Yes, I trust this folder", keys = ["down", "enter"] }
 skill_dirs = ["~/.claude/skills", ".claude/skills"]
+# Its installed plugins, each reading skills from its `skills/` too.
+plugins_file = "~/.claude/plugins/installed_plugins.json"
 mcp_args = ["--mcp-config", '{"mcpServers":{"wiki":{"command":"nico-agent","args":{mcpArgs}}}}', "--allowedTools", "mcp__wiki__*"]
 
 [harnesses.codex]
@@ -442,6 +444,9 @@ pub struct Harness {
     /// directory, a relative one the Repo's clone.
     #[serde(default)]
     pub skill_dirs: Vec<String>,
+    /// Claude's `installed_plugins.json`: each plugin's `<installPath>/skills`
+    /// is a skill dir too. `~/` is the home directory.
+    pub plugins_file: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
