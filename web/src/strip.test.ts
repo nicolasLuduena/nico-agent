@@ -7,6 +7,7 @@ const status = (dispatches: Partial<Dispatch>[], githubPausedUntil: string | nul
   repos: [],
   wikis: [],
   libraries: [],
+  rate_limits: {},
   sources: { github: { paused_until: githubPausedUntil }, linear: { paused_until: null } },
   wiki_settings: { hour: 2, launch: { harness: "opencode", model: null, effort: null }, calls: 48, depth: 7, concurrency: 4, embed_model: "nomic-embed-text", harnesses: {} },
   dispatches: dispatches.map((d) => ({

@@ -17,6 +17,24 @@ export interface Status {
   wikis: WikiState[];
   /** The Library versions `[wiki]` adds that no Repo links: the Libraries tab's. */
   libraries: Library[];
+  /** What each GitHub identity (`gh`, the user; `ghbot`, the bot, where installed) has used of its budgets, as the last tick read it. */
+  rate_limits: RateLimits;
+}
+
+export type RateLimits = Record<string, RateLimit>;
+
+/** An identity's REST (`core`) and GraphQL budgets. */
+export interface RateLimit {
+  core: Budget;
+  graphql: Budget;
+}
+
+export interface Budget {
+  limit: number;
+  used: number;
+  remaining: number;
+  /** When it is full again. */
+  reset: string;
 }
 
 /** `[wiki]` as it takes effect: when the loop checks each Repo's Wiki, the launch each part is asked of, a build's budget and the embedding model. */

@@ -18,10 +18,12 @@ use crate::config;
 use crate::dispatch;
 use crate::library;
 use crate::map;
+use crate::rate_limit::{self, RateLimits};
 use crate::refresh;
 use crate::repo;
 use crate::review;
 use crate::stage;
+use crate::state;
 use crate::status;
 use crate::wiki;
 use crate::world::{AgentState, Answer, HttpRequest, HttpResponse, World};
@@ -36,7 +38,10 @@ const ROUTES: &[(&str, &str)] = &[
         "GET /wiki/<id>",
         "the app at the Wiki's page, its Component in the fragment",
     ),
-    ("GET /api/status", "the status of every Repo and Dispatch"),
+    (
+        "GET /api/status",
+        "the status of every Repo and Dispatch, and what each GitHub identity has used of its rate limits",
+    ),
     (
         "GET /api/map/<project>",
         "the issues of the Project's Repos and how they block and stack on each other",
@@ -336,6 +341,8 @@ fn status(ctx: &Context) -> Result<Value, Refusal> {
         .filter(|l| library::linked_by(&config, &l.id()).is_none() && listed.insert(l.id()))
         .collect::<Vec<_>>();
     shown["libraries"] = json!(unlinked);
+    let limits: RateLimits = state::load(&ctx.config_dir.join(rate_limit::FILE))?;
+    shown["rate_limits"] = json!(limits);
     // shortcut: an unreadable morning.md shows as none, like a missing one; say why if one ever is.
     shown["morning_summary"] = json!(fs::read_to_string(ctx.config_dir.join(away::SUMMARY)).ok());
     Ok(shown)

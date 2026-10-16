@@ -9,7 +9,7 @@ use std::time::{Duration, SystemTime};
 use crate::state;
 use crate::world::{
     Agent, Answered, Called, GitHubIssue, Handler, Headless, HttpRequest, LinearIssue, PullRequest,
-    PullRequestActivity, Tab, Worktree, World, WorldError, WorldResult,
+    PullRequestActivity, RateLimit, Tab, Worktree, World, WorldError, WorldResult,
 };
 
 pub const FILE: &str = "pauses.json";
@@ -141,6 +141,11 @@ impl World for Guarded<'_> {
             handler(&world, request)
         };
         self.world.listen(port, Box::new(guarded))
+    }
+
+    // Asking it costs none, so it is asked even while GitHub is paused.
+    fn github_rate_limit(&self, bot: bool) -> WorldResult<RateLimit> {
+        self.world.github_rate_limit(bot)
     }
 
     // Neither GitHub nor Linear.
