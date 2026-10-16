@@ -93,8 +93,8 @@ fn a_new_asking_starts_one_faux_nico_in_a_worktree_at_the_base_with_its_prompt()
             "herdr agent read impl-api-7 --source visible",
             "git -C /src/api fetch origin",
             "herdr worktree create --cwd /src/api --branch faux-nico-api-7-20260930121000 --base origin/main --label faux-nico-api-7 --no-focus",
-            "herdr tab create --workspace w2 --cwd /worktrees/faux-nico-api-7-20260930121000 --label faux-nico --no-focus",
-            "herdr agent start faux-nico-api-7 --kind claude --pane w2:p2 -- ",
+            "herdr tab rename w2:t1 faux-nico",
+            "herdr agent start faux-nico-api-7 --kind claude --pane w2:p1 -- ",
             PROMPT,
         ]
     );
@@ -106,7 +106,7 @@ fn a_new_asking_starts_one_faux_nico_in_a_worktree_at_the_base_with_its_prompt()
         json!({
             "trigger": "faux-nico", "repo": "acme/api", "at": "2026-09-30T12:10:00Z",
             "agent": "faux-nico-api-7", "harness": "claude", "model": null, "effort": null,
-            "tab": "w2:t2", "pane": "w2:p2",
+            "tab": "w2:t1", "pane": "w2:p1",
             "workspace": "w2", "worktree": "/worktrees/faux-nico-api-7-20260930121000",
             "closed_at": null,
             "issue": "acme/api#7", "asking": "2026-09-30T12:10:00Z",
@@ -386,7 +386,7 @@ fn with_its_repo_s_wiki_built_and_on_faux_nico_starts_with_the_wiki_mcp_allowed_
     assert_eq!(
         launched(&t),
         [
-            r#"herdr agent start faux-nico-api-7 --kind claude --pane w2:p2 -- --mcp-config {"mcpServers":{"wiki":{"command":"nico-agent","args":["mcp","--wiki","acme/api"]}}} --allowedTools mcp__wiki__*"#.to_string(),
+            r#"herdr agent start faux-nico-api-7 --kind claude --pane w2:p1 -- --mcp-config {"mcpServers":{"wiki":{"command":"nico-agent","args":["mcp","--wiki","acme/api"]}}} --allowedTools mcp__wiki__*"#.to_string(),
             format!("{PROMPT}{WIKI_LINES}"),
         ]
     );
@@ -402,7 +402,7 @@ fn on_codex_the_wiki_mcp_is_a_config_override_with_its_tools_approved() {
 
     assert_eq!(
         launched[0],
-        r#"herdr agent start faux-nico-api-7 --kind codex --pane w2:p2 -- -c projects={"/src/api"={trust_level="trusted"}} -c approvals_reviewer="auto_review" -c mcp_servers.wiki.command="nico-agent" -c mcp_servers.wiki.args=["mcp","--wiki","acme/api"] -c mcp_servers.wiki.default_tools_approval_mode="approve""#
+        r#"herdr agent start faux-nico-api-7 --kind codex --pane w2:p1 -- -c projects={"/src/api"={trust_level="trusted"}} -c approvals_reviewer="auto_review" -c mcp_servers.wiki.command="nico-agent" -c mcp_servers.wiki.args=["mcp","--wiki","acme/api"] -c mcp_servers.wiki.default_tools_approval_mode="approve""#
     );
     assert!(launched[1].ends_with(WIKI_LINES), "{}", launched[1]);
 }
@@ -424,7 +424,7 @@ fn on_opencode_the_wiki_mcp_is_a_local_server_in_the_config_it_is_given_with_its
     assert_eq!(
         launched[0],
         format!(
-            "herdr pane run w2:p2 env OPENCODE_CONFIG_CONTENT='{config}' opencode2 --standalone"
+            "herdr pane run w2:p1 env OPENCODE_CONFIG_CONTENT='{config}' opencode2 --standalone"
         )
     );
     assert!(launched[1].ends_with(WIKI_LINES), "{}", launched[1]);
@@ -433,7 +433,7 @@ fn on_opencode_the_wiki_mcp_is_a_local_server_in_the_config_it_is_given_with_its
 #[test]
 fn with_the_wiki_switch_off_or_no_wiki_built_faux_nico_gets_neither_the_mcp_nor_the_lines() {
     let bare = [
-        "herdr agent start faux-nico-api-7 --kind claude --pane w2:p2 -- ".to_string(),
+        "herdr agent start faux-nico-api-7 --kind claude --pane w2:p1 -- ".to_string(),
         PROMPT.to_string(),
     ];
     let off = dispatched(ANSWER_ON);

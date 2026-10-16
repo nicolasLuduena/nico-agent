@@ -191,9 +191,18 @@ pub struct PullRequestActivity {
 pub struct Worktree {
     pub workspace: String,
     pub path: String,
+    /// The tab herdr opens the workspace with.
+    pub tab: Tab,
 }
 
+/// A workspace herdr opened, with the tab it opened it with.
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Workspace {
+    pub workspace: String,
+    pub tab: Tab,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Tab {
     pub tab: String,
     pub pane: String,
@@ -443,6 +452,7 @@ pub trait World {
     /// Close a workspace and the agents in it; no-op if it is gone.
     fn herdr_workspace_close(&self, workspace: &str) -> WorldResult<()>;
     fn herdr_tab_create(&self, workspace: &str, cwd: &str, label: &str) -> WorldResult<Tab>;
+    fn herdr_tab_rename(&self, tab: &str, label: &str) -> WorldResult<()>;
     /// Close a tab and the agents in it; no-op if it is gone.
     fn herdr_tab_close(&self, tab: &str) -> WorldResult<()>;
     /// Start an agent of a herdr kind in a pane: `true` once ready for input,
@@ -472,7 +482,7 @@ pub trait World {
     /// Submit a prompt and wait until the agent starts working: `false` when it never reacted.
     fn herdr_agent_prompt(&self, name: &str, text: &str) -> WorldResult<bool>;
     /// Open a workspace on the folder `cwd`, with no worktree, without focusing it.
-    fn herdr_workspace_create(&self, cwd: &str, label: &str) -> WorldResult<String>;
+    fn herdr_workspace_create(&self, cwd: &str, label: &str) -> WorldResult<Workspace>;
 
     // opencode
     /// Save `effort` as opencode's variant for `model` in its variant `file`
@@ -1231,6 +1241,14 @@ fn herdr(args: &[&str]) -> Result<Value, HerdrFailure> {
 }
 
 /// The text at `value`, or herdr answered something else.
+/// The tab and root pane in herdr's answer to a command that opened a tab.
+fn herdr_tab(result: &Value) -> WorldResult<Tab> {
+    Ok(Tab {
+        tab: herdr_str(&result["tab"]["tab_id"])?,
+        pane: herdr_str(&result["root_pane"]["pane_id"])?,
+    })
+}
+
 fn herdr_str(value: &Value) -> WorldResult<String> {
     value
         .as_str()
@@ -1762,6 +1780,7 @@ impl World for RealWorld {
         Ok(Worktree {
             workspace: herdr_str(&result["workspace"]["workspace_id"])?,
             path: herdr_str(&result["worktree"]["path"])?,
+            tab: herdr_tab(&result)?,
         })
     }
     fn herdr_worktree_remove(&self, workspace: &str, force: bool) -> WorldResult<()> {
@@ -1792,10 +1811,11 @@ impl World for RealWorld {
             label,
             "--no-focus",
         ])?;
-        Ok(Tab {
-            tab: herdr_str(&result["tab"]["tab_id"])?,
-            pane: herdr_str(&result["root_pane"]["pane_id"])?,
-        })
+        herdr_tab(&result)
+    }
+    fn herdr_tab_rename(&self, tab: &str, label: &str) -> WorldResult<()> {
+        herdr(&["tab", "rename", tab, label])?;
+        Ok(())
     }
     fn herdr_tab_close(&self, tab: &str) -> WorldResult<()> {
         match herdr_text(&["tab", "close", tab]) {
@@ -1910,7 +1930,7 @@ impl World for RealWorld {
             Err(failure) => Err(failure.into()),
         }
     }
-    fn herdr_workspace_create(&self, cwd: &str, label: &str) -> WorldResult<String> {
+    fn herdr_workspace_create(&self, cwd: &str, label: &str) -> WorldResult<Workspace> {
         let args = [
             "workspace",
             "create",
@@ -1921,7 +1941,10 @@ impl World for RealWorld {
             "--no-focus",
         ];
         let result = herdr(&args)?;
-        herdr_str(&result["workspace"]["workspace_id"])
+        Ok(Workspace {
+            workspace: herdr_str(&result["workspace"]["workspace_id"])?,
+            tab: herdr_tab(&result)?,
+        })
     }
     fn opencode_save_variant(
         &self,

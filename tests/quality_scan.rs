@@ -54,8 +54,8 @@ fn a_scan_starts_on_its_weekday_at_its_hour_with_the_quality_scan_prompt_and_is_
             "git -C /src/api default-branch",
             "git -C /src/api fetch origin",
             "herdr worktree create --cwd /src/api --branch quality-scan-api-20261004030000 --base origin/main --label quality-scan-api --no-focus",
-            "herdr tab create --workspace w1 --cwd /worktrees/quality-scan-api-20261004030000 --label quality-scan --no-focus",
-            "herdr agent start quality-scan-api --kind claude --pane w1:p2 -- ",
+            "herdr tab rename w1:t1 quality-scan",
+            "herdr agent start quality-scan-api --kind claude --pane w1:p1 -- ",
             "herdr agent prompt quality-scan-api /quality-scan acme/api",
         ]
     );
@@ -76,7 +76,7 @@ fn a_scan_of_a_repo_linking_a_built_library_version_starts_with_its_wiki_mcp_and
     assert_eq!(
         started(&calls)[4..],
         [
-            r#"herdr agent start quality-scan-api --kind claude --pane w1:p2 -- --mcp-config {"mcpServers":{"wiki":{"command":"nico-agent","args":["mcp","--wiki","acme/kit@v1"]}}} --allowedTools mcp__wiki__*"#.to_string(),
+            r#"herdr agent start quality-scan-api --kind claude --pane w1:p1 -- --mcp-config {"mcpServers":{"wiki":{"command":"nico-agent","args":["mcp","--wiki","acme/kit@v1"]}}} --allowedTools mcp__wiki__*"#.to_string(),
             format!("herdr agent prompt quality-scan-api /quality-scan acme/api Ask the wiki MCP about {KIT} before reading their source."),
         ]
     );

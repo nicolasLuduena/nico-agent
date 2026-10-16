@@ -264,7 +264,7 @@ fn a_removed_repos_work_in_flight_is_still_watched_reviewed_flipped_restarted_an
     assert_eq!(
         reviewer_start.as_deref(),
         Some(
-            r#"herdr agent start rev-api-7 --kind codex --pane w1:p3 -- -c projects={"/src/api"={trust_level="trusted"}} -c approvals_reviewer="auto_review""#
+            r#"herdr agent start rev-api-7 --kind codex --pane w1:p2 -- -c projects={"/src/api"={trust_level="trusted"}} -c approvals_reviewer="auto_review""#
         )
     );
 }

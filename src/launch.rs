@@ -10,7 +10,7 @@ use serde_json::json;
 use crate::cli::Refusal;
 use crate::config::{Harness, LaunchMode, fill_in};
 use crate::source;
-use crate::world::{AgentState, World, WorldResult, agent_state};
+use crate::world::{AgentState, Tab, World, WorldResult, agent_state};
 
 /// How long herdr may take to see a pane-command agent, or an agent to settle
 /// once its trust question is answered.
@@ -66,15 +66,20 @@ fn named(role: &str, slug: &str, suffix: &str) -> String {
     full
 }
 
-/// Open the agent's tab, labelled `label`, in `workspace`, working in `cwd`.
+/// Open the agent's tab, labelled `label`, in `workspace`, working in `cwd`:
+/// `first`, the tab a new workspace opened with, when given, so no empty one is left.
 pub fn open_tab(
     world: &dyn World,
     launch: &mut AgentLaunch,
     workspace: &str,
     cwd: &str,
     label: &str,
+    first: Option<Tab>,
 ) -> WorldResult<()> {
-    let tab = world.herdr_tab_create(workspace, cwd, label)?;
+    let tab = match first {
+        Some(tab) => world.herdr_tab_rename(&tab.tab, label).map(|()| tab)?,
+        None => world.herdr_tab_create(workspace, cwd, label)?,
+    };
     launch.tab = Some(tab.tab);
     launch.pane = Some(tab.pane);
     Ok(())

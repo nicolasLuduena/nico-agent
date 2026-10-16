@@ -24,7 +24,7 @@ use crate::source::{self, BlockerPr, Read, Start};
 use crate::stage;
 use crate::state;
 use crate::wiki;
-use crate::world::{self, PrState, READY_LABEL, World};
+use crate::world::{self, PrState, READY_LABEL, Tab, World};
 
 pub const FILE: &str = "dispatches.json";
 
@@ -59,6 +59,9 @@ pub struct Dispatch {
     /// Set by the worktree step.
     pub worktree: Option<String>,
     pub workspace: Option<String>,
+    /// The tab its workspace opened with, until the tab step makes it the Implementer's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub first_tab: Option<Tab>,
     /// The URL of its PR, once found on its branch; `prs.json` says what GitHub last said of it.
     pub pr: Option<String>,
     pub implementer: AgentLaunch,
@@ -218,6 +221,7 @@ pub fn issue(ctx: &Context, config: &Config, key: &str, flags: Flags) -> Result<
         stacked_on,
         worktree: None,
         workspace: None,
+        first_tab: None,
         pr: None,
         implementer: AgentLaunch {
             agent: launch::agent_name("impl", slug, key),
@@ -433,12 +437,12 @@ fn run_step(
                 world.herdr_worktree_create(&repo.path, &record.branch, &base, &label(record))?;
             record.worktree = Some(made.path);
             record.workspace = Some(made.workspace);
+            record.first_tab = Some(made.tab);
         }
         "tab" => {
-            // The tab an earlier start left, if any.
-            if let Some(tab) = record.implementer.tab.take() {
-                world.herdr_tab_close(&tab)?;
-            }
+            // The tab an earlier start left, if any, closed once this one is
+            // open: a workspace left with no tab may close itself.
+            let earlier = record.implementer.tab.clone();
             let (workspace, worktree) = (
                 record.workspace.as_ref().expect(made),
                 record.worktree.as_ref().expect(made),
@@ -449,7 +453,12 @@ fn run_step(
                 workspace,
                 worktree,
                 "implementer",
+                record.first_tab.clone(),
             )?;
+            record.first_tab = None;
+            if let Some(tab) = earlier {
+                world.herdr_tab_close(&tab)?;
+            }
         }
         "agent start" => {
             let (wikis, _) = wiki::libraries(&ctx.config_dir, config, repo)?;

@@ -61,10 +61,10 @@ fn an_implementer_idle_for_stall_minutes_with_no_pr_is_restarted_in_a_new_tab_wi
         twenty_minutes.1,
         [
             "herdr agent list".to_string(),
-            "herdr tab close w1:t2".into(),
             "herdr tab create --workspace w1 --cwd /worktrees/api-1 --label implementer --no-focus"
                 .into(),
-            "herdr agent start impl-api-1 --kind claude --pane w1:p3 -- ".into(),
+            "herdr tab close w1:t1".into(),
+            "herdr agent start impl-api-1 --kind claude --pane w1:p2 -- ".into(),
             format!(
                 "herdr agent prompt impl-api-1 {PREFIX_1} You stopped with no PR open. Continue to a draft PR."
             ),
@@ -92,7 +92,7 @@ fn a_restarted_implementer_of_a_repo_linking_a_built_library_version_starts_with
     assert_eq!(
         herdr[3..],
         [
-            r#"herdr agent start impl-api-1 --kind claude --pane w1:p3 -- --mcp-config {"mcpServers":{"wiki":{"command":"nico-agent","args":["mcp","--wiki","acme/kit@v1"]}}} --allowedTools mcp__wiki__*"#.to_string(),
+            r#"herdr agent start impl-api-1 --kind claude --pane w1:p2 -- --mcp-config {"mcpServers":{"wiki":{"command":"nico-agent","args":["mcp","--wiki","acme/kit@v1"]}}} --allowedTools mcp__wiki__*"#.to_string(),
             format!(
                 "herdr agent prompt impl-api-1 {PREFIX_1} You stopped with no PR open. Continue to a draft PR. Ask the wiki MCP about {KIT} before reading their source."
             ),
@@ -154,7 +154,7 @@ fn a_reviewer_set_while_the_implementer_restarts_survives_the_restart() {
     let t = dispatched(&[1]);
     let reviewer = json!({
         "agent": "rev-api-1", "harness": "codex", "model": null, "effort": null,
-        "tab": "w1:t3", "pane": "w1:p4", "sha": "sha1",
+        "tab": "w1:t2", "pane": "w1:p3", "sha": "sha1",
     });
     let (dir, set) = (t.config_dir.clone(), reviewer.clone());
     t.world
@@ -197,10 +197,10 @@ fn serve_on_start_restarts_exactly_the_dispatches_whose_agents_are_gone_as_reboo
             // The Readiness check's, then the tick's.
             "herdr agent list".to_string(),
             "herdr agent list".into(),
-            "herdr tab close w1:t2".into(),
             "herdr tab create --workspace w1 --cwd /worktrees/api-1 --label implementer --no-focus"
                 .into(),
-            "herdr agent start impl-api-1 --kind claude --pane w1:p3 -- ".into(),
+            "herdr tab close w1:t1".into(),
+            "herdr agent start impl-api-1 --kind claude --pane w1:p2 -- ".into(),
             format!(
                 "herdr agent prompt impl-api-1 {PREFIX_1} The machine restarted. Continue where the branch left off."
             ),

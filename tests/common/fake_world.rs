@@ -782,8 +782,10 @@ impl World for FakeWorld {
         label: &str,
     ) -> WorldResult<Worktree> {
         self.call(format!("herdr worktree create --cwd {cwd} --branch {branch} --base {base} --label {label} --no-focus"))?;
+        let workspace = self.next_workspace();
         Ok(Worktree {
-            workspace: self.next_workspace(),
+            tab: first_tab(&workspace),
+            workspace,
             path: format!("/worktrees/{}", branch.rsplit('/').next().unwrap_or(branch)),
         })
     }
@@ -819,6 +821,10 @@ impl World for FakeWorld {
             tab: format!("{workspace}:t{n}"),
             pane: format!("{workspace}:p{n}"),
         })
+    }
+
+    fn herdr_tab_rename(&self, tab: &str, label: &str) -> WorldResult<()> {
+        self.call(format!("herdr tab rename {tab} {label}"))
     }
 
     /// Closing a tab ends the agent in its pane.
@@ -929,11 +935,15 @@ impl World for FakeWorld {
         Ok(true)
     }
 
-    fn herdr_workspace_create(&self, cwd: &str, label: &str) -> WorldResult<String> {
+    fn herdr_workspace_create(&self, cwd: &str, label: &str) -> WorldResult<Workspace> {
         self.call(format!(
             "herdr workspace create --cwd {cwd} --label {label} --no-focus"
         ))?;
-        Ok(self.next_workspace())
+        let workspace = self.next_workspace();
+        Ok(Workspace {
+            tab: first_tab(&workspace),
+            workspace,
+        })
     }
 
     fn opencode_save_variant(
@@ -1024,5 +1034,13 @@ impl FakeWorld {
         self.agent_panes
             .borrow_mut()
             .insert(name.into(), pane.into());
+    }
+}
+
+/// The tab herdr opens a workspace with.
+fn first_tab(workspace: &str) -> Tab {
+    Tab {
+        tab: format!("{workspace}:t1"),
+        pane: format!("{workspace}:p1"),
     }
 }

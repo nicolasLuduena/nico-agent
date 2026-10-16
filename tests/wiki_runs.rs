@@ -83,8 +83,8 @@ fn a_switch_turned_on_with_no_wiki_starts_its_build_in_a_herdr_pane_at_the_next_
         started(&calls),
         [
             "herdr workspace create --cwd /src/api --label wiki-api --no-focus",
-            "herdr tab create --workspace w1 --cwd /src/api --label wiki --no-focus",
-            "herdr pane run w1:p2 nico-agent wiki build acme/api; exit",
+            "herdr tab rename w1:t1 wiki",
+            "herdr pane run w1:p1 nico-agent wiki build acme/api; exit",
         ]
     );
     assert_eq!(
@@ -96,7 +96,7 @@ fn a_switch_turned_on_with_no_wiki_starts_its_build_in_a_herdr_pane_at_the_next_
             "commit": null,
             "built_at": null,
             "gaps": null,
-            "pane": "w1:p2",
+            "pane": "w1:p1",
             "progress": null,
         }])
     );
@@ -117,7 +117,7 @@ fn a_run_is_closed_on_its_builds_outcome_and_the_wiki_shown_built() {
     let (said, calls) = calls_after(&t, || t.tick());
 
     assert_eq!(building, Vec::<String>::new());
-    assert_eq!(started(&asked), ["herdr pane get w1:p2"]);
+    assert_eq!(started(&asked), ["herdr pane get w1:p1"]);
     assert_eq!(
         said,
         [
@@ -127,7 +127,7 @@ fn a_run_is_closed_on_its_builds_outcome_and_the_wiki_shown_built() {
     );
     assert_eq!(
         started(&calls)[..2],
-        ["herdr pane get w1:p2", "herdr workspace close w1"]
+        ["herdr pane get w1:p1", "herdr workspace close w1"]
     );
     assert_eq!(
         wikis(&t)[0],
@@ -153,7 +153,7 @@ fn a_run_is_closed_on_its_builds_outcome_and_the_wiki_shown_built() {
 fn a_run_whose_pane_is_gone_without_an_outcome_is_closed_failed() {
     let t = with_repos(ON);
     t.tick();
-    t.world.gone_panes.borrow_mut().push("w1:p2".into());
+    t.world.gone_panes.borrow_mut().push("w1:p1".into());
     t.world.advance(TICK);
 
     let (said, calls) = calls_after(&t, || t.tick());
@@ -164,7 +164,7 @@ fn a_run_whose_pane_is_gone_without_an_outcome_is_closed_failed() {
     );
     assert_eq!(
         started(&calls)[..2],
-        ["herdr pane get w1:p2", "herdr workspace close w1"]
+        ["herdr pane get w1:p1", "herdr workspace close w1"]
     );
     let api = &wikis(&t)[0];
     assert_eq!(
@@ -242,7 +242,7 @@ fn with_two_builds_queued_one_run_is_open_and_the_other_shows_queued_till_it_clo
         states(&wikis(&t)),
         [state("acme/api", "built"), state("acme/web", "building")]
     );
-    assert_eq!(wikis(&t)[1]["pane"], "w2:p2");
+    assert_eq!(wikis(&t)[1]["pane"], "w2:p1");
 }
 
 #[test]
@@ -341,7 +341,7 @@ fn the_wiki_hour_is_local_and_a_failed_build_is_tried_again_there() {
     // Buenos Aires: 04:00 there is 07:00 UTC.
     t.world.utc_offset.set(-3 * 3600);
     t.tick();
-    t.world.gone_panes.borrow_mut().push("w1:p2".into());
+    t.world.gone_panes.borrow_mut().push("w1:p1".into());
     t.world.advance(TICK);
     t.tick();
     build(&t, "acme/web");
@@ -401,7 +401,7 @@ fn a_switch_turned_off_drops_its_queued_build_and_stops_updates_and_its_wiki_sta
 fn a_run_whose_pane_did_not_take_its_command_is_closed_failed_and_the_next_one_starts() {
     let t = with_repos(ON);
     t.world
-        .fail_call("herdr pane run w1:p2", "`herdr pane run` failed: pane busy");
+        .fail_call("herdr pane run w1:p1", "`herdr pane run` failed: pane busy");
 
     t.tick();
     t.world.advance(TICK);
@@ -424,10 +424,10 @@ fn a_build_that_ends_while_the_tick_asks_for_its_pane_closes_its_run_built() {
     // The build writes its outcome and exits, and its pane goes with it.
     let file = t.config_dir.join("wikis.json");
     let built = r#"{"acme/api": {"outcome": "built", "at": "2026-09-30T12:10:00Z", "commit": "abc1234", "components": 1, "gaps": {}}}"#;
-    t.world.during_call("herdr pane get w1:p2", move || {
+    t.world.during_call("herdr pane get w1:p1", move || {
         std::fs::write(&file, built).unwrap()
     });
-    t.world.gone_panes.borrow_mut().push("w1:p2".into());
+    t.world.gone_panes.borrow_mut().push("w1:p1".into());
 
     let said = t.tick();
 
@@ -445,7 +445,7 @@ fn a_failed_build_after_a_good_one_keeps_its_wiki_shown_and_unmoved_it_is_not_bu
     (t.world.heads.borrow_mut()).insert("/src/api origin/main".into(), "def5678".into());
     t.world.advance(TO_1_50AM + TICK);
     t.tick();
-    t.world.gone_panes.borrow_mut().push("w3:p2".into());
+    t.world.gone_panes.borrow_mut().push("w3:p1".into());
     (t.world.heads.borrow_mut()).remove("/src/api origin/main");
     t.world.advance(TICK);
     let failed = t.tick();
@@ -480,7 +480,7 @@ fn a_failed_build_after_a_good_one_keeps_its_wiki_shown_and_unmoved_it_is_not_bu
 fn a_switch_turned_off_and_on_again_checks_its_wiki_at_once() {
     let t = with_repos(ON);
     t.tick();
-    t.world.gone_panes.borrow_mut().push("w1:p2".into());
+    t.world.gone_panes.borrow_mut().push("w1:p1".into());
     t.world.advance(TICK);
     t.tick();
     let switch = |on: bool| {
@@ -659,7 +659,7 @@ fn the_wikis_listed_show_their_build_building_with_its_pane_queued_or_failed_wit
     t.send("POST", "/api/wiki/acme/web/update", "");
     t.tick();
     let building = t.get("/api/wikis");
-    t.world.gone_panes.borrow_mut().push("w3:p2".into());
+    t.world.gone_panes.borrow_mut().push("w3:p1".into());
     t.world.advance(TICK);
     t.tick();
 
@@ -686,14 +686,14 @@ fn the_wikis_listed_show_their_build_building_with_its_pane_queued_or_failed_wit
             200,
             json!([
                 shown("acme/api", "queued", Value::Null, Value::Null),
-                shown("acme/web", "building", json!("w3:p2"), Value::Null),
+                shown("acme/web", "building", json!("w3:p1"), Value::Null),
             ])
         )
     );
     assert_eq!(
         failed.1,
         json!([
-            shown("acme/api", "building", json!("w4:p2"), Value::Null),
+            shown("acme/api", "building", json!("w4:p1"), Value::Null),
             shown(
                 "acme/web",
                 "failed",
@@ -775,7 +775,7 @@ fn a_build_whose_pane_died_shows_no_progress_once_its_run_closed_nor_in_the_next
     t.send("PATCH", "/api/repo/acme/api/switches", r#"{"wiki": true}"#);
     t.tick();
     half_way(&t, "2026-09-30T12:00:00Z");
-    t.world.gone_panes.borrow_mut().push("w1:p2".into());
+    t.world.gone_panes.borrow_mut().push("w1:p1".into());
     t.world.advance(TICK);
     t.tick();
     let failed = wikis(&t);
@@ -791,7 +791,7 @@ fn a_build_whose_pane_died_shows_no_progress_once_its_run_closed_nor_in_the_next
     );
     assert_eq!(
         (&again[0]["state"], &again[0]["pane"], &again[0]["progress"]),
-        (&json!("building"), &json!("w2:p2"), &Value::Null)
+        (&json!("building"), &json!("w2:p1"), &Value::Null)
     );
 }
 
@@ -801,7 +801,7 @@ fn the_wikis_listed_hold_one_not_built_yet_while_queued_building_with_its_progre
     t.tick();
     half_way(&t, "2026-09-30T12:00:00Z");
     let building = t.get("/api/wikis");
-    t.world.gone_panes.borrow_mut().push("w1:p2".into());
+    t.world.gone_panes.borrow_mut().push("w1:p1".into());
     t.world.advance(TICK);
     t.tick();
 
@@ -831,7 +831,7 @@ fn the_wikis_listed_hold_one_not_built_yet_while_queued_building_with_its_progre
                 shown(
                     "acme/api",
                     "building",
-                    json!("w1:p2"),
+                    json!("w1:p1"),
                     Value::Null,
                     progress
                 ),
@@ -847,7 +847,7 @@ fn the_wikis_listed_hold_one_not_built_yet_while_queued_building_with_its_progre
             shown(
                 "acme/web",
                 "building",
-                json!("w2:p2"),
+                json!("w2:p1"),
                 Value::Null,
                 Value::Null
             ),

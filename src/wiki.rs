@@ -244,10 +244,10 @@ pub fn step(ctx: &Context, config: &Config) -> Result<Vec<String>, Refusal> {
         let how = how.or_else(|| has.map(|_| "update".into()));
         let flag = how.map_or(String::new(), |how| format!(" --{how}"));
         let start = |run: &mut Run| {
-            let workspace =
-                (run.workspace).insert(ctx.world.herdr_workspace_create(&cwd, &run.launch.agent)?);
+            let made = ctx.world.herdr_workspace_create(&cwd, &run.launch.agent)?;
+            let workspace = (run.workspace).insert(made.workspace);
             let label = run.trigger.label();
-            launch::open_tab(ctx.world, &mut run.launch, workspace, &cwd, label)?;
+            launch::open_tab(ctx.world, &mut run.launch, workspace, &cwd, label, Some(made.tab))?;
             let pane = run.launch.pane.as_deref().expect("its tab is open");
             // Its shell exits with it, so a pane gone is a build ended.
             let command = format!(

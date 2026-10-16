@@ -19,7 +19,7 @@ use crate::faux_nico;
 use crate::launch::{self, AgentLaunch};
 use crate::state;
 use crate::wiki;
-use crate::world::{self, Agent, AgentState};
+use crate::world::{self, Agent, AgentState, Tab};
 
 pub const FILE: &str = "runs.json";
 
@@ -350,16 +350,18 @@ pub fn start_on_worktree(
     let made = world.herdr_worktree_create(&repo.path, &branch, &base, &run.launch.agent)?;
     run.workspace = Some(made.workspace);
     run.worktree = Some(made.path.clone());
-    start(ctx, config, run, &made.path, &repo.path, text, wikis)
+    start(ctx, config, run, made.tab, &made.path, &repo.path, text, wikis)
 }
 
-/// Start the Run's agent in a new tab of its workspace, working in `cwd` and
-/// trusting `repo_path`, with the wiki MCP serving `wikis` if any, and
-/// prompt it with `text`.
+/// Start the Run's agent in `tab`, the one its new workspace opened with,
+/// working in `cwd` and trusting `repo_path`, with the wiki MCP serving
+/// `wikis` if any, and prompt it with `text`.
+#[allow(clippy::too_many_arguments)]
 fn start(
     ctx: &Context,
     config: &Config,
     run: &mut Run,
+    tab: Tab,
     cwd: &str,
     repo_path: &str,
     text: &str,
@@ -373,6 +375,7 @@ fn start(
         &workspace,
         cwd,
         run.trigger.label(),
+        Some(tab),
     )?;
     let ready = launch::start(ctx.world, harness, &run.launch, repo_path, wikis)?;
     launch::get_ready(ctx.world, harness, &run.launch, cwd, ready)?;
@@ -409,8 +412,9 @@ fn morning(ctx: &Context, config: &Config) -> Result<Vec<String>, Refusal> {
     ];
     let text = fill_in(&config.prompts.morning, &values);
     let said = start_run(ctx, Trigger::Morning, None, chosen, |run| {
-        run.workspace = Some(ctx.world.herdr_workspace_create(&dir, &run.launch.agent)?);
-        start(ctx, config, run, &dir, &dir, &text, &wikis)
+        let made = ctx.world.herdr_workspace_create(&dir, &run.launch.agent)?;
+        run.workspace = Some(made.workspace);
+        start(ctx, config, run, made.tab, &dir, &dir, &text, &wikis)
     })?;
     Ok(vec![said])
 }

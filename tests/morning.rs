@@ -216,8 +216,8 @@ fn at_the_hour_one_morning_agent_starts_on_the_config_directory_and_once_that_da
         started(&calls),
         [
             format!("herdr workspace create --cwd {dir} --label morning --no-focus"),
-            format!("herdr tab create --workspace w1 --cwd {dir} --label morning --no-focus"),
-            "herdr agent start morning --kind claude --pane w1:p2 -- ".into(),
+            "herdr tab rename w1:t1 morning".into(),
+            "herdr agent start morning --kind claude --pane w1:p1 -- ".into(),
             format!(
                 "herdr agent prompt morning /morning: the night is in nico-agent status --json --since 2026-09-30T07:00:00Z. Write the summary to {dir}/morning.md, with one line on the Wikis its `wikis` lists built or failed since then."
             ),
@@ -264,7 +264,7 @@ fn the_morning_agent_starts_with_the_wiki_mcp_of_each_repo_whose_wiki_is_on_and_
     assert_eq!(
         launched,
         [
-            r#"herdr agent start morning --kind claude --pane w1:p2 -- --mcp-config {"mcpServers":{"wiki":{"command":"nico-agent","args":["mcp","--wiki","acme/api"]}}} --allowedTools mcp__wiki__*"#.to_string(),
+            r#"herdr agent start morning --kind claude --pane w1:p1 -- --mcp-config {"mcpServers":{"wiki":{"command":"nico-agent","args":["mcp","--wiki","acme/api"]}}} --allowedTools mcp__wiki__*"#.to_string(),
             format!(
                 "herdr agent prompt morning /morning: the night is in nico-agent status --json --since 2026-09-30T07:00:00Z. Write the summary to {dir}/morning.md, with one line on the Wikis its `wikis` lists built or failed since then. The Wiki of acme/api describes abc1234; where it and the code disagree, the code wins."
             ),
