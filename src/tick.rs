@@ -21,6 +21,7 @@ use crate::restart;
 use crate::review;
 use crate::source::{self, Read};
 use crate::stage;
+use crate::state;
 use crate::wiki;
 use crate::world::Agent;
 
@@ -46,12 +47,18 @@ pub fn tick(ctx: &Context, refresh: bool) -> Result<Vec<String>, Refusal> {
     said.extend(install::step(ctx, &config, &merged)?);
     said.extend(bucket::step(ctx, &config)?);
     said.extend(dispatch::close_final(ctx, &config)?);
+    let listed = state::iso(ctx.world.now());
     let agents = list_agents(ctx, &mut said)?;
     // 4. Restart what broke: rebooted, stalled (#240); conflict, retarget (#244); verdict (#243).
     said.extend(restart::step(ctx, &config, agents.as_deref(), &no_pr)?);
     said.extend(take_up(ctx, &config)?);
     // 5. Start Reviewers (#242).
-    said.extend(review::start_reviewers(ctx, &config, agents.as_deref())?);
+    said.extend(review::start_reviewers(
+        ctx,
+        &config,
+        agents.as_deref(),
+        &listed,
+    )?);
     // 6. Flip Verified PRs to ready (#243).
     said.extend(flip::step(ctx, &config)?);
     said.extend(asking::step(ctx, &config, agents.as_deref())?);

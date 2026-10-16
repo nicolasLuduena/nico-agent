@@ -121,7 +121,8 @@ pub fn verdict(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
         // The same Verdict again changes nothing, its time included, unless it
         // rules on the Rulings that answered it.
         if old.as_ref().is_some_and(|old| {
-            (old.result, &old.sha) == (result, &new.sha) && !review::answered(&d, old, None)
+            (old.result, &old.sha) == (result, &new.sha)
+                && !review::answered(&d, old, None, &new.at)
         }) {
             return Ok::<_, Refusal>((text.to_string(), false));
         }

@@ -697,6 +697,8 @@ fn a_failing_verdict_whose_findings_are_all_dismissed_gets_a_reviewer_on_the_sam
         &t,
         &["acme/api#7", "fail", "--sha", "sha9", "--findings", &file],
     );
+    // Idle since its last push: as listed before its restart, it has ruled on nothing yet.
+    (t.world.agents.borrow_mut()).insert("impl-api-7".into(), "idle".into());
     t.world.advance(TICK);
     assert_eq!(t.tick(), ["acme/api#7 restarted: verdict"]);
     // Every Finding dismissed: the Rulings are in .evidence/, which git ignores, so nothing is pushed.

@@ -38,10 +38,13 @@ pub struct Reviewer {
 }
 
 /// Whether `v`, the Verdict on the head of `d`'s PR, is a fail the
-/// Implementer answered with Rulings alone: restarted for it, it went idle
-/// in `agents` with the head unchanged, or a Reviewer was started to rule on them.
-pub fn answered(d: &Dispatch, v: &Verdict, agents: Option<&[Agent]>) -> bool {
-    let restarted = (d.restarts.iter()).any(|r| r.reason == Reason::Verdict && r.at >= v.at);
+/// Implementer answered with Rulings alone: restarted for it before
+/// `listed`, when herdr listed `agents`, it went idle in them with the head
+/// unchanged, or a Reviewer was started to rule on them.
+pub fn answered(d: &Dispatch, v: &Verdict, agents: Option<&[Agent]>, listed: &str) -> bool {
+    // Listed before its restart, an idle Implementer has ruled on nothing yet.
+    let restarted = (d.restarts.iter())
+        .any(|r| r.reason == Reason::Verdict && r.at >= v.at && r.at.as_str() < listed);
     let idle = agents.and_then(|a| world::agent_state(a, &d.implementer.agent));
     let ruling = (d.reviewer.as_ref()).is_some_and(|r| r.rulings && r.sha.as_ref() == Some(&v.sha));
     v.result == Outcome::Fail
@@ -51,7 +54,8 @@ pub fn answered(d: &Dispatch, v: &Verdict, agents: Option<&[Agent]>) -> bool {
 
 /// (5) Start a Reviewer for each live Dispatch whose open PR has a head with
 /// no Verdict, or a failing one [`answered`] with Rulings alone, and no
-/// Reviewer prompted for it still in herdr's `agents`; behind the `review` switch. A launch that fails is said and tried again
+/// Reviewer prompted for it still in herdr's `agents`, listed at `listed`;
+/// behind the `review` switch. A launch that fails is said and tried again
 /// next tick, in a fresh tab. Without `agents`, a prompted Reviewer stands.
 /// A Reviewer herdr reports working is never closed: the next head waits for it.
 /// A head's starts that fail or whose Reviewer leaves herdr are tried again
@@ -60,6 +64,7 @@ pub fn start_reviewers(
     ctx: &Context,
     config: &Config,
     agents: Option<&[Agent]>,
+    listed: &str,
 ) -> Result<Vec<String>, Refusal> {
     let prs = stage::load(&ctx.config_dir)?;
     let mut said = vec![];
@@ -77,7 +82,7 @@ pub fn start_reviewers(
             agents.is_some_and(|a| world::agent_state(a, &r.launch.agent).is_none())
         };
         let verdict = standing.verdict_on_head();
-        let answered = verdict.is_some_and(|v| answered(&d, v, agents));
+        let answered = verdict.is_some_and(|v| answered(&d, v, agents, listed));
         // Once answered, the Reviewer that failed the head is not the one prompted for it.
         let last = (d.reviewer.as_ref()).filter(|r| !answered || r.rulings);
         let prompted = last.filter(|r| !gone(r)).and_then(|r| r.sha.as_ref());
@@ -288,6 +293,7 @@ pub fn shown(
     d: &Dispatch,
     standing: &Standing,
     agents: Option<&[Agent]>,
+    listed: &str,
 ) -> Option<Value> {
     let reviewed =
         d.closed_at.is_none() && matches!(standing.stage, Stage::PrDraft | Stage::Verified);
@@ -295,7 +301,7 @@ pub fn shown(
     let head = &pr.head_sha;
     let reviewer = d.reviewer.as_ref();
     let on_head = standing.verdict_on_head();
-    let answered = on_head.is_some_and(|v| answered(d, v, agents));
+    let answered = on_head.is_some_and(|v| answered(d, v, agents, listed));
     // herdr's Agent state of the Reviewer prompted for the head: `None` once it
     // left herdr, `Unknown` while herdr does not say, which leaves it standing, as the tick does.
     let prompted = (reviewer.filter(|r| r.sha.as_ref() == Some(head) && (!answered || r.rulings)))
