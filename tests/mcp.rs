@@ -541,8 +541,9 @@ const EMBED: &str = "curl -X POST http://127.0.0.1:11434/api/embed -d ";
 
 /// acme/api with its Wiki one leaf of nine records: its overview, "The page
 /// serves on port 80.", six claims of `src/lib.rs`, "Claim 1." to "Claim 6.",
-/// and "Config is a unit struct.", and an Explainer of `web/app.ts`. Ollama embeds the port's claim as it
-/// embeds `QUESTION`, the config's opposite it, and the rest across it.
+/// and "Config is a unit struct.", and an Explainer of `web/app.ts`. Ollama
+/// embeds the port's claim as it embeds `QUESTION`, the config's opposite it,
+/// and the rest across it.
 fn with_claims() -> Setup {
     let t = setup();
     std::fs::create_dir_all(&t.config_dir).unwrap();

@@ -1785,7 +1785,8 @@ fn an_interpretation_citing_a_file_changed_on_the_base_is_stale_until_an_update_
 #[test]
 fn a_term_or_explainer_citing_a_file_changed_on_the_base_is_stale_and_an_update_keeps_a_term_so() {
     let t = with_repo("");
-    // The top part's Term cites src/config.rs, which none of its Interpretations does, as Core's Explainer does.
+    // The top part's Term cites src/config.rs, which none of its
+    // Interpretations does; so does Core's Explainer.
     let settings = term(
         "Config",
         "The settings the API runs with.",

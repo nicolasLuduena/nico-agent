@@ -213,7 +213,7 @@ build asks about its part again. _Avoid_: outdated, invalid.
 
 **Update**: a wiki build of a Repo's Wiki from the one before it, asking
 again only about the parts whose files changed and copying the rest; a
-parent whose parts changed keeps its Interpretations, Terms and Explainer, Stale
+parent whose parts changed keeps its Interpretations and Terms, Stale
 where they are. _Avoid_: refresh, incremental build.
 
 **Rebuild**: a wiki build of a Wiki from nothing, as its first one is,

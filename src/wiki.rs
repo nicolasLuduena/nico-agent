@@ -14,8 +14,8 @@
 //! the Board's buttons queue theirs first.
 //!
 //! Between builds, whoever serves a Repo's Wiki marks Stale each
-//! Interpretation, Term and Explainer citing a file whose blob at `origin/<base>` is not
-//! the one it was written against.
+//! Interpretation, Term and Explainer citing a file whose blob at
+//! `origin/<base>` is not the one it was written against.
 
 use std::cmp::Reverse;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -648,7 +648,8 @@ struct Component {
     explainer: Option<Explainer>,
     gaps: Vec<Gap>,
     /// The blob each file its Interpretations, Terms and Explainer cite had
-    /// when they were written, where the Wiki's has moved on since: one an Update kept.
+    /// when they were written, where the Wiki's has moved on since: one an
+    /// Update kept.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     blobs: BTreeMap<String, String>,
 }
@@ -948,8 +949,8 @@ pub fn get(ctx: &Context, id: &str) -> Result<Option<Value>, Refusal> {
 /// Mark `wiki`, the Wiki of `repo` as the Bucket holds it, against the
 /// Repo's `origin/<base>` as its clone last fetched it: `stale` on each
 /// Interpretation, Term and Explainer citing a file whose blob there is not
-/// the one it was written against, with how many Interpretations are, and how many
-/// commits the Wiki's is `behind` the Base.
+/// the one it was written against, with how many Interpretations are, and
+/// how many commits the Wiki's is `behind` the Base.
 pub fn marked(world: &dyn World, repo: &Repo, wiki: &mut Value) -> WorldResult<()> {
     let base = base(world, repo)?;
     let head = format!("origin/{base}");
@@ -989,8 +990,8 @@ pub fn marked(world: &dyn World, repo: &Repo, wiki: &mut Value) -> WorldResult<(
                 t["stale"] = json!(true);
             }
         }
-        let steps = |e: &&mut Value| (e["steps"].as_array().into_iter().flatten()).any(&moved);
-        if let Some(e) = c.get_mut("explainer").filter(steps) {
+        let moved_step = |e: &&mut Value| (e["steps"].as_array().into_iter().flatten()).any(&moved);
+        if let Some(e) = c.get_mut("explainer").filter(moved_step) {
             e["stale"] = json!(true);
         }
     }

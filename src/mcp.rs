@@ -72,12 +72,13 @@ fn answer(ctx: &Context, named: &[&str], line: &str) -> Option<Value> {
             match called {
                 Ok(answer) => {
                     let mut content = vec![json!({ "type": "text", "text": answer.to_string() })];
-                    let records = if name == "ask" {
+                    // `ask`'s records, or `find_component`'s Components.
+                    let listed = if name == "ask" {
                         &answer["records"]
                     } else {
                         &answer
                     };
-                    if (records.as_array().into_iter().flatten()).any(|r| r["stale"] == true) {
+                    if (listed.as_array().into_iter().flatten()).any(|r| r["stale"] == true) {
                         content.push(json!({ "type": "text", "text": STALE }));
                     }
                     json!({ "content": content })
