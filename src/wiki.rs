@@ -1,15 +1,15 @@
 //! A Repo's or a Library version's Wiki, built by `wiki build` from scratch,
-//! with `--update` from the Wiki before it, asking only about what changed,
-//! or with `--continue` asking only about the parts its budget, or a call
-//! that failed, left Gaps.
+//! with `--update` from the Wiki before it, asking only about what changed
+//! and the parts a call that failed left Gaps, or with `--continue` asking
+//! only about the parts its budget, or a call that failed, left Gaps.
 //! Its code, a Repo's at `origin/<base>` or a Library version's at its tag
 //! under its subfolder, is divided top-down, as know-the-map's hermeneut does:
 //! each part is one headless, read-only call of the `[wiki]` launch, and
 //! code checks every answer, sending each claim that fails back to the
 //! model in the same session, up to 3 rounds, then dropping it and recording
 //! its part as a Gap. A call that errors leaves its part an `unanswered`
-//! Gap; only a build whose every call errors fails. The Wiki lands in the Bucket in one commit, then its
-//! records are embedded for `ask`; the build's outcome in `wikis.json`, last.
+//! Gap; only a build whose every call errors fails. The Wiki lands in the
+//! Bucket in one commit, then its records are embedded for `ask`; the build's outcome in `wikis.json`, last.
 //!
 //! The loop runs each build as a Run in a herdr pane, one at a time across
 //! every Wiki and outside every room, the others waiting in `wiki-queue.json`;
@@ -787,7 +787,7 @@ struct Part {
 /// `wiki build <wiki> [--update|--rebuild|--continue]`: build the Wiki of a
 /// Repo or a Library version from scratch (`--rebuild` too), with `--update`
 /// from the one the Bucket holds, or with `--continue` fill in its budget
-/// Gaps, and keep it in the Bucket, writing how it went to `wikis.json` as
+/// and unanswered Gaps, and keep it in the Bucket, writing how it went to `wikis.json` as
 /// the last act.
 pub fn build(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
     let (how, args): (Vec<&str>, Vec<&str>) = (args.iter().copied()).partition(|a| {
@@ -849,7 +849,7 @@ fn named<'a>(ctx: &Context, config: &'a Config, id: &str) -> Result<Of<'a>, Refu
 
 /// `POST /api/wiki/<id>/<how>`: queue the build of the Wiki `id` first, to
 /// be built `how`, one of [`BUILDS`]; a `continue` only of a Wiki with
-/// budget Gaps. The queue after.
+/// budget or unanswered Gaps. The queue after.
 pub fn queue(ctx: &Context, id: &str, how: &str) -> Result<Value, Refusal> {
     let config = config::load(&ctx.config_dir)?;
     let of = named(ctx, &config, id)?;
@@ -1230,7 +1230,7 @@ struct Asked {
 /// The Wiki of the code checked out in `dir`, its parts asked by `call`
 /// a depth at a time, each answer's failing claims sent back in rounds; only
 /// those that changed since `previous`, when there is a Wiki before it, and
-/// its budget Gaps too when `continuing` it.
+/// its unanswered Gaps, and its budget Gaps too when `continuing` it.
 // shortcut: a slow part holds up the next depth's; pipeline the calls if builds run long.
 fn described(
     ctx: &Context,
@@ -1480,8 +1480,8 @@ fn described(
 /// blobs is copied with its parts; the part a file added or removed sits
 /// under is asked again, its parts from scratch, as is a leaf whose files
 /// changed; any other, a parent whose parts changed, is kept with its
-/// claims. When `continuing` it, each part with a budget Gap is asked again
-/// too, its parts from scratch. The Components it keeps, then the parts to ask.
+/// claims. Each part with an unanswered Gap is asked again too, its parts
+/// from scratch, and when `continuing` it each with a budget Gap. The Components it keeps, then the parts to ask.
 fn updated(previous: Wiki, files: &[File], continuing: bool) -> (Vec<Component>, Vec<Part>) {
     let blobs = |files: &[File]| -> HashMap<String, String> {
         (files.iter())
@@ -1509,7 +1509,10 @@ fn updated(previous: Wiki, files: &[File], continuing: bool) -> (Vec<Component>,
             .min_by_key(|&i| Reverse(depth[i]))
             .unwrap_or(0)
     };
-    let unexplored = |i: &usize| continuing && all[*i].gaps.iter().any(|g| asked_again(&g.reason));
+    let unexplored = |i: &usize| {
+        (all[*i].gaps.iter())
+            .any(|g| g.reason == "unanswered" || continuing && asked_again(&g.reason))
+    };
     let (mut asked, mut added): (HashSet<usize>, _) = (
         (0..all.len()).filter(unexplored).collect(),
         vec![vec![]; all.len()],
@@ -1571,7 +1574,7 @@ fn updated(previous: Wiki, files: &[File], continuing: bool) -> (Vec<Component>,
         let unchanged = files == c.files && c.files.iter().all(|f| was.get(f) == now.get(f));
         fates.push(match parent(i).map(|p| fates[p]) {
             Some(Fate::Asked | Fate::Gone) => Fate::Gone,
-            // A budget Gap continued is asked under its parent copied.
+            // A Gap asked again is asked under its parent copied.
             _ if asked.contains(&i) => Fate::Asked,
             Some(Fate::Copied) => Fate::Copied,
             _ if unchanged => Fate::Copied,

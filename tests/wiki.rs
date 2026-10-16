@@ -1127,6 +1127,31 @@ fn a_call_that_errors_leaves_its_part_an_unanswered_gap_and_continue_asks_only_i
 }
 
 #[test]
+fn update_asks_an_unanswered_gap_again_though_its_files_did_not_change() {
+    let t = with_repo("");
+    divided(&t);
+    answer(
+        &t,
+        "acme/api > Core",
+        json!({ "kind": "leaf", "overview": "The crate's modules." }),
+    );
+    // Web has no answer scripted: its call errors.
+    t.cli(&["wiki", "build", "acme/api", "--json"]);
+    t.world.calls.borrow_mut().clear();
+    answer(
+        &t,
+        "acme/api > Web",
+        json!({ "kind": "leaf", "overview": "The page." }),
+    );
+
+    let ran = t.cli(&["wiki", "build", "acme/api", "--update", "--json"]);
+
+    assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
+    assert_eq!(ran.json()["gaps"], json!({}));
+    assert_eq!(asked(&t), ["acme/api > Web"]);
+}
+
+#[test]
 fn a_correction_that_errors_keeps_the_answer_before_it_its_failing_claims_an_unanswered_gap() {
     let t = with_repo("");
     let kept = interpretation("role", "run is the entry point.", "src/lib.rs", 4, 4);
