@@ -115,6 +115,7 @@ Description=nico-agent serve: the loop
 [Service]
 Type=simple
 Environment=\"PATH={home}/.local/share/mise/shims:/opt/nico/bin:{home}/.local/bin:/usr/local/bin:/usr/bin:/bin\"
+ExecStartPre=-/usr/bin/timeout 60 /bin/sh -c 'until getent hosts api.github.com >/dev/null; do sleep 2; done'
 ExecStart=/opt/nico/bin/nico-agent serve
 Restart=always
 RestartSec=5s
