@@ -756,7 +756,8 @@ cmd_drift() {
         [[ "${2:-}" =~ ^[0-9]+$ ]] || die "drift: usage: drift final <n> merged|closed"
         how="${3:-}" url="https://github.com/$SLUG/pull/$((100 + $2))"
       fi
-      [[ "$how" =~ ^(merged|closed)$ ]] || die "drift: usage: drift $kind ${2:+$2 }merged|closed"
+      local usage="drift below merged|closed"; [ "$kind" = final ] && usage="drift final <n> merged|closed"
+      [[ "$how" =~ ^(merged|closed)$ ]] || die "drift: usage: $usage"
       jq -e --arg u "$url" 'has($u)' "$CONFIG_DIR/prs.json" >/dev/null 2>&1 \
         || die "drift: no PR $url seeded (seed dispatch <n> pr, or stacked for below, first)"
       write_state "$CONFIG_DIR/prs.json" "$(jq --arg u "$url" --arg how "$how" --arg at "$(now)" '
