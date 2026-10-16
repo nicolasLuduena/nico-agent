@@ -2,7 +2,7 @@ mod common;
 
 use std::time::Duration;
 
-use common::{Ran, Setup, github_issue, pull_request, setup};
+use common::{Ran, Setup, github_issue, implementer_idle, pull_request, setup};
 use nico_agent::world::{Answer, Mergeable, PrState, PullRequest, PullRequestActivity};
 use serde_json::{Value, json};
 
@@ -21,6 +21,7 @@ fn with_pr() -> Setup {
         head_branch: Some("agent/api-7".into()),
         ..pull_request("acme/api", 9)
     });
+    implementer_idle(&t, 7);
     t.world.advance(Duration::from_secs(600));
     t.tick();
     t.world.calls.borrow_mut().clear();
