@@ -362,17 +362,20 @@ fn events(ctx: &Context) -> Answer {
 }
 
 /// The state files in `dir` and under it, by path, with when each was last
-/// written and its size; not the locks, nor a write's temp file, nor the
-/// config directory `top`'s `wiki/`, whose changes reach the page another way.
+/// written and its size; not the locks, nor a write's temp file. Under the
+/// config directory `top`'s `wiki/`, only a build's progress: the rest reaches
+/// the page through `wikis.json` and the Bucket.
 fn files(top: &Path, dir: &Path) -> BTreeMap<PathBuf, Option<(SystemTime, u64)>> {
     let mut files = BTreeMap::new();
     for entry in fs::read_dir(dir).into_iter().flatten().flatten() {
         let path = entry.path();
-        if path == top.join("wiki") {
-            continue;
-        }
+        let wiki = path.starts_with(top.join("wiki"));
         if path.is_dir() {
-            files.extend(self::files(top, &path));
+            if !(wiki && entry.file_name() == "checkout") {
+                files.extend(self::files(top, &path));
+            }
+        } else if wiki && entry.file_name() != "progress.json" {
+            continue;
         } else if !path.extension().is_some_and(|e| e == "lock" || e == "tmp") {
             let seen = entry
                 .metadata()

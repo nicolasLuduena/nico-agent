@@ -13,7 +13,7 @@ reload to sign in again.`, and the page stops reconnecting.
 
 - `events-keepalive` with nothing changing, `GET /api/events` sends `: keepalive` every 10 seconds and no `changed`.
 - `events-changed` a state change sends `event: changed` at the next look, then keepalives again.
-- `wiki-only` a write under the config directory's `wiki/` alone sends no `changed`: a Wiki build's state reaches the page through `wikis.json`.
+- `wiki-only` a write under the config directory's `wiki/` alone sends no `changed`: a Wiki build's outcome reaches the page through `wikis.json`. A build's `progress.json` there is the exception, and sends `changed` (`wiki-progress.md` drives it).
 - `quiet-hour` the page left open behind the tunnel on a quiet night keeps its one stream and shows no banner.
 - `reconnect` a stream the browser gives up on shows the banner; the page opens new streams, backing off, and the banner clears on the first that opens.
 - `signed-out` with the stream still open, a refetch (Refresh) landing on Access's login redirect shows the signed-out line and closes the stream.
@@ -49,27 +49,27 @@ Preconditions:
   (standing in for a build's writes there), then run `curl -sN --max-time 35 "$URL/api/events" >
   "$E/03-wiki-only.events.txt" &`, `sleep 12; echo '{"components":[]}' >
   "$CONFIG_DIR/wiki/verify/fixture/wiki.json"; wait`. The file is three keepalives and no `event: changed`.
-- **Quiet hour.** `$C state > "$E/03-quiet-hour.state.before.txt"`, then run `$C page --tunnel
-  --evidence "$E/03-quiet-hour" --wait 3600 --gone "Lost nico-agent serve"` (shorter `--wait` for a
+- **Quiet hour.** `$C state > "$E/04-quiet-hour.state.before.txt"`, then run `$C page --tunnel
+  --evidence "$E/04-quiet-hour" --wait 3600 --gone "Lost nico-agent serve"` (shorter `--wait` for a
   quick check; past 100 is what counts). `ok` for both steps; `.requests.txt` has exactly one `GET
   /api/events -> 200`; `$TUNNEL_LOG` has that stream `closed by the page after 3600 s` (about) with
   360 keepalives, and no `cut: nothing sent for 100 s`. `$C state` after shows no change. Copy
-  `$TUNNEL_LOG` to `$E/03-quiet-hour.tunnel.log`.
-- **Reconnect.** Run `$C page --tunnel --evidence "$E/04-reconnect" --mode 502 --expect "Lost
+  `$TUNNEL_LOG` to `$E/04-quiet-hour.tunnel.log`.
+- **Reconnect.** Run `$C page --tunnel --evidence "$E/05-reconnect" --mode 502 --expect "Lost
   nico-agent serve; reconnecting." --wait 5 --mode pass --gone "Lost nico-agent serve"`. `ok` for
   every step; `.requests.txt` has the first `GET /api/events -> 200`, then three `GET /api/events
   -> 502` lines, each with a `GET /api/status -> 502`, then `GET /api/events -> 200` and the refetches `GET
   /api/status -> 200` and `GET /api/map/verify%2Ffixture -> 200`. `$TUNNEL_LOG` shows the browser's own
   retry about 3 s after the cut, then the page's new streams 1 s, 2 s and 4 s after each 502, the
   last one opening.
-- **Signed out.** Run `$C page --tunnel --evidence "$E/05-signed-out" --mode signed-out --click
+- **Signed out.** Run `$C page --tunnel --evidence "$E/06-signed-out" --mode signed-out --click
   "button=Refresh" --expect "Signed out; reload to sign in again." --wait 40 --expect "Signed out;
   reload to sign in again."`. `ok` for every step; under `Refresh` an alert says `Could not reach
   nico-agent serve.`; `.requests.txt` has `POST /api/refresh -> 302`, the refetches `GET
   /api/status -> 302` and `GET /api/map/verify%2Ffixture -> 302`, and no `/api/events` after the first;
   `$TUNNEL_LOG` has that stream `closed by the page`.
 - **Signed out on a reconnect.** Run `$C tunnel pass`, then `$C page --tunnel --evidence
-  "$E/06-signed-out-on-reconnect" --mode 502 --expect "Lost nico-agent serve; reconnecting." --wait
+  "$E/07-signed-out-on-reconnect" --mode 502 --expect "Lost nico-agent serve; reconnecting." --wait
   5 --mode signed-out --expect "Signed out; reload to sign in again." --wait 40 --expect "Signed out;
   reload to sign in again."`. `.requests.txt` has the 502s, then `GET /api/events -> 302` and `GET
   /api/status -> 302`, and nothing after; `$TUNNEL_LOG` has the reconnect's `GET /api/events -> 302`
@@ -79,6 +79,8 @@ Preconditions:
 
 ## Gotchas
 
+- The stream compares each state file's modification time and size, not what it holds: a rewrite
+  with the same text still sends `changed`.
 - The real tunnel and Access are not driven: the stand-in answers what they answer, from the page's
   side. Through the real tunnel, leave the page open and read the same banner.
 - `--mode` reaches only the stand-in; without `--tunnel` the step fails on serve's 404.

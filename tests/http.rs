@@ -352,6 +352,21 @@ fn events_sends_only_a_keepalive_after_a_write_under_wiki_alone() {
     assert_eq!([before, after], [KEEPALIVE, KEEPALIVE]);
 }
 
+#[test]
+fn events_sends_changed_after_a_wiki_build_s_progress_is_written() {
+    let t = with_repo();
+    t.tick();
+    let wiki = t.config_dir.join("wiki/acme/api");
+    std::fs::create_dir_all(&wiki).unwrap();
+    let mut events = t.events();
+    let before = events.next();
+    std::fs::write(wiki.join("progress.json"), r#"{"made": 1}"#).unwrap();
+
+    let after = events.next();
+
+    assert_eq!([before, after], [KEEPALIVE, CHANGED]);
+}
+
 /// Repo `acme/api` with issue 7 dispatched, its Implementer working.
 fn dispatched() -> Setup {
     let t = with_repo();
