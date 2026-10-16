@@ -40,8 +40,8 @@
 #                                 Not with seed herdr
 #   seed wiki <wiki.json> <clone> a Repo's Wiki built elsewhere committed to the Bucket, and that Repo cloned
 #                                 on disk from <clone> for `repo add`; prints { repo, clone, commit }
-#   drift push <n>|stale|pause|below merged|closed|base [<file>]|tag <tag>
-#                                 what GitHub would change: a new PR head, an old read, a rate limit,
+#   drift push <n>|stale|pause|hang|below merged|closed|base [<file>]|tag <tag>
+#                                 what GitHub would change: a new PR head, an old read, a rate limit, a gh that never answers,
 #                                 the PR below a Stacked dispatch merged or closed unmerged,
 #                                 verify/fixture's Base moved on (and fetched), verify/second tagged
 #   state                         read-only fingerprint: config dir files, Dispatches, Verdicts, Bucket log, outside calls
@@ -127,6 +127,7 @@ in_fixture() {
     XDG_STATE_HOME="$FIXTURE_HOME/.local/state" \
     XDG_RUNTIME_DIR="$RUN_DIR/runtime" \
     GIT_CONFIG_NOSYSTEM=1 \
+    NICO_AGENT_DEADLINE_SECS=5 \
     "$@")
 }
 
@@ -169,7 +170,9 @@ line="\$name\$(printf ' %q' "\$@")"
 printf '%s\\n' "\$line" >> "$log"
 case "\$name" in
   # Seeded to answer: an assign to the user, as GitHub would take it.
-  gh) if [ -f "$RUN_DIR/gh-assign" ] && [ "\$1 \$2" = "issue edit" ] && [ "\${*: -2}" = "--add-assignee @me" ]; then exit 0; fi
+  # \`drift hang\`: every gh call hangs, till nico-agent kills it at its deadline.
+  gh) if [ -f "$RUN_DIR/gh-hang" ]; then exec sleep 100000; fi
+    if [ -f "$RUN_DIR/gh-assign" ] && [ "\$1 \$2" = "issue edit" ] && [ "\${*: -2}" = "--add-assignee @me" ]; then exit 0; fi
     echo "To get started with GitHub CLI, please run:  gh auth login" >&2; exit 4 ;;
   # What the real gh says in a HOME that never ran \`gh auth login\`.
   ghbot) echo "To get started with GitHub CLI, please run:  gh auth login" >&2; exit 4 ;;
@@ -735,6 +738,8 @@ cmd_drift() {
       write_state "$file" "$(jq '.read_at = "2000-01-01T00:00:00Z"' "$file")"
       jq -c '{ read_at }' "$file"
       ;;
+    # gh never answers, as a stuck \`gh api graphql\` would; until cleanup.
+    hang) : > "$RUN_DIR/gh-hang"; echo '{"gh":"hangs"}' ;;
     # GitHub rate-limited for an hour, as a 429 would leave it.
     pause)
       local until; until="$(date -u -d '+60 minutes' +%Y-%m-%dT%H:%M:%SZ)"
@@ -791,7 +796,7 @@ cmd_drift() {
       rm -rf "$work"
       jq -n --arg slug "$SECOND" --arg tag "$tag" --arg commit "$commit" '{ repo: $slug, tag: $tag, commit: $commit }'
       ;;
-    *) die "drift: usage: drift push <n> | drift stale | drift pause | drift below merged|closed | drift base [<file>] | drift tag <tag>" ;;
+    *) die "drift: usage: drift push <n> | drift stale | drift pause | drift hang | drift below merged|closed | drift base [<file>] | drift tag <tag>" ;;
   esac
 }
 

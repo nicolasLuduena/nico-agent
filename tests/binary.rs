@@ -190,3 +190,39 @@ esac"#;
         );
     }
 }
+
+#[test]
+fn a_gh_that_hangs_is_killed_at_its_deadline_and_the_next_read_runs() {
+    let home = home("gh-hangs");
+    fs::create_dir_all(home.join("stubs")).unwrap();
+    let stub = home.join("stubs/gh");
+    fs::write(&stub, "#!/bin/sh\nsleep 1000\n").unwrap();
+    fs::set_permissions(&stub, fs::Permissions::from_mode(0o755)).unwrap();
+    let api = home.join("api");
+    let (code, stdout) = run(
+        &home,
+        &["repo", "add", "acme/api", "--path", api.to_str().unwrap()],
+    );
+    assert_eq!(code, Some(0), "{stdout}");
+    let path = std::env::var("PATH").unwrap();
+    let status = || {
+        let ran = Command::new(env!("CARGO_BIN_EXE_nico-agent"))
+            .args(["status", "--json"])
+            .env("HOME", &*home)
+            .env("PATH", format!("{}:{path}", home.join("stubs").display()))
+            .env("NICO_AGENT_DEADLINE_SECS", "1")
+            .output()
+            .unwrap();
+        serde_json::from_slice::<Value>(&ran.stdout).unwrap()
+    };
+    let started = std::time::Instant::now();
+
+    let (first, next) = (status(), status());
+
+    assert!(started.elapsed().as_secs() < 10, "{:?}", started.elapsed());
+    let said = json!("`gh api user` ran past its 1s deadline and was killed");
+    assert_eq!(
+        (&first["repos"][0]["error"], &next["repos"][0]["error"]),
+        (&said, &said)
+    );
+}
