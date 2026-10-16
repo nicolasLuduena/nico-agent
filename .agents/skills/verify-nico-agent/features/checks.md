@@ -13,6 +13,7 @@ section, with its help; once the user does what the help says, the next run pass
 ## Sub-features
 
 - `checks-status` `status --json` and `GET /api/status` show per Repo `checks: {at, results: [{name, ok, said, help}]}`, in the order clone, fetch, evidence, verification (while Review is on), skills, bot, herdr; `checks.json` holds the same.
+- `checks-posts-as` `status --json` and `GET /api/status` show per checked Repo `posts_as`, read from its bot check: the bot's login (`nicolasluduena-coding-agent[bot]`) once the App was found on it, else `"you"`; the tab says it under the Repo's head, `PRs and comments are posted as you` with `link "Install the App"`, or `Agents post as <the bot>`.
 - `checks-refresh` Refresh (CLI or button) runs them for every Repo; a Repo added by `repo add` has none until then.
 - `checks-strip` each failing one is a `Check <slug>: <said>` row in `region "Needs you"`, its help under it.
 - `checks-panel` the tab's `region "Readiness"`, folded to `N of M pass` and open by itself while one fails, shows each failing one with its help, the passing ones as `list "Passing"`, and `Unchanged since <time>`.
@@ -48,12 +49,14 @@ Preconditions:
   \`ghbot api /installation/repositories\` failed: ...`), `herdr` failing (`\`herdr agent list\` failed:
   verify_stub: herdr is a stub in this verification run`, help `Start herdr; after an upgrade,
   \`herdr server stop\` and start it again so the server's protocol matches the client's`); each failing one has a `help`, each ok one
-  `help` null. `$OUTSIDE_LOG` has `gh api user --jq .login` lines, one `ghbot api
+  `help` null. `repos[0].posts_as` is `"you"`: the bot check could not find the App. `$OUTSIDE_LOG` has `gh api user --jq .login` lines, one `ghbot api
   /installation/repositories ...` and one `herdr agent list` (git is real, on the run's repos, so not in it).
 - **Page.** Run `$C page --evidence "$E/03-page" --expect "Readiness"`: `region "Needs you"` has a
   `Check verify/fixture:` row for each of the five failing checks, its help under what it says;
   `region "Readiness"` is open by itself, its `group` reading `Readiness 2 of 7 pass`, with the five on the
-  errata rule, `list "Passing"` holding the clone and fetch ones, and `Unchanged since <time>`.
+  errata rule, `list "Passing"` holding the clone and fetch ones, and `Unchanged since <time>`. The `region "verify/fixture"` panel reads `PRs and comments are posted as you. Install the App`, the
+  `link "Install the App"` to `https://github.com/apps/nicolasluduena-coding-agent/installations/new`,
+  outside the folded Readiness.
 - **Settings write.** Install the two skills the help names, as the user would, in the scratch HOME:
   `for s in implement research; do mkdir -p "$R/home/.claude/skills/$s" && echo "---" > "$R/home/.claude/skills/$s/SKILL.md"; done`.
   `: > "$OUTSIDE_LOG"`; run `$C http --evidence "$E/05-review-off" PATCH /api/repo/verify/fixture/switches '{"review":false}'`:
@@ -92,7 +95,8 @@ Preconditions:
 ## Gotchas
 
 - In a run `ghbot` is a stub that fails, so the bot check always fails with `gh auth login`'s text;
-  that is the check working, not a broken run. So does the herdr check, with the stub's `verify_stub`.
+  that is the check working, not a broken run. So `posts_as` is always `"you"`; the bot's side is
+  `cargo test`'s (`tests/checks.rs`). The herdr check fails too, with the stub's `verify_stub`.
 - The scratch HOME has no skills, and its `~/` is what the skills check reads: install them under
   `$R/home`, never your own `~/.claude/skills`.
 - serve checks at start, before any Repo exists in a fresh run, so `checks.json` is `{}` until a

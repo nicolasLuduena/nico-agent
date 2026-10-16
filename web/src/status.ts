@@ -93,6 +93,8 @@ export interface Repo extends Settings {
   last_scan?: Run;
   /** Its Readiness checks; none before the first. */
   checks?: Checks;
+  /** Who its agents post as, by its bot check: the bot's login, or "you" without the App; none before the first checks. */
+  posts_as?: string;
   /** Its Install, while it has a command. */
   install?: { command: string; last: Install | null };
 }

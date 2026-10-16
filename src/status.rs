@@ -106,6 +106,7 @@ pub fn shown(
         }
         if let Some(checks) = checks.get(slug) {
             shown["checks"] = json!(checks);
+            shown["posts_as"] = json!(checks::posts_as(checks));
         }
         if let Some(install) = install::shown(&installs, slug, repo) {
             shown["install"] = install;
