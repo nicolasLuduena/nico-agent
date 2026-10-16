@@ -192,7 +192,7 @@ fn a_harness_that_names_no_skill_dirs_fails_the_skills_check_asking_for_them() {
 
 #[test]
 fn a_herdr_server_older_than_its_client_fails_the_herdr_check() {
-    // 15 Oct: after an upgrade, every tick's `herdr agent list` failed till the server restarted.
+    // After an upgrade, a server still on the old protocol refuses every call till it restarts.
     let t = ready();
     let mismatch =
         "`herdr agent list` failed: protocol_mismatch: client protocol 22, server protocol 20";
@@ -200,9 +200,10 @@ fn a_herdr_server_older_than_its_client_fails_the_herdr_check() {
 
     let results = served(&t);
 
+    let herdr = (results.as_array().unwrap().iter()).find(|r| r["name"] == "herdr");
     assert_eq!(
-        results[6],
-        failing(
+        herdr.unwrap(),
+        &failing(
             "herdr",
             mismatch,
             "Start herdr; after an upgrade, `herdr server stop` and start it again so the server's protocol matches the client's"

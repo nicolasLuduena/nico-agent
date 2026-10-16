@@ -38,7 +38,6 @@ pub fn serve(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
     if let Err(e) = ctx.world.listen(config.port, Box::new(handler)) {
         ctx.world.log(&e.0);
     }
-    // Ticks failed in a row; the user is told once at FAILS_TOLD, and once when one works again.
     let mut failed = 0;
     let mut run = || match tick::tick(ctx, false) {
         Ok(said) => {
