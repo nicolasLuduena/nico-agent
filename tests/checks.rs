@@ -58,9 +58,12 @@ fn serve_checks_each_repo_at_start_with_a_call_per_check_and_keeps_each_result()
             "git -C /src/api show origin/main:.gitignore",
             "git -C /src/api ls-tree --name-only origin/main .agents/skills/",
             "test -f ~/.claude/skills/implement/SKILL.md",
+            "read ~/.claude/skills/implement/SKILL.md",
             "test -f ~/.claude/skills/research/SKILL.md",
+            "read ~/.claude/skills/research/SKILL.md",
             "test -f ~/.codex/skills/verdict/SKILL.md",
             "test -f ~/.agents/skills/verdict/SKILL.md",
+            "read ~/.agents/skills/verdict/SKILL.md",
             "github app repos",
             "herdr agent list",
         ]
@@ -272,6 +275,64 @@ fn a_reviewer_on_a_harness_with_no_verdict_skill_fails_the_skills_check_before_a
             "skills",
             "no verdict skill for codex, the Reviewer's Harness",
             "Install verdict in one of ~/.codex/skills, ~/.agents/skills, /src/api/.agents/skills"
+        )
+    );
+}
+
+#[test]
+fn a_skill_the_prompted_skill_calls_is_checked_for_the_same_harness_one_level_deep() {
+    let t = ready();
+    t.world.add_file(
+        "~/.agents/skills/verdict/SKILL.md",
+        b"Call the Skill tool with \"tdd\" first, then the Skill tool with \"pr\".",
+    );
+    t.world.add_file(
+        "~/.agents/skills/tdd/SKILL.md",
+        b"Call the Skill tool with \"deeper\".",
+    );
+
+    let results = served(&t);
+
+    // `deeper`, two levels down, is not asked for.
+    assert_eq!(
+        results[4],
+        failing(
+            "skills",
+            "no pr skill for codex, the Reviewer's Harness, which verdict calls",
+            "Install pr in one of ~/.codex/skills, ~/.agents/skills, /src/api/.agents/skills"
+        )
+    );
+
+    t.world.add_file("/src/api/.agents/skills/pr/SKILL.md", b"");
+    assert_eq!(served(&t)[4]["ok"], true);
+}
+
+#[test]
+fn a_skill_installed_only_as_a_claude_plugin_is_found_for_claude_and_said_so_for_another_harness() {
+    let t = ready();
+    let call = b"Call the Skill tool with \"ponytail-audit\".";
+    t.world
+        .add_file("~/.claude/skills/implement/SKILL.md", call);
+    t.world.add_file("~/.agents/skills/verdict/SKILL.md", call);
+    let plugin = "/home/u/.claude/plugins/cache/ponytail/ponytail/5.1.0";
+    t.world.add_file(
+        "~/.claude/plugins/installed_plugins.json",
+        format!(
+            r#"{{"version":2,"plugins":{{"ponytail@ponytail":[{{"installPath":"{plugin}"}}]}}}}"#
+        )
+        .as_bytes(),
+    );
+    t.world
+        .add_file(&format!("{plugin}/skills/ponytail-audit/SKILL.md"), b"");
+
+    let results = served(&t);
+
+    assert_eq!(
+        results[4],
+        failing(
+            "skills",
+            "no ponytail-audit skill for codex, the Reviewer's Harness, which verdict calls; it is installed only as a claude plugin",
+            "Install ponytail-audit in one of ~/.codex/skills, ~/.agents/skills, /src/api/.agents/skills"
         )
     );
 }
