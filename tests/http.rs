@@ -1454,3 +1454,25 @@ fn patch_wiki_settings_refuses_a_harness_with_no_headless_form() {
     let names: Vec<&String> = harnesses.as_object().unwrap().keys().collect();
     assert_eq!(names, ["claude", "codex", "opencode"]);
 }
+
+#[test]
+fn post_dispatch_of_a_malformed_issue_key_answers_400_with_the_refusal_and_records_nothing() {
+    let t = ready_7();
+
+    for key in ["acme/api#abc", "acme/api#"] {
+        let answered = t.send("POST", "/api/dispatch", &format!(r#"{{"issue": "{key}"}}"#));
+
+        assert_eq!(
+            answered,
+            (
+                400,
+                json!({
+                    "error": format!("`{key}` is not an issue reference"),
+                    "help": ["Pass `owner/repo#N`, or a Linear identifier such as `BLE-12`"],
+                })
+            )
+        );
+    }
+    assert_eq!(dispatches(&t), "[]\n");
+    assert!(t.world.calls().iter().all(|c| !c.starts_with("herdr ")));
+}

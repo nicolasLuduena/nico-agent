@@ -11,7 +11,7 @@ reaches.
 ## Sub-features
 
 - `dispatch-usage` no issue, or an unknown flag, is exit 2 with the usage line.
-- `dispatch-not-a-reference` text that is no `owner/repo#N` or Linear id is exit 2.
+- `dispatch-not-a-reference` text that is no `owner/repo#N` or Linear id is exit 2, `owner/repo#abc` and `owner/repo#` among them, from the CLI and `POST /api/dispatch` (HTTP `400`) alike.
 - `dispatch-unconfigured` an issue of a Repo not added is exit 1 with the `repo add` to run.
 - `dispatch-source-unreadable` with no cached read and GitHub refusing, exit 1 `could not read the issues`.
 - `dispatch-not-ready` exit 1 `<issue> is not Ready`, `help` saying why: not labelled, waits on a Blocker to close (or, in another Repo of its Project, to be installed there), assigned to someone else, or not in the read.
@@ -44,7 +44,11 @@ Preconditions:
 - **Unknown flag.** Run `$C run --evidence "$E/03-flag" -- dispatch verify/fixture#1 --frob x --json`.
   Exit `2`, `error` `unknown flag --frob for \`dispatch\``.
 - **Not a reference.** Run `$C run --evidence "$E/04-nonsense" -- dispatch nonsense --json`. Exit
-  `2`, `error` `` `nonsense` is not an issue reference ``.
+  `2`, `error` `` `nonsense` is not an issue reference ``. The same for a GitHub key without its
+  number: `dispatch verify/fixture#abc --json` (`--evidence "$E/04-no-number"`) and
+  `dispatch 'verify/fixture#' --json` (`04-empty-number`), and over the API,
+  `$C http --evidence "$E/04-api-no-number" POST /api/dispatch '{"issue":"verify/fixture#abc"}'`:
+  HTTP `400`, the same `{error, help}`. `$OUTSIDE_LOG` gains no line, and `doctor` still passes.
 - **Unconfigured Repo.** Run `$C run --evidence "$E/05-unconfigured" -- dispatch other/repo#1 --json`.
   Exit `1`, `error` `other/repo is not a configured Repo`, `help` `Run \`nico-agent repo add other/repo --path <clone>\` first`.
 - **Not labelled.** Run `$C run --evidence "$E/06-not-labelled" -- dispatch verify/fixture#2 --json`.
