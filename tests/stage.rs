@@ -109,6 +109,8 @@ fn status_shows_each_live_dispatchs_agent_states_from_one_herdr_read_and_unknown
     let file = t.config_dir.join("config.toml");
     let config = std::fs::read_to_string(&file).unwrap();
     std::fs::write(&file, format!("{config}switches = {{ restart = false }}\n")).unwrap();
+    // Done for now: a Reviewer waits for a working Implementer.
+    (t.world.agents.borrow_mut()).insert("impl-api-7".into(), "idle".into());
     t.tick();
     t.world.agents.borrow_mut().remove("impl-api-8");
     t.world
@@ -134,7 +136,7 @@ fn status_shows_each_live_dispatchs_agent_states_from_one_herdr_read_and_unknown
     assert_eq!(
         states(&read),
         [
-            json!({ "implementer": "working", "reviewer": "idle" }),
+            json!({ "implementer": "idle", "reviewer": "idle" }),
             json!({ "implementer": "gone", "reviewer": null }),
         ]
     );

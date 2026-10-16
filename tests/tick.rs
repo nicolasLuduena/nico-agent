@@ -42,6 +42,12 @@ fn pr_of(n: u64, issue: u64) -> PullRequest {
 }
 
 /// GitHub merges PR `n` of `acme/api`, closing the issue it fixes.
+/// herdr reports issue `issue`'s Implementer idle: done for now, so its
+/// PR's Reviewer may start.
+fn implementer_idle(t: &Setup, issue: u64) {
+    (t.world.agents.borrow_mut()).insert(format!("impl-api-{issue}"), "idle".into());
+}
+
 fn merge(t: &Setup, n: u64, issue: u64) {
     let mut prs = t.world.prs.borrow_mut();
     prs.iter_mut().find(|pr| pr.number == n).unwrap().state = PrState::Merged;
@@ -270,6 +276,9 @@ fn serve_notifies_once_when_a_tick_works_again_after_failing() {
 fn a_night_of_independent_issues_is_dispatched_then_closed_as_each_pr_merges() {
     let t = with_issues(&[1, 2, 3, 4]);
     let mut night = vec![t.tick()];
+    implementer_idle(&t, 1);
+    implementer_idle(&t, 2);
+    implementer_idle(&t, 3);
     t.world.add_pr(pr_of(11, 1));
     t.world.add_pr(pr_of(12, 2));
     t.world.advance(TICK);
@@ -569,6 +578,7 @@ fn a_stackable_gardening_issue_is_never_stacked_and_waits_with_the_reason_shown(
 fn a_stacked_dispatch_finds_its_pr_on_its_branch_and_is_closed_when_it_merges() {
     let t = with_stackable();
     t.tick();
+    implementer_idle(&t, 2);
     let on_blocker = PullRequest {
         base_branch: "agent/api-1".into(),
         ..pr_of(12, 2)

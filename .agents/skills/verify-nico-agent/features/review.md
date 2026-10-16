@@ -17,6 +17,7 @@ starts a Reviewer on the PR's head at once, whatever the Repo's `review` switch 
 - `review-passed` a pass Verdict on the head is `passed`: the panel's Review section shows the Verdict row `pass <sha7> <time>`.
 - `review-off` with the Repo's `review` switch off it is `off`, Verdict or not, unless a Reviewer was started on the head by hand (`review-now-off`): the node reads `review off`, the panel `Review is off for this Repo`, and the strip drops its Review row.
 - `review-now` `button "Review now"` at the right of the panel's review line while it is `off` (with no Verdict on the head), `stopped` or `gave_up`, and at no other time: it reads `Starting…` while `POST /api/review {issue}` runs, then the panel reads `Reviewing <sha7> on <harness>` without a Refresh; the head's failed starts are cleared, so `attempts` is `0` again. A refusal shows inline under it (`role=alert`): one before the start changes nothing; a start that fails is counted against the head, and its refusal stays while the review is `retrying`.
+- `review-waits` the tick starts no Reviewer while herdr reports the Dispatch's Implementer working, which may still push: the review stays `waiting` until a tick finds it idle or done.
 - `review-now-off` with `review` off it starts one all the same, which shows as with review on (`reviewing`, then its Verdict), and the tick still starts none by itself.
 
 ## How to get to it (user POV)
@@ -54,8 +55,8 @@ Preconditions:
   the command a `code`; `.requests.txt` has `GET /api/node/verify%2Ffixture%2310 -> 200`; the node
   button ends `review gave up, needs you`. At `--width 390` (`11-phone`) the row wraps and nothing
   is wider than the screen.
-- **Off.** Run `$C page --evidence "$E/12-review-off" --click "region=Switches" --click "switch=Review" --click "button~#10, Verify: seeded Dispatch 10" --expect "Review is off for this Repo"`:
-  `.requests.txt` has `PATCH /api/repo/verify/fixture {"switches":{"review":false}} -> 200`. Run
+- **Off.** Run `$C http --evidence "$E/12-review-off" PATCH /api/repo/verify/fixture/switches '{"review":false}'`
+  (switches.md drives the switch on the page): its answer has `"review":false`. Run
   `status --json` (`13-status-off`): `#10` and `#11` `review.state` `off`. Run `$C page --evidence "$E/14-off-settled" --click "button~#10, Verify: seeded Dispatch 10" --expect "Review is off for this Repo"`:
   no Review row in the strip, the node button ends `review off` without `needs you`.
 - **Proof.** `$C state > "$E/state.after.txt"`, its diff from `state.before.txt` into `$E/state.diff`
@@ -90,6 +91,12 @@ Preconditions:
 
 ## Gotchas
 
+- The Readiness checks' toasts (`status` with `button "Dismiss"`) arrive a moment after the page
+  loads and sit over the panel, so a `--click` on `button "Review now"` times out under them: first
+  `--expect` the last toast's text, then `--click "button=Dismiss"` once per toast (5 with herdr a
+  stub, 3 once `seed reviewer` makes it answer).
+- `review-waits` needs herdr to report the Implementer working: `seed reviewer` lists it idle, so
+  `cargo test` covers it through the fake World.
 - herdr is a stub, so a Reviewer never starts until `seed reviewer <n>` makes herdr answer its
   start; `stopped` and `waiting` still need a live herdr, and `cargo test` covers them through the
   fake World. `seed reviewer` lists `impl-fixture-<n>` idle beside it: any other live Dispatch's

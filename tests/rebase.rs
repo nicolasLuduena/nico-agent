@@ -139,6 +139,8 @@ fn stacked(toml: &str) -> Setup {
     };
     t.world.link_pr("acme/api", 1, below);
     t.tick();
+    // Done for now: a Reviewer waits for a working Implementer.
+    (t.world.agents.borrow_mut()).insert("impl-api-2".into(), "idle".into());
     t.world.add_pr(PullRequest {
         head_branch: Some("agent/api-2".into()),
         base_branch: "agent/api-1".into(),

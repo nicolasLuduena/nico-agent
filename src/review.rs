@@ -37,6 +37,7 @@ pub struct Reviewer {
 /// behind the `review` switch. A launch that fails is said and tried again
 /// next tick, in a fresh tab. Without `agents`, a prompted Reviewer stands.
 /// A Reviewer herdr reports working is never closed: the next head waits for it.
+/// Nor does one start while herdr reports the Implementer working: it may push again.
 /// A head's starts that fail or whose Reviewer leaves herdr are tried again
 /// `max_restarts_per_reason` times, then the user is told, once.
 pub fn start_reviewers(
@@ -73,7 +74,9 @@ pub fn start_reviewers(
         let working = |r: &Reviewer| {
             agents.and_then(|a| world::agent_state(a, &r.launch.agent)) == Some(AgentState::Working)
         };
-        if d.reviewer.as_ref().is_some_and(working) {
+        let implementing = agents.and_then(|a| world::agent_state(a, &d.implementer.agent))
+            == Some(AgentState::Working);
+        if implementing || d.reviewer.as_ref().is_some_and(working) {
             continue;
         }
         let head = &pr.head_sha;
