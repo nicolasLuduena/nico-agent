@@ -269,7 +269,7 @@ fn close_keeps_evidence_changed_since_its_head_was_kept_before_removing_the_work
         [
             vec![format!("git remotes {BUCKET}")],
             copied("sha9"),
-            vec![close, "herdr worktree remove --workspace w1".into()],
+            vec![close, "herdr worktree remove --workspace w1 --force".into()],
         ]
         .concat()
     );

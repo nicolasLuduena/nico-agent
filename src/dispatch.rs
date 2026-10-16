@@ -738,6 +738,11 @@ pub fn edit(ctx: &Context, issue: &str, change: impl FnOnce(&mut Dispatch)) -> i
 /// Close every live Dispatch whose PR is final: remove its worktree and
 /// close its workspace, keeping the record, the branch and the PR. One that
 /// fails stays live and is tried again next time. Says what it did.
+///
+/// A merged PR's work is on its Base, so its worktree goes even with files
+/// left in it; commits never pushed stay on its branch. A closed one's files
+/// may be the user's: Close says once which they are, as the Dispatch's
+/// Failure, and tries again each tick without a word till they are gone.
 pub fn close_final(ctx: &Context, config: &Config) -> io::Result<Vec<String>> {
     let prs = stage::load(&ctx.config_dir)?;
     let mut said = vec![];
@@ -758,8 +763,27 @@ pub fn close_final(ctx: &Context, config: &Config) -> io::Result<Vec<String>> {
                 continue;
             }
         }
+        let merged = pr.state == PrState::Merged;
+        // One git cannot list is left to herdr, which refuses it if dirty.
+        let dirty = match &d.worktree {
+            Some(worktree) if !merged => ctx.world.git_changes(worktree).unwrap_or_default(),
+            _ => vec![],
+        };
+        if !dirty.is_empty() {
+            let error = format!("worktree has uncommitted changes: {}", dirty.join(", "));
+            if d.failure.as_ref().is_none_or(|f| f.step != CLOSE) {
+                let failure = Failure {
+                    step: CLOSE.into(),
+                    error: error.clone(),
+                    reason: None,
+                };
+                edit(ctx, &d.issue, |live| live.failure = Some(failure))?;
+                said.push(format!("could not Close {}: {error}", d.issue));
+            }
+            continue;
+        }
         let freed = d.workspace.as_ref().map_or(Ok(()), |workspace| {
-            (ctx.world.herdr_worktree_remove(workspace))
+            (ctx.world.herdr_worktree_remove(workspace, merged))
                 .and_then(|()| ctx.world.herdr_workspace_close(workspace))
         });
         if let Err(e) = freed {
@@ -771,6 +795,9 @@ pub fn close_final(ctx: &Context, config: &Config) -> io::Result<Vec<String>> {
             if let Some(live) = all.iter_mut().find(|live| is_live(live, &d.issue)) {
                 live.closed_at = Some(now.clone());
                 live.asking = None;
+                if live.failure.as_ref().is_some_and(|f| f.step == CLOSE) {
+                    live.failure = None;
+                }
                 live.updated_at = now.clone();
             }
         })?;
@@ -786,6 +813,9 @@ pub fn close_final(ctx: &Context, config: &Config) -> io::Result<Vec<String>> {
     })?;
     Ok(said)
 }
+
+/// The step a Failure of Close names.
+pub const CLOSE: &str = "close";
 
 /// How long a Closed Dispatch is kept.
 const KEEP_CLOSED: Duration = Duration::from_secs(30 * 86_400);
