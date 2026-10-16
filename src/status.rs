@@ -16,6 +16,7 @@ use crate::repo;
 use crate::review;
 use crate::source;
 use crate::stage::{self, Prs, Stage};
+use crate::state;
 use crate::wiki;
 use crate::world::{self, AgentState};
 
@@ -127,6 +128,7 @@ pub fn shown(
     }
     // As herdr says now, beside the Stage, never deriving it.
     let live = dispatches.iter().any(|d| d.closed_at.is_none());
+    let listed = state::iso(ctx.world.now());
     let agents = live.then(|| ctx.world.herdr_agents().ok()).flatten();
     let agent_state = |name: &str| match &agents {
         None => json!(AgentState::Unknown),
@@ -166,7 +168,13 @@ pub fn shown(
                 shown["faux_nico"] = json!(run);
             }
         }
-        shown["review"] = json!(review::shown(config, d, &standing, agents.as_deref()));
+        shown["review"] = json!(review::shown(
+            config,
+            d,
+            &standing,
+            agents.as_deref(),
+            &listed
+        ));
         shown["verdict"] = json!(standing.latest_verdict);
         shown["pr"] = pr.map_or(Value::Null, |(url, pr)| {
             let mut pr = json!(pr);

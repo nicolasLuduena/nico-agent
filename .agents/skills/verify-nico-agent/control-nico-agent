@@ -17,7 +17,7 @@
 #   env                           print the path of run.env, to source: . "$(control-nico-agent env)"
 #                                 gives $FIXTURE_CLONE, $SECOND_CLONE, $CONFIG_DIR, $BUCKET, $URL, $OUTSIDE_LOG
 #   seed issues [second]          a fresh Source read of verify/fixture (issues 1-6), or verify/second (1-3)
-#   seed dispatch <n> pr|asking|stacked|restarted
+#   seed dispatch <n> pr|asking|stacked|restarted|ruled
 #                                 a Dispatch of verify/fixture#<n> as the loop records it; prints
 #                                 { issue, kind, worktree, branch, head, pr, evidence }: keep it, verdict recipes need head
 #   seed run quality-scan|morning|faux-nico <n>
@@ -437,7 +437,7 @@ cmd_seed() {
     dialog) seed_dialog "$@" ;;
     reviewer) seed_reviewer "$@" ;;
     wiki) seed_wiki "$@" ;;
-    *) die "seed: usage: seed issues [second] | seed dispatch <n> pr|asking|stacked|restarted | seed run quality-scan|morning|faux-nico <n> | seed morning <file>|none | seed answer <file>|none [<part>] | seed correction <file>|none | seed pace <seconds>|none | seed assign answers|none | seed herdr <agent>|none | seed dialog <n>|none | seed reviewer <n>|none | seed wiki <wiki.json> <clone>" ;;
+    *) die "seed: usage: seed issues [second] | seed dispatch <n> pr|asking|stacked|restarted|ruled | seed run quality-scan|morning|faux-nico <n> | seed morning <file>|none | seed answer <file>|none [<part>] | seed correction <file>|none | seed pace <seconds>|none | seed assign answers|none | seed herdr <agent>|none | seed dialog <n>|none | seed reviewer <n>|none | seed wiki <wiki.json> <clone>" ;;
   esac
 }
 
@@ -491,9 +491,11 @@ seed_second_issues() {
 # as `pr`, but Stacked on #9's open PR #109 (head agent/fixture-9), its Base and its PR's base.
 # `restarted`: as `pr`, its Implementer restarted by the loop for two failing Verdicts an hour ago,
 # as herdr lets the loop do (here herdr is a stub, and every restart fails at its tab).
+# `ruled`: as `pr`, failed by the Reviewer at its head an hour ago and its Implementer restarted
+# for it since, which dismissed every Finding in its Evidence's rulings.md and pushed nothing.
 seed_dispatch() {
   local n="${1:-}" kind="${2:-}"
-  [[ "$n" =~ ^[0-9]+$ ]] && [[ "$kind" =~ ^(pr|asking|stacked|restarted)$ ]] || die "seed: usage: seed dispatch <n> pr|asking|stacked|restarted"
+  [[ "$n" =~ ^[0-9]+$ ]] && [[ "$kind" =~ ^(pr|asking|stacked|restarted|ruled)$ ]] || die "seed: usage: seed dispatch <n> pr|asking|stacked|restarted|ruled"
   local issue="$SLUG#$n" branch="agent/fixture-$n" worktree="$RUN_DIR/worktrees/fixture-$n"
   [ ! -e "$worktree" ] || die "seed: verify/fixture#$n is already seeded at $worktree"
   if [ -f "$CONFIG_DIR/dispatches.json" ] && jq -e --arg i "$issue" 'any(.[]; .issue == $i and .closed_at == null)' "$CONFIG_DIR/dispatches.json" >/dev/null; then
@@ -510,6 +512,13 @@ seed_dispatch() {
   local at pr=null asking=null base=main stacked_on=null restarts="[]"; at="$(now)"
   if [ "$kind" = restarted ]; then
     restarts="$(jq -nc --arg at "$(date -u -d '-1 hour' +%Y-%m-%dT%H:%M:%SZ)" '[range(2) | { at: $at, reason: "verdict", by: "loop" }]')"
+  fi
+  if [ "$kind" = ruled ]; then
+    restarts="$(jq -nc --arg at "$(date -u -d '-59 minutes' +%Y-%m-%dT%H:%M:%SZ)" '[{ at: $at, reason: "verdict", by: "loop" }]')"
+    write_state "$CONFIG_DIR/verdicts/$SLUG#$n.json" "$(jq -n --arg sha "$head" --arg at "$(date -u -d '-1 hour' +%Y-%m-%dT%H:%M:%SZ)" \
+      '{ result: "fail", sha: $sha, at: $at, findings: "F1 The fixture lacks a test (seeded by verify-nico-agent)\n" }')"
+    printf '# Rulings: %s\n\n## Findings at %s\n\n- **F1** "The fixture lacks a test": dismissed. The issue asks for none.\n' \
+      "$issue" "$head" > "$worktree/.evidence/$n/rulings.md"
   fi
   local url="https://github.com/$SLUG/pull/$((100 + n))" below="https://github.com/$SLUG/pull/109"
   if [ "$kind" = stacked ]; then

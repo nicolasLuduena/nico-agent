@@ -719,6 +719,53 @@ fn a_dispatch_the_reviewer_kept_failing_closes_once_its_pr_is_merged_or_closed_o
 }
 
 #[test]
+fn a_failing_verdict_whose_findings_are_all_dismissed_gets_a_reviewer_on_the_same_head_and_a_second_fail_marks_it_failed()
+ {
+    let t = reviewing();
+    let file = findings(&t, "Signing in shows a 500.\n");
+    verdict(
+        &t,
+        &["acme/api#7", "fail", "--sha", "sha9", "--findings", &file],
+    );
+    // Idle since its last push: as listed before its restart, it has ruled on nothing yet.
+    (t.world.agents.borrow_mut()).insert("impl-api-7".into(), "idle".into());
+    t.world.advance(TICK);
+    assert_eq!(t.tick(), ["acme/api#7 restarted: verdict"]);
+    // Every Finding dismissed: the Rulings are in .evidence/, which git ignores, so nothing is pushed.
+    (t.world.agents.borrow_mut()).insert("impl-api-7".into(), "idle".into());
+    t.world.advance(TICK);
+
+    let (said, calls) = calls_after(&t, || t.tick());
+    let shown = review(&t);
+    t.world.advance(TICK);
+    let still = t.tick();
+    let again = verdict(
+        &t,
+        &["acme/api#7", "fail", "--sha", "sha9", "--findings", &file],
+    );
+    t.world.advance(TICK);
+    let failed = t.tick();
+
+    assert_eq!(said, ["acme/api#7: Reviewer started on codex for sha9"]);
+    assert_eq!(herdr(&calls).last().unwrap(), &review_prompt("sha9"));
+    assert_eq!(shown["state"], "reviewing");
+    assert_eq!(still, Vec::<String>::new());
+    assert_eq!(again.json()["verdict"], "acme/api#7 fail at sha9");
+    assert_eq!(
+        failed,
+        ["acme/api#7 Failed: verdict again at sha9 after its Rulings"]
+    );
+    assert_eq!(
+        *t.world.notifications.borrow(),
+        [(
+            "acme/api#7 Failed".to_string(),
+            "restart: verdict again at sha9 after its Rulings".to_string()
+        )]
+    );
+    assert_eq!(stage(&t), "Failed");
+}
+
+#[test]
 fn a_config_holding_its_own_restart_prompts_without_rulings_still_sends_the_default_rulings() {
     // As this install's config.toml holds them: every key [prompts.restart] had before rulings.
     let own = r#"

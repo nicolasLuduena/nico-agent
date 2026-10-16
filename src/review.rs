@@ -13,9 +13,10 @@ use crate::cli::{Context, Refusal};
 use crate::config::{self, Config, Repo, fill_in};
 use crate::dispatch::{self, Dispatch};
 use crate::launch::{self, AgentLaunch};
+use crate::restart::Reason;
 use crate::stage::{self, Pr, Stage, Standing};
 use crate::tick;
-use crate::verdict::Outcome;
+use crate::verdict::{Outcome, Verdict};
 use crate::wiki;
 use crate::world::{self, Agent, AgentState, PrState};
 
@@ -30,10 +31,30 @@ pub struct Reviewer {
     /// its Reviewer left herdr before its Verdict.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub failures: Vec<String>,
+    /// Started to rule on the Implementer's Rulings: on a head whose failing
+    /// Verdict they answered with no push.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub rulings: bool,
+}
+
+/// Whether `v`, the Verdict on the head of `d`'s PR, is a fail the
+/// Implementer answered with Rulings alone: restarted for it before
+/// `listed`, when herdr listed `agents`, it went idle in them with the head
+/// unchanged, or a Reviewer was started to rule on them.
+pub fn answered(d: &Dispatch, v: &Verdict, agents: Option<&[Agent]>, listed: &str) -> bool {
+    // Listed before its restart, an idle Implementer has ruled on nothing yet.
+    let restarted = (d.restarts.iter())
+        .any(|r| r.reason == Reason::Verdict && r.at >= v.at && r.at.as_str() < listed);
+    let idle = agents.and_then(|a| world::agent_state(a, &d.implementer.agent));
+    let ruling = (d.reviewer.as_ref()).is_some_and(|r| r.rulings && r.sha.as_ref() == Some(&v.sha));
+    v.result == Outcome::Fail
+        && restarted
+        && (ruling || matches!(idle, Some(AgentState::Idle | AgentState::Done)))
 }
 
 /// (5) Start a Reviewer for each live Dispatch whose open PR has a head with
-/// no Verdict and no Reviewer prompted for it still in herdr's `agents`;
+/// no Verdict, or a failing one [`answered`] with Rulings alone, and no
+/// Reviewer prompted for it still in herdr's `agents`, listed at `listed`;
 /// behind the `review` switch. A launch that fails is said and tried again
 /// next tick, in a fresh tab. Without `agents`, a prompted Reviewer stands.
 /// A Reviewer herdr reports working is never closed: the next head waits for it.
@@ -44,6 +65,7 @@ pub fn start_reviewers(
     ctx: &Context,
     config: &Config,
     agents: Option<&[Agent]>,
+    listed: &str,
 ) -> Result<Vec<String>, Refusal> {
     let prs = stage::load(&ctx.config_dir)?;
     let mut said = vec![];
@@ -60,11 +82,13 @@ pub fn start_reviewers(
         let gone = |r: &&Reviewer| {
             agents.is_some_and(|a| world::agent_state(a, &r.launch.agent).is_none())
         };
-        let prompted = (d.reviewer.as_ref())
-            .filter(|r| !gone(r))
-            .and_then(|r| r.sha.as_ref());
+        let verdict = standing.verdict_on_head();
+        let answered = verdict.is_some_and(|v| answered(&d, v, agents, listed));
+        // Once answered, the Reviewer that failed the head is not the one prompted for it.
+        let last = (d.reviewer.as_ref()).filter(|r| !answered || r.rulings);
+        let prompted = last.filter(|r| !gone(r)).and_then(|r| r.sha.as_ref());
         if standing.stage != Stage::PrDraft
-            || standing.verdict_on_head().is_some()
+            || (verdict.is_some() && !answered)
             || prompted == Some(&pr.head_sha)
         {
             continue;
@@ -88,7 +112,7 @@ pub fn start_reviewers(
             continue;
         }
         // Prompted for this head, and gone from herdr before its Verdict.
-        if d.reviewer.as_ref().and_then(|r| r.sha.as_ref()) == Some(head) {
+        if last.and_then(|r| r.sha.as_ref()) == Some(head) {
             failures.push(head.clone());
         }
         if of_head(&failures) <= cap {
@@ -96,7 +120,7 @@ pub fn start_reviewers(
                 said.push(line);
                 continue;
             }
-            let started = start_on_head(ctx, config, &d, url, pr, &mut failures)?;
+            let started = start_on_head(ctx, config, &d, url, pr, answered, &mut failures)?;
             said.push(started.unwrap_or_else(|no| no.error));
         } else {
             record(ctx, &d.issue, d.reviewer.clone(), failures.clone())?;
@@ -188,7 +212,7 @@ pub fn now(ctx: &Context, text: &str) -> Result<Value, Refusal> {
     let mut failures = (d.reviewer.as_ref()).map_or(vec![], |r| r.failures.clone());
     failures.retain(|sha| sha != head);
     // Said in serve's log as the tick's are. Past a cap of 0 no one is notified: the user sees it.
-    let started = start_on_head(ctx, &config, &d, url, pr, &mut failures)?;
+    let started = start_on_head(ctx, &config, &d, url, pr, false, &mut failures)?;
     ctx.world
         .log(started.as_ref().unwrap_or_else(|no| &no.error));
     Ok(json!({ "review": started? }))
@@ -203,14 +227,16 @@ fn close_last(ctx: &Context, d: &Dispatch) -> Result<(), String> {
 }
 
 /// Start a new Reviewer of `d` on the head of its PR `pr` at `url`, once
-/// [`close_last`] closed its last one's tab, and record it on `d` with
-/// `failures`, that head added when the start fails: what it says, or why it failed.
+/// [`close_last`] closed its last one's tab, to rule on the Implementer's
+/// Rulings if `rulings`, and record it on `d` with `failures`, that head
+/// added when the start fails: what it says, or why it failed.
 fn start_on_head(
     ctx: &Context,
     config: &Config,
     d: &Dispatch,
     url: &str,
     pr: &Pr,
+    rulings: bool,
     failures: &mut Vec<String>,
 ) -> Result<Result<String, Refusal>, Refusal> {
     let repo = config.repo_of(d);
@@ -227,6 +253,7 @@ fn start_on_head(
         },
         sha: None,
         failures: vec![],
+        rulings,
     };
     let said = match start(ctx, config, &repo, d, &mut started.launch, url, pr) {
         Ok(()) => {
@@ -269,19 +296,23 @@ pub fn shown(
     d: &Dispatch,
     standing: &Standing,
     agents: Option<&[Agent]>,
+    listed: &str,
 ) -> Option<Value> {
     let reviewed =
         d.closed_at.is_none() && matches!(standing.stage, Stage::PrDraft | Stage::Verified);
     let (_, pr) = standing.pr.filter(|_| reviewed)?;
     let head = &pr.head_sha;
     let reviewer = d.reviewer.as_ref();
+    let on_head = standing.verdict_on_head();
+    let answered = on_head.is_some_and(|v| answered(d, v, agents, listed));
     // herdr's Agent state of the Reviewer prompted for the head: `None` once it
     // left herdr, `Unknown` while herdr does not say, which leaves it standing, as the tick does.
-    let prompted = (reviewer.filter(|r| r.sha.as_ref() == Some(head))).map(|r| {
-        agents.map_or(Some(AgentState::Unknown), |a| {
-            world::agent_state(a, &r.launch.agent)
-        })
-    });
+    let prompted = (reviewer.filter(|r| r.sha.as_ref() == Some(head) && (!answered || r.rulings)))
+        .map(|r| {
+            agents.map_or(Some(AgentState::Unknown), |a| {
+                world::agent_state(a, &r.launch.agent)
+            })
+        });
     let cap = config.max_restarts_per_reason as usize;
     let mut attempts = reviewer.map_or(0, |r| r.failures.iter().filter(|sha| *sha == head).count());
     // Gone before its Verdict: the next tick counts it, unless it gave up on the head already.
@@ -289,7 +320,7 @@ pub fn shown(
         attempts += 1;
     }
     let off = !config.repo_of(d).switches.review;
-    let state = match (standing.verdict_on_head(), prompted.flatten()) {
+    let state = match (on_head.filter(|_| !answered), prompted.flatten()) {
         // With review off only a Reviewer started on the head by hand shows.
         _ if off && prompted.is_none() => "off",
         (Some(v), _) if v.result == Outcome::Pass => "passed",
