@@ -284,7 +284,7 @@ fn relaunch(
     let worktree = record.worktree.as_deref().expect(made);
     let launch = &mut record.implementer;
     // Opened before the old one closes: a workspace left with no tab may close itself.
-    let old = launch.tab.take();
+    let old = launch.tab.clone();
     let opened = launch::open_tab(world, launch, workspace, worktree, "implementer", None)
         .and_then(|()| old.map_or(Ok(()), |tab| world.herdr_tab_close(&tab)));
     opened.map_err(|e| ("tab", e.into()))?;

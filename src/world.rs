@@ -1240,7 +1240,6 @@ fn herdr(args: &[&str]) -> Result<Value, HerdrFailure> {
     Ok(printed["result"].clone())
 }
 
-/// The text at `value`, or herdr answered something else.
 /// The tab and root pane in herdr's answer to a command that opened a tab.
 fn herdr_tab(result: &Value) -> WorldResult<Tab> {
     Ok(Tab {
@@ -1249,6 +1248,7 @@ fn herdr_tab(result: &Value) -> WorldResult<Tab> {
     })
 }
 
+/// The text at `value`, or herdr answered something else.
 fn herdr_str(value: &Value) -> WorldResult<String> {
     value
         .as_str()
