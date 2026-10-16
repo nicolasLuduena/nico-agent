@@ -17,7 +17,7 @@ use crate::stage;
 use crate::state;
 use crate::world::{Answer, HttpResponse, World, WorldError, WorldResult};
 
-const README: &str = "# nico-agent's Bucket\n\nEvidence, one commit per PR head, Verdict and Close: `<owner>/<repo>/<issue>/<sha>/`\nholds what the worktree's `.evidence/<issue>/` held while its PR was at `<sha>`,\nand a Verdict's `findings.md` from its Reviewer.\n\nEach Repo's Wiki, one commit per build: `wiki/<owner>/<repo>/wiki.json`; each\nLibrary version's at `wiki/<owner>/<repo>/<tag>/<path>/wiki.json`, the tag's `/` as `%2F`.\n";
+const README: &str = "# nico-agent's Bucket\n\nEvidence, one commit per PR head, Verdict and Close: `<owner>/<repo>/<issue>/<sha>/`\nholds what the worktree's `.evidence/<issue>/` held while its PR was at `<sha>`,\nunder `review/` what its Reviewer's own worktree held there once prompted for\n`<sha>`, and a Verdict's `findings.md` from its Reviewer.\n\nEach Repo's Wiki, one commit per build: `wiki/<owner>/<repo>/wiki.json`; each\nLibrary version's at `wiki/<owner>/<repo>/<tag>/<path>/wiki.json`, the tag's `/` as `%2F`.\n";
 
 /// Make the Bucket, a git repo with its README committed, unless there is one.
 pub fn create(ctx: &Context, config: &Config) -> Result<(), Refusal> {
@@ -140,8 +140,8 @@ pub fn step(ctx: &Context, config: &Config) -> io::Result<Vec<String>> {
 }
 
 /// Commit `d`'s Evidence to the Bucket at `sha` with `message` when it is
-/// not what the Bucket's last commit there holds: nothing when its worktree
-/// has none. What to say of it, or why it could not be kept.
+/// not what the Bucket's last commit there holds: nothing when its worktrees
+/// have none. What to say of it, or why it could not be kept.
 pub fn keep_evidence(
     ctx: &Context,
     config: &Config,
@@ -183,11 +183,7 @@ fn copied(world: &dyn World, config: &Config, d: &Dispatch, sha: &str) -> Result
         let from = format!("{worktree}/{}", evidence(d));
         world.copy_dir(&from, &to).map_err(refused)?;
     }
-    let reviewed = d
-        .reviewer
-        .as_ref()
-        .filter(|r| r.sha.as_deref() == Some(sha));
-    if let Some(worktree) = reviewed.and_then(|_| review::worktree(d)) {
+    if let Some(worktree) = review::worktree_at(d, sha) {
         let from = format!("{worktree}/{}", evidence(d));
         world
             .copy_dir(&from, &format!("{to}/review"))
