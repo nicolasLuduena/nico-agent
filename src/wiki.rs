@@ -2076,16 +2076,24 @@ fn unique(parent: &str, name: &str, ids: &mut HashSet<String>) -> String {
     id
 }
 
-/// Why a claim citing `anchors` rests on no real lines: it cites none, or
-/// one not inside a file of the Wiki, its files by path in `code`.
+/// The most lines one Anchor cites: a whole file shows no claim.
+const ANCHOR_LINES: usize = 60;
+
+/// Why a claim citing `anchors` rests on no real lines: it cites none, one
+/// not inside a file of the Wiki, its files by path in `code`, or one over
+/// `ANCHOR_LINES` long.
 fn unanchored(anchors: &[Anchor], code: &HashMap<&str, &File>) -> Option<String> {
     if anchors.is_empty() {
         return Some("it cites no Anchor".into());
     }
     (anchors.iter()).find_map(|a| match code.get(a.path.as_str()).map(|f| f.lines) {
-        Some(n) => (a.start < 1 || a.start > a.end || a.end > n).then(|| {
+        Some(n) if a.start < 1 || a.start > a.end || a.end > n => Some(format!(
+            "lines {}-{} are not inside {} ({n} lines)",
+            a.start, a.end, a.path
+        )),
+        Some(_) => (a.end + 1 - a.start > ANCHOR_LINES).then(|| {
             format!(
-                "lines {}-{} are not inside {} ({n} lines)",
+                "lines {}-{} of {} are over {ANCHOR_LINES}, too many to show a claim",
                 a.start, a.end, a.path
             )
         }),
