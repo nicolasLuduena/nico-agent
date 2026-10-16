@@ -1,5 +1,6 @@
 <script lang="ts">
-  // A Repo's panel, in the column right of its Project's map: the Dispatch
+  // A Repo's panel, in the column right of its Project's map: who its agents
+  // post as, from its bot check, then the Dispatch
   // form, its one action, then its Readiness, room, switches, settings,
   // Library links and Install, each folded to a line; then its removal. Headed by its slug, on its line colour, when the tab holds more than its own.
   import { repoLine } from "../hues";
@@ -11,6 +12,7 @@
   import LibraryLinks from "./LibraryLinks.svelte";
   import Remove from "./Remove.svelte";
   import Room from "./Room.svelte";
+  import { postsAs } from "./postsAs";
   import { patch } from "./send";
   import Settings from "./Settings.svelte";
   import { type Holder, projectOf } from "./settings";
@@ -26,12 +28,16 @@
     patch: (body) => patch(repo.slug, body),
   });
   const line = $derived(repoLine(repo.slug, holder.under));
+  const posts = $derived(postsAs(repo));
 </script>
 
 <section class="controls" class:lined={line} style:--line={line} aria-label={repo.slug}>
   <!-- A new Repo starts the panel fresh: no other Repo's picks, saves, refusals or open sections. -->
   {#key repo.slug}
     {#if headed}<h2 class="head">{repo.slug}</h2>{/if}
+    {#if posts}
+      <p class="posts">{posts.said}{#if posts.install}. <a href={posts.install} target="_blank" rel="noreferrer">Install the App</a>{/if}</p>
+    {/if}
     <DispatchForm {repo} {status} panel={holder.panel} />
     <Checks {repo} panel={holder.panel} />
     <Room {holder} live={inFlight(repo, status.dispatches)} />
@@ -42,3 +48,10 @@
     <Remove {repo} />
   {/key}
 </section>
+
+<style>
+  .posts {
+    color: var(--ink-muted);
+    overflow-wrap: anywhere;
+  }
+</style>

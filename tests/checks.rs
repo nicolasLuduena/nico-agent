@@ -451,3 +451,27 @@ fn changed_is_sent_only_when_a_check_s_result_flips_and_at_says_since_when() {
     assert_eq!(flipped, "event: changed\ndata: {}\n\n");
     assert_eq!(moved, "2026-09-30T12:02:00Z");
 }
+
+/// Who `status` says the Repo's agents post as, read from its bot check.
+fn posts_as(t: &Setup) -> Value {
+    t.cli(&["status", "--json"]).json()["repos"][0]["posts_as"].clone()
+}
+
+#[test]
+fn status_says_the_repo_s_agents_post_as_the_bot_once_the_app_is_on_it_and_as_you_otherwise() {
+    let t = ready();
+    assert_eq!(posts_as(&t), Value::Null, "nothing to say before the first check");
+    served(&t);
+    t.world.calls.borrow_mut().clear();
+
+    assert_eq!(posts_as(&t), "nicolasluduena-coding-agent[bot]");
+    assert!(!t.world.calls().contains(&"github app repos".to_string()), "no new call");
+
+    t.world.app_repos.borrow_mut().clear();
+    served(&t);
+    assert_eq!(posts_as(&t), "you");
+
+    t.world.fail_call("github app repos", "`ghbot api /installation/repositories` failed");
+    served(&t);
+    assert_eq!(posts_as(&t), "you", "an App it could not ask about posts nothing");
+}

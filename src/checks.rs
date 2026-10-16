@@ -280,11 +280,26 @@ pub fn app_installed(world: &dyn World, slug: &str) -> WorldResult<bool> {
     Ok(repos.iter().any(|r| r.eq_ignore_ascii_case(slug)))
 }
 
+/// The GitHub App's bot, whom a Repo's agents post as once the App is on it.
+pub const BOT: &str = "nicolasluduena-coding-agent[bot]";
+
+const INSTALLED: &str = "the GitHub App is installed on ";
+
+/// Who the Repo's agents post as, by its bot check: the bot only once that
+/// found the App on it, as Dispatch adds the bot suffix only then; else you.
+pub fn posts_as(checks: &Checks) -> &'static str {
+    let installed = |c: &Check| c.name == "bot" && c.said.starts_with(INSTALLED);
+    match checks.results.iter().any(installed) {
+        true => BOT,
+        false => "you",
+    }
+}
+
 /// Whether the GitHub App is on the Repo; a Repo without it opens its PRs
 /// as the user, which is a choice, so only failing to tell is failing.
 fn bot(world: &dyn World, slug: &str) -> Check {
     match app_installed(world, slug) {
-        Ok(true) => ok("bot", format!("the GitHub App is installed on {slug}")),
+        Ok(true) => ok("bot", format!("{INSTALLED}{slug}")),
         Ok(false) => ok(
             "bot",
             format!("the GitHub App is not installed on {slug}, so its PRs are opened as you"),
