@@ -120,7 +120,21 @@ fn check(world: &dyn World, config: &Config, slug: &str, repo: &Repo) -> Vec<Che
     }
     results.push(skills(world, config, repo));
     results.push(bot(world, slug));
+    results.push(herdr(world));
     results
+}
+
+/// herdr's server answering its client: after an upgrade a server still
+/// running the old one refuses each call with `protocol_mismatch`.
+fn herdr(world: &dyn World) -> Check {
+    match world.herdr_agents() {
+        Ok(_) => ok("herdr", "herdr answers `herdr agent list`".into()),
+        Err(e) => failing(
+            "herdr",
+            e.0,
+            "Start herdr; after an upgrade, `herdr server stop` and start it again so the server's protocol matches the client's".into(),
+        ),
+    }
 }
 
 /// `.evidence/` ignored by the `.gitignore` at the tip of the Base.

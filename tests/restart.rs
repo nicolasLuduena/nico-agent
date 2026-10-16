@@ -194,7 +194,9 @@ fn serve_on_start_restarts_exactly_the_dispatches_whose_agents_are_gone_as_reboo
     assert_eq!(
         herdr,
         [
+            // The Readiness check's, then the tick's.
             "herdr agent list".to_string(),
+            "herdr agent list".into(),
             "herdr tab close w1:t2".into(),
             "herdr tab create --workspace w1 --cwd /worktrees/api-1 --label implementer --no-focus"
                 .into(),

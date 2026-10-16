@@ -92,7 +92,7 @@ Project's settings and after its Install: its clone, a fetch that asks
 nothing, `.evidence/` ignored and, while it reviews, a Verification skill
 on its Base, the skills its steps' prompts name for their Harness, and
 whether the GitHub App is on it (without it, its PRs are opened as the
-user, which passes). A failing one is in needs-you with its help, and
+user, which passes), and whether herdr's server answers its client. A failing one is in needs-you with its help, and
 stops nothing. _Avoid_:
 health, doctor.
 
