@@ -19,7 +19,7 @@ use crate::cli::{Context, Refusal};
 use crate::config::{self, Config, Harness, Launch, Repo, fill_in};
 use crate::launch::{self, AgentLaunch};
 use crate::restart::{self, Reason, Restart};
-use crate::review::Reviewer;
+use crate::review::{self, Reviewer};
 use crate::source::{self, BlockerPr, Read, Start};
 use crate::stage;
 use crate::state;
@@ -735,9 +735,10 @@ pub fn edit(ctx: &Context, issue: &str, change: impl FnOnce(&mut Dispatch)) -> i
     })
 }
 
-/// Close every live Dispatch whose PR is final: remove its worktree and
-/// close its workspace, keeping the record, the branch and the PR. One that
-/// fails stays live and is tried again next time. Says what it did.
+/// Close every live Dispatch whose PR is final: remove its worktree, and its
+/// Reviewer's if it had one, and close its workspace, keeping the record, the
+/// branch and the PR. One that fails stays live and is tried again next
+/// time. Says what it did.
 ///
 /// A merged PR's work is on its Base, so its worktree goes even with files
 /// left in it; commits never pushed stay on its branch. A closed one's files
@@ -782,9 +783,15 @@ pub fn close_final(ctx: &Context, config: &Config) -> io::Result<Vec<String>> {
             }
             continue;
         }
-        let freed = d.workspace.as_ref().map_or(Ok(()), |workspace| {
-            (ctx.world.herdr_worktree_remove(workspace, merged))
-                .and_then(|()| ctx.world.herdr_workspace_close(workspace))
+        let reviewer_worktree = d.reviewer.as_ref().and(review::worktree(&d));
+        let clone = &config.repo_of(&d).path;
+        let reviewer_freed =
+            reviewer_worktree.map_or(Ok(()), |dir| ctx.world.git_worktree_remove(clone, &dir));
+        let freed = reviewer_freed.and_then(|()| {
+            d.workspace.as_ref().map_or(Ok(()), |workspace| {
+                (ctx.world.herdr_worktree_remove(workspace, merged))
+                    .and_then(|()| ctx.world.herdr_workspace_close(workspace))
+            })
         });
         if let Err(e) = freed {
             said.push(format!("could not Close {}: {e}", d.issue));

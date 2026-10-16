@@ -526,6 +526,8 @@ seed_dispatch() {
     stacked_on="$(jq -nc --arg u "$below" '{ number: 109, url: $u, head_branch: "agent/fixture-9" }')"
   fi
   if [ "$kind" != asking ]; then
+    # A PR's head is pushed: the Reviewer's worktree fetches it.
+    fgit "$worktree" push --quiet origin "$branch"
     pr="\"$url\""
     local prs="{}"
     [ -f "$CONFIG_DIR/prs.json" ] && prs="$(cat "$CONFIG_DIR/prs.json")"
@@ -755,6 +757,7 @@ cmd_drift() {
       local old; old="$(jq -r --arg u "$url" '.[$u].head_sha' "$CONFIG_DIR/prs.json")"
       printf 'more work\n' >> "$worktree/work-$n.txt"
       fgit "$worktree" commit --quiet --all -m "more work on $SLUG#$n"
+      fgit "$worktree" push --quiet origin "HEAD:agent/fixture-$n"
       local head; head="$(fgit "$worktree" rev-parse HEAD)"
       write_state "$CONFIG_DIR/prs.json" "$(jq --arg u "$url" --arg h "$head" --arg at "$(now)" \
         '.[$u].head_sha = $h | .[$u].updated_at = $at | .[$u].checked_at = $at' "$CONFIG_DIR/prs.json")"

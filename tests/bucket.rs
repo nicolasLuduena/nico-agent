@@ -2,7 +2,7 @@ mod common;
 
 use std::time::Duration;
 
-use common::{Ran, Setup, github_issue, pull_request, setup};
+use common::{Ran, Setup, github_issue, implementer_idle, pull_request, setup};
 use nico_agent::world::{Answer, Mergeable, PrState, PullRequest, PullRequestActivity};
 use serde_json::{Value, json};
 
@@ -21,6 +21,7 @@ fn with_pr() -> Setup {
         head_branch: Some("agent/api-7".into()),
         ..pull_request("acme/api", 9)
     });
+    implementer_idle(&t, 7);
     t.world.advance(Duration::from_secs(600));
     t.tick();
     t.world.calls.borrow_mut().clear();
@@ -354,6 +355,8 @@ fn a_verdict_commits_the_evidence_and_findings_to_the_bucket_under_repo_issue_an
     assert_eq!(
         calls,
         [
+            "git -C /worktrees/rev-api-7 rev-parse HEAD".to_string(),
+            "git -C /worktrees/rev-api-7 status --porcelain --untracked-files=no".into(),
             format!("git remotes {BUCKET}"),
             format!("cp -r /worktrees/api-7/.evidence/7/. {BUCKET}/acme/api/7/sha9"),
             format!("write {BUCKET}/acme/api/7/sha9/findings.md"),
@@ -362,8 +365,8 @@ fn a_verdict_commits_the_evidence_and_findings_to_the_bucket_under_repo_issue_an
             ),
         ]
     );
-    // The same Verdict again is no new one: nothing is kept twice.
-    assert_eq!(t.world.calls(), Vec::<String>::new());
+    // The same Verdict again is no new one: its Reviewer's worktree is checked, nothing is kept twice.
+    assert_eq!(t.world.calls(), calls[..2]);
 }
 
 #[test]
