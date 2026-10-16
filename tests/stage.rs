@@ -245,7 +245,7 @@ fn a_dispatch_whose_pr_is_final_is_closed_freeing_its_worktree_and_workspace_and
     assert_eq!(
         closed,
         [
-            "herdr worktree remove --workspace w1",
+            "herdr worktree remove --workspace w1 --force",
             "herdr workspace close w1"
         ]
     );
@@ -275,7 +275,18 @@ fn dispatch_7(t: &Setup) -> Value {
 
 #[test]
 fn a_pr_opened_and_merged_or_closed_between_two_ticks_is_linked_and_its_dispatch_closed() {
-    for (state, stage) in [(PrState::Merged, "Merged"), (PrState::Closed, "Closed")] {
+    for (state, stage, remove) in [
+        (
+            PrState::Merged,
+            "Merged",
+            "herdr worktree remove --workspace w1 --force",
+        ),
+        (
+            PrState::Closed,
+            "Closed",
+            "herdr worktree remove --workspace w1",
+        ),
+    ] {
         let t = dispatched();
         t.tick();
         // Issue 7 was dispatched at 12:00:00; both are final before the next tick, and 9 is the newer.
@@ -291,7 +302,7 @@ fn a_pr_opened_and_merged_or_closed_between_two_ticks_is_linked_and_its_dispatch
             [
                 "github branch prs acme/api:agent/api-7",
                 "github pr activity acme/api#9",
-                "herdr worktree remove --workspace w1",
+                remove,
                 "herdr workspace close w1",
             ]
         );
@@ -354,26 +365,88 @@ fn merged() -> Setup {
 fn a_dispatch_whose_worktree_cannot_be_removed_stays_live_and_is_closed_next_time() {
     let t = merged();
     t.world
-        .fail_call("herdr worktree remove", "worktree has uncommitted changes");
+        .fail_call("herdr worktree remove", "worktree_busy: in use");
 
     let said = t.tick();
     let during = status(&t)["dispatches"][0]["closed_at"].clone();
     t.world.clear_failures();
     let retried = tick_calls(&t, CLOSE);
 
-    assert_eq!(
-        said,
-        ["could not Close acme/api#7: worktree has uncommitted changes"]
-    );
+    assert_eq!(said, ["could not Close acme/api#7: worktree_busy: in use"]);
     assert_eq!(during, Value::Null);
     assert_eq!(
         retried,
+        [
+            "herdr worktree remove --workspace w1 --force",
+            "herdr workspace close w1"
+        ]
+    );
+    assert_ne!(status(&t)["dispatches"][0]["closed_at"], Value::Null);
+}
+
+#[test]
+fn a_merged_pr_s_dirty_worktree_is_force_removed() {
+    let t = merged();
+    let worktree = status(&t)["dispatches"][0]["worktree"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    (t.world.changes.borrow_mut()).insert(worktree.clone(), vec!["?? notes.md".into()]);
+
+    let calls = tick_calls(&t, &[CLOSE, &[&format!("git -C {worktree}")]].concat());
+
+    assert_eq!(
+        calls,
+        [
+            "herdr worktree remove --workspace w1 --force",
+            "herdr workspace close w1"
+        ]
+    );
+    assert_ne!(status(&t)["dispatches"][0]["closed_at"], Value::Null);
+}
+
+#[test]
+fn a_closed_pr_s_dirty_worktree_is_said_once_and_kept_till_clean() {
+    let t = dispatched();
+    t.world.add_pr(pr(9, "agent/api-7", PrState::Open));
+    t.tick();
+    set_state(&t, 9, PrState::Closed);
+    let worktree = status(&t)["dispatches"][0]["worktree"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let dirty = vec!["M src/lib.rs".to_string(), "?? notes.md".to_string()];
+    (t.world.changes.borrow_mut()).insert(worktree.clone(), dirty);
+
+    let first = t.tick();
+    let second = tick_calls(&t, &[CLOSE, &[&format!("git -C {worktree}")]].concat());
+    let said_again = t.tick();
+    let during = status(&t)["dispatches"][0].clone();
+    t.world.changes.borrow_mut().clear();
+    let cleaned = tick_calls(&t, CLOSE);
+
+    assert_eq!(
+        first,
+        ["could not Close acme/api#7: worktree has uncommitted changes: M src/lib.rs, ?? notes.md"]
+    );
+    assert_eq!(second, [format!("git -C {worktree} status --porcelain")]);
+    assert!(said_again.is_empty(), "{said_again:?}");
+    assert_eq!(during["closed_at"], Value::Null);
+    assert_eq!(during["stage"], "Failed");
+    assert_eq!(
+        during["failure"]["error"],
+        "worktree has uncommitted changes: M src/lib.rs, ?? notes.md"
+    );
+    assert_eq!(
+        cleaned,
         [
             "herdr worktree remove --workspace w1",
             "herdr workspace close w1"
         ]
     );
-    assert_ne!(status(&t)["dispatches"][0]["closed_at"], Value::Null);
+    let closed = status(&t)["dispatches"][0].clone();
+    assert_ne!(closed["closed_at"], Value::Null);
+    assert_eq!(closed["stage"], "Closed");
 }
 
 #[test]

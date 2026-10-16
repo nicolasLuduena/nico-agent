@@ -303,6 +303,9 @@ pub trait World {
     /// The changes to tracked files in the clone at `path`, a line each as
     /// `git status --porcelain` lists them; none when it has none.
     fn git_tracked_changes(&self, path: &str) -> WorldResult<Vec<String>>;
+    /// The modified and untracked files in the clone at `path`, a line each
+    /// as `git status --porcelain` lists them; none when it has none.
+    fn git_changes(&self, path: &str) -> WorldResult<Vec<String>>;
     /// Pull the clone's branch fast-forward only, failing at once rather
     /// than asking for a passphrase.
     fn git_pull(&self, path: &str) -> WorldResult<()>;
@@ -416,7 +419,8 @@ pub trait World {
         label: &str,
     ) -> WorldResult<Worktree>;
     /// Remove the workspace's worktree, keeping its branch; no-op if it is gone.
-    fn herdr_worktree_remove(&self, workspace: &str) -> WorldResult<()>;
+    /// Unless `force`, herdr refuses one with modified or untracked files.
+    fn herdr_worktree_remove(&self, workspace: &str, force: bool) -> WorldResult<()>;
     /// Close a workspace and the agents in it; no-op if it is gone.
     fn herdr_workspace_close(&self, workspace: &str) -> WorldResult<()>;
     fn herdr_tab_create(&self, workspace: &str, cwd: &str, label: &str) -> WorldResult<Tab>;
@@ -1317,6 +1321,10 @@ impl World for RealWorld {
         let listed = git_ok(path, &["status", "--porcelain", "--untracked-files=no"])?;
         Ok(listed.lines().map(|line| line.trim().to_string()).collect())
     }
+    fn git_changes(&self, path: &str) -> WorldResult<Vec<String>> {
+        let listed = git_ok(path, &["status", "--porcelain"])?;
+        Ok(listed.lines().map(|line| line.trim().to_string()).collect())
+    }
     fn git_pull(&self, path: &str) -> WorldResult<()> {
         git_env(path, &["pull", "--ff-only"], &[BATCH_SSH]).map(drop)
     }
@@ -1714,8 +1722,12 @@ impl World for RealWorld {
             path: herdr_str(&result["worktree"]["path"])?,
         })
     }
-    fn herdr_worktree_remove(&self, workspace: &str) -> WorldResult<()> {
-        match herdr(&["worktree", "remove", "--workspace", workspace]) {
+    fn herdr_worktree_remove(&self, workspace: &str, force: bool) -> WorldResult<()> {
+        let mut args = vec!["worktree", "remove", "--workspace", workspace];
+        if force {
+            args.push("--force");
+        }
+        match herdr(&args) {
             Err(failure) if !failure.is(&["workspace_not_found"]) => Err(failure.into()),
             _ => Ok(()),
         }

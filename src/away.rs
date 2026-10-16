@@ -163,7 +163,9 @@ fn close_ended(ctx: &Context, agents: Option<&[Agent]>) -> io::Result<(Vec<Strin
         }
         let closed = run.workspace.as_ref().map_or(Ok(()), |workspace| {
             (run.worktree.as_ref())
-                .map_or(Ok(()), |_| ctx.world.herdr_worktree_remove(workspace))
+                .map_or(Ok(()), |_| {
+                    ctx.world.herdr_worktree_remove(workspace, false)
+                })
                 .and_then(|()| ctx.world.herdr_workspace_close(workspace))
         });
         if let Err(e) = closed {

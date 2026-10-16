@@ -40,9 +40,9 @@
 #                                 Not with seed herdr
 #   seed wiki <wiki.json> <clone> a Repo's Wiki built elsewhere committed to the Bucket, and that Repo cloned
 #                                 on disk from <clone> for `repo add`; prints { repo, clone, commit }
-#   drift push <n>|stale|pause|hang|below merged|closed|base [<file>]|tag <tag>
+#   drift push <n>|stale|pause|hang|below merged|closed|final <n> merged|closed|base [<file>]|tag <tag>
 #                                 what GitHub would change: a new PR head, an old read, a rate limit, a gh that never answers,
-#                                 the PR below a Stacked dispatch merged or closed unmerged,
+#                                 the PR below a Stacked dispatch or a seeded one's own merged or closed unmerged,
 #                                 verify/fixture's Base moved on (and fetched), verify/second tagged
 #   state                         read-only fingerprint: config dir files, Dispatches, Verdicts, Bucket log, outside calls
 #   run [--evidence PREFIX] -- <nico-agent args...>
@@ -748,12 +748,17 @@ cmd_drift() {
       write_state "$CONFIG_DIR/pauses.json" "$(jq --arg u "$until" '.github = $u' <<<"$pauses")"
       jq -c . "$CONFIG_DIR/pauses.json"
       ;;
-    # The PR a seeded Stacked dispatch sits on, #109, merged or closed unmerged, as GitHub would say.
-    below)
+    # The PR a seeded Stacked dispatch sits on, #109, or seeded Dispatch <n>'s own, merged or
+    # closed unmerged, as GitHub would say.
+    below|final)
       local how="${2:-}" url="https://github.com/$SLUG/pull/109"
-      [[ "$how" =~ ^(merged|closed)$ ]] || die "drift: usage: drift below merged|closed"
+      if [ "$kind" = final ]; then
+        [[ "${2:-}" =~ ^[0-9]+$ ]] || die "drift: usage: drift final <n> merged|closed"
+        how="${3:-}" url="https://github.com/$SLUG/pull/$((100 + $2))"
+      fi
+      [[ "$how" =~ ^(merged|closed)$ ]] || die "drift: usage: drift $kind ${2:+$2 }merged|closed"
       jq -e --arg u "$url" 'has($u)' "$CONFIG_DIR/prs.json" >/dev/null 2>&1 \
-        || die "drift: no PR below seeded (seed dispatch <n> stacked first)"
+        || die "drift: no PR $url seeded (seed dispatch <n> pr, or stacked for below, first)"
       write_state "$CONFIG_DIR/prs.json" "$(jq --arg u "$url" --arg how "$how" --arg at "$(now)" '
         .[$u] |= (.state = $how | .final = true | .updated_at = $at | .checked_at = $at
           | .merged_at = (if $how == "merged" then $at else null end))' "$CONFIG_DIR/prs.json")"
@@ -796,7 +801,7 @@ cmd_drift() {
       rm -rf "$work"
       jq -n --arg slug "$SECOND" --arg tag "$tag" --arg commit "$commit" '{ repo: $slug, tag: $tag, commit: $commit }'
       ;;
-    *) die "drift: usage: drift push <n> | drift stale | drift pause | drift hang | drift below merged|closed | drift base [<file>] | drift tag <tag>" ;;
+    *) die "drift: usage: drift push <n> | drift stale | drift pause | drift hang | drift below merged|closed | drift final <n> merged|closed | drift base [<file>] | drift tag <tag>" ;;
   esac
 }
 

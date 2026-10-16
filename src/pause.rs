@@ -183,6 +183,9 @@ impl World for Guarded<'_> {
     fn git_tracked_changes(&self, path: &str) -> WorldResult<Vec<String>> {
         self.world.git_tracked_changes(path)
     }
+    fn git_changes(&self, path: &str) -> WorldResult<Vec<String>> {
+        self.world.git_changes(path)
+    }
     fn git_pull(&self, path: &str) -> WorldResult<()> {
         self.world.git_pull(path)
     }
@@ -248,8 +251,8 @@ impl World for Guarded<'_> {
     ) -> WorldResult<Worktree> {
         self.world.herdr_worktree_create(cwd, branch, base, label)
     }
-    fn herdr_worktree_remove(&self, workspace: &str) -> WorldResult<()> {
-        self.world.herdr_worktree_remove(workspace)
+    fn herdr_worktree_remove(&self, workspace: &str, force: bool) -> WorldResult<()> {
+        self.world.herdr_worktree_remove(workspace, force)
     }
     fn herdr_workspace_close(&self, workspace: &str) -> WorldResult<()> {
         self.world.herdr_workspace_close(workspace)

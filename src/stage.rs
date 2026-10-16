@@ -62,6 +62,14 @@ pub fn of(dispatch: &Dispatch, pr: Option<&Pr>, verdict: Option<&Verdict>) -> St
     let passed = |pr| on_head(pr, verdict).is_some_and(|v| v.result == Outcome::Pass);
     match pr {
         Some(pr) if pr.state == PrState::Merged => Stage::Merged,
+        // Its worktree holds files Close would not remove: the user's to settle.
+        _ if dispatch
+            .failure
+            .as_ref()
+            .is_some_and(|f| f.step == dispatch::CLOSE) =>
+        {
+            Stage::Failed
+        }
         Some(pr) if pr.state == PrState::Closed => Stage::Closed,
         _ if dispatch.failure.is_some() => Stage::Failed,
         Some(pr) if passed(pr) => Stage::Verified,

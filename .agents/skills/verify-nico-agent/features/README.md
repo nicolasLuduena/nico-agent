@@ -17,6 +17,7 @@ An H1 title, one paragraph on the user-visible behaviour, then exactly four H2 s
 - [A tab and a map per Project](./project-tabs.md)
 - [A Dispatch the Reviewer kept failing](./rulings.md)
 - [Where each PR's review stands](./review.md)
+- [Close](./close.md)
 - [Settings](./settings.md)
 - [Switches](./switches.md)
 - [Mine: only issues assigned to you, and Assign to me](./mine.md)

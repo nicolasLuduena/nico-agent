@@ -78,6 +78,8 @@ pub struct FakeWorld {
     pub branches: RefCell<HashMap<String, String>>,
     /// The changes to tracked files of each clone, by path, as `git status --porcelain` lists them.
     pub tracked_changes: RefCell<HashMap<String, Vec<String>>>,
+    /// The modified and untracked files of each clone, by path, as `git status --porcelain` lists them.
+    pub changes: RefCell<HashMap<String, Vec<String>>>,
     /// The commit each rev names in a clone, by `<path> <rev>`; `abc1234` when unset.
     pub heads: RefCell<HashMap<String, String>>,
     /// How many commits each range of a clone holds, by `<path> <from>..<to>`; 0 when unset.
@@ -141,6 +143,7 @@ impl Default for FakeWorld {
             tree: Default::default(),
             branches: Default::default(),
             tracked_changes: Default::default(),
+            changes: Default::default(),
             heads: Default::default(),
             shell_runs: Default::default(),
             utc_offset: Cell::new(0),
@@ -415,6 +418,11 @@ impl World for FakeWorld {
             .get(path)
             .cloned()
             .unwrap_or_default())
+    }
+
+    fn git_changes(&self, path: &str) -> WorldResult<Vec<String>> {
+        self.call(format!("git -C {path} status --porcelain"))?;
+        Ok(self.changes.borrow().get(path).cloned().unwrap_or_default())
     }
 
     fn git_pull(&self, path: &str) -> WorldResult<()> {
@@ -747,8 +755,11 @@ impl World for FakeWorld {
         })
     }
 
-    fn herdr_worktree_remove(&self, workspace: &str) -> WorldResult<()> {
-        self.call(format!("herdr worktree remove --workspace {workspace}"))
+    fn herdr_worktree_remove(&self, workspace: &str, force: bool) -> WorldResult<()> {
+        let force = if force { " --force" } else { "" };
+        self.call(format!(
+            "herdr worktree remove --workspace {workspace}{force}"
+        ))
     }
 
     /// Closing a workspace ends the agents in it.
