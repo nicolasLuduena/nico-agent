@@ -3,8 +3,11 @@
 `nico-agent wiki build <owner/name> --update` builds a Repo's Wiki from the one the Bucket holds,
 at the Repo's `origin/<base>`: a part whose files kept their blobs is copied over, a leaf whose
 files changed is asked again, as is a part with an `unanswered` Gap (see
-[wiki-build.md](./wiki-build.md)), the part a file added or removed sits under is divided again, its
-parts from scratch, and a parent whose parts changed keeps its Interpretations. Each part keeps
+[wiki-build.md](./wiki-build.md)), a file added goes to the leaf holding the most files of its folder,
+asked again, or, when no leaf holds one, the part holding its nearest folder's files is divided
+again, and each part its new division names with the same id and unchanged files is copied with
+its parts rather than asked; the part a file removed sits under is divided again, its parts from
+scratch, and a parent whose parts changed keeps its Interpretations. Each part keeps
 its place in the tree. Between builds, `GET /api/wiki/<id>` and the MCP's `get_component` mark
 `stale` each Interpretation, Term and Explainer citing a file whose blob at `origin/<base>` (as the clone last
 fetched it) is not the one it was written against, and the Wiki's page's masthead says how many
@@ -15,7 +18,8 @@ scratch. The loop's nightly build is an Update once the Repo has a Wiki.
 ## Sub-features
 
 - `update-copy` with one file changed, `--update` asks only the leaf holding it (one `opencode2 run`), copies every other part, and keeps the parent's Interpretations; stderr says `updating it from <old>: N part(s) copied or kept, M to ask again`; one Bucket commit `wiki <owner/name> <new>`.
-- `update-added` a file added under a folder asks again only the part holding that folder's files, divided anew (its new parts asked too); every other part is copied, in its place.
+- `update-added` a file added to a folder a leaf holds files of asks again only that leaf (the one holding the most, the first of those), divided anew if it answers a division (its new parts asked too); every other part is copied, in its place.
+- `update-new-folder` a file added to a folder no leaf holds files of divides again the part holding its nearest folder's files; the parts that division names again, with their files unchanged, are copied with their parts (stderr `<trail>: copied N part(s) it kept`), and only the new ones are asked.
 - `stale-route` `GET /api/wiki/<id>` adds `base`, `behind` (commits from the Wiki's commit to `origin/<base>`) and `stale` (how many), and `"stale": true` on each Stale Interpretation, Term and Explainer; reading it writes nothing and fetches nothing.
 - `stale-page` the masthead reads `Describes <sha> · Built HH:MM · 1 commit behind main · 3 Interpretations Stale`, or `Up to date with main` with the Stale count left out when none is; each Stale Interpretation's paragraph reads `Stale <sentence>`, in light, dark and at phone width.
 - `stale-mcp` `get_component` marks the same Interpretations, Terms and Explainer `stale`.
@@ -84,7 +88,15 @@ Preconditions:
   Components `index`, `readme` (copied as it was), `docs`, `docs/notes`, `docs/guide`; `index`'s
   `files` gain `docs/guide.md`. `17-page-added-docs` (`--path /wiki/verify/fixture --hash "#docs"`)
   shows `link "Notes"` and `link "Guide"`.
-- **After.** `git -C "$BUCKET" log --format=%s`: three `wiki verify/fixture <commit>`, one per build.
+- **A file in a new folder.** `$C drift base guide/intro.md`; seed `verify/fixture` a division into
+  `Readme` (`README.md`), `Docs` (`docs/notes.md`, `docs/guide.md`) and `Intro` (`guide/intro.md`),
+  and `verify/fixture > Intro` a leaf. `$C run --evidence "$E/18-update-new-folder" -- wiki build
+  verify/fixture --update --json`: `"components":6`; stderr `verify/fixture: copied 1 part(s) it kept`
+  and `copied 3 part(s) it kept`; the `state` diff's two `opencode2 run` calls are about
+  `verify/fixture` and `verify/fixture > Intro` only. `$C http --evidence "$E/19-wiki-new-folder" GET
+  /api/wiki/verify/fixture`: Components `index`, `readme`, `docs`, `docs/notes`, `docs/guide`,
+  `intro`, Readme and Docs' as they were.
+- **After.** `git -C "$BUCKET" log --format=%s`: four `wiki verify/fixture <commit>`, one per build.
   Copy `$OUTSIDE_LOG` to `$E/outside.log`: `opencode2` and `curl` calls only, the curls each build's
   embed.
 
@@ -95,8 +107,9 @@ Preconditions:
   (Refresh's Readiness checks, a Dispatch, the wiki hour's check).
 - `drift base <file>` writes the same three lines to `<file>`; a first `drift base docs/notes.md`
   before the first build gives the fixture a folder, so an added file has a part to sit under.
-  An added file whose folder holds no file sits under the part holding its nearest folder's,
-  the whole Wiki for the fixture's top folder.
+  An added file whose folder no leaf holds a file of divides again the part holding its nearest
+  folder's files, the whole Wiki for the fixture's top folder; a new file at the top goes to
+  Readme, which holds `README.md`.
 - Seeding a trail again replaces its answer: seed `verify/fixture > Docs` its division only after
   the first build.
 - A removed file is `cargo test`'s (`tests/wiki.rs`): `drift base` only writes.

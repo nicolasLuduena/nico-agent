@@ -1814,6 +1814,112 @@ fn update_with_a_file_removed_divides_again_only_the_part_it_was_in() {
     assert_eq!(after["components"][2], before["components"][2]);
 }
 
+#[test]
+fn update_with_a_file_added_to_a_folder_split_across_leaves_asks_only_one_leaf_of_that_folder() {
+    let t = with_repo("");
+    answer(
+        &t,
+        "acme/api",
+        json!({
+            "kind": "division",
+            "overview": "An API.",
+            "components": [
+                { "name": "Lib", "summary": "The entry.", "files": ["src/lib.rs"] },
+                { "name": "Config", "summary": "Its config.", "files": ["src/config.rs"] },
+                { "name": "Web", "summary": "The page.", "files": ["web/app.ts"] },
+            ],
+        }),
+    );
+    for (part, overview) in [
+        ("Lib", "The entry."),
+        ("Config", "Its config."),
+        ("Web", "The page."),
+    ] {
+        answer(
+            &t,
+            &format!("acme/api > {part}"),
+            json!({ "kind": "leaf", "overview": overview }),
+        );
+    }
+    assert_eq!(t.cli(&["wiki", "build", "acme/api", "--json"]).exit_code, 0);
+    t.world.add_tree_file(
+        "/src/api",
+        "origin/main",
+        "src/web.rs",
+        "pub fn serve() {}\n",
+    );
+    (t.world.heads.borrow_mut()).insert(format!("{} HEAD", checkout(&t)), "def5678".into());
+    t.world.headless.borrow_mut().clear();
+    t.world.calls.borrow_mut().clear();
+    let before = wiki(&t);
+    answer(
+        &t,
+        "acme/api > Lib",
+        json!({ "kind": "leaf", "overview": "The entry and its server." }),
+    );
+
+    let ran = t.cli(&["wiki", "build", "acme/api", "--update", "--json"]);
+
+    assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
+    assert_eq!(asked(&t), ["acme/api > Lib"]);
+    let after = wiki(&t);
+    assert_eq!(
+        after["components"][1]["files"],
+        json!(["src/lib.rs", "src/web.rs"])
+    );
+    assert_eq!(
+        after["components"][1]["overview"],
+        "The entry and its server."
+    );
+    assert_eq!(after["components"][2], before["components"][2]);
+    assert_eq!(after["components"][3], before["components"][3]);
+}
+
+#[test]
+fn update_with_a_file_no_leaf_shares_a_folder_with_divides_its_parent_again_and_copies_the_parts_it_keeps()
+ {
+    let t = with_repo("");
+    let before = built_then_moved(&t, &[("docs/guide.md", Some("# Guide\n"))]);
+    answer(
+        &t,
+        "acme/api",
+        json!({
+            "kind": "division",
+            "overview": "An API and its guide.",
+            "components": [
+                { "name": "Core", "summary": "The crate.", "files": ["src/config.rs", "src/lib.rs"] },
+                { "name": "Web", "summary": "The page.", "files": ["web/app.ts"] },
+                { "name": "Docs", "summary": "The guide.", "files": ["docs/guide.md"] },
+            ],
+            "relationships": [{ "from": "Web", "to": "Core", "kind": "calls", "description": "It calls the API." }],
+            "interpretations": [across()],
+        }),
+    );
+    answer(
+        &t,
+        "acme/api > Docs",
+        json!({ "kind": "leaf", "overview": "How to use it." }),
+    );
+
+    let ran = t.cli(&["wiki", "build", "acme/api", "--update", "--json"]);
+
+    assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
+    assert_eq!(asked(&t), ["acme/api", "acme/api > Docs"]);
+    let after = wiki(&t);
+    let ids: Vec<&str> = (after["components"].as_array().unwrap().iter())
+        .map(|c| c["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(ids, ["index", "core", "web", "docs"]);
+    assert_eq!(after["components"][0]["overview"], "An API and its guide.");
+    // Copied as they were, but for what the new division says of their ties.
+    assert_eq!(after["components"][1], before["components"][1]);
+    let mut web = before["components"][2].clone();
+    web["relationships"] =
+        json!([{ "to": "core", "kind": "calls", "description": "It calls the API." }]);
+    assert_eq!(after["components"][2], web);
+    assert_eq!(after["components"][3]["overview"], "How to use it.");
+}
+
 const NEW_LIB: &str = "pub mod config;\npub mod web;\n\npub fn run() { web::serve(); }\n";
 
 /// The calls `GET path` makes, and its answer.
@@ -2010,11 +2116,8 @@ fn update_never_asks_about_a_part_left_with_no_files_when_two_parts_shared_a_rem
     let ran = t.cli(&["wiki", "build", "acme/api", "--update", "--json"]);
 
     assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
-    // Web, its Conf left with nothing, is divided again.
-    assert_eq!(
-        asked(&t),
-        ["acme/api > Core", "acme/api > Web", "acme/api > Web > Page"]
-    );
+    // Web, its Conf left with nothing, is divided again; its Page, unchanged, copied.
+    assert_eq!(asked(&t), ["acme/api > Core", "acme/api > Web"]);
     let after = wiki(&t);
     let ids: Vec<&str> = (after["components"].as_array().unwrap().iter())
         .map(|c| c["id"].as_str().unwrap())
