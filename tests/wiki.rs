@@ -2016,3 +2016,34 @@ fn rebuild_asks_about_every_part_again_without_reading_the_wiki_before_it() {
     assert_eq!(asked(&t), ["acme/api", "acme/api > Core", "acme/api > Web"]);
     assert!(!t.world.calls().contains(&format!("read {WIKI}")));
 }
+
+#[test]
+fn an_anchor_over_60_lines_is_corrected_then_dropped_as_a_gap_and_one_of_10_lines_kept() {
+    let t = with_repo("");
+    let long: String = (1..=400).map(|n| format!("// line {n}\n")).collect();
+    t.world
+        .add_tree_file("/src/api", "origin/main", "src/long.rs", &long);
+    let kept = interpretation("role", "long.rs holds comments.", "src/long.rs", 1, 10);
+    let whole = interpretation("role", "long.rs is all comments.", "src/long.rs", 1, 400);
+    let leaf = json!({ "kind": "leaf", "overview": "A small API.", "interpretations": [kept.clone(), whole] });
+    answer(&t, "acme/api", leaf.clone());
+    corrected(&t, "acme/api", leaf);
+
+    let ran = t.cli(&["wiki", "build", "acme/api", "--json"]);
+
+    assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
+    let calls = whole_headless_calls(&t);
+    assert_eq!(calls.len(), 4);
+    assert!(
+        calls[1].contains(": lines 1-400 of src/long.rs are over 60 lines, too many to show a claim\n"),
+        "{}",
+        calls[1]
+    );
+    assert_eq!(ran.json()["gaps"], json!({ "unreadable": 1 }));
+    let mut numbered = kept;
+    numbered["id"] = json!(1);
+    assert_eq!(
+        wiki(&t)["components"][0]["interpretations"],
+        json!([numbered])
+    );
+}
