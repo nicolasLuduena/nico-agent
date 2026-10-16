@@ -68,6 +68,9 @@ shims="${MISE_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/mise}/shims"
 # `mise x gh -- gh` finds itself again and loops forever, hanging serve on its
 # first gh call. mise's shims first on PATH make gh, git and herdr resolve to
 # the real binaries.
+# A user unit cannot order itself after network-online.target (a system unit),
+# so it waits up to 60 s for DNS itself (under systemd's 90 s start timeout);
+# the leading - starts serve anyway when the minute runs out.
 service=$(cat <<EOF
 [Unit]
 Description=nico-agent serve: the loop
@@ -75,6 +78,7 @@ Description=nico-agent serve: the loop
 [Service]
 Type=simple
 Environment="PATH=$shims:$(dirname "$bin"):$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin"
+ExecStartPre=-/usr/bin/timeout 60 /bin/sh -c 'until getent hosts api.github.com >/dev/null; do sleep 2; done'
 ExecStart=$bin serve
 Restart=always
 RestartSec=5s
