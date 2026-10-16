@@ -335,6 +335,23 @@ fn events_sends_changed_after_a_state_file_is_written_and_a_keepalive_till_the_n
     assert_eq!([before, after, again], [KEEPALIVE, CHANGED, KEEPALIVE]);
 }
 
+#[test]
+fn events_sends_only_a_keepalive_after_a_write_under_wiki_alone() {
+    let t = with_repo();
+    t.tick();
+    let wiki = t.config_dir.join("wiki/acme/api");
+    std::fs::create_dir_all(&wiki).unwrap();
+    std::fs::write(wiki.join("wiki.json"), "{}").unwrap();
+    let mut events = t.events();
+    let before = events.next();
+    std::fs::write(wiki.join("wiki.json"), r#"{"components": []}"#).unwrap();
+    std::fs::write(wiki.join("vectors.json"), "[]").unwrap();
+
+    let after = events.next();
+
+    assert_eq!([before, after], [KEEPALIVE, KEEPALIVE]);
+}
+
 /// Repo `acme/api` with issue 7 dispatched, its Implementer working.
 fn dispatched() -> Setup {
     let t = with_repo();

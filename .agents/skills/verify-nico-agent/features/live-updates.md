@@ -13,6 +13,7 @@ reload to sign in again.`, and the page stops reconnecting.
 
 - `events-keepalive` with nothing changing, `GET /api/events` sends `: keepalive` every 10 seconds and no `changed`.
 - `events-changed` a state change sends `event: changed` at the next look, then keepalives again.
+- `wiki-only` a write under the config directory's `wiki/` alone sends no `changed`: a Wiki build's state reaches the page through `wikis.json`.
 - `quiet-hour` the page left open behind the tunnel on a quiet night keeps its one stream and shows no banner.
 - `reconnect` a stream the browser gives up on shows the banner; the page opens new streams, backing off, and the banner clears on the first that opens.
 - `signed-out` with the stream still open, a refetch (Refresh) landing on Access's login redirect shows the signed-out line and closes the stream.
@@ -44,6 +45,10 @@ Preconditions:
 - **Changed.** Run `curl -sN --max-time 35 "$URL/api/events" > "$E/02-changed.events.txt" &`, then
   `sleep 12; $C seed issues; wait`. The file is a keepalive, `event: changed` with `data: {}`, and a
   keepalive: the look after the seed saw the new cache, the next one nothing new.
+- **Wiki only.** `mkdir -p "$CONFIG_DIR/wiki/verify/fixture"; echo '{}' > "$CONFIG_DIR/wiki/verify/fixture/wiki.json"`
+  (standing in for a build's writes there), then run `curl -sN --max-time 35 "$URL/api/events" >
+  "$E/03-wiki-only.events.txt" &`, `sleep 12; echo '{"components":[]}' >
+  "$CONFIG_DIR/wiki/verify/fixture/wiki.json"; wait`. The file is three keepalives and no `event: changed`.
 - **Quiet hour.** `$C state > "$E/03-quiet-hour.state.before.txt"`, then run `$C page --tunnel
   --evidence "$E/03-quiet-hour" --wait 3600 --gone "Lost nico-agent serve"` (shorter `--wait` for a
   quick check; past 100 is what counts). `ok` for both steps; `.requests.txt` has exactly one `GET

@@ -5,7 +5,7 @@
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use serde::Serialize;
 use serde_json::{Map, Value, json};
@@ -346,11 +346,11 @@ fn status(ctx: &Context) -> Result<Value, Refusal> {
 /// so a proxy never sees the stream idle (Cloudflare closes it at 100 seconds).
 fn events(ctx: &Context) -> Answer {
     let dir = ctx.config_dir.clone();
-    let mut last = (files(&dir), agents(ctx.world, &dir));
+    let mut last = (files(&dir, &dir), agents(ctx.world, &dir));
     Answer::Events {
         every: Duration::from_secs(10),
         poll: Box::new(move |world| {
-            let now = (files(&dir), agents(world, &dir));
+            let now = (files(&dir, &dir), agents(world, &dir));
             if now == last {
                 return ": keepalive\n\n".into();
             }
@@ -361,17 +361,24 @@ fn events(ctx: &Context) -> Answer {
     }
 }
 
-/// The state files in `dir` and under it, by path, with what each holds;
-/// not the locks, nor a write's temp file.
-fn files(dir: &Path) -> BTreeMap<PathBuf, Vec<u8>> {
+/// The state files in `dir` and under it, by path, with when each was last
+/// written and its size; not the locks, nor a write's temp file, nor the
+/// config directory `top`'s `wiki/`, whose changes reach the page another way.
+fn files(top: &Path, dir: &Path) -> BTreeMap<PathBuf, Option<(SystemTime, u64)>> {
     let mut files = BTreeMap::new();
     for entry in fs::read_dir(dir).into_iter().flatten().flatten() {
         let path = entry.path();
+        if path == top.join("wiki") {
+            continue;
+        }
         if path.is_dir() {
-            files.extend(self::files(&path));
+            files.extend(self::files(top, &path));
         } else if !path.extension().is_some_and(|e| e == "lock" || e == "tmp") {
-            let text = fs::read(&path).unwrap_or_default();
-            files.insert(path, text);
+            let seen = entry
+                .metadata()
+                .ok()
+                .and_then(|m| Some((m.modified().ok()?, m.len())));
+            files.insert(path, seen);
         }
     }
     files
