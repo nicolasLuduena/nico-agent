@@ -1,7 +1,7 @@
 //! The tick's Reviewers: one started in a Dispatch's workspace, in its own
-//! worktree at the PR's head, when its PR first appears, and again for each new head, or by hand from
-//! the Board, prompted to re-run the Repo's verification and record a
-//! Verdict with `verdict`.
+//! worktree at the PR's head, when its PR first appears, and again for each
+//! new head, or by hand from the Board, prompted to re-run the Repo's
+//! verification and record a Verdict with `verdict`.
 
 use std::io;
 use std::path::Path;
