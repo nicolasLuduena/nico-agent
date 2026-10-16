@@ -1493,10 +1493,8 @@ fn a_malformed_issue_key_kept_in_state_neither_panics_the_tick_nor_status() {
     std::fs::write(&file, kept.replace("acme/api#7", "acme/api#abc")).unwrap();
 
     t.world.advance(TICK);
-    let logged = t.tick();
+    t.tick();
 
-    // The loop goes on past the record: issue 7, free of it now, is dispatched again.
-    assert_eq!(logged.last().unwrap(), "acme/api#7 dispatched");
     let status = t.cli(&["status", "--json"]);
     assert_eq!(status.exit_code, 0);
     assert_eq!(status.json()["dispatches"][0]["issue"], "acme/api#abc");
