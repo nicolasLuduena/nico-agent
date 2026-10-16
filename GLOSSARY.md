@@ -65,8 +65,9 @@ in progress.
 a draft PR with Evidence. _Avoid_: worker.
 
 **Reviewer**: the agent started in the same workspace once a PR exists, or
-by hand from the Board, on a different Harness by default, to re-run the
-verification and record a Verdict. _Avoid_: checker.
+by hand from the Board, on a different Harness by default, in its own
+worktree at the PR's pushed head, to re-run the verification and record a
+Verdict. _Avoid_: checker.
 
 **Asking**: an Implementer waiting on a human, with the question its screen
 shows. faux-nico answers it when the Repo's docs settle it; otherwise the
@@ -116,7 +117,7 @@ step: dispatch, mine (only issues assigned to the user), stack, review,
 restart, flip to ready, faux-nico answers, gardening, quality-scan, wiki.
 _Avoid_: standing order, manual mode.
 
-**Close**: end a Dispatch, removing its worktree and workspace; the branch
+**Close**: end a Dispatch, removing its worktrees and workspace; the branch
 and PR stay. _Avoid_: finish, archive.
 
 ## Verifying

@@ -97,6 +97,14 @@ fn implementer_state(t: &Setup, state: &str) {
     (t.world.agents.borrow_mut()).insert("impl-api-7".into(), state.into());
 }
 
+/// What git was told to do in the clone.
+fn git(calls: &[String]) -> Vec<&str> {
+    (calls.iter())
+        .filter(|c| c.starts_with("git -C /src/api "))
+        .map(String::as_str)
+        .collect()
+}
+
 /// herdr reports `rev-api-7` in `state`.
 fn reviewer_state(t: &Setup, state: &str) {
     (t.world.agents.borrow_mut()).insert("rev-api-7".into(), state.into());
@@ -125,9 +133,17 @@ fn a_reviewer_starts_on_another_harness_when_the_pr_first_appears_and_only_then(
     assert_eq!(
         herdr(&calls),
         [
-            "herdr tab create --workspace w1 --cwd /worktrees/api-7 --label reviewer --no-focus",
+            "herdr tab create --workspace w1 --cwd /worktrees/rev-api-7 --label reviewer --no-focus",
             r#"herdr agent start rev-api-7 --kind codex --pane w1:p3 -- -c projects={"/src/api"={trust_level="trusted"}} -c approvals_reviewer="auto_review""#,
             &review_prompt("sha9"),
+        ]
+    );
+    assert_eq!(
+        git(&calls),
+        [
+            "git -C /src/api fetch origin +refs/heads/agent/api-7:refs/remotes/origin/agent/api-7",
+            "git -C /src/api worktree remove --force /worktrees/rev-api-7",
+            "git -C /src/api worktree add --detach --quiet /worktrees/rev-api-7 sha9",
         ]
     );
     assert_eq!(again, Vec::<String>::new());
@@ -182,7 +198,7 @@ fn a_new_head_waits_for_the_last_reviewer_to_stop_working_then_closes_its_tab_an
         herdr(&calls),
         [
             "herdr tab close w1:t3",
-            "herdr tab create --workspace w1 --cwd /worktrees/api-7 --label reviewer --no-focus",
+            "herdr tab create --workspace w1 --cwd /worktrees/rev-api-7 --label reviewer --no-focus",
             r#"herdr agent start rev-api-7 --kind codex --pane w1:p4 -- -c projects={"/src/api"={trust_level="trusted"}} -c approvals_reviewer="auto_review""#,
             &review_prompt("sha10"),
         ]
@@ -209,7 +225,7 @@ fn a_reviewer_that_fails_to_start_is_said_and_started_again_next_tick_in_a_fresh
         herdr(&calls)[..2],
         [
             "herdr tab close w1:t3",
-            "herdr tab create --workspace w1 --cwd /worktrees/api-7 --label reviewer --no-focus",
+            "herdr tab create --workspace w1 --cwd /worktrees/rev-api-7 --label reviewer --no-focus",
         ]
     );
 }
@@ -232,7 +248,7 @@ fn a_reviewer_gone_from_herdr_before_its_verdict_is_started_again_for_that_head_
         herdr(&calls),
         [
             "herdr tab close w1:t3",
-            "herdr tab create --workspace w1 --cwd /worktrees/api-7 --label reviewer --no-focus",
+            "herdr tab create --workspace w1 --cwd /worktrees/rev-api-7 --label reviewer --no-focus",
             r#"herdr agent start rev-api-7 --kind codex --pane w1:p4 -- -c projects={"/src/api"={trust_level="trusted"}} -c approvals_reviewer="auto_review""#,
             &review_prompt("sha9"),
         ]
@@ -613,7 +629,7 @@ fn a_failing_verdict_on_a_head_pushed_over_before_the_tick_restarts_nothing_and_
         herdr(&calls),
         [
             "herdr tab close w1:t3",
-            "herdr tab create --workspace w1 --cwd /worktrees/api-7 --label reviewer --no-focus",
+            "herdr tab create --workspace w1 --cwd /worktrees/rev-api-7 --label reviewer --no-focus",
             r#"herdr agent start rev-api-7 --kind codex --pane w1:p4 -- -c projects={"/src/api"={trust_level="trusted"}} -c approvals_reviewer="auto_review""#,
             &review_prompt("sha10"),
         ]
@@ -1039,6 +1055,90 @@ fn a_verdict_on_no_live_dispatch_no_open_pr_or_a_head_the_pr_moved_from_is_refus
 }
 
 #[test]
+fn a_new_head_resets_the_reviewers_own_worktree_to_it() {
+    let t = reviewing();
+    reviewer_state(&t, "idle");
+    push(&t, "sha10");
+    t.world.advance(TICK);
+
+    let (_, calls) = calls_after(&t, || t.tick());
+
+    assert_eq!(
+        git(&calls),
+        [
+            "git -C /src/api fetch origin +refs/heads/agent/api-7:refs/remotes/origin/agent/api-7",
+            "git -C /src/api worktree remove --force /worktrees/rev-api-7",
+            "git -C /src/api worktree add --detach --quiet /worktrees/rev-api-7 sha10",
+        ]
+    );
+    assert!(herdr(&calls).contains(
+        &"herdr tab create --workspace w1 --cwd /worktrees/rev-api-7 --label reviewer --no-focus"
+    ));
+}
+
+#[test]
+fn a_verdict_from_a_reviewer_worktree_off_the_head_or_with_tracked_changes_is_refused() {
+    let t = reviewing();
+    let help = "Verify from the Reviewer's worktree /worktrees/rev-api-7 as checked out at sha9: commit nothing there, change no tracked file";
+    t.world
+        .heads
+        .borrow_mut()
+        .insert("/worktrees/rev-api-7 HEAD".into(), "sha8".into());
+
+    let moved = verdict(&t, &["acme/api#7", "pass", "--sha", "sha9"]);
+    t.world
+        .heads
+        .borrow_mut()
+        .insert("/worktrees/rev-api-7 HEAD".into(), "sha9".into());
+    (t.world.tracked_changes.borrow_mut())
+        .insert("/worktrees/rev-api-7".into(), vec!["M src/lib.rs".into()]);
+    let changed = verdict(&t, &["acme/api#7", "pass", "--sha", "sha9"]);
+
+    assert_eq!(
+        (moved.exit_code, moved.json()),
+        (
+            1,
+            json!({
+                "error": "the Reviewer's worktree /worktrees/rev-api-7 is at sha8, not sha9",
+                "help": [help],
+            })
+        )
+    );
+    assert_eq!(
+        (changed.exit_code, changed.json()),
+        (
+            1,
+            json!({
+                "error": "the Reviewer's worktree /worktrees/rev-api-7 has changes to tracked files: M src/lib.rs",
+                "help": [help],
+            })
+        )
+    );
+    assert!(!t.config_dir.join("verdicts").exists());
+}
+
+#[test]
+fn close_removes_the_reviewers_worktree_with_the_implementers() {
+    let t = reviewing();
+    pr_is(&t, "sha9", PrState::Merged);
+    t.world.advance(TICK);
+
+    let (_, calls) = calls_after(&t, || t.tick());
+
+    let removed: Vec<&str> = (calls.iter())
+        .filter(|c| c.contains("worktree remove"))
+        .map(String::as_str)
+        .collect();
+    assert_eq!(
+        removed,
+        [
+            "git -C /src/api worktree remove --force /worktrees/rev-api-7",
+            "herdr worktree remove --workspace w1 --force",
+        ]
+    );
+}
+
+#[test]
 fn a_fail_without_findings_or_a_verdict_not_pass_or_fail_or_without_sha_is_a_bad_invocation() {
     let t = reviewing();
     let cases = [
@@ -1285,7 +1385,7 @@ fn review_now_starts_a_reviewer_on_a_head_given_up_on_and_the_tick_may_try_the_w
         herdr(&calls),
         [
             "herdr tab close w1:t5",
-            "herdr tab create --workspace w1 --cwd /worktrees/api-7 --label reviewer --no-focus",
+            "herdr tab create --workspace w1 --cwd /worktrees/rev-api-7 --label reviewer --no-focus",
             r#"herdr agent start rev-api-7 --kind codex --pane w1:p6 -- -c projects={"/src/api"={trust_level="trusted"}} -c approvals_reviewer="auto_review""#,
             &review_prompt("sha9"),
         ]
@@ -1360,7 +1460,7 @@ fn with_review_off_review_now_starts_a_reviewer_that_shows_as_with_review_on_and
     assert_eq!(
         herdr(&calls),
         [
-            "herdr tab create --workspace w1 --cwd /worktrees/api-7 --label reviewer --no-focus",
+            "herdr tab create --workspace w1 --cwd /worktrees/rev-api-7 --label reviewer --no-focus",
             r#"herdr agent start rev-api-7 --kind codex --pane w1:p3 -- -c projects={"/src/api"={trust_level="trusted"}} -c approvals_reviewer="auto_review""#,
             &review_prompt("sha9"),
         ]

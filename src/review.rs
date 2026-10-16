@@ -1,9 +1,10 @@
-//! The tick's Reviewers: one started in a Dispatch's workspace and worktree
-//! when its PR first appears, and again for each new head, or by hand from
+//! The tick's Reviewers: one started in a Dispatch's workspace, in its own
+//! worktree at the PR's head, when its PR first appears, and again for each new head, or by hand from
 //! the Board, prompted to re-run the Repo's verification and record a
 //! Verdict with `verdict`.
 
 use std::io;
+use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -359,9 +360,18 @@ fn stop(ctx: &Context, issue: &str, head: &str, times: usize) -> Vec<String> {
     [said].into_iter().chain(failed).collect()
 }
 
-/// Open the Reviewer's tab in the Dispatch's worktree, start its Harness
-/// there, given the Wikis of the Library versions `repo` links, and prompt
-/// it for the PR's head.
+/// The folder of `d`'s Reviewer's own worktree, beside its Implementer's
+/// and named as its agent is; `None` before the Implementer's is made.
+pub fn worktree(d: &Dispatch) -> Option<String> {
+    let name = launch::agent_name("rev", &d.repo, &d.issue);
+    let dir = Path::new(d.worktree.as_ref()?).with_file_name(name);
+    Some(dir.to_string_lossy().into_owned())
+}
+
+/// Check the PR's head out, fetched, in the Reviewer's own worktree, made
+/// afresh, open its tab there, start its Harness given the Wikis of the
+/// Library versions `repo` links, and prompt it for that head: what it
+/// verifies is what was pushed, not what the Implementer's worktree holds.
 fn start(
     ctx: &Context,
     config: &Config,
@@ -372,10 +382,11 @@ fn start(
     pr: &Pr,
 ) -> Result<(), Refusal> {
     let made = "a Dispatch with a PR has its worktree";
-    let (workspace, worktree) = (
-        d.workspace.as_ref().expect(made),
-        d.worktree.as_ref().expect(made),
-    );
+    let (workspace, worktree) = (d.workspace.as_ref().expect(made), &worktree(d).expect(made));
+    let world = ctx.world;
+    world.git_fetch(&repo.path, Some(&d.branch))?;
+    world.git_worktree_remove(&repo.path, worktree)?;
+    world.git_worktree_add(&repo.path, worktree, &pr.head_sha)?;
     let harness = &config.harnesses[&reviewer.harness];
     launch::open_tab(ctx.world, reviewer, workspace, worktree, "reviewer")?;
     let (wikis, line) = wiki::libraries(&ctx.config_dir, config, repo)?;

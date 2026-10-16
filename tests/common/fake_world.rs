@@ -461,6 +461,10 @@ impl World for FakeWorld {
         self.call(format!(
             "git -C {path} worktree add --detach --quiet {dir} {rev}"
         ))?;
+        // A commit names itself; a ref's `HEAD` is left to `git_rev`'s default.
+        if !rev.contains('/') {
+            (self.heads.borrow_mut()).insert(format!("{dir} HEAD"), rev.into());
+        }
         let at = format!("{path} {rev}:");
         let checked_out: Vec<(String, String)> = (self.tree.borrow().iter())
             .filter_map(|(key, text)| Some((key.strip_prefix(&at)?.to_string(), text.clone())))

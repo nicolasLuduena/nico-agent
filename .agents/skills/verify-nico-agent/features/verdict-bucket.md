@@ -13,6 +13,7 @@ longer has.
 - `verdict-no-dispatch` an issue with no live Dispatch is exit 1.
 - `verdict-no-pr` a live Dispatch with no open PR is exit 1.
 - `verdict-wrong-head` a `--sha` other than the PR's head is exit 1, naming the head to verify.
+- `verdict-reviewer-worktree` when the Dispatch's Reviewer was prompted for that head, a `--sha` its own worktree (`rev-<repo>-<n>` beside the Implementer's) is not at, or that worktree with changes to tracked files, is exit 1; a Verdict by hand, with no Reviewer prompted for the head, is not checked.
 - `verdict-findings-unreadable` a `--findings` file that cannot be read is exit 1.
 - `bucket-pr-head` a tick (here a refresh) keeps the Evidence of a Dispatch's open PR at its head with no Verdict: action `<issue>: Evidence at <sha> kept in the Bucket`, a Bucket commit `pr <issue> <sha>`, and `/bucket/<owner>/<repo>/<n>/` listing it.
 - `bucket-pr-head-noop` a tick on a head whose Evidence is kept already keeps nothing and says nothing.
@@ -27,8 +28,8 @@ longer has.
 ## How to get to it (user POV)
 
 - The loop's tick, or the user's Refresh, sees the PR at a head it has not kept Evidence at.
-- The Reviewer runs `nico-agent verdict <issue> pass|fail --sha <head> [--findings <file>]` in the
-  Dispatch's worktree.
+- The Reviewer runs `nico-agent verdict <issue> pass|fail --sha <head> [--findings <file>]` in its
+  own worktree, checked out detached at the PR's head.
 - The user opens `/bucket/<owner>/<repo>/<n>/` (or the PR body's link), or clicks the node, or its
   strip row, on the page and follows its Evidence links.
 

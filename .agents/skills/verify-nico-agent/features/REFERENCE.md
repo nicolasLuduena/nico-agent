@@ -7,7 +7,7 @@ What `seed` and `drift` put in a run, and the stable handles a recipe may use. R
 - `seed issues` caches, read now (fresh for a tick, 10 hours here): `verify/fixture#1` "Verify: a Ready issue" (Ready), `#2` "Verify: not labelled", `#3` "Verify: waits on #1" (unresolved Blocker `#1`, no PR), `#4` "Verify: assigned to someone else" (assignee `someone-else`), `#5` "Verify: a Research issue" (Ready, `research`, assigned to the user), `#6` "Verify: stacks on #9 PR" (Stackable on PR #109, head `agent/fixture-9`, which the fixture's origin does not have). The user is `verify-nico`.
 - `seed issues second` caches `verify/second#1` "Verify: waits on fixture #1" (unresolved Blocker `verify/fixture#1`, in another Repo), `#2` "Verify: waits on an outside issue" (unresolved Blocker `verify/outside#7` "Verify: an outside Blocker", in no Repo) and `#3` "Verify: waits on fixture #20 installed" (Blocker `verify/fixture#20` "Verify: a closed Blocker", closed at the read: Ready, until verify/fixture is in its Project with an `install` that has not run since).
 - `seed dispatch <n> <kind>` records Dispatch `verify/fixture#<n>` "Verify: seeded Dispatch <n>". Use numbers above 6, not 20.
-  - `pr`: every step done, in a worktree `worktrees/fixture-<n>` on `agent/fixture-<n>` holding `.evidence/<n>/proof.txt`, and its draft PR `https://github.com/verify/fixture/pull/<100+n>` open on the worktree's head in `prs.json`.
+  - `pr`: every step done, in a worktree `worktrees/fixture-<n>` on `agent/fixture-<n>`, pushed to origin, holding `.evidence/<n>/proof.txt`, and its draft PR `https://github.com/verify/fixture/pull/<100+n>` open on the worktree's head in `prs.json`.
   - `asking`: as `pr` without a PR, its Implementer Asking "Should the fixture keep its README? (seeded by verify-nico-agent)".
   - `stacked`: as `pr`, but Stacked on `#9`'s open PR `https://github.com/verify/fixture/pull/109` (head `agent/fixture-9`, on `main`, also in `prs.json`): its Base and its PR's base are `agent/fixture-9`.
   - `restarted`: as `pr`, its Implementer restarted by the loop for two failing Verdicts an hour ago, so the next failing Verdict uses the restarts up.
@@ -18,7 +18,7 @@ What `seed` and `drift` put in a run, and the stable handles a recipe may use. R
 - `seed assign answers` makes the `gh` stub answer `gh issue edit <n> --repo <slug> --add-assignee @me` with success, so the Claim and "Assign to me" go through; `none` fails it again, as every other `gh` call fails.
 - `seed rate-limit <file> [<bot-file>]` makes the `gh` stub answer `gh api rate_limit` with `<file>`'s JSON, and `ghbot`'s with `<bot-file>`'s (failing, as where ghbot is not installed, without one); `none` fails both again.
 - `drift`:
-  - `push <n>` commits to the seeded worktree and moves the PR's `head_sha`.
+  - `push <n>` commits to the seeded worktree, pushes it to origin and moves the PR's `head_sha`.
   - `stale` dates the cached read 2000-01-01, so the next `status` or `dispatch` asks GitHub.
   - `pause` writes GitHub paused for an hour.
   - `hang` makes every later `gh` call sleep till nico-agent kills it at its deadline (5 s in a run, which sets `NICO_AGENT_DEADLINE_SECS=5`); until cleanup.

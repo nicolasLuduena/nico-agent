@@ -99,6 +99,29 @@ pub fn verdict(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
             )],
         ));
     }
+    // The Reviewer prompted for this head verifies it as pushed, in its own worktree.
+    let reviewed = d
+        .reviewer
+        .as_ref()
+        .filter(|r| r.sha.as_deref() == Some(sha));
+    if let Some(dir) = reviewed.and_then(|_| review::worktree(&d)) {
+        let help = format!(
+            "Verify from the Reviewer's worktree {dir} as checked out at {sha}: commit nothing there, change no tracked file"
+        );
+        let at = ctx.world.git_rev(&dir, "HEAD")?;
+        if at != sha {
+            let error = format!("the Reviewer's worktree {dir} is at {at}, not {sha}");
+            return Err(Refusal::new(error, vec![help]));
+        }
+        let changes = ctx.world.git_tracked_changes(&dir)?;
+        if !changes.is_empty() {
+            let error = format!(
+                "the Reviewer's worktree {dir} has changes to tracked files: {}",
+                changes.join(", ")
+            );
+            return Err(Refusal::new(error, vec![help]));
+        }
+    }
     let findings = match args.flag("--findings") {
         Some(path) => Some(std::fs::read_to_string(path).map_err(|e| {
             Refusal::new(

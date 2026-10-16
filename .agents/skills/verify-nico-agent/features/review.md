@@ -18,6 +18,7 @@ starts a Reviewer on the PR's head at once, whatever the Repo's `review` switch 
 - `review-off` with the Repo's `review` switch off it is `off`, Verdict or not, unless a Reviewer was started on the head by hand (`review-now-off`): the node reads `review off`, the panel `Review is off for this Repo`, and the strip drops its Review row.
 - `review-now` `button "Review now"` at the right of the panel's review line while it is `off` (with no Verdict on the head), `stopped` or `gave_up`, and at no other time: it reads `Starting…` while `POST /api/review {issue}` runs, then the panel reads `Reviewing <sha7> on <harness>` without a Refresh; the head's failed starts are cleared, so `attempts` is `0` again. A refusal shows inline under it (`role=alert`): one before the start changes nothing; a start that fails is counted against the head, and its refusal stays while the review is `retrying`.
 - `review-waits` the tick starts no Reviewer while herdr reports the Dispatch's Implementer working, which may still push: the review stays `waiting` until a tick finds it idle or done.
+- `review-worktree` a Reviewer starts in its own worktree, `rev-<repo>-<n>` beside the Implementer's, made afresh detached at the PR's head after fetching its branch; its tab's `--cwd` is that worktree, and its `verdict` is refused while that worktree is off the head or has changes to tracked files.
 - `review-now-off` with `review` off it starts one all the same, which shows as with review on (`reviewing`, then its Verdict), and the tick still starts none by itself.
 
 ## How to get to it (user POV)
@@ -75,6 +76,12 @@ Preconditions:
   `.requests.txt` has `POST /api/review ... -> 200` then `GET /api/node/... -> 200`, and the ARIA
   snapshot no `button "Review now"`. `$C run --evidence "$E/25-status" -- status --json`: `#10`'s
   `review` `{"state":"reviewing",...,"attempts":0,"cap":2}`, `reviewer.tab` `verify:t-rev`.
+- **Review now, own worktree.** `$RUN_DIR/worktrees/rev-fixture-10` exists, `git -C` it `rev-parse HEAD`
+  is `<head>` and `branch --show-current` empty; `outside.log`'s `herdr tab create ... --label reviewer`
+  has `--cwd` that folder. Append a line to its `work-10.txt` and run `verdict verify/fixture#10 pass --sha <head> --json`
+  (`26a-verdict-dirty`): exit `1`, `the Reviewer's worktree ... has changes to tracked files: M work-10.txt`.
+  Restore the file, commit there (`26b-verdict-moved`): exit `1`, `the Reviewer's worktree ... is at <new>, not <head>`.
+  `git checkout --detach <head>` there before the next step.
 - **Review now, Verdict.** Run `$C run --evidence "$E/26-verdict" -- verdict verify/fixture#10 pass --sha <head> --json`,
   the Reviewer's own call: `{"stage":"Verified",...}`. Run `$C page --evidence "$E/27-passed" --click "button~#10, Verify: seeded Dispatch 10" --expect "pass <sha7>"`:
   under `heading "Review"` the paragraph `pass <sha7> <time>`, no `button "Review now"`.

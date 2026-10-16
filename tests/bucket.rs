@@ -354,6 +354,8 @@ fn a_verdict_commits_the_evidence_and_findings_to_the_bucket_under_repo_issue_an
     assert_eq!(
         calls,
         [
+            "git -C /worktrees/rev-api-7 rev-parse HEAD".to_string(),
+            "git -C /worktrees/rev-api-7 status --porcelain --untracked-files=no".into(),
             format!("git remotes {BUCKET}"),
             format!("cp -r /worktrees/api-7/.evidence/7/. {BUCKET}/acme/api/7/sha9"),
             format!("write {BUCKET}/acme/api/7/sha9/findings.md"),
@@ -362,8 +364,8 @@ fn a_verdict_commits_the_evidence_and_findings_to_the_bucket_under_repo_issue_an
             ),
         ]
     );
-    // The same Verdict again is no new one: nothing is kept twice.
-    assert_eq!(t.world.calls(), Vec::<String>::new());
+    // The same Verdict again is no new one: its Reviewer's worktree is checked, nothing is kept twice.
+    assert_eq!(t.world.calls(), calls[..2]);
 }
 
 #[test]
