@@ -2,7 +2,7 @@ mod common;
 
 use std::time::Duration;
 
-use common::{Setup, github_issue, pull_request, setup};
+use common::{Setup, github_issue, implementer_idle, pull_request, setup};
 use nico_agent::world::{
     GitHubBlocker, IssueState, Mergeable, PrState, PullRequest, PullRequestActivity,
 };
@@ -139,8 +139,7 @@ fn stacked(toml: &str) -> Setup {
     };
     t.world.link_pr("acme/api", 1, below);
     t.tick();
-    // Done for now: a Reviewer waits for a working Implementer.
-    (t.world.agents.borrow_mut()).insert("impl-api-2".into(), "idle".into());
+    implementer_idle(&t, 2);
     t.world.add_pr(PullRequest {
         head_branch: Some("agent/api-2".into()),
         base_branch: "agent/api-1".into(),

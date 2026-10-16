@@ -1,6 +1,6 @@
 mod common;
 
-use common::{Setup, github_issue, pull_request, setup};
+use common::{Setup, github_issue, implementer_idle, pull_request, setup};
 use nico_agent::world::{IssueState, Mergeable, PrState, PullRequest, PullRequestActivity};
 use serde_json::{Value, json};
 use std::time::Duration;
@@ -109,9 +109,9 @@ fn status_shows_each_live_dispatchs_agent_states_from_one_herdr_read_and_unknown
     let file = t.config_dir.join("config.toml");
     let config = std::fs::read_to_string(&file).unwrap();
     std::fs::write(&file, format!("{config}switches = {{ restart = false }}\n")).unwrap();
-    // Done for now: a Reviewer waits for a working Implementer.
-    (t.world.agents.borrow_mut()).insert("impl-api-7".into(), "idle".into());
+    implementer_idle(&t, 7);
     t.tick();
+    (t.world.agents.borrow_mut()).insert("impl-api-7".into(), "working".into());
     t.world.agents.borrow_mut().remove("impl-api-8");
     t.world
         .agents
@@ -136,7 +136,7 @@ fn status_shows_each_live_dispatchs_agent_states_from_one_herdr_read_and_unknown
     assert_eq!(
         states(&read),
         [
-            json!({ "implementer": "idle", "reviewer": "idle" }),
+            json!({ "implementer": "working", "reviewer": "idle" }),
             json!({ "implementer": "gone", "reviewer": null }),
         ]
     );

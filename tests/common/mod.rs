@@ -72,6 +72,12 @@ pub fn kit_built(t: &Setup) {
     assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
 }
 
+/// herdr reports the Implementer of `acme/api#<issue>` idle: done for now,
+/// so the tick may start its PR's Reviewer.
+pub fn implementer_idle(t: &Setup, issue: u64) {
+    (t.world.agents.borrow_mut()).insert(format!("impl-api-{issue}"), "idle".into());
+}
+
 /// Change the first Dispatch in `config_dir`'s dispatches.json, as another
 /// process would.
 pub fn edit_dispatch(config_dir: &Path, change: impl FnOnce(&mut Value)) {

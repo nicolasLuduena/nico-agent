@@ -2,7 +2,7 @@ mod common;
 
 use std::time::Duration;
 
-use common::{Setup, github_issue, pull_request, setup};
+use common::{Setup, github_issue, implementer_idle, pull_request, setup};
 use nico_agent::world::{GitHubBlocker, GitHubIssue, IssueState, PrState, PullRequest};
 
 const TICK: Duration = Duration::from_secs(600);
@@ -42,12 +42,6 @@ fn pr_of(n: u64, issue: u64) -> PullRequest {
 }
 
 /// GitHub merges PR `n` of `acme/api`, closing the issue it fixes.
-/// herdr reports issue `issue`'s Implementer idle: done for now, so its
-/// PR's Reviewer may start.
-fn implementer_idle(t: &Setup, issue: u64) {
-    (t.world.agents.borrow_mut()).insert(format!("impl-api-{issue}"), "idle".into());
-}
-
 fn merge(t: &Setup, n: u64, issue: u64) {
     let mut prs = t.world.prs.borrow_mut();
     prs.iter_mut().find(|pr| pr.number == n).unwrap().state = PrState::Merged;
