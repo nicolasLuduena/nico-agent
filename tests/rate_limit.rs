@@ -70,13 +70,10 @@ fn the_status_route_carries_both_identities_and_both_budgets() {
 
     assert_eq!(status, 200, "{body}");
     assert_eq!(body["rate_limits"], kept(&t));
+    let keys = |v: &Value| v.as_object().unwrap().keys().cloned().collect::<Vec<_>>();
+    assert_eq!(keys(&body["rate_limits"]), ["gh", "ghbot"]);
     for identity in ["gh", "ghbot"] {
-        for budget in ["core", "graphql"] {
-            assert!(
-                body["rate_limits"][identity][budget]["limit"].is_u64(),
-                "{body}"
-            );
-        }
+        assert_eq!(keys(&body["rate_limits"][identity]), ["core", "graphql"]);
     }
 }
 
@@ -124,4 +121,24 @@ fn it_is_read_while_github_is_paused_since_asking_it_costs_none() {
         t.get("/api/status").1["sources"]["github"]["paused_until"],
         "2026-09-30T13:00:00Z"
     );
+}
+
+#[test]
+fn an_identity_that_fails_keeps_its_last_answer_beside_the_other_s_new_one() {
+    let t = with_repo();
+    *t.world.bot_rate_limit.borrow_mut() = Some(bot());
+    t.tick();
+    let before = kept(&t);
+    t.world
+        .fail_call("gh api rate_limit", "GitHub request failed");
+    let moved = RateLimit {
+        core: budget(15000, 600, "2026-09-30T12:30:00Z"),
+        ..bot()
+    };
+    *t.world.bot_rate_limit.borrow_mut() = Some(moved);
+
+    t.tick();
+
+    assert_eq!(kept(&t)["gh"], before["gh"]);
+    assert_eq!(kept(&t)["ghbot"]["core"]["used"], 600);
 }

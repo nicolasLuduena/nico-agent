@@ -139,7 +139,8 @@ impl Setup {
         let mut calls = self.world.calls.borrow_mut();
         let listen = (calls[served..].iter()).position(|c| c.starts_with("listen "));
         calls.drain(served..=served + listen.expect("serve listens"));
-        calls.retain(|c| !c.ends_with("api rate_limit"));
+        let tick: Vec<String> = calls.drain(served..).collect();
+        calls.extend(tick.into_iter().filter(|c| !c.ends_with("api rate_limit")));
         drop(calls);
         self.world.timer_runs.set(runs);
         assert_eq!(ran.exit_code, 0, "{}", ran.stdout);

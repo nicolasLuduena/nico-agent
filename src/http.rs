@@ -341,9 +341,9 @@ fn status(ctx: &Context) -> Result<Value, Refusal> {
         .filter(|l| library::linked_by(&config, &l.id()).is_none() && listed.insert(l.id()))
         .collect::<Vec<_>>();
     shown["libraries"] = json!(unlinked);
-    // shortcut: an unreadable morning.md shows as none, like a missing one; say why if one ever is.
     let limits: RateLimits = state::load(&ctx.config_dir.join(rate_limit::FILE))?;
     shown["rate_limits"] = json!(limits);
+    // shortcut: an unreadable morning.md shows as none, like a missing one; say why if one ever is.
     shown["morning_summary"] = json!(fs::read_to_string(ctx.config_dir.join(away::SUMMARY)).ok());
     Ok(shown)
 }

@@ -7,7 +7,7 @@ export const NEAR = 0.75;
 export const FULL = 0.9;
 
 /** What of `budget` is used at `now`: none once it has reset since it was read. */
-export function share(budget: Budget, now = new Date()): number {
+function share(budget: Budget, now = new Date()): number {
   if (new Date(budget.reset) <= now || budget.limit === 0) return 0;
   return budget.used / budget.limit;
 }

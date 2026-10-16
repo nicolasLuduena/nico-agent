@@ -14,21 +14,27 @@ pub const FILE: &str = "rate_limits.json";
 pub type RateLimits = BTreeMap<String, RateLimit>;
 
 /// Ask each identity, `ghbot` only where it is installed, and keep what
-/// answered, rewritten only when it moved, so the page is told of no change;
-/// when none answered, the last answer stands and the user's failure is said.
+/// answered over its last answer, rewritten only when it moved, so the page is
+/// told of no change; one that did not answer keeps its last, and the user's failure is said.
 pub fn step(ctx: &Context) -> io::Result<Vec<String>> {
     let mut said = vec![];
     let mut read = RateLimits::new();
     match ctx.world.github_rate_limit(false) {
-        Ok(limit) => drop(read.insert("gh".into(), limit)),
+        Ok(limit) => {
+            read.insert("gh".into(), limit);
+        }
         Err(e) => said.push(format!("could not read GitHub's rate limit: {e}")),
     }
     if let Ok(limit) = ctx.world.github_rate_limit(true) {
         read.insert("ghbot".into(), limit);
     }
-    let file = ctx.config_dir.join(FILE);
-    if !read.is_empty() && state::load::<RateLimits>(&file)? != read {
-        state::update(&file, |_| Ok::<_, io::Error>((state::text(&read), ())))?;
+    if !read.is_empty() {
+        let file = ctx.config_dir.join(FILE);
+        state::update(&file, |text| {
+            let mut kept: RateLimits = state::parse(&file, text)?;
+            kept.extend(read);
+            Ok::<_, io::Error>((state::text(&kept), ()))
+        })?;
     }
     Ok(said)
 }

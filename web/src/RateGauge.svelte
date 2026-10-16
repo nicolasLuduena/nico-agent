@@ -196,6 +196,9 @@
   }
   /* On a phone the panel spans the header between its gutters, as the gauge sits too far in to hang it from. */
   @media (width < 720px) {
+    button {
+      min-height: 44px;
+    }
     .gauge {
       position: static;
     }
