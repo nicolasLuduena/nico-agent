@@ -602,13 +602,11 @@ fn from_linear(issue: &LinearIssue) -> Issue {
     }
 }
 
-/// The slug and number of the GitHub issue `key`; `None` for a Linear identifier.
+/// The slug and number of the GitHub issue `key`; `None` for a Linear
+/// identifier, and for a key without its number, which kept state can hold.
 pub fn github_ref(key: &str) -> Option<(&str, u64)> {
     let (slug, number) = key.rsplit_once('#')?;
-    Some((
-        slug,
-        number.parse().expect("a GitHub key ends in its number"),
-    ))
+    Some((slug, number.parse().ok()?))
 }
 
 /// `owner/repo#N`, in the Repo's own casing for its own issues.

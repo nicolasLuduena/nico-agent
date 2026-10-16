@@ -1465,3 +1465,39 @@ fn review_now_that_fails_to_start_is_counted_as_the_tick_s_are_and_refused_with_
         json!({ "state": "retrying", "sha": "sha9", "harness": "codex", "attempts": 1, "cap": 2 })
     );
 }
+
+#[test]
+fn a_verdict_on_a_malformed_issue_key_is_refused_and_records_nothing() {
+    let t = with_issue("");
+
+    for key in ["acme/api#abc", "acme/api#"] {
+        let ran = t.cli(&["verdict", key, "pass", "--sha", "sha9", "--json"]);
+
+        assert_eq!(ran.exit_code, 2);
+        assert_eq!(
+            ran.json(),
+            json!({
+                "error": format!("`{key}` is not an issue reference"),
+                "help": ["Pass `owner/repo#N`, or a Linear identifier such as `BLE-12`"],
+            })
+        );
+    }
+    assert!(!t.config_dir.join("verdicts").exists());
+}
+
+#[test]
+fn a_malformed_issue_key_kept_in_state_neither_panics_the_tick_nor_status() {
+    let t = with_pr("");
+    let file = t.config_dir.join("dispatches.json");
+    let kept = std::fs::read_to_string(&file).unwrap();
+    std::fs::write(&file, kept.replace("acme/api#7", "acme/api#abc")).unwrap();
+
+    t.world.advance(TICK);
+    let logged = t.tick();
+
+    // The loop goes on past the record: issue 7, free of it now, is dispatched again.
+    assert_eq!(logged.last().unwrap(), "acme/api#7 dispatched");
+    let status = t.cli(&["status", "--json"]);
+    assert_eq!(status.exit_code, 0);
+    assert_eq!(status.json()["dispatches"][0]["issue"], "acme/api#abc");
+}

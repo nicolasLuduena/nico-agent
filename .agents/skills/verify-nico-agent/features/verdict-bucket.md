@@ -9,7 +9,7 @@ longer has.
 
 ## Sub-features
 
-- `verdict-usage` a missing result, `--sha`, or `--findings` on a fail, or a word other than pass or fail, is exit 2.
+- `verdict-usage` a missing result, `--sha`, or `--findings` on a fail, a word other than pass or fail, or an issue key without its number (`owner/repo#abc`, `owner/repo#`), is exit 2.
 - `verdict-no-dispatch` an issue with no live Dispatch is exit 1.
 - `verdict-no-pr` a live Dispatch with no open PR is exit 1.
 - `verdict-wrong-head` a `--sha` other than the PR's head is exit 1, naming the head to verify.
@@ -47,7 +47,10 @@ Preconditions:
   `pass|fail is required`; `verdict verify/fixture#10 maybe --sha "$HEAD" --json` (`02-maybe`): exit
   `2` `` `maybe` is not a Verdict: pass or fail ``; `verdict verify/fixture#10 pass --json`
   (`03-no-sha`): exit `2` `--sha is required`; `verdict verify/fixture#10 fail --sha "$HEAD" --json`
-  (`04-fail-no-findings`): exit `2` `a failing Verdict needs --findings <file>`.
+  (`04-fail-no-findings`): exit `2` `a failing Verdict needs --findings <file>`;
+  `verdict verify/fixture#abc pass --sha "$HEAD" --json` (`04-no-number`) and
+  `verdict 'verify/fixture#' pass --sha "$HEAD" --json` (`04-empty-number`): exit `2`
+  `` `verify/fixture#abc` is not an issue reference `` (and `` `verify/fixture#` ``).
 - **No Dispatch.** Run `$C run --evidence "$E/05-no-dispatch" -- verdict verify/fixture#11 pass --sha "$HEAD" --json`.
   Exit `1`, `error` `verify/fixture#11 has no live Dispatch`.
 - **No PR.** Run `$C run --evidence "$E/06-no-pr" -- verdict verify/fixture#12 pass --sha "$HEAD" --json`.
