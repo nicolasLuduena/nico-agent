@@ -2,15 +2,16 @@
 
 Each Repo's Readiness checks say what will break it before the loop hits it: its clone, a fetch that
 asks nothing, `.evidence/` ignored and, while Review is on, a Verification skill on its Base's tip,
-the skills its steps' prompts name for their Harness, and whether the GitHub App is on it (it passes
-without, saying its PRs are opened as you; only failing to ask fails). They run when serve starts, on Refresh and
+the skills its steps' prompts name for their Harness, whether the GitHub App is on it (it passes
+without, saying its PRs are opened as you; only failing to ask fails), and whether herdr's server
+answers its client (after an upgrade a server on the old protocol refuses every call). They run when serve starts, on Refresh and
 after a write to the Repo's or its Project's settings, never on a plain tick, and stop nothing. Each
 failing one is a `Check` row in the needs-you strip and an errata block in the tab's Readiness
 section, with its help; once the user does what the help says, the next run passes it.
 
 ## Sub-features
 
-- `checks-status` `status --json` and `GET /api/status` show per Repo `checks: {at, results: [{name, ok, said, help}]}`, in the order clone, fetch, evidence, verification (while Review is on), skills, bot; `checks.json` holds the same.
+- `checks-status` `status --json` and `GET /api/status` show per Repo `checks: {at, results: [{name, ok, said, help}]}`, in the order clone, fetch, evidence, verification (while Review is on), skills, bot, herdr; `checks.json` holds the same.
 - `checks-refresh` Refresh (CLI or button) runs them for every Repo; a Repo added by `repo add` has none until then.
 - `checks-strip` each failing one is a `Check <slug>: <said>` row in `region "Needs you"`, its help under it.
 - `checks-panel` the tab's `region "Readiness"`, folded to `N of M pass` and open by itself while one fails, shows each failing one with its help, the passing ones as `list "Passing"`, and `Unchanged since <time>`.
@@ -42,17 +43,19 @@ Preconditions:
   skill for claude, the Implementer's Harness; no research skill for claude, ...; no verdict skill
   for codex, the Reviewer's Harness`, help `Install implement in one of ~/.claude/skills,
   <clone>/.claude/skills; ...`), `bot` failing (`could not check the GitHub App on verify/fixture:
-  \`ghbot api /installation/repositories\` failed: ...`); each failing one has a `help`, each ok one
-  `help` null. `$OUTSIDE_LOG` has `gh api user --jq .login` lines and one `ghbot api
-  /installation/repositories ...` (git is real, on the run's repos, so not in it).
+  \`ghbot api /installation/repositories\` failed: ...`), `herdr` failing (`\`herdr agent list\` failed:
+  verify_stub: herdr is a stub in this verification run`, help `Start herdr; after an upgrade,
+  \`herdr server stop\` and start it again so the server's protocol matches the client's`); each failing one has a `help`, each ok one
+  `help` null. `$OUTSIDE_LOG` has `gh api user --jq .login` lines, one `ghbot api
+  /installation/repositories ...` and one `herdr agent list` (git is real, on the run's repos, so not in it).
 - **Page.** Run `$C page --evidence "$E/03-page" --expect "Readiness"`: `region "Needs you"` has a
-  `Check verify/fixture:` row for each of the four failing checks, its help under what it says;
-  `region "Readiness"` is open by itself, its `group` reading `Readiness 2 of 6 pass`, with the four on the
+  `Check verify/fixture:` row for each of the five failing checks, its help under what it says;
+  `region "Readiness"` is open by itself, its `group` reading `Readiness 2 of 7 pass`, with the five on the
   errata rule, `list "Passing"` holding the clone and fetch ones, and `Unchanged since <time>`.
 - **Settings write.** Install the two skills the help names, as the user would, in the scratch HOME:
   `for s in implement research; do mkdir -p "$R/home/.claude/skills/$s" && echo "---" > "$R/home/.claude/skills/$s/SKILL.md"; done`.
   `: > "$OUTSIDE_LOG"`; run `$C http --evidence "$E/05-review-off" PATCH /api/repo/verify/fixture/switches '{"review":false}'`:
-  HTTP `200`; `$OUTSIDE_LOG` is one `ghbot api /installation/repositories ...` line. Run
+  HTTP `200`; `$OUTSIDE_LOG` is one `ghbot api /installation/repositories ...` line and one `herdr agent list`. Run
   `$C run --evidence "$E/06-status-after-patch" -- status --json`: `skills` is ok (`each skill a
   step names is installed for its Harness`), there is no `verification` check, and `at` is now.
 - **Fix pushed elsewhere.** Push `.evidence/` ignored to `main` from another clone:
@@ -60,7 +63,7 @@ Preconditions:
   `git -C "$FIXTURE_CLONE" rev-parse origin/main` is still the old tip. Run
   `$C page --evidence "$E/08-refresh" --click "button=Refresh" --gone ".evidence/ is not ignored on main"`:
   `ok` for both steps; `.requests.txt` has `POST /api/refresh -> 200`; the strip keeps the
-  bot row only; `region "Readiness"` reads `Readiness 4 of 5 pass`, the bot on the errata rule and
+  bot and herdr rows only; `region "Readiness"` reads `Readiness 4 of 6 pass`, those two on the errata rule and
   four in `list "Passing"`. `git -C "$FIXTURE_CLONE" rev-parse origin/main`
   is now the pushed commit: the check fetched the Base first.
 - **Proof.** `$C run --evidence "$E/09-status-end" -- status --json`: `evidence` ok (`.evidence/ is
@@ -71,7 +74,7 @@ Preconditions:
 ## Gotchas
 
 - In a run `ghbot` is a stub that fails, so the bot check always fails with `gh auth login`'s text;
-  that is the check working, not a broken run.
+  that is the check working, not a broken run. So does the herdr check, with the stub's `verify_stub`.
 - The scratch HOME has no skills, and its `~/` is what the skills check reads: install them under
   `$R/home`, never your own `~/.claude/skills`.
 - serve checks at start, before any Repo exists in a fresh run, so `checks.json` is `{}` until a

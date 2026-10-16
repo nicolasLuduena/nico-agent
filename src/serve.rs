@@ -1,6 +1,7 @@
 //! `serve`: the loop. Each Repo's Readiness checks, then one tick at once,
 //! then one every `tick_minutes`, each logged a line per action; a tick
-//! that fails is logged and the next runs.
+//! that fails is logged and the next runs; the user is notified once
+//! when 3 fail in a row, and once more when one works again.
 //! A panic ends the process, and the user service starts it again.
 
 use serde_json::{Value, json};
@@ -12,6 +13,9 @@ use crate::config;
 use crate::http;
 use crate::tick;
 use crate::world::{HttpRequest, World};
+
+/// Ticks failing in a row before the user is told: one is a blip, these are a broken night.
+const FAILS_TOLD: u32 = 3;
 
 pub fn serve(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
     Args::parse("serve", args, &[])?.positionals(&[])?;
@@ -34,11 +38,40 @@ pub fn serve(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
     if let Err(e) = ctx.world.listen(config.port, Box::new(handler)) {
         ctx.world.log(&e.0);
     }
+    // Ticks failed in a row; the user is told once at FAILS_TOLD, and once when one works again.
+    let mut failed = 0;
     let mut run = || match tick::tick(ctx, false) {
-        Ok(said) => said.iter().for_each(|line| ctx.world.log(line)),
-        Err(no) => ctx.world.log(&format!("tick failed: {}", no.error)),
+        Ok(said) => {
+            said.iter().for_each(|line| ctx.world.log(line));
+            if failed >= FAILS_TOLD {
+                tell(
+                    ctx,
+                    "nico-agent's ticks work again",
+                    &format!("after {failed} failed in a row"),
+                );
+            }
+            failed = 0;
+        }
+        Err(no) => {
+            ctx.world.log(&format!("tick failed: {}", no.error));
+            failed += 1;
+            if failed == FAILS_TOLD {
+                tell(
+                    ctx,
+                    &format!("nico-agent's last {failed} ticks failed"),
+                    &no.error,
+                );
+            }
+        }
     };
     run();
     ctx.world.every(config.tick(), &mut run);
     Ok(json!({}))
+}
+
+/// A notification, or the log saying it could not be sent.
+fn tell(ctx: &Context, title: &str, body: &str) {
+    if let Err(e) = ctx.world.notify(title, body) {
+        ctx.world.log(&format!("could not notify \"{title}\": {e}"));
+    }
 }

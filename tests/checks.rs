@@ -62,6 +62,7 @@ fn serve_checks_each_repo_at_start_with_a_call_per_check_and_keeps_each_result()
             "test -f ~/.codex/skills/verdict/SKILL.md",
             "test -f ~/.agents/skills/verdict/SKILL.md",
             "github app repos",
+            "herdr agent list",
         ]
     );
     let ok =
@@ -75,6 +76,7 @@ fn serve_checks_each_repo_at_start_with_a_call_per_check_and_keeps_each_result()
             ok("verification", "main has the Verification skill verify-api"),
             ok("skills", "each skill a step names is installed for its Harness"),
             ok("bot", "the GitHub App is installed on acme/api"),
+            ok("herdr", "herdr answers `herdr agent list`"),
         ],
     });
     assert_eq!(checks_file(&t), json!({ "acme/api": checks }));
@@ -127,6 +129,7 @@ fn each_failing_check_says_what_will_break_and_the_help_to_fix_it() {
             ),
             // Without the App its PRs are opened as the user, a choice, not a failure.
             { "name": "bot", "ok": true, "said": "the GitHub App is not installed on acme/api, so its PRs are opened as you", "help": null },
+            { "name": "herdr", "ok": true, "said": "herdr answers `herdr agent list`", "help": null },
         ])
     );
     // origin did not answer: the Base's tip is the clone's, unfetched.
@@ -154,7 +157,7 @@ fn with_origin_asking_and_no_base_set_the_base_s_tip_is_not_checked_rather_than_
     let names: Vec<&str> = (results.as_array().unwrap().iter())
         .map(|r| r["name"].as_str().unwrap())
         .collect();
-    assert_eq!(names, ["clone", "fetch", "skills", "bot"]);
+    assert_eq!(names, ["clone", "fetch", "skills", "bot", "herdr"]);
     assert!(
         !t.world
             .calls()
@@ -183,6 +186,26 @@ fn a_harness_that_names_no_skill_dirs_fails_the_skills_check_asking_for_them() {
             "skills",
             "no verdict skill for mine, the Reviewer's Harness",
             "Set harnesses.mine.skill_dirs to where mine reads skills"
+        )
+    );
+}
+
+#[test]
+fn a_herdr_server_older_than_its_client_fails_the_herdr_check() {
+    // 15 Oct: after an upgrade, every tick's `herdr agent list` failed till the server restarted.
+    let t = ready();
+    let mismatch =
+        "`herdr agent list` failed: protocol_mismatch: client protocol 22, server protocol 20";
+    t.world.fail_call("herdr agent list", mismatch);
+
+    let results = served(&t);
+
+    assert_eq!(
+        results[6],
+        failing(
+            "herdr",
+            mismatch,
+            "Start herdr; after an upgrade, `herdr server stop` and start it again so the server's protocol matches the client's"
         )
     );
 }
@@ -218,6 +241,7 @@ fn a_path_that_is_no_longer_a_clone_fails_the_clone_check_and_the_checks_in_it_a
             failing("clone", "/src/api is not a git clone", "Run `git clone https://github.com/acme/api /src/api` first, or pass the path of an existing clone"),
             { "name": "skills", "ok": true, "said": "each skill a step names is installed for its Harness", "help": null },
             failing("bot", "could not check the GitHub App on acme/api: `ghbot` is not installed or not on PATH", "Run `ghbot api /installation/repositories` to see why; till then its PRs are opened as you, not the bot"),
+            { "name": "herdr", "ok": true, "said": "herdr answers `herdr agent list`", "help": null },
         ])
     );
     assert!(
@@ -298,7 +322,10 @@ fn a_repo_that_does_not_review_has_no_verification_check() {
     let names: Vec<&str> = (results.as_array().unwrap().iter())
         .map(|r| r["name"].as_str().unwrap())
         .collect();
-    assert_eq!(names, ["clone", "fetch", "evidence", "skills", "bot"]);
+    assert_eq!(
+        names,
+        ["clone", "fetch", "evidence", "skills", "bot", "herdr"]
+    );
     assert!(!t.world.calls().iter().any(|c| c.contains(" ls-tree ")));
 }
 
@@ -351,7 +378,7 @@ fn refresh_checks_every_repo_again_after_its_tick() {
     assert_eq!(answered.0, 200, "{}", answered.1);
     let calls = t.world.calls();
     assert_eq!(times_checked(&calls), 2);
-    assert_eq!(calls.last().unwrap(), "github app repos");
+    assert_eq!(calls.last().unwrap(), "herdr agent list");
     assert_eq!(status_checks(&t)["results"][4]["ok"], false);
 }
 

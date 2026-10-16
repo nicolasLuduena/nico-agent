@@ -214,6 +214,58 @@ fn serve_logs_a_tick_that_fails_and_runs_the_next() {
     }
 }
 
+/// The notifications among `calls`.
+fn notified(t: &Setup) -> Vec<String> {
+    (t.world.calls().into_iter())
+        .filter(|c| c.starts_with("notify "))
+        .collect()
+}
+
+#[test]
+fn serve_notifies_once_when_three_ticks_fail_in_a_row() {
+    let t = with_issues(&[]);
+    std::fs::write(t.config_dir.join("dispatches.json"), "[").unwrap();
+
+    t.world.timer_runs.set(1);
+    t.cli(&["serve"]);
+    assert_eq!(
+        notified(&t),
+        [] as [&str; 0],
+        "two failed ticks are not told"
+    );
+
+    t.world.calls.borrow_mut().clear();
+    t.world.timer_runs.set(5);
+    t.cli(&["serve"]);
+    assert_eq!(notified(&t), ["notify nico-agent's last 3 ticks failed"]);
+    let (_, body) = t.world.notifications.borrow().last().cloned().unwrap();
+    assert!(
+        body.contains("dispatches.json: EOF while parsing"),
+        "{body}"
+    );
+}
+
+#[test]
+fn serve_notifies_once_when_a_tick_works_again_after_failing() {
+    let t = with_issues(&[]);
+    let dispatches = t.config_dir.join("dispatches.json");
+    std::fs::write(&dispatches, "[").unwrap();
+    // The user mends the file once told.
+    t.world
+        .during_call("notify", move || std::fs::write(&dispatches, "[]").unwrap());
+    t.world.timer_runs.set(4);
+
+    t.cli(&["serve"]);
+
+    assert_eq!(
+        notified(&t),
+        [
+            "notify nico-agent's last 3 ticks failed",
+            "notify nico-agent's ticks work again",
+        ]
+    );
+}
+
 #[test]
 fn a_night_of_independent_issues_is_dispatched_then_closed_as_each_pr_merges() {
     let t = with_issues(&[1, 2, 3, 4]);
