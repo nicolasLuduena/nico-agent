@@ -306,12 +306,18 @@ fn skill_of(prompt: &str) -> Option<&str> {
     (!name.is_empty()).then_some(name)
 }
 
-/// The skills a `SKILL.md` calls, each once: those it names as the
-/// `Skill tool with "<name>"`, the one form the skills use for it.
+/// The skills a `SKILL.md` calls, each once: every name quoted (`"x"` or
+/// `` `x` ``) in the clause after each `Skill tool`, the words the skills
+/// call one with (`with "x"`, `and "x"`, `twice, for "x" and "y"`).
 fn calls_of(text: &str) -> Vec<&str> {
-    let mut called: Vec<&str> = (text.split("Skill tool with \"").skip(1))
-        .filter_map(|after| Some(after.split_once('"')?.0))
-        .filter(|name| !name.is_empty())
+    let is_name = |name: &&str| {
+        !name.is_empty() && (name.chars()).all(|c| c.is_ascii_alphanumeric() || "-_:".contains(c))
+    };
+    let mut called: Vec<&str> = (text.split("Skill tool").skip(1))
+        .flat_map(|after| {
+            let clause = after.split(['.', ';', '\n']).next().unwrap_or_default();
+            clause.split(['"', '`']).skip(1).step_by(2).filter(is_name)
+        })
         .collect();
     called.sort();
     called.dedup();

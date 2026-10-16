@@ -308,6 +308,25 @@ fn a_skill_the_prompted_skill_calls_is_checked_for_the_same_harness_one_level_de
 }
 
 #[test]
+fn a_called_skill_is_each_name_quoted_in_the_clause_after_skill_tool() {
+    let t = ready();
+    t.world.add_file(
+        "~/.agents/skills/verdict/SKILL.md",
+        b"Write the body with the Skill tool and \"pr\", then open it.\n\
+          Call the Skill tool with `tdd` to build.\n\
+          Call the Skill tool twice, for \"grilling\" and \"domain-modeling\".\n\
+          Call the Skill tool for whichever skills the `## Notes` block names.\n\
+          Say \"unrelated\" elsewhere.",
+    );
+
+    let said = served(&t)[4]["said"].clone();
+
+    let lacking = ["domain-modeling", "grilling", "pr", "tdd"]
+        .map(|s| format!("no {s} skill for codex, the Reviewer's Harness, which verdict calls"));
+    assert_eq!(said, lacking.join("; "));
+}
+
+#[test]
 fn a_skill_installed_only_as_a_claude_plugin_is_found_for_claude_and_said_so_for_another_harness() {
     let t = ready();
     let call = b"Call the Skill tool with \"ponytail-audit\".";
