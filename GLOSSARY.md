@@ -207,13 +207,13 @@ numbered steps in order, each a one-sentence caption citing Anchors. At
 most one per Component. _Avoid_: diagram,
 illustration, figure.
 
-**Stale**: an Interpretation or a Term of a Repo's Wiki whose anchored file changed on
+**Stale**: an Interpretation, a Term or an Explainer of a Repo's Wiki whose anchored file changed on
 the base since it was written; shown as such, never hidden, until a wiki
 build asks about its part again. _Avoid_: outdated, invalid.
 
 **Update**: a wiki build of a Repo's Wiki from the one before it, asking
 again only about the parts whose files changed and copying the rest; a
-parent whose parts changed keeps its Interpretations and Terms, Stale
+parent whose parts changed keeps its Interpretations, Terms and Explainer, Stale
 where they are. _Avoid_: refresh, incremental build.
 
 **Rebuild**: a wiki build of a Wiki from nothing, as its first one is,

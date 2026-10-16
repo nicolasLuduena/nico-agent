@@ -193,7 +193,7 @@ fn it_lists_its_five_tools_each_read_only_with_its_arguments() {
 }
 
 #[test]
-fn wikis_lists_every_wiki_with_its_commit_build_time_and_gap_count() {
+fn wikis_lists_every_wiki_with_its_commit_build_time_gap_count_and_how_far_behind_it_is() {
     let t = with_wikis();
 
     let wikis = call(&t, &[], "wikis", json!({}));
@@ -201,8 +201,8 @@ fn wikis_lists_every_wiki_with_its_commit_build_time_and_gap_count() {
     assert_eq!(
         wikis,
         Ok(json!([
-            { "wiki": "acme/api", "commit": "abc1234", "builtAt": "2026-09-30T12:00:00Z", "gaps": 1 },
-            { "wiki": "acme/web", "commit": "abc1234", "builtAt": "2026-09-30T12:00:00Z", "gaps": 0 },
+            { "wiki": "acme/api", "commit": "abc1234", "builtAt": "2026-09-30T12:00:00Z", "gaps": 1, "behind": 0 },
+            { "wiki": "acme/web", "commit": "abc1234", "builtAt": "2026-09-30T12:00:00Z", "gaps": 0, "behind": 0 },
         ]))
     );
 }
@@ -541,7 +541,7 @@ const EMBED: &str = "curl -X POST http://127.0.0.1:11434/api/embed -d ";
 
 /// acme/api with its Wiki one leaf of nine records: its overview, "The page
 /// serves on port 80.", six claims of `src/lib.rs`, "Claim 1." to "Claim 6.",
-/// and "Config is a unit struct.". Ollama embeds the port's claim as it
+/// and "Config is a unit struct.", and an Explainer of `web/app.ts`. Ollama embeds the port's claim as it
 /// embeds `QUESTION`, the config's opposite it, and the rest across it.
 fn with_claims() -> Setup {
     let t = setup();
@@ -578,7 +578,12 @@ fn with_claims() -> Setup {
     answer(
         &t,
         "acme/api",
-        json!({ "kind": "leaf", "overview": "An HTTP API and its web page.", "interpretations": claims }),
+        json!({
+            "kind": "leaf",
+            "overview": "An HTTP API and its web page.",
+            "interpretations": claims,
+            "explainer": { "title": "Serving", "steps": [{ "n": 1, "caption": "It serves on the port.", "anchors": [{ "path": "web/app.ts", "start": 1, "end": 2 }] }] },
+        }),
     );
     let mut embeddings = t.world.embeddings.borrow_mut();
     embeddings.insert(QUESTION.into(), vec![1.0, 0.0]);
@@ -796,4 +801,63 @@ fn ask_says_search_is_unavailable_when_ollama_fails_and_asks_no_model() {
         Err("search unavailable, use find_component".into())
     );
     assert!(asked(&t).is_empty());
+}
+
+#[test]
+fn a_file_changed_on_the_base_since_the_build_flags_the_claims_and_explainer_citing_it_stale() {
+    let t = with_claims();
+    let port = json!({ "path": "web/app.ts", "start": 2, "end": 2 });
+    answers(
+        &t,
+        json!([{ "text": "A browser connects to port 80.", "anchors": [port] }]),
+    );
+    let moved = "export const port = 8080;\nexport const serve = () => {};\n";
+    t.world
+        .add_tree_file("/src/api", "origin/main", "web/app.ts", moved);
+    (t.world.behind.borrow_mut()).insert("/src/api abc1234..origin/main".into(), 2);
+    let ask = request(
+        2,
+        "tools/call",
+        json!({ "name": "ask", "arguments": { "wiki": "acme/api", "question": QUESTION } }),
+    );
+
+    let answered = mcp(&t, &[], &[initialize(), ask]);
+    let found = call(
+        &t,
+        &[],
+        "find_component",
+        json!({ "wiki": "acme/api", "query": "page" }),
+    );
+    let index = call(
+        &t,
+        &[],
+        "get_component",
+        json!({ "wiki": "acme/api", "id": "index" }),
+    );
+    let wikis = call(&t, &[], "wikis", json!({}));
+
+    let content = &answered[1]["result"]["content"];
+    let asked: Value = serde_json::from_str(content[0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(
+        asked["records"],
+        json!([{ "component": "index", "id": 1, "kind": "effect", "text": "The page serves on port 80.", "anchors": [port], "stale": true }])
+    );
+    let warning = json!([{ "type": "text", "text": "Some of these are Stale: they cite a file that changed on the Repo's Base since the Wiki was built, so check them in the code." }]);
+    assert_eq!(
+        content.as_array().unwrap()[1..],
+        warning.as_array().unwrap()[..]
+    );
+    assert_eq!(
+        found,
+        Ok(
+            json!([{ "id": "index", "name": "acme/api", "overview": "An HTTP API and its web page.", "stale": true }])
+        )
+    );
+    assert_eq!(index.unwrap()["explainer"]["stale"], true);
+    assert_eq!(
+        wikis,
+        Ok(
+            json!([{ "wiki": "acme/api", "commit": "abc1234", "builtAt": "2026-09-30T12:00:00Z", "gaps": 0, "behind": 2 }])
+        )
+    );
 }

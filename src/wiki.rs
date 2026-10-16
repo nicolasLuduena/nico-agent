@@ -14,7 +14,7 @@
 //! the Board's buttons queue theirs first.
 //!
 //! Between builds, whoever serves a Repo's Wiki marks Stale each
-//! Interpretation and Term citing a file whose blob at `origin/<base>` is not
+//! Interpretation, Term and Explainer citing a file whose blob at `origin/<base>` is not
 //! the one it was written against.
 
 use std::cmp::Reverse;
@@ -647,8 +647,8 @@ struct Component {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     explainer: Option<Explainer>,
     gaps: Vec<Gap>,
-    /// The blob each file its Interpretations and Terms cite had when they
-    /// were written, where the Wiki's has moved on since: one an Update kept.
+    /// The blob each file its Interpretations, Terms and Explainer cite had
+    /// when they were written, where the Wiki's has moved on since: one an Update kept.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     blobs: BTreeMap<String, String>,
 }
@@ -947,8 +947,8 @@ pub fn get(ctx: &Context, id: &str) -> Result<Option<Value>, Refusal> {
 
 /// Mark `wiki`, the Wiki of `repo` as the Bucket holds it, against the
 /// Repo's `origin/<base>` as its clone last fetched it: `stale` on each
-/// Interpretation and Term citing a file whose blob there is not the one it
-/// was written against, with how many Interpretations are, and how many
+/// Interpretation, Term and Explainer citing a file whose blob there is not
+/// the one it was written against, with how many Interpretations are, and how many
 /// commits the Wiki's is `behind` the Base.
 pub fn marked(world: &dyn World, repo: &Repo, wiki: &mut Value) -> WorldResult<()> {
     let base = base(world, repo)?;
@@ -988,6 +988,10 @@ pub fn marked(world: &dyn World, repo: &Repo, wiki: &mut Value) -> WorldResult<(
             if moved(t) {
                 t["stale"] = json!(true);
             }
+        }
+        let steps = |e: &&mut Value| (e["steps"].as_array().into_iter().flatten()).any(&moved);
+        if let Some(e) = c.get_mut("explainer").filter(steps) {
+            e["stale"] = json!(true);
         }
     }
     wiki["base"] = json!(base);
@@ -1557,6 +1561,8 @@ fn updated(previous: Wiki, files: &[File], continuing: bool) -> (Vec<Component>,
                 // Pinned where it changed: the blob each cited file had when written.
                 let cited = (c.interpretations.iter()).flat_map(|i| &i.anchors);
                 let cited = cited.chain(c.terms.iter().flat_map(|t| &t.anchors));
+                let steps = c.explainer.iter().flat_map(|e| &e.steps);
+                let cited = cited.chain(steps.flat_map(|s| &s.anchors));
                 let pins = cited
                     .filter_map(|a| {
                         let written = c.blobs.get(&a.path).or(was.get(&a.path))?;
