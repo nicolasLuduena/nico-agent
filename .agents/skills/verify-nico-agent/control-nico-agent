@@ -31,6 +31,9 @@
 #   seed pace <seconds>|none      how long the wiki model takes over each call before it answers, or none
 #   seed assign answers|none      whether GitHub answers an assign to the user (gh issue edit --add-assignee @me),
 #                                 as once signed in; none, it fails as gh with no login does
+#   seed rate-limit <file>|none [<bot-file>]
+#                                 what `gh api rate_limit` answers: <file>'s JSON in GitHub's shape, and `ghbot`'s
+#                                 <bot-file>'s (failing without one); none, both fail as gh with no login does
 #   seed herdr <agent>|none       the real herdr's list of agents, and what is asked of <agent> there, reach
 #                                 the real herdr; with none, herdr is all a stub again
 #   seed dialog <n>|none          a real Claude in a herdr tab of its own, impl-fixture-<n>, Asking two questions
@@ -168,6 +171,10 @@ line="\$name\$(printf ' %q' "\$@")"
 [ -z "\${OPENCODE_CONFIG_CONTENT:-}" ] || line="OPENCODE_CONFIG_CONTENT=\$(printf '%q' "\$OPENCODE_CONFIG_CONTENT") \$line"
 printf '%s\\n' "\$line" >> "$log"
 case "\$name" in
+  # \`seed rate-limit\`: GitHub's rate limits, as each identity would read them.
+  gh|ghbot) if [ "\${1:-} \${2:-}" = "api rate_limit" ] && [ -f "$RUN_DIR/\$name-rate-limit.json" ]; then
+      cat "$RUN_DIR/\$name-rate-limit.json"; exit 0
+    fi ;;&
   # Seeded to answer: an assign to the user, as GitHub would take it.
   gh) if [ -f "$RUN_DIR/gh-assign" ] && [ "\$1 \$2" = "issue edit" ] && [ "\${*: -2}" = "--add-assignee @me" ]; then exit 0; fi
     echo "To get started with GitHub CLI, please run:  gh auth login" >&2; exit 4 ;;
@@ -422,6 +429,7 @@ cmd_seed() {
     correction) seed_correction "$@" ;;
     pace) seed_pace "$@" ;;
     assign) seed_assign "$@" ;;
+    rate-limit) seed_rate_limit "$@" ;;
     herdr) seed_herdr "$@" ;;
     dialog) seed_dialog "$@" ;;
     reviewer) seed_reviewer "$@" ;;
@@ -623,6 +631,18 @@ seed_assign() {
     answers) : > "$RUN_DIR/gh-assign" ;;
     none) rm -f "$RUN_DIR/gh-assign" ;;
     *) die "seed: usage: seed assign answers|none" ;;
+  esac
+}
+
+# What `gh api rate_limit` answers from now on, <file>'s JSON, and `ghbot`'s, <bot-file>'s, failing
+# without one, as where ghbot is not installed; with none, both fail as every gh call does.
+seed_rate_limit() {
+  case "${1:-}" in
+    none) rm -f "$RUN_DIR/gh-rate-limit.json" "$RUN_DIR/ghbot-rate-limit.json" ;;
+    "") die "seed: usage: seed rate-limit <file>|none [<bot-file>]" ;;
+    *) [ -f "$1" ] || die "seed: no file $1"; cp "$1" "$RUN_DIR/gh-rate-limit.json"
+      rm -f "$RUN_DIR/ghbot-rate-limit.json"
+      if [ -n "${2:-}" ]; then [ -f "$2" ] || die "seed: no file $2"; cp "$2" "$RUN_DIR/ghbot-rate-limit.json"; fi ;;
   esac
 }
 

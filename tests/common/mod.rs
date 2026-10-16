@@ -129,7 +129,8 @@ impl Setup {
     /// Run one tick of the loop: `serve` with its timer off, which ticks once.
     /// What it logged, a line per action, taken out of the log unstamped.
     /// The calls `serve` makes before its tick, its Readiness checks and its
-    /// listen, are taken out too: only the tick's are left.
+    /// listen, are taken out too, and the read of GitHub's rate limits that
+    /// ends every tick (`tests/rate_limit.rs` asserts it): only the tick's are left.
     pub fn tick(&self) -> Vec<String> {
         let runs = self.world.timer_runs.replace(0);
         let start = self.world.logged.borrow().len();
@@ -138,6 +139,7 @@ impl Setup {
         let mut calls = self.world.calls.borrow_mut();
         let listen = (calls[served..].iter()).position(|c| c.starts_with("listen "));
         calls.drain(served..=served + listen.expect("serve listens"));
+        calls.retain(|c| !c.ends_with("api rate_limit"));
         drop(calls);
         self.world.timer_runs.set(runs);
         assert_eq!(ran.exit_code, 0, "{}", ran.stdout);

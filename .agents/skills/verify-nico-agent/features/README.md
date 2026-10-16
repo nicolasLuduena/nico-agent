@@ -24,6 +24,7 @@ An H1 title, one paragraph on the user-visible behaviour, then exactly four H2 s
 - [Readiness checks](./checks.md)
 - [Install](./install.md)
 - [Refresh](./refresh.md)
+- [GitHub rate-limit gauge](./rate-gauge.md)
 - [Answer an Asking Implementer](./answer.md)
 - [Live updates](./live-updates.md)
 - [The Morning summary on the page](./morning.md)

@@ -187,7 +187,7 @@ fn an_unknown_path_or_method_answers_404_with_the_routes_as_help() {
     let help = json!([
         "GET /: the app",
         "GET /wiki/<id>: the app at the Wiki's page, its Component in the fragment",
-        "GET /api/status: the status of every Repo and Dispatch",
+        "GET /api/status: the status of every Repo and Dispatch, and what each GitHub identity has used of its rate limits",
         "GET /api/map/<project>: the issues of the Project's Repos and how they block and stack on each other",
         "GET /api/node/<issue>: the issue's Dispatch, its restarts, its Verdict's findings, its Evidence and, while it is Asking, its Implementer's pane",
         "GET /api/events: a stream of `changed`, sent when state or an Agent state changes, and a keepalive comment otherwise",

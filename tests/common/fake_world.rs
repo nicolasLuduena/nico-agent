@@ -39,6 +39,10 @@ pub struct FakeWorld {
     /// PRs marked ready, by `slug#N`: never reported draft again.
     pub readied: RefCell<Vec<String>>,
     pub app_repos: RefCell<Vec<String>>,
+    /// What `gh api rate_limit` answers, and `ghbot`'s, which is not
+    /// installed while `None`.
+    pub rate_limit: RefCell<RateLimit>,
+    pub bot_rate_limit: RefCell<Option<RateLimit>>,
     /// Agent state of each named agent, as `herdr agent list` reports it.
     pub agents: RefCell<BTreeMap<String, String>>,
     /// The pane each named agent runs in.
@@ -120,6 +124,11 @@ impl Default for FakeWorld {
             activity: Default::default(),
             readied: Default::default(),
             app_repos: Default::default(),
+            rate_limit: RefCell::new(RateLimit {
+                core: budget(5000, 120, "2026-09-30T12:40:00Z"),
+                graphql: budget(5000, 40, "2026-09-30T12:50:00Z"),
+            }),
+            bot_rate_limit: Default::default(),
             agents: Default::default(),
             agent_panes: Default::default(),
             gone_panes: Default::default(),
@@ -153,6 +162,16 @@ impl Default for FakeWorld {
             workspaces: Cell::new(0),
             tabs: Default::default(),
         }
+    }
+}
+
+/// A budget of `limit` with `used` of it used, full again at `reset`.
+pub fn budget(limit: u64, used: u64, reset: &str) -> Budget {
+    Budget {
+        limit,
+        used,
+        remaining: limit - used,
+        reset: reset.into(),
     }
 }
 
@@ -687,6 +706,16 @@ impl World for FakeWorld {
     fn github_app_repos(&self) -> WorldResult<Vec<String>> {
         self.call("github app repos".into())?;
         Ok(self.app_repos.borrow().clone())
+    }
+
+    fn github_rate_limit(&self, bot: bool) -> WorldResult<RateLimit> {
+        if !bot {
+            self.call("gh api rate_limit".into())?;
+            return Ok(self.rate_limit.borrow().clone());
+        }
+        self.call("ghbot api rate_limit".into())?;
+        (self.bot_rate_limit.borrow().clone())
+            .ok_or_else(|| WorldError("`ghbot` is not installed or not on PATH".into()))
     }
 
     fn github_assign_self(&self, slug: &str, number: u64) -> WorldResult<()> {

@@ -16,6 +16,7 @@ use crate::dispatch::{self, Flags};
 use crate::faux_nico;
 use crate::flip;
 use crate::install;
+use crate::rate_limit;
 use crate::restart;
 use crate::review;
 use crate::source::{self, Read};
@@ -59,6 +60,7 @@ pub fn tick(ctx: &Context, refresh: bool) -> Result<Vec<String>, Refusal> {
     said.extend(ran);
     said.extend(faux_nico::step(ctx, &config, &ended)?);
     said.extend(wiki::step(ctx, &config)?);
+    said.extend(rate_limit::step(ctx)?);
     Ok(said)
 }
 

@@ -17,6 +17,7 @@ pub mod library;
 pub mod map;
 pub mod mcp;
 pub mod pause;
+pub mod rate_limit;
 pub mod rebase;
 pub mod refresh;
 pub mod repo;

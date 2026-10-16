@@ -99,6 +99,23 @@ pub struct GitHubIssue {
     pub has_sub_issues: bool,
 }
 
+/// One of a GitHub identity's hourly budgets, as `gh api rate_limit` says it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Budget {
+    pub limit: u64,
+    pub used: u64,
+    pub remaining: u64,
+    /// ISO 8601: when it is full again.
+    pub reset: String,
+}
+
+/// What a GitHub identity has used of its REST (`core`) and GraphQL budgets.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RateLimit {
+    pub core: Budget,
+    pub graphql: Budget,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct LinearTeam {
     pub id: String,
@@ -392,6 +409,8 @@ pub trait World {
     ) -> WorldResult<PullRequestActivity>;
     /// The repos (`owner/name`) the bot's GitHub App is installed on.
     fn github_app_repos(&self) -> WorldResult<Vec<String>>;
+    /// `gh api rate_limit`, or `ghbot`'s with `bot`: asking it costs none.
+    fn github_rate_limit(&self, bot: bool) -> WorldResult<RateLimit>;
     /// Assign an issue to the user (the Claim).
     fn github_assign_self(&self, slug: &str, number: u64) -> WorldResult<()>;
     /// Mark a draft PR ready for review (the flip): the one write to a PR,
@@ -1531,6 +1550,29 @@ impl World for RealWorld {
             },
             updated_at: viewed.updated_at,
             merged_at: viewed.merged_at,
+        })
+    }
+    fn github_rate_limit(&self, bot: bool) -> WorldResult<RateLimit> {
+        let bin = if bot { "ghbot" } else { "gh" };
+        let (ok, stdout, stderr) = gh_run(bin, &["api", "rate_limit"].map(String::from))?;
+        if !ok {
+            return Err(gh_failure(&stderr));
+        }
+        let limits: Value = serde_json::from_str(&stdout).map_err(|_| invalid("GitHub"))?;
+        let budget = |name: &str| -> WorldResult<Budget> {
+            let of = &limits["resources"][name];
+            let number = |key: &str| of[key].as_u64().ok_or_else(|| invalid("GitHub"));
+            let reset = SystemTime::UNIX_EPOCH + Duration::from_secs(number("reset")?);
+            Ok(Budget {
+                limit: number("limit")?,
+                used: number("used")?,
+                remaining: number("remaining")?,
+                reset: crate::state::iso(reset),
+            })
+        };
+        Ok(RateLimit {
+            core: budget("core")?,
+            graphql: budget("graphql")?,
         })
     }
     /// Through `ghbot`: only the App's installation token can list its repositories.

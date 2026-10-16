@@ -8,6 +8,7 @@
   import { flash } from "./motion";
   import NeedsYou from "./NeedsYou.svelte";
   import ProjectTab from "./ProjectTab.svelte";
+  import RateGauge from "./RateGauge.svelte";
   import { hash, movedTo, route } from "./route";
   import { selection } from "./selection.svelte";
   import type { Status } from "./status";
@@ -88,7 +89,12 @@
 
 <header class="top">
   <h1 class="label">nico-agent</h1>
-  <ThemeSwitch />
+  <div class="tools">
+    {#if status && Object.keys(status.rate_limits).length}
+      <RateGauge limits={status.rate_limits} pausedUntil={status.sources.github.paused_until} />
+    {/if}
+    <ThemeSwitch />
+  </div>
 </header>
 
 <main>
@@ -174,10 +180,20 @@
     justify-content: space-between;
     align-items: center;
     gap: 16px;
+    flex-wrap: wrap;
+    position: relative;
     padding: 12px var(--gutter);
+  }
+  /* Under the wordmark, at the right, when the phone leaves them no room beside it. */
+  .tools {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
   }
   h1 {
     font-size: 14px;
+    white-space: nowrap;
   }
   .errata {
     margin: 0 var(--gutter) 12px;
