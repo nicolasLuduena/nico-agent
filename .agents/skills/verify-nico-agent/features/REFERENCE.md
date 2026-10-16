@@ -19,6 +19,7 @@ What `seed` and `drift` put in a run, and the stable handles a recipe may use. R
   - `push <n>` commits to the seeded worktree and moves the PR's `head_sha`.
   - `stale` dates the cached read 2000-01-01, so the next `status` or `dispatch` asks GitHub.
   - `pause` writes GitHub paused for an hour.
+  - `hang` makes every later `gh` call sleep till nico-agent kills it at its deadline (5 s in a run, which sets `NICO_AGENT_DEADLINE_SECS=5`); until cleanup.
   - `below merged|closed` makes PR #109 final.
   - `base [<file>]` pushes a commit rewriting `README.md`, or `<file>` (made if new), to verify/fixture's `main` and fetches it, printing `{base, file, old, head}`.
   - `tag <tag>` pushes tag `<tag>` to verify/second's origin, on a commit off its `main` adding `lib/greet.sh` and `lib/README.md`, printing `{repo, tag, commit}`. `state` shows each Library's bare clone in the config dir by its tags and worktrees, not its files.

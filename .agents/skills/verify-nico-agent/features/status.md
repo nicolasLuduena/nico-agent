@@ -13,6 +13,7 @@ cache alone, plus what the page shows beside each map.
 - `status-cached` a fresh cached read is shown without asking GitHub: Ready `#1` (code) and `#5` (research), Stackable `#6` with `base` `agent/fixture-9`.
 - `status-not-ready` an issue waiting on a Blocker without PR is in `waiting` with why (`<key> waits on <blocker> to close`); issues not labelled or assigned to someone else are in no list (`gardening`, the Ready `gardening` issues, is empty: the fixture has none).
 - `status-stale` a read older than a tick asks GitHub again; refused, the cache is still shown, with `error`.
+- `status-hung` a `gh` that never answers is killed at its deadline: the Repo's `error` names the call and the deadline, and the next status and Refresh still answer.
 - `status-paused` a paused GitHub is asked nothing: `sources.github.paused_until` is set, an uncached Repo's `error` says when it is asked again.
 - `status-dispatches` each Dispatch with `stage` (`Failed`, `PR draft`, `Implementing`, `Verified`), `agent_state` `unknown` while herdr does not answer, `review` (see review.md), `verdict` and `pr`.
 - `status-runs` a Run its agent blocked shows `blocked_since` where status shows it: `repos[].last_scan`, the live Dispatch's `faux_nico`, `morning`.
@@ -65,6 +66,12 @@ Preconditions:
 - **Stale read.** Run `$C drift stale`, then `$C run --evidence "$E/05-stale" -- status --json`.
   `repos[0].error` is the `gh auth login` refusal, `read_at` `2000-01-01T00:00:00Z`, and `ready` and
   `stackable` still hold the cached rows. `$OUTSIDE_LOG` gained one more `gh api user --jq .login`.
+- **Hung gh.** Run `$C drift stale` and `$C drift hang`, then `$C run --evidence "$E/05-hung" -- status --json`
+  and `$C http --evidence "$E/05-hung-refresh" POST /api/refresh`, then `$C run --evidence "$E/05-hung-again" -- status --json`.
+  Each status exits `0` in about 5 s with `repos[0].error` `` `gh api user` ran past its 5s deadline and was killed ``.
+  The refresh answers HTTP `200` within a minute (each `gh` call it makes waits out its 5 s), not "tick skipped", its
+  `actions` led by `could not read the issues of verify/fixture:` and that error; it tries the cached Ready rows, which
+  fail at worktree (see dispatch-refusals), so the second status lists none Ready. `gh` hangs until cleanup: drive this last but Paused.
 - **Paused.** Run `$C run -- repo add verify/second --path "$SECOND_CLONE" --json` and `$C drift pause`,
   then `$C run --evidence "$E/06-paused" -- status --json`. `sources.github.paused_until` is the
   pause's time; both Repos (verify/fixture's read is stale, verify/second has none) have `error`

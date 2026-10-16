@@ -10,11 +10,11 @@ use std::fs;
 use std::io::{self, BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::{Command, Output, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, mpsc};
 use std::thread;
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, Instant, SystemTime};
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -620,6 +620,73 @@ fn curl(request: &HttpRequest) -> WorldResult<HttpResponse> {
     })
 }
 
+/// How long an outside call may run before it is killed: long enough for a
+/// slow fetch, short enough that one hung call can't stop the night.
+const DEADLINE: Duration = Duration::from_secs(300);
+
+/// [`DEADLINE`], or `NICO_AGENT_DEADLINE_SECS` when set: a test's stub that
+/// hangs shouldn't hold it for minutes.
+fn deadline() -> Duration {
+    (std::env::var("NICO_AGENT_DEADLINE_SECS").ok())
+        .and_then(|secs| secs.parse().ok())
+        .map_or(DEADLINE, Duration::from_secs)
+}
+
+/// Run `command` to its end, as `output()` does, or kill it once `deadline`
+/// passes and fail naming it as `shown`; `failed` words a failure to start it.
+fn run_till(
+    command: &mut Command,
+    deadline: Duration,
+    shown: &str,
+    failed: impl FnOnce(io::Error) -> WorldError,
+) -> WorldResult<Output> {
+    let started = Instant::now();
+    let mut child = (command.stdout(Stdio::piped()).stderr(Stdio::piped()))
+        .spawn()
+        .map_err(failed)?;
+    // Read as it prints: a child that fills a pipe would never end.
+    let (stdout, stderr) = (drain(child.stdout.take()), drain(child.stderr.take()));
+    let past = || {
+        WorldError(format!(
+            "`{shown}` ran past its {}s deadline and was killed",
+            deadline.as_secs()
+        ))
+    };
+    let status = loop {
+        if let Ok(Some(status)) = child.try_wait() {
+            break status;
+        }
+        if started.elapsed() >= deadline {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(past());
+        }
+        thread::sleep(Duration::from_millis(10));
+    };
+    // A process it left in the background may hold its pipes past its end.
+    let read = |pipe: mpsc::Receiver<Vec<u8>>| {
+        pipe.recv_timeout(deadline.saturating_sub(started.elapsed()))
+            .map_err(|_| past())
+    };
+    Ok(Output {
+        status,
+        stdout: read(stdout)?,
+        stderr: read(stderr)?,
+    })
+}
+
+/// All of `pipe`, read on its own thread.
+fn drain(pipe: Option<impl Read + Send + 'static>) -> mpsc::Receiver<Vec<u8>> {
+    let (sent, read) = mpsc::channel();
+    let mut pipe = pipe.expect("the pipe is piped");
+    thread::spawn(move || {
+        let mut all = vec![];
+        let _ = pipe.read_to_end(&mut all);
+        let _ = sent.send(all);
+    });
+    read
+}
+
 /// The World of the running binary.
 pub struct RealWorld {
     /// Where `secrets.env` may hold the Linear API key.
@@ -629,13 +696,20 @@ pub struct RealWorld {
 /// Run `gh` (or `ghbot`, its bot twin) with prompts and colors off: whether
 /// it succeeded, its stdout and stderr.
 fn gh_run(bin: &str, args: &[String]) -> WorldResult<(bool, String, String)> {
-    let ran = Command::new(bin)
-        .args(args)
-        .env("GH_PROMPT_DISABLED", "1")
-        .env("NO_COLOR", "1")
-        .stdin(Stdio::null())
-        .output()
-        .map_err(|_| WorldError(format!("`{bin}` is not installed or not on PATH")))?;
+    let shown = format!(
+        "{bin} {}",
+        args.iter().take(2).cloned().collect::<Vec<_>>().join(" ")
+    );
+    let ran = run_till(
+        Command::new(bin)
+            .args(args)
+            .env("GH_PROMPT_DISABLED", "1")
+            .env("NO_COLOR", "1")
+            .stdin(Stdio::null()),
+        deadline(),
+        &shown,
+        |_| WorldError(format!("`{bin}` is not installed or not on PATH")),
+    )?;
     let text = |bytes: &[u8]| String::from_utf8_lossy(bytes).into_owned();
     Ok((ran.status.success(), text(&ran.stdout), text(&ran.stderr)))
 }
@@ -881,12 +955,16 @@ impl ListedPr {
 
 /// Run `git -C <dir> <args>`: whether it succeeded, and what it printed.
 fn git(dir: &Path, args: &[&str]) -> WorldResult<(bool, String)> {
-    let ran = Command::new("git")
-        .arg("-C")
-        .arg(dir)
-        .args(args)
-        .output()
-        .map_err(|e| WorldError(format!("could not run git: {e}")))?;
+    let ran = run_till(
+        Command::new("git")
+            .arg("-C")
+            .arg(dir)
+            .args(args)
+            .stdin(Stdio::null()),
+        deadline(),
+        &format!("git {}", args.join(" ")),
+        |e| WorldError(format!("could not run git: {e}")),
+    )?;
     Ok((
         ran.status.success(),
         String::from_utf8_lossy(&ran.stdout).into_owned(),
@@ -908,15 +986,18 @@ fn git_ok(path: &str, args: &[&str]) -> WorldResult<String> {
 
 /// [`git_ok`] with `env` set too.
 fn git_env(path: &str, args: &[&str], env: &[(&str, &str)]) -> WorldResult<String> {
-    let ran = Command::new("git")
-        .arg("-C")
-        .arg(path)
-        .args(args)
-        .env("GIT_TERMINAL_PROMPT", "0")
-        .envs(env.iter().copied())
-        .stdin(Stdio::null())
-        .output()
-        .map_err(|e| WorldError(format!("could not run git: {e}")))?;
+    let ran = run_till(
+        Command::new("git")
+            .arg("-C")
+            .arg(path)
+            .args(args)
+            .env("GIT_TERMINAL_PROMPT", "0")
+            .envs(env.iter().copied())
+            .stdin(Stdio::null()),
+        deadline(),
+        &format!("git {}", args.join(" ")),
+        |e| WorldError(format!("could not run git: {e}")),
+    )?;
     if ran.status.success() {
         return Ok(String::from_utf8_lossy(&ran.stdout).trim().into());
     }
@@ -977,6 +1058,9 @@ fn first_line(stderr: &[u8], status: &std::process::ExitStatus) -> String {
         .map_or_else(|| status.to_string(), String::from)
 }
 
+/// A headless model call reads a code base and writes a whole Wiki page.
+const HEADLESS_DEADLINE: Duration = Duration::from_secs(3600);
+
 /// Make one headless call of a Harness in `cwd`: the text of its last
 /// message, with its session, or the error it reported, read from the JSON
 /// lines it printed: opencode's events (`--format json`), codex's (`--json`)
@@ -988,17 +1072,19 @@ fn headless(cwd: &str, call: &Headless) -> WorldResult<Answered> {
         call.command,
         call.args.first().map_or("", String::as_str)
     );
-    // shortcut: no timeout, so a call that hangs holds its build until killed; add one if a model ever hangs.
     // shortcut: the prompt is one argument, which Linux caps at 128 KiB (a top part of some 2,800 files); send it on stdin for a code base that big.
-    let ran = Command::new(&call.command)
-        .args(&call.args)
-        .arg(&call.prompt)
-        .envs(call.env.iter().map(|(name, value)| (name, value)))
-        .current_dir(cwd)
-        // With an input open it waits on it, and never answers.
-        .stdin(Stdio::null())
-        .output()
-        .map_err(|e| WorldError(format!("could not run `{command}` in {cwd}: {e}")))?;
+    let ran = run_till(
+        Command::new(&call.command)
+            .args(&call.args)
+            .arg(&call.prompt)
+            .envs(call.env.iter().map(|(name, value)| (name, value)))
+            .current_dir(cwd)
+            // With an input open it waits on it, and never answers.
+            .stdin(Stdio::null()),
+        HEADLESS_DEADLINE,
+        &command,
+        |e| WorldError(format!("could not run `{command}` in {cwd}: {e}")),
+    )?;
     let events: Vec<Value> = (String::from_utf8_lossy(&ran.stdout).lines())
         .filter_map(|line| serde_json::from_str(line).ok())
         .collect();
@@ -1064,14 +1150,19 @@ impl HerdrFailure {
 /// Run herdr: what it printed, or its failure, which herdr reports as
 /// `{"error": {"code", "message"}}` on stderr.
 fn herdr_text(args: &[&str]) -> Result<String, HerdrFailure> {
-    let ran = Command::new("herdr")
-        .args(args)
-        .stdin(Stdio::null())
-        .output()
-        .map_err(|_| HerdrFailure {
-            code: None,
-            error: WorldError("`herdr` is not installed or not on PATH".into()),
-        })?;
+    herdr_till(args, deadline())
+}
+
+/// [`herdr_text`], killed once `deadline` passes.
+fn herdr_till(args: &[&str], deadline: Duration) -> Result<String, HerdrFailure> {
+    let command = args[..args.len().min(2)].join(" ");
+    let ran = run_till(
+        Command::new("herdr").args(args).stdin(Stdio::null()),
+        deadline,
+        &format!("herdr {command}"),
+        |_| WorldError("`herdr` is not installed or not on PATH".into()),
+    )
+    .map_err(|error| HerdrFailure { code: None, error })?;
     if ran.status.success() {
         return Ok(String::from_utf8_lossy(&ran.stdout).into_owned());
     }
@@ -1092,7 +1183,6 @@ fn herdr_text(args: &[&str]) -> Result<String, HerdrFailure> {
         ),
         None => first_line(&ran.stderr, &ran.status),
     };
-    let command = args[..args.len().min(2)].join(" ");
     Err(HerdrFailure {
         code,
         error: WorldError(format!("`herdr {command}` failed: {message}")),
@@ -1141,7 +1231,7 @@ impl World for RealWorld {
         let refspec = branch.map(|b| format!("+refs/heads/{b}:refs/remotes/origin/{b}"));
         let mut args = vec!["fetch", "origin"];
         args.extend(refspec.as_deref());
-        git_ok(path, &args).map(drop)
+        git_env(path, &args, &[BATCH_SSH]).map(drop)
     }
     fn git_default_branch(&self, path: &str) -> WorldResult<String> {
         if let Ok(head) = git_ok(
@@ -1736,13 +1826,14 @@ impl World for RealWorld {
         states: &[String],
         timeout: Duration,
     ) -> WorldResult<()> {
-        let timeout = timeout.as_millis().to_string();
+        let millis = timeout.as_millis().to_string();
         let mut all = vec!["agent", "wait", name];
         for state in states {
             all.extend(["--until", state]);
         }
-        all.extend(["--timeout", &timeout]);
-        herdr(&all)?;
+        all.extend(["--timeout", &millis]);
+        // herdr gives up at its own --timeout; this is in case herdr itself hangs.
+        herdr_till(&all, timeout + deadline())?;
         Ok(())
     }
     /// Returns once the agent starts working, not when it is done.
@@ -1807,11 +1898,14 @@ impl World for RealWorld {
         written().map_err(|e| WorldError(format!("{shown}: {e}")))
     }
     fn notify(&self, title: &str, body: &str) -> WorldResult<()> {
-        let ran = Command::new("notify-send")
-            .args(["--app-name", "nico-agent", "--", title, body])
-            .stdin(Stdio::null())
-            .output()
-            .map_err(|_| WorldError("`notify-send` is not installed or not on PATH".into()))?;
+        let ran = run_till(
+            Command::new("notify-send")
+                .args(["--app-name", "nico-agent", "--", title, body])
+                .stdin(Stdio::null()),
+            deadline(),
+            "notify-send",
+            |_| WorldError("`notify-send` is not installed or not on PATH".into()),
+        )?;
         if ran.status.success() {
             return Ok(());
         }
