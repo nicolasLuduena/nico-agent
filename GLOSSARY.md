@@ -222,7 +222,7 @@ Explainer, Stale where they are. _Avoid_: refresh, incremental build.
 asked for by the user. _Avoid_: reset, regenerate.
 
 **Continue**: a wiki build asking again only the parts of a Wiki its
-budget left Gaps, with a fresh budget, at the commit the Wiki describes.
+budget or a failed call left Gaps, with a fresh budget, at the commit the Wiki describes.
 _Avoid_: resume, retry.
 
 **Run**: one start of a trigger's agent: a quality-scan, a faux-nico, the

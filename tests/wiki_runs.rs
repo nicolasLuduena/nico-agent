@@ -616,6 +616,25 @@ fn update_and_continue_start_their_own_build_even_with_the_wiki_switch_off() {
 }
 
 #[test]
+fn continue_is_offered_and_queued_for_a_wiki_with_an_unanswered_gap() {
+    let t = with_repos("");
+    // Core has no answer scripted: its call errors, and it is an unanswered Gap.
+    let core = json!({ "name": "Core", "summary": "The crate.", "files": ["src/lib.rs"] });
+    (t.world.headless.borrow_mut()).push((
+        "## The part: acme/api".into(),
+        json!({ "kind": "division", "overview": "An API.", "components": [core] }).to_string(),
+    ));
+    build(&t, "acme/api");
+    t.tick();
+
+    let continued = t.send("POST", "/api/wiki/acme/api/continue", "");
+
+    assert_eq!(t.get("/api/wikis").1[0]["budget"], 1);
+    assert_eq!(continued.0, 200, "{}", continued.1);
+    assert_eq!(continued.1["build"], "continue");
+}
+
+#[test]
 fn a_button_is_refused_for_no_repo_and_continue_for_a_wiki_with_no_budget_gaps() {
     let t = with_repos("");
     build(&t, "acme/api");
@@ -643,7 +662,7 @@ fn a_button_is_refused_for_no_repo_and_continue_for_a_wiki_with_no_budget_gaps()
         whole,
         (
             409,
-            json!({ "error": "the Wiki of acme/api has no budget Gaps to continue", "help": ["Update it, or Rebuild it from nothing"] })
+            json!({ "error": "the Wiki of acme/api has no budget or unanswered Gaps to continue", "help": ["Update it, or Rebuild it from nothing"] })
         )
     );
     assert_eq!(other.0, 404);

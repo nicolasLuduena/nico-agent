@@ -54,8 +54,8 @@ test("freshness says how far behind its Base a Wiki is, and how many Interpretat
 });
 
 test("what Continue asks about counts the parts the budget left unexplored", () => {
-  expect(unexplored(1)).toBe("1 part not explored (budget)");
-  expect(unexplored(6)).toBe("6 parts not explored (budget)");
+  expect(unexplored(1)).toBe("1 part not explored");
+  expect(unexplored(6)).toBe("6 parts not explored");
 });
 
 test("a Library version's Wiki is named by its slug and tag, then its subfolder when it has one", () => {

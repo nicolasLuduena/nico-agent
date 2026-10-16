@@ -961,7 +961,7 @@ fn while_a_build_runs_its_progress_file_counts_each_call_as_it_starts_and_after_
 }
 
 #[test]
-fn a_depth_s_calls_count_one_by_one_and_a_build_that_fails_leaves_no_progress_file() {
+fn a_depth_s_calls_count_one_by_one_and_a_build_that_ends_leaves_no_progress_file() {
     let t = with_repo("");
     divided(&t);
     answer(
@@ -973,8 +973,8 @@ fn a_depth_s_calls_count_one_by_one_and_a_build_that_fails_leaves_no_progress_fi
 
     let ran = t.cli(&["wiki", "build", "acme/api", "--json"]);
 
-    // Web has no answer scripted: its call errors, and the build fails.
-    assert_eq!(ran.exit_code, 1, "{}", ran.stdout);
+    // Web has no answer scripted: its call errors, and it is a Gap.
+    assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
     let counts: Vec<(Value, Value)> = (seen.borrow().iter())
         .map(|p| (p["made"].clone(), p["now"].clone()))
         .collect();
@@ -1081,7 +1081,75 @@ fn the_outcome_is_written_after_the_wiki_is_committed_to_the_bucket() {
 }
 
 #[test]
-fn a_call_that_errors_fails_the_build_with_why_written_last_and_nothing_in_the_bucket() {
+fn a_call_that_errors_leaves_its_part_an_unanswered_gap_and_continue_asks_only_it() {
+    let t = with_repo("");
+    divided(&t);
+    answer(
+        &t,
+        "acme/api > Core",
+        json!({ "kind": "leaf", "overview": "The crate's modules." }),
+    );
+
+    // Web has no answer scripted: its call errors.
+    let ran = t.cli(&["wiki", "build", "acme/api", "--json"]);
+
+    assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
+    assert_eq!(ran.json()["gaps"], json!({ "unanswered": 1 }));
+    assert_eq!(outcomes(&t)["acme/api"]["outcome"], "built");
+    let before = wiki(&t);
+    assert_eq!(
+        before["components"][2]["gaps"],
+        json!([{ "paths": ["web/app.ts"], "reason": "unanswered" }])
+    );
+    // Continue reads the commit the Wiki describes.
+    for (file, text) in [
+        ("src/lib.rs", LIB),
+        ("src/config.rs", CONFIG),
+        ("web/app.ts", WEB),
+    ] {
+        t.world.add_tree_file("/src/api", "abc1234", file, text);
+    }
+    t.world.calls.borrow_mut().clear();
+    answer(
+        &t,
+        "acme/api > Web",
+        json!({ "kind": "leaf", "overview": "The page." }),
+    );
+
+    let ran = t.cli(&["wiki", "build", "acme/api", "--continue", "--json"]);
+
+    assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
+    assert_eq!(ran.json()["gaps"], json!({}));
+    assert_eq!(asked(&t), ["acme/api > Web"]);
+    let mut after = before.clone();
+    after["components"][2]["gaps"] = json!([]);
+    assert_eq!(wiki(&t), after);
+}
+
+#[test]
+fn a_correction_that_errors_keeps_the_answer_before_it_its_failing_claims_an_unanswered_gap() {
+    let t = with_repo("");
+    let kept = interpretation("role", "run is the entry point.", "src/lib.rs", 4, 4);
+    let past = interpretation("effect", "The page serves on port 80.", "web/app.ts", 2, 3);
+    let leaf =
+        json!({ "kind": "leaf", "overview": "A small API.", "interpretations": [kept, past] });
+    // No correction scripted: it errors.
+    answer(&t, "acme/api", leaf);
+
+    let ran = t.cli(&["wiki", "build", "acme/api", "--json"]);
+
+    assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
+    assert_eq!(whole_headless_calls(&t).len(), 2);
+    assert_eq!(ran.json()["gaps"], json!({ "unanswered": 1 }));
+    let index = &wiki(&t)["components"][0];
+    assert_eq!(
+        index["interpretations"],
+        json!([{ "id": 1, "kind": "role", "text": "run is the entry point.", "anchors": [{ "path": "src/lib.rs", "start": 4, "end": 4 }] }])
+    );
+}
+
+#[test]
+fn a_build_whose_every_call_errors_fails_with_why_written_last_and_nothing_in_the_bucket() {
     let t = with_repo("");
     let dir = checkout(&t);
     t.world.fail_call(
