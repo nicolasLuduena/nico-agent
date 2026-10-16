@@ -149,7 +149,8 @@ response, reply, triage.
 flips it from draft to ready. _Avoid_: approved, green.
 
 **Bucket**: the git repo at `/mnt/agents-land/nico-agent-bucket` holding
-Evidence, one commit per PR head, Verdict and Close, and each Repo's Wiki,
+Evidence, one commit per PR head, Verdict and Close (the Reviewer's under
+the head's `review/`), and each Repo's Wiki,
 one commit per regeneration, served with the Board through the tunnel.
 _Avoid_: artifact store.
 

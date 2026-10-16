@@ -14,6 +14,7 @@ longer has.
 - `verdict-no-pr` a live Dispatch with no open PR is exit 1.
 - `verdict-wrong-head` a `--sha` other than the PR's head is exit 1, naming the head to verify.
 - `verdict-reviewer-worktree` when the Dispatch's Reviewer was prompted for that head, a `--sha` its own worktree (`rev-<repo>-<n>` beside the Implementer's) is not at, or that worktree with changes to tracked files, is exit 1; a Verdict by hand, with no Reviewer prompted for the head, is not checked.
+- `verdict-reviewer-evidence` a Verdict on the head its Reviewer was prompted for keeps the Reviewer's own `.evidence/<n>/`, from its worktree, under `<sha>/review/`, beside the Implementer's: a file of the same name in both is kept twice.
 - `verdict-findings-unreadable` a `--findings` file that cannot be read is exit 1.
 - `bucket-pr-head` a tick (here a refresh) keeps the Evidence of a Dispatch's open PR at its head with no Verdict: action `<issue>: Evidence at <sha> kept in the Bucket`, a Bucket commit `pr <issue> <sha>`, and `/bucket/<owner>/<repo>/<n>/` listing it.
 - `bucket-pr-head-noop` a tick on a head whose Evidence is kept already keeps nothing and says nothing.
@@ -102,6 +103,17 @@ Preconditions:
   `verdict verify/fixture#10 fail $NEW` (`findings.md`), `pr verify/fixture#10 $NEW` (`proof.txt`),
   `verdict verify/fixture#10 pass $HEAD` (no file), `pr verify/fixture#10 $HEAD` (`proof.txt`),
   `nico-agent's Bucket`. Copy `$OUTSIDE_LOG` to `$E/outside.log`.
+
+- **Reviewer's Evidence.** A fresh run; `repo add` and `seed issues`, then `$C seed dispatch 10 pr > "$E/seed10.json"`
+  and `$C seed reviewer 10`. Run `$C run --evidence "$E/30-refresh-reviewer" -- refresh --json`: `actions`
+  hold `verify/fixture#10: Reviewer started on codex for $HEAD`. Write `$RUN_DIR/worktrees/rev-fixture-10/.evidence/10/proof.txt`
+  (the Implementer's has the same name), `$C state > "$E/state.before-review.txt"`, then run
+  `$C run --evidence "$E/31-reviewer-pass" -- verdict verify/fixture#10 pass --sha "$HEAD" --json`: `Verified`.
+  `$C http --evidence "$E/32-bucket-implementer" GET "/bucket/verify/fixture/10/$HEAD/proof.txt"` is the
+  seeded text; `$C http --evidence "$E/33-bucket-reviewer" GET "/bucket/verify/fixture/10/$HEAD/review/proof.txt"`
+  is the Reviewer's; `$C http --evidence "$E/34-bucket-folder" GET /bucket/verify/fixture/10/` links both.
+  `$C state > "$E/state.after-review.txt"`: the diff adds the Verdict and one Bucket commit
+  `verdict verify/fixture#10 pass $HEAD` with `review/proof.txt`.
 
 ## Gotchas
 

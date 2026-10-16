@@ -12,6 +12,7 @@ use crate::cli::{Context, Refusal};
 use crate::config::{self, Config};
 use crate::dispatch::{self, Dispatch};
 use crate::http;
+use crate::review;
 use crate::stage;
 use crate::state;
 use crate::world::{Answer, HttpResponse, World, WorldError, WorldResult};
@@ -171,14 +172,26 @@ pub fn keep_evidence(
 }
 
 /// Copy `d`'s Evidence into the Bucket at `sha`, the Bucket made first if it
-/// is missing: the folder it is in there, `<repo>/<issue>/<sha>`.
+/// is missing: the folder it is in there, `<repo>/<issue>/<sha>`. The
+/// Reviewer's, from its own worktree when it was prompted for `sha`, goes
+/// under `review/`, so a file named as one of the Implementer's overwrites none.
 fn copied(world: &dyn World, config: &Config, d: &Dispatch, sha: &str) -> Result<String, Refusal> {
     made(world, config)?;
     let kept = format!("{}/{sha}", folder(d));
+    let to = format!("{}/{kept}", config.bucket.path);
     if let Some(worktree) = &d.worktree {
         let from = format!("{worktree}/{}", evidence(d));
-        let to = format!("{}/{kept}", config.bucket.path);
         world.copy_dir(&from, &to).map_err(refused)?;
+    }
+    let reviewed = d
+        .reviewer
+        .as_ref()
+        .filter(|r| r.sha.as_deref() == Some(sha));
+    if let Some(worktree) = reviewed.and_then(|_| review::worktree(d)) {
+        let from = format!("{worktree}/{}", evidence(d));
+        world
+            .copy_dir(&from, &format!("{to}/review"))
+            .map_err(refused)?;
     }
     Ok(kept)
 }
