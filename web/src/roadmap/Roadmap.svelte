@@ -124,7 +124,7 @@
     fill: none;
     stroke: var(--hairline);
   }
-  /* A lane's name on its frame's top line, the line knocked out behind it, as the Explainer's. */
+  /* A lane's name on its frame's top line, the line knocked out behind it. */
   .lane-name {
     fill: var(--ink-muted);
     font-size: 14px;

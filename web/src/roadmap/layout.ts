@@ -1,6 +1,5 @@
-import { NODE, type Point } from "../map/layout";
+import { type Lane, NODE, type Point } from "../map/layout";
 import type { Assignee } from "../status";
-import type { Lane } from "../wiki/layout";
 
 /** An issue a Roadmap node links to, on the Roadmap or off it. */
 export interface Link {

@@ -12,7 +12,7 @@ starts a Reviewer on the PR's head at once, whatever the Repo's `review` switch 
 ## Sub-features
 
 - `review-status` each such Dispatch has `review` `{state, sha, harness, attempts, cap}`: `sha` the PR's head, `harness` its latest Reviewer's (null before one), `attempts` its starts for the head that failed or whose Reviewer left herdr, `cap` `max_restarts_per_reason`; any other Dispatch has `review` null.
-- `review-retrying` a Reviewer whose start failed or that left herdr before a Verdict, at most `cap` times for the head, is `retrying`: the node reads `review retrying`, the panel `Reviewer failed to start or left herdr (<n> of <cap>); trying again next tick`.
+- `review-retrying` a Reviewer whose start failed or that left herdr before a Verdict, at most `cap` times for the head, is `retrying`: the node reads `review retrying`, the panel `Reviewer failed to start or left herdr, attempt <n> of <cap>; trying again next tick`.
 - `review-gave-up` past `cap` it is `gave_up`: the node reads `review gave up` and needs you, the panel reads `Reviewer gave up on <sha7>: review it by hand with nico-agent verdict <issue> pass|fail --sha <head>`.
 - `review-passed` a pass Verdict on the head is `passed`: the panel's Review section shows the Verdict row `pass <sha7> <time>`.
 - `review-off` with the Repo's `review` switch off it is `off`, Verdict or not, unless a Reviewer was started on the head by hand (`review-now-off`): the node reads `review off`, the panel `Review is off for this Repo`, and the node drops its flag.
@@ -42,7 +42,7 @@ Preconditions:
   start the Reviewer of verify/fixture#10: ...`. Run `$C run --evidence "$E/03-status" -- status --json`:
   `#10`'s `review` is `{"state":"retrying","sha":"<head of 10>","harness":"codex","attempts":1,"cap":2}`,
   `#11`'s is `passed` with `harness` null, `#1`'s (Failed) null.
-- **Retrying on the page.** Run `$C page --evidence "$E/04-retrying" --click "button~#10, Verify: seeded Dispatch 10" --expect "Reviewer failed to start or left herdr (1 of 2); trying again next tick"`.
+- **Retrying on the page.** Run `$C page --evidence "$E/04-retrying" --click "button~#10, Verify: seeded Dispatch 10" --expect "Reviewer failed to start or left herdr, attempt 1 of 2; trying again next tick"`.
   The node button is `#10, Verify: seeded Dispatch 10, PR draft, PR 110 draft, review retrying`;
   the panel has `heading "Review"` then that paragraph.
 - **Passed on the page.** Run `$C page --evidence "$E/05-passed" --click "button~#11, Verify: seeded Dispatch 11" --expect "Evidence"`:
@@ -54,7 +54,7 @@ Preconditions:
 - **Gave up on the page.** Run `$C page --evidence "$E/10-gave-up" --click "button~#10, Verify: seeded Dispatch 10" --expect "Reviewer gave up on <sha7>"`.
   The node button ends `review gave up, needs you`; `.requests.txt` has `GET /api/node/verify%2Ffixture%2310 -> 200`;
   the panel's Review line reads `Reviewer gave up on <sha7>: review it by hand with nico-agent verdict verify/fixture#10 pass|fail --sha <head>`,
-  the command a `code`. At `--width 390` (`11-phone`) the line wraps in the sheet and nothing
+  the command a `code`. At `--width 390` (`11-phone`, with --click "button=Dismiss Check verify/fixture" --click "button=Dismiss Check verify/fixture" --click "button=Dismiss Check verify/fixture" --click "button=Dismiss Check verify/fixture" --click "button=Dismiss Check verify/fixture" before the node's click: the toasts cover the map on a phone) the line wraps in the sheet and nothing
   is wider than the screen.
 - **Off.** Run `$C http --evidence "$E/12-review-off" PATCH /api/repo/verify/fixture/switches '{"review":false}'`
   (switches.md drives the switch on the page): its answer has `"review":false`. Run
@@ -98,9 +98,9 @@ Preconditions:
 
 ## Gotchas
 
-- The Readiness checks' toasts (`list "Needs you"`, each a `status` with `button "Dismiss"`) arrive a moment after the page
+- The Readiness checks' toasts (`list "Needs you"`, each a `status` with `button "Dismiss <its head>"`) arrive a moment after the page
   loads and sit over the panel, so a `--click` on `button "Review now"` times out under them: first
-  `--expect` the last toast's text, then `--click "button=Dismiss"` once per toast (5 with herdr a
+  `--expect` the last toast's text, then `--click "button~Dismiss"` once per toast (5 with herdr a
   stub, 3 once `seed reviewer` makes it answer).
 - `review-waits` needs herdr to report the Implementer working: `seed reviewer` lists it idle, so
   `cargo test` covers it through the fake World.

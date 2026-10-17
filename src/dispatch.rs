@@ -23,7 +23,6 @@ use crate::review::{self, Reviewer};
 use crate::source::{self, BlockerPr, Read, Start};
 use crate::stage;
 use crate::state;
-use crate::wiki;
 use crate::world::{self, PrState, READY_LABEL, Tab, World};
 
 pub const FILE: &str = "dispatches.json";
@@ -460,18 +459,13 @@ fn run_step(
                 world.herdr_tab_close(&tab)?;
             }
         }
-        "agent start" => {
-            let (wikis, _) = wiki::libraries(&ctx.config_dir, config, repo)?;
-            *ready = launch::start(world, harness, &record.implementer, &repo.path, &wikis)?
-        }
+        "agent start" => *ready = launch::start(world, harness, &record.implementer, &repo.path)?,
         "agent ready" => {
             let worktree = record.worktree.as_ref().expect(made);
             launch::get_ready(world, harness, &record.implementer, worktree, *ready)?;
         }
         "prompt" => {
-            // shortcut: read again, not kept from "agent start", so a Library built between a failed step and its rerun gets the line without the MCP; keep the Wikis on the record if that bites.
-            let (_, line) = wiki::libraries(&ctx.config_dir, config, repo)?;
-            let text = implement_prompt(ctx, config, harness, record) + &line;
+            let text = implement_prompt(ctx, config, harness, record);
             launch::prompt(world, harness, &record.implementer.agent, &text)?;
         }
         _ => unreachable!("not a step: {step}"),

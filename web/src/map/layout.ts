@@ -52,6 +52,15 @@ export interface Point {
   y: number;
 }
 
+/** A box where a drawing puts it: `x`, `y` its top left corner. */
+export interface Box extends Point {
+  width: number;
+  height: number;
+}
+
+/** A lane framing its nodes, its name on the frame's top line. */
+export type Lane = Box & { name: string };
+
 /**
  * A node where the map draws it: `x`, `y` its top left corner, `height` its
  * own; `line` where its review stands while it is PR draft, or why it waits

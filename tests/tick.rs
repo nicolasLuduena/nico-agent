@@ -869,3 +869,24 @@ fn a_linear_rate_limit_pauses_the_repos_reading_linear_even_across_a_restart_of_
         ]
     );
 }
+
+#[test]
+fn a_run_of_a_trigger_this_build_no_longer_starts_is_read_past_never_closed() {
+    let t = with_issues(&[]);
+    let run = r#"[{"trigger": "wiki", "repo": "acme/api", "at": "2026-09-30T11:00:00Z", "agent": "wiki-api",
+        "harness": "opencode", "model": null, "effort": null, "tab": "w9:t1", "pane": "w9:p1",
+        "workspace": "w9", "worktree": null, "closed_at": null}]"#;
+    std::fs::write(t.config_dir.join("runs.json"), run).unwrap();
+
+    let said = t.tick();
+    let status = t.cli(&["status", "--json"]);
+
+    assert_eq!(said, Vec::<String>::new());
+    assert!(
+        !(t.world.calls().iter()).any(|c| c.contains("w9")),
+        "{:?}",
+        t.world.calls()
+    );
+    assert_eq!(status.exit_code, 0, "{}", status.stdout);
+    assert!(!status.stdout.contains("wiki-api"), "{}", status.stdout);
+}

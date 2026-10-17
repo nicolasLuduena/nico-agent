@@ -1,6 +1,6 @@
 <script lang="ts">
-  // A launch, picked as the Dispatch form, the Implementer, the Reviewer and
-  // the Wiki's take it: its Harness, marked in its hue, then its model and
+  // A launch, picked as the Dispatch form, the Implementer and the Reviewer
+  // take it: its Harness, marked in its hue, then its model and
   // Effort, each a select of what the Harness lists, or a text field where it
   // takes any, suggesting what the Harness's own files name. `pick` gets each change, and how to put the field back should
   // serve refuse it.

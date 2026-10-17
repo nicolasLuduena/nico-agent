@@ -2,7 +2,7 @@ mod common;
 
 use std::time::Duration;
 
-use common::{KIT, KIT_TOML, Setup, edit_dispatch, github_issue, kit_built, pull_request, setup};
+use common::{Setup, edit_dispatch, github_issue, pull_request, setup};
 use nico_agent::world::PullRequest;
 use serde_json::{Value, json};
 
@@ -67,34 +67,6 @@ fn an_implementer_idle_for_stall_minutes_with_no_pr_is_restarted_in_a_new_tab_wi
             "herdr agent start impl-api-1 --kind claude --pane w1:p2 -- ".into(),
             format!(
                 "herdr agent prompt impl-api-1 {PREFIX_1} You stopped with no PR open. Continue to a draft PR."
-            ),
-        ]
-    );
-}
-
-#[test]
-fn a_restarted_implementer_of_a_repo_linking_a_built_library_version_starts_with_its_wiki_mcp_and_asks_it_first()
- {
-    let t = setup();
-    t.world
-        .add_clone("/src/api", &["git@github.com:acme/api.git"]);
-    std::fs::create_dir_all(&t.config_dir).unwrap();
-    let config = format!("[repos.\"acme/api\"]\npath = \"/src/api\"\nlibraries = [{KIT_TOML}]\n");
-    std::fs::write(t.config_dir.join("config.toml"), config).unwrap();
-    kit_built(&t);
-    t.world.add_issue("acme/api", github_issue("acme/api", 1));
-    t.tick();
-    agent_is(&t, "impl-api-1", "idle");
-
-    let (said, herdr) = (0..3).map(|_| next_tick(&t)).last().unwrap();
-
-    assert_eq!(said, ["acme/api#1 restarted: stalled"]);
-    assert_eq!(
-        herdr[3..],
-        [
-            r#"herdr agent start impl-api-1 --kind claude --pane w1:p2 -- --mcp-config {"mcpServers":{"wiki":{"command":"nico-agent","args":["mcp","--wiki","acme/kit@v1"]}}} --allowedTools mcp__wiki__*"#.to_string(),
-            format!(
-                "herdr agent prompt impl-api-1 {PREFIX_1} You stopped with no PR open. Continue to a draft PR. Ask the wiki MCP about {KIT} before reading their source."
             ),
         ]
     );

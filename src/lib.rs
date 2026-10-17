@@ -1,6 +1,5 @@
 pub mod answer;
 pub mod args;
-pub mod ask;
 pub mod asking;
 pub mod away;
 pub mod bucket;
@@ -13,9 +12,7 @@ pub mod flip;
 pub mod http;
 pub mod install;
 pub mod launch;
-pub mod library;
 pub mod map;
-pub mod mcp;
 pub mod pause;
 pub mod rate_limit;
 pub mod rebase;
@@ -31,7 +28,6 @@ pub mod state;
 pub mod status;
 pub mod tick;
 pub mod verdict;
-pub mod wiki;
 pub mod world;
 
 pub use cli::{Context, Output, run};

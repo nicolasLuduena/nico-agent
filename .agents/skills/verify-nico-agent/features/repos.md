@@ -58,7 +58,7 @@ Preconditions:
 - **List.** Run `$C run --evidence "$E/09-list" -- repo list --json`. Exit `0`, two Repos in
   add order, each with `project` its own slug, `room` `3`, `implementer` `{"harness":"claude",...}`, `reviewer`
   `{"harness":"codex",...}`, `linear` `null`, `base` `null` and `switches` with `dispatch`,
-  `stack`, `review`, `restart`, `flip` true and `answer`, `gardening`, `quality_scan`, `wiki` false.
+  `stack`, `review`, `restart`, `flip` true and `answer`, `gardening`, `quality_scan` false.
 - **Remove.** Run `$C run --evidence "$E/10-rm" -- repo rm verify/second --json`. Exit `0`,
   `{"repo":"verify/second removed","stays":["the clone at $SECOND_CLONE"]}`.
 - **Remove again.** Run `$C run --evidence "$E/11-rm-again" -- repo rm verify/second --json`. Exit
@@ -71,7 +71,7 @@ Preconditions:
   `already added (no-op)`, `project` kept.
 - **Remove on the page.** Run `$C page --evidence "$E/16-page-remove" --select "Project=verify" --click "button=Remove verify/second…" --expect "Its clone stays" --click "button=Remove verify/second" --gone "Remove verify/second"`.
   `.requests.txt` has `DELETE /api/repo/verify/second -> 200`; the snapshot's `combobox "Project"`
-  holds `option "verify/fixture"` and `option "Libraries"` only (Project verify has no Repo left, so no option); `config.toml` has no `verify/second`.
+  holds `option "verify/fixture"` only (Project verify has no Repo left, so no option); `config.toml` has no `verify/second`.
 - **Add on the page.** Run `$C page --evidence "$E/17-page-add" --click "textbox=Repo" --type verify/second --click "textbox=Its clone" --type "$SECOND_CLONE" --click "combobox=Its Project" --type verify --click "button=Add" --expect "verify/second added"`.
   `.requests.txt` has `POST /api/repo {"slug":"verify/second","path":"$SECOND_CLONE","project":"verify"} -> 200`;
   the snapshot has `option "verify" [selected]`, its Project's, holding `region "verify/second"`; `config.toml` has it again with `project = "verify"`.

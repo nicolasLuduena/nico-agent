@@ -15,7 +15,7 @@ section, with its help; once the user does what the help says, the next run pass
 - `checks-status` `status --json` and `GET /api/status` show per Repo `checks: {at, results: [{name, ok, said, help}]}`, in the order clone, fetch, evidence, verification (while Review is on), skills, bot, herdr; `checks.json` holds the same.
 - `checks-posts-as` `status --json` and `GET /api/status` show per checked Repo `posts_as`, read from its bot check: the bot's login (`nicolasluduena-coding-agent[bot]`) once the App was found on it, else `"you"`; the tab says it under the Repo's head, `PRs and comments are posted as you` with `link "Install the App"`, or `Agents post as <the bot>`.
 - `checks-refresh` Refresh (CLI or button) runs them for every Repo; a Repo added by `repo add` has none until then.
-- `checks-toast` each failing one is a `status` toast `Check <slug>: <said>` in `list "Needs you"`, its help under it, its `button "Dismiss"` dropping it for the page load.
+- `checks-toast` each failing one is a `status` toast `Check <slug>: <said>` in `list "Needs you"`, its help under it, its `button "Dismiss <its head>"` dropping it for the page load.
 - `checks-panel` the tab's `region "Readiness"`, folded to `N of M pass` and open by itself while one fails, shows each failing one with its help, the passing ones as `list "Passing"`, and `Unchanged since <time>`.
 - `checks-settings-write` a PATCH of the Repo's settings or switches checks it again: with Review off, the Reviewer's `verdict` skill is no longer asked for, and there is no verification check.
 - `checks-called-skills` each skill a prompted skill's `SKILL.md` calls (each name quoted in the clause after `Skill tool`: `with "x"`, `and "x"`, `` with `x` ``, `twice, for "x" and "y"`) is asked for the same Harness, one level deep, said as `no <name> skill for <harness>, <whose> Harness, which <skill> calls`; for claude a plugin's `skills/` in `~/.claude/plugins/installed_plugins.json` counts, and another Harness missing a skill only a claude plugin has adds `; it is installed only as a claude plugin`.
@@ -52,7 +52,7 @@ Preconditions:
   `help` null. `repos[0].posts_as` is `"you"`: the bot check could not find the App. `$OUTSIDE_LOG` has `gh api user --jq .login` lines, one `ghbot api
   /installation/repositories ...` and one `herdr agent list` (git is real, on the run's repos, so not in it).
 - **Page.** Run `$C page --evidence "$E/03-page" --expect "Readiness"`: `list "Needs you"` has a
-  `status` toast `Check verify/fixture:` for each of the five failing checks, its help under what it says, each with `button "Dismiss"`;
+  `status` toast `Check verify/fixture:` for each of the five failing checks, its help under what it says, each with `button "Dismiss <its head>"`;
   `region "Readiness"` is open by itself, its `group` reading `Readiness 2 of 7 pass`, with the five on the
   errata rule, `list "Passing"` holding the clone and fetch ones, and `Unchanged since <time>`. The `region "verify/fixture"` panel reads `PRs and comments are posted as you. Install the App`, the
   `link "Install the App"` to `https://github.com/apps/nicolasluduena-coding-agent/installations/new`,

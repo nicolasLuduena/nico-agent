@@ -8,8 +8,8 @@ use std::time::{Duration, SystemTime};
 
 use crate::state;
 use crate::world::{
-    Agent, Answered, Called, GitHubIssue, Handler, Headless, HttpRequest, LinearIssue, PullRequest,
-    PullRequestActivity, RateLimit, Tab, Workspace, Worktree, World, WorldError, WorldResult,
+    Agent, GitHubIssue, Handler, HttpRequest, LinearIssue, PullRequest, PullRequestActivity,
+    RateLimit, Tab, Workspace, Worktree, World, WorldError, WorldResult,
 };
 
 pub const FILE: &str = "pauses.json";
@@ -173,9 +173,6 @@ impl World for Guarded<'_> {
     fn git_commit(&self, path: &str, add: &str, message: &str) -> WorldResult<()> {
         self.world.git_commit(path, add, message)
     }
-    fn git_remove(&self, path: &str, file: &str, message: &str) -> WorldResult<()> {
-        self.world.git_remove(path, file, message)
-    }
     fn git_changed(&self, path: &str, folder: &str) -> WorldResult<bool> {
         self.world.git_changed(path, folder)
     }
@@ -208,32 +205,6 @@ impl World for Guarded<'_> {
     }
     fn git_worktree_remove(&self, path: &str, dir: &str) -> WorldResult<()> {
         self.world.git_worktree_remove(path, dir)
-    }
-    fn git_ls_tree_blobs(&self, path: &str, rev: &str) -> WorldResult<Vec<(String, String)>> {
-        self.world.git_ls_tree_blobs(path, rev)
-    }
-    fn git_rev_count(&self, path: &str, from: &str, to: &str) -> WorldResult<usize> {
-        self.world.git_rev_count(path, from, to)
-    }
-    fn git_fetch_tag(&self, path: &str, url: &str, tag: &str) -> WorldResult<()> {
-        self.world.git_fetch_tag(path, url, tag)
-    }
-    fn harness_headless(
-        &self,
-        cwd: &str,
-        calls: &[Headless],
-        at_once: usize,
-        told: &mut dyn FnMut(usize, Called),
-    ) -> Vec<WorldResult<Answered>> {
-        self.world.harness_headless(cwd, calls, at_once, told)
-    }
-    fn ollama_embed(
-        &self,
-        ollama: &str,
-        model: &str,
-        input: &[String],
-    ) -> WorldResult<Vec<Vec<f32>>> {
-        self.world.ollama_embed(ollama, model, input)
     }
     fn shell(&self, cwd: &str, command: &str) -> WorldResult<(bool, String)> {
         self.world.shell(cwd, command)
@@ -289,9 +260,6 @@ impl World for Guarded<'_> {
     fn herdr_pane_run(&self, pane: &str, command: &str) -> WorldResult<()> {
         self.world.herdr_pane_run(pane, command)
     }
-    fn herdr_pane_exists(&self, pane: &str) -> WorldResult<bool> {
-        self.world.herdr_pane_exists(pane)
-    }
     fn herdr_agent_detect(&self, pane: &str, timeout: Duration) -> WorldResult<()> {
         self.world.herdr_agent_detect(pane, timeout)
     }
@@ -331,12 +299,6 @@ impl World for Guarded<'_> {
     }
     fn notify(&self, title: &str, body: &str) -> WorldResult<()> {
         self.world.notify(title, body)
-    }
-    fn read_line(&self) -> WorldResult<Option<String>> {
-        self.world.read_line()
-    }
-    fn write_line(&self, line: &str) -> WorldResult<()> {
-        self.world.write_line(line)
     }
     fn log(&self, line: &str) {
         self.world.log(line)

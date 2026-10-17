@@ -33,9 +33,8 @@ directory (`world.files`: worktrees, the Bucket) are files too. No test
 calls a module's functions. The loop's tick is driven by `t.tick()`,
 which runs `serve` with `world.timer_runs` at 0 (one tick) and returns the
 lines it logged; `serve` itself by `cli(&["serve"])` after setting
-`world.timer_runs`, its log read with `world.logged()`; `mcp` by
-`cli(&["mcp"])` after filling `world.stdin`, its answers read from
-`world.stdout`. There are two exceptions. `tests/state.rs`: #230's
+`world.timer_runs`, its log read with `world.logged()`. There are two
+exceptions. `tests/state.rs`: #230's
 Testing Decisions name the file layer, and its append-only reader (a torn
 last line dropped) has no command reading through it yet, so it calls
 `state` directly. And the script tests

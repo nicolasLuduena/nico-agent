@@ -8,11 +8,9 @@ use crate::args::Args;
 use crate::bucket;
 use crate::checks;
 use crate::cli::{Context, Refusal, bad_invocation};
-use crate::config::{self, Config, Launch, Library, Linear, SWITCHES, Switches};
+use crate::config::{self, Config, Launch, Linear, SWITCHES, Switches};
 use crate::dispatch;
-use crate::library;
 use crate::status;
-use crate::wiki;
 use crate::world::World;
 
 pub fn add(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
@@ -180,7 +178,7 @@ pub fn list(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
 }
 
 /// What `PATCH /api/repo/<slug>` sets; null takes the Project's or the default.
-const SETTINGS: [&str; 8] = [
+const SETTINGS: [&str; 7] = [
     "implementer",
     "reviewer",
     "room",
@@ -188,7 +186,6 @@ const SETTINGS: [&str; 8] = [
     "project",
     "install",
     "switches",
-    "libraries",
 ];
 /// What `PATCH /api/project/<name>` sets: a Repo's, but `project` and `install`.
 const PROJECT_SETTINGS: [&str; 5] = ["implementer", "reviewer", "room", "base", "switches"];
@@ -205,9 +202,8 @@ pub fn switches(ctx: &Context, slug: &str, set: &Value) -> Result<Value, Refusal
 
 /// Write `set`, `{setting: value}` of [`SETTINGS`], to the Repo `slug` in the
 /// config, keeping the rest as written; null removes the Repo's own value,
-/// a switch's its own switch; then each Library version it links with no
-/// Wiki is queued and the Repo's Readiness checks run. The Repo's slug and
-/// settings after, as `status` shows them.
+/// a switch's its own switch; then the Repo's Readiness checks run. The
+/// Repo's slug and settings after, as `status` shows them.
 pub fn set(ctx: &Context, slug: &str, set: &Value) -> Result<Value, Refusal> {
     let slug = config::edit(&ctx.config_dir, |config, doc| {
         let Some((slug, _)) = config.repo(slug) else {
@@ -222,9 +218,6 @@ pub fn set(ctx: &Context, slug: &str, set: &Value) -> Result<Value, Refusal> {
     })??;
     let config = config::load(&ctx.config_dir)?;
     let (slug, repo) = config.repo(&slug).ok_or_else(|| not_configured(&slug))?;
-    if set.get("libraries").is_some() {
-        wiki::queue_new(ctx, &config)?;
-    }
     checks::run(ctx, &config, |checked, _| checked == slug)?;
     let mut shown = json!({ "slug": slug });
     status::settings(&mut shown, &config, slug, repo);
@@ -339,10 +332,6 @@ fn checked<'a>(
                     switches(),
                 ));
             }
-            ("libraries", libraries) => {
-                serde_json::from_value::<Vec<Library>>(libraries.clone())
-                    .map_err(|e| bad(format!("libraries: {e}"), library::HELP.into()))?;
-            }
             (_, launch) => {
                 let names: Vec<&str> = config.harnesses.keys().map(String::as_str).collect();
                 let launch: Launch = serde_json::from_value(launch.clone()).map_err(|_| {
@@ -411,12 +400,7 @@ pub(crate) fn write(table: &mut dyn TableLike, set: &Map<String, Value>) {
                 set_kept(table, key, room.as_i64().expect("checked above").into())
             }
             Value::String(name) => set_kept(table, key, name.as_str().into()),
-            Value::Array(_) => {
-                let libraries: Vec<Library> =
-                    serde_json::from_value(new.clone()).expect("checked above");
-                library::write(table, key, &libraries);
-            }
-            Value::Bool(_) => unreachable!("checked above"),
+            Value::Bool(_) | Value::Array(_) => unreachable!("checked above"),
         }
     }
 }

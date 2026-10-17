@@ -123,7 +123,7 @@ budget.
 
 **Switch**: a Repo's on/off, or its Project's default, for one automatic
 step: dispatch, mine (only issues assigned to the user), stack, review,
-restart, flip to ready, faux-nico answers, gardening, quality-scan, wiki.
+restart, flip to ready, faux-nico answers, gardening, quality-scan.
 _Avoid_: standing order, manual mode.
 
 **Close**: end a Dispatch, removing its worktrees and workspace; the branch
@@ -159,8 +159,7 @@ flips it from draft to ready. _Avoid_: approved, green.
 
 **Bucket**: the git repo at `/mnt/agent-land/nico-agent-bucket` holding
 Evidence, one commit per PR head, Verdict and Close (the Reviewer's under
-the head's `review/`), and each Repo's Wiki,
-one commit per regeneration, served with the Board through the tunnel.
+the head's `review/`), served with the Board through the tunnel.
 _Avoid_: artifact store.
 
 ## Away
@@ -178,65 +177,8 @@ from what `status` shows since the last one: what to merge in which order,
 what needs an answer, what failed, what gardening landed, what ideas were
 filed. Not on the Board: how it is read is being rethought (#380). _Avoid_: report, digest.
 
-**Wiki**: what a Repo's or a Library's code does as of one commit, as a tree
-of Components, each claim citing the lines it rests on, written by a wiki
-build and kept in the Bucket. The user and the agents read it to find their
-way around. It records what the code does, never what was decided: faux-nico
-reads it to understand a question, never as grounds for its answer.
-_Avoid_: DeepWiki, docs, documentation.
-
-**Library**: a GitHub repository nico-agent keeps Wikis for and never
-dispatches into, one Wiki per version asked for, so an agent asks about the
-version a Repo uses instead of reading the whole library. _Avoid_:
-dependency, package, external repo.
-
-**Component**: a named part of a Wiki's code, with an overview, its files,
-its Terms, its Interpretations and its sub-Components. One page of the Wiki.
-_Avoid_: module, section, page.
-
-**Interpretation**: a one-sentence claim about a Component, of one kind
-(invariant, precondition, postcondition, effect, role), citing at least one
-Anchor. _Avoid_: note, insight, fact.
-
-**Term**: a name a Component's text uses that its code declares or gives its
-own sense (a field, a type, a parameter, a word like "header"), with one
-sentence of what it stands for, citing the lines that declare it. _Avoid_:
-definition, glossary entry, field.
-
-**Anchor**: a path and a line range at the Wiki's commit, the lines an
-Interpretation or a Term cites. _Avoid_: evidence (that is a verification run's),
-reference, citation.
-
-**Relationship**: one Component using, calling, reading or writing another.
-_Avoid_: dependency, edge, link.
-
-**Gap**: a part of the code a Wiki never reached, with why. _Avoid_:
-missing, TODO.
-
-**Explainer**: a Component's walkthrough of how something in it works, as
-numbered steps in order, each a one-sentence caption citing Anchors. At
-most one per Component. _Avoid_: diagram,
-illustration, figure.
-
-**Stale**: an Interpretation, a Term or an Explainer of a Repo's Wiki whose anchored file changed on
-the base since it was written; shown as such, never hidden, until a wiki
-build asks about its part again. _Avoid_: outdated, invalid.
-
-**Update**: a wiki build of a Repo's Wiki from the one before it, asking
-again only about the parts whose files changed or a failed call left
-Gaps, and copying the rest; a parent whose parts changed keeps its
-Interpretations, Terms and Explainer, Stale where they are. _Avoid_:
-refresh, incremental build.
-
-**Rebuild**: a wiki build of a Wiki from nothing, as its first one is,
-asked for by the user. _Avoid_: reset, regenerate.
-
-**Continue**: a wiki build asking again only the parts of a Wiki its
-budget or a failed call left Gaps, with a fresh budget, at the commit the Wiki describes.
-_Avoid_: resume, retry.
-
-**Run**: one start of a trigger's agent: a quality-scan, a faux-nico, the
-morning agent or a wiki build, recorded with when it started and when it
+**Run**: one start of a trigger's agent: a quality-scan, a faux-nico or the
+morning agent, recorded with when it started and when it
 ended, so a missed scan or morning shows in `status`. One whose agent herdr reports waiting on
 a human is blocked, herdr's word: it stays open and the user is told once a
 spell. An Implementer so is Asking, never blocked. A Dispatch is never a

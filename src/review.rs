@@ -18,7 +18,6 @@ use crate::restart::Reason;
 use crate::stage::{self, Pr, Stage, Standing};
 use crate::tick;
 use crate::verdict::{Outcome, Verdict};
-use crate::wiki;
 use crate::world::{self, Agent, AgentState, PrState};
 
 /// A Dispatch's latest Reviewer.
@@ -377,8 +376,7 @@ pub fn worktree(d: &Dispatch) -> Option<String> {
 }
 
 /// Check the PR's head out, fetched, in the Reviewer's own worktree, made
-/// afresh, open its tab there, start its Harness given the Wikis of the
-/// Library versions `repo` links, and prompt it for that head: what it
+/// afresh, open its tab there, start its Harness, and prompt it for that head: what it
 /// verifies is what was pushed, not what the Implementer's worktree holds.
 fn start(
     ctx: &Context,
@@ -397,8 +395,7 @@ fn start(
     world.git_worktree_add(&repo.path, worktree, &pr.head_sha)?;
     let harness = &config.harnesses[&reviewer.harness];
     launch::open_tab(ctx.world, reviewer, workspace, worktree, "reviewer", None)?;
-    let (wikis, line) = wiki::libraries(&ctx.config_dir, config, repo)?;
-    let ready = launch::start(ctx.world, harness, reviewer, &repo.path, &wikis)?;
+    let ready = launch::start(ctx.world, harness, reviewer, &repo.path)?;
     launch::get_ready(ctx.world, harness, reviewer, worktree, ready)?;
     let values = [
         ("sigil", harness.sigil.as_str()),
@@ -408,6 +405,6 @@ fn start(
         ("headSha", &pr.head_sha),
         ("evidenceFolder", &bucket::evidence(d)),
     ];
-    let text = fill_in(&config.prompts.review, &values) + &line;
+    let text = fill_in(&config.prompts.review, &values);
     launch::prompt(ctx.world, harness, &reviewer.agent, &text)
 }

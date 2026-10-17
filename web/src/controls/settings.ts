@@ -54,7 +54,6 @@ export const SWITCH_TIPS: Record<string, string> = {
   answer: "When an Implementer is Asking, faux-nico answers what PRODUCT.md, the issue or its parent settles; anything else notifies you.",
   gardening: "When nothing else is Ready or Stackable, dispatch Ready gardening issues.",
   quality_scan: "Weekly, audit for bloat and deepening and file what it finds as issues.",
-  wiki: "Update the Wiki each day; off, it stays readable but is no longer built.",
 };
 
 /** The PATCH body that removes the own value at `keys`. */

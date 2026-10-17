@@ -186,28 +186,21 @@ fn an_unknown_path_or_method_answers_404_with_the_routes_as_help() {
 
     let help = json!([
         "GET /: the app",
-        "GET /wiki/<id>: the app at the Wiki's page, its Component in the fragment",
         "GET /api/status: the status of every Repo and Dispatch, and what each GitHub identity has used of its rate limits",
         "GET /api/map/<project>: the issues of the Project's Repos and how they block and stack on each other",
         "GET /api/roadmap/<project>: every open issue of the Project's Repos not labelled ready-for-agent, in lanes by label, and how they block each other",
         "GET /api/node/<issue>: the issue's Dispatch, its restarts, its Verdict's findings, its Evidence and, while it is Asking, its Implementer's pane",
         "GET /api/events: a stream of `changed`, sent when state or an Agent state changes, and a keepalive comment otherwise",
-        "GET /api/wikis: each Wiki of a Repo or a Library version, with the commit it describes, when it was built, its Gaps and the state of its build",
-        "GET /api/wiki/<id>: the Wiki, a Repo's by its slug or a Library version's as owner/name@tag[:path]: its Components, Interpretations, Anchors and Gaps",
         "POST /api/dispatch {issue, harness, model, effort}: `nico-agent dispatch` of the issue",
         "POST /api/refresh: `nico-agent refresh`",
         "POST /api/assign {issue}: assign the issue to the user on its Source, unless someone else has it, and keep that in its Repo's last read",
         "POST /api/review {issue}: start a Reviewer on the head of the issue's PR now, its failed starts for that head cleared, whatever the review switch says",
         "POST /api/answer {issue, text|keys}: `nico-agent answer` of the issue, in words or keys",
-        "POST /api/wiki/<id>/update|rebuild|continue: queue the Wiki's build first: an Update, one from nothing, or one asking only its budget or unanswered Gaps",
         "PATCH /api/repo/<owner/name>/switches {name: bool}: set the Repo's switches; null takes its Project's or the default",
-        "PATCH /api/repo/<owner/name> {implementer, reviewer, room, base, project, install, switches, libraries}: set the Repo's own settings; null takes its Project's or the default",
+        "PATCH /api/repo/<owner/name> {implementer, reviewer, room, base, project, install, switches}: set the Repo's own settings; null takes its Project's or the default",
         "PATCH /api/project/<name> {implementer, reviewer, room, base, switches}: set the Project's defaults for its Repos; null removes one",
-        "PATCH /api/wiki/settings {hour, launch, calls, depth, concurrency, embed_model}: set what every Wiki is built on; null takes the default",
         "POST /api/repo {slug, path, project}: `nico-agent repo add`",
         "DELETE /api/repo/<owner/name>: `nico-agent repo rm`, refused while the Repo has a Dispatch In flight",
-        "POST /api/libraries {repo, tag, path}: add a Library version no Repo links, under [wiki] libraries, and queue its Wiki",
-        "DELETE /api/libraries/<owner/name@tag[:path]>: remove a Library version [wiki] libraries adds, its Wiki taken out of the Bucket's files; refused while a Repo links it",
         "GET /bucket/<path>: a file of the Bucket, where each Verdict's Evidence is kept, or a page of a folder's",
     ]);
     assert_eq!(
@@ -278,34 +271,6 @@ fn the_app_is_served_at_slash_from_the_binary_with_every_file_it_loads() {
     assert_eq!(fetch(&t, "/assets/nothing.js").0, 404);
 }
 
-#[test]
-fn a_wiki_s_page_is_the_app_at_wiki_slash_its_id_a_repo_s_a_library_version_s_or_one_never_built() {
-    let t = with_repo();
-    t.tick();
-    let app = fetch(&t, "/");
-
-    for path in [
-        "/wiki/acme/api",
-        "/wiki/Effect-TS/effect@effect@3.17.0:packages/effect",
-        "/wiki/nobody/nothing",
-    ] {
-        let (status, kind, page) = fetch(&t, path);
-        assert_eq!((status, kind.as_str()), (200, app.1.as_str()), "{path}");
-        assert!(page == app.2, "{path} answers another page than /");
-    }
-    let tunnel = config(&t) + "\n[bucket]\nurl = \"https://nico.example.com/\"\n";
-    std::fs::write(t.config_dir.join("config.toml"), tunnel).unwrap();
-    let headers = [("host", "nico.example.com")];
-    let Answer::Whole(through) = t.request_with("GET", "/wiki/acme/api", &headers, "") else {
-        panic!("GET /wiki/acme/api answered with a stream");
-    };
-    assert_eq!(through.status, 200);
-    assert!(
-        through.body == app.2,
-        "the tunnel's host answers another page"
-    );
-}
-
 const CHANGED: &str = "event: changed\ndata: {}\n\n";
 const KEEPALIVE: &str = ": keepalive\n\n";
 
@@ -334,38 +299,6 @@ fn events_sends_changed_after_a_state_file_is_written_and_a_keepalive_till_the_n
     let again = events.next();
 
     assert_eq!([before, after, again], [KEEPALIVE, CHANGED, KEEPALIVE]);
-}
-
-#[test]
-fn events_sends_only_a_keepalive_after_a_write_under_wiki_alone() {
-    let t = with_repo();
-    t.tick();
-    let wiki = t.config_dir.join("wiki/acme/api");
-    std::fs::create_dir_all(&wiki).unwrap();
-    std::fs::write(wiki.join("wiki.json"), "{}").unwrap();
-    let mut events = t.events();
-    let before = events.next();
-    std::fs::write(wiki.join("wiki.json"), r#"{"components": []}"#).unwrap();
-    std::fs::write(wiki.join("vectors.json"), "[]").unwrap();
-
-    let after = events.next();
-
-    assert_eq!([before, after], [KEEPALIVE, KEEPALIVE]);
-}
-
-#[test]
-fn events_sends_changed_after_a_wiki_build_s_progress_is_written() {
-    let t = with_repo();
-    t.tick();
-    let wiki = t.config_dir.join("wiki/acme/api");
-    std::fs::create_dir_all(&wiki).unwrap();
-    let mut events = t.events();
-    let before = events.next();
-    std::fs::write(wiki.join("progress.json"), r#"{"made": 1}"#).unwrap();
-
-    let after = events.next();
-
-    assert_eq!([before, after], [KEEPALIVE, CHANGED]);
 }
 
 /// Repo `acme/api` with issue 7 dispatched, its Implementer working.
@@ -616,26 +549,26 @@ fn patch_switches_writes_only_the_named_switches_and_answers_the_repo_s_switches
     let web = t.send(
         "PATCH",
         "/api/repo/acme/web/switches",
-        r#"{"stack": false, "gardening": true, "wiki": true}"#,
+        r#"{"stack": false, "gardening": true, "answer": true}"#,
     );
 
     let defaults = json!({
         "dispatch": true, "mine": false, "stack": true, "review": true, "restart": true, "flip": true,
-        "answer": false, "gardening": false, "quality_scan": false, "wiki": false,
+        "answer": false, "gardening": false, "quality_scan": false,
     });
     let mut no_review = defaults.clone();
     no_review["review"] = json!(false);
     let mut no_stack_gardening = defaults;
     no_stack_gardening["stack"] = json!(false);
     no_stack_gardening["gardening"] = json!(true);
-    no_stack_gardening["wiki"] = json!(true);
+    no_stack_gardening["answer"] = json!(true);
     assert_eq!(api, (200, json!({ "switches": no_review })));
     assert_eq!(web, (200, json!({ "switches": no_stack_gardening })));
     let expected = WRITTEN
         .replace("review = true }", "review = false }")
         .replace(
             "room = 1\n",
-            "room = 1\nswitches = { gardening = true, stack = false, wiki = true }\n",
+            "room = 1\nswitches = { answer = true, gardening = true, stack = false }\n",
         );
     assert_eq!(config(&t), expected);
     assert_eq!(
@@ -649,7 +582,7 @@ fn patch_switches_refuses_an_unknown_switch_slug_or_value_and_writes_nothing() {
     let t = written();
     let patch = |path: &str, body: &str| t.send("PATCH", path, body);
     let help = json!([
-        "Switches: dispatch, mine, stack, review, restart, flip, answer, gardening, quality_scan, wiki"
+        "Switches: dispatch, mine, stack, review, restart, flip, answer, gardening, quality_scan"
     ]);
 
     let unknown_switch = patch(
@@ -833,8 +766,9 @@ fn patch_room_writes_room_in_the_repo_s_table_alone_and_answers_it() {
 fn patch_repo_refuses_a_bad_value_of_any_setting_and_writes_nothing() {
     let t = written();
     let room = "room is how many Dispatches the Repo may have In flight at once, a whole number of at least 1";
-    let settings = "Settings: implementer, reviewer, room, base, project, install, switches, libraries; null takes the Project's or the default";
-    let switches = "Switches: dispatch, mine, stack, review, restart, flip, answer, gardening, quality_scan, wiki";
+    let settings = "Settings: implementer, reviewer, room, base, project, install, switches; null takes the Project's or the default";
+    let switches =
+        "Switches: dispatch, mine, stack, review, restart, flip, answer, gardening, quality_scan";
     let harnesses = "Harnesses: claude, codex, opencode";
 
     let bodies = [
@@ -1334,159 +1268,6 @@ fn a_launch_written_as_its_own_table_keeps_its_header_and_comments() {
         config(&t),
         "[repos.\"acme/api\"]\npath = \"/src/api\"\n\n# codex is cheaper\n[repos.\"acme/api\".reviewer]\nharness = \"claude\" # for now\nmodel = \"opus\"\n"
     );
-}
-
-/// `serve` listening, on `acme/api`, its `[wiki]` written with comments.
-const WIKI_WRITTEN: &str = r#"[repos."acme/api"]
-path = "/src/api"
-
-# Wikis overnight, on the cheap model
-[wiki]
-hour = 3 # after the scan
-calls = 20
-"#;
-
-fn wiki_written() -> Setup {
-    let t = with_repo();
-    std::fs::write(t.config_dir.join("config.toml"), WIKI_WRITTEN).unwrap();
-    t.tick();
-    t
-}
-
-#[test]
-fn patch_wiki_settings_writes_wiki_keeping_the_user_s_comments_and_answers_every_wiki_s_settings() {
-    let t = wiki_written();
-
-    let set = t.send(
-        "PATCH",
-        "/api/wiki/settings",
-        r#"{
-            "hour": 4,
-            "launch": {"harness": "claude", "model": "sonnet", "effort": null},
-            "calls": null,
-            "depth": 5,
-            "concurrency": 2,
-            "embed_model": "mxbai-embed-large"
-        }"#,
-    );
-
-    assert_eq!(
-        config(&t),
-        "[repos.\"acme/api\"]\npath = \"/src/api\"\n\n# Wikis overnight, on the cheap model\n[wiki]\nhour = 4 # after the scan\nconcurrency = 2\ndepth = 5\nembed_model = \"mxbai-embed-large\"\nlaunch = { harness = \"claude\", model = \"sonnet\" }\n"
-    );
-    let settings = json!({
-        "hour": 4,
-        "launch": { "harness": "claude", "model": "sonnet", "effort": null },
-        "calls": 48,
-        "depth": 5,
-        "concurrency": 2,
-        "embed_model": "mxbai-embed-large",
-        "harnesses": {
-            "claude": {
-                "models": ["fable", "opus", "sonnet", "haiku"],
-                "efforts": ["low", "medium", "high", "xhigh", "max"],
-            },
-            "codex": { "models": null, "efforts": null },
-            "opencode": { "models": null, "efforts": null },
-        },
-    });
-    assert_eq!(set, (200, settings.clone()));
-    assert_eq!(t.get("/api/status").1["wiki_settings"], settings);
-}
-
-#[test]
-fn patch_wiki_settings_refuses_an_unknown_harness_with_help_or_a_bad_value_and_writes_nothing() {
-    let t = wiki_written();
-    let settings =
-        "Settings: hour, launch, calls, depth, concurrency, embed_model; null takes the default";
-    let builds = "Harnesses that build a Wiki: claude, codex, opencode";
-
-    let bodies = [
-        ("{}", "{} sets nothing", settings),
-        (
-            r#"{"ollama": "x"}"#,
-            "`ollama` is not a setting the page sets",
-            settings,
-        ),
-        (
-            r#"{"launch": {"harness": "pi"}}"#,
-            "unknown Harness `pi`",
-            builds,
-        ),
-        (
-            r#"{"launch": "claude"}"#,
-            "launch is {harness, model, effort}, not \"claude\"",
-            builds,
-        ),
-        (
-            r#"{"launch": {"harness": "claude", "model": "gpt-5"}}"#,
-            "unknown model `gpt-5` for claude",
-            "Valid models for claude: fable, opus, sonnet, haiku",
-        ),
-        (
-            r#"{"hour": 24}"#,
-            "hour is an hour from 0 to 23, not 24",
-            "hour is when the loop checks each Repo's Wiki against its Base, daily, local time",
-        ),
-        (
-            r#"{"calls": 0}"#,
-            "calls is a whole number of at least 1, not 0",
-            "calls is how many model calls a build may make",
-        ),
-        (
-            r#"{"depth": 1.5}"#,
-            "depth is a whole number of at least 1, not 1.5",
-            "depth is how deep a build divides the code",
-        ),
-        (
-            r#"{"concurrency": "4"}"#,
-            "concurrency is a whole number of at least 1, not \"4\"",
-            "concurrency is how many calls a build makes at once",
-        ),
-        (
-            r#"{"embed_model": " "}"#,
-            "embed_model is a model's name, not \" \"",
-            "embed_model is the Ollama model that embeds each Wiki for `ask`",
-        ),
-    ];
-    for (body, error, help) in bodies {
-        assert_eq!(
-            t.send("PATCH", "/api/wiki/settings", body),
-            (400, json!({ "error": error, "help": [help] })),
-            "{body}"
-        );
-    }
-    assert_eq!(config(&t), WIKI_WRITTEN);
-}
-
-#[test]
-fn patch_wiki_settings_refuses_a_harness_with_no_headless_form() {
-    let t = with_repo();
-    let written = "[repos.\"acme/api\"]\npath = \"/src/api\"\n\n[harnesses.aider]\nlaunch_mode = \"pane-command\"\ncommand = \"aider\"\nsigil = \"/\"\nmodel_args = []\neffort_args = []\n";
-    std::fs::write(t.config_dir.join("config.toml"), written).unwrap();
-    t.tick();
-
-    let refused = t.send(
-        "PATCH",
-        "/api/wiki/settings",
-        r#"{"launch": {"harness": "aider"}}"#,
-    );
-
-    assert_eq!(
-        refused,
-        (
-            400,
-            json!({
-                "error": "aider has no headless form: a Wiki builds on claude, codex or opencode",
-                "help": ["Harnesses that build a Wiki: claude, codex, opencode"],
-            })
-        )
-    );
-    assert_eq!(config(&t), written);
-    // The settings list only the Harnesses a Wiki builds on.
-    let harnesses = &t.get("/api/status").1["wiki_settings"]["harnesses"];
-    let names: Vec<&String> = harnesses.as_object().unwrap().keys().collect();
-    assert_eq!(names, ["claude", "codex", "opencode"]);
 }
 
 #[test]

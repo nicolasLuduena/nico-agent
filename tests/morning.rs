@@ -219,7 +219,7 @@ fn at_the_hour_one_morning_agent_starts_on_the_config_directory_and_once_that_da
             "herdr tab rename w1:t1 morning".into(),
             "herdr agent start morning --kind claude --pane w1:p1 -- ".into(),
             format!(
-                "herdr agent prompt morning /morning: the night is in nico-agent status --json --since 2026-09-30T07:00:00Z. Write the summary to {dir}/morning.md, with one line on the Wikis its `wikis` lists built or failed since then."
+                "herdr agent prompt morning /morning: the night is in nico-agent status --json --since 2026-09-30T07:00:00Z. Write the summary to {dir}/morning.md."
             ),
         ]
     );
@@ -229,47 +229,6 @@ fn at_the_hour_one_morning_agent_starts_on_the_config_directory_and_once_that_da
     assert_eq!(morning["at"], "2026-10-01T07:00:00Z");
     assert_eq!(morning["agent"], "morning");
     assert_eq!(morning["closed_at"], "2026-10-01T07:10:00Z");
-}
-
-/// The Wiki of the Repo `slug` at `path` built at abc1234 by `wiki build`.
-fn wiki_built(t: &Setup, slug: &str, path: &str) {
-    t.world.add_clone("/mnt/agent-land/nico-agent-bucket", &[]);
-    t.world
-        .add_tree_file(path, "origin/main", "src/lib.rs", "pub fn run() {}\n");
-    (t.world.headless.borrow_mut()).push((
-        format!("## The part: {slug}"),
-        json!({ "kind": "leaf", "overview": "A small crate." }).to_string(),
-    ));
-    let ran = t.cli(&["wiki", "build", slug, "--json"]);
-    assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
-}
-
-#[test]
-fn the_morning_agent_starts_with_the_wiki_mcp_of_each_repo_whose_wiki_is_on_and_built_and_its_line()
-{
-    let t = with_repo("switches = { wiki = true }\n\n[repos.\"acme/web\"]\npath = \"/src/web\"");
-    t.world
-        .add_clone("/src/web", &["git@github.com:acme/web.git"]);
-    wiki_built(&t, "acme/api", "/src/api");
-    wiki_built(&t, "acme/web", "/src/web");
-    let dir = t.config_dir.display().to_string();
-    t.world.advance(TO_7AM);
-
-    let (said, calls) = calls_after(&t, || t.tick());
-
-    assert_eq!(said, ["morning started on claude"]);
-    let launched: Vec<&str> = (started(&calls).into_iter())
-        .filter(|c| c.starts_with("herdr agent "))
-        .collect();
-    assert_eq!(
-        launched,
-        [
-            r#"herdr agent start morning --kind claude --pane w1:p1 -- --mcp-config {"mcpServers":{"wiki":{"command":"nico-agent","args":["mcp","--wiki","acme/api"]}}} --allowedTools mcp__wiki__*"#.to_string(),
-            format!(
-                "herdr agent prompt morning /morning: the night is in nico-agent status --json --since 2026-09-30T07:00:00Z. Write the summary to {dir}/morning.md, with one line on the Wikis its `wikis` lists built or failed since then. The Wiki of acme/api describes abc1234; where it and the code disagree, the code wins."
-            ),
-        ]
-    );
 }
 
 #[test]
