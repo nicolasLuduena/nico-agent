@@ -19,6 +19,9 @@ const VERSIONS: [&str; 4] = ["2024-11-05", "2025-03-26", "2025-06-18", "2025-11-
 
 const INSTRUCTIONS: &str = "The Wikis of the user's Repos and of the Library versions they use: what each one's code does as of one commit, as a tree of Components whose every claim (an Interpretation) cites the lines it rests on (its Anchors), each Component saying what the names its text uses stand for (its Terms). Ask here before reading a Repo's code: `wikis` lists them, `find_component` finds a Component by words, `get_component` reads one, the top one being `index`, `read_anchor` reads the lines a claim cites, and `ask` answers a question in a few sentences, each citing lines. Where a Wiki and the code disagree, the code wins.";
 
+/// The line a tool answer holding a Stale record adds.
+const STALE: &str = "Some of these are Stale: they cite a file that changed on the Repo's Base since the Wiki was built, so check them in the code.";
+
 /// `mcp [--wiki <wiki>]...`: answer each request on stdin till it
 /// closes, serving the Wikis named, or every one.
 pub fn mcp(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
@@ -68,7 +71,17 @@ fn answer(ctx: &Context, named: &[&str], line: &str) -> Option<Value> {
             };
             match called {
                 Ok(answer) => {
-                    json!({ "content": [{ "type": "text", "text": answer.to_string() }] })
+                    let mut content = vec![json!({ "type": "text", "text": answer.to_string() })];
+                    // `ask`'s records, or `find_component`'s Components.
+                    let listed = if name == "ask" {
+                        &answer["records"]
+                    } else {
+                        &answer
+                    };
+                    if (listed.as_array().into_iter().flatten()).any(|r| r["stale"] == true) {
+                        content.push(json!({ "type": "text", "text": STALE }));
+                    }
+                    json!({ "content": content })
                 }
                 Err(why) => {
                     json!({ "content": [{ "type": "text", "text": why }], "isError": true })
@@ -100,19 +113,19 @@ fn tools() -> Value {
     json!([
         tool(
             "wikis",
-            "List the Wikis served: each one's name, the commit it describes, when it was built and how many Gaps (parts of the code it never reached) it has.",
+            "List the Wikis served: each one's name, the commit it describes, when it was built, how many Gaps (parts of the code it never reached) it has, and for a Repo's how many commits it is `behind` the Repo's Base.",
             json!({}),
             &[],
         ),
         tool(
             "find_component",
-            "Find the Components of a Wiki whose name, overview or Terms' names hold the query's words, best first: each one's id, name and overview.",
+            "Find the Components of a Wiki whose name, overview or Terms' names hold the query's words, best first: each one's id, name and overview, `stale` when one of its claims is.",
             json!({ "wiki": wiki, "query": { "type": "string", "description": "Words to look for." } }),
             &["wiki", "query"],
         ),
         tool(
             "get_component",
-            "Read a Component of a Wiki: its overview, its Terms (each a name its text uses, with what it stands for, citing the lines that declare it), its Interpretations (one-sentence claims, each an invariant, precondition, postcondition, effect or role, citing Anchors: a path and lines, 1-based and inclusive; an Interpretation or Term `stale` cites a file that changed on the Repo's Base since it was written, so check it in the code), its Relationships (`to` what it uses, `from` what uses it), its sub-Components and its Gaps; a leaf's files too. `index` is a Wiki's top Component.",
+            "Read a Component of a Wiki: its overview, its Terms (each a name its text uses, with what it stands for, citing the lines that declare it), its Interpretations (one-sentence claims, each an invariant, precondition, postcondition, effect or role, citing Anchors: a path and lines, 1-based and inclusive; an Interpretation, Term or Explainer `stale` cites a file that changed on the Repo's Base since it was written, so check it in the code), its Relationships (`to` what it uses, `from` what uses it), its sub-Components and its Gaps; a leaf's files too. `index` is a Wiki's top Component.",
             json!({ "wiki": wiki, "id": { "type": "string", "description": "The Component's id, as find_component or a parent gives it." } }),
             &["wiki", "id"],
         ),
@@ -129,7 +142,7 @@ fn tools() -> Value {
         ),
         tool(
             "ask",
-            "Ask a Wiki a question about its Repo's code: an answer of a few sentences, each citing the Anchors it rests on, made from only the Interpretations and overviews closest to the question, with the Interpretations it cites. Answers \"search unavailable\" when it cannot search: use find_component then.",
+            "Ask a Wiki a question about its Repo's code: an answer of a few sentences, each citing the Anchors it rests on, made from only the Interpretations and overviews closest to the question, with the Interpretations it cites, each `stale` when it cites a file that changed on the Repo's Base since. Answers \"search unavailable\" when it cannot search: use find_component then.",
             json!({ "wiki": wiki, "question": { "type": "string", "description": "The question, in words." } }),
             &["wiki", "question"],
         ),
@@ -148,15 +161,13 @@ fn called(
     Some(match name {
         "wikis" => config.and_then(|config| wikis(ctx, named, &config)),
         "find_component" => config.and_then(|config| {
-            let (_, wiki) = served(ctx, named, &config, arguments)?;
+            let (of, mut wiki) = served(ctx, named, &config, arguments)?;
+            marked(ctx, &of, &mut wiki)?;
             Ok(found(&wiki, text(arguments, "query")?))
         }),
         "get_component" => config.and_then(|config| {
             let (of, mut wiki) = served(ctx, named, &config, arguments)?;
-            // A tag never moves: a Library version's Wiki is never Stale.
-            if let Of::Repo(_, repo) = &of {
-                wiki::marked(ctx.world, repo, &mut wiki).map_err(|e| e.0)?;
-            }
+            marked(ctx, &of, &mut wiki)?;
             component(&of.id(), &wiki, text(arguments, "id")?)
         }),
         "read_anchor" => config.and_then(|config| {
@@ -165,7 +176,8 @@ fn called(
             anchor(ctx, &of.id(), &clone, &wiki, arguments)
         }),
         "ask" => config.and_then(|config| {
-            let (of, wiki) = served(ctx, named, &config, arguments)?;
+            let (of, mut wiki) = served(ctx, named, &config, arguments)?;
+            marked(ctx, &of, &mut wiki)?;
             let question = text(arguments, "question")?;
             ask::ask(ctx, &config, &of, &wiki, question)
         }),
@@ -189,6 +201,16 @@ fn served<'a>(
     Ok((of, held))
 }
 
+/// `wiki`, the Wiki `of`, marked Stale where a Repo's Base moved on, as
+/// the page serves it.
+fn marked(ctx: &Context, of: &Of, wiki: &mut Value) -> Result<(), String> {
+    // A tag never moves: a Library version's Wiki is never Stale.
+    if let Of::Repo(_, repo) = of {
+        wiki::marked(ctx.world, repo, wiki).map_err(|e| e.0)?;
+    }
+    Ok(())
+}
+
 /// Whether the Wiki `id` is one of those `named`, or none is: a Repo's
 /// slug in any casing.
 fn serves(named: &[&str], id: &str) -> bool {
@@ -209,7 +231,8 @@ fn read(ctx: &Context, config: &Config, of: &Of) -> Result<Option<Value>, String
         .map_err(|e| format!("the Wiki of {} does not read: {e}", of.id()))
 }
 
-/// Each Wiki served that is built, with its commit, build time and Gap count.
+/// Each Wiki served that is built, with its commit, build time and Gap
+/// count, and a Repo's how many commits it is behind its Base.
 fn wikis(ctx: &Context, named: &[&str], config: &Config) -> Result<Value, String> {
     let mut wikis = vec![];
     for of in wiki::every(config) {
@@ -217,12 +240,18 @@ fn wikis(ctx: &Context, named: &[&str], config: &Config) -> Result<Value, String
         if !serves(named, &id) {
             continue;
         }
-        if let Some(wiki) = read(ctx, config, &of)? {
+        if let Some(mut wiki) = read(ctx, config, &of)? {
+            marked(ctx, &of, &mut wiki)?;
             let gaps: usize = (components(&wiki).iter())
                 .map(|c| c["gaps"].as_array().map_or(0, Vec::len))
                 .sum();
             let (commit, built_at) = (&wiki["commit"], &wiki["builtAt"]);
-            wikis.push(json!({ "wiki": id, "commit": commit, "builtAt": built_at, "gaps": gaps }));
+            let mut listed =
+                json!({ "wiki": id, "commit": commit, "builtAt": built_at, "gaps": gaps });
+            if let Some(behind) = wiki.get("behind") {
+                listed["behind"] = behind.clone();
+            }
+            wikis.push(listed);
         }
     }
     Ok(json!(wikis))
@@ -290,9 +319,15 @@ fn component(slug: &str, wiki: &Value, id: &str) -> Result<Value, String> {
     Ok(component)
 }
 
-/// A Component as a list of them shows it.
+/// A Component as a list of them shows it: `stale` when a claim of it is.
 fn brief(c: &Value) -> Value {
-    json!({ "id": c["id"], "name": c["name"], "overview": c["overview"] })
+    let mut brief = json!({ "id": c["id"], "name": c["name"], "overview": c["overview"] });
+    let claims = ["interpretations", "terms"].map(|key| c[key].as_array().into_iter().flatten());
+    let explainer = c.get("explainer").into_iter();
+    if (claims.into_iter().flatten().chain(explainer)).any(|claim| claim["stale"] == true) {
+        brief["stale"] = json!(true);
+    }
+    brief
 }
 
 /// Every Component of `wiki`, a parent before its parts.

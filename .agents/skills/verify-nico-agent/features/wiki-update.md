@@ -5,7 +5,7 @@ at the Repo's `origin/<base>`: a part whose files kept their blobs is copied ove
 files changed is asked again, the part a file added or removed sits under is divided again, its
 parts from scratch, and a parent whose parts changed keeps its Interpretations. Each part keeps
 its place in the tree. Between builds, `GET /api/wiki/<id>` and the MCP's `get_component` mark
-`stale` each Interpretation citing a file whose blob at `origin/<base>` (as the clone last
+`stale` each Interpretation, Term and Explainer citing a file whose blob at `origin/<base>` (as the clone last
 fetched it) is not the one it was written against, and the Wiki's page's masthead says how many
 commits behind the Base the Wiki is and how many Interpretations are Stale, each one labelled
 `STALE` before its sentence. A parent kept by an Update stays Stale until the next build from
@@ -15,9 +15,9 @@ scratch. The loop's nightly build is an Update once the Repo has a Wiki.
 
 - `update-copy` with one file changed, `--update` asks only the leaf holding it (one `opencode2 run`), copies every other part, and keeps the parent's Interpretations; stderr says `updating it from <old>: N part(s) copied or kept, M to ask again`; one Bucket commit `wiki <owner/name> <new>`.
 - `update-added` a file added under a folder asks again only the part holding that folder's files, divided anew (its new parts asked too); every other part is copied, in its place.
-- `stale-route` `GET /api/wiki/<id>` adds `base`, `behind` (commits from the Wiki's commit to `origin/<base>`) and `stale` (how many), and `"stale": true` on each Stale Interpretation; reading it writes nothing and fetches nothing.
+- `stale-route` `GET /api/wiki/<id>` adds `base`, `behind` (commits from the Wiki's commit to `origin/<base>`) and `stale` (how many), and `"stale": true` on each Stale Interpretation, Term and Explainer; reading it writes nothing and fetches nothing.
 - `stale-page` the masthead reads `Describes <sha> · Built HH:MM · 1 commit behind main · 3 Interpretations Stale`, or `Up to date with main` with the Stale count left out when none is; each Stale Interpretation's paragraph reads `Stale <sentence>`, in light, dark and at phone width.
-- `stale-mcp` `get_component` marks the same Interpretations `stale`.
+- `stale-mcp` `get_component` marks the same Interpretations, Terms and Explainer `stale`.
 - `stale-kept` after an Update, a parent kept with its claims stays Stale (its Component carries the `blobs` they were written against) while the parts asked again are not.
 
 ## How to get to it (user POV)

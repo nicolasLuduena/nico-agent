@@ -16,9 +16,9 @@ Library versions their Repo links, its tools allowed on each Harness.
 ## Sub-features
 
 - `mcp-handshake` `initialize` answers the version asked for (the latest it speaks, `2025-11-25`, for one it does not), `capabilities.tools`, `serverInfo` and `instructions`; `notifications/initialized` gets no answer; `tools/list` lists the five tools, each `readOnlyHint`.
-- `mcp-tools` `wikis` gives each Wiki's `wiki`, `commit`, `builtAt` and `gaps`; `find_component` the matching Components' `id`, `name` and `overview`, best first; `get_component` the Component with its `interpretations` (each `"stale": true` once a file it cites changed on the Base: [wiki-update.md](./wiki-update.md)), `relationships` (`to` what it uses, `from` what uses it), `gaps`, sub-`components`, and its `files` when a leaf; `read_anchor` `{path, start, end, commit, text}`.
-- `mcp-ask` with Ollama unreachable, `ask` is `isError` `search unavailable, use find_component` and calls no model; with it up, the first `ask` of a Wiki without embeddings embeds every overview and Interpretation, keeps them in `wiki/<owner>/<name>/vectors.json` in the config dir, then embeds the question; a later `ask` embeds the question alone. It answers `{answer: [{text, anchors}], records: [...]}`: each sentence cites Anchors of the Interpretations retrieved, and `records` are those it cites, each with its `component`; it answers a question whose words are not in the claim it cites.
-- `mcp-base-moved` `read_anchor` reads the Wiki's commit, not `origin/<base>`, once the Base has moved.
+- `mcp-tools` `wikis` gives each Wiki's `wiki`, `commit`, `builtAt` and `gaps`, and a Repo's `behind`, how many commits its Base has moved past the Wiki's; `find_component` the matching Components' `id`, `name` and `overview`, best first, each `"stale": true` when one of its claims is; `get_component` the Component with its `interpretations`, `terms` and `explainer` (each `"stale": true` once a file it cites changed on the Base: [wiki-update.md](./wiki-update.md)), `relationships` (`to` what it uses, `from` what uses it), `gaps`, sub-`components`, and its `files` when a leaf; `read_anchor` `{path, start, end, commit, text}`.
+- `mcp-ask` with Ollama unreachable, `ask` is `isError` `search unavailable, use find_component` and calls no model; with it up, the first `ask` of a Wiki without embeddings embeds every overview and Interpretation, keeps them in `wiki/<owner>/<name>/vectors.json` in the config dir, then embeds the question; a later `ask` embeds the question alone. It answers `{answer: [{text, anchors}], records: [...]}`: each sentence cites Anchors of the Interpretations retrieved, and `records` are those it cites, each with its `component` and `"stale": true` when it is Stale; it answers a question whose words are not in the claim it cites.
+- `mcp-base-moved` `read_anchor` reads the Wiki's commit, not `origin/<base>`, once the Base has moved; `wikis` says it is `behind`, and an `ask` or `find_component` answer holding a Stale record carries a second text content, `Some of these are Stale: ...`.
 - `mcp-errors` a Wiki not served (`--wiki` names another, no such Repo, or not built) is `isError` `no Wiki <id> is served here: ...`; lines outside the file and a file not at the commit are `isError`; an unknown tool is JSON-RPC `-32602`, an unknown method `-32601`, a batch `-32600`; `mcp` with a positional is exit `2`.
 - `mcp-read-only` answering changes nothing in the config dir or the Bucket, and calls no stub but `ask`'s `curl` to Ollama.
 - `mcp-claude` added to Claude Code, it is connected, its five `mcp__wiki__*` tools are listed, and `get_component` answers.
@@ -41,8 +41,9 @@ Preconditions:
 - A fresh run; `doctor` passes; `. "$($C env)"`.
 - `E=.evidence/<issue>/wiki-mcp`; `mkdir -p "$E"`.
 - `$C run -- repo add verify/fixture --path "$FIXTURE_CLONE" --json`.
-- A built Wiki: write a leaf answer to `$E/answer.json` with an overview and two `role`
-  Interpretations, anchored at `README.md` lines `1`-`1` and `3`-`3`; `$C seed answer "$E/answer.json"`;
+- A built Wiki: write a leaf answer to `$E/answer.json` with an overview, two `role`
+  Interpretations, anchored at `README.md` lines `1`-`1` and `3`-`3`, and an `explainer` of two
+  steps anchored the same; `$C seed answer "$E/answer.json"`;
   `$C run --evidence "$E/01-wiki-build" -- wiki build verify/fixture --json` is `built` at `<commit>`, the
   fixture's `origin/main`.
 - `$C state > "$E/state.before.txt"`.
@@ -59,7 +60,7 @@ its answer's `result.content[0].text` is the tool's JSON, or its error with `isE
   `{"wiki":"verify/fixture","path":"README.md","start":1,"end":1}`, `ask`
   `{"wiki":"verify/fixture","question":"What is this repo for?"}`. Exit `0`, seven lines (none for the
   notification): version `2025-06-18`; the five tools; `[{"wiki":"verify/fixture","commit":<commit>,"gaps":0,...}]`;
-  `[{"id":"index",...}]`; `index` with both Interpretations, `files` `["README.md"]` and `components` `[]`;
+  `[{"id":"index",...}]`; `index` with both Interpretations and its `explainer`, none `stale`, `files` `["README.md"]` and `components` `[]`;
   `{"commit":<commit>,"text":"# verify/fixture",...}`; `ask` `isError` `search unavailable, use find_component`.
 - **Writes nothing.** `$C state > "$E/state.after.txt"`; its diff from `state.before.txt` is only
   `ask`'s one outside call, `curl ... http://127.0.0.1:11434/api/embed` (curl is offline in a run),
@@ -69,7 +70,10 @@ its answer's `result.content[0].text` is the tool's JSON, or its error with `isE
   `read_anchor` lines `1`-`3` still answers `commit` `<commit>` and `text`
   `# verify/fixture\n\nA verify-nico-agent fixture.`; lines `2`-`9` is `isError` `lines 2-9 are not
   inside README.md (3 lines)`; `src/nope.rs` is `isError` `src/nope.rs is not a file of
-  verify/fixture at <commit>`.
+  verify/fixture at <commit>`. In the same exchange `wikis` is `"behind": 1`; `find_component`
+  `{"wiki":"verify/fixture","query":"fixture README"}` is `[{"id":"index",...,"stale":true}]` with a
+  second text content `Some of these are Stale: ...`; `get_component` `index` has both
+  Interpretations and its `explainer` `"stale": true`.
 - **Limited.** `$C run -- repo add verify/second --path "$SECOND_CLONE" --json`. Exchange `05-limited` with
   `-- mcp --wiki verify/second --json`: `wikis` is `[]` (verify/second has no Wiki), `get_component` of
   `verify/fixture` and of `verify/nope` are `isError` `no Wiki <id> is served here: ...`, a call

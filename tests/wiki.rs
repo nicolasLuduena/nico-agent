@@ -1783,10 +1783,10 @@ fn an_interpretation_citing_a_file_changed_on_the_base_is_stale_until_an_update_
 }
 
 #[test]
-fn a_term_citing_a_file_changed_on_the_base_is_stale_and_an_update_keeps_it_so_where_it_copies_it()
-{
+fn a_term_or_explainer_citing_a_file_changed_on_the_base_is_stale_and_an_update_keeps_a_term_so() {
     let t = with_repo("");
-    // The top part's Term cites src/config.rs, which none of its Interpretations does.
+    // The top part's Term cites src/config.rs, which none of its
+    // Interpretations does; so does Core's Explainer.
     let settings = term(
         "Config",
         "The settings the API runs with.",
@@ -1811,7 +1811,12 @@ fn a_term_citing_a_file_changed_on_the_base_is_stale_and_an_update_keeps_it_so_w
     answer(
         &t,
         "acme/api > Core",
-        json!({ "kind": "leaf", "overview": "The crate.", "interpretations": [interpretation("role", "run is the entry point.", "src/lib.rs", 4, 4)] }),
+        json!({
+            "kind": "leaf",
+            "overview": "The crate.",
+            "interpretations": [interpretation("role", "run is the entry point.", "src/lib.rs", 4, 4)],
+            "explainer": { "title": "Starting", "steps": [{ "n": 1, "caption": "It reads its Config.", "anchors": [{ "path": "src/config.rs", "start": 1, "end": 1 }] }] },
+        }),
     );
     let port = term("port", "Where the page listens.", "web/app.ts", 2, 2);
     answer(
@@ -1836,6 +1841,7 @@ fn a_term_citing_a_file_changed_on_the_base_is_stale_and_an_update_keeps_it_so_w
     stale["stale"] = json!(true);
     assert_eq!(moved["components"][0]["terms"], json!([stale]));
     assert_eq!(moved["components"][2]["terms"], json!([port]));
+    assert_eq!(moved["components"][1]["explainer"]["stale"], true);
     // Only Interpretations are counted.
     assert_eq!(moved["stale"], 0);
 
