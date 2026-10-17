@@ -90,6 +90,9 @@ pub struct BlockerPr {
     pub number: u64,
     pub url: String,
     pub head_branch: String,
+    /// Empty in a record written before it was read.
+    #[serde(default)]
+    pub base_branch: String,
 }
 
 /// Who an issue is assigned to, as the Board shows it.
@@ -326,6 +329,7 @@ fn open_prs(world: &dyn World, repo: &str, key: &str) -> WorldResult<Vec<Blocker
             url,
             state: PrState::Open,
             head_branch: Some(head_branch),
+            base_branch,
             ..
         } = pr
         else {
@@ -336,6 +340,7 @@ fn open_prs(world: &dyn World, repo: &str, key: &str) -> WorldResult<Vec<Blocker
                 number,
                 url,
                 head_branch,
+                base_branch,
             });
         }
     }
@@ -422,10 +427,11 @@ pub fn readiness(read: &Read, dispatches: &[Dispatch], prs: &Prs) -> Readiness {
 pub enum Start<'a> {
     /// None unresolved: from the Repo's Base.
     Ready,
-    /// On the one branch its unresolved Blockers' open PRs sit on: Stackable.
+    /// On the top of the one chain its unresolved Blockers' open PRs form,
+    /// each sitting on the next: Stackable.
     Stacked(&'a BlockerPr),
-    /// An unresolved Blocker has no open PR here, or their open PRs sit on
-    /// several branches: why it waits.
+    /// An unresolved Blocker has no open PR here, or their open PRs don't
+    /// form one chain: why it waits.
     Waits(String),
 }
 
@@ -451,6 +457,23 @@ pub fn start(issue: &Issue) -> Start<'_> {
     }
     if prs.iter().all(|p| p.head_branch == prs[0].head_branch) {
         return Start::Stacked(prs[0]);
+    }
+    // One chain: a single PR no other sits on, and from it each base is another's head.
+    let tops: Vec<&BlockerPr> = (prs.iter().copied())
+        .filter(|p| !prs.iter().any(|o| o.base_branch == p.head_branch))
+        .collect();
+    if let [top] = tops[..] {
+        let mut chain = vec![top];
+        while let Some(next) = prs
+            .iter()
+            .find(|p| p.head_branch == chain[chain.len() - 1].base_branch)
+            && !chain.contains(next)
+        {
+            chain.push(next);
+        }
+        if chain.len() == prs.len() {
+            return Start::Stacked(top);
+        }
     }
     let urls: Vec<&str> = prs.iter().map(|p| p.url.as_str()).collect();
     Start::Waits(format!(

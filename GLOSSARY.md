@@ -26,8 +26,9 @@ to the user, or also unassigned when its Repo's `mine` Switch is off, whose
 Blockers are all resolved. _Avoid_: available, todo.
 
 **Stackable**: an issue that would be Ready except that each unresolved
-Blocker has an open PR in the same Repo, so work can start on top of that PR.
-_Avoid_: blocked, pending.
+Blocker has an open PR in the same Repo, so work can start on top of that PR;
+with several, on the top of the one chain they form, each PR sitting on the
+next. _Avoid_: blocked, pending.
 
 **Research issue**: an issue labelled `research` beside `ready-for-agent`.
 Its Implementer writes findings to one Markdown file and opens it as a PR.
