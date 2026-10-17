@@ -19,6 +19,7 @@ defaults the same way. A refusal shows its error and help, and writes nothing. W
 - `settings-project` a Project typed in `combobox "Project"` writes `project = "<name>"`, the Repo then takes that Project's defaults, chipped `from Project`; `button "Leave <name>"` removes it.
 - `settings-api` `PATCH /api/repo/<slug>` with any of `implementer`, `reviewer`, `room`, `base`, `project`, `switches` writes only those and answers `{slug, <each setting>: {value, from}}`; a percent-encoded slug reaches its Repo.
 - `settings-project-api` `PATCH /api/project/<name>` with the same keys but `project` writes `[projects.<name>]` and answers `{name, defaults}`.
+- `settings-retired` a `config.toml` an earlier build wrote, holding `[wiki]`, a Repo's `libraries` and `wiki` switch and a Harness's `mcp_args`, still loads: serve restarts on it, the Repo's other settings show as written, and the next write drops those keys.
 - `settings-refused` an unknown key, a Harness not configured, a model the Harness does not take, an empty Base, a Switch not boolean: 400 `{error, help}`; a Repo or Project not configured: 409; nothing written.
 
 ## How to get to it (user POV)
@@ -95,10 +96,19 @@ Preconditions:
   page sets ``. `PATCH /api/project/nope '{"room":2}'` (`21`): `409`, `nope is not a Project`,
   help `Projects: verify, verify/fixture`. `PATCH /api/repo/other/repo '{"room":2}'` (`22`): `409`,
   `other/repo is not a configured Repo`. `cmp "$E/refusals.before.toml" "$CONFIG_DIR/config.toml"`: the same.
+- **An earlier build's config.** Append a Repo and keys as the build before #429 wrote them:
+  `printf '\n[repos."verify/second"]\npath = "%s"\nroom = 2\nswitches = { dispatch = false, review = false, wiki = true }\nlibraries = [{ repo = "acme/kit", tag = "v1" }]\n\n[wiki]\nhour = 4 # after the scan\nlibraries = [{ repo = "acme/ui", tag = "v2" }]\n\n[harnesses.claude]\nmcp_args = ["--mcp-config", "{mcpArgs}"]\n' "$SECOND_CLONE" >> "$CONFIG_DIR/config.toml"`.
+  `$C restart > "$E/23-retired-restart.txt"` and `$C doctor` pass. `$C run --evidence "$E/24-retired-status" -- status --json`:
+  `repos[1]` is `verify/second` with `room` `{"from":"repo","value":2}`, `switches.review` `{"from":"repo","value":false}`,
+  no `switches.wiki` and no `libraries`. `$C http --evidence "$E/25-retired-write" PATCH /api/repo/verify/second '{"room":3}'`:
+  HTTP `200`; `cp "$CONFIG_DIR/config.toml" "$E/25-retired-write.config.toml"` has `room = 3` and `switches = { dispatch = false, review = false}`
+  under `verify/second`, and no `[wiki]`, `libraries` or `mcp_args` (`[harnesses.claude]` stays, empty).
 - **Proof.** `$C state > "$E/state.after.txt"` and the diff; copy `$OUTSIDE_LOG` to `$E/outside.log`.
 
 ## Gotchas
 
+- A Readiness check failing in the run (no implement skill, the stubbed `ghbot`, `herdr`) is a toast over the
+  panel's foot (#420), so a `--click` under it times out: `--click "button=Dismiss"` once per toast first.
 - `restart` ticks once, as `launch` does: with Dispatch on, every Ready issue is dispatched and
   fails in the run. Turn Dispatch off first.
 - A select is driven by clicking it, then `ArrowDown` and `Enter`: the next option. The Harnesses

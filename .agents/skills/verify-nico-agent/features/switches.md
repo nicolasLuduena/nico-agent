@@ -51,7 +51,7 @@ Preconditions:
 - **Second view.** Run `$C run --evidence "$E/08-list" -- repo list --json`: `switches` has
   `dispatch` false, `review` false, the rest as before (`answer`, `gardening`, `mine`, `quality_scan` false).
 - **Obeyed.** `: > "$OUTSIDE_LOG"`; run `$C http --evidence "$E/09-refresh-off" POST /api/refresh`.
-  HTTP `200`, `actions` `[]`; `$OUTSIDE_LOG` holds only `gh api user --jq .login` and the Readiness
+  HTTP `200`, `actions` only the stubbed `could not read GitHub's rate limit: ...`; `$OUTSIDE_LOG` holds only `gh api user --jq .login` and the Readiness
   checks' `ghbot api /installation/repositories ...` (no `gh issue edit`, no `herdr worktree
   create`): nothing was dispatched. Copy it to `$E/outside.off.log`.
 - **Toggle on the page.** Run `$C page --evidence "$E/10-toggle" --click "region=Switches" --expect "3 of 9 on" --click "switch=Dispatch" --expect "Saved" --expect "4 of 9 on" --gone "Saved"`.
@@ -67,6 +67,8 @@ Preconditions:
 
 ## Gotchas
 
+- A Readiness check failing in the run (no implement skill, the stubbed `ghbot`, `herdr`) is a toast over the
+  panel's foot (#420), so a `--click` under it times out: `--click "button=Dismiss"` once per toast first.
 - `answer`, `gardening`, `mine` and `quality_scan` start off. Turning `answer`, `gardening`
   or `quality_scan` on in a run starts nothing visible (no Asking from herdr, no gardening issue, no
   scan hour), so prove those through `cargo test`, and here only that the PATCH writes them; `mine`
