@@ -161,6 +161,8 @@ pub fn map(ctx: &Context, name: &str) -> Result<Option<Value>, Refusal> {
             "assignees": issue.zip(reader).map(|(i, (user, _))| source::assignees(i, user)),
             "stage": stage,
             "agent_state": shown["agent_state"],
+            "asking": shown["asking"],
+            "faux_nico": shown["faux_nico"],
             "pr": pr,
             "review": shown["review"],
             "verdict": if verdict.is_null() { Value::Null } else {
@@ -215,7 +217,7 @@ pub fn node(ctx: &Context, issue: &str) -> Result<Option<Value>, Refusal> {
     node["evidence_folder"] = json!(format!("/bucket/{}/", http::escaped(&folder)));
     node["evidence"] = json!(evidence);
     // What the Asking Implementer shows, as herdr has it, for the user to answer
-    // from; Asking as the band says it, herdr's blocked before a tick records it.
+    // from; Asking as its flag says it, herdr's blocked before a tick records it.
     let blocked = node["agent_state"]["implementer"] == "blocked";
     if d.closed_at.is_none() && (d.asking.is_some() || blocked) {
         match ctx.world.herdr_agent_read(&d.implementer.agent) {

@@ -3,7 +3,7 @@
 After a failing Verdict the restarted Implementer rules on each Finding in `rulings.md` in its
 Evidence, which reaches the Bucket with each PR head as the rest of the Evidence does. Once its
 `verdict` restarts are used up, the next failing Verdict marks the Dispatch Failed on `verdict`:
-`status` and `/api/status` say so in its `failure`, and the needs-you strip and the node's panel say
+`status` and `/api/status` say so in its `failure`, its node is flagged, and its panel says
 "The Reviewer failed it N rounds running; the Findings and Rulings are in its Evidence", with what
 ends it under that. A Dispatch Failed for any other reason, a `verdict` restart that failed at a
 step included, reads as before. A restarted Implementer that dismisses every Finding pushes nothing
@@ -15,15 +15,15 @@ Failed on `verdict` at once, same reason twice.
 
 - `rulings-bucket` `.evidence/<n>/rulings.md` in the worktree is kept in the Bucket at the PR's next head, served at `/bucket/<owner>/<repo>/<n>/<sha>/rulings.md`.
 - `failed-verdict-status` a failing Verdict on a Dispatch whose `verdict` restarts are used up: the refresh says `<issue> Failed: verdict again after 2 restarts for it`, and `/api/status` has its `failure` `{step: "restart", error, reason: "verdict"}`.
-- `failed-verdict-strip` its strip row is `Failed <repo> #<n> The Reviewer failed it N rounds running; the Findings and Rulings are in its Evidence Merge its PR or close it on GitHub, and the loop Closes the Dispatch <updated>`, N being its `verdict` restarts plus one.
-- `failed-verdict-panel` its panel's Failure section says the same line in `strong` and the help under it; its Evidence holds `findings.md` and `rulings.md` at the failing head.
-- `rulings-rereview` a failing Verdict answered by a `verdict` restart whose Implementer went idle on the same head: the refresh says `<issue>: Reviewer started on codex for <head>`, `status` gives `review.state` `reviewing` and `reviewer.rulings` `true`; a second fail on that head records anew (not a no-op), and the next refresh says `<issue> Failed: verdict again at <head> after its Rulings`, its strip row `The Reviewer failed it 2 rounds running; ...`.
-- `failed-other` a `verdict` restart that failed at its tab is a row `Failed <repo> #<n> <title> <updated>`, its panel's Failure the error and `At the tab step.`
+- `failed-verdict-node` its node ends `Failed, needs you`.
+- `failed-verdict-panel` its panel's Failure section says `The Reviewer failed it N rounds running; the Findings and Rulings are in its Evidence` in `strong`, N being its `verdict` restarts plus one, and `Merge its PR or close it on GitHub, and the loop Closes the Dispatch` under it; its Evidence holds `findings.md` and `rulings.md` at the failing head.
+- `rulings-rereview` a failing Verdict answered by a `verdict` restart whose Implementer went idle on the same head: the refresh says `<issue>: Reviewer started on codex for <head>`, `status` gives `review.state` `reviewing` and `reviewer.rulings` `true`; a second fail on that head records anew (not a no-op), and the next refresh says `<issue> Failed: verdict again at <head> after its Rulings`, its panel `The Reviewer failed it 2 rounds running; ...`.
+- `failed-other` a `verdict` restart that failed at its tab flags its node the same, its panel's Failure the error and `At the tab step.`
 
 ## How to get to it (user POV)
 
 - The loop's tick, or the user's Refresh, after the Reviewer's `nico-agent verdict <issue> fail`.
-- The user opens the page (`$URL`), reads the strip, and clicks the row for the node's panel.
+- The user opens the page (`$URL`) and clicks the flagged node for its panel.
 - The user opens `/bucket/<owner>/<repo>/<n>/` (the PR body's `## Findings` link) for the Rulings.
 
 ## Driving it with control-nico-agent
@@ -53,19 +53,16 @@ Preconditions:
   it`. Run `$C http --evidence "$E/06-api-status" GET /api/status`: `#10`'s `failure` is `{"error":
   "verdict again after 2 restarts for it", "reason": "verdict", "step": "restart"}`, its `restarts`
   two `verdict`; `#11`'s `{"step": "tab", "reason": "verdict", ...}`, one `verdict` restart.
-- **The strip.** Run `$C page --evidence "$E/07-strip" --expect "rounds running"`: `region "Needs you"`
-  has `button "Failed verify/fixture #11 Verify: seeded Dispatch 11 <time>"` and `button "Failed
-  verify/fixture #10 The Reviewer failed it 3 rounds running; the Findings and Rulings are in its
-  Evidence Merge its PR or close it on GitHub, and the loop Closes the Dispatch <time>"`, the help on
-  the line under the text in the screenshot.
-- **The panels.** Run `$C page --evidence "$E/08-panel-10" --click "button~Failed verify/fixture #10" --expect "Open Evidence"`:
+- **The flags.** Run `$C page --evidence "$E/07-flags" --expect "seeded Dispatch 11"`: the nodes
+  `#11, Verify: seeded Dispatch 11, Failed, needs you` and `#10, Verify: seeded Dispatch 10, Failed, needs you`.
+- **The panels.** Run `$C page --evidence "$E/08-panel-10" --click "button~#10, Verify: seeded Dispatch 10" --expect "Open Evidence"`:
   `.requests.txt` has `GET /api/node/verify%2Ffixture%2310 -> 200`; under `heading "Failure"`, `strong:
   The Reviewer failed it 3 rounds running; the Findings and Rulings are in its Evidence` and `paragraph:
   Merge its PR or close it on GitHub, and the loop Closes the Dispatch`; `heading "Restarts"` lists two
   `verdict by loop`; under `heading "Evidence"`, `1 head · 3 files`. Run
-  `$C page --evidence "$E/09-panel-11" --click "button~Failed verify/fixture #11" --expect "step"`: under
+  `$C page --evidence "$E/09-panel-11" --click "button~#11, Verify: seeded Dispatch 11" --expect "step"`: under
   `heading "Failure"`, the herdr error in `strong` and `paragraph: At the tab step.`
-- **Phone, dark.** Run `$C page --evidence "$E/10-phone-dark" --width 390 --scheme dark --click "button~Failed verify/fixture #10" --expect "Open Evidence"`:
+- **Phone, dark.** Run `$C page --evidence "$E/10-phone-dark" --width 390 --scheme dark --click "button~#10, Verify: seeded Dispatch 10" --expect "Open Evidence"`:
   the same Failure section in the bottom sheet, `page 390px wide in a 390px window`.
 - **The Evidence.** Run `$C http --evidence "$E/11-bucket-folder" GET /bucket/verify/fixture/10/`: HTTP
   `200`, a page linking `$NEW/findings.md`, `$NEW/proof.txt` and `$NEW/rulings.md`.
@@ -86,8 +83,8 @@ Preconditions:
   `verdict` `verify/fixture#10 fail at $HEAD`, no `(no-op)`. Run `$C run --evidence "$E/05-refresh-failed" -- refresh --json`:
   `actions` hold `verify/fixture#10 Failed: verdict again at $HEAD after its Rulings`;
   `$C http --evidence "$E/06-api-status" GET /api/status` its `failure` `{step: "restart", reason: "verdict", ...}`,
-  one `verdict` restart. Run `$C page --evidence "$E/07-strip" --expect "rounds running"`: `button
-  "Failed verify/fixture #10 The Reviewer failed it 2 rounds running; ..."`. `state.diff` and
+  one `verdict` restart. Run `$C page --evidence "$E/07-panel" --click "button~#10, Verify: seeded Dispatch 10" --expect "rounds running"`:
+  `strong: The Reviewer failed it 2 rounds running; ...`. `state.diff` and
   `outside.log` as above: one `--label reviewer` tab, one `notify-send`.
 
 ## Gotchas

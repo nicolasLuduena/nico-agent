@@ -83,10 +83,12 @@ response.
 existing worktree with a note of what happened. _Avoid_: resume, repair,
 garden.
 
-**Needs you**: the strip across Repos listing what only the user can act on:
-Asking, failed twice, a review given up on or stopped, Verified PRs to merge, a
-Run whose agent herdr reports blocked, a failed or refused Install, a failing
-Readiness check. _Avoid_: inbox, alerts.
+**Needs you**: what only the user can act on, shown where it is on the page:
+Asking, failed twice, a review given up on or stopped, Verified PRs to merge
+and a blocked faux-nico as a yellow flag on the node; a quality-scan or
+morning agent herdr reports blocked, a failed or refused Install, a failing
+Readiness check and a paused Source as a toast. _Avoid_: inbox, alerts, band,
+strip.
 
 **Readiness check**: one of the things a Repo needs before the Loop works it,
 checked when `serve` starts, on Refresh, after a write to its or its

@@ -3,28 +3,18 @@
   import { projectOf } from "./controls/settings";
   import { repoLine } from "./hues";
   import { flash } from "./motion";
-  import { selection } from "./selection.svelte";
   import type { Project } from "./status";
-  import type { Need } from "./strip";
+  import type { Need } from "./toasts";
   import { clock } from "./time";
 
   let { needs, projects }: { needs: Need[]; projects: Project[] } = $props();
 
-  // A failing check is a toast, not a row: the Repo's Readiness holds it too. Dismissed for this page load only.
+  // Each dismissed for this page load only.
   const key = (need: Need) => `${need.repo} ${need.text}`;
   let dismissed = $state(new Set<string>());
-  const rows = $derived(needs.filter((n) => n.kind !== "Check"));
-  const toasts = $derived(needs.filter((n) => n.kind === "Check" && !dismissed.has(key(n))));
+  const toasts = $derived(needs.filter((n) => !dismissed.has(key(n))));
 
-  /** Show the tab of the item's Repo's Project with its node open; an Asking's, ready to answer. */
-  function open(need: Need) {
-    selection.project = need.repo && (projectOf(need.repo, projects)?.name ?? null);
-    selection.issue = need.issue;
-    selection.view = "map";
-    selection.answering = need.kind === "Asking" ? need.issue : null;
-  }
-
-  /** A row the band did not have: it flashes once as it arrives. Not on the first read, nor as the band turns yellow, which says it already. */
+  /** A toast the page did not have: it flashes once as it arrives, not on the first read. */
   function arrive(row: Element) {
     flash(row);
     return {};
@@ -37,63 +27,28 @@
   {#if line}<span class="swatch" style:--line={line}></span>{/if}
 {/snippet}
 
-<!-- What it says, and, when it has help (what to do about it), the help under it, both read whole. -->
-{#snippet said(need: Need)}
-  <span class="text" class:full={need.help}
-    >{@render ticked(need.text)}{#if need.help}<span class="help">{@render ticked(need.help)}</span>{/if}</span
-  >
-{/snippet}
-
-{#snippet cells(need: Need)}
-  <span class="label kind">{need.kind}</span>
-  {#if need.repo && need.issue}
-    <!-- `acme/api #7`, or `acme/api BLE-12` for a Linear issue. -->
-    <span class="ref">{@render swatch(need.repo)}{need.repo} {need.issue.replace(need.repo, "")}</span>
-    {@render said(need)}
-  {:else if need.kind === "Check" || need.kind === "Install"}
-    <!-- `acme/api: what it says`, and under it what to do about it. -->
-    <span class="ref">{@render swatch(need.repo ?? "")}{need.repo}:</span>
-    {@render said(need)}
-  {:else}
-    <span class="ref">{need.text}</span>
-    <span class="text"></span>
-  {/if}
-  <span class="at">{need.kind === "Paused" ? "until " : ""}{need.at ? clock(need.at) : ""}</span>
-{/snippet}
-
-<section class="band" class:empty={rows.length === 0} aria-label="Needs you">
-  {#if rows.length === 0}
-    <p>Nothing needs you</p>
-  {:else}
-    <ul>
-      {#each rows as need (`${need.kind} ${need.repo} ${need.issue ?? need.text}`)}
-        <li in:arrive>
-          {#if need.issue}
-            <button type="button" class="row" onclick={() => open(need)}>{@render cells(need)}</button>
-          {:else}
-            <div class="row">{@render cells(need)}</div>
-          {/if}
-        </li>
-      {/each}
-    </ul>
-  {/if}
-</section>
-
 {#if toasts.length}
-  <ul class="toasts" aria-label="Failing checks">
+  <ul class="toasts" aria-label="Needs you">
     {#each toasts as need (key(need))}
       <li class="toast" role="status" in:arrive>
         <span class="label kind">{need.kind}</span>
-        <span class="ref">{@render swatch(need.repo ?? "")}{need.repo}</span>
+        {#if need.kind === "Check" || need.kind === "Install"}
+          <!-- `acme/api: what it says`, and under it what to do about it, both read whole: the help is the fix. -->
+          <span class="ref">{@render swatch(need.repo ?? "")}{need.repo}:</span>
+          <span class="text">{@render ticked(need.text)}{#if need.help}<span class="help">{@render ticked(need.help)}</span>{/if}</span>
+        {:else}
+          <!-- `PAUSED GitHub until HH:MM`; `BLOCKED <agent> HH:MM` for an agent of the loop's own with no node. -->
+          <span class="ref">{need.text}</span>
+          <span class="text">{need.kind === "Paused" ? "until " : ""}{need.at ? clock(need.at) : ""}</span>
+        {/if}
         <button type="button" class="close" aria-label="Dismiss" onclick={() => (dismissed = new Set(dismissed).add(key(need)))}>×</button>
-        <span class="text full">{@render ticked(need.text)}{#if need.help}<span class="help">{@render ticked(need.help)}</span>{/if}</span>
       </li>
     {/each}
   </ul>
 {/if}
 
 <style>
-  /* Stacked over the page's corner, the band's yellow; across the foot on a phone. */
+  /* Stacked over the page's corner, in signal yellow; across the foot on a phone. */
   .toasts {
     position: fixed;
     right: 16px;
@@ -118,14 +73,25 @@
     border: 1px solid var(--rule);
     box-shadow: 0 6px 20px color-mix(in srgb, var(--signal-ink) 25%, transparent);
   }
-  .toast .kind {
+  .kind {
     grid-area: kind;
   }
-  .toast .ref {
+  .ref {
     grid-area: ref;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
-  .toast .text {
+  .text {
     grid-area: text;
+    overflow-wrap: anywhere;
+  }
+  .text:empty {
+    display: none;
+  }
+  .help {
+    display: block;
   }
   .close {
     grid-area: close;
@@ -144,113 +110,13 @@
   .close:focus-visible {
     outline-color: var(--signal-ink);
   }
-  .band {
-    background: var(--signal);
-    color: var(--signal-ink);
-    border-block: 1px solid var(--rule);
-    padding-block: 4px;
-  }
-  .band.empty {
-    background: var(--surface);
-    color: var(--ink-muted);
-    border-color: var(--hairline);
-    padding: 12px var(--gutter);
-  }
-  ul {
-    display: grid;
-    grid-template-columns: max-content max-content minmax(0, 1fr) max-content;
-    padding: 0;
-    list-style: none;
-  }
-  li,
-  .row {
-    display: grid;
-    grid-column: 1 / -1;
-    grid-template-columns: subgrid;
-  }
-  li + li {
-    border-top: 1px solid color-mix(in srgb, var(--signal-ink) 20%, var(--signal));
-  }
-  .row {
-    column-gap: 16px;
-    align-items: baseline;
-    width: 100%;
-    padding: 8px var(--gutter);
-    border: 0;
-    background: none;
-    color: inherit;
-    text-align: left;
-  }
-  button.row {
-    cursor: pointer;
-  }
-  button.row:hover {
-    background: color-mix(in srgb, var(--signal-ink) 8%, var(--signal));
-  }
-  button.row:hover .text {
-    text-decoration: underline;
-    text-underline-offset: 3px;
-  }
-  button.row:focus-visible {
-    outline-color: var(--signal-ink);
-    outline-offset: -4px;
-  }
-  .ref {
-    font-weight: 600;
-  }
-  /* On the band's yellow in both themes: framed in its ink, so a light line colour still shows. */
+  /* On the yellow in both themes: framed in its ink, so a light line colour still shows. */
   .swatch {
     margin-right: 8px;
     outline: 1px solid var(--signal-ink);
   }
-  /* A command keeps the band's own ink: the page's would be white on yellow in Dark. */
+  /* A command keeps the toast's own ink: the page's would be white on yellow in Dark. */
   .text :global(code) {
     color: inherit;
-  }
-  .text,
-  .ref {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .at {
-    text-align: right;
-  }
-  /* A help is the fix: read whole, never cut. */
-  .text.full {
-    white-space: normal;
-    overflow-wrap: anywhere;
-  }
-  .help {
-    display: block;
-  }
-
-  /* One item per block: kind, Repo and issue, and time; the question or title under them. */
-  @media (width < 720px) {
-    ul,
-    li {
-      display: block;
-    }
-    .row {
-      grid-template-columns: max-content minmax(0, 1fr) max-content;
-      grid-template-areas: "kind ref at" "text text text";
-      row-gap: 2px;
-    }
-    .kind {
-      grid-area: kind;
-    }
-    .ref {
-      grid-area: ref;
-    }
-    .at {
-      grid-area: at;
-    }
-    .text {
-      grid-area: text;
-      white-space: normal;
-    }
-    .text:empty {
-      display: none;
-    }
   }
 </style>

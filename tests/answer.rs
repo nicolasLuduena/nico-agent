@@ -458,7 +458,7 @@ fn an_implementer_herdr_reports_blocked_before_a_tick_sees_it_shows_its_pane_and
     t.world.add_issue("acme/api", github_issue("acme/api", 7));
     t.cli(&["dispatch", "acme/api#7"]);
     t.tick();
-    // Blocked since the last tick: the band shows it Asking, the Dispatch does not record it yet.
+    // Blocked since the last tick: its flag shows it Asking, the Dispatch does not record it yet.
     (t.world.agents.borrow_mut()).insert("impl-api-7".into(), "blocked".into());
     let dialog = "Should I keep the old endpoint?\n❯ 1. Keep it\n  2. Drop it";
     (t.world.screens.borrow_mut()).insert("impl-api-7".into(), dialog.into());

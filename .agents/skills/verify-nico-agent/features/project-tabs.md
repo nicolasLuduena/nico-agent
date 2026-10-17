@@ -23,7 +23,7 @@ has an Install, on that Install to run after the close; it is never stacked on i
 - `project-tabs-defaults` `region "<project>"`, headed `Defaults for its Repos, where they set none`, holds the Project's `spinbutton "Room"`, switches and settings, each chipped `default` until set, then `set here` with `button "Use the default <Setting>"`; a change sends `PATCH /api/project/<name>`.
 - `project-tabs-reach` a default set on the tab shows in each Repo's panel chipped `from Project`, except where the Repo sets its own, which offers `button "Use the Project's <Setting>"`.
 - `project-tabs-phone` under 720px the tabs are `combobox "Project"`.
-- `project-tabs-strip` a strip row of a Repo in a Project opens the Project's tab with the node's panel, titled `#<n> <repo name>`.
+- `project-tabs-asking` an Asking node of a Repo in a Project ends `needs you`, and its panel is titled `#<n> <repo name>`.
 
 ## How to get to it (user POV)
 
@@ -81,8 +81,8 @@ Preconditions:
   Project's Room"`, `"2"`, and has `text: from Project` beside `switch "Review"`, unchecked.
 - **Phone.** Run `$C page --evidence "$E/09-phone" --width 390`: no `tablist`; `combobox "Project"`
   with `option "verify" [selected]`.
-- **From the strip.** Run `$C seed dispatch 12 asking`, then `$C page --evidence "$E/10-strip-open" --click "button~Asking verify/fixture #12"`.
-  `tab "verify" [selected]`; the node `#12 fixture, Verify: seeded Dispatch 12, Implementing` is
+- **An Asking node.** Run `$C seed dispatch 12 asking`, then `$C page --evidence "$E/10-asking-open" --click "button~#12 fixture, Verify: seeded Dispatch 12"`.
+  `tab "verify" [selected]`; the node `#12 fixture, Verify: seeded Dispatch 12, Implementing, needs you` is
   `[pressed]`; `region "Verify: seeded Dispatch 12 #12 fixture"`; `.requests.txt` has `GET
   /api/node/verify%2Ffixture%2312 -> 200`.
 - **Status.** Run `$C run --evidence "$E/11-status" -- status --json`: `projects[0]` is `verify`

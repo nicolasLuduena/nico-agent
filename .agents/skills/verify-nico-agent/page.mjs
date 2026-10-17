@@ -107,7 +107,7 @@ try {
         const [, role, name] = step.within.match(/^([a-z]+)=(.*)$/s) ?? [];
         scope = role ? page.getByRole(role, { name, exact: true }).first() : page;
       } else if (step.click) {
-        // ROLE=NAME: the accessible name is NAME; ROLE~NAME: it contains NAME (a strip row's ends in its time).
+        // ROLE=NAME: the accessible name is NAME; ROLE~NAME: it contains NAME (a node's ends in its Stage).
         const [, role, how, name] = step.click.match(/^([a-z]+)([=~])(.*)$/s);
         await scope.getByRole(role, { name, exact: how === "=" }).first().click({ timeout: 10000 });
       } else if (step.press) {

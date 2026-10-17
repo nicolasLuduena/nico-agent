@@ -8,7 +8,7 @@
   const KEY = "nico-agent.morning-hidden";
   let hiddenText = $state(remembered());
   const hidden = $derived(hiddenText === text);
-  // Merge, Answer and Fix are the band's, live; the page keeps the night's history.
+  // Merge, Answer and Fix are the map's flags, live; the page keeps the night's history.
   const kept = $derived(withoutLive(text));
   const shown = $derived(blocks(kept));
 

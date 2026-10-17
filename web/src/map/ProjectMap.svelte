@@ -122,7 +122,7 @@
     glide({ k, x: width / 2 - (n.x + NODE.width / 2) * k, y: height / 2 - (n.y + n.height / 2) * k }, done);
   }
 
-  // A strip item opens its node: pan to it, once per opening.
+  // An opened node: pan to it, once per opening.
   let field: HTMLElement;
   $effect(() => {
     const key = selection.issue;

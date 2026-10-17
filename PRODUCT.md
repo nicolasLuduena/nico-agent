@@ -38,9 +38,9 @@ it binds the rebuild.
 - **A map per Project.** A node per issue of its Repos with its kind (code
   or research), state (Ready, Implementing, PR draft, Verified, Merged) and,
   when the Project has more than one, its Repo; edges for Blockers, across
-  its Repos too; a stacked PR drawn to the PR it targets. A needs-you strip across
-  Repos on top: Asking, failed twice, Verified PRs to merge, a failing
-  Readiness check (what will break a Repo before it does). The morning
+  its Repos too; a stacked PR drawn to the PR it targets. What needs you is
+  flagged on its node (Asking, failed twice, Verified PRs to merge) or is a
+  toast (a failing Readiness check: what will break a Repo before it does). The morning
   summary renders first each day. A Refresh button is the one way to ask
   GitHub again.
 - **A Wiki per Repo and per Library version.** What the code does, as a
@@ -84,7 +84,7 @@ One verb: **restart**. Start a fresh agent in the issue's existing worktree
 and tell it what happened: the machine rebooted, the agent stalled (idle with
 no PR for 20 minutes), the PR conflicts with its base, the PR below it
 merged, the Reviewer failed it. Same reason twice on one issue, or the PR
-below closed unmerged: stop and put it in the needs-you strip. State is files
+below closed unmerged: stop and flag it as needing you. State is files
 in the config directory, written atomically; herdr and the Sources stay the
 truth. `serve` runs as a user service with lingering, restarts the loop on
 boot, and writes one entry saying which Dispatches lost their agents.

@@ -12,7 +12,7 @@
   import { hash, movedTo, route } from "./route";
   import { selection } from "./selection.svelte";
   import type { Status } from "./status";
-  import { needsYou } from "./strip";
+  import { needsYou } from "./toasts";
   import ThemeSwitch from "./ThemeSwitch.svelte";
   import { clock } from "./time";
 

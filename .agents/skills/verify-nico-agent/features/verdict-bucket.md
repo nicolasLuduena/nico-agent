@@ -31,8 +31,7 @@ longer has.
 - The loop's tick, or the user's Refresh, sees the PR at a head it has not kept Evidence at.
 - The Reviewer runs `nico-agent verdict <issue> pass|fail --sha <head> [--findings <file>]` in its
   own worktree, checked out detached at the PR's head.
-- The user opens `/bucket/<owner>/<repo>/<n>/` (or the PR body's link), or clicks the node, or its
-  strip row, on the page and follows its Evidence links.
+- The user opens `/bucket/<owner>/<repo>/<n>/` (or the PR body's link), or clicks the node on the page and follows its Evidence links.
 
 ## Driving it with control-nico-agent
 
@@ -132,6 +131,6 @@ Preconditions:
 - A pass Verdict on a draft PR leaves the PR draft in `prs.json`: flipping it needs GitHub, which a
   run never reaches (a refresh tick tries `gh pr ready` and records the refusal).
 - `curl` normalises `..` unless told not to; `$C http` sends the path as given, which the 403 needs.
-- The panel's heading names the issue `#10` once a tab or a strip row has picked the Repo, but the
+- The panel's heading names the issue `#10` once a tab has picked the Repo, but the
   whole key `verify/fixture#10` when the node is clicked on the first tab as the page opened (no
   Repo picked yet). That is the page's behavior today (a product gap, not drift); match with `~`.

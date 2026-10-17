@@ -3,7 +3,6 @@
   // option's digit, or a key at a time; each `POST /api/answer`, then the
   // pane is read again to show what it did.
   import { reload } from "../live";
-  import { selection } from "../selection.svelte";
   import { options } from "./answer";
   import Refused from "./Refused.svelte";
   import { send, type Sent } from "./send";
@@ -53,14 +52,7 @@
     if (text.trim()) void answer({ text });
   }
 
-  // The needs-you band opened this node to answer it: the text box takes focus,
-  // leaving the panel at its top, where the pane is.
   let box: HTMLInputElement;
-  $effect(() => {
-    if (selection.answering !== issue) return;
-    box.focus({ preventScroll: true });
-    selection.answering = null;
-  });
 
   // The dialog is at the foot of the screen: the box starts scrolled to it.
   let screen = $state<HTMLElement>();

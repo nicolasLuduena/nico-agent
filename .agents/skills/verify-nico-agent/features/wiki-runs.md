@@ -17,7 +17,7 @@ failed build after it), why its last build failed, and the open Run's pane. No W
 - `wiki-runs-once` a failed build is not queued again before the next wiki hour, unless the switch goes off and on.
 - `wiki-runs-unmoved` a Wiki whose commit is still `origin/main`'s is not queued; a Base that moves later that day waits for the next day's check.
 - `wiki-runs-moved` a Wiki whose `origin/main` moved is queued: `<slug>: wiki queued, origin/main moved from <old> to <new>`.
-- `wiki-runs-not-needs-you` nothing about a Wiki reaches the needs-you strip or a notification.
+- `wiki-runs-not-needs-you` nothing about a Wiki flags a node, is a toast, or reaches a notification.
 
 ## How to get to it (user POV)
 
