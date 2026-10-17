@@ -5,7 +5,7 @@
   // opens a read-only panel. Nothing on it writes anywhere.
   import { repoLine } from "../hues";
   import { watch } from "../live";
-  import { number, repoName, type Project } from "../status";
+  import { number, numbered, repoName, type Project } from "../status";
   import Issue from "./Issue.svelte";
   import { CARD, layoutRoadmap, type RoadmapData } from "./layout";
 
@@ -33,8 +33,7 @@
     );
   });
 
-  const said = (key: string, repo: string, title: string, lane: string) =>
-    [[number(key, repo), repoName(repo, project.repos)].filter(Boolean).join(" "), title, lane].join(", ");
+  const said = (key: string, repo: string, title: string, lane: string) => [numbered(key, repo, project.repos), title, lane].join(", ");
 </script>
 
 <div class="work" class:open={opened}>

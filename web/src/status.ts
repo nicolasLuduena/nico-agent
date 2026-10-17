@@ -181,6 +181,10 @@ export function repoName(slug: string | null, repos: string[]): string | null {
   return repos.filter((r) => r.slice(r.indexOf("/") + 1) === name).length > 1 ? slug : name;
 }
 
+/** An issue as a node or panel of a Project of `repos` names it: its number, then its Repo's name when it has one. */
+export const numbered = (key: string, repo: string | null, repos: string[]) =>
+  [number(key, repo ?? ""), repoName(repo, repos)].filter(Boolean).join(" ");
+
 export type Stage = "Implementing" | "PR draft" | "Verified" | "Merged" | "Closed" | "Failed";
 
 export interface Dispatch {

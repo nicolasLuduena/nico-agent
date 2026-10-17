@@ -2237,8 +2237,7 @@ fn an_anchor_over_60_lines_is_corrected_then_dropped_as_a_gap_and_one_of_10_line
     let calls = whole_headless_calls(&t);
     assert_eq!(calls.len(), 4);
     assert!(
-        calls[1]
-            .contains(": lines 1-400 of src/long.rs are over 60 lines, too many to show a claim\n"),
+        calls[1].contains(": lines 1-400 of src/long.rs are over 60 lines, too many to show a claim\n"),
         "{}",
         calls[1]
     );

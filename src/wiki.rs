@@ -249,14 +249,7 @@ pub fn step(ctx: &Context, config: &Config) -> Result<Vec<String>, Refusal> {
             let made = ctx.world.herdr_workspace_create(&cwd, &run.launch.agent)?;
             let workspace = (run.workspace).insert(made.workspace);
             let label = run.trigger.label();
-            launch::open_tab(
-                ctx.world,
-                &mut run.launch,
-                workspace,
-                &cwd,
-                label,
-                Some(made.tab),
-            )?;
+            launch::open_tab(ctx.world, &mut run.launch, workspace, &cwd, label, Some(made.tab))?;
             let pane = run.launch.pane.as_deref().expect("its tab is open");
             // Its shell exits with it, so a pane gone is a build ended.
             let command = format!(

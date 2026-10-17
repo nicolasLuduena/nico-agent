@@ -123,10 +123,7 @@ pub fn map(ctx: &Context, name: &str) -> Result<Option<Value>, Refusal> {
         };
         let url = (issue.map(|i| i.url.clone()))
             .or_else(|| d.map(|d| d.url.clone()))
-            .or_else(|| {
-                let (slug, number) = source::github_ref(key)?;
-                Some(format!("https://github.com/{slug}/issues/{number}"))
-            });
+            .or_else(|| source::github_url(key));
         let title = (issue.map(|i| i.title.as_str()))
             .or(d.map(|d| d.title.as_str()))
             .or_else(|| {

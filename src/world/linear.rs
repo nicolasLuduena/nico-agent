@@ -12,7 +12,7 @@ use serde_json::{Value, json};
 
 use super::{
     HttpRequest, HttpResponse, LinearBlocker, LinearIssue, LinearProject, LinearTeam, Named, Nodes,
-    Page, PageInfo, READY_LABEL, RealWorld, World, WorldError, WorldResult, curl, invalid,
+    Page, PageInfo, RealWorld, World, WorldError, WorldResult, curl, invalid,
 };
 use crate::state;
 
@@ -95,18 +95,23 @@ pub(super) fn viewer(world: &RealWorld) -> WorldResult<String> {
         .ok_or_else(|| invalid("Linear"))
 }
 
-/// The team's `ready-for-agent` issues, or with `ready` off every one neither
+/// The team's issues labelled `label`, or without one every one neither
 /// completed nor canceled; `team` is its id, key or name.
-pub(super) fn issues(world: &RealWorld, team: &str, ready: bool) -> WorldResult<Vec<LinearIssue>> {
+pub(super) fn issues(
+    world: &RealWorld,
+    team: &str,
+    label: Option<&str>,
+) -> WorldResult<Vec<LinearIssue>> {
     let team_filter = if is_uuid(team) {
         json!({ "id": { "eq": team } })
     } else {
         json!({ "or": [{ "key": { "eq": team } }, { "name": { "eq": team } }] })
     };
-    let filter = if ready {
-        json!({ "team": team_filter, "labels": { "name": { "eq": READY_LABEL } } })
-    } else {
-        json!({ "team": team_filter, "state": { "type": { "nin": ["completed", "canceled"] } } })
+    let filter = match label {
+        Some(label) => json!({ "team": team_filter, "labels": { "name": { "eq": label } } }),
+        None => {
+            json!({ "team": team_filter, "state": { "type": { "nin": ["completed", "canceled"] } } })
+        }
     };
     let mut issues = vec![];
     let mut cursor: Option<String> = None;

@@ -4,12 +4,10 @@
   import { onMount } from "svelte";
   import { named } from "../controls/assign";
   import Markdown from "../Markdown.svelte";
-  import { number, repoName, type Project } from "../status";
+  import { number, numbered, type Project } from "../status";
   import type { Link, RoadmapNode } from "./layout";
 
   let { node, project, close }: { node: RoadmapNode; project: Project; close: () => void } = $props();
-
-  const numbered = (key: string) => [number(key, node.repo), repoName(node.repo, project.repos)].filter(Boolean).join(" ");
 
   // Focus moves to the title as it opens, and back to the node that opened it as it closes.
   let panel: HTMLElement;
@@ -48,7 +46,7 @@
   <header class="line">
     <h2 id="roadmap-title" tabindex="-1" bind:this={title}>
       {node.title}
-      <a href={node.url} target="_blank" rel="noreferrer">{numbered(node.key)}</a>
+      <a href={node.url} target="_blank" rel="noreferrer">{numbered(node.key, node.repo, project.repos)}</a>
     </h2>
     <button type="button" class="quiet" onclick={close}>Close</button>
   </header>

@@ -183,7 +183,8 @@ fn settled(
 /// at or after the close. None in another Repo is stacked on.
 fn settle(read: &mut Read, config: &Config, slug: &str, installs: &BTreeMap<String, Install>) {
     read.mine = config.repos[slug].switches.mine.then(|| slug.to_string());
-    for blocker in read.issues.iter_mut().flat_map(|i| &mut i.blockers) {
+    let issues = read.issues.iter_mut().chain(&mut read.open);
+    for blocker in issues.flat_map(|i| &mut i.blockers) {
         let Some(other) = repo_in(config, slug, &blocker.key).filter(|s| *s != slug) else {
             continue;
         };
@@ -239,9 +240,20 @@ fn fresh(
     }
     match read(world, slug, repo) {
         Err(e) => Ok((cached, Some(e))),
-        Ok(read) => {
+        Ok(mut read) => {
+            // The Roadmap's read failing keeps its last, never the loop's.
+            let error = match open(world, slug, repo) {
+                Ok(open) => {
+                    read.open = open;
+                    None
+                }
+                Err(e) => {
+                    read.open = cached.map(|c| c.open).unwrap_or_default();
+                    Some(WorldError(format!("the Roadmap's read: {}", e.0)))
+                }
+            };
             state::update(&file, |_| Ok::<_, io::Error>((state::text(&read), ())))?;
-            Ok((Some(read), None))
+            Ok((Some(read), error))
         }
     }
 }
@@ -306,6 +318,17 @@ fn read(world: &dyn World, slug: &str, repo: &Repo) -> WorldResult<Read> {
             blocker.prs = asked[&blocker.key].clone();
         }
     }
+    Ok(Read {
+        read_at,
+        user,
+        issues,
+        open: vec![],
+        mine: None,
+    })
+}
+
+/// Every open issue of the Repo's Sources, whatever its labels, for the Roadmap.
+fn open(world: &dyn World, slug: &str, repo: &Repo) -> WorldResult<Vec<Issue>> {
     let mut open: Vec<Issue> = (world.github_open_issues(slug)?.iter())
         .map(|i| from_github(slug, i))
         .collect();
@@ -313,13 +336,7 @@ fn read(world: &dyn World, slug: &str, repo: &Repo) -> WorldResult<Read> {
         let team = world.linear_open_issues(&selector.team)?;
         open.extend(team.iter().filter(|i| claims(selector, i)).map(from_linear));
     }
-    Ok(Read {
-        read_at,
-        user,
-        issues,
-        open,
-        mine: None,
-    })
+    Ok(open)
 }
 
 /// The open PRs in `repo` a Blocker's work could be stacked on: for GitHub,
@@ -640,6 +657,12 @@ fn from_linear(issue: &LinearIssue) -> Issue {
             })
             .collect(),
     }
+}
+
+/// The page of the GitHub issue `key`; `None` for a Linear identifier.
+pub fn github_url(key: &str) -> Option<String> {
+    let (slug, number) = github_ref(key)?;
+    Some(format!("https://github.com/{slug}/issues/{number}"))
 }
 
 /// The slug and number of the GitHub issue `key`; `None` for a Linear

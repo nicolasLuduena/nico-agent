@@ -43,7 +43,7 @@ Preconditions:
   and `#9, Verify: a Blocker in review, no label`. The screenshot draws the lanes `NEEDS-TRIAGE`, `NEEDS-INFO`
   and `NO LABEL` left to right, an arrow from `#30` straight into `#31`, and one from `#2` over the lanes into `#30`'s
   right side. `.requests.txt` has `GET /api/roadmap/verify%2Ffixture -> 200` and no write.
-- **A node.** Run `$C page --evidence "$E/04-panel" --hash "#verify%2Ffixture/roadmap" --click "button~#30, Verify: needs triage"`.
+- **A node.** Run `$C page --evidence "$E/04-panel" --hash "#verify%2Ffixture/roadmap" --expect "herdr server stop" --click "button=Dismiss" --click "button=Dismiss" --click "button=Dismiss" --click "button=Dismiss" --click "button=Dismiss" --click "button~#30, Verify: needs triage"`.
   The node is `[pressed]`; `region "Verify: needs triage #30"` holds `link "#30"`, Labels `needs-triage, bug`,
   Assigned `you, someone-else`, Description with `Why` in bold, the list `keep it`, `drop it`, `README.md` as
   code and `link "https://example.com/spec"`, Blocked by `link "#2"` `Verify: not labelled`, Blocks
@@ -59,6 +59,6 @@ Preconditions:
 
 - `seed issues` keeps `#9`, `#30` and `#31` in the read's `open` list only: they are not in `issues`,
   so the map and `status` don't show them, as a GitHub read keeps them.
-- On a phone the Readiness checks' five toasts arrive a moment after the page loads and cover the
-  Roadmap: `--expect` the last one's text, then dismiss each before clicking a node.
+- The Readiness checks' five toasts arrive a moment after the page loads and cover the panel on a
+  desktop and the Roadmap on a phone: `--expect` the last one's text, then dismiss each before clicking a node.
 - A node's button names its lane by its label (`needs-triage`); the frame shows it in capitals.

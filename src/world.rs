@@ -1769,10 +1769,10 @@ impl World for RealWorld {
         linear::viewer(self)
     }
     fn linear_issues(&self, team: &str) -> WorldResult<Vec<LinearIssue>> {
-        linear::issues(self, team, true)
+        linear::issues(self, team, Some(READY_LABEL))
     }
     fn linear_open_issues(&self, team: &str) -> WorldResult<Vec<LinearIssue>> {
-        linear::issues(self, team, false)
+        linear::issues(self, team, None)
     }
     fn linear_attachment_urls(&self, identifier: &str) -> WorldResult<Vec<String>> {
         linear::attachment_urls(self, identifier)

@@ -51,10 +51,7 @@ pub fn roadmap(ctx: &Context, name: &str) -> Result<Option<Value>, Refusal> {
     let on = |key: &str| issues.iter().any(|i| i.key == key && shown(i));
     let link = |key: &str, title: Option<&str>| {
         let issue = issues.iter().find(|i| i.key == key);
-        let url = (issue.map(|i| i.url.clone())).or_else(|| {
-            let (slug, number) = source::github_ref(key)?;
-            Some(format!("https://github.com/{slug}/issues/{number}"))
-        });
+        let url = (issue.map(|i| i.url.clone())).or_else(|| source::github_url(key));
         json!({ "key": key, "title": issue.map(|i| i.title.as_str()).or(title), "url": url })
     };
     let mut nodes = vec![];

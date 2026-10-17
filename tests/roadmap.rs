@@ -120,23 +120,74 @@ fn keys(roadmap: &Value) -> Vec<&str> {
 }
 
 #[test]
-fn with_github_unreachable_the_roadmap_shows_what_was_read_last() {
+fn with_the_roadmaps_read_failing_it_shows_what_was_read_last_and_the_loops_read_still_lands() {
     let t = read(vec![labelled(2, &["needs-triage"])]);
     t.world.add_issue("acme/api", labelled(3, &["needs-info"]));
     t.world
+        .add_issue("acme/api", labelled(4, &["ready-for-agent"]));
+    t.world
         .fail_call("github open issues", "HTTP 502: Bad Gateway");
     t.world.advance(Duration::from_secs(600));
-    t.tick();
 
+    let said = t.tick();
+    let (status, roadmap) = t.get("/api/roadmap/acme/api");
+
+    assert_eq!(
+        said,
+        ["could not read the issues of acme/api: the Roadmap's read: HTTP 502: Bad Gateway"]
+    );
+    assert_eq!(status, 200, "{roadmap}");
+    assert_eq!(keys(&roadmap), ["acme/api#2"]);
+    let shown = t.cli(&["status", "--json"]).json();
+    assert_eq!(shown["repos"][0]["ready"][0]["key"], "acme/api#4");
+    assert_eq!(shown["repos"][0]["read_at"], "2026-09-30T12:10:00Z");
+}
+
+#[test]
+fn with_github_paused_the_roadmap_shows_what_was_read_last_and_asks_nothing() {
+    let t = read(vec![labelled(2, &["needs-triage"])]);
+    t.world.add_issue("acme/api", labelled(3, &["needs-info"]));
+    t.world.fail_call(
+        "github issues",
+        "GitHub rate limit exceeded; nico-agent asks it again at 2026-09-30T13:00:00Z",
+    );
+    t.world.advance(Duration::from_secs(600));
+    t.tick();
+    t.world.clear_failures();
+    t.world.advance(Duration::from_secs(600));
+    t.world.calls.borrow_mut().clear();
+
+    t.tick();
     let (status, roadmap) = t.get("/api/roadmap/acme/api");
 
     assert_eq!(status, 200, "{roadmap}");
     assert_eq!(keys(&roadmap), ["acme/api#2"]);
     let calls = t.world.calls();
+    assert!(!calls.iter().any(|c| c.contains("issues")), "{calls:?}");
+}
+
+#[test]
+fn a_blocker_in_another_repo_closed_but_not_yet_installed_still_blocks_on_the_roadmap() {
+    let t = setup();
+    std::fs::create_dir_all(&t.config_dir).unwrap();
+    let config = "[repos.\"acme/api\"]\npath = \"/src/api\"\nproject = \"shop\"\nswitches = { dispatch = false }\n\n[repos.\"acme/web\"]\npath = \"/src/web\"\nproject = \"shop\"\ninstall = \"make install\"\nswitches = { dispatch = false }\n";
+    std::fs::write(t.config_dir.join("config.toml"), config).unwrap();
+    let mut blocked = labelled(2, &["needs-triage"]);
+    blocked.blockers = vec![GitHubBlocker {
+        slug: "acme/web".into(),
+        number: 3,
+        title: "Issue 3".into(),
+        state: IssueState::Closed,
+        closed_at: Some("2026-09-29T00:00:00Z".into()),
+    }];
+    t.world.add_issue("acme/api", blocked);
+    t.tick();
+
+    let (_, roadmap) = t.get("/api/roadmap/shop");
+
     assert_eq!(
-        (calls.iter().filter(|c| c.starts_with("github open issues"))).count(),
-        2,
-        "{calls:?}"
+        roadmap["nodes"][0]["blocked_by"],
+        json!([{ "key": "acme/web#3", "title": "Issue 3", "url": "https://github.com/acme/web/issues/3" }])
     );
 }
 
