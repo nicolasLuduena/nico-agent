@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { blocks, firstLine, withoutLive } from "./markdown";
+import { blocks, firstText, spans } from "./markdown";
 
 const text = (text: string) => ({ kind: "text", text });
 
-describe("the Morning summary's Markdown", () => {
+describe("an agent's Markdown", () => {
   it("is headings, lists and lines, blank lines dropped", () => {
     const summary = "## Merge these\n1. acme/api#7\n2. acme/api#8\n\n## Answer these\nNothing needs you\n- acme/web#3 Keep v1?\n";
 
@@ -42,11 +42,11 @@ describe("the Morning summary's Markdown", () => {
   });
 });
 
-describe("the Morning summary's first line", () => {
+describe("the first line of an agent's Markdown", () => {
   it("is the first line that is not a heading", () => {
     const summary = "# Morning\n\n## Merge these\n  Morning of 2026-10-12: **2** to merge, 1 to answer  \n- acme/api#7\n";
 
-    expect(firstLine(summary)).toEqual([
+    expect(spans(firstText(summary))).toEqual([
       text("Morning of 2026-10-12: "),
       { kind: "strong", text: "2" },
       text(" to merge, 1 to answer"),
@@ -54,26 +54,11 @@ describe("the Morning summary's first line", () => {
   });
 
   it("drops a list item's marker", () => {
-    expect(firstLine("## Landed\n- acme/api#5 Read once\n")).toEqual([text("acme/api#5 Read once")]);
-    expect(firstLine("## Merge these\n1. acme/api#7\n")).toEqual([text("acme/api#7")]);
+    expect(spans(firstText("## Landed\n- acme/api#5 Read once\n"))).toEqual([text("acme/api#5 Read once")]);
+    expect(spans(firstText("## Merge these\n1. acme/api#7\n"))).toEqual([text("acme/api#7")]);
   });
 
   it("is nothing when every line is a heading", () => {
-    expect(firstLine("# Morning\n\n## Nothing\n")).toEqual([]);
-  });
-});
-
-describe("the Morning summary on the page", () => {
-  it("drops the sections the map's flags show live, keeping the night's history", () => {
-    const summary =
-      "## Merge these\n1. acme/api#7\n\n## Answer these\nNothing needs you\n\n## Fix these\n- acme/api#9: stalled\n\n## Landed\n- acme/api#5 Read once\n\n## Filed\nNothing ran\n";
-
-    expect(blocks(withoutLive(summary))).toEqual([
-      { kind: "heading", spans: [text("Landed")] },
-      { kind: "list", ordered: false, items: [[text("acme/api#5 Read once")]] },
-      { kind: "heading", spans: [text("Filed")] },
-      { kind: "line", spans: [text("Nothing ran")] },
-    ]);
-    expect(firstLine(withoutLive(summary))).toEqual([text("acme/api#5 Read once")]);
+    expect(spans(firstText("# Morning\n\n## Nothing\n"))).toEqual([]);
   });
 });

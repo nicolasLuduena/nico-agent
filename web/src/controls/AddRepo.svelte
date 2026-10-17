@@ -1,6 +1,6 @@
 <script lang="ts">
   // Add a Repo, as `repo add` does: its owner/name, the path of its clone and,
-  // if any, the Project it joins. Its Project's tab opens once added.
+  // if any, the Project it joins. Its Project shows once added.
   import { reload } from "../live";
   import { selection } from "../selection.svelte";
   import type { Status } from "../status";

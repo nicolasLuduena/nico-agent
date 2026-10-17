@@ -24,7 +24,7 @@ section, with its help; once the user does what the help says, the next run pass
 
 ## How to get to it (user POV)
 
-- Read the toasts or a Repo's tab on the page, after serve starts or a Refresh.
+- Read the toasts or a Repo's panel on the page, after serve starts or a Refresh.
 - Run `nico-agent status --json` and read `repos[].checks`.
 - Change a setting or switch on the tab; the Repo is checked again.
 

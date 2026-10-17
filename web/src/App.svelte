@@ -4,7 +4,6 @@
   import Libraries from "./Libraries.svelte";
   import Refresh from "./controls/Refresh.svelte";
   import { watch } from "./live";
-  import Morning from "./Morning.svelte";
   import { flash } from "./motion";
   import NeedsYou from "./NeedsYou.svelte";
   import ProjectTab from "./ProjectTab.svelte";
@@ -45,7 +44,7 @@
     ),
   );
 
-  /** A tab per Project with a Repo: a Repo naming none is its own; then the Libraries tab, of no Project. */
+  /** An option per Project with a Repo: a Repo naming none is its own; then Libraries, of no Project. */
   const projects = $derived(status?.projects.filter((p) => p.repos.length > 0) ?? []);
   const onLibraries = $derived(selection.project === null && selection.view === "libraries");
   const project = $derived(projects.find((p) => p.name === selection.project) ?? projects[0]);
@@ -56,14 +55,14 @@
     return times.includes(null) ? null : times.sort()[0];
   };
 
-  /** The tab at `i`: a Project's, its view kept, or past them the Libraries tab. */
+  /** The option at `i`: a Project's, its view kept, or past them Libraries. */
   function show(i: number) {
     const libraries = i === projects.length;
     const view = libraries ? "libraries" : selection.view === "libraries" ? "map" : selection.view;
     Object.assign(selection, { project: libraries ? null : projects[i].name, view, issue: null });
   }
 
-  /** The read times flash once when a read moves them, not when another Project's tab shows its own. */
+  /** The read times flash once when a read moves them, not when another Project shows its own. */
   function moved(el: HTMLElement, [name, times]: [string, string]) {
     return {
       update([nextName, nextTimes]: [string, string]) {
@@ -73,16 +72,6 @@
     };
   }
 
-  /** The tabs' arrow keys, Home and End: the next tab shows, and takes focus. */
-  function step(event: KeyboardEvent) {
-    const tabs = projects.length + 1;
-    const to = { ArrowRight: at + 1, ArrowLeft: at - 1, Home: 0, End: tabs - 1 }[event.key];
-    if (to === undefined) return;
-    event.preventDefault();
-    const next = (to + tabs) % tabs;
-    show(next);
-    document.getElementById(`tab-${next}`)?.focus();
-  }
 </script>
 
 <svelte:window onhashchange={follow} />
@@ -98,11 +87,6 @@
 </header>
 
 <main>
-  <!-- The Morning summary: the page's first section, nothing until morning.md exists. -->
-  {#if status?.morning_summary?.trim()}
-    <Morning text={status.morning_summary} />
-  {/if}
-
   {#if failure}
     <p class="errata" role="status"><strong>{failure}</strong></p>
   {/if}
@@ -114,30 +98,6 @@
       {@const read = oldest("read_at")}
       {@const checked = oldest("prs_checked_at")}
       <div class="bar">
-        <div class="tabs" role="tablist" aria-label="Projects">
-          {#each projects as p, i (p.name)}
-            <button
-              type="button"
-              role="tab"
-              id="tab-{i}"
-              aria-selected={i === at}
-              aria-controls="project-tab"
-              tabindex={i === at ? 0 : -1}
-              onclick={() => show(i)}
-              onkeydown={step}>{p.name}</button
-            >
-          {/each}
-          <button
-            type="button"
-            role="tab"
-            id="tab-{projects.length}"
-            aria-selected={onLibraries}
-            aria-controls="project-tab"
-            tabindex={onLibraries ? 0 : -1}
-            onclick={() => show(projects.length)}
-            onkeydown={step}>Libraries</button
-          >
-        </div>
         <label class="pick">
           <span class="label">Project</span>
           <select value={at} onchange={(e) => show(Number(e.currentTarget.value))}>
@@ -147,7 +107,18 @@
             <option value={projects.length}>Libraries</option>
           </select>
         </label>
-        <!-- Beside the tabs; above them when long Project names leave no room, so the tabs stay on the baseline. -->
+        {#if !onLibraries}
+          <nav class="views" aria-label="View">
+            {#each [["map", "Map"], ["wiki", "Wiki"]] as const as [view, name] (view)}
+              <a
+                class="label"
+                href={hash({ project: project.name, view })}
+                aria-current={selection.view === view ? "page" : undefined}>{name}</a
+              >
+            {/each}
+          </nav>
+        {/if}
+        <!-- At the row's right; under the select and the views when they leave it no room. -->
         <div class="read">
           {#if !onLibraries}
             <p class="times" use:moved={[project.name, `${read} ${checked}`]}>
@@ -158,13 +129,11 @@
           <Refresh />
         </div>
       </div>
-      <div role="tabpanel" id="project-tab" aria-labelledby="tab-{at}">
-        {#if onLibraries}
-          <Libraries {status} />
-        {:else}
-          <ProjectTab {project} {status} />
-        {/if}
-      </div>
+      {#if onLibraries}
+        <Libraries {status} />
+      {:else}
+        <ProjectTab {project} {status} />
+      {/if}
     {:else}
       <p class="none">No Repo yet. Add one here, or with <code>nico-agent repo add &lt;owner/name&gt; --path &lt;clone&gt;</code>.</p>
     {/if}
@@ -202,47 +171,41 @@
     padding: 16px var(--gutter);
     color: var(--ink-muted);
   }
-  /* Wrapping in reverse: a line that does not fit goes above the tabs, never between them and their baseline. */
   .bar {
     display: flex;
-    flex-wrap: wrap-reverse;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 12px 16px;
+    gap: 8px 24px;
     margin: 0 var(--gutter);
-    padding-top: 8px;
+    padding: 8px 0;
     border-bottom: 1px solid var(--hairline);
   }
-  .tabs {
+  .pick {
     display: flex;
-    flex-wrap: wrap;
-    column-gap: 24px;
-    margin-right: auto;
+    align-items: center;
+    gap: 12px;
   }
-  /* Each Project's name heads its work, set as DESIGN.md's `head`, its rule as wide as the name. */
-  [role="tab"] {
-    padding: 10px 0 8px;
-    border: 0;
-    border-bottom: 3px solid transparent;
-    margin-bottom: -1px;
-    background: none;
-    color: var(--ink-muted);
-    font-size: 22px;
+  select {
+    min-width: 0;
     font-weight: 600;
-    line-height: 1.2;
-    cursor: pointer;
   }
-  [role="tab"]:hover {
+  /* Map | Wiki: the Project's two views. */
+  .views {
+    display: flex;
+    gap: 24px;
+  }
+  .views a {
+    padding: 4px 0;
+    border-bottom: 3px solid transparent;
+    color: var(--ink-muted);
+    text-decoration: none;
+  }
+  .views a:hover {
     color: var(--ink);
   }
-  [role="tab"][aria-selected="true"] {
+  .views a[aria-current="page"] {
     color: var(--ink);
     border-bottom-color: var(--rule);
-  }
-  [role="tab"]:focus-visible {
-    outline-offset: 2px;
-  }
-  .pick {
-    display: none;
   }
   .read {
     display: flex;
@@ -257,36 +220,13 @@
     text-align: right;
   }
 
-  /* The tabs become one select named Project; the read times and Refresh wrap under it. */
+  /* The select takes its own line; the read times and Refresh wrap under the views. */
   @media (width < 720px) {
-    .bar {
-      flex-wrap: wrap;
-      gap: 8px 16px;
-      padding-top: 0;
-      padding-bottom: 12px;
-    }
-    .read {
-      flex: 1 1 100%;
-      margin-left: 0;
-    }
-    .tabs {
-      display: none;
-    }
     .pick {
-      display: flex;
-      align-items: center;
-      gap: 12px;
       flex: 1 1 100%;
-      padding-top: 4px;
     }
     select {
       flex: 1;
-      min-width: 0;
-      font-weight: 600;
-    }
-    .times {
-      margin-right: auto;
-      text-align: left;
     }
   }
 </style>

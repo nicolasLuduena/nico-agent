@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // page.mjs — open serve's page in headless Chromium, act on it as a user does, capture what it shows.
 // Called by `control-nico-agent page`, which passes the run's URL first and sets VERIFY_PLAYWRIGHT:
-//   page.mjs <url> [--evidence PREFIX] [--width PX] [--scheme light|dark] [--storage FILE|none] [--path PATH] [--hash HASH] [--within ROLE=NAME | --click ROLE=NAME | --click ROLE~NAME
+//   page.mjs <url> [--evidence PREFIX] [--width PX] [--scheme light|dark] [--storage FILE|none] [--path PATH] [--hash HASH] [--within ROLE=NAME | --click ROLE=NAME | --click ROLE~NAME | --select NAME=OPTION
 //            | --press KEY | --type TEXT | --expect TEXT | --gone TEXT | --wait SECONDS | --history back|forward | --mode pass|502|signed-out | --hold SECONDS]...
 // --path PATH opens <url>PATH (a Wiki's page, /wiki/<id>) for the Board at /; --hash HASH opens it at HASH, as a
 // link does; --history back|forward is the browser's Back or Forward. --scheme dark is a browser whose system
@@ -41,6 +41,7 @@ for (let i = 0; i < argv.length; i++) {
   else if (flag === "--path" && value.startsWith("/")) path = value;
   else if (flag === "--scheme" && ["light", "dark"].includes(value)) scheme = value;
   else if (flag === "--click" && /^[a-z]+[=~]/.test(value)) steps.push({ click: value });
+  else if (flag === "--select" && value.includes("=")) steps.push({ select: value });
   else if (flag === "--within" && (value === "page" || /^[a-z]+=/.test(value))) steps.push({ within: value });
   else if (flag === "--press") steps.push({ press: value });
   else if (flag === "--type") steps.push({ type: value });
@@ -54,7 +55,7 @@ for (let i = 0; i < argv.length; i++) {
 }
 
 function usage(why) {
-  console.error(`page: ${why}\nusage: page [--evidence PREFIX] [--width PX] [--scheme light|dark] [--storage FILE|none] [--path PATH] [--hash HASH] [--within ROLE=NAME|page] [--click ROLE=NAME | --click ROLE~NAME | --press KEY | --type TEXT | --expect TEXT | --gone TEXT | --wait SECONDS | --history back|forward | --mode pass|502|signed-out | --hold SECONDS]...`);
+  console.error(`page: ${why}\nusage: page [--evidence PREFIX] [--width PX] [--scheme light|dark] [--storage FILE|none] [--path PATH] [--hash HASH] [--within ROLE=NAME|page] [--click ROLE=NAME | --click ROLE~NAME | --select NAME=OPTION | --press KEY | --type TEXT | --expect TEXT | --gone TEXT | --wait SECONDS | --history back|forward | --mode pass|502|signed-out | --hold SECONDS]...`);
   process.exit(2);
 }
 
@@ -110,6 +111,10 @@ try {
         // ROLE=NAME: the accessible name is NAME; ROLE~NAME: it contains NAME (a node's ends in its Stage).
         const [, role, how, name] = step.click.match(/^([a-z]+)([=~])(.*)$/s);
         await scope.getByRole(role, { name, exact: how === "=" }).first().click({ timeout: 10000 });
+      } else if (step.select) {
+        // NAME=OPTION: the combobox named NAME picks the option whose label is OPTION, as a user's pick fires change.
+        const [, name, option] = step.select.match(/^([^=]*)=(.*)$/s);
+        await scope.getByRole("combobox", { name, exact: true }).first().selectOption({ label: option }, { timeout: 10000 });
       } else if (step.press) {
         await page.keyboard.press(step.press);
       } else if (step.type !== undefined) {

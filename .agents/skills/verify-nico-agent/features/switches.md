@@ -2,7 +2,7 @@
 
 Each Repo has a switch per automatic step of the loop: dispatch, mine (only issues assigned to the
 user, in [mine](./mine.md)), stack, review, restart, flip, answer (faux-nico answers), gardening,
-quality_scan, wiki. The page shows all ten in the Repo's tab, each
+quality_scan, wiki. The page shows all ten in the Repo's panel, each
 tagged `default` or `from Project` while the Repo does not set it and `set here` once it does, and
 writes a toggle to `config.toml` through `PATCH /api/repo/<slug>` with `{"switches": {name: bool}}`,
 keeping the rest of the file as written; "Use the default" beside a switch the Repo sets removes it (see settings). Scripts can
@@ -22,7 +22,7 @@ tick on.
 
 ## How to get to it (user POV)
 
-- Open the page, pick a Repo's tab, and toggle a switch in its `Switches` section: `Faux-nico
+- Open the page, pick a Repo's Project in the `Project` select, and toggle a switch in its `Switches` section: `Faux-nico
   answers`, `Dispatch`, `Flip to ready`, `Gardening`, `Only issues assigned to me`, `Quality-scan`,
   `Restart`, `Review`, `Stack`, `Wiki`.
 - From a script: `PATCH /api/repo/<owner/name>/switches` with a JSON object of switches.

@@ -11,7 +11,7 @@ Interpretations as one list in the build's order, each with its kind and its Anc
 each opening GitHub at the Wiki's commit and lines, then whichever of its Relationship
 diagram, its Explainer, its sub-Components (each with its overview's first sentence) and its Gaps
 it has, and a link to the next Component in the tree's order. Under 1080px the outline, and under
-720px the tree too, open as bottom sheets. A Project tab's Wiki view lists its Wikis, each a link to
+720px the tree too, open as bottom sheets. A Project's Wiki view lists its Wikis, each a link to
 its page, and keeps the Wiki settings; an old link to a Component on the Board,
 `#<project>/wiki/<wiki>/<component>`, opens the page at that Component. Back and forward move
 between Components. serve answers the Wikis at `GET /api/wikis` and one at `GET /api/wiki/<id>`.
@@ -22,7 +22,7 @@ between Components. serve answers the Wikis at `GET /api/wikis` and one at `GET 
 - `wiki-page-route` `GET /wiki/<id>` (any id, a Library version's too) is `200` `text/html`, the app's page, as `GET /` is.
 - `wiki-list` a Project's Wiki view (`#<project>/wiki`) holds `button "Wiki settings"` and `list "Wikis"`: per Wiki a `link "<id>"` to `/wiki/<id>` and where its build stands (`Built HH:MM · describes <sha>`, or `Not built yet`, after `Building` or `Queued`; `Last build failed` and why under it).
 - `wiki-empty` a Project with no Wiki built shows, in its Wiki view, `nico-agent wiki build <slug>` for each of its Repos.
-- `wiki-page` `/wiki/<id>#<component>` opens the page on it: `banner` with `link "Board"` (to `/`), the id, `Describes <sha> · Built HH:MM · Up to date with main` (how far behind and what is Stale: [wiki-update.md](./wiki-update.md)); `navigation "Components"` holds the tree, `article "<name>"` the Component, `heading "<name>" [level=1]`; nothing of the Board (no `tablist "Projects"`, no `button "Refresh"`).
+- `wiki-page` `/wiki/<id>#<component>` opens the page on it: `banner` with `link "Board"` (to `/`), the id, `Describes <sha> · Built HH:MM · Up to date with main` (how far behind and what is Stale: [wiki-update.md](./wiki-update.md)); `navigation "Components"` holds the tree, `article "<name>"` the Component, `heading "<name>" [level=1]`; nothing of the Board (no `combobox "Project"`, no `button "Refresh"`).
 - `wiki-old-link` `/#<project>/wiki/<owner%2Fname>/<component>` lands at `/wiki/<owner>/<name>#<component>`; `#<project>/wiki` alone stays the Board's Wiki view.
 - `wiki-unknown` `/wiki/<id>` of no Wiki says `No Wiki is named <id>.` with a `link "Board"`.
 - `wiki-trail` `navigation "Trail"` holds a `link` per Component above the open one, from the top down; the top one has none.
@@ -44,10 +44,10 @@ between Components. serve answers the Wikis at `GET /api/wikis` and one at `GET 
 
 ## How to get to it (user POV)
 
-- Click `Wiki` beside `Map` on a Project's tab, then a Wiki's name; on its page, a Component in the
+- Click `Wiki` beside `Map` on a Project's row, then a Wiki's name; on its page, a Component in the
   tree, its trail, under Components, in a Relationship diagram or Next, and a step of an Explainer;
   or type in Search this Wiki and follow a hit, or a head in the outline.
-- Open a link to `<serve>/wiki/<owner>/<name>#<component>`, as a PR body, the morning summary or an
+- Open a link to `<serve>/wiki/<owner>/<name>#<component>`, as a PR body, `morning.md` or an
   agent's answer can point at one, or one copied from the address bar; an old
   `<serve>/#<project>/wiki/<owner%2Fname>/<component>`.
 - Ask serve: `GET /wiki/<owner>/<name>`, `GET /api/wikis`, `GET /api/wiki/<owner>/<name>`.
@@ -109,7 +109,7 @@ Preconditions:
   dropped), each `link "README.md line 1"` (or `line 3`) to
   `https://github.com/verify/fixture/blob/<commit>/README.md#L1-L1`, `region "Relationships"`,
   `region "Components"` with `link "Title"`, `region "Gaps"` with `Unreadable: an answer failed its
-  checks`, and `link "Next Title"`; no `tablist`; `.requests.txt` `GET /api/wikis` and `GET
+  checks`, and `link "Next Title"`; no `combobox "Project"`; `.requests.txt` `GET /api/wikis` and `GET
   /api/wiki/verify%2Ffixture`, no `GET /api/status`. In Dark:
   `$C page --evidence "$E/08b-page-desk-dark" --scheme dark --path /wiki/verify/fixture --hash "#readme" --expect "The title names the Repo"`.
 - **An old link.** `$C page --evidence "$E/08c-old-link" --hash "#shop/wiki/verify%2Ffixture/readme" --expect "The title names the Repo"`:

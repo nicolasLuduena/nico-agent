@@ -1,6 +1,6 @@
 # Settings
 
-Each Repo's tab shows its settings beside its switches: the Implementer and Reviewer launches
+Each Repo's panel shows its settings beside its switches: the Implementer and Reviewer launches
 (Harness, model, Effort), Base and Project, folded to one line (`Implementer <launch>`) under Room
 and Switches. Each shows its effective value, with a chip `from Project` or `default` while the
 Repo does not set it, `set here` and a × once it does. A change on the page shows `Saving…`, then
@@ -11,7 +11,7 @@ defaults the same way. A refusal shows its error and help, and writes nothing. W
 
 ## Sub-features
 
-- `settings-page` the tab's `region "Settings"`, folded to `Settings Implementer <launch>`: `group "Implementer"` and `group "Reviewer"`, each with `combobox "<Role> Harness"`, `"<Role> model"` and `"<Role> Effort"` (a `textbox` each where the Harness lists none: codex, opencode); `textbox "Base"`; `combobox "Project"`; each chipped `default` or `from Project` in the snapshot while the Repo does not set it, `set here` once it does.
+- `settings-page` the Repo's `region "Settings"`, folded to `Settings Implementer <launch>`: `group "Implementer"` and `group "Reviewer"`, each with `combobox "<Role> Harness"`, `"<Role> model"` and `"<Role> Effort"` (a `textbox` each where the Harness lists none: codex, opencode); `textbox "Base"`; `combobox "Project"`; each chipped `default` or `from Project` in the snapshot while the Repo does not set it, `set here` once it does.
 - `settings-launch` a Harness picked on the page sends `{"reviewer": {harness, model: null, effort: null}}`, shows `Saved`, and writes `reviewer = { harness = "<name>" }`.
 - `settings-restart` a launch set on the page shows the same after serve restarts.
 - `settings-undo` `button "Use the default <Setting>"` (or `Use the Project's <Setting>`), the × after `set here`, sends `{<key>: null}`, `{"switches": {<name>: null}}` for a switch, and removes the Repo's own line.
@@ -23,7 +23,7 @@ defaults the same way. A refusal shows its error and help, and writes nothing. W
 
 ## How to get to it (user POV)
 
-- Open the page, pick a Repo's tab, open `Settings` (folded to `Implementer <launch>`), and change
+- Open the page, pick a Repo's Project in the `Project` select, open `Settings` (folded to `Implementer <launch>`), and change
   a select, or type in `Base` or `Project` and press Enter (or leave the field; Escape puts it back).
 - Press the × after `set here` (`Use the default` or `Use the Project's`) beside a setting the Repo
   sets, or `Leave <name>` under its Project.
@@ -61,9 +61,9 @@ Preconditions:
   and `text: default`; `config.toml` has no `reviewer` line.
 - **Base.** Run `$C page --evidence "$E/07-base" --click "region=Settings" --click "textbox=Base" --type dev --press Enter --expect "Saved" --expect "Base set here"`.
   `PATCH ... {"base":"dev"} -> 200`; `config.toml` has `base = "dev"`.
-- **Join a Project.** Run `$C page --evidence "$E/08-join" --click "region=Settings" --click "combobox=Project" --type verify --press Enter --expect "Leave verify"`.
-  `PATCH ... {"project":"verify"} -> 200`, then `GET /api/status` and `GET /api/map/verify`; the tab
-  is now `tab "verify" [selected]`, its Project's, with `region "verify"` (the Project's defaults)
+- **Join a Project.** Run `$C page --evidence "$E/08-join" --within "region=verify/fixture" --click "region=Settings" --click "combobox=Project" --type verify --press Enter --expect "Leave verify"`.
+  `PATCH ... {"project":"verify"} -> 200`, then `GET /api/status` and `GET /api/map/verify`; the select
+  is now `option "verify" [selected]`, its Project's, with `region "verify"` (the Project's defaults)
   above `region "verify/fixture"`; `config.toml` has `project = "verify"`.
 - **The Project's defaults.** Run `$C http --evidence "$E/09-project" PATCH /api/project/verify '{"room":2,"base":"main","switches":{"review":false}}'`.
   HTTP `200`, `name` `verify`, `defaults` `{"base":"main","room":2,"switches":{"review":false}}`
@@ -77,7 +77,7 @@ Preconditions:
 - **Emptied.** Run `$C page --evidence "$E/11b-empty-base" --within "region=verify/fixture" --click "region=Settings" --click "textbox=Base" --press Control+a --press Backspace --press Enter --expect "Base from Project"`.
   `PATCH ... {"base":null} -> 200`; the field shows the Project's again, `textbox "Base": main`.
 - **Leave it.** Run `$C page --evidence "$E/12-leave" --within "region=verify/fixture" --click "region=Settings" --click "button=Leave verify" --gone "Leave verify" --click "region=Room" --expect "3 · 0 in flight"`.
-  `PATCH ... {"project":null} -> 200`; `tab "verify/fixture" [selected]` again, no `tab "verify"`
+  `PATCH ... {"project":null} -> 200`; `option "verify/fixture" [selected]` again, no `option "verify"`
   (it has no Repo left), `text: default` beside `spinbutton "Room": "3"`;
   `config.toml`'s Repo has no `project` line, and `[projects.verify]` stays.
 - **API, percent-encoded.** Run `$C http --evidence "$E/13-api" PATCH /api/repo/verify%2Ffixture '{"implementer":{"harness":"codex","model":"gpt-5"},"room":4,"switches":{"stack":false}}'`.
@@ -111,10 +111,10 @@ Preconditions:
   button named `Use the default <Setting>` with no text: `--click` it, never `--expect` it.
 - Room, Switches and Settings are each folded to one line, in each panel and each new browser:
   `--click "region=<Section>"` opens it (`--within "region=<slug>"` first for a Repo's on a
-  Project's tab). `--expect` is page-wide and takes the first match, which may sit in a folded
+  Project's page). `--expect` is page-wide and takes the first match, which may sit in a folded
   section (the Project's `Base set here`) and never show: expect text only the open one holds.
 - `Saved` shows for 2 seconds after a save, then the chip again: expect it right after the action.
-- On a Project's tab its defaults come first, with the same control names as a Repo's: a bare
+- On a Project its defaults come first, with the same control names as a Repo's: a bare
   `--click` reaches the Project's. Scope a Repo's with `--within "region=<slug>"`.
 - A launch is replaced whole: picking a Harness sends model and Effort null, the Harness's own.
 - The PATCH writes an inline table with toml_edit's spacing (`{ dispatch = false , stack = false }`):

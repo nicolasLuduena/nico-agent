@@ -1,4 +1,4 @@
-/** What the Board's URL hash selects: a Project's tab and its view; or the Libraries tab, of no Project. */
+/** What the Board's URL hash selects: a Project and its view; or Libraries, of no Project. */
 export interface Route {
   project: string | null;
   view: "map" | "wiki" | "libraries";
@@ -6,7 +6,7 @@ export interface Route {
 
 /**
  * `#<project>`, its map, or `#<project>/wiki`, its Wiki view; the name
- * escaped, as names hold `/`. The Libraries tab is `#/libraries`: no
+ * escaped, as names hold `/`. Libraries is `#/libraries`: no
  * Project, as an escaped name holds no `/`.
  */
 export function hash(at: Route): string {

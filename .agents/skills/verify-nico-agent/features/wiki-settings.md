@@ -25,7 +25,7 @@ the field goes back to what is set, marked invalid.
 
 ## How to get to it (user POV)
 
-- Click `Wiki` on a Project's tab, then `Wiki settings`; change a field.
+- Click `Wiki` on a Project's row, then `Wiki settings`; change a field.
 - Ask serve: `PATCH /api/wiki/settings {hour, launch, calls, depth, concurrency, embed_model}`, null
   taking the default; `GET /api/status`'s `wiki_settings`.
 

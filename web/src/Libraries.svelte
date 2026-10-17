@@ -1,5 +1,5 @@
 <script lang="ts">
-  // The Libraries tab: the Library versions no Repo links, kept for the
+  // Libraries, the Project select's last option: the Library versions no Repo links, kept for the
   // user's own sessions, each with where its Wiki stands and its removal,
   // asked twice; then the form that adds one, which queues its Wiki.
   import { reload } from "./live";

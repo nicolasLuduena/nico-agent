@@ -1,29 +1,29 @@
 # Install
 
 A Repo's Install is the command it runs in its clone after a PR merges into its Base, so what it
-builds is what the next agent uses. `install = "<command>"` is a Repo's own setting, set on its tab
+builds is what the next agent uses. `install = "<command>"` is a Repo's own setting, set in its panel
 or with `PATCH /api/repo/<slug>`, never a Project's. `nico-agent install <slug>` refuses a clone off
 its Base or with changes to tracked files, else pulls fast-forward and runs the command with `sh -c`,
 showing its output on stderr as it runs; it keeps `{at, sha, ok, output}` (the last 20 lines) in
 `installs.json`, then runs the Repo's Readiness checks. One runs at a time per Repo: asked while one
 runs, it queues one more, which the next tick starts in a herdr workspace `install-<repo>`. A failed
-or refused one is an `Install` toast over the page's corner and an errata block in the tab's Install
+or refused one is an `Install` toast over the page's corner and an errata block in its panel's Install
 section, with `nico-agent install <slug>` as its help.
 
 ## Sub-features
 
-- `install-set` `PATCH /api/repo/<slug>` with `{"install": "<command>"}` writes `install` to the Repo's table; `null`, or the tab's field emptied, removes it; `status` shows `install: {command, last}` only while it has one.
+- `install-set` `PATCH /api/repo/<slug>` with `{"install": "<command>"}` writes `install` to the Repo's table; `null`, or the panel's field emptied, removes it; `status` shows `install: {command, last}` only while it has one.
 - `install-refused-settings` an empty command, `install` in `PATCH /api/project/<name>`, and `install` written under `projects.<name>` in `config.toml` are refused (the last at its file line), nothing written.
 - `install-run` `nico-agent install <slug>` pulls the clone fast-forward and runs the command, its output shown on stderr as printed; exit `0` with stdout the one JSON object `{installed: "<slug> at <sha>"}`, and `installs.json` holds `last: {at, sha, ok: true, output}` with the last 20 lines.
 - `install-refused` a clone off its Base (`<clone> is on <branch>, not its Base <base>`) or with tracked changes (`<clone> has changes to tracked files: M <file>`) is refused before any pull: exit `1`, `sha` null, `ok` false, the reason as `output`.
 - `install-failed` a command that exits non-zero: exit `1`, `the Install of <slug> failed: <its last line>`, `ok` false with the sha it pulled.
 - `install-checks` the Repo's Readiness checks run after each Install (its `ghbot` call in the outside log).
 - `install-one-at-a-time` `install` asked while another runs refuses with `an Install of <slug> is running (pid N)` and `queued: true`; the next tick (a Refresh) starts the queued one in herdr.
-- `install-toast-panel` a failed or refused last Install is a `status` toast `Install <slug>: <last line>` in `list "Needs you"` with `Run nico-agent install <slug> once it is fixed` under it, and `region "Install"` on the tab opens by itself, its folded line reading `Failed at <time>`, then the output and the same help; an ok one stays folded, its line reading `Installed <short sha>` and, opened, `Installed <short sha> at <time>`; with no command it reads `None`.
+- `install-toast-panel` a failed or refused last Install is a `status` toast `Install <slug>: <last line>` in `list "Needs you"` with `Run nico-agent install <slug> once it is fixed` under it, and `region "Install"` in its panel opens by itself, its folded line reading `Failed at <time>`, then the output and the same help; an ok one stays folded, its line reading `Installed <short sha>` and, opened, `Installed <short sha> at <time>`; with no command it reads `None`.
 
 ## How to get to it (user POV)
 
-- The tab's `region "Install"`, folded to one line unless its last Install failed: click it open, then its `textbox "Install command"` (change, then Enter or leave the field).
+- The Repo's panel's `region "Install"`, folded to one line unless its last Install failed: click it open, then its `textbox "Install command"` (change, then Enter or leave the field).
 - `PATCH /api/repo/<slug>` with `{"install": ...}`, as the page sends it.
 - `nico-agent install <slug>`, by hand or in the pane the loop opens after a merge into the Base.
 - The toasts and `nico-agent status --json`'s `repos[].install`.

@@ -1,13 +1,13 @@
 /** A run of a line: plain text, **strong**, `code`, or a link to an http(s) URL. */
 export type Span = { kind: "text" | "strong" | "code"; text: string } | { kind: "link"; text: string; href: string };
 
-/** A block of the Morning summary: a heading, a list, or a line. */
+/** A block of an agent's Markdown: a heading, a list, or a line. */
 export type Block =
   | { kind: "heading"; spans: Span[] }
   | { kind: "list"; ordered: boolean; items: Span[][] }
   | { kind: "line"; spans: Span[] };
 
-// shortcut: only the Morning summary's shape (headings, lists, lines, strong, code, links); take a Markdown library if it outgrows that.
+// shortcut: only the shape agents write (headings, lists, lines, strong, code, links); take a Markdown library if it outgrows that.
 /** The blocks of `markdown`, an agent's, kept as text: rendered as Svelte text, nothing in it is HTML. */
 export function blocks(markdown: string): Block[] {
   const out: Block[] = [];
@@ -24,31 +24,10 @@ export function blocks(markdown: string): Block[] {
   return out;
 }
 
-/** The sections the map's flags show live; morning.md's snapshot of them only goes stale once the user acts. */
-const LIVE = ["merge these", "answer these", "fix these"];
-
-/** `markdown` without its live sections, each from its heading to the next: the night's history is what stays. */
-export function withoutLive(markdown: string): string {
-  let live = false;
-  return markdown
-    .split("\n")
-    .filter((line) => {
-      const heading = /^#{1,6}\s+(.*)$/.exec(line.trim());
-      if (heading) live = LIVE.includes(heading[1].trim().toLowerCase());
-      return !live;
-    })
-    .join("\n");
-}
-
 /** The first line of `markdown` that is not a heading, a list item's marker dropped, as Markdown. */
 export function firstText(markdown: string): string {
   const line = markdown.split("\n").map((l) => l.trim()).find((l) => l && !l.startsWith("#"));
   return line ? line.replace(/^(?:[-*+]|\d+[.)])\s+/, "") : "";
-}
-
-/** The first line of `markdown`, as `firstText` reads it: the folded Morning summary's one line. */
-export function firstLine(markdown: string): Span[] {
-  return spans(firstText(markdown));
 }
 
 /** **strong**, `code`, [named](https://…) and bare https://… links, the last without trailing punctuation. */

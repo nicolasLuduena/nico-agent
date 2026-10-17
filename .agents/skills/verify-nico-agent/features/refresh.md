@@ -19,7 +19,7 @@ paused GitHub stays paused and is asked nothing.
 
 ## How to get to it (user POV)
 
-- Press `Refresh` beside the read times in a Repo's tab on the page.
+- Press `Refresh` beside the read times on the page's Project row.
 - Run `nico-agent refresh` in a terminal.
 
 ## Driving it with control-nico-agent
