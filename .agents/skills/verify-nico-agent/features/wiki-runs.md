@@ -21,7 +21,7 @@ failed build after it), why its last build failed, and the open Run's pane. No W
 
 ## How to get to it (user POV)
 
-- Toggle `switch "Wiki"` on a Repo's tab (see [switches](./switches.md)), or `PATCH
+- Toggle `switch "Wiki"` in a Repo's panel (see [switches](./switches.md)), or `PATCH
   /api/repo/<owner/name>/switches` with `{"wiki": true}`, or set `repos."<slug>".switches.wiki`
   in `config.toml`.
 - The loop acts at its next tick: in a run, `POST /api/refresh` (the page's Refresh).

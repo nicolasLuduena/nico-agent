@@ -18,7 +18,7 @@
   const repos = $derived(status.repos.filter((r) => project.repos.includes(r.slug)));
   /** The Library versions its Repos link, by id, each once. */
   const linked = $derived([...new Set(repos.flatMap((r) => r.libraries.value.map(libraryId)))]);
-  /** A Repo's own Project: its panel is the tab's, as before Projects. */
+  /** A Repo's own Project: its panel is the Project's, as before Projects. */
   const own = $derived(project.repos.length === 1 && project.repos[0] === project.name);
 </script>
 

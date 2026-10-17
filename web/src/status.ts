@@ -15,7 +15,7 @@ export interface Status {
   wiki_settings: WikiSettings;
   /** Each Wiki built, tried, queued or building, by its id. */
   wikis: WikiState[];
-  /** The Library versions `[wiki]` adds that no Repo links: the Libraries tab's. */
+  /** The Library versions `[wiki]` adds that no Repo links: what Libraries shows. */
   libraries: Library[];
   /** What each GitHub identity (`gh`, the user; `ghbot`, the bot, where installed) has used of its budgets, as the last tick read it. */
   rate_limits: RateLimits;

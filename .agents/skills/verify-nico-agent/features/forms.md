@@ -24,7 +24,7 @@ field is 16px and at least 44px tall, and nothing is wider than the window.
 
 ## How to get to it (user POV)
 
-- Open the page, pick a Repo's (or a Project's) tab, and click a folded line in its panel to open it.
+- Open the page, pick a Project (a Repo's own, or one of several Repos) in the `Project` select, and click a folded line in its panel to open it.
 - Change a select or a toggle; type in a text or number field and press Enter, or leave it, or press Escape to back out.
 - Reload the page in the same browser: the sections opened stay open.
 

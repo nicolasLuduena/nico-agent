@@ -1,7 +1,7 @@
 # Room
 
 Each Repo has a room: how many Dispatches it may have In flight at once, a draft PR's included; 3
-unless set. The page shows it in the Repo's tab in its `Room` section above the switches, folded to
+unless set. The page shows it in the Repo's panel in its `Room` section above the switches, folded to
 `<room> · <n> in flight`, as a number input with the Repo's Dispatches not Closed counted under it
 and tagged `default` or `from Project` while the Repo does not set it and `set here` once it does,
 and writes a change to `config.toml` through `PATCH /api/repo/<slug>`, keeping the
@@ -10,7 +10,7 @@ loop fills the new room from its next tick on.
 
 ## Sub-features
 
-- `room-patch` `PATCH` with `{"room": n}` writes `room = n` in the Repo's table and answers the Repo's settings, `room` `{"value": n, "from": "repo"}`.
+- `room-patch` `PATCH` with `{"room": n}` writes `room = n` in the Repo's panelle and answers the Repo's settings, `room` `{"value": n, "from": "repo"}`.
 - `room-bad-value` `0`, `-1`, `1.5`, `"5"`, `{}`, a key that is no setting beside room, or a body not JSON is 400, writing nothing.
 - `room-unknown-repo` a slug that is not a Repo is 409, with the `repo add` to run.
 - `room-page-set` on the page, a new value in `spinbutton "Room"` is sent on Enter or blur and shown from the answer.
@@ -20,7 +20,7 @@ loop fills the new room from its next tick on.
 
 ## How to get to it (user POV)
 
-- Open the page, pick a Repo's tab, open its `Room` section (above Switches), and change `Room`; press Enter or leave the field.
+- Open the page, pick a Repo's Project in the `Project` select, open its `Room` section (above Switches), and change `Room`; press Enter or leave the field.
 - From a script: `PATCH /api/repo/<owner/name>` with `{"room": n}`.
 - By hand: edit `repos."<slug>".room` in `config.toml` (`repo list` shows it).
 

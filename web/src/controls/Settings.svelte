@@ -36,8 +36,8 @@
     const sent = await saves.run(key, () => holder.patch(body));
     if (sent.ok) {
       shown = { implementer: sent.answer.implementer, reviewer: sent.answer.reviewer, base: sent.answer.base };
-      // Its Project, and so its tab and what it takes from it, shows from /api/status; the
-      // new tab reads its own map, and the old one, which may be gone, is not asked again.
+      // Its Project, and so its page and what it takes from it, shows from /api/status; the
+      // new one reads its own map, and the old one, which may be gone, is not asked again.
       if (key === "project" && repo) {
         selection.project = (body.project as string | null) ?? repo.slug;
         reload("/api/status");

@@ -19,7 +19,7 @@ Light and Dark each have their own tokens, and every pair meets WCAG AA.
 
 ## How to get to it (user POV)
 
-- Open the page on a Project's tab: the map, the toasts and the panels show the colours.
+- Open the page on a Project: the map, the toasts and the panels show the colours.
 - Open a Repo's `Settings`: the Implementer's and the Reviewer's Harness.
 - Pick `Dark` in the theme switch, or a browser whose system scheme is dark.
 

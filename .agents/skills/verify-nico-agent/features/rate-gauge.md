@@ -20,7 +20,7 @@ tap, opens the panel of each identity's budgets.
 
 ## How to get to it (user POV)
 
-- Look at the page's header, on any tab; hover the gauge, or click or tap it.
+- Look at the page's header, whichever Project shows; hover the gauge, or click or tap it.
 - `GET /api/status`, as the page reads it.
 
 ## Driving it with control-nico-agent

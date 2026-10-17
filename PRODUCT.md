@@ -45,7 +45,7 @@ it binds the rebuild.
 - **A Wiki per Repo and per Library version.** What the code does, as a
   tree of Components whose every claim cites its lines, built overnight by
   a cheap model through headless Harness calls that code checks, kept in
-  the Bucket, read on the Project's tab and by agents through `nico-agent
+  the Bucket, read on the Project's page and by agents through `nico-agent
   mcp`: the Implementer, Reviewer and quality-scan ask about the Libraries
   their Repo uses, faux-nico and morning about the Repo itself, and the
   user's own Claude Code about all of them once added with `claude mcp add
@@ -54,7 +54,7 @@ it binds the rebuild.
   there. A PR is asked about again only while it can still change; merged and
   closed are kept forever. Refresh re-asks on purpose. Rate limits and
   outages leave the Board readable and the loop running on what it knows.
-- **Every setting a Repo or Project has, editable from its tab**, each
+- **Every setting a Repo or Project has, editable from its page**, each
   shown with where it comes from (default, Project, Repo) and undone back to
   it: the Implementer and Reviewer launches, room, Base, its Project, and the
   switches: dispatch, stack, review, restart, flip to ready, faux-nico

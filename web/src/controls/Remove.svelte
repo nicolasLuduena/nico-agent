@@ -18,7 +18,7 @@
     const sent = await send("DELETE", `/api/repo/${repo.slug}`);
     running = false;
     asking = false;
-    // Its Project's tab, and map, follow /api/status; a map of a Project now gone is not asked again.
+    // Its Project's option, and map, follow /api/status; a map of a Project now gone is not asked again.
     if (sent.ok) reload("/api/status");
     else refused = sent;
   }

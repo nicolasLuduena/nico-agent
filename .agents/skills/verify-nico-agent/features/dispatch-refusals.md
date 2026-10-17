@@ -25,7 +25,7 @@ reaches.
 ## How to get to it (user POV)
 
 - Run `nico-agent dispatch <issue>... [--harness <h> --model <m> --effort <e>]` in a terminal.
-- On the page, choose an issue, Harness, model and Effort in the `Dispatch` section of a Repo's tab
+- On the page, choose an issue, Harness, model and Effort in the `Dispatch` section of a Repo's panel
   and press `Dispatch`.
 - From a script: `POST /api/dispatch {issue, harness, model, effort}`.
 

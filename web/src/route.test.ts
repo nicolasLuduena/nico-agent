@@ -18,13 +18,13 @@ test("an empty hash, an unknown view or a broken escape selects nothing it canno
   expect(hash({ project: null, view: "wiki" })).toBe("");
 });
 
-test("the Libraries tab is `#/libraries`, which no Project's name can be: a name's own `/` is escaped", () => {
+test("Libraries is `#/libraries`, which no Project's name can be: a name's own `/` is escaped", () => {
   const libraries = { project: null, view: "libraries" } as const;
   expect(hash(libraries)).toBe("#/libraries");
   expect(route("#/libraries")).toEqual(libraries);
   expect(route("#libraries")).toEqual({ project: "libraries", view: "map" });
   expect(hash({ project: "libraries", view: "map" })).toBe("#libraries");
-  // A Project picked while the Libraries tab showed: its map.
+  // A Project picked while Libraries showed: its map.
   expect(hash({ project: "shop", view: "libraries" })).toBe("#shop");
 });
 
