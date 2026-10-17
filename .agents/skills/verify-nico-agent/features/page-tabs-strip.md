@@ -7,7 +7,7 @@ has no node is a yellow toast over the page's bottom right corner, dismissible f
 agent of the loop's own that herdr reports blocked (a quality-scan, the morning agent), a paused
 GitHub, a failing Readiness check (checks.md) and a failed Install (install.md). Nothing sits above
 the Project row: one select named Project, at every width, picks a Project (a Repo naming none is its
-own, named by its slug) or Libraries, its last option; beside it the views (Map, Wiki), then the read
+own, named by its slug); beside it the views (Map, Roadmap), then the read
 times and Refresh at the row's right. A Project shows its map, read times, and each Repo's switches
 and Dispatch form (see project-tabs for a Project of several Repos). The URL's hash follows the pick,
 so back and forward move between Projects. There is no tab row and no Morning summary.
@@ -15,10 +15,9 @@ so back and forward move between Projects. There is no tab row and no Morning su
 ## Sub-features
 
 - `page-empty` with no Repo: the page says `No Repo yet. Add one here, or with nico-agent repo add <owner/name> --path <clone>.`, with no `combobox "Project"` and nothing needing you.
-- `select-one-per-project` `combobox "Project"` has an `option` per Project with a Repo, by name, then `option "Libraries"`, the first selected; on its row `navigation "View"` (`link "Map"`, `link "Wiki"`), the read times and `button "Refresh"`. No `tablist` and no `region "Morning summary"`.
+- `select-one-per-project` `combobox "Project"` has an `option` per Project with a Repo, by name, the first selected; on its row `navigation "View"` (`link "Map"`, `link "Roadmap"`), the read times and `button "Refresh"`. No `tablist` and no `region "Morning summary"`.
 - `select-pick` picking an option shows that Project's map, read times and controls, and the hash becomes `#<project>`, escaped.
 - `select-back` the browser's back button returns to the Project picked before.
-- `select-libraries` `option "Libraries"` shows the Libraries list (library-links.md) with `button "Refresh"` and no views or read times; the hash is `#/libraries`.
 - `select-phone` under 720px the select takes its own line, full width; the views, read times and Refresh wrap under it.
 - `no-morning` a `morning.md` in the config dir is in `GET /api/status`'s `morning_summary`, and nowhere on the page.
 - `needs-no-band` nothing of what needs you is above the Project row: no `region "Needs you"`, with or without items.
@@ -43,21 +42,19 @@ Preconditions:
   no `region "Needs you"`, no `list "Needs you"` and no `combobox "Project"`: `main` starts with the paragraph.
 - **Two Repos.** Run `$C run -- repo add verify/fixture --path "$FIXTURE_CLONE" --json`, `$C run -- repo add verify/second --path "$SECOND_CLONE" --json`
   and `$C seed issues`, then `$C page --evidence "$E/02-select"`. `main` starts with `combobox "Project"`, which has `option
-  "verify/fixture" [selected]`, `option "verify/second"` and `option "Libraries"`; then `navigation "View"` with `link "Map"`
-  (`#verify%2Ffixture`) and `link "Wiki"`; then the paragraph `Source read <time> · PRs not checked yet` and `button "Refresh"`;
+  "verify/fixture" [selected]` and `option "verify/second"`; then `navigation "View"` with `link "Map"`
+  (`#verify%2Ffixture`) and `link "Roadmap"`; then the paragraph `Source read <time> · PRs not checked yet` and `button "Refresh"`;
   no `tablist`. `region "Map of verify/fixture"` has node buttons `#1, Verify: a Ready issue, Ready`, `#3, Verify: waits
   on #1, Waiting, waits on verify/fixture#1 to close`, `#4, Verify: assigned to someone else,
   Waiting`, `#5, Verify: a Research issue, Ready`, `#6, Verify: stacks on #9 PR, Stackable` and `#9, Verify: a Blocker in review, Blocker`
-  (no `#2`: not labelled). The screenshot has the select, `MAP` `WIKI` and the read times with Refresh on one row.
+  (no `#2`: not labelled). The screenshot has the select, `MAP` `ROADMAP` and the read times with Refresh on one row.
 - **Pick a Project.** Run `$C page --evidence "$E/03-pick" --select "Project=verify/second" --expect "Source not read yet"`.
   `option "verify/second" [selected]`; `Nothing on this map`; `.view.txt` `at /#verify%2Fsecond`;
   `.requests.txt` has `GET /api/map/verify%2Fsecond -> 200`.
 - **Back.** Run `$C page --evidence "$E/04-back" --select "Project=verify/second" --expect "Source not read yet" --history back --expect "Source read"`:
   `option "verify/fixture" [selected]`, its map again, `.view.txt` `at /`.
-- **Libraries.** Run `$C page --evidence "$E/05-libraries" --select "Project=Libraries" --expect "Add a Library"`:
-  `option "Libraries" [selected]`, `button "Refresh"`, no `navigation "View"` and no read times.
 - **Phone.** Run `$C page --evidence "$E/06-phone" --width 390`. `combobox "Project"` with `option "verify/fixture" [selected]`;
-  the screenshot is one column, the select its own full-width line, `MAP` `WIKI` and then the read times with Refresh under it.
+  the screenshot is one column, the select its own full-width line, `MAP` `ROADMAP` and then the read times with Refresh under it.
 - **Everything that needs you.** Run `$C run -- dispatch verify/fixture#1 --json` (Failed at worktree),
   `$C seed dispatch 10 pr > "$E/seed10.json"`, `$C run -- verdict verify/fixture#10 pass --sha "$(jq -r .head "$E/seed10.json")" --json`,
   `$C seed dispatch 12 asking`, `$C seed run faux-nico 12`, `$C seed run quality-scan`, `$C seed run morning`
@@ -93,6 +90,6 @@ Preconditions:
 - `seed issues` caches only `verify/fixture`; `verify/second` stays `Source not read yet`.
 - While the page is open with a live Dispatch, serve's event stream asks herdr every 10 seconds:
   expect `herdr agent list` lines in `$OUTSIDE_LOG`.
-- Back on a map from Libraries or the Wiki view, `.console.txt` holds `IndexSizeError: Failed to execute
+- Back on a map from the Roadmap view, `.console.txt` holds `IndexSizeError: Failed to execute
   'getStartPositionOfChar'` lines from the map's title fitting: they come from before #365 (the same on db3fc21) and are
   not this feature's; any other line is.

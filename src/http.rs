@@ -16,7 +16,6 @@ use crate::bucket;
 use crate::cli::{Context, Refusal, bad_invocation};
 use crate::config;
 use crate::dispatch;
-use crate::library;
 use crate::map;
 use crate::rate_limit::{self, RateLimits};
 use crate::refresh;
@@ -26,7 +25,6 @@ use crate::roadmap;
 use crate::stage;
 use crate::state;
 use crate::status;
-use crate::wiki;
 use crate::world::{AgentState, Answer, HttpRequest, HttpResponse, World};
 
 /// The app, as `build.rs` built it from `web/`: each file's path, Content-Type and bytes.
@@ -35,10 +33,6 @@ const APP: &[(&str, &str, &[u8])] = include!(concat!(env!("OUT_DIR"), "/app.rs")
 /// Every route and what it answers, for help lines.
 const ROUTES: &[(&str, &str)] = &[
     ("GET /", "the app"),
-    (
-        "GET /wiki/<id>",
-        "the app at the Wiki's page, its Component in the fragment",
-    ),
     (
         "GET /api/status",
         "the status of every Repo and Dispatch, and what each GitHub identity has used of its rate limits",
@@ -60,14 +54,6 @@ const ROUTES: &[(&str, &str)] = &[
         "a stream of `changed`, sent when state or an Agent state changes, and a keepalive comment otherwise",
     ),
     (
-        "GET /api/wikis",
-        "each Wiki of a Repo or a Library version, with the commit it describes, when it was built, its Gaps and the state of its build",
-    ),
-    (
-        "GET /api/wiki/<id>",
-        "the Wiki, a Repo's by its slug or a Library version's as owner/name@tag[:path]: its Components, Interpretations, Anchors and Gaps",
-    ),
-    (
         "POST /api/dispatch {issue, harness, model, effort}",
         "`nico-agent dispatch` of the issue",
     ),
@@ -85,24 +71,16 @@ const ROUTES: &[(&str, &str)] = &[
         "`nico-agent answer` of the issue, in words or keys",
     ),
     (
-        "POST /api/wiki/<id>/update|rebuild|continue",
-        "queue the Wiki's build first: an Update, one from nothing, or one asking only its budget or unanswered Gaps",
-    ),
-    (
         "PATCH /api/repo/<owner/name>/switches {name: bool}",
         "set the Repo's switches; null takes its Project's or the default",
     ),
     (
-        "PATCH /api/repo/<owner/name> {implementer, reviewer, room, base, project, install, switches, libraries}",
+        "PATCH /api/repo/<owner/name> {implementer, reviewer, room, base, project, install, switches}",
         "set the Repo's own settings; null takes its Project's or the default",
     ),
     (
         "PATCH /api/project/<name> {implementer, reviewer, room, base, switches}",
         "set the Project's defaults for its Repos; null removes one",
-    ),
-    (
-        "PATCH /api/wiki/settings {hour, launch, calls, depth, concurrency, embed_model}",
-        "set what every Wiki is built on; null takes the default",
     ),
     (
         "POST /api/repo {slug, path, project}",
@@ -111,14 +89,6 @@ const ROUTES: &[(&str, &str)] = &[
     (
         "DELETE /api/repo/<owner/name>",
         "`nico-agent repo rm`, refused while the Repo has a Dispatch In flight",
-    ),
-    (
-        "POST /api/libraries {repo, tag, path}",
-        "add a Library version no Repo links, under [wiki] libraries, and queue its Wiki",
-    ),
-    (
-        "DELETE /api/libraries/<owner/name@tag[:path]>",
-        "remove a Library version [wiki] libraries adds, its Wiki taken out of the Bucket's files; refused while a Repo links it",
     ),
     (
         "GET /bucket/<path>",
@@ -132,12 +102,6 @@ pub fn answer(ctx: &Context, port: u16, request: &HttpRequest) -> Answer {
         return refused;
     }
     let path = request.url.split('?').next().unwrap_or_default();
-    // A Wiki's page is the app's own, which reads the Wiki from the path.
-    let file = if path.starts_with("/wiki/") {
-        "/"
-    } else {
-        path
-    };
     match (request.method.as_str(), path) {
         ("GET", "/api/status") => reply(status(ctx)),
         ("GET", "/api/events") => events(ctx),
@@ -169,13 +133,7 @@ pub fn answer(ctx: &Context, port: u16, request: &HttpRequest) -> Answer {
                 help,
             )
         }
-        ("GET", "/api/wikis") => reply(wiki::list(ctx)),
-        ("GET", path) if let Some(id) = path.strip_prefix("/api/wiki/") => {
-            let id = unescaped(id);
-            let help = "Ask for a Wiki /api/wikis lists, or build one: nico-agent wiki build <owner/name>[@<tag>[:<path>]]";
-            found(wiki::get(ctx, &id), format!("{id} has no Wiki"), help)
-        }
-        ("GET", _) if let Some((_, kind, bytes)) = APP.iter().find(|(p, ..)| *p == file) => {
+        ("GET", _) if let Some((_, kind, bytes)) = APP.iter().find(|(p, ..)| *p == path) => {
             Answer::Whole(HttpResponse {
                 status: 200,
                 headers: vec![("Content-Type".into(), (*kind).into())],
@@ -189,13 +147,6 @@ pub fn answer(ctx: &Context, port: u16, request: &HttpRequest) -> Answer {
         }
         ("POST", "/api/review") => ran(issue(request, "review").and_then(|i| review::now(ctx, &i))),
         ("POST", "/api/answer") => ran(answer_asking(ctx, request)),
-        ("POST", path)
-            if let Some((id, how)) = (path.strip_prefix("/api/wiki/"))
-                .and_then(|path| path.rsplit_once('/'))
-                .filter(|(_, how)| wiki::BUILDS.contains(how)) =>
-        {
-            ran(wiki::queue(ctx, &unescaped(id), how))
-        }
         ("PATCH", path)
             if let Some(slug) = (path.strip_prefix("/api/repo/"))
                 .and_then(|path| path.strip_suffix("/switches")) =>
@@ -205,17 +156,12 @@ pub fn answer(ctx: &Context, port: u16, request: &HttpRequest) -> Answer {
         ("PATCH", path) if let Some(slug) = path.strip_prefix("/api/repo/") => {
             ran(body(request).and_then(|set| repo::set(ctx, &unescaped(slug), &set)))
         }
-        ("PATCH", "/api/wiki/settings") => ran(body(request).and_then(|set| wiki::set(ctx, &set))),
         ("PATCH", path) if let Some(name) = path.strip_prefix("/api/project/") => {
             ran(body(request).and_then(|set| repo::set_project(ctx, &unescaped(name), &set)))
         }
         ("POST", "/api/repo") => ran(add(ctx, request)),
         ("DELETE", path) if let Some(slug) = path.strip_prefix("/api/repo/") => {
             ran(repo::rm_idle(ctx, &unescaped(slug)))
-        }
-        ("POST", "/api/libraries") => ran(body(request).and_then(|b| library::add(ctx, &b))),
-        ("DELETE", path) if let Some(id) = path.strip_prefix("/api/libraries/") => {
-            ran(library::rm(ctx, &unescaped(id)))
         }
         ("GET", path) if let Some(path) = path.strip_prefix("/bucket/") => {
             bucket::file(ctx, &unescaped(path))
@@ -315,8 +261,7 @@ fn suggested(world: &dyn World, file: &str) -> Value {
 }
 
 /// `status`'s answer from the Sources' caches alone, plus per Repo when its
-/// PRs were last read and the Harnesses its Dispatch form offers, and the
-/// Library versions `[wiki]` adds that no Repo links, for the Libraries tab.
+/// PRs were last read and the Harnesses its Dispatch form offers.
 fn status(ctx: &Context) -> Result<Value, Refusal> {
     let config = config::load(&ctx.config_dir)?;
     let prs = stage::load(&ctx.config_dir)?;
@@ -348,13 +293,6 @@ fn status(ctx: &Context) -> Result<Value, Refusal> {
             shown[key] = value.clone();
         }
     }
-    shown["wiki_settings"] = wiki::settings(&config);
-    // Each once, though written twice.
-    let mut listed = std::collections::HashSet::new();
-    let unlinked = (config.wiki.libraries.iter())
-        .filter(|l| library::linked_by(&config, &l.id()).is_none() && listed.insert(l.id()))
-        .collect::<Vec<_>>();
-    shown["libraries"] = json!(unlinked);
     let limits: RateLimits = state::load(&ctx.config_dir.join(rate_limit::FILE))?;
     shown["rate_limits"] = json!(limits);
     // shortcut: an unreadable morning.md shows as none, like a missing one; say why if one ever is.
@@ -367,11 +305,11 @@ fn status(ctx: &Context) -> Result<Value, Refusal> {
 /// so a proxy never sees the stream idle (Cloudflare closes it at 100 seconds).
 fn events(ctx: &Context) -> Answer {
     let dir = ctx.config_dir.clone();
-    let mut last = (files(&dir, &dir), agents(ctx.world, &dir));
+    let mut last = (files(&dir), agents(ctx.world, &dir));
     Answer::Events {
         every: Duration::from_secs(10),
         poll: Box::new(move |world| {
-            let now = (files(&dir, &dir), agents(world, &dir));
+            let now = (files(&dir), agents(world, &dir));
             if now == last {
                 return ": keepalive\n\n".into();
             }
@@ -383,20 +321,13 @@ fn events(ctx: &Context) -> Answer {
 }
 
 /// The state files in `dir` and under it, by path, with when each was last
-/// written and its size; not the locks, nor a write's temp file. Under the
-/// config directory `top`'s `wiki/`, only a build's progress: the rest reaches
-/// the page through `wikis.json` and the Bucket.
-fn files(top: &Path, dir: &Path) -> BTreeMap<PathBuf, Option<(SystemTime, u64)>> {
+/// written and its size; not the locks, nor a write's temp file.
+fn files(dir: &Path) -> BTreeMap<PathBuf, Option<(SystemTime, u64)>> {
     let mut files = BTreeMap::new();
     for entry in fs::read_dir(dir).into_iter().flatten().flatten() {
         let path = entry.path();
-        let wiki = path.starts_with(top.join("wiki"));
         if path.is_dir() {
-            if !(wiki && entry.file_name() == "checkout") {
-                files.extend(self::files(top, &path));
-            }
-        } else if wiki && entry.file_name() != "progress.json" {
-            continue;
+            files.extend(self::files(&path));
         } else if !path.extension().is_some_and(|e| e == "lock" || e == "tmp") {
             let seen = entry
                 .metadata()

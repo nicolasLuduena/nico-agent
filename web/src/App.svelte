@@ -1,14 +1,13 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import AddRepo from "./controls/AddRepo.svelte";
-  import Libraries from "./Libraries.svelte";
   import Refresh from "./controls/Refresh.svelte";
   import { watch } from "./live";
   import { flash } from "./motion";
   import NeedsYou from "./NeedsYou.svelte";
   import ProjectTab from "./ProjectTab.svelte";
   import RateGauge from "./RateGauge.svelte";
-  import { hash, movedTo, route } from "./route";
+  import { hash, route } from "./route";
   import { selection } from "./selection.svelte";
   import type { Status } from "./status";
   import { needsYou } from "./toasts";
@@ -19,10 +18,7 @@
   let failure = $state<string | null>(null);
 
   // The hash selects as a link opens the page, and as back and forward move through it; the selection writes it back.
-  // An old link to a Wiki's Component on the Board opens its page instead.
   function follow() {
-    const to = movedTo(location.hash);
-    if (to) return location.replace(to);
     const at = route(location.hash);
     if (at.project !== selection.project) selection.issue = null;
     Object.assign(selection, at);
@@ -44,22 +40,19 @@
     ),
   );
 
-  /** An option per Project with a Repo: a Repo naming none is its own; then Libraries, of no Project. */
+  /** An option per Project with a Repo: a Repo naming none is its own. */
   const projects = $derived(status?.projects.filter((p) => p.repos.length > 0) ?? []);
-  const onLibraries = $derived(selection.project === null && selection.view === "libraries");
   const project = $derived(projects.find((p) => p.name === selection.project) ?? projects[0]);
-  const at = $derived(onLibraries ? projects.length : projects.indexOf(project));
+  const at = $derived(projects.indexOf(project));
   /** The Project's oldest time of `key`, which holds for each of its Repos; none while any has none. */
   const oldest = (key: "read_at" | "prs_checked_at") => {
     const times = (status?.repos ?? []).filter((r) => project.repos.includes(r.slug)).map((r) => r[key]);
     return times.includes(null) ? null : times.sort()[0];
   };
 
-  /** The option at `i`: a Project's, its view kept, or past them Libraries. */
+  /** The option at `i`: a Project's, its view kept. */
   function show(i: number) {
-    const libraries = i === projects.length;
-    const view = libraries ? "libraries" : selection.view === "libraries" ? "map" : selection.view;
-    Object.assign(selection, { project: libraries ? null : projects[i].name, view, issue: null });
+    Object.assign(selection, { project: projects[i].name, issue: null });
   }
 
   /** The read times flash once when a read moves them, not when another Project shows its own. */
@@ -104,36 +97,27 @@
             {#each projects as p, i (p.name)}
               <option value={i}>{p.name}</option>
             {/each}
-            <option value={projects.length}>Libraries</option>
           </select>
         </label>
-        {#if !onLibraries}
-          <nav class="views" aria-label="View">
-            {#each [["map", "Map"], ["wiki", "Wiki"], ["roadmap", "Roadmap"]] as const as [view, name] (view)}
-              <a
-                class="label"
-                href={hash({ project: project.name, view })}
-                aria-current={selection.view === view ? "page" : undefined}>{name}</a
-              >
-            {/each}
-          </nav>
-        {/if}
+        <nav class="views" aria-label="View">
+          {#each [["map", "Map"], ["roadmap", "Roadmap"]] as const as [view, name] (view)}
+            <a
+              class="label"
+              href={hash({ project: project.name, view })}
+              aria-current={selection.view === view ? "page" : undefined}>{name}</a
+            >
+          {/each}
+        </nav>
         <!-- At the row's right; under the select and the views when they leave it no room. -->
         <div class="read">
-          {#if !onLibraries}
-            <p class="times" use:moved={[project.name, `${read} ${checked}`]}>
-              {read ? `Source read ${clock(read)}` : "Source not read yet"}
-              · {checked ? `PRs checked ${clock(checked)}` : "PRs not checked yet"}
-            </p>
-          {/if}
+          <p class="times" use:moved={[project.name, `${read} ${checked}`]}>
+            {read ? `Source read ${clock(read)}` : "Source not read yet"}
+            · {checked ? `PRs checked ${clock(checked)}` : "PRs not checked yet"}
+          </p>
           <Refresh />
         </div>
       </div>
-      {#if onLibraries}
-        <Libraries {status} />
-      {:else}
-        <ProjectTab {project} {status} />
-      {/if}
+      <ProjectTab {project} {status} />
     {:else}
       <p class="none">No Repo yet. Add one below, or with <code>nico-agent repo add &lt;owner/name&gt; --path &lt;clone&gt;</code>.</p>
     {/if}
@@ -189,7 +173,7 @@
     min-width: 0;
     font-weight: 600;
   }
-  /* Map | Wiki | Roadmap: the Project's three views. */
+  /* Map | Roadmap: the Project's two views. */
   .views {
     display: flex;
     gap: 24px;

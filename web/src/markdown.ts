@@ -7,7 +7,7 @@ export type Block =
   | { kind: "list"; ordered: boolean; items: Span[][] }
   | { kind: "line"; spans: Span[] };
 
-// shortcut: only the shape agents write (headings, lists, lines, strong, code, links); take a Markdown library if it outgrows that.
+// shortcut: only the shape agents write (headings, lists, lines, strong, code, links); take a Markdown package if it outgrows that.
 /** The blocks of `markdown`, an agent's, kept as text: rendered as Svelte text, nothing in it is HTML. */
 export function blocks(markdown: string): Block[] {
   const out: Block[] = [];

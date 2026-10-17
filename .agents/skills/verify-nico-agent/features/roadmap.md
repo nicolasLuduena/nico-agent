@@ -1,6 +1,6 @@
 # The Roadmap
 
-A Project's third view, `ROADMAP` beside `MAP` and `WIKI`, at `#<project>/roadmap`: every open issue
+A Project's second view, `ROADMAP` beside `MAP`, at `#<project>/roadmap`: every open issue
 of its Repos not labelled `ready-for-agent`, as each Source read last kept it, in a lane per label left
 to right (`NEEDS-TRIAGE`, `NEEDS-INFO`, `READY-FOR-HUMAN`, `WONTFIX`, then `NO LABEL`; an issue in the
 first its labels match; an empty lane not drawn), with an arrow from each open Blocker on it to the issue

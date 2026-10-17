@@ -86,7 +86,7 @@ Preconditions:
   `reviewer` `{"from":"default","value":{"harness":"claude",...}}` (another Harness than codex).
 - **Refusals.** `cp "$CONFIG_DIR/config.toml" "$E/refusals.before.toml"`. On `/api/repo/verify/fixture`,
   each HTTP `400` (`14` to `19`): `'{"rom":2}'` `` `rom` is not a setting the page sets ``, help
-  `Settings: implementer, reviewer, room, base, project, install, switches, libraries; null takes
+  `Settings: implementer, reviewer, room, base, project, install, switches; null takes
   the Project's or the default`; `'{"reviewer":{"harness":"pi"}}'` `` unknown Harness `pi` ``, help `Valid Harnesses:
   claude, codex, opencode`; `'{"implementer":{"harness":"claude","model":"gpt-5"}}'` `` unknown
   model `gpt-5` for claude ``; `'{"base":""}'` `base is a name, not ""`; `'{"switches":{"review":"no"}}'`

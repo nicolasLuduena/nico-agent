@@ -10,9 +10,6 @@
 # file (only if it changed) and restarts serve once. For serve to start at
 # boot, not at your first login, enable lingering: loginctl enable-linger $USER
 #
-# It also enables Ollama's service and pulls the model the Wikis' `ask`
-# embeds with, `[wiki] embed_model` in config.toml; --remove leaves Ollama be.
-#
 # Overrides: NICO_AGENT_BIN (the binary to run), XDG_CONFIG_HOME (where the
 # unit goes), MISE_DATA_DIR / XDG_DATA_HOME (where mise's shims are).
 set -euo pipefail
@@ -25,7 +22,7 @@ for arg in "$@"; do
     -y | --yes) yes=1 ;;
     --remove) remove=1 ;;
     -h | --help)
-      sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *)
@@ -112,27 +109,5 @@ if confirm "Enable and (re)start $NAME.service?"; then
   echo "serve is running; check it with: journalctl --user -u $NAME.service" >&2
 else
   echo "service not enabled; run: systemctl --user enable --now $NAME.service" >&2
-fi
-# `ask` embeds through Ollama: it must answer after a reboot, with the model pulled.
-config="$HOME/.config/nico-agent/config.toml"
-embed_model=$(sed -n '/^[[:space:]]*embed_model[[:space:]]*=/{s/^[^"]*"\([^"]*\)".*/\1/p;q}' "$config" 2>/dev/null || true)
-embed_model=${embed_model:-nomic-embed-text}
-if ! command -v ollama >/dev/null; then
-  echo "warning: ollama is not installed, so the Wikis' ask cannot search; install it and run this again" >&2
-elif confirm "Enable ollama.service and pull $embed_model, for the Wikis' ask?"; then
-  # The user's own unit if they have one, else the system's the package installs.
-  if systemctl --user cat ollama.service >/dev/null 2>&1; then
-    systemctl --user enable --now ollama.service
-  else
-    sudo systemctl enable --now ollama.service
-  fi
-  pulled=0
-  for _ in 1 2 3 4 5; do
-    if ollama pull "$embed_model"; then pulled=1 && break; fi
-    sleep 2 # a service just started takes a moment to answer
-  done
-  [[ $pulled -eq 1 ]] || echo "warning: could not pull $embed_model; once Ollama answers, run: ollama pull $embed_model" >&2
-else
-  echo "Ollama left as is; ask needs: ollama pull $embed_model" >&2
 fi
 echo "for serve to start at boot, not at your first login, run: loginctl enable-linger ${USER:-$(id -un)}" >&2

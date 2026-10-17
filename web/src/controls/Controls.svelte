@@ -1,7 +1,7 @@
 <script lang="ts">
   // A Repo's panel, in the column right of its Project's map: who its agents
   // post as, from its bot check, then the Dispatch form, its one action, then
-  // its Readiness, room, switches, settings, Library links and Install, each
+  // its Readiness, room, switches, settings and Install, each
   // folded to a line; then its removal. Headed by its slug, on its line colour,
   // when the Project holds more than its own.
   import { repoLine } from "../hues";
@@ -10,7 +10,6 @@
   import DispatchForm from "./DispatchForm.svelte";
   import Install from "./Install.svelte";
   import { inFlight } from "./launch";
-  import LibraryLinks from "./LibraryLinks.svelte";
   import Remove from "./Remove.svelte";
   import Room from "./Room.svelte";
   import { postsAs } from "./postsAs";
@@ -44,7 +43,6 @@
     <Room {holder} live={inFlight(repo, status.dispatches)} />
     <Switches {holder} />
     <Settings {holder} harnesses={repo.harnesses} {repo} projects={status.projects} />
-    <LibraryLinks {holder} wikis={status.wikis} />
     <Install {repo} panel={holder.panel} />
     <Remove {repo} />
   {/key}

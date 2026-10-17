@@ -1,9 +1,8 @@
 //! The loop's agents that are no Implementer nor Reviewer: a quality-scan per
 //! Repo, weekly, a faux-nico per Asking, and the morning agent, daily. Each
 //! start is kept as a Run in `runs.json`, and its workspace closed once herdr
-//! reports its agent ended. A wiki build is a Run too, whose pane runs a
-//! command rather than an agent: `wiki` starts and closes it. What such an agent files is its own Source write;
-//! nico-agent writes nothing for it.
+//! reports its agent ended. What such an agent files is its own Source
+//! write; nico-agent writes nothing for it.
 
 use std::fs;
 use std::io;
@@ -18,7 +17,6 @@ use crate::dispatch;
 use crate::faux_nico;
 use crate::launch::{self, AgentLaunch};
 use crate::state;
-use crate::wiki;
 use crate::world::{self, Agent, AgentState, Tab};
 
 pub const FILE: &str = "runs.json";
@@ -34,7 +32,7 @@ const NOTIFIED: &str = "morning.notified";
 pub struct Run {
     #[serde(flatten)]
     pub trigger: Trigger,
-    /// The Repo it ran for, if one; a wiki Run's, the id of its Wiki.
+    /// The Repo it ran for, if one.
     pub repo: Option<String>,
     /// When it started.
     pub at: String,
@@ -59,8 +57,6 @@ pub struct Run {
 pub enum Trigger {
     QualityScan,
     Morning,
-    /// A wiki build of the Repo it ran for, in a pane, closed on its outcome.
-    Wiki,
     /// For `issue`, on its Asking since `asking`.
     FauxNico {
         issue: String,
@@ -69,6 +65,10 @@ pub enum Trigger {
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         passed: bool,
     },
+    /// One this build no longer starts, so a `runs.json` holding it still
+    /// loads; never closed nor shown.
+    #[serde(other)]
+    Gone,
 }
 
 impl Trigger {
@@ -77,7 +77,7 @@ impl Trigger {
         match self {
             Trigger::QualityScan => "quality-scan",
             Trigger::Morning => "morning",
-            Trigger::Wiki => "wiki",
+            Trigger::Gone => "gone",
             Trigger::FauxNico { .. } => "faux-nico",
         }
     }
@@ -122,7 +122,7 @@ pub fn step(
 /// permission may hold its answer. What it said, and the Runs it closed.
 fn close_ended(ctx: &Context, agents: Option<&[Agent]>) -> io::Result<(Vec<String>, Vec<Run>)> {
     let open: Vec<Run> = (load(&ctx.config_dir)?.into_iter())
-        .filter(|r| r.closed_at.is_none() && r.trigger != Trigger::Wiki)
+        .filter(|r| r.closed_at.is_none() && r.trigger != Trigger::Gone)
         .collect();
     if open.is_empty() {
         return Ok((vec![], vec![]));
@@ -234,7 +234,6 @@ fn tell_blocked(ctx: &Context, run: &Run) -> io::Result<Option<String>> {
 /// Start a quality-scan in each Repo with its switch on that has room, no
 /// scan running, and none since the latest weekly slot; a Repo never scanned
 /// only within its slot's hour, so turning the switch on scans nothing at once.
-/// Each is given the built Wikis of the Library versions its Repo links.
 fn scan(ctx: &Context, config: &Config) -> Result<Vec<String>, Refusal> {
     let runs = load(&ctx.config_dir)?;
     let dispatches = dispatch::load(&ctx.config_dir)?;
@@ -256,15 +255,14 @@ fn scan(ctx: &Context, config: &Config) -> Result<Vec<String>, Refusal> {
         let chosen = repo.or_implementer(&repo.quality_scan);
         let sigil = &config.harnesses[&chosen.harness].sigil;
         let values = [("sigil", sigil.as_str()), ("repoSlug", slug)];
-        let (wikis, line) = wiki::libraries(&ctx.config_dir, config, repo)?;
-        let text = fill_in(&config.prompts.quality_scan, &values) + &line;
+        let text = fill_in(&config.prompts.quality_scan, &values);
         // On a worktree of the Repo at its Base.
         let start = |run: &mut Run| {
             let base = match &repo.base {
                 Some(base) => base.clone(),
                 None => ctx.world.git_default_branch(&repo.path)?,
             };
-            start_on_worktree(ctx, config, repo, &base, run, &text, &wikis)
+            start_on_worktree(ctx, config, repo, &base, run, &text)
         };
         said.push(start_run(
             ctx,
@@ -331,7 +329,7 @@ pub fn start_run(
 }
 
 /// Open a fresh worktree of the Repo at `base` and start the Run's agent
-/// there on `text`, given `wikis`.
+/// there on `text`.
 pub fn start_on_worktree(
     ctx: &Context,
     config: &Config,
@@ -339,7 +337,6 @@ pub fn start_on_worktree(
     base: &str,
     run: &mut Run,
     text: &str,
-    wikis: &[String],
 ) -> Result<(), Refusal> {
     let world = ctx.world;
     world.git_fetch(&repo.path, None)?;
@@ -350,13 +347,11 @@ pub fn start_on_worktree(
     let made = world.herdr_worktree_create(&repo.path, &branch, &base, &run.launch.agent)?;
     run.workspace = Some(made.workspace);
     run.worktree = Some(made.path.clone());
-    start(ctx, config, run, made.tab, &made.path, &repo.path, text, wikis)
+    start(ctx, config, run, made.tab, &made.path, &repo.path, text)
 }
 
 /// Start the Run's agent in `tab`, the one its new workspace opened with,
-/// working in `cwd` and trusting `repo_path`, with the wiki MCP serving
-/// `wikis` if any, and prompt it with `text`.
-#[allow(clippy::too_many_arguments)]
+/// working in `cwd` and trusting `repo_path`, and prompt it with `text`.
 fn start(
     ctx: &Context,
     config: &Config,
@@ -365,7 +360,6 @@ fn start(
     cwd: &str,
     repo_path: &str,
     text: &str,
-    wikis: &[String],
 ) -> Result<(), Refusal> {
     let harness = &config.harnesses[&run.launch.harness];
     let workspace = run.workspace.clone().expect("its workspace is open");
@@ -377,15 +371,14 @@ fn start(
         run.trigger.label(),
         Some(tab),
     )?;
-    let ready = launch::start(ctx.world, harness, &run.launch, repo_path, wikis)?;
+    let ready = launch::start(ctx.world, harness, &run.launch, repo_path)?;
     launch::get_ready(ctx.world, harness, &run.launch, cwd, ready)?;
     launch::prompt(ctx.world, harness, &run.launch.agent, text)
 }
 
 /// Start the morning agent, while `morning` is enabled, within the hour of
 /// `morning.hour` local time, once that day: a missed hour is a missed
-/// morning. It runs in a workspace on the config directory, with no worktree,
-/// given the Wiki of each Repo with its `wiki` switch on and its Wiki built.
+/// morning. It runs in a workspace on the config directory, with no worktree.
 fn morning(ctx: &Context, config: &Config) -> Result<Vec<String>, Refusal> {
     let now = ctx.world.now();
     let slot = last_slot(ctx, None, config.morning.hour);
@@ -403,18 +396,16 @@ fn morning(ctx: &Context, config: &Config) -> Result<Vec<String>, Refusal> {
     let since = last.map_or_else(|| state::iso(now - 24 * HOUR), |r| r.at.clone());
     let dir = ctx.config_dir.display().to_string();
     let sigil = &config.harnesses[&chosen.harness].sigil;
-    let (wikis, wiki_line) = wiki::given(&ctx.config_dir, config, &config.repos)?;
     let values = [
         ("sigil", sigil.as_str()),
         ("lastMorningAt", &since),
         ("configDir", &dir),
-        ("wikiLine", &wiki_line),
     ];
     let text = fill_in(&config.prompts.morning, &values);
     let said = start_run(ctx, Trigger::Morning, None, chosen, |run| {
         let made = ctx.world.herdr_workspace_create(&dir, &run.launch.agent)?;
         run.workspace = Some(made.workspace);
-        start(ctx, config, run, made.tab, &dir, &dir, &text, &wikis)
+        start(ctx, config, run, made.tab, &dir, &dir, &text)
     })?;
     Ok(vec![said])
 }

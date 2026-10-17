@@ -1,5 +1,3 @@
-import type { Library } from "./wiki/wiki";
-
 /** What `GET /api/status` answers: `status --json`, plus per Repo what the page shows beside its map. Only the fields the page reads so far. */
 export interface Status {
   /** Each Project: a Repo naming none is its own, named by its slug. */
@@ -11,12 +9,6 @@ export interface Status {
   morning_summary?: string | null;
   /** The last morning agent's Run; none before the first. */
   morning?: Run;
-  /** What every Wiki is built on. */
-  wiki_settings: WikiSettings;
-  /** Each Wiki built, tried, queued or building, by its id. */
-  wikis: WikiState[];
-  /** The Library versions `[wiki]` adds that no Repo links: what Libraries shows. */
-  libraries: Library[];
   /** What each GitHub identity (`gh`, the user; `ghbot`, the bot, where installed) has used of its budgets, as the last tick read it. */
   rate_limits: RateLimits;
 }
@@ -37,32 +29,9 @@ export interface Budget {
   reset: string;
 }
 
-/** `[wiki]` as it takes effect: when the loop checks each Repo's Wiki, the launch each part is asked of, a build's budget and the embedding model. */
-export interface WikiSettings {
-  /** Local time, 0 to 23. */
-  hour: number;
-  launch: Launch;
-  calls: number;
-  depth: number;
-  concurrency: number;
-  embed_model: string;
-  /** The Harnesses a Wiki builds on, with the models and Efforts each takes (null: any). */
-  harnesses: Repo["harnesses"];
-}
-
-/** Where a Wiki's builds stand. */
-export interface WikiState {
-  wiki: string;
-  state: "built" | "building" | "queued" | "failed";
-  /** The commit of the build that built it; null before one did. */
-  commit: string | null;
-  /** Why its last build failed, if it did. */
-  why?: string;
-}
-
 /** The settings of a Repo, or the defaults of a Project, each as it takes effect. */
 export interface Settings {
-  /** dispatch, mine, stack, review, restart, flip, answer, gardening, quality_scan, wiki. */
+  /** dispatch, mine, stack, review, restart, flip, answer, gardening, quality_scan. */
   switches: Record<string, Setting<boolean>>;
   /** How many Dispatches a Repo may have In flight at once. */
   room: Setting<number>;
@@ -72,8 +41,6 @@ export interface Settings {
   implementer: Setting<Launch>;
   /** The launch Reviewers start on. */
   reviewer: Setting<Launch>;
-  /** The Library versions its agents ask the Wikis of. */
-  libraries: Setting<Library[]>;
 }
 
 export interface Repo extends Settings {

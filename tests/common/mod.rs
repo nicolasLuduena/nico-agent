@@ -16,7 +16,7 @@ use std::time::Duration;
 pub use fake_world::*;
 use nico_agent::world::{Answer, HttpRequest, Poll};
 use nico_agent::{Context, run};
-use serde_json::{Value, json};
+use serde_json::Value;
 
 /// Where the app reaches `serve`: its own host, on the default port.
 pub const HOST: &str = "127.0.0.1:42069";
@@ -54,22 +54,6 @@ impl Events<'_> {
     pub fn next(&mut self) -> String {
         (self.poll)(&self.t.world)
     }
-}
-
-/// The Library version `acme/kit@v1`, which a Repo links, and how a Repo
-/// links it.
-pub const KIT: &str = "acme/kit@v1";
-pub const KIT_TOML: &str = "{ repo = \"acme/kit\", tag = \"v1\" }";
-
-/// The Wiki of `KIT` built by `wiki build`, from its one file at its tag.
-pub fn kit_built(t: &Setup) {
-    t.world.add_clone("/mnt/agent-land/nico-agent-bucket", &[]);
-    let origin = "https://github.com/acme/kit.git";
-    (t.world).add_tree_file(origin, "refs/tags/v1", "lib.rs", "pub fn run() {}\n");
-    let leaf = json!({ "kind": "leaf", "overview": "A small kit." });
-    (t.world.headless.borrow_mut()).push((format!("## The part: {KIT}"), leaf.to_string()));
-    let ran = t.cli(&["wiki", "build", KIT, "--json"]);
-    assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
 }
 
 /// herdr reports the Implementer of `acme/api#<issue>` idle: done for now,

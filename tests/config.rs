@@ -53,7 +53,7 @@ fn a_bad_value_is_refused_naming_its_key_and_line() {
         ),
         (
             "[repos.\"acme/api\"]\npath = \"/src/api\"\nrom = 3\n",
-            "config.toml line 3: repos.acme/api.rom: unknown field `rom`, expected one of `path`, `linear`, `project`, `install`, `room`, `base`, `implementer`, `reviewer`, `quality_scan`, `faux_nico`, `switches`, `libraries`",
+            "config.toml line 3: repos.acme/api.rom: unknown field `rom`, expected one of `path`, `linear`, `project`, `install`, `room`, `base`, `implementer`, `reviewer`, `quality_scan`, `faux_nico`, `switches`",
         ),
         (
             "\n[repos.\"acme/api\"]\nroom = 2\n",
@@ -79,18 +79,6 @@ fn a_bad_value_is_refused_naming_its_key_and_line() {
         (
             "[harnesses.pi]\nlaunch_mode = \"pane-command\"\nsigil = \"/\"\nmodel_args = []\neffort_args = []\n",
             "config.toml line 1: harnesses.pi: a pane-command Harness needs command",
-        ),
-        (
-            "[repos.\"acme/api\"]\npath = \"/src/api\"\nlibraries = [{ repo = \"effect\", tag = \"v3\" }]\n",
-            "config.toml line 3: repos.acme/api.libraries[0].repo: invalid value: string \"effect\", expected a GitHub repository's owner/name",
-        ),
-        (
-            "[repos.\"acme/api\"]\npath = \"/src/api\"\nlibraries = [{ repo = \"Effect-TS/effect\", tag = \"v3:x\" }]\n",
-            "config.toml line 3: repos.acme/api.libraries[0].tag: invalid value: string \"v3:x\", expected a git tag",
-        ),
-        (
-            "\n[wiki]\nlibraries = [{ repo = \"Effect-TS/effect\", tag = \"v3\", path = \"../..\" }]\n",
-            "config.toml line 3: wiki.libraries[0].path: invalid value: string \"../..\", expected a folder's path from the repository's root, such as packages/effect",
         ),
     ];
 
@@ -164,7 +152,7 @@ gardening = true
         repos[0]["switches"],
         json!({
             "dispatch": false, "mine": false, "stack": true, "review": true, "restart": true, "flip": true,
-            "answer": false, "gardening": true, "quality_scan": false, "wiki": false,
+            "answer": false, "gardening": true, "quality_scan": false,
         })
     );
 }
@@ -212,7 +200,7 @@ fn a_project_s_value_reaches_its_repos_and_a_repo_s_own_wins() {
     );
     let switches = json!({
         "dispatch": true, "mine": false, "stack": true, "review": false, "restart": true, "flip": true,
-        "answer": false, "gardening": true, "quality_scan": false, "wiki": false,
+        "answer": false, "gardening": true, "quality_scan": false,
     });
     assert_eq!(api["switches"], switches);
     let mut web_switches = switches;
@@ -311,7 +299,6 @@ project = "docs"
             "answer": setting(json!(false), "default"),
             "gardening": setting(json!(false), "default"),
             "quality_scan": setting(json!(false), "default"),
-            "wiki": setting(json!(false), "default"),
         });
         for (name, on, from) in set {
             all[name] = setting(json!(on), from);
@@ -401,16 +388,16 @@ project = "docs"
 #[test]
 fn a_bad_key_or_launch_in_a_project_is_refused_at_its_own_line() {
     let repo = "[repos.\"acme/api\"]\npath = \"/src/api\"\nproject = \"shop\"\n\n";
-    let switches = "`dispatch`, `mine`, `stack`, `review`, `restart`, `flip`, `answer`, `gardening`, `quality_scan`, `wiki`";
+    let switches = "`dispatch`, `mine`, `stack`, `review`, `restart`, `flip`, `answer`, `gardening`, `quality_scan`";
     let cases = [
         (
             format!("{repo}[projects.shop]\npath = \"/src/shop\"\n"),
-            "config.toml line 6: projects.shop.path: unknown field `path`, expected one of `room`, `base`, `implementer`, `reviewer`, `quality_scan`, `faux_nico`, `switches`, `libraries`".to_string(),
+            "config.toml line 6: projects.shop.path: unknown field `path`, expected one of `room`, `base`, `implementer`, `reviewer`, `quality_scan`, `faux_nico`, `switches`".to_string(),
         ),
         // A Repo's Install runs in its own clone: no Project holds one.
         (
             format!("{repo}[projects.shop]\nroom = 2\ninstall = \"make\"\n"),
-            "config.toml line 7: projects.shop.install: unknown field `install`, expected one of `room`, `base`, `implementer`, `reviewer`, `quality_scan`, `faux_nico`, `switches`, `libraries`".to_string(),
+            "config.toml line 7: projects.shop.install: unknown field `install`, expected one of `room`, `base`, `implementer`, `reviewer`, `quality_scan`, `faux_nico`, `switches`".to_string(),
         ),
         (
             format!("{repo}[projects.shop]\nroom = 0\n"),
@@ -530,10 +517,81 @@ fn an_invalid_config_is_refused_not_rewritten() {
         added.json()["error"]
             .as_str()
             .unwrap()
-            .ends_with("line 1: room: unknown field `room`, expected one of `repos`, `projects`, `harnesses`, `bucket`, `quality_scan`, `morning`, `wiki`, `prompts`, `tick_minutes`, `stall_minutes`, `max_restarts_per_reason`, `port`")
+            .ends_with("line 1: room: unknown field `room`, expected one of `repos`, `projects`, `harnesses`, `bucket`, `quality_scan`, `morning`, `prompts`, `tick_minutes`, `stall_minutes`, `max_restarts_per_reason`, `port`")
     );
     assert_eq!(
         fs::read_to_string(t.config_dir.join("config.toml")).unwrap(),
         "room = \"three\"\n"
+    );
+}
+
+/// A config an earlier build wrote, holding the Wiki's settings and
+/// prompts, Library links, a `wiki` switch and a Harness's `mcp_args`.
+const RETIRED: &str = r#"[repos."acme/api"]
+path = "/src/api"
+room = 2
+switches = { review = false, wiki = true }
+libraries = [{ repo = "acme/kit", tag = "v1" }]
+
+[projects.shop]
+room = 4
+switches = { wiki = true }
+libraries = [{ repo = "acme/kit", tag = "v1", path = "lib" }]
+
+[wiki]
+hour = 4 # after the scan
+launch = { harness = "codex" }
+libraries = [{ repo = "acme/ui", tag = "v2" }]
+
+[prompts]
+research = "{sigil}research {issueUrl}"
+wiki = " The Wiki of {repo} describes {sha}."
+faux_nico_wiki = " Never answer from it."
+libraries = " Ask the wiki MCP about {libraries}."
+
+[harnesses.claude]
+mcp_args = ["--mcp-config", "{mcpArgs}"]
+"#;
+
+#[test]
+fn a_config_holding_keys_an_earlier_build_wrote_loads_keeping_the_rest_and_drops_them_on_its_next_edit()
+ {
+    let t = with_config(RETIRED);
+    t.world
+        .add_clone("/src/web", &["git@github.com:acme/web.git"]);
+
+    let status = t.cli(&["status", "--json"]);
+    let added = t.cli(&["repo", "add", "acme/web", "--path", "/src/web", "--json"]);
+
+    assert_eq!(status.exit_code, 0, "{}", status.stdout);
+    let api = &status.json()["repos"][0];
+    assert_eq!(api["room"], json!({ "value": 2, "from": "repo" }));
+    assert_eq!(
+        api["switches"]["review"],
+        json!({ "value": false, "from": "repo" })
+    );
+    assert_eq!(api["switches"].get("wiki"), None);
+    assert_eq!(api.get("libraries"), None);
+    assert_eq!(written(&status.json())[1]["defaults"], json!({ "room": 4 }));
+    assert_eq!(added.exit_code, 0, "{}", added.stdout);
+    assert_eq!(
+        fs::read_to_string(t.config_dir.join("config.toml")).unwrap(),
+        r#"[repos."acme/api"]
+path = "/src/api"
+room = 2
+switches = { review = false}
+
+[repos."acme/web"]
+path = "/src/web"
+
+[projects.shop]
+room = 4
+switches = {}
+
+[prompts]
+research = "{sigil}research {issueUrl}"
+
+[harnesses.claude]
+"#
     );
 }

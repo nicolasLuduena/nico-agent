@@ -80,7 +80,7 @@ Preconditions:
   the ARIA snapshot has `region "verify/fixture"` opening with `region "Dispatch"` (`combobox "Issue"`,
   `combobox "Harness"`, `combobox "Model"`, `combobox "Effort"`, `button "Dispatch"`) and an `alert` under
   `button "Dispatch"` reading `verify/fixture#5 failed at worktree:`; `region "Readiness"`, `"Room"`,
-  `"Switches"`, `"Settings"`, `"Libraries"` and `"Install"` follow it, folded.
+  `"Switches"`, `"Settings"` and `"Install"` follow it, folded.
 - **Paused.** Run `$C drift pause`, then `$C run --evidence "$E/19-paused" -- dispatch verify/fixture#6 --json`.
   Exit `1`, `error` `verify/fixture#6 failed at fetch: ...` (see Gotchas); `$OUTSIDE_LOG` gained
   no line: no `gh issue edit 6`.

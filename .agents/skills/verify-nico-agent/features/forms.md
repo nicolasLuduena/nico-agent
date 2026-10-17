@@ -1,6 +1,6 @@
 # The panel's forms
 
-A Repo's panel opens with its Dispatch form; its Readiness, Room, Switches, Settings, Libraries and
+A Repo's panel opens with its Dispatch form; its Readiness, Room, Switches, Settings and
 Install each fold to one line saying what is set (a Project's defaults fold Room, Switches and
 Settings the same way). A section opens by itself while it holds a refusal or a failing state, and
 the sections the user opened are remembered in the browser per Repo. A field that saves on change
@@ -12,7 +12,7 @@ field is 16px and at least 44px tall, and nothing is wider than the window.
 
 ## Sub-features
 
-- `forms-order` `region "<slug>"` holds, in order, `region "Dispatch"` (never folded), `region "Readiness"`, `"Room"`, `"Switches"`, `"Settings"`, `"Libraries"`, `"Install"`, then `button "Remove <slug>…"`; each folded `group` reads its head and what is set: `2 of 6 pass`, `3 · 0 in flight`, `4 of 10 on`, `Implementer claude`, `None linked`, `None`.
+- `forms-order` `region "<slug>"` holds, in order, `region "Dispatch"` (never folded), `region "Readiness"`, `"Room"`, `"Switches"`, `"Settings"`, `"Install"`, then `button "Remove <slug>…"`; each folded `group` reads its head and what is set: `2 of 6 pass`, `3 · 0 in flight`, `4 of 9 on`, `Implementer claude`, `None linked`, `None`.
 - `forms-alarm` a section with a failing state opens by itself (Readiness while a check fails), and so does one whose save was refused.
 - `forms-remember` a section opened by the user is open again after a reload in the same browser, for that Repo only; one that opened by itself is not remembered; a browser whose storage throws still opens and closes them.
 - `forms-saving` a toggle or field held on its way to serve shows `Saving…` beside it and stays enabled; once serve answers, a `status` reads `Saved`, then the chip `set here` with `button "Use the default <Setting>"`.
@@ -41,7 +41,7 @@ Preconditions:
   `region "Dispatch"` with `button "Dispatch"`, then `region "Readiness"` open (its `group` reads `Readiness 2 of 6 pass`
   and holds the failing checks' `.evidence/ is not ignored on main` and the verification skill's, then
   `list "Passing"`), then folded
-  `group`s `Room 3 · 0 in flight`, `Switches 4 of 10 on`, `Settings Implementer claude`, `Libraries None linked`,
+  `group`s `Room 3 · 0 in flight`, `Switches 4 of 9 on`, `Settings Implementer claude`,
   `Install None`, and `button "Remove verify/fixture…"` last; no `spinbutton "Room"` (folded).
 - **Remembered.** Run `$C page --evidence "$E/02-open" --storage "$S" --click "region=Room" --expect "in flight; each Dispatch"`,
   then `$C page --evidence "$E/03-reloaded" --storage "$S" --expect "in flight; each Dispatch"`: the second browser,

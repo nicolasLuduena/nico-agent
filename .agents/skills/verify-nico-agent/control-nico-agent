@@ -23,12 +23,6 @@
 #   seed run quality-scan|morning|faux-nico <n>
 #                                 a Run of the loop's own agent, blocked, as the loop records it; prints JSON
 #   seed morning <file>|none      the Morning summary the morning agent leaves: <file> as morning.md, or none
-#   seed answer <file>|none [<part>]  what the wiki model answers every headless call: <file>'s text, or none
-#                                 (then each call fails as opencode2 does with no model); with <part>, a trail
-#                                 such as `verify/fixture > Docs`, only the calls asking about that part
-#   seed correction <file>|none   what the wiki model answers each correction (a call with -s): <file>'s text,
-#                                 or none (then the answer for its part)
-#   seed pace <seconds>|none      how long the wiki model takes over each call before it answers, or none
 #   seed assign answers|none      whether GitHub answers an assign to the user (gh issue edit --add-assignee @me),
 #                                 as once signed in; none, it fails as gh with no login does
 #   seed rate-limit <file>|none [<bot-file>]
@@ -41,12 +35,9 @@
 #   seed reviewer <n>|none        herdr answers the start of rev-fixture-<n>, a Reviewer of a Dispatch seeded `pr`,
 #                                 as it would, and lists it working beside its idle Implementer; none, a stub again.
 #                                 Not with seed herdr
-#   seed wiki <wiki.json> <clone> a Repo's Wiki built elsewhere committed to the Bucket, and that Repo cloned
-#                                 on disk from <clone> for `repo add`; prints { repo, clone, commit }
-#   drift push <n>|stale|pause|hang|below merged|closed|final <n> merged|closed|base [<file>]|tag <tag>
+#   drift push <n>|stale|pause|hang|below merged|closed|final <n> merged|closed
 #                                 what GitHub would change: a new PR head, an old read, a rate limit, a gh that never answers,
-#                                 the PR below a Stacked dispatch or a seeded one's own merged or closed unmerged,
-#                                 verify/fixture's Base moved on (and fetched), verify/second tagged
+#                                 the PR below a Stacked dispatch or a seeded one's own merged or closed unmerged
 #   state                         read-only fingerprint: config dir files, Dispatches, Verdicts, Bucket log, outside calls
 #   run [--evidence PREFIX] -- <nico-agent args...>
 #                                 run the CLI in the scratch HOME (cwd: the run's work/, so pass absolute paths);
@@ -75,7 +66,7 @@
 # to go; --wait 120 lets two minutes pass; --history back|forward the browser's buttons; --mode 502 switches the
 # tunnel stand-in (with --tunnel only); --hold 20 holds each later write to /api (PATCH, POST, DELETE) 20 seconds
 # on its way to serve, no step waiting for it (a write still held when the page closes never reaches serve);
-# --path /wiki/verify/fixture opens a Wiki's page instead of the Board, --hash "#readme" that fragment; --scheme
+# --path /bucket/ opens that path instead of the Board, --hash "#verify%2Ffixture" that fragment; --scheme
 # dark a browser whose system colours are dark. Each page is a new browser with nothing stored: --storage FILE
 # starts it with the storage FILE holds (none the first time) and saves it back, so the next page with the same
 # FILE is a reload in the same browser; --storage none a browser whose localStorage throws.
@@ -214,24 +205,6 @@ case "\$name" in
   # Recorded, never shown on the desktop.
   notify-send) exit 0 ;;
   curl) echo "curl: (6) verify-nico-agent: no network in this run" >&2; exit 6 ;;
-  # \`run --format json\`'s events: the seeded answer as its last message, in its session, else
-  # its error. The answer seeded for the part the prompt asks about, else the one for every part.
-  # A call with \`-s\` continues that session, answered by the seeded correction if any.
-  opencode2)
-    session="" prev=""
-    for arg in "\$@"; do [ "\$prev" != "-s" ] || session="\$arg"; prev="\$arg"; done
-    part="\$(printf '%s' "\${@: -1}" | sed -n 's/^## \\(The part\\|Corrections to the part\\): //p' | head -n 1)"
-    answer="$RUN_DIR/opencode-answers/\$(printf '%s' "\$part" | md5sum | cut -c 1-32)"
-    [ -f "\$answer" ] || answer="$RUN_DIR/opencode-answer"
-    [ -z "\$session" ] || [ ! -f "$RUN_DIR/opencode-correction" ] || answer="$RUN_DIR/opencode-correction"
-    [ -n "\$session" ] || session="ses_verify_\$(wc -l < "$log")"
-    [ ! -f "$RUN_DIR/opencode-pace" ] || sleep "\$(cat "$RUN_DIR/opencode-pace")"
-    if [ -f "\$answer" ]; then
-      jq -cn --rawfile text "\$answer" --arg session "\$session" '{type: "text", sessionID: \$session, part: {type: "text", text: \$text}}'
-      exit 0
-    fi
-    echo '{"type":"error","error":{"type":"provider.no-route","message":"Model unavailable: opencode2 is a stub in this verification run"}}'
-    exit 1 ;;
 esac
 EOF
   chmod +x "$stubs/outside-stub"
@@ -429,16 +402,12 @@ cmd_seed() {
     dispatch) seed_dispatch "$@" ;;
     run) seed_run "$@" ;;
     morning) seed_morning "$@" ;;
-    answer) seed_answer "$@" ;;
-    correction) seed_correction "$@" ;;
-    pace) seed_pace "$@" ;;
     assign) seed_assign "$@" ;;
     rate-limit) seed_rate_limit "$@" ;;
     herdr) seed_herdr "$@" ;;
     dialog) seed_dialog "$@" ;;
     reviewer) seed_reviewer "$@" ;;
-    wiki) seed_wiki "$@" ;;
-    *) die "seed: usage: seed issues [second|chain] | seed dispatch <n> pr|asking|stacked|restarted|ruled | seed run quality-scan|morning|faux-nico <n> | seed morning <file>|none | seed answer <file>|none [<part>] | seed correction <file>|none | seed pace <seconds>|none | seed assign answers|none | seed herdr <agent>|none | seed dialog <n>|none | seed reviewer <n>|none | seed wiki <wiki.json> <clone>" ;;
+    *) die "seed: usage: seed issues [second|chain] | seed dispatch <n> pr|asking|stacked|restarted|ruled | seed run quality-scan|morning|faux-nico <n> | seed morning <file>|none | seed assign answers|none | seed herdr <agent>|none | seed dialog <n>|none | seed reviewer <n>|none" ;;
   esac
 }
 
@@ -587,70 +556,6 @@ seed_morning() {
     none) rm -f "$CONFIG_DIR/morning.md" ;;
     "") die "seed: usage: seed morning <file>|none" ;;
     *) [ -f "$1" ] || die "seed: no file $1"; cp "$1" "$CONFIG_DIR/morning.md" ;;
-  esac
-}
-
-# A Repo's Wiki built elsewhere, as the Bucket keeps one: <wiki.json> (a real Wiki, its target a
-# GitHub Repo) committed to this run's Bucket at wiki/<owner>/<name>/wiki.json, as a build's last
-# act does, and a clone of that Repo made on disk from <clone> under fixture/, its origin the GitHub
-# URL, holding the Wiki's commit, for `repo add`. Prints { repo, clone, commit }. The Bucket must
-# exist: `repo add` a Repo first.
-seed_wiki() {
-  local usage="seed: usage: seed wiki <wiki.json> <clone>"
-  local file="${1:-}" from="${2:-}"
-  [ -f "$file" ] && [ -d "$from" ] || die "$usage"
-  local repo commit
-  repo="$(jq -r '.target.repo // empty' "$file")"; commit="$(jq -r '.commit // empty' "$file")"
-  [[ "$repo" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] && [ -n "$commit" ] || die "seed: $file is not a Wiki of a Repo"
-  jq -e '.target.tag == null' "$file" >/dev/null || die "seed: $file is a Library version's Wiki; only a Repo's is seeded"
-  git -C "$BUCKET" rev-parse --git-dir >/dev/null 2>&1 || die "seed: no Bucket yet; repo add a Repo first"
-  local clone="$RUN_DIR/fixture/${repo#*/}"
-  if [ ! -d "$clone" ]; then
-    git clone --quiet "$from" "$clone" || die "seed: could not clone $from"
-    git -C "$clone" remote set-url origin "https://github.com/$repo.git"
-  fi
-  git -C "$clone" cat-file -e "$commit^{commit}" 2>/dev/null || die "seed: $from does not hold the Wiki's commit $commit"
-  mkdir -p "$BUCKET/wiki/$repo"
-  cp "$file" "$BUCKET/wiki/$repo/wiki.json"
-  git -C "$BUCKET" add "wiki/$repo/wiki.json"
-  HOME="$FIXTURE_HOME" git -C "$BUCKET" commit --quiet -m "wiki $repo $commit" || die "seed: could not commit the Wiki to the Bucket"
-  jq -nc --arg r "$repo" --arg c "$clone" --arg s "$commit" '{ repo: $r, clone: $c, commit: $s }'
-}
-
-# What the wiki model answers each headless call from now on: <file>'s text, or with none, each
-# call fails as opencode2 with no model does. With <part>, a trail as the prompt names it
-# (`verify/fixture > Docs`), only the calls about that part; none takes every answer away,
-# corrections too.
-seed_answer() {
-  local answers="$RUN_DIR/opencode-answers"
-  case "${1:-}" in
-    none) rm -rf "$RUN_DIR/opencode-answer" "$answers" "$RUN_DIR/opencode-correction" ;;
-    "") die "seed: usage: seed answer <file>|none [<part>]" ;;
-    *)
-      [ -f "$1" ] || die "seed: no file $1"
-      if [ -z "${2:-}" ]; then cp "$1" "$RUN_DIR/opencode-answer"; return; fi
-      mkdir -p "$answers"
-      cp "$1" "$answers/$(printf '%s' "$2" | md5sum | cut -c 1-32)" ;;
-  esac
-}
-
-# What the wiki model answers each correction (a call with -s) from now on: <file>'s text, or
-# with none, the answer for its part again.
-seed_correction() {
-  case "${1:-}" in
-    none) rm -f "$RUN_DIR/opencode-correction" ;;
-    "") die "seed: usage: seed correction <file>|none" ;;
-    *) [ -f "$1" ] || die "seed: no file $1"; cp "$1" "$RUN_DIR/opencode-correction" ;;
-  esac
-}
-
-# How long the wiki model takes over each call from now on, before it answers (or fails), so a
-# build lasts long enough to watch; with none, it answers at once again.
-seed_pace() {
-  case "${1:-}" in
-    none) rm -f "$RUN_DIR/opencode-pace" ;;
-    *[!0-9]*|"") die "seed: usage: seed pace <seconds>|none" ;;
-    *) printf '%s\n' "$1" > "$RUN_DIR/opencode-pace" ;;
   esac
 }
 
@@ -813,59 +718,15 @@ cmd_drift() {
           | .merged_at = (if $how == "merged" then $at else null end))' "$CONFIG_DIR/prs.json")"
       jq -c --arg u "$url" '.[$u] | { url: $u, state, final, merged_at }' "$CONFIG_DIR/prs.json"
       ;;
-    # A merge into verify/fixture's Base on GitHub, rewriting README.md (or the file named, made
-    # if new), then fetched into the clone as the loop's next fetch would: origin/main moves on
-    # past what a Wiki describes.
-    base)
-      local work="$RUN_DIR/fixture/fixture-drift" file="${2:-README.md}" old head
-      [[ "$file" != /* && "$file" != *..* ]] || die "drift: usage: drift base [<file in the fixture>]"
-      old="$(fgit "$FIXTURE_CLONE" rev-parse origin/main)"
-      rm -rf "$work"
-      fgit "$RUN_DIR/fixture" clone --quiet "$RUN_DIR/fixture/fixture.git" "$work"
-      mkdir -p "$(dirname "$work/$file")"
-      printf '# %s, moved on\n\nThe Base moved past the Wiki.\n' "$SLUG" > "$work/$file"
-      fgit "$work" add -- "$file"
-      fgit "$work" commit --quiet -m "fixture: the Base moves on"
-      fgit "$work" push --quiet origin HEAD:main
-      rm -rf "$work"
-      fgit "$FIXTURE_CLONE" fetch --quiet origin
-      head="$(fgit "$FIXTURE_CLONE" rev-parse origin/main)"
-      jq -n --arg old "$old" --arg head "$head" --arg file "$file" '{ base: "main", file: $file, old: $old, head: $head }'
-      ;;
-    # A tag pushed to verify/second on GitHub, as a Library's release: a commit off its main,
-    # which stays where it was, adding lib/greet.sh and lib/README.md under the subfolder lib/.
-    tag)
-      local tag="${2:-}" work="$RUN_DIR/fixture/second-tag" commit
-      [ -n "$tag" ] || die "drift: usage: drift tag <tag>"
-      rm -rf "$work"
-      fgit "$RUN_DIR/fixture" clone --quiet "$RUN_DIR/fixture/${SECOND#*/}.git" "$work"
-      mkdir -p "$work/lib"
-      printf '#!/bin/sh\n# Greets whoever is named, %s.\ngreet() {\n  echo "hello, $1"\n}\n' "$tag" > "$work/lib/greet.sh"
-      printf '# lib\n\nThe greeting library, %s.\n' "$tag" > "$work/lib/README.md"
-      fgit "$work" add lib
-      fgit "$work" commit --quiet -m "fixture: release $tag"
-      fgit "$work" tag "$tag"
-      fgit "$work" push --quiet origin "refs/tags/$tag"
-      commit="$(fgit "$work" rev-parse HEAD)"
-      rm -rf "$work"
-      jq -n --arg slug "$SECOND" --arg tag "$tag" --arg commit "$commit" '{ repo: $slug, tag: $tag, commit: $commit }'
-      ;;
-    *) die "drift: usage: drift push <n> | drift stale | drift pause | drift hang | drift below merged|closed | drift final <n> merged|closed | drift base [<file>] | drift tag <tag>" ;;
+    *) die "drift: usage: drift push <n> | drift stale | drift pause | drift hang | drift below merged|closed | drift final <n> merged|closed" ;;
   esac
 }
 
 cmd_state() {
   load_run
   echo "# config dir: $CONFIG_DIR"
-  echo "## files (sha256; locks, temp files and the Library clones' insides left out)"
-  (cd "$CONFIG_DIR" && find . -path ./libraries -prune -o -type f ! -name '*.lock' ! -name '*.tmp' -print | sort | xargs -r sha256sum)
-  echo "## Library clones: each one's tags and worktrees"
-  local clone
-  for clone in "$CONFIG_DIR"/libraries/*/*.git; do
-    [ -d "$clone" ] || continue
-    echo "${clone#"$CONFIG_DIR"/}: tags $(git -C "$clone" tag | sort | tr '\n' ' ')"
-    git -C "$clone" worktree list
-  done
+  echo "## files (sha256; locks and temp files left out)"
+  (cd "$CONFIG_DIR" && find . -type f ! -name '*.lock' ! -name '*.tmp' -print | sort | xargs -r sha256sum)
   echo "## config.toml"
   cat "$CONFIG_DIR/config.toml"
   echo "## dispatches.json (issue, steps done, failure, pr, asking, closed)"
@@ -876,8 +737,6 @@ cmd_state() {
   if [ -d "$CONFIG_DIR/verdicts" ]; then
     (cd "$CONFIG_DIR/verdicts" && find . -name '*.json' | sort | while read -r f; do echo "$f $(jq -c '{result, sha}' "$f")"; done)
   fi
-  echo "## wikis.json (each Wiki's last build)"
-  [ ! -f "$CONFIG_DIR/wikis.json" ] || jq -c 'to_entries[] | { wiki: .key } + .value' "$CONFIG_DIR/wikis.json"
   echo "## Bucket: git log --stat"
   if [ -d "$BUCKET/.git" ]; then
     fgit "$BUCKET" log --format='%s' --stat

@@ -4,8 +4,8 @@ The page's `Project` select has an option per Project; a Repo that names none is
 own, named by its slug, and its page is as it was before Projects. A Project shows its map, the union of its
 Repos' issues with Blocker edges across them, then the Project's defaults (Room, Switches and
 Settings, each folded to a line), each chipped `default` until the Project sets it and editable
-there, then one panel per Repo with its Dispatch form, then Readiness, Room, Switches, Settings,
-Libraries and Install, each folded to a line, and Remove. A default set on the Project reaches every Repo that does not set
+there, then one panel per Repo with its Dispatch form, then Readiness, Room, Switches, Settings
+and Install, each folded to a line, and Remove. A default set on the Project reaches every Repo that does not set
 it. With more than one Repo, each node names its Repo after its number; a Blocker outside the
 Project stays a node with no Stage. A Waiting node says why under its Stage and in its panel: an
 issue whose Blocker is in another Repo of its Project waits on it to close and, when that Repo
@@ -65,7 +65,7 @@ Preconditions:
   HTTP `404`, `verify/second is not a Project`, help `Ask for a Project /api/status lists`.
 - **A Repo's own room.** Run `$C http --evidence "$E/06-second-own-room" PATCH /api/repo/verify/second '{"room":2}'`: `room` `{"from":"repo","value":2}`.
 - **The Project.** Run `$C page --evidence "$E/07-project-tab" --expect "Defaults for its Repos" --within "region=verify" --click "region=Room" --within "region=verify/fixture" --click "region=Room" --within "region=verify/second" --click "region=Room"`.
-  `option "verify" [selected]`, the only Project, then `option "Libraries"`; `region "Map of verify"` names nodes `#1 fixture, Verify: a Ready
+  `option "verify" [selected]`, the only Project; `region "Map of verify"` names nodes `#1 fixture, Verify: a Ready
   issue, Ready`, `#1 second, Verify: waits on fixture #1, Waiting, waits on verify/fixture#1 to
   close` and `verify/outside#7, Verify: an outside Blocker, Blocker`; the screenshot draws the edge
   from `#1 fixture` to `#1 second`, and `waits on verify/fixture#1 to close` under `#1 second`'s
@@ -123,7 +123,7 @@ Preconditions:
 - The Project's defaults come first on its page and share their control names with each Repo's: a
   bare `--click` reaches the Project's. Use `--within "region=<slug>"` for a Repo's, and for its
   `combobox "Project"`: a bare one reaches the `Project` select above the map.
-- Room, Switches and Settings are folded to one line (`<n> of 10 on` for the switches), in each
+- Room, Switches and Settings are folded to one line (`<n> of 9 on` for the switches), in each
   panel of each new browser: `--click "region=Switches"` opens the first (the Project's); a Repo's
   needs `--within "region=<slug>"` before it.
 - The Room input keeps its value as typed: select it (`Control+a`) before typing, and leave it

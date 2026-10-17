@@ -16,7 +16,6 @@ use toml_edit::{Document, DocumentMut, Item, TableLike};
 
 use crate::cli::Refusal;
 use crate::dispatch::Dispatch;
-use crate::repo;
 use crate::state;
 
 pub const FILE: &str = "config.toml";
@@ -50,41 +49,13 @@ hour = 3
 enabled = true
 hour = 7
 
-# Wiki builds, one at a time, outside every room. The loop checks the Wiki of
-# each Repo with its wiki switch on once the switch turns on, then daily from
-# `hour`, local time, and builds it when it has none or its Base moved from its
-# commit. Each part of the code is one headless, read-only call of `launch`: at
-# most `calls` of them a build, `concurrency` at once, dividing the code at
-# most `depth` deep. `ask` finds what a question is about by the embeddings of
-# `embed_model`, from the Ollama answering at `ollama`. Each Library version a
-# Repo's `libraries` links, or `libraries` here adds, as
-# `{ repo = "owner/name", tag = "...", path = "sub/folder" }` (`path` optional),
-# is built once, when it has no Wiki, fetched from https://github.com/<owner/name>.git
-# with git's own credentials: a private one needs a credential helper for it.
-[wiki]
-hour = 2
-launch = { harness = "opencode", model = "opencode-go/deepseek-v4.1-flash" }
-calls = 48
-depth = 7
-concurrency = 4
-embed_model = "nomic-embed-text"
-ollama = "http://127.0.0.1:11434"
-libraries = []
-
 [prompts]
 implement = "{sigil}implement {issueUrl} as draft PR against {baseBranch}, saving its Evidence under {evidenceFolder}/ in the worktree and linking it to {bucketUrl}"
 research = "{sigil}research {issueUrl}; write the findings with sources to one Markdown file under docs/research/ and open it as a draft PR against {baseBranch}"
-faux_nico = '{sigil}faux-nico {issueUrl}: the Implementer asks "{question}". Read PRODUCT.md, the issue and its parent. Answer with nico-agent answer {issue} --text "..." --by faux-nico only when they settle it; otherwise end your turn without answering.{wikiLine}'
+faux_nico = '{sigil}faux-nico {issueUrl}: the Implementer asks "{question}". Read PRODUCT.md, the issue and its parent. Answer with nico-agent answer {issue} --text "..." --by faux-nico only when they settle it; otherwise end your turn without answering.'
 review = "{sigil}verdict {prUrl} for {issueUrl}: re-run the repo's verification skill under .agents/skills/verify-*/ against the PR's head, saving its Evidence under {evidenceFolder}/, and record the result with nico-agent verdict {issue} pass|fail --sha {headSha} --findings <file>"
 quality_scan = "{sigil}quality-scan {repoSlug}"
-morning = "{sigil}morning: the night is in nico-agent status --json --since {lastMorningAt}. Write the summary to {configDir}/morning.md, with one line on the Wikis its `wikis` lists built or failed since then.{wikiLine}"
-# faux_nico's and morning's `{wikiLine}`: `wiki` for each Wiki they are given,
-# then faux_nico_wiki for faux-nico's; nothing when they are given none.
-wiki = " The Wiki of {repo} describes {sha}; where it and the code disagree, the code wins."
-faux_nico_wiki = " The Wiki says what the code does, never what was decided: never answer from it."
-# Appended to the Implementer's, Reviewer's and quality-scan's prompts, when
-# a Library version their Repo links has its Wiki built: `{libraries}` those.
-libraries = " Ask the wiki MCP about {libraries} before reading their source."
+morning = "{sigil}morning: the night is in nico-agent status --json --since {lastMorningAt}. Write the summary to {configDir}/morning.md."
 # Appended to implement and research, as is, when the GitHub App is installed on the Repo.
 bot_suffix = ", opened with `ghbot pr create` (not `gh`); end every commit message with the trailer `Co-authored-by: nicolasluduena-coding-agent[bot] <324920906+nicolasluduena-coding-agent[bot]@users.noreply.github.com>`"
 
@@ -110,7 +81,6 @@ trust_prompt = { text = "Yes, I trust this folder", keys = ["down", "enter"] }
 skill_dirs = ["~/.claude/skills", ".claude/skills"]
 # Its installed plugins, each reading skills from its `skills/` too.
 plugins_file = "~/.claude/plugins/installed_plugins.json"
-mcp_args = ["--mcp-config", '{"mcpServers":{"wiki":{"command":"nico-agent","args":{mcpArgs}}}}', "--allowedTools", "mcp__wiki__*"]
 
 [harnesses.codex]
 launch_mode = "herdr-kind"
@@ -131,15 +101,9 @@ startup_questions = ["Hooks need review", "review before"]
 skill_dirs = ["~/.codex/skills", "~/.agents/skills", ".agents/skills"]
 # The models it lists, and their Efforts, which the Board suggests.
 suggestions_file = "~/.codex/models_cache.json"
-# The wiki MCP's tools approved outright, so no call waits on the user.
-mcp_args = [
-  "-c", 'mcp_servers.wiki.command="nico-agent"', "-c", "mcp_servers.wiki.args={mcpArgs}",
-  "-c", 'mcp_servers.wiki.default_tools_approval_mode="approve"',
-]
 
 # Its TUI takes no model or Effort flag: the model goes in
-# OPENCODE_CONFIG_CONTENT and the Effort in its variant file, and the wiki
-# MCP there too, whose tools it allows by default.
+# OPENCODE_CONFIG_CONTENT and the Effort in its variant file.
 [harnesses.opencode]
 launch_mode = "pane-command"
 command = "opencode2"
@@ -159,8 +123,7 @@ skill_dirs = [
 const REPO_DEFAULTS: &str = r#"
 room = 3
 implementer = { harness = "claude" }
-switches = { dispatch = true, mine = false, stack = true, review = true, restart = true, flip = true, answer = false, gardening = false, quality_scan = false, wiki = false }
-libraries = []
+switches = { dispatch = true, mine = false, stack = true, review = true, restart = true, flip = true, answer = false, gardening = false, quality_scan = false }
 "#;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -175,7 +138,6 @@ pub struct Config {
     pub bucket: Bucket,
     pub quality_scan: QualityScan,
     pub morning: Morning,
-    pub wiki: Wiki,
     pub prompts: Prompts,
     #[serde(deserialize_with = "positive")]
     pub tick_minutes: u32,
@@ -210,9 +172,6 @@ pub struct Repo {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub faux_nico: Option<Launch>,
     pub switches: Switches,
-    /// The Library versions it uses, whose Wikis its agents ask about.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub libraries: Vec<Library>,
     /// What it sets itself, of what it shows above.
     #[serde(skip)]
     pub own: Settings,
@@ -238,8 +197,6 @@ pub struct Settings {
     /// Each of [`SWITCHES`] it sets.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub switches: BTreeMap<String, bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub libraries: Option<Vec<Library>>,
 }
 
 impl Repo {
@@ -284,61 +241,6 @@ pub struct Morning {
     pub launch: Option<Launch>,
 }
 
-/// How Wikis are built (when, on what, and each build's budget) and searched.
-#[derive(Debug, Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Wiki {
-    /// When Repos' Wikis are updated, daily, local time.
-    #[serde(deserialize_with = "hour")]
-    pub hour: u32,
-    /// What answers each part, headless and read-only.
-    pub launch: Launch,
-    /// Model calls a build may make.
-    #[serde(deserialize_with = "positive")]
-    pub calls: u32,
-    /// How deep a build divides the code: the deepest division's parts are Gaps.
-    #[serde(deserialize_with = "positive")]
-    pub depth: u32,
-    /// Calls a build makes at once.
-    #[serde(deserialize_with = "positive")]
-    pub concurrency: u32,
-    /// The Ollama model that embeds overviews, Interpretations and questions.
-    pub embed_model: String,
-    /// Where Ollama answers.
-    pub ollama: String,
-    /// The Library versions no Repo links, added for the user's own sessions.
-    pub libraries: Vec<Library>,
-}
-
-/// A Library version: a GitHub repository at a tag, its Wiki covering only
-/// the subfolder `path`, when set.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct Library {
-    #[serde(deserialize_with = "slug")]
-    pub repo: String,
-    #[serde(deserialize_with = "tag")]
-    pub tag: String,
-    #[serde(
-        default,
-        deserialize_with = "subfolder",
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub path: Option<String>,
-}
-
-impl Library {
-    /// Its Wiki's id: `<owner/name>@<tag>`, then `:<path>` when it has one.
-    /// A slug holds no `@` and a tag no `:`, so the id reads back one way.
-    pub fn id(&self) -> String {
-        let path = self
-            .path
-            .as_ref()
-            .map_or(String::new(), |p| format!(":{p}"));
-        format!("{}@{}{path}", self.repo, self.tag)
-    }
-}
-
 /// In the order `as` numbers them: Sunday is 0.
 #[derive(Debug, Clone, Copy, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -371,7 +273,7 @@ pub struct Launch {
 }
 
 /// The switches the app shows and sets.
-pub const SWITCHES: [&str; 10] = [
+pub const SWITCHES: [&str; 9] = [
     "dispatch",
     "mine",
     "stack",
@@ -381,7 +283,6 @@ pub const SWITCHES: [&str; 10] = [
     "answer",
     "gardening",
     "quality_scan",
-    "wiki",
 ];
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -398,8 +299,6 @@ pub struct Switches {
     pub answer: bool,
     pub gardening: bool,
     pub quality_scan: bool,
-    /// The loop builds its Wiki; off, the Wiki stays readable and is built no more.
-    pub wiki: bool,
 }
 
 /// How a Harness is launched, as on `main` (ADR-0005).
@@ -422,12 +321,6 @@ pub struct Harness {
     pub trust_args: Vec<String>,
     #[serde(default)]
     pub extra_args: Vec<String>,
-    /// What adds the wiki MCP to a launch given Wikis, its tools allowed:
-    /// each with `{mcpArgs}` filled in, `nico-agent mcp`'s arguments serving
-    /// them as a JSON array. A `pane-command` one (opencode) has the MCP in
-    /// its `OPENCODE_CONFIG_CONTENT` instead.
-    #[serde(default)]
-    pub mcp_args: Vec<String>,
     /// The models and Efforts it takes; unset, any.
     pub models: Option<Vec<String>>,
     pub efforts: Option<Vec<String>>,
@@ -475,9 +368,6 @@ pub struct Prompts {
     pub review: String,
     pub quality_scan: String,
     pub morning: String,
-    pub wiki: String,
-    pub faux_nico_wiki: String,
-    pub libraries: String,
     pub bot_suffix: String,
     pub restart: RestartPrompts,
 }
@@ -509,14 +399,6 @@ impl Config {
     /// How long a tick lasts, and so how old a Source read may be.
     pub fn tick(&self) -> Duration {
         Duration::from_secs(u64::from(self.tick_minutes) * 60)
-    }
-
-    /// Each Library version a Repo links or `[wiki]` adds, once, by its id.
-    pub fn libraries(&self) -> BTreeMap<String, &Library> {
-        let linked = self.repos.values().flat_map(|r| &r.libraries);
-        (linked.chain(&self.wiki.libraries))
-            .map(|l| (l.id(), l))
-            .collect()
     }
 
     /// The Repo `slug` names, in any casing, by its slug as configured.
@@ -580,6 +462,7 @@ pub fn edit<T>(
     state::update(&file, |text| {
         let config = parse(&file, text)?;
         let mut doc: DocumentMut = text.parse().expect("parse read it");
+        retire(doc.as_table_mut());
         let out = change(&config, &mut doc);
         Ok((doc.to_string(), out))
     })
@@ -589,6 +472,7 @@ fn parse(file: &Path, text: &str) -> Result<Config, Refusal> {
     let spanned = Document::parse(text)
         .map_err(|e| invalid(file, e.span().map(|s| line(text, s.start)), "", e.message()))?;
     let mut doc = spanned.clone().into_mut();
+    retire(doc.as_table_mut());
     fill(doc.as_table_mut(), defaults(DEFAULTS).as_table());
     let line_of = |keys: &[&str]| line_of(&spanned, keys);
 
@@ -694,13 +578,42 @@ fn parse(file: &Path, text: &str) -> Result<Config, Refusal> {
     {
         return Err(not_a_harness(&["morning", "launch"], harness));
     }
-    if !config.harnesses.contains_key(&config.wiki.launch.harness) {
-        return Err(not_a_harness(
-            &["wiki", "launch"],
-            &config.wiki.launch.harness,
-        ));
-    }
     Ok(config)
+}
+
+/// Keys an earlier build wrote that this one no longer reads, each removed
+/// wherever it may be: read past, and gone from the file on its next edit.
+const RETIRED: &[&[&str]] = &[
+    &["wiki"],
+    &["prompts", "wiki"],
+    &["prompts", "faux_nico_wiki"],
+    &["prompts", "libraries"],
+    &["repos", "*", "libraries"],
+    &["repos", "*", "switches", "wiki"],
+    &["projects", "*", "libraries"],
+    &["projects", "*", "switches", "wiki"],
+    &["harnesses", "*", "mcp_args"],
+];
+
+/// `table` without the [`RETIRED`] keys, `*` matching any.
+fn retire(table: &mut dyn TableLike) {
+    fn remove(table: &mut dyn TableLike, keys: &[&str]) {
+        match keys {
+            [] => {}
+            [key] => {
+                table.remove(key);
+            }
+            ["*", rest @ ..] => (table.iter_mut())
+                .filter_map(|(_, item)| item.as_table_like_mut())
+                .for_each(|t| remove(t, rest)),
+            [key, rest @ ..] => {
+                if let Some(t) = table.get_mut(key).and_then(Item::as_table_like_mut) {
+                    remove(t, rest);
+                }
+            }
+        }
+    }
+    RETIRED.iter().for_each(|keys| remove(table, keys));
 }
 
 fn defaults(text: &str) -> DocumentMut {
@@ -797,50 +710,6 @@ fn positive<'de, D: Deserializer<'de>>(d: D) -> Result<u32, D::Error> {
 
 fn positive_port<'de, D: Deserializer<'de>>(d: D) -> Result<u16, D::Error> {
     std::num::NonZeroU16::deserialize(d).map(u16::from)
-}
-
-/// A GitHub repository's `<owner>/<name>`, neither a way out of its folder.
-fn slug<'de, D: Deserializer<'de>>(d: D) -> Result<String, D::Error> {
-    let slug = String::deserialize(d)?;
-    if !repo::is_slug(&slug) || !plain(&slug) {
-        return Err(serde::de::Error::invalid_value(
-            serde::de::Unexpected::Str(&slug),
-            &"a GitHub repository's owner/name",
-        ));
-    }
-    Ok(slug)
-}
-
-/// A tag: no `:`, which a Library version's id ends it with, and no part
-/// of it a way out of its folder.
-fn tag<'de, D: Deserializer<'de>>(d: D) -> Result<String, D::Error> {
-    let tag = String::deserialize(d)?;
-    if tag.contains(':') || !plain(&tag) {
-        return Err(serde::de::Error::invalid_value(
-            serde::de::Unexpected::Str(&tag),
-            &"a git tag",
-        ));
-    }
-    Ok(tag)
-}
-
-/// A subfolder of a repository, from its root: `packages/effect`; null, none.
-fn subfolder<'de, D: Deserializer<'de>>(d: D) -> Result<Option<String>, D::Error> {
-    let Some(path) = Option::<String>::deserialize(d)? else {
-        return Ok(None);
-    };
-    if !plain(&path) {
-        return Err(serde::de::Error::invalid_value(
-            serde::de::Unexpected::Str(&path),
-            &"a folder's path from the repository's root, such as packages/effect",
-        ));
-    }
-    Ok(Some(path))
-}
-
-/// Whether each `/`-part of `path` names something: none empty, `.` or `..`.
-fn plain(path: &str) -> bool {
-    path.split('/').all(|part| !["", ".", ".."].contains(&part))
 }
 
 fn hour<'de, D: Deserializer<'de>>(d: D) -> Result<u32, D::Error> {

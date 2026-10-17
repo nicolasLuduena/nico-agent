@@ -5,14 +5,12 @@ use serde_json::{Value, json};
 use crate::answer;
 use crate::dispatch;
 use crate::install;
-use crate::mcp;
 use crate::pause;
 use crate::refresh;
 use crate::repo;
 use crate::serve;
 use crate::status;
 use crate::verdict;
-use crate::wiki;
 use crate::world::{World, WorldError};
 
 /// What a command runs against: the outside world and the config directory.
@@ -84,15 +82,7 @@ const COMMANDS: &[(&str, &str)] = &[
     ),
     (
         "nico-agent status [--since <time>]",
-        "show per Repo the Ready and Stackable issues, every Dispatch and every Wiki; with --since, what merged, Closed, was answered and was scanned after it",
-    ),
-    (
-        "nico-agent wiki build <owner/name>[@<tag>[:<path>]] [--update|--rebuild|--continue]",
-        "build the Wiki of the Repo from scratch at origin/<base> (--rebuild too), or of the Library version at its tag under its subfolder, one headless call of the [wiki] launch per part of its code, and keep it in the Bucket; with --update, from the Wiki it holds, asking only about the parts whose files changed or a failed call left Gaps; with --continue, at the Wiki's commit, asking only about the parts its budget or a failed call left Gaps, with a fresh budget",
-    ),
-    (
-        "nico-agent mcp [--wiki <owner/name>[@<tag>[:<path>]]]...",
-        "serve the Wikis named, or every one, to an agent as an MCP server on stdio: `claude mcp add wiki -- nico-agent mcp`",
+        "show per Repo the Ready and Stackable issues and every Dispatch; with --since, what merged, Closed, was answered and was scanned after it",
     ),
     (
         "nico-agent serve",
@@ -132,25 +122,14 @@ pub fn run(argv: &[String], ctx: &Context) -> Output {
         ["status", args @ ..] => status::status(args, ctx),
         ["serve", args @ ..] => serve::serve(args, ctx),
         ["refresh", args @ ..] => refresh::refresh(args, ctx),
-        ["wiki", "build", args @ ..] => wiki::build(args, ctx),
-        ["mcp", args @ ..] => mcp::mcp(args, ctx),
         ["repo", ..] => Err(bad_invocation(
             "`repo` needs a subcommand: add, rm or list".into(),
             "repo",
-        )),
-        ["wiki", ..] => Err(bad_invocation(
-            "`wiki` needs a subcommand: build".into(),
-            "wiki",
         )),
         [] => Err(bad_invocation("no command given".into(), "")),
         [word, ..] => Err(bad_invocation(format!("unknown command `{word}`"), "")),
     };
     match answer {
-        // `mcp`: stdout was the protocol's, and ends with its last answer.
-        Ok(Value::Null) => Output {
-            stdout: String::new(),
-            exit_code: 0,
-        },
         Ok(answer) => Output {
             stdout: render(&answer, json),
             exit_code: 0,

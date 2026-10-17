@@ -9,7 +9,6 @@ const defaults: Settings = {
   base: { value: null, from: "default" },
   implementer: { value: claude, from: "default" },
   reviewer: { value: { ...claude, harness: "codex" }, from: "default" },
-  libraries: { value: [], from: "default" },
 };
 const shop: Project = { ...defaults, name: "shop", repos: ["acme/api", "acme/web"], defaults: { room: 4, switches: { review: false } } };
 const own: Project = { ...defaults, name: "acme/cli", repos: ["acme/cli"], defaults: {} };

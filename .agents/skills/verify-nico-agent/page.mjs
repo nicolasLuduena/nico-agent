@@ -3,7 +3,7 @@
 // Called by `control-nico-agent page`, which passes the run's URL first and sets VERIFY_PLAYWRIGHT:
 //   page.mjs <url> [--evidence PREFIX] [--width PX] [--scheme light|dark] [--storage FILE|none] [--path PATH] [--hash HASH] [--within ROLE=NAME | --click ROLE=NAME | --click ROLE~NAME | --select NAME=OPTION
 //            | --press KEY | --type TEXT | --expect TEXT | --gone TEXT | --wait SECONDS | --history back|forward | --mode pass|502|signed-out | --hold SECONDS]...
-// --path PATH opens <url>PATH (a Wiki's page, /wiki/<id>) for the Board at /; --hash HASH opens it at HASH, as a
+// --path PATH opens <url>PATH instead of the Board at /; --hash HASH opens it at HASH, as a
 // link does; --history back|forward is the browser's Back or Forward. --scheme dark is a browser whose system
 // colours are dark, as the theme System follows; light, the default, a light one.
 // --within ROLE=NAME makes each later --click find its element inside that one (a Repo's `region "<slug>"`); `--within page` the whole page again.

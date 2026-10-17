@@ -2,7 +2,7 @@
 //! recorded in order as the command it stands for, in `main`'s shapes.
 
 use std::cell::{Cell, RefCell};
-use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::collections::{BTreeMap, HashMap};
 use std::time::{Duration, SystemTime};
 
 use nico_agent::world::*;
@@ -47,8 +47,6 @@ pub struct FakeWorld {
     pub agents: RefCell<BTreeMap<String, String>>,
     /// The pane each named agent runs in.
     pub agent_panes: RefCell<HashMap<String, String>>,
-    /// Panes herdr no longer has: closed, or their shell exited.
-    pub gone_panes: RefCell<Vec<String>>,
     /// What `herdr agent read` shows of each named agent.
     pub screens: RefCell<HashMap<String, String>>,
     /// The startup question the next agents started are blocked on, shown as
@@ -86,24 +84,11 @@ pub struct FakeWorld {
     pub changes: RefCell<HashMap<String, Vec<String>>>,
     /// The commit each rev names in a clone, by `<path> <rev>`; `abc1234` when unset.
     pub heads: RefCell<HashMap<String, String>>,
-    /// How many commits each range of a clone holds, by `<path> <from>..<to>`; 0 when unset.
-    pub behind: RefCell<HashMap<String, usize>>,
     /// Whether each shell command line succeeds and what it prints, by the
     /// command; one unset succeeds printing nothing.
     pub shell_runs: RefCell<HashMap<String, (bool, String)>>,
     /// How far local time is ahead of UTC, in seconds: 0, UTC, unless set.
     pub utc_offset: Cell<i64>,
-    /// What a headless call answers, by a line its prompt holds; a call
-    /// whose prompt holds none of them fails.
-    pub headless: RefCell<Vec<(String, String)>>,
-    /// What Ollama embeds each text as; one unset as `[0, 1]`.
-    pub embeddings: RefCell<HashMap<String, Vec<f32>>>,
-    /// The lines stdin holds still, read in order; closed once they are read.
-    pub stdin: RefCell<VecDeque<String>>,
-    /// The lines written to stdout, in order.
-    pub stdout: RefCell<Vec<String>>,
-    /// Headless calls answered so far, each in a session of its own: `ses_1`.
-    sessions: Cell<u32>,
     workspaces: Cell<u32>,
     tabs: RefCell<HashMap<String, u32>>,
 }
@@ -133,7 +118,6 @@ impl Default for FakeWorld {
             bot_rate_limit: Default::default(),
             agents: Default::default(),
             agent_panes: Default::default(),
-            gone_panes: Default::default(),
             screens: Default::default(),
             blocked_screen: Default::default(),
             stalled_prompts: Default::default(),
@@ -156,12 +140,6 @@ impl Default for FakeWorld {
             heads: Default::default(),
             shell_runs: Default::default(),
             utc_offset: Cell::new(0),
-            behind: Default::default(),
-            headless: Default::default(),
-            embeddings: Default::default(),
-            stdin: Default::default(),
-            stdout: Default::default(),
-            sessions: Cell::new(0),
             workspaces: Cell::new(0),
             tabs: Default::default(),
         }
@@ -380,17 +358,6 @@ impl World for FakeWorld {
         Ok(())
     }
 
-    fn git_remove(&self, path: &str, file: &str, message: &str) -> WorldResult<()> {
-        self.call(format!(
-            "git -C {path} rm --quiet -r -- {file} && git -C {path} -c user.name=nico-agent -c user.email=nico-agent@localhost commit --quiet --allow-empty --no-gpg-sign -m {message}"
-        ))?;
-        let removed = format!("{path}/{file}");
-        let gone = |f: &String| *f == removed || f.starts_with(&format!("{removed}/"));
-        self.files.borrow_mut().retain(|f, _| !gone(f));
-        self.committed.borrow_mut().retain(|f, _| !gone(f));
-        Ok(())
-    }
-
     fn git_changed(&self, path: &str, folder: &str) -> WorldResult<bool> {
         self.call(format!("git -C {path} status --porcelain -- {folder}"))?;
         let committed = self.committed.borrow();
@@ -488,99 +455,6 @@ impl World for FakeWorld {
             .borrow_mut()
             .retain(|key, _| !key.starts_with(&at));
         Ok(())
-    }
-
-    fn git_ls_tree_blobs(&self, path: &str, rev: &str) -> WorldResult<Vec<(String, String)>> {
-        self.call(format!("git -C {path} ls-tree -r -z {rev}"))?;
-        let at = format!("{path} {rev}:");
-        Ok((self.tree.borrow().iter())
-            .filter_map(|(key, text)| Some((key.strip_prefix(&at)?.to_string(), blob(text))))
-            .collect())
-    }
-
-    fn git_rev_count(&self, path: &str, from: &str, to: &str) -> WorldResult<usize> {
-        self.call(format!("git -C {path} rev-list --count {from}..{to}"))?;
-        let behind = self.behind.borrow();
-        Ok(behind
-            .get(&format!("{path} {from}..{to}"))
-            .copied()
-            .unwrap_or(0))
-    }
-
-    /// The files at the tag in `tree`, under `url`, are the bare repo's at
-    /// the tag from now on; a tag `url` lacks fails as git's fetch does.
-    fn git_fetch_tag(&self, path: &str, url: &str, tag: &str) -> WorldResult<()> {
-        let refspec = format!("+refs/tags/{tag}:refs/tags/{tag}");
-        let fetch = format!("fetch --quiet --depth 1 {url} {refspec}");
-        self.call(format!(
-            "git init --bare --quiet {path} && git -C {path} {fetch}"
-        ))?;
-        let at = format!("{url} refs/tags/{tag}:");
-        let fetched: Vec<(String, String)> = (self.tree.borrow().iter())
-            .filter_map(|(key, text)| Some((key.strip_prefix(&at)?.to_string(), text.clone())))
-            .collect();
-        if fetched.is_empty() {
-            return Err(WorldError(format!(
-                "`git {fetch}` failed in {path}: fatal: couldn't find remote ref refs/tags/{tag}"
-            )));
-        }
-        for (file, text) in fetched {
-            self.add_tree_file(path, &format!("refs/tags/{tag}"), &file, &text);
-        }
-        Ok(())
-    }
-
-    /// One at a time, each answered as `headless` scripts it, `told` of
-    /// each as it starts and as it answers.
-    fn harness_headless(
-        &self,
-        cwd: &str,
-        calls: &[Headless],
-        _at_once: usize,
-        told: &mut dyn FnMut(usize, Called),
-    ) -> Vec<WorldResult<Answered>> {
-        let answer = |call: &Headless| {
-            let env: String = (call.env.iter())
-                .map(|(k, v)| format!("{k}={v} "))
-                .collect();
-            let (command, args) = (&call.command, call.args.join(" "));
-            self.call(format!(
-                "cd {cwd} && env {env}{command} {args} {}",
-                call.prompt
-            ))?;
-            let script = self.headless.borrow();
-            let (_, text) = (script.iter())
-                .find(|(line, _)| call.prompt.lines().any(|l| l == line))
-                .ok_or_else(|| WorldError("no answer scripted for this prompt".into()))?;
-            self.sessions.set(self.sessions.get() + 1);
-            let session = format!("ses_{}", self.sessions.get());
-            Ok(Answered {
-                text: text.clone(),
-                session,
-            })
-        };
-        (calls.iter().enumerate())
-            .map(|(i, call)| {
-                told(i, Called::Started);
-                let answered = answer(call);
-                told(i, Called::Answered);
-                answered
-            })
-            .collect()
-    }
-
-    fn ollama_embed(
-        &self,
-        ollama: &str,
-        model: &str,
-        input: &[String],
-    ) -> WorldResult<Vec<Vec<f32>>> {
-        let body = serde_json::json!({ "model": model, "input": input });
-        self.call(format!("curl -X POST {ollama}/api/embed -d {body}"))?;
-        let embeddings = self.embeddings.borrow();
-        Ok((input.iter())
-            .map(|text| embeddings.get(text).cloned().unwrap_or(vec![0.0, 1.0]))
-            .collect())
     }
 
     fn shell(&self, cwd: &str, command: &str) -> WorldResult<(bool, String)> {
@@ -879,11 +753,6 @@ impl World for FakeWorld {
         self.call(format!("herdr pane run {pane} {command}"))
     }
 
-    fn herdr_pane_exists(&self, pane: &str) -> WorldResult<bool> {
-        self.call(format!("herdr pane get {pane}"))?;
-        Ok(!self.gone_panes.borrow().iter().any(|p| p == pane))
-    }
-
     fn herdr_agent_detect(&self, pane: &str, timeout: Duration) -> WorldResult<()> {
         self.call(format!(
             "herdr agent detect {pane} --timeout {}",
@@ -992,15 +861,6 @@ impl World for FakeWorld {
     fn listen(&self, port: u16, handler: Handler) -> WorldResult<()> {
         self.call(format!("listen 127.0.0.1:{port}"))?;
         *self.listening.borrow_mut() = Some(handler);
-        Ok(())
-    }
-
-    fn read_line(&self) -> WorldResult<Option<String>> {
-        Ok(self.stdin.borrow_mut().pop_front())
-    }
-
-    fn write_line(&self, line: &str) -> WorldResult<()> {
-        self.stdout.borrow_mut().push(line.into());
         Ok(())
     }
 

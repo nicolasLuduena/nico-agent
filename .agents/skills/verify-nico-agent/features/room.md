@@ -40,7 +40,7 @@ Preconditions:
   `'{"room":2,"rom":2}'` and `'not json'` (`02` to `08`): HTTP `400`, e.g. `room is a whole number
   of at least 1, not 0` with `help` `room is how many Dispatches the Repo may have In flight at
   once, a whole number of at least 1`; `{} sets nothing` and `` `rom` is not a setting the page
-  sets `` with `help` `Settings: implementer, reviewer, room, base, project, install, switches, libraries; null takes
+  sets `` with `help` `Settings: implementer, reviewer, room, base, project, install, switches; null takes
   the Project's or the default` (none for not JSON). On `/api/repo/other/repo` with `'{"room":2}'` (`09-unknown-repo`): `409`,
   `other/repo is not a configured Repo`. `config.toml` is byte for byte unchanged by each.
 - **On the page.** Run `$C page --evidence "$E/10-page" --expect "Room 5 · 1 in flight" --click "region=Room" --expect "1 in flight; each Dispatch holds its room until its PR merges or closes"`.

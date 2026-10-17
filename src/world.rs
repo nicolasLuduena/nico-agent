@@ -11,13 +11,12 @@ use std::io::{self, BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, mpsc};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime};
 
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::Value;
 
 /// The label that offers an issue to the loop.
 pub const READY_LABEL: &str = "ready-for-agent";
@@ -262,30 +261,6 @@ pub struct HttpResponse {
     pub body: Vec<u8>,
 }
 
-/// One headless, read-only call of a Harness: `command` with `args`, then
-/// `prompt` as its last argument, with `env` set.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Headless {
-    pub command: String,
-    pub args: Vec<String>,
-    pub env: Vec<(String, String)>,
-    pub prompt: String,
-}
-
-/// What a headless call answered, and the session to correct it in.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Answered {
-    pub text: String,
-    pub session: String,
-}
-
-/// What a call of [`World::harness_headless`] did: started, or answered,
-/// well or not.
-pub enum Called {
-    Started,
-    Answered,
-}
-
 /// What `serve` answers a request with.
 pub enum Answer {
     /// One response, sent whole.
@@ -314,9 +289,6 @@ pub trait World {
     /// Commit what `add`, a path in the clone at `path`, holds, new files
     /// included, if it is there; even when nothing changed.
     fn git_commit(&self, path: &str, add: &str, message: &str) -> WorldResult<()>;
-    /// Commit the removal of `file`, a path in the clone at `path`, with
-    /// `message`: gone from its files, kept in its history.
-    fn git_remove(&self, path: &str, file: &str, message: &str) -> WorldResult<()>;
     /// Whether what `folder`, a path in the clone at `path`, holds is not its
     /// last commit's: a file new, changed or staged in it.
     fn git_changed(&self, path: &str, folder: &str) -> WorldResult<bool>;
@@ -347,39 +319,6 @@ pub trait World {
     /// Remove the clone at `path`'s worktree in the folder `dir`, changes and
     /// all; no-op when there is none.
     fn git_worktree_remove(&self, path: &str, dir: &str) -> WorldResult<()>;
-    /// Each file at `rev` in the clone at `path`, every folder down, as its
-    /// path and its blob; no symlink nor submodule.
-    fn git_ls_tree_blobs(&self, path: &str, rev: &str) -> WorldResult<Vec<(String, String)>>;
-    /// How many commits `to` holds that `from` does not, in the clone at `path`.
-    fn git_rev_count(&self, path: &str, from: &str, to: &str) -> WorldResult<usize>;
-    /// Fetch the tag `tag` of `url`, its commit alone, into the bare repo at
-    /// `path`, made first if missing: one kept across fetches, with the
-    /// user's own git credentials.
-    fn git_fetch_tag(&self, path: &str, url: &str, tag: &str) -> WorldResult<()>;
-
-    // Harnesses
-    /// Make each of `calls` in the folder `cwd`, with no input, up to
-    /// `at_once` of them at a time, `told` of each, by its place in `calls`,
-    /// as it starts and as it answers: the last message each answered, and
-    /// its session, in order.
-    /// opencode's, claude's and codex's JSON output is read.
-    fn harness_headless(
-        &self,
-        cwd: &str,
-        calls: &[Headless],
-        at_once: usize,
-        told: &mut dyn FnMut(usize, Called),
-    ) -> Vec<WorldResult<Answered>>;
-
-    // Ollama
-    /// The embedding of each of `input`, in order, by the `model` of the
-    /// Ollama answering at `ollama`, through its `/api/embed`.
-    fn ollama_embed(
-        &self,
-        ollama: &str,
-        model: &str,
-        input: &[String],
-    ) -> WorldResult<Vec<Vec<f32>>>;
 
     // shell
     /// Run `command` with `sh -c` in the folder `cwd`, with no input, showing
@@ -474,8 +413,6 @@ pub trait World {
     ) -> WorldResult<bool>;
     /// Run a shell command line in a pane, as if typed and entered.
     fn herdr_pane_run(&self, pane: &str, command: &str) -> WorldResult<()>;
-    /// Whether herdr still has the pane: one closed, or whose shell exited, is gone.
-    fn herdr_pane_exists(&self, pane: &str) -> WorldResult<bool>;
     /// Wait until herdr detects an agent in a pane, failing after `timeout`.
     fn herdr_agent_detect(&self, pane: &str, timeout: Duration) -> WorldResult<()>;
     /// Name the agent in a pane, so later agent commands can address it.
@@ -511,12 +448,6 @@ pub trait World {
     /// Answer HTTP on 127.0.0.1:`port` with `handler`, a thread per request,
     /// while this thread goes on; fails when the port cannot be taken.
     fn listen(&self, port: u16, handler: Handler) -> WorldResult<()>;
-
-    // stdio
-    /// The next line on stdin, without its line ending; `None` once stdin is closed.
-    fn read_line(&self) -> WorldResult<Option<String>>;
-    /// Write `line` and a newline to stdout, at once.
-    fn write_line(&self, line: &str) -> WorldResult<()>;
 
     // log
     /// Write a line to `serve`'s log: stderr, which journald keeps for a service.
@@ -1137,77 +1068,6 @@ fn first_line(stderr: &[u8], status: &std::process::ExitStatus) -> String {
         .map_or_else(|| status.to_string(), String::from)
 }
 
-/// A headless model call reads a code base and writes a whole Wiki page.
-const HEADLESS_DEADLINE: Duration = Duration::from_secs(3600);
-
-/// Make one headless call of a Harness in `cwd`: the text of its last
-/// message, with its session, or the error it reported, read from the JSON
-/// lines it printed: opencode's events (`--format json`), codex's (`--json`)
-/// or claude's one result (`--output-format json`), its structured output
-/// when a schema asked for one.
-fn headless(cwd: &str, call: &Headless) -> WorldResult<Answered> {
-    let command = format!(
-        "{} {}",
-        call.command,
-        call.args.first().map_or("", String::as_str)
-    );
-    // shortcut: the prompt is one argument, which Linux caps at 128 KiB (a top part of some 2,800 files); send it on stdin for a code base that big.
-    let ran = run_till(
-        Command::new(&call.command)
-            .args(&call.args)
-            .arg(&call.prompt)
-            .envs(call.env.iter().map(|(name, value)| (name, value)))
-            .current_dir(cwd)
-            // With an input open it waits on it, and never answers.
-            .stdin(Stdio::null()),
-        HEADLESS_DEADLINE,
-        &command,
-        |e| WorldError(format!("could not run `{command}` in {cwd}: {e}")),
-    )?;
-    let events: Vec<Value> = (String::from_utf8_lossy(&ran.stdout).lines())
-        .filter_map(|line| serde_json::from_str(line).ok())
-        .collect();
-    let last = |read: &dyn Fn(&Value) -> Option<String>| events.iter().rev().find_map(read);
-    let text = last(&|event| match event["type"].as_str()? {
-        "text" => event["part"]["text"].as_str().map(String::from),
-        // codex's other items are its commands, and its warnings.
-        "item.completed" if event["item"]["type"] == "agent_message" => {
-            event["item"]["text"].as_str().map(String::from)
-        }
-        "result" if event["is_error"] == false => match &event["structured_output"] {
-            Value::Null => event["result"].as_str().map(String::from),
-            output => Some(output.to_string()),
-        },
-        _ => None,
-    });
-    if let Some(text) = text
-        && ran.status.success()
-    {
-        let session = (events.iter())
-            .find_map(|event| {
-                (["sessionID", "thread_id", "session_id"].iter())
-                    .find_map(|key| event[key].as_str())
-            })
-            .ok_or_else(|| WorldError(format!("`{command}` failed: it named no session")))?;
-        let session = session.into();
-        return Ok(Answered { text, session });
-    }
-    let why = last(&|event| {
-        let why = match event["type"].as_str()? {
-            "error" => event["error"]["message"]
-                .as_str()
-                .or(event["message"].as_str()),
-            "turn.failed" => event["error"]["message"].as_str(),
-            "result" => event["result"].as_str(),
-            _ => None,
-        };
-        why.map(String::from)
-    })
-    .or_else(|| (!ran.status.success()).then(|| first_line(&ran.stderr, &ran.status)))
-    .unwrap_or_else(|| "it answered nothing".into());
-    Err(WorldError(format!("`{command}` failed: {why}")))
-}
-
 /// A failed herdr command, with herdr's error code when it reported one.
 struct HerdrFailure {
     code: Option<String>,
@@ -1365,10 +1225,6 @@ impl World for RealWorld {
         ];
         git_ok(path, &[&commit[..], &["-m", message]].concat()).map(drop)
     }
-    fn git_remove(&self, path: &str, file: &str, message: &str) -> WorldResult<()> {
-        git_ok(path, &["rm", "--quiet", "-r", "--", file])?;
-        self.git_commit(path, file, message)
-    }
     fn git_changed(&self, path: &str, folder: &str) -> WorldResult<bool> {
         git_ok(path, &["status", "--porcelain", "--", folder]).map(|out| !out.is_empty())
     }
@@ -1415,104 +1271,6 @@ impl World for RealWorld {
             Err(_) if !Path::new(dir).exists() => Ok(()),
             removed => removed.map(drop),
         }
-    }
-    fn git_ls_tree_blobs(&self, path: &str, rev: &str) -> WorldResult<Vec<(String, String)>> {
-        // `-z`: paths as they are, never quoted.
-        let listed = git_ok(path, &["ls-tree", "-r", "-z", rev])?;
-        Ok((listed.split('\0'))
-            .filter_map(|entry| {
-                let (about, file) = entry.split_once('\t')?;
-                match about.split(' ').collect::<Vec<_>>()[..] {
-                    [mode, "blob", blob] if mode != "120000" => Some((file.into(), blob.into())),
-                    _ => None,
-                }
-            })
-            .collect())
-    }
-    fn git_rev_count(&self, path: &str, from: &str, to: &str) -> WorldResult<usize> {
-        let counted = git_ok(path, &["rev-list", "--count", &format!("{from}..{to}")])?;
-        (counted.parse())
-            .map_err(|e| WorldError(format!("git rev-list --count printed {counted:?}: {e}")))
-    }
-    fn git_fetch_tag(&self, path: &str, url: &str, tag: &str) -> WorldResult<()> {
-        fs::create_dir_all(path).map_err(|e| WorldError(format!("could not make {path}: {e}")))?;
-        // Again on a bare repo, it only says so: its objects stay.
-        git_ok(path, &["init", "--bare", "--quiet"])?;
-        let refspec = format!("+refs/tags/{tag}:refs/tags/{tag}");
-        let fetch = ["fetch", "--quiet", "--depth", "1", url, &refspec];
-        git_env(path, &fetch, &[BATCH_SSH]).map(drop)
-    }
-    fn harness_headless(
-        &self,
-        cwd: &str,
-        calls: &[Headless],
-        at_once: usize,
-        told: &mut dyn FnMut(usize, Called),
-    ) -> Vec<WorldResult<Answered>> {
-        let next = AtomicUsize::new(0);
-        let mut answered: Vec<(usize, WorldResult<Answered>)> = thread::scope(|scope| {
-            // Each worker says when a call starts (no answer yet) and when it answers.
-            let (said, heard) = mpsc::channel();
-            for _ in 0..at_once.clamp(1, calls.len().max(1)) {
-                let (said, next) = (said.clone(), &next);
-                scope.spawn(move || {
-                    loop {
-                        let i = next.fetch_add(1, Ordering::Relaxed);
-                        let Some(call) = calls.get(i) else {
-                            return;
-                        };
-                        // Heard till the last answer: the receiving end outlives every worker.
-                        let _ = said.send((i, None));
-                        let _ = said.send((i, Some(headless(cwd, call))));
-                    }
-                });
-            }
-            drop(said);
-            (heard.into_iter())
-                .filter_map(|(i, answer)| match answer {
-                    None => {
-                        told(i, Called::Started);
-                        None
-                    }
-                    Some(answer) => {
-                        told(i, Called::Answered);
-                        Some((i, answer))
-                    }
-                })
-                .collect()
-        });
-        answered.sort_by_key(|(i, _)| *i);
-        answered.into_iter().map(|(_, answer)| answer).collect()
-    }
-    fn ollama_embed(
-        &self,
-        ollama: &str,
-        model: &str,
-        input: &[String],
-    ) -> WorldResult<Vec<Vec<f32>>> {
-        #[derive(Deserialize)]
-        struct Embedded {
-            embeddings: Vec<Vec<f32>>,
-        }
-        let url = format!("{}/api/embed", ollama.trim_end_matches('/'));
-        let response = curl(&HttpRequest {
-            method: "POST".into(),
-            url: url.clone(),
-            headers: vec![("Content-Type".into(), "application/json".into())],
-            body: json!({ "model": model, "input": input }).to_string(),
-        })?;
-        if response.status != 200 {
-            let said = String::from_utf8_lossy(&response.body);
-            let status = response.status;
-            return Err(WorldError(format!(
-                "{url} answered {status}: {}",
-                said.trim()
-            )));
-        }
-        let read: Embedded = (serde_json::from_slice(&response.body).ok())
-            .filter(|read: &Embedded| read.embeddings.len() == input.len())
-            .ok_or_else(|| invalid(&url))?;
-        Ok(read.embeddings)
     }
     fn shell(&self, cwd: &str, command: &str) -> WorldResult<(bool, String)> {
         let failed = |e: io::Error| WorldError(format!("could not run `{command}` in {cwd}: {e}"));
@@ -1867,13 +1625,6 @@ impl World for RealWorld {
         herdr_text(&["pane", "run", pane, command])?;
         Ok(())
     }
-    fn herdr_pane_exists(&self, pane: &str) -> WorldResult<bool> {
-        match herdr(&["pane", "get", pane]) {
-            Ok(_) => Ok(true),
-            Err(failure) if failure.is(&["pane_not_found"]) => Ok(false),
-            Err(failure) => Err(failure.into()),
-        }
-    }
     /// `agent wait` fails at once on a pane with no agent yet, so herdr is asked until it sees one.
     fn herdr_agent_detect(&self, pane: &str, timeout: Duration) -> WorldResult<()> {
         let deadline = self.now() + timeout;
@@ -2036,24 +1787,6 @@ impl World for RealWorld {
             }
         });
         Ok(())
-    }
-    fn read_line(&self) -> WorldResult<Option<String>> {
-        let mut line = vec![];
-        match io::stdin().lock().read_until(b'\n', &mut line) {
-            Ok(0) => Ok(None),
-            // Bytes that are no UTF-8 make a line that does not parse, not a read that fails.
-            Ok(_) => Ok(Some(
-                String::from_utf8_lossy(&line)
-                    .trim_end_matches(['\n', '\r'])
-                    .into(),
-            )),
-            Err(e) => Err(WorldError(format!("could not read stdin: {e}"))),
-        }
-    }
-    fn write_line(&self, line: &str) -> WorldResult<()> {
-        let mut out = io::stdout().lock();
-        (writeln!(out, "{line}").and_then(|()| out.flush()))
-            .map_err(|e| WorldError(format!("could not write stdout: {e}")))
     }
     fn log(&self, line: &str) {
         eprintln!("{line}");

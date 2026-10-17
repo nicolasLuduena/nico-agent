@@ -11,7 +11,7 @@ assign is refused inline and changes nothing.
 
 ## Sub-features
 
-- `mine-switch` the Switches section has `switch "Only issues assigned to me"`, off by default, with its chip and undo like every switch; turning it on writes `switches = { mine = true }` and reads `6 of 10 on`.
+- `mine-switch` the Switches section has `switch "Only issues assigned to me"`, off by default, with its chip and undo like every switch; turning it on writes `switches = { mine = true }` and reads `6 of 9 on`.
 - `mine-ready` with `mine` on, `status`'s `ready` lists only issues assigned to the user (`#5`); `#1` and Stackable `#6`, unassigned, are in no list.
 - `mine-map` `/api/map` gives every issue node its `assignees` (`[{name, you}]`; null for a Blocker no read holds) and an unassigned one in a `mine` Repo `stage` `Waiting`, `waits` the refusal's words and `assignee_holds` true; the node's fourth row reads `unassigned`, `#4`'s `assigned to @someone-else`.
 - `mine-refused` `dispatch` (and `POST /api/dispatch`) of an unassigned issue in a `mine` Repo: exit `1` (HTTP `409`), `<key> is not assigned to you, and <repo> takes only issues assigned to you`, help `Assign it to yourself, or turn \`mine\` off for <repo>`; the Dispatch form shows it with a `button "Assign to me"` under it.
@@ -37,7 +37,7 @@ Preconditions:
   assigned to the user, `#4` to `someone-else`, the rest to no one); `$C seed assign answers`.
 - `E=.evidence/<issue>/mine`; `$C state > "$E/state.before.txt"`.
 
-- **Turn it on, then dispatch.** Run `$C page --evidence "$E/01-switch-on-then-dispatch" --within "region=verify/fixture" --click "region=Switches" --expect "5 of 10 on" --click "switch=Only issues assigned to me" --expect "Saved" --expect "6 of 10 on" --within "region=Dispatch" --click "button=Dispatch" --expect "turn" --expect "Assign to me"`.
+- **Turn it on, then dispatch.** Run `$C page --evidence "$E/01-switch-on-then-dispatch" --within "region=verify/fixture" --click "region=Switches" --expect "5 of 9 on" --click "switch=Only issues assigned to me" --expect "Saved" --expect "6 of 9 on" --within "region=Dispatch" --click "button=Dispatch" --expect "turn" --expect "Assign to me"`.
   `.requests.txt` has `PATCH /api/repo/verify/fixture {"switches":{"mine":true}} -> 200`, then
   `POST /api/dispatch {"issue":"verify/fixture#1",...} -> 409`; the ARIA snapshot has an `alert`
   `verify/fixture#1 is not assigned to you, and verify/fixture takes only issues assigned to you`,
