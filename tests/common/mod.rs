@@ -63,7 +63,7 @@ pub const KIT_TOML: &str = "{ repo = \"acme/kit\", tag = \"v1\" }";
 
 /// The Wiki of `KIT` built by `wiki build`, from its one file at its tag.
 pub fn kit_built(t: &Setup) {
-    t.world.add_clone("/mnt/agents-land/nico-agent-bucket", &[]);
+    t.world.add_clone("/mnt/agent-land/nico-agent-bucket", &[]);
     let origin = "https://github.com/acme/kit.git";
     (t.world).add_tree_file(origin, "refs/tags/v1", "lib.rs", "pub fn run() {}\n");
     let leaf = json!({ "kind": "leaf", "overview": "A small kit." });

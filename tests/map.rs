@@ -292,7 +292,7 @@ fn a_node_is_its_dispatch_with_restarts_its_verdict_s_findings_and_every_bucket_
         t.world.calls(),
         [
             "herdr agent list",
-            "find /mnt/agents-land/nico-agent-bucket/acme/api/7 -name .git -prune -o -type f -print",
+            "find /mnt/agent-land/nico-agent-bucket/acme/api/7 -name .git -prune -o -type f -print",
         ]
     );
     assert_eq!(

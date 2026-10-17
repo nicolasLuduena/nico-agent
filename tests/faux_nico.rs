@@ -337,7 +337,7 @@ fn faux_nico_ending_after_answering_tells_no_one_and_is_closed() {
     );
 }
 
-const BUCKET: &str = "/mnt/agents-land/nico-agent-bucket";
+const BUCKET: &str = "/mnt/agent-land/nico-agent-bucket";
 
 /// What faux-nico's prompt gains from the Wiki of acme/api at abc1234.
 const WIKI_LINES: &str = " The Wiki of acme/api describes abc1234; where it and the code disagree, the code wins. The Wiki says what the code does, never what was decided: never answer from it.";

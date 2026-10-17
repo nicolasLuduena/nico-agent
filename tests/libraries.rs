@@ -9,7 +9,7 @@ use std::time::Duration;
 use common::{Setup, blob, setup};
 use serde_json::{Value, json};
 
-const BUCKET: &str = "/mnt/agents-land/nico-agent-bucket";
+const BUCKET: &str = "/mnt/agent-land/nico-agent-bucket";
 const ORIGIN: &str = "https://github.com/Effect-TS/effect.git";
 const TAG: &str = "effect@3.17.0";
 /// The Library version `acme/api` links, by its id.

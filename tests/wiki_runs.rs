@@ -8,7 +8,7 @@ use std::time::Duration;
 use common::{Setup, setup};
 use serde_json::{Value, json};
 
-const BUCKET: &str = "/mnt/agents-land/nico-agent-bucket";
+const BUCKET: &str = "/mnt/agent-land/nico-agent-bucket";
 const TICK: Duration = Duration::from_secs(600);
 
 /// Repos `acme/api` at `/src/api` and `acme/web` at `/src/web`, each set as

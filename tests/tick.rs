@@ -358,9 +358,9 @@ fn a_tick_reads_the_source_asks_about_prs_closes_then_fills_the_room_it_freed() 
             // (2) the PR that can still change
             "github pr activity acme/api#9",
             // (3) Close, its worktree's Evidence kept first if the Bucket lacks it
-            "git remotes /mnt/agents-land/nico-agent-bucket",
-            "cp -r /worktrees/api-1/.evidence/1/. /mnt/agents-land/nico-agent-bucket/acme/api/1/sha9",
-            "git -C /mnt/agents-land/nico-agent-bucket status --porcelain -- acme/api/1/sha9",
+            "git remotes /mnt/agent-land/nico-agent-bucket",
+            "cp -r /worktrees/api-1/.evidence/1/. /mnt/agent-land/nico-agent-bucket/acme/api/1/sha9",
+            "git -C /mnt/agent-land/nico-agent-bucket status --porcelain -- acme/api/1/sha9",
             "herdr worktree remove --workspace w1 --force",
             "herdr workspace close w1",
             // (7) the room it freed

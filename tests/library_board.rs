@@ -8,7 +8,7 @@ mod common;
 use common::{Setup, setup};
 use serde_json::{Value, json};
 
-const BUCKET: &str = "/mnt/agents-land/nico-agent-bucket";
+const BUCKET: &str = "/mnt/agent-land/nico-agent-bucket";
 /// Where the Bucket keeps `EFFECT`'s Wiki.
 const KEPT: &str = "wiki/Effect-TS/effect/effect@3.17.0/packages/effect/wiki.json";
 
