@@ -24,7 +24,7 @@ so back and forward move between Projects. There is no tab row and no Morning su
 - `needs-flag` the node of an Asking Implementer (herdr saying `blocked`, or the Asking a tick recorded), a Failed Dispatch, a review given up on or stopped and a Verified PR ends `needs you`; its panel holds the question (answer.md), the failure (close.md, rulings.md), the review (review.md) or the Verdict.
 - `needs-toast-blocked` a blocked Run with no node is a `status` toast `Blocked <agent> <since>` in `list "Needs you"`; a faux-nico's flags its Dispatch's node instead.
 - `needs-toast-paused` a paused GitHub is a toast `Paused GitHub until <time>`.
-- `needs-toast-dismiss` each toast's `button "Dismiss"` removes it for this page load; a reload shows it again.
+- `needs-toast-dismiss` each toast's `button "Dismiss <its head>"` removes it for this page load; a reload shows it again.
 - `needs-open` clicking a flagged node opens its panel (`GET /api/node/<issue>`); an Asking one's with `region "Asking"` first (see answer.md).
 
 ## How to get to it (user POV)
@@ -59,12 +59,12 @@ Preconditions:
   `$C seed dispatch 10 pr > "$E/seed10.json"`, `$C run -- verdict verify/fixture#10 pass --sha "$(jq -r .head "$E/seed10.json")" --json`,
   `$C seed dispatch 12 asking`, `$C seed run faux-nico 12`, `$C seed run quality-scan`, `$C seed run morning`
   and `$C drift pause`. Run `$C page --evidence "$E/07-needs" --expect "Paused"`.
-  No `region "Needs you"`; `main` starts with `list "Needs you"`, three `status` items in order, each with `button "Dismiss"`:
+  No `region "Needs you"`; `main` starts with `list "Needs you"`, three `status` items in order, each with `button "Dismiss <its head>"`:
   `Blocked quality-scan-fixture <time>`, `Blocked morning <time>` and `Paused GitHub until <time>`, drawn
   over the page's bottom right corner in the screenshot, yellow. Then `combobox "Project"`. The map's node buttons
   `#1, Verify: a Ready issue, Failed, needs you`, `#10, Verify: seeded Dispatch 10, Verified, PR 110 draft, needs you` and
   `#12, Verify: seeded Dispatch 12, Implementing, needs you` end `needs you` (#12 from its recorded Asking and its blocked faux-nico: herdr is a stub); no other does.
-- **Dismiss.** Run `$C page --evidence "$E/08-dismiss" --expect "Paused" --click "button=Dismiss"`: `list "Needs you"` has two `status`
+- **Dismiss.** Run `$C page --evidence "$E/08-dismiss" --expect "Paused" --click "button~Dismiss"`: `list "Needs you"` has two `status`
   items left, `Blocked morning` and `Paused GitHub`; the one dismissed is back on the next page.
 - **Open a flagged node.** Run `$C page --evidence "$E/09-open" --expect "Paused" --click "button~#1, Verify: a Ready issue"`.
   `.requests.txt` has `GET /api/node/verify%2Ffixture%231 -> 200`; the node is `[pressed]` and a `region "Verify: a Ready issue #1"`
@@ -86,7 +86,7 @@ Preconditions:
 - A Verified flag needs a pass Verdict on the PR's current head: after `drift push` it drops to
   `PR draft` and loses it.
 - The toasts sit over the page's corner, where a Repo's panel ends: `--click` what is under them
-  only after `--click "button=Dismiss"` once per toast, or they time it out.
+  only after `--click "button~Dismiss"` once per toast, or they time it out.
 - `seed issues` caches only `verify/fixture`; `verify/second` stays `Source not read yet`.
 - While the page is open with a live Dispatch, serve's event stream asks herdr every 10 seconds:
   expect `herdr agent list` lines in `$OUTSIDE_LOG`.

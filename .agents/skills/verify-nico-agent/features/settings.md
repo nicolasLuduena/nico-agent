@@ -108,7 +108,7 @@ Preconditions:
 ## Gotchas
 
 - A Readiness check failing in the run (no implement skill, the stubbed `ghbot`, `herdr`) is a toast over the
-  panel's foot (#420), so a `--click` under it times out: `--click "button=Dismiss"` once per toast first.
+  panel's foot (#420), so a `--click` under it times out: `--click "button~Dismiss"` once per toast first.
 - `restart` ticks once, as `launch` does: with Dispatch on, every Ready issue is dispatched and
   fails in the run. Turn Dispatch off first.
 - A select is driven by clicking it, then `ArrowDown` and `Enter`: the next option. The Harnesses

@@ -98,9 +98,9 @@ Preconditions:
 
 ## Gotchas
 
-- The Readiness checks' toasts (`list "Needs you"`, each a `status` with `button "Dismiss"`) arrive a moment after the page
+- The Readiness checks' toasts (`list "Needs you"`, each a `status` with `button "Dismiss <its head>"`) arrive a moment after the page
   loads and sit over the panel, so a `--click` on `button "Review now"` times out under them: first
-  `--expect` the last toast's text, then `--click "button=Dismiss"` once per toast (5 with herdr a
+  `--expect` the last toast's text, then `--click "button~Dismiss"` once per toast (5 with herdr a
   stub, 3 once `seed reviewer` makes it answer).
 - `review-waits` needs herdr to report the Implementer working: `seed reviewer` lists it idle, so
   `cargo test` covers it through the fake World.
