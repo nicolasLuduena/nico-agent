@@ -60,13 +60,9 @@ impl Sandbox {
         )
     }
 
+    /// What the fake `systemctl` was called with, a line a call.
     fn systemctl(&self) -> Vec<String> {
-        self.log("systemctl")
-    }
-
-    /// What the fake `name` was called with, a line a call.
-    fn log(&self, name: &str) -> Vec<String> {
-        let log = fs::read_to_string(self.home.join(format!("{name}.log"))).unwrap_or_default();
+        let log = fs::read_to_string(self.home.join("systemctl.log")).unwrap_or_default();
         log.lines().map(String::from).collect()
     }
 

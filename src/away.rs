@@ -67,8 +67,9 @@ pub enum Trigger {
     },
     /// One this build no longer starts, so a `runs.json` holding it still
     /// loads; never closed nor shown.
+    // shortcut: rewritten as `"trigger": "retired"` and an open one's workspace left to the user; drop such Runs on load if one ever matters.
     #[serde(other)]
-    Gone,
+    Retired,
 }
 
 impl Trigger {
@@ -77,7 +78,7 @@ impl Trigger {
         match self {
             Trigger::QualityScan => "quality-scan",
             Trigger::Morning => "morning",
-            Trigger::Gone => "gone",
+            Trigger::Retired => "retired",
             Trigger::FauxNico { .. } => "faux-nico",
         }
     }
@@ -122,7 +123,7 @@ pub fn step(
 /// permission may hold its answer. What it said, and the Runs it closed.
 fn close_ended(ctx: &Context, agents: Option<&[Agent]>) -> io::Result<(Vec<String>, Vec<Run>)> {
     let open: Vec<Run> = (load(&ctx.config_dir)?.into_iter())
-        .filter(|r| r.closed_at.is_none() && r.trigger != Trigger::Gone)
+        .filter(|r| r.closed_at.is_none() && r.trigger != Trigger::Retired)
         .collect();
     if open.is_empty() {
         return Ok((vec![], vec![]));

@@ -202,8 +202,8 @@ pub fn switches(ctx: &Context, slug: &str, set: &Value) -> Result<Value, Refusal
 
 /// Write `set`, `{setting: value}` of [`SETTINGS`], to the Repo `slug` in the
 /// config, keeping the rest as written; null removes the Repo's own value,
-/// a switch's its own switch; then the Repo's Readiness checks run. The Repo's slug and
-/// settings after, as `status` shows them.
+/// a switch's its own switch; then the Repo's Readiness checks run. The
+/// Repo's slug and settings after, as `status` shows them.
 pub fn set(ctx: &Context, slug: &str, set: &Value) -> Result<Value, Refusal> {
     let slug = config::edit(&ctx.config_dir, |config, doc| {
         let Some((slug, _)) = config.repo(slug) else {

@@ -888,4 +888,5 @@ fn a_run_of_a_trigger_this_build_no_longer_starts_is_read_past_never_closed() {
         t.world.calls()
     );
     assert_eq!(status.exit_code, 0, "{}", status.stdout);
+    assert!(!status.stdout.contains("wiki-api"), "{}", status.stdout);
 }
