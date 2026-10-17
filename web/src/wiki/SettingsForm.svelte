@@ -26,12 +26,12 @@
     else back();
   }
 
-  /** The budget's fields, each a whole number. */
+  /** The budget's fields, each a whole number, and what it does, shown on hovering its name. */
   const BUDGET = [
-    ["hour", "Hour"],
-    ["calls", "Calls"],
-    ["depth", "Depth"],
-    ["concurrency", "Calls at once"],
+    ["hour", "Hour", "Each day from this hour, local time, the loop updates every Repo's Wiki."],
+    ["calls", "Calls", "The most model calls one build makes; what they don't reach is left as Gaps, for Continue."],
+    ["depth", "Depth", "How many levels deep a build divides the code into Components; anything deeper is left as Gaps."],
+    ["concurrency", "Calls at once", "How many of a build's model calls run together."],
   ] as const;
 </script>
 
@@ -55,10 +55,10 @@
   <div class="part" role="group" aria-labelledby="{id}-budget">
     <strong id="{id}-budget">Budget</strong>
     <div class="budget">
-      {#each BUDGET as [key, title] (key)}
+      {#each BUDGET as [key, title, tip] (key)}
         <div class="field">
           <div class="field-head">
-            <label class="field-name" for="{id}-{key}">{title}</label>
+            <label class="field-name" for="{id}-{key}" data-tip={tip}>{title}</label>
             <Save state={saves.of(key)} />
           </div>
           <input
@@ -77,7 +77,6 @@
         </div>
       {/each}
     </div>
-    <p>The loop checks each Repo's Wiki daily from Hour, local time. A build makes at most Calls model calls, Calls at once at a time, dividing the code at most Depth deep.</p>
   </div>
 
   <div class="part field">
@@ -121,6 +120,12 @@
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 8px 12px;
+  }
+
+  /* A right-hand field's tip opens leftward, inside the sheet. */
+  .budget > :nth-child(even) [data-tip]::after {
+    left: auto;
+    right: 0;
   }
 
   /* Two by two on a phone. */

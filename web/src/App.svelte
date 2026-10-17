@@ -135,7 +135,7 @@
         <ProjectTab {project} {status} />
       {/if}
     {:else}
-      <p class="none">No Repo yet. Add one here, or with <code>nico-agent repo add &lt;owner/name&gt; --path &lt;clone&gt;</code>.</p>
+      <p class="none">No Repo yet. Add one below, or with <code>nico-agent repo add &lt;owner/name&gt; --path &lt;clone&gt;</code>.</p>
     {/if}
     <AddRepo {status} />
   {:else if !failure}

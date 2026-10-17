@@ -18,7 +18,7 @@ export function said(issue: string, r: Review): string {
     case "stopped":
       return `Reviewer on ${r.harness} stopped without a Verdict: ${byHand}`;
     case "retrying":
-      return `Reviewer failed to start or left herdr (${r.attempts} of ${r.cap}); trying again next tick`;
+      return `Reviewer failed to start or left herdr, attempt ${r.attempts} of ${r.cap}; trying again next tick`;
     case "gave_up":
       return `Reviewer gave up on ${sha}: ${byHand}`;
     case "waiting":

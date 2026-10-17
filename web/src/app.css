@@ -182,6 +182,37 @@ code {
 .field-name {
   color: var(--ink-muted);
 }
+/* A label that says what it does on hover: dotted under, its tip a small gauge-style panel under it after a beat. */
+[data-tip] {
+  position: relative;
+  text-decoration: underline dotted var(--ink-muted);
+  text-underline-offset: 3px;
+}
+[data-tip]::after {
+  content: attr(data-tip);
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 20;
+  width: 240px;
+  padding: 8px 12px;
+  background: var(--surface);
+  color: var(--ink);
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: normal;
+  border-top: 1px solid var(--rule);
+  box-shadow: 0 0 0 1px var(--hairline);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 120ms ease-out, visibility 0s 120ms;
+}
+[data-tip]:hover::after {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 120ms ease-out 400ms, visibility 0s 400ms;
+}
 /* A field's label, and at its right where the setting comes from, or how its save stands. */
 .field-head {
   display: flex;

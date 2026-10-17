@@ -41,7 +41,7 @@
           <span class="ref">{need.text}</span>
           <span class="text">{need.kind === "Paused" ? "until " : ""}{need.at ? clock(need.at) : ""}</span>
         {/if}
-        <button type="button" class="close" aria-label="Dismiss" onclick={() => (dismissed = new Set(dismissed).add(key(need)))}>×</button>
+        <button type="button" class="close" aria-label="Dismiss {need.kind} {need.repo ?? need.text}" onclick={() => (dismissed = new Set(dismissed).add(key(need)))}>×</button>
       </li>
     {/each}
   </ul>

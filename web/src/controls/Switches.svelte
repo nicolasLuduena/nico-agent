@@ -7,7 +7,7 @@
   import Refused from "./Refused.svelte";
   import Save from "./Save.svelte";
   import { Saves } from "./saves.svelte";
-  import { type Holder, switchLabel as label, unset } from "./settings";
+  import { type Holder, SWITCH_TIPS, switchLabel as label, unset } from "./settings";
 
   let { holder }: { holder: Holder } = $props();
   const id = $props.id();
@@ -30,7 +30,7 @@
     {#each Object.keys(switches) as name (name)}
       <li class="setting">
         <span>
-          <label class="field-name" for="{id}-{name}">{label(name)}</label>
+          <label class="field-name" for="{id}-{name}" data-tip={SWITCH_TIPS[name]}>{label(name)}</label>
           <Save state={saves.of(name)}>
             <From setting={switches[name]} {holder} keys={["switches", name]} name={label(name)} onundo={() => save(name, unset(["switches", name]))} />
           </Save>

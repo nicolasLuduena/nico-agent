@@ -45,8 +45,8 @@
 
 <div class="libraries">
   <p class="muted">
-    Library versions no Repo links, whose Wikis your own sessions ask through <code>nico-agent mcp</code>. Link one to a Repo in its settings
-    instead, for its agents.
+    Library versions no Repo links, for your own sessions to ask about through <code>nico-agent mcp</code>. For a Repo's agents, link
+    the Library in that Repo's Libraries section instead.
   </p>
   {#if status.libraries.length === 0}
     <p class="muted">None added.</p>
@@ -62,7 +62,7 @@
           </span>
           <span class="buttons">
             {#if asking === id}
-              <span role="status">Remove it? Its Wiki leaves the Bucket's files; its history keeps it.</span>
+              <span role="status">Remove it? Its Wiki is taken out of the Bucket; the Bucket's git history still holds it.</span>
               <button type="button" class="quiet" disabled={removing === id} aria-busy={removing === id} onclick={() => remove(id)}>
                 {removing === id ? "Removing…" : `Remove ${id}`}
               </button>

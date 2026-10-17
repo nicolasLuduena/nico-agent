@@ -43,6 +43,20 @@ const said: Record<string, string> = {
 };
 export const switchLabel = (name: string) => said[name] ?? name[0].toUpperCase() + name.slice(1);
 
+/** What the loop does while a switch is on, shown on hovering its name. */
+export const SWITCH_TIPS: Record<string, string> = {
+  dispatch: "Start a Dispatch on the oldest Ready issue whenever the Room has space.",
+  mine: "Only issues assigned to you are Ready; off, unassigned ones are too.",
+  stack: "Start a Stackable issue on its Blocker's open PR instead of waiting for that PR to merge.",
+  review: "Once a PR opens, start a Reviewer on another Harness to re-run the verification and record a Verdict.",
+  restart: "Start a fresh agent in the worktree when the machine rebooted, the agent stalled, the PR conflicts with its Base, the PR below it merged, or the Reviewer failed it.",
+  flip: "Mark a PR ready for review once its Verdict passes; off, it stays draft.",
+  answer: "When an Implementer is Asking, faux-nico answers what PRODUCT.md, the issue or its parent settles; anything else notifies you.",
+  gardening: "When nothing else is Ready or Stackable, dispatch Ready gardening issues.",
+  quality_scan: "Weekly, audit for bloat and deepening and file what it finds as issues.",
+  wiki: "Update the Wiki each day; off, it stays readable but is no longer built.",
+};
+
 /** The PATCH body that removes the own value at `keys`. */
 export const unset = (keys: string[]) => keys.reduceRight<unknown>((body, key) => ({ [key]: body }), null) as Record<string, unknown>;
 
