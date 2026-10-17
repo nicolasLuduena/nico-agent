@@ -13,8 +13,8 @@ const ALL: [&str; 10] = [
     "github assign acme/api#7 @me",
     "git -C /src/api fetch origin",
     "herdr worktree create --cwd /src/api --branch agent/api-7 --base origin/main --label api#7 --no-focus",
-    "herdr tab create --workspace w1 --cwd /worktrees/api-7 --label implementer --no-focus",
-    "herdr agent start impl-api-7 --kind claude --pane w1:p2 -- --model opus --effort high",
+    "herdr tab rename w1:t1 implementer",
+    "herdr agent start impl-api-7 --kind claude --pane w1:p1 -- --model opus --effort high",
     "github app repos",
     "herdr agent prompt impl-api-7 /implement https://github.com/acme/api/issues/7 as draft PR against main, saving its Evidence under .evidence/7/ in the worktree and linking it to http://127.0.0.1:42069/bucket/acme/api/7/",
 ];
@@ -82,9 +82,9 @@ fn without_flags_the_launch_and_base_come_from_the_repo() {
         herdr_calls(&t),
         [
             "herdr worktree create --cwd /src/api --branch agent/api-7 --base origin/develop --label api#7 --no-focus",
-            "herdr tab create --workspace w1 --cwd /worktrees/api-7 --label implementer --no-focus",
+            "herdr tab rename w1:t1 implementer",
             // codex asks to trust the clone even when herdr reports it ready.
-            r#"herdr agent start impl-api-7 --kind codex --pane w1:p2 -- -m gpt-5 -c model_reasoning_effort=high -c projects={"/src/api"={trust_level="trusted"}} -c approvals_reviewer="auto_review""#,
+            r#"herdr agent start impl-api-7 --kind codex --pane w1:p1 -- -m gpt-5 -c model_reasoning_effort=high -c projects={"/src/api"={trust_level="trusted"}} -c approvals_reviewer="auto_review""#,
             "herdr agent prompt impl-api-7 $implement https://github.com/acme/api/issues/7 as draft PR against develop, saving its Evidence under .evidence/7/ in the worktree and linking it to http://127.0.0.1:42069/bucket/acme/api/7/",
         ]
     );
@@ -106,8 +106,8 @@ fn a_flag_overrides_the_repo_launch_and_a_harness_flag_drops_its_model_and_effor
     assert_eq!(
         starts,
         [
-            "herdr agent start impl-api-7 --kind claude --pane w1:p2 -- --model opus --effort max",
-            r#"herdr agent start impl-api-8 --kind codex --pane w2:p2 -- -c projects={"/src/api"={trust_level="trusted"}} -c approvals_reviewer="auto_review""#,
+            "herdr agent start impl-api-7 --kind claude --pane w1:p1 -- --model opus --effort max",
+            r#"herdr agent start impl-api-8 --kind codex --pane w2:p1 -- -c projects={"/src/api"={trust_level="trusted"}} -c approvals_reviewer="auto_review""#,
         ]
     );
 }
@@ -282,7 +282,7 @@ fn a_failed_step_leaves_the_dispatch_failed_there_and_the_same_command_continues
         ),
         (
             "tab",
-            |w| fail(w, "herdr tab create"),
+            |w| fail(w, "herdr tab rename"),
             |w| w.clear_failures(),
             ALL[6..].to_vec(),
         ),
@@ -403,7 +403,7 @@ fn claudes_trust_question_for_the_new_worktree_is_answered_before_the_prompt() {
     assert_eq!(
         t.world.calls()[7..],
         [
-            "herdr agent start impl-api-7 --kind claude --pane w1:p2 -- --model opus --effort high",
+            "herdr agent start impl-api-7 --kind claude --pane w1:p1 -- --model opus --effort high",
             "herdr agent read impl-api-7 --source visible",
             "herdr agent send-keys impl-api-7 down enter",
             "herdr agent wait impl-api-7 --until idle --until done --timeout 30000",
@@ -547,9 +547,9 @@ fn opencode_runs_in_the_pane_with_its_model_and_effort_and_is_named_once_herdr_s
         t.world.calls()[7..],
         [
             format!("opencode variant ~/.local/state/opencode/model.json {model} high"),
-            format!("herdr pane run w1:p2 env OPENCODE_CONFIG_CONTENT='{config}' opencode2 --standalone"),
-            "herdr agent detect w1:p2 --timeout 30000".into(),
-            "herdr agent rename w1:p2 impl-api-7".into(),
+            format!("herdr pane run w1:p1 env OPENCODE_CONFIG_CONTENT='{config}' opencode2 --standalone"),
+            "herdr agent detect w1:p1 --timeout 30000".into(),
+            "herdr agent rename w1:p1 impl-api-7".into(),
             "herdr agent read impl-api-7 --source visible".into(),
             "herdr agent wait impl-api-7 --until idle --until done --timeout 5000".into(),
             "github app repos".into(),
@@ -590,8 +590,8 @@ fn a_linear_issue_is_dispatched_into_the_repo_that_claims_it_on_linears_branch()
             "linear assign BLE-1",
             "git -C /src/api fetch origin",
             "herdr worktree create --cwd /src/api --branch nico/ble-1 --base origin/main --label api:BLE-1 --no-focus",
-            "herdr tab create --workspace w1 --cwd /worktrees/ble-1 --label implementer --no-focus",
-            "herdr agent start impl-api-ble-1 --kind claude --pane w1:p2 -- --model opus --effort high",
+            "herdr tab rename w1:t1 implementer",
+            "herdr agent start impl-api-ble-1 --kind claude --pane w1:p1 -- --model opus --effort high",
             "github app repos",
             "herdr agent prompt impl-api-ble-1 /implement https://linear.app/bleentr/issue/BLE-1/title as draft PR against main, saving its Evidence under .evidence/BLE-1/ in the worktree and linking it to http://127.0.0.1:42069/bucket/acme/api/BLE-1/",
         ]
@@ -644,7 +644,7 @@ fn a_linear_claim_refused_for_its_rate_limit_pauses_linear_and_none_is_asked_til
 #[test]
 fn a_dispatch_another_live_process_runs_is_left_to_it_until_that_process_is_gone() {
     let t = with_issue();
-    t.world.fail_call("herdr tab create", "it broke");
+    t.world.fail_call("herdr tab rename", "it broke");
     dispatch_7(&t);
     t.world.clear_failures();
     // Process 5000 took it over and is opening the tab.
@@ -674,7 +674,7 @@ fn a_dispatch_another_live_process_runs_is_left_to_it_until_that_process_is_gone
 /// as opening its tab.
 fn running_in_5000() -> Setup {
     let t = with_issue();
-    t.world.fail_call("herdr tab create", "it broke");
+    t.world.fail_call("herdr tab rename", "it broke");
     dispatch_7(&t);
     t.world.clear_failures();
     edit_dispatch(&t.config_dir, |d| {
@@ -740,9 +740,9 @@ fn rebooted_before_prompt() -> Setup {
 
 /// The calls of starting acme/api#7's Implementer again in a fresh tab.
 const FRESH_TAB: [&str; 5] = [
-    "herdr tab close w1:t2",
     "herdr tab create --workspace w1 --cwd /worktrees/api-7 --label implementer --no-focus",
-    "herdr agent start impl-api-7 --kind claude --pane w1:p3 -- --model opus --effort high",
+    "herdr tab close w1:t1",
+    "herdr agent start impl-api-7 --kind claude --pane w1:p2 -- --model opus --effort high",
     "github app repos",
     "herdr agent prompt impl-api-7 /implement https://github.com/acme/api/issues/7 as draft PR against main, saving its Evidence under .evidence/7/ in the worktree and linking it to http://127.0.0.1:42069/bucket/acme/api/7/",
 ];
@@ -845,7 +845,7 @@ fn status_shows_the_dispatch_implementing_with_its_launch_and_steps() {
             "pr": null,
             "implementer": {
                 "agent": "impl-api-7", "harness": "claude", "model": "opus", "effort": "high",
-                "tab": "w1:t2", "pane": "w1:p2",
+                "tab": "w1:t1", "pane": "w1:p1",
             },
             "reviewer": null,
             "research": false,
@@ -895,7 +895,7 @@ fn an_implementer_of_a_repo_linking_a_built_library_version_starts_with_its_wiki
     assert_eq!(
         launched(&t),
         [
-            r#"herdr agent start impl-api-7 --kind claude --pane w1:p2 -- --model opus --effort high --mcp-config {"mcpServers":{"wiki":{"command":"nico-agent","args":["mcp","--wiki","acme/kit@v1"]}}} --allowedTools mcp__wiki__*"#.to_string(),
+            r#"herdr agent start impl-api-7 --kind claude --pane w1:p1 -- --model opus --effort high --mcp-config {"mcpServers":{"wiki":{"command":"nico-agent","args":["mcp","--wiki","acme/kit@v1"]}}} --allowedTools mcp__wiki__*"#.to_string(),
             format!("{} Ask the wiki MCP about {KIT} before reading their source.", ALL[9]),
         ]
     );

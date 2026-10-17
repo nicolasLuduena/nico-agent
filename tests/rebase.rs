@@ -298,8 +298,8 @@ fn a_dispatch_is_restarted_once_a_tick_for_its_most_specific_reason_and_another_
     assert_eq!(
         tabs,
         [
-            "herdr tab close w1:t2",
             "herdr tab create --workspace w1 --cwd /worktrees/api-1 --label implementer --no-focus",
+            "herdr tab close w1:t1",
         ]
     );
     assert_eq!(

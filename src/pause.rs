@@ -9,7 +9,7 @@ use std::time::{Duration, SystemTime};
 use crate::state;
 use crate::world::{
     Agent, Answered, Called, GitHubIssue, Handler, Headless, HttpRequest, LinearIssue, PullRequest,
-    PullRequestActivity, RateLimit, Tab, Worktree, World, WorldError, WorldResult,
+    PullRequestActivity, RateLimit, Tab, Workspace, Worktree, World, WorldError, WorldResult,
 };
 
 pub const FILE: &str = "pauses.json";
@@ -265,6 +265,9 @@ impl World for Guarded<'_> {
     fn herdr_tab_create(&self, workspace: &str, cwd: &str, label: &str) -> WorldResult<Tab> {
         self.world.herdr_tab_create(workspace, cwd, label)
     }
+    fn herdr_tab_rename(&self, tab: &str, label: &str) -> WorldResult<()> {
+        self.world.herdr_tab_rename(tab, label)
+    }
     fn herdr_tab_close(&self, tab: &str) -> WorldResult<()> {
         self.world.herdr_tab_close(tab)
     }
@@ -309,7 +312,7 @@ impl World for Guarded<'_> {
     fn herdr_agent_prompt(&self, name: &str, text: &str) -> WorldResult<bool> {
         self.world.herdr_agent_prompt(name, text)
     }
-    fn herdr_workspace_create(&self, cwd: &str, label: &str) -> WorldResult<String> {
+    fn herdr_workspace_create(&self, cwd: &str, label: &str) -> WorldResult<Workspace> {
         self.world.herdr_workspace_create(cwd, label)
     }
     fn opencode_save_variant(

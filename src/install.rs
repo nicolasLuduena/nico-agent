@@ -145,7 +145,7 @@ pub fn step(ctx: &Context, config: &Config, merged: &[Pr]) -> io::Result<Vec<Str
     Ok(said)
 }
 
-/// Run `nico-agent install <slug>` in a new tab of a new workspace
+/// Run `nico-agent install <slug>` in the tab of a new workspace
 /// `install-<repo>` on its clone, closing the `previous` Install's; one that
 /// could not be is queued again. What it said.
 fn start(ctx: &Context, slug: &str, repo: &Repo, previous: Option<&str>) -> io::Result<String> {
@@ -155,8 +155,10 @@ fn start(ctx: &Context, slug: &str, repo: &Repo, previous: Option<&str>) -> io::
         if let Some(previous) = previous {
             world.herdr_workspace_close(previous)?;
         }
-        let workspace = made.insert(world.herdr_workspace_create(&repo.path, &label)?);
-        let tab = world.herdr_tab_create(workspace, &repo.path, "install")?;
+        let opened = world.herdr_workspace_create(&repo.path, &label)?;
+        made = Some(opened.workspace);
+        let tab = opened.tab;
+        world.herdr_tab_rename(&tab.tab, "install")?;
         world.herdr_pane_run(&tab.pane, &format!("nico-agent install {slug}"))
     };
     let opened = open();

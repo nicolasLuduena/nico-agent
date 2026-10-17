@@ -320,8 +320,8 @@ fn a_merge_into_the_base_opens_one_pane_in_install_repo_running_nico_agent_insta
             vec!["acme/api: Install started in install-api".to_string()],
             vec![
                 "herdr workspace create --cwd /src/api --label install-api --no-focus".to_string(),
-                "herdr tab create --workspace w2 --cwd /src/api --label install --no-focus".into(),
-                "herdr pane run w2:p2 nico-agent install acme/api".into(),
+                "herdr tab rename w2:t1 install".into(),
+                "herdr pane run w2:p1 nico-agent install acme/api".into(),
             ]
         )
     );
@@ -388,8 +388,8 @@ fn merges_during_a_running_install_queue_exactly_one_more_started_once_it_ends()
             vec![
                 "herdr workspace close w9".to_string(),
                 "herdr workspace create --cwd /src/api --label install-api --no-focus".into(),
-                "herdr tab create --workspace w3 --cwd /src/api --label install --no-focus".into(),
-                "herdr pane run w3:p2 nico-agent install acme/api".into(),
+                "herdr tab rename w3:t1 install".into(),
+                "herdr pane run w3:p1 nico-agent install acme/api".into(),
             ]
         )
     );
@@ -462,6 +462,6 @@ fn a_merge_whose_base_cannot_be_told_installs_rather_than_be_lost() {
     );
     assert_eq!(
         calls.last().unwrap(),
-        "herdr pane run w2:p2 nico-agent install acme/api"
+        "herdr pane run w2:p1 nico-agent install acme/api"
     );
 }

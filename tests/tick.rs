@@ -368,8 +368,8 @@ fn a_tick_reads_the_source_asks_about_prs_closes_then_fills_the_room_it_freed() 
             "github assign acme/api#2 @me",
             "git -C /src/api fetch origin",
             "herdr worktree create --cwd /src/api --branch agent/api-2 --base origin/main --label api#2 --no-focus",
-            "herdr tab create --workspace w2 --cwd /worktrees/api-2 --label implementer --no-focus",
-            "herdr agent start impl-api-2 --kind claude --pane w2:p2 -- ",
+            "herdr tab rename w2:t1 implementer",
+            "herdr agent start impl-api-2 --kind claude --pane w2:p1 -- ",
             "github app repos",
             "herdr agent prompt impl-api-2 /implement https://github.com/acme/api/issues/2 as draft PR against main, saving its Evidence under .evidence/2/ in the worktree and linking it to http://127.0.0.1:42069/bucket/acme/api/2/",
         ]
@@ -435,8 +435,8 @@ fn a_stackable_issue_is_dispatched_after_the_ready_ones_on_its_blockers_pr_branc
             "github assign acme/api#2 @me",
             "git -C /src/api fetch origin +refs/heads/agent/api-1:refs/remotes/origin/agent/api-1",
             "herdr worktree create --cwd /src/api --branch agent/api-2 --base origin/agent/api-1 --label api#2 --no-focus",
-            "herdr tab create --workspace w2 --cwd /worktrees/api-2 --label implementer --no-focus",
-            "herdr agent start impl-api-2 --kind claude --pane w2:p2 -- ",
+            "herdr tab rename w2:t1 implementer",
+            "herdr agent start impl-api-2 --kind claude --pane w2:p1 -- ",
             "github app repos",
             "herdr agent prompt impl-api-2 /implement https://github.com/acme/api/issues/2 as draft PR against agent/api-1, saving its Evidence under .evidence/2/ in the worktree and linking it to http://127.0.0.1:42069/bucket/acme/api/2/",
         ]

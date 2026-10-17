@@ -322,8 +322,8 @@ fn a_linked_library_version_with_no_wiki_starts_its_build_at_the_next_tick_and_s
             format!(
                 "herdr workspace create --cwd {config} --label wiki-effect-effect-3-17-0-packag --no-focus"
             ),
-            format!("herdr tab create --workspace w1 --cwd {config} --label wiki --no-focus"),
-            format!("herdr pane run w1:p2 nico-agent wiki build {EFFECT}; exit"),
+            "herdr tab rename w1:t1 wiki".into(),
+            format!("herdr pane run w1:p1 nico-agent wiki build {EFFECT}; exit"),
         ]
     );
     assert_eq!(
@@ -335,7 +335,7 @@ fn a_linked_library_version_with_no_wiki_starts_its_build_at_the_next_tick_and_s
             "commit": null,
             "built_at": null,
             "gaps": null,
-            "pane": "w1:p2",
+            "pane": "w1:p1",
             "progress": null,
         }])
     );
@@ -622,7 +622,7 @@ fn rebuild_queues_a_built_library_version_and_the_tick_starts_it_as_asked() {
         )
     );
     assert_eq!(said, [format!("{EFFECT}: wiki started on opencode")]);
-    let run = format!("herdr pane run w1:p2 nico-agent wiki build {EFFECT} --rebuild; exit");
+    let run = format!("herdr pane run w1:p1 nico-agent wiki build {EFFECT} --rebuild; exit");
     assert_eq!(started(&calls).last(), Some(&run.as_str()));
 }
 

@@ -396,7 +396,7 @@ fn start(
     world.git_worktree_remove(&repo.path, worktree)?;
     world.git_worktree_add(&repo.path, worktree, &pr.head_sha)?;
     let harness = &config.harnesses[&reviewer.harness];
-    launch::open_tab(ctx.world, reviewer, workspace, worktree, "reviewer")?;
+    launch::open_tab(ctx.world, reviewer, workspace, worktree, "reviewer", None)?;
     let (wikis, line) = wiki::libraries(&ctx.config_dir, config, repo)?;
     let ready = launch::start(ctx.world, harness, reviewer, &repo.path, &wikis)?;
     launch::get_ready(ctx.world, harness, reviewer, worktree, ready)?;

@@ -283,9 +283,10 @@ fn relaunch(
     let workspace = record.workspace.as_deref().expect(made);
     let worktree = record.worktree.as_deref().expect(made);
     let launch = &mut record.implementer;
-    let opened = (launch.tab.take())
-        .map_or(Ok(()), |tab| world.herdr_tab_close(&tab))
-        .and_then(|()| launch::open_tab(world, launch, workspace, worktree, "implementer"));
+    // Opened before the old one closes: a workspace left with no tab may close itself.
+    let old = launch.tab.clone();
+    let opened = launch::open_tab(world, launch, workspace, worktree, "implementer", None)
+        .and_then(|()| old.map_or(Ok(()), |tab| world.herdr_tab_close(&tab)));
     opened.map_err(|e| ("tab", e.into()))?;
     let ready = launch::start(world, harness, launch, &repo.path, wikis)
         .map_err(|e| ("agent start", e.into()))?;

@@ -465,7 +465,7 @@ fn post_dispatch_dispatches_a_ready_issue_as_the_dispatch_command_does() {
     assert_eq!(answered.1["dispatched"], "acme/api#7");
     assert_eq!(app.world.calls(), cli.world.calls());
     let start =
-        "herdr agent start impl-api-7 --kind claude --pane w1:p2 -- --model opus --effort high";
+        "herdr agent start impl-api-7 --kind claude --pane w1:p1 -- --model opus --effort high";
     assert!(app.world.calls().contains(&start.into()));
     assert_eq!(dispatches(&app), dispatches(&cli));
     assert_ne!(dispatches(&app), "");

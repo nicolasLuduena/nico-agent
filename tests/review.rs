@@ -134,7 +134,7 @@ fn a_reviewer_starts_on_another_harness_when_the_pr_first_appears_and_only_then(
         herdr(&calls),
         [
             "herdr tab create --workspace w1 --cwd /worktrees/rev-api-7 --label reviewer --no-focus",
-            r#"herdr agent start rev-api-7 --kind codex --pane w1:p3 -- -c projects={"/src/api"={trust_level="trusted"}} -c approvals_reviewer="auto_review""#,
+            r#"herdr agent start rev-api-7 --kind codex --pane w1:p2 -- -c projects={"/src/api"={trust_level="trusted"}} -c approvals_reviewer="auto_review""#,
             &review_prompt("sha9"),
         ]
     );
@@ -152,7 +152,7 @@ fn a_reviewer_starts_on_another_harness_when_the_pr_first_appears_and_only_then(
     let reviewer = &status["dispatches"][0]["reviewer"];
     assert_eq!(reviewer["agent"], "rev-api-7");
     assert_eq!(reviewer["harness"], "codex");
-    assert_eq!(reviewer["tab"], "w1:t3");
+    assert_eq!(reviewer["tab"], "w1:t2");
     assert_eq!(reviewer["sha"], "sha9");
 }
 
@@ -197,9 +197,9 @@ fn a_new_head_waits_for_the_last_reviewer_to_stop_working_then_closes_its_tab_an
     assert_eq!(
         herdr(&calls),
         [
-            "herdr tab close w1:t3",
+            "herdr tab close w1:t2",
             "herdr tab create --workspace w1 --cwd /worktrees/rev-api-7 --label reviewer --no-focus",
-            r#"herdr agent start rev-api-7 --kind codex --pane w1:p4 -- -c projects={"/src/api"={trust_level="trusted"}} -c approvals_reviewer="auto_review""#,
+            r#"herdr agent start rev-api-7 --kind codex --pane w1:p3 -- -c projects={"/src/api"={trust_level="trusted"}} -c approvals_reviewer="auto_review""#,
             &review_prompt("sha10"),
         ]
     );
@@ -224,7 +224,7 @@ fn a_reviewer_that_fails_to_start_is_said_and_started_again_next_tick_in_a_fresh
     assert_eq!(
         herdr(&calls)[..2],
         [
-            "herdr tab close w1:t3",
+            "herdr tab close w1:t2",
             "herdr tab create --workspace w1 --cwd /worktrees/rev-api-7 --label reviewer --no-focus",
         ]
     );
@@ -247,9 +247,9 @@ fn a_reviewer_gone_from_herdr_before_its_verdict_is_started_again_for_that_head_
     assert_eq!(
         herdr(&calls),
         [
-            "herdr tab close w1:t3",
+            "herdr tab close w1:t2",
             "herdr tab create --workspace w1 --cwd /worktrees/rev-api-7 --label reviewer --no-focus",
-            r#"herdr agent start rev-api-7 --kind codex --pane w1:p4 -- -c projects={"/src/api"={trust_level="trusted"}} -c approvals_reviewer="auto_review""#,
+            r#"herdr agent start rev-api-7 --kind codex --pane w1:p3 -- -c projects={"/src/api"={trust_level="trusted"}} -c approvals_reviewer="auto_review""#,
             &review_prompt("sha9"),
         ]
     );
@@ -357,7 +357,7 @@ fn a_reviewer_whose_start_failed_but_works_after_all_is_not_closed_until_it_stop
     assert_eq!(said, Vec::<String>::new());
     assert_eq!(herdr(&calls), Vec::<&str>::new());
     assert_eq!(after, ["acme/api#7: Reviewer started on codex for sha9"]);
-    assert_eq!(herdr(&later)[0], "herdr tab close w1:t3");
+    assert_eq!(herdr(&later)[0], "herdr tab close w1:t2");
 }
 
 #[test]
@@ -372,7 +372,7 @@ fn a_reviewer_of_a_repo_linking_a_built_library_version_starts_with_its_wiki_mcp
     assert_eq!(
         herdr(&calls)[1..],
         [
-            r#"herdr agent start rev-api-7 --kind codex --pane w1:p3 -- -c projects={"/src/api"={trust_level="trusted"}} -c approvals_reviewer="auto_review" -c mcp_servers.wiki.command="nico-agent" -c mcp_servers.wiki.args=["mcp","--wiki","acme/kit@v1"] -c mcp_servers.wiki.default_tools_approval_mode="approve""#.to_string(),
+            r#"herdr agent start rev-api-7 --kind codex --pane w1:p2 -- -c projects={"/src/api"={trust_level="trusted"}} -c approvals_reviewer="auto_review" -c mcp_servers.wiki.command="nico-agent" -c mcp_servers.wiki.args=["mcp","--wiki","acme/kit@v1"] -c mcp_servers.wiki.default_tools_approval_mode="approve""#.to_string(),
             format!(
                 "{} Ask the wiki MCP about {KIT} before reading their source.",
                 review_prompt("sha9")
@@ -596,9 +596,9 @@ fn a_failing_verdict_keeps_its_findings_restarts_the_implementer_once_and_no_rev
     assert_eq!(
         herdr(&calls),
         [
-            "herdr tab close w1:t2",
             "herdr tab create --workspace w1 --cwd /worktrees/api-7 --label implementer --no-focus",
-            "herdr agent start impl-api-7 --kind claude --pane w1:p4 -- ",
+            "herdr tab close w1:t1",
+            "herdr agent start impl-api-7 --kind claude --pane w1:p3 -- ",
             &format!(
                 "herdr agent prompt impl-api-7 You are continuing https://github.com/acme/api/issues/7 on branch agent/api-7 in this worktree. Read git status, git log and the PR https://github.com/acme/api/pull/9 first. The Reviewer failed the PR at sha9. Its findings are in {}. Address each, run the verification, push.{}",
                 findings_path.display(),
@@ -628,9 +628,9 @@ fn a_failing_verdict_on_a_head_pushed_over_before_the_tick_restarts_nothing_and_
     assert_eq!(
         herdr(&calls),
         [
-            "herdr tab close w1:t3",
+            "herdr tab close w1:t2",
             "herdr tab create --workspace w1 --cwd /worktrees/rev-api-7 --label reviewer --no-focus",
-            r#"herdr agent start rev-api-7 --kind codex --pane w1:p4 -- -c projects={"/src/api"={trust_level="trusted"}} -c approvals_reviewer="auto_review""#,
+            r#"herdr agent start rev-api-7 --kind codex --pane w1:p3 -- -c projects={"/src/api"={trust_level="trusted"}} -c approvals_reviewer="auto_review""#,
             &review_prompt("sha10"),
         ]
     );
@@ -936,7 +936,7 @@ fn a_reviewer_on_the_implementers_harness_starts_there_with_a_warning_in_status(
     assert_eq!(said[1], "acme/api#7: Reviewer started on claude for sha9");
     assert!(
         (t.world.calls().iter())
-            .any(|c| c == "herdr agent start rev-api-7 --kind claude --pane w1:p3 -- --model opus"),
+            .any(|c| c == "herdr agent start rev-api-7 --kind claude --pane w1:p2 -- --model opus"),
         "{:?}",
         t.world.calls()
     );
@@ -1384,9 +1384,9 @@ fn review_now_starts_a_reviewer_on_a_head_given_up_on_and_the_tick_may_try_the_w
     assert_eq!(
         herdr(&calls),
         [
-            "herdr tab close w1:t5",
+            "herdr tab close w1:t4",
             "herdr tab create --workspace w1 --cwd /worktrees/rev-api-7 --label reviewer --no-focus",
-            r#"herdr agent start rev-api-7 --kind codex --pane w1:p6 -- -c projects={"/src/api"={trust_level="trusted"}} -c approvals_reviewer="auto_review""#,
+            r#"herdr agent start rev-api-7 --kind codex --pane w1:p5 -- -c projects={"/src/api"={trust_level="trusted"}} -c approvals_reviewer="auto_review""#,
             &review_prompt("sha9"),
         ]
     );
@@ -1396,7 +1396,7 @@ fn review_now_starts_a_reviewer_on_a_head_given_up_on_and_the_tick_may_try_the_w
     );
     assert_eq!(
         (&reviewer["tab"], &reviewer["sha"], reviewer.get("failures")),
-        (&json!("w1:t6"), &json!("sha9"), None)
+        (&json!("w1:t5"), &json!("sha9"), None)
     );
     let started = vec!["acme/api#7: Reviewer started on codex for sha9".to_string()];
     assert_eq!(said, [started.clone(), started, vec![STOPPED.into()]]);
@@ -1461,7 +1461,7 @@ fn with_review_off_review_now_starts_a_reviewer_that_shows_as_with_review_on_and
         herdr(&calls),
         [
             "herdr tab create --workspace w1 --cwd /worktrees/rev-api-7 --label reviewer --no-focus",
-            r#"herdr agent start rev-api-7 --kind codex --pane w1:p3 -- -c projects={"/src/api"={trust_level="trusted"}} -c approvals_reviewer="auto_review""#,
+            r#"herdr agent start rev-api-7 --kind codex --pane w1:p2 -- -c projects={"/src/api"={trust_level="trusted"}} -c approvals_reviewer="auto_review""#,
             &review_prompt("sha9"),
         ]
     );
