@@ -16,7 +16,7 @@
 #   doctor                        read-only: is this run worth driving? A failing doctor means "do not drive"
 #   env                           print the path of run.env, to source: . "$(control-nico-agent env)"
 #                                 gives $FIXTURE_CLONE, $SECOND_CLONE, $CONFIG_DIR, $BUCKET, $URL, $OUTSIDE_LOG
-#   seed issues [second]          a fresh Source read of verify/fixture (issues 1-6), or verify/second (1-3)
+#   seed issues [second|chain]    a fresh Source read of verify/fixture (issues 1-6; `chain`: #6 on two chained PRs), or verify/second (1-3)
 #   seed dispatch <n> pr|asking|stacked|restarted|ruled
 #                                 a Dispatch of verify/fixture#<n> as the loop records it; prints
 #                                 { issue, kind, worktree, branch, head, pr, evidence }: keep it, verdict recipes need head
@@ -437,19 +437,21 @@ cmd_seed() {
     dialog) seed_dialog "$@" ;;
     reviewer) seed_reviewer "$@" ;;
     wiki) seed_wiki "$@" ;;
-    *) die "seed: usage: seed issues [second] | seed dispatch <n> pr|asking|stacked|restarted|ruled | seed run quality-scan|morning|faux-nico <n> | seed morning <file>|none | seed answer <file>|none [<part>] | seed correction <file>|none | seed pace <seconds>|none | seed assign answers|none | seed herdr <agent>|none | seed dialog <n>|none | seed reviewer <n>|none | seed wiki <wiki.json> <clone>" ;;
+    *) die "seed: usage: seed issues [second|chain] | seed dispatch <n> pr|asking|stacked|restarted|ruled | seed run quality-scan|morning|faux-nico <n> | seed morning <file>|none | seed answer <file>|none [<part>] | seed correction <file>|none | seed pace <seconds>|none | seed assign answers|none | seed herdr <agent>|none | seed dialog <n>|none | seed reviewer <n>|none | seed wiki <wiki.json> <clone>" ;;
   esac
 }
 
 # What a read of verify/fixture's GitHub issues would cache, read now: one Ready, one Research
 # (assigned to the user), one Stackable on an open PR, and three that are not Ready, each for its own reason. With
 # `second`, verify/second's instead: #1 waiting on verify/fixture#1, a Blocker in another Repo,
-# #2 on verify/outside#7, in no Repo, and #3 on verify/fixture#20, closed as it is read.
+# #2 on verify/outside#7, in no Repo, and #3 on verify/fixture#20, closed as it is read. With
+# `chain`, #6 is also blocked by #8, whose PR #108 (head agent/fixture-8) sits on #9's: Stackable on agent/fixture-8.
 seed_issues() {
   [ "${1:-}" != second ] || { seed_second_issues; return; }
+  local chain=false; [ "${1:-}" != chain ] || chain=true
   local at; at="$(now)"
   local u="https://github.com/$SLUG/issues"
-  write_state "$CONFIG_DIR/issues/$SLUG.json" "$(jq -n --arg at "$at" --arg u "$u" --arg s "$SLUG" '
+  write_state "$CONFIG_DIR/issues/$SLUG.json" "$(jq -n --arg at "$at" --arg u "$u" --arg s "$SLUG" --argjson chain "$chain" '
     def issue($n; $title; $labels): {
       key: "\($s)#\($n)", title: $title, url: "\($u)/\($n)", branch: "agent/fixture-\($n)",
       created_at: "2026-01-0\($n)T09:00:00Z", open: true, labels: $labels, assignees: [],
@@ -463,7 +465,9 @@ seed_issues() {
       (issue(5; "Verify: a Research issue"; ["ready-for-agent", "research"]) | .assignees = ["verify-nico"]),
       (issue(6; "Verify: stacks on #9 PR"; ["ready-for-agent"])
         | .blockers = [{key: "\($s)#9", title: "Verify: a Blocker in review", resolved: false,
-            prs: [{number: 109, url: "https://github.com/\($s)/pull/109", head_branch: "agent/fixture-9"}]}])
+            prs: [{number: 109, url: "https://github.com/\($s)/pull/109", head_branch: "agent/fixture-9", base_branch: "main"}]}]
+        | if $chain then .blockers += [{key: "\($s)#8", title: "Verify: a Blocker stacked on #9", resolved: false,
+            prs: [{number: 108, url: "https://github.com/\($s)/pull/108", head_branch: "agent/fixture-8", base_branch: "agent/fixture-9"}]}] else . end)
     ] }')"
   jq -c '{ file: input_filename, read_at, issues: [.issues[] | {key, title}] }' "$CONFIG_DIR/issues/$SLUG.json"
 }

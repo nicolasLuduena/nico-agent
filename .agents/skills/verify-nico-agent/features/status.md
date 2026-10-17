@@ -12,6 +12,7 @@ cache alone, plus what the page shows beside each map.
 - `status-no-cache` with no read yet and GitHub refusing, the Repo shows `read_at` null, empty lists and the refusal as `error`.
 - `status-cached` a fresh cached read is shown without asking GitHub: Ready `#1` (code) and `#5` (research), Stackable `#6` with `base` `agent/fixture-9`.
 - `status-not-ready` an issue waiting on a Blocker without PR is in `waiting` with why (`<key> waits on <blocker> to close`); issues not labelled or assigned to someone else are in no list (`gardening`, the Ready `gardening` issues, is empty: the fixture has none).
+- `status-chain` with `seed issues chain`, `#6`'s two Blockers' PRs form one chain (#108 on `agent/fixture-9`, #109 on `main`): Stackable `#6` with `base` `agent/fixture-8`, the top.
 - `status-stale` a read older than a tick asks GitHub again; refused, the cache is still shown, with `error`.
 - `status-hung` a `gh` that never answers is killed at its deadline: the Repo's `error` names the call and the deadline, and the next status and Refresh still answer.
 - `status-paused` a paused GitHub is asked nothing: `sources.github.paused_until` is set, an uncached Repo's `error` says when it is asked again.
@@ -47,6 +48,9 @@ Preconditions:
   `stackable` is `verify/fixture#6` with `base` `agent/fixture-9`; `waiting` is `verify/fixture#3`
   with `reason` `verify/fixture#3 waits on verify/fixture#1 to close`; `#2` and `#4` are nowhere.
   `$C state > "$E/state.after.txt"`; their diff is empty: nothing written, nothing asked.
+- **A chain of Blocker PRs.** Run `$C seed issues chain`, then `$C run --evidence "$E/02-chain" -- status --json`.
+  `stackable` is `verify/fixture#6` with `base` `agent/fixture-8`: #108 sits on #109's branch, so
+  one Dispatch on top covers both Blockers. Then `$C seed issues` again, for the steps below.
 - **Dispatches.** Run `$C run -- dispatch verify/fixture#1 --json` (fails at worktree, see
   dispatch-refusals), `$C seed dispatch 10 pr` and `$C seed dispatch 12 asking`, then `$C run --evidence "$E/03-dispatches" -- status --json`.
   `dispatches` in that order: `verify/fixture#1` `stage` `Failed` with `failure.step` `worktree`

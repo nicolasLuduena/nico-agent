@@ -447,7 +447,7 @@ fn a_stackable_issue_is_dispatched_after_the_ready_ones_on_its_blockers_pr_branc
     assert_eq!(record["base"], "agent/api-1");
     assert_eq!(
         record["stacked_on"],
-        serde_json::json!({ "number": 11, "url": "https://github.com/acme/api/pull/11", "head_branch": "agent/api-1" })
+        serde_json::json!({ "number": 11, "url": "https://github.com/acme/api/pull/11", "head_branch": "agent/api-1", "base_branch": "main" })
     );
 }
 
@@ -468,6 +468,29 @@ fn an_issue_whose_blockers_prs_sit_on_two_branches_waits_with_the_reason_shown()
     assert_eq!(status["repos"][0]["waiting"][0]["reason"], reason);
     assert_eq!(by_hand.exit_code, 1);
     assert_eq!(by_hand.json()["help"][0], reason);
+}
+
+#[test]
+fn an_issue_whose_blockers_prs_form_one_chain_stacks_on_its_top() {
+    let t = with_issues(&[3]);
+    block(&t, 3, &[1, 2]);
+    t.world.link_pr("acme/api", 1, pr_of(11, 1));
+    let mut stacked = pr_of(12, 2);
+    stacked.base_branch = "agent/api-1".into();
+    t.world.link_pr("acme/api", 2, stacked);
+
+    let said = t.tick();
+
+    assert_eq!(said, ["acme/api#3 dispatched"]);
+    let calls = t.world.calls();
+    assert!(calls.iter().any(|c| c == "herdr worktree create --cwd /src/api --branch agent/api-3 --base origin/agent/api-2 --label api#3 --no-focus"), "{calls:#?}");
+    let status = t.cli(&["status", "--json"]).json();
+    let record = &status["dispatches"][0];
+    assert_eq!(record["base"], "agent/api-2");
+    assert_eq!(
+        record["stacked_on"],
+        serde_json::json!({ "number": 12, "url": "https://github.com/acme/api/pull/12", "head_branch": "agent/api-2", "base_branch": "agent/api-1" })
+    );
 }
 
 #[test]
