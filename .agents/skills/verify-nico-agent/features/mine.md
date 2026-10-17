@@ -37,13 +37,13 @@ Preconditions:
   assigned to the user, `#4` to `someone-else`, the rest to no one); `$C seed assign answers`.
 - `E=.evidence/<issue>/mine`; `$C state > "$E/state.before.txt"`.
 
-- **Turn it on, then dispatch.** Run `$C page --evidence "$E/01-switch-on-then-dispatch" --within "region=verify/fixture" --click "region=Dispatch" --click "region=Switches" --expect "5 of 9 on" --click "switch=Only issues assigned to me" --expect "Saved" --expect "6 of 9 on" --within "region=Dispatch" --click "button=Dispatch" --expect "turn" --expect "Assign to me"`.
+- **Turn it on, then dispatch.** Run `$C page --evidence "$E/01-switch-on-then-dispatch" --click "button=Repos" --within "region=verify/fixture" --click "region=Dispatch" --click "region=Switches" --expect "5 of 9 on" --click "switch=Only issues assigned to me" --expect "Saved" --expect "6 of 9 on" --within "region=Dispatch" --click "button=Dispatch" --expect "turn" --expect "Assign to me"`.
   `.requests.txt` has `PATCH /api/repo/verify/fixture {"switches":{"mine":true}} -> 200`, then
   `POST /api/dispatch {"issue":"verify/fixture#1",...} -> 409`; the ARIA snapshot has an `alert`
   `verify/fixture#1 is not assigned to you, and verify/fixture takes only issues assigned to you`,
   `Assign it to yourself, or turn mine off for verify/fixture`, and `button "Assign to me"` under
   it; the refetched form's Issue now lists `#5` alone.
-- **The row, four ways.** Run `$C page --evidence "$E/02-switches-desk-light" --width 1280 --scheme light --within "region=verify/fixture" --click "region=Switches" --expect "Only issues assigned to me"`,
+- **The row, four ways.** Run `$C page --evidence "$E/02-switches-desk-light" --width 1280 --scheme light --click "button=Repos" --within "region=verify/fixture" --click "region=Switches" --expect "Only issues assigned to me"`,
   and the same as `03-switches-desk-dark` (`--scheme dark`), `04-switches-phone-light` and
   `05-switches-phone-dark` (`--width 390`). Each: `switch "Only issues assigned to me" [checked]`
   after `set here` and `button "Use the default Only issues assigned to me"`; the toggle stays at

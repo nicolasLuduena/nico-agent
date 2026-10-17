@@ -51,7 +51,7 @@ Preconditions:
   \`herdr server stop\` and start it again so the server's protocol matches the client's`); each failing one has a `help`, each ok one
   `help` null. `repos[0].posts_as` is `"you"`: the bot check could not find the App. `$OUTSIDE_LOG` has `gh api user --jq .login` lines, one `ghbot api
   /installation/repositories ...` and one `herdr agent list` (git is real, on the run's repos, so not in it).
-- **Page.** Run `$C page --evidence "$E/03-page" --expect "Readiness"`: `list "Needs you"` has a
+- **Page.** Run `$C page --evidence "$E/03-page" --click "button=Repos" --expect "Readiness"`: `list "Needs you"` has a
   `status` toast `Check verify/fixture:` for each of the five failing checks, its help under what it says, each with `button "Dismiss <its head>"`;
   `region "Readiness"` is open by itself, its `group` reading `Readiness 2 of 7 pass`, with the five on the
   errata rule, `list "Passing"` holding the clone and fetch ones, and `Unchanged since <time>`. The `region "verify/fixture"` panel reads `PRs and comments are posted as you. Install the App`, the

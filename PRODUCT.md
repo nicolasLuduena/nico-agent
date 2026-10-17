@@ -140,7 +140,7 @@ and `verdict` are the commands outsiders call. Everything outside the process
 boundary with a real and a fake implementation, so every test runs without
 herdr or the network. The web app is Svelte, built with Vite and embedded in
 the binary, designed and checked with the impeccable skill against
-`DESIGN.md`, light and dark, phone width first.
+`DESIGN.md` (a calm work map, #432), light and dark, phone width first.
 
 ## Where this is going
 

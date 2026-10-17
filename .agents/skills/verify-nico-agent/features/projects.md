@@ -48,7 +48,7 @@ Preconditions:
   `base` `{"value":null,"from":"default"}`.
 - **API.** Run `$C http --evidence "$E/03-api" GET /api/status`. HTTP `200`; `projects` equals the
   command's, and each Repo has the same `{value, from}` settings plus `harnesses`.
-- **Page.** Run `$C page --evidence "$E/04-page" --select "Project=verify" --expect "Defaults for its Repos" --within "region=verify" --click "region=Room" --click "region=Switches" --within "region=verify/fixture" --click "region=Room" --click "region=Switches" --within "region=verify/second" --click "region=Room" --click "region=Switches" --expect "Faux-nico answers"`:
+- **Page.** Run `$C page --evidence "$E/04-page" --click "button=Repos" --click "link=verify" --expect "Defaults for its Repos" --within "region=verify" --click "region=Room" --click "region=Switches" --within "region=verify/fixture" --click "region=Room" --click "region=Switches" --within "region=verify/second" --click "region=Room" --click "region=Switches" --expect "Faux-nico answers"`:
   `combobox "Project"` has `option "verify"`; each panel's Switches read `4 of 9 on`.
   `region "verify"` (the Project's defaults) has `text: set here` with `button "Use the default Room"`
   and `spinbutton "Room": "2"`, and `switch "Review"` unchecked beside `button "Use the default

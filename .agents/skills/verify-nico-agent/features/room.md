@@ -20,7 +20,7 @@ loop fills the new room from its next tick on.
 
 ## How to get to it (user POV)
 
-- Open the page, pick a Repo's Project in the `Project` select, open its `Room` section (above Switches), and change `Room`; press Enter or leave the field.
+- Open the page, pick a Repo's Project in the rail, open `Repos`, then its `Room` section (above Switches), and change `Room`; press Enter or leave the field.
 - From a script: `PATCH /api/repo/<owner/name>` with `{"room": n}`.
 - By hand: edit `repos."<slug>".room` in `config.toml` (`repo list` shows it).
 
@@ -43,19 +43,19 @@ Preconditions:
   sets `` with `help` `Settings: implementer, reviewer, room, base, project, install, switches; null takes
   the Project's or the default` (none for not JSON). On `/api/repo/other/repo` with `'{"room":2}'` (`09-unknown-repo`): `409`,
   `other/repo is not a configured Repo`. `config.toml` is byte for byte unchanged by each.
-- **On the page.** Run `$C page --evidence "$E/10-page" --expect "Room 5 · 1 in flight" --click "region=Room" --expect "1 in flight; each Dispatch holds its room until its PR merges or closes"`.
+- **On the page.** Run `$C page --evidence "$E/10-page" --click "button=Repos" --expect "Room 5 · 1 in flight" --click "region=Room" --expect "1 in flight; each Dispatch holds its room until its PR merges or closes"`.
   The ARIA snapshot has `set here`, `button "Use the default Room"`, `spinbutton "Room": "5"` and that paragraph under it.
-- **Set it on the page.** Run `$C page --evidence "$E/11-page-set" --click "region=Room" --click "spinbutton=Room" --press Control+a --press 2 --press Enter --wait 2`.
+- **Set it on the page.** Run `$C page --evidence "$E/11-page-set" --click "button=Repos" --click "region=Room" --click "spinbutton=Room" --press Control+a --press 2 --press Enter --wait 2`.
   `.requests.txt` has `PATCH /api/repo/verify/fixture {"room":2} -> 200`; the snapshot has
   `spinbutton "Room": "2"`; `cp "$CONFIG_DIR/config.toml" "$E/11-page-set.config.toml"` has `room = 2`.
-- **Refused on the page.** Run `$C page --evidence "$E/12-page-refused" --click "region=Room" --click "spinbutton=Room" --press Control+a --press 0 --press Tab --expect "room is a whole number of at least 1, not 0"`.
+- **Refused on the page.** Run `$C page --evidence "$E/12-page-refused" --click "button=Repos" --click "region=Room" --click "spinbutton=Room" --press Control+a --press 0 --press Tab --expect "room is a whole number of at least 1, not 0"`.
   `.requests.txt` has `PATCH ... {"room":0} -> 400`; the snapshot has `spinbutton "Room" [invalid]: "2"` and an
   `alert` with the error and help; `config.toml` still has `room = 2`.
 - **Obeyed.** `PATCH ... '{"room":1}'` (`13-room-1`); `: > "$OUTSIDE_LOG"`; `$C http --evidence "$E/14-refresh-full" POST /api/refresh`.
   `$OUTSIDE_LOG` has no `herdr worktree create`: #7 fills the room. Then `'{"room":2}'` (`15-room-2`)
   and `$C http --evidence "$E/16-refresh-raised" POST /api/refresh`: `actions` has
   `verify/fixture#1 failed at worktree: ...` and `$OUTSIDE_LOG` one `herdr worktree create`, for #1
-  only. `$C page --evidence "$E/17-page-after" --click "button~Dismiss" --click "button~Dismiss" --click "button~Dismiss" --click "button~Dismiss" --click "button~Dismiss" --click "region=Room" --expect "2 in flight; each Dispatch holds its room"`: the Failed #1 holds its room too (the folded line reads `2 · 2 in flight`).
+  only. `$C page --evidence "$E/17-page-after" --click "button=Repos" --click "button~Dismiss" --click "button~Dismiss" --click "button~Dismiss" --click "button~Dismiss" --click "button~Dismiss" --click "region=Room" --expect "2 in flight; each Dispatch holds its room"`: the Failed #1 holds its room too (the folded line reads `2 · 2 in flight`).
 - **Second view.** `$C run --evidence "$E/18-list" -- repo list --json`: `room` is 2.
 - **Proof.** `$C state > "$E/state.after.txt"` and the diff; copy `$OUTSIDE_LOG` to `$E/outside.log`.
 

@@ -17,24 +17,11 @@
   let status = $state<Status | null>(null);
   let failure = $state<string | null>(null);
 
-  // The Repos column, its controls secondary to the work: open or closed, remembered in this browser.
-  const REPOS = "nico-agent.repos-open";
-  let reposOpen = $state(remembered());
-  function remembered() {
-    try {
-      return localStorage.getItem(REPOS) === "1";
-    } catch {
-      return false;
-    }
-  }
+  // The Repos column, its controls secondary to the work: closed until asked for, on each page load.
+  let reposOpen = $state(false);
   function toggleRepos() {
     reposOpen = !reposOpen;
     if (reposOpen) selection.issue = null;
-    try {
-      localStorage.setItem(REPOS, reposOpen ? "1" : "0");
-    } catch {
-      // Kept for this visit only.
-    }
   }
 
   // The hash selects as a link opens the page, and as back and forward move through it; the selection writes it back.
@@ -101,7 +88,7 @@
             <li>
               <a href={hash({ project: p.name, view: selection.view })} aria-current={p === project ? "page" : undefined}>
                 <span class="name">{p.name}</span>
-                {#if p.repos.length > 1 || p.repos[0] !== p.name}<span class="count">{p.repos.length} Repo{p.repos.length === 1 ? "" : "s"}</span>{/if}
+                {#if p.repos.length > 1 || p.repos[0] !== p.name}<span class="count" aria-hidden="true">{p.repos.length} Repo{p.repos.length === 1 ? "" : "s"}</span>{/if}
               </a>
             </li>
           {/each}

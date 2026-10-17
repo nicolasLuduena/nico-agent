@@ -92,8 +92,8 @@ Preconditions:
 - **The pane.** `$C http --evidence "$E/00-node" GET /api/node/verify%2Ffixture%237`: `agent_state.implementer`
   `blocked`, and `pane` holds the dialog: its tabs (`☐ Node tint  ☐ Sections  ✔ Submit`), the
   question, `❯ 1. Faint tint`, `2. No tint`, `3. Type something.`, `4. Chat about this`.
-- **Opened from the node.** `$C page --evidence "$E/01-desk-light-asking" --width 1280 --scheme light --click "button~#7, " --expect "Should map nodes carry a tint of their Stage hue?"`:
-  the node ends `needs you`; `region "Asking"` is the panel's first section, with `button "1 Faint tint"` to `button "4 Chat about this"`;
+- **Opened from the node.** `$C page --evidence "$E/01-desk-light-asking" --width 1280 --scheme light --click "button~#7, Verify" --expect "Should map nodes carry a tint of their Stage hue?"`:
+  the node ends `needs you`; `region "Asking"` is the inspector's first section, with `button "1 Faint tint"` to `button "4 Chat about this"`;
   `.view.txt` says focus is on the panel's title.
 - **An option.** The same, then `--click "button=1 Faint tint" --expect "Should the panel's sections start folded?"`
   (`02-desk-light-picked-1`): `POST /api/answer {"issue":"verify/fixture#7","keys":["1"]} -> 200`, and the
