@@ -22,7 +22,7 @@ between Components. serve answers the Wikis at `GET /api/wikis` and one at `GET 
 - `wiki-page-route` `GET /wiki/<id>` (any id, a Library version's too) is `200` `text/html`, the app's page, as `GET /` is.
 - `wiki-list` a Project's Wiki view (`#<project>/wiki`) holds `button "Wiki settings"` and `list "Wikis"`: per Wiki a `link "<id>"` to `/wiki/<id>` and where its build stands (`Built HH:MM · describes <sha>`, or `Not built yet`, after `Building` or `Queued`; `Last build failed` and why under it).
 - `wiki-empty` a Project with no Wiki built shows, in its Wiki view, `nico-agent wiki build <slug>` for each of its Repos.
-- `wiki-page` `/wiki/<id>#<component>` opens the page on it: `banner` with `link "Board"` (to `/`), the id, `Describes <sha> · Built HH:MM · Up to date with main` (how far behind and what is Stale: [wiki-update.md](./wiki-update.md)); `navigation "Components"` holds the tree, `article "<name>"` the Component, `heading "<name>" [level=1]`; nothing of the Board (no `tablist "Projects"`, no `Nothing needs you`).
+- `wiki-page` `/wiki/<id>#<component>` opens the page on it: `banner` with `link "Board"` (to `/`), the id, `Describes <sha> · Built HH:MM · Up to date with main` (how far behind and what is Stale: [wiki-update.md](./wiki-update.md)); `navigation "Components"` holds the tree, `article "<name>"` the Component, `heading "<name>" [level=1]`; nothing of the Board (no `tablist "Projects"`, no `button "Refresh"`).
 - `wiki-old-link` `/#<project>/wiki/<owner%2Fname>/<component>` lands at `/wiki/<owner>/<name>#<component>`; `#<project>/wiki` alone stays the Board's Wiki view.
 - `wiki-unknown` `/wiki/<id>` of no Wiki says `No Wiki is named <id>.` with a `link "Board"`.
 - `wiki-trail` `navigation "Trail"` holds a `link` per Component above the open one, from the top down; the top one has none.
@@ -115,7 +115,7 @@ Preconditions:
 - **An old link.** `$C page --evidence "$E/08c-old-link" --hash "#shop/wiki/verify%2Ffixture/readme" --expect "The title names the Repo"`:
   `.view.txt` `at /wiki/verify/fixture#readme`, `article "Readme"`.
 - **No such Wiki.** `$C page --evidence "$E/08d-unknown" --path /wiki/verify/nope --expect "No Wiki is named verify/nope"`:
-  the sentence with `link "Board"`. `$C page --evidence "$E/08e-board-link" --path /wiki/verify/fixture --click link=Board --expect "Nothing needs you"`:
+  the sentence with `link "Board"`. `$C page --evidence "$E/08e-board-link" --path /wiki/verify/fixture --click link=Board --expect "Refresh"`:
   `.view.txt` `at /`.
 - **Back and forward.** `$C page --evidence "$E/09-back-forward" --path /wiki/verify/fixture --expect "The fixture is described" --within "navigation=Components" --click link=Readme --expect "The title names the Repo" --within page --click link=Title --expect "Not explored: the build's calls ran out" --history back --expect "The title names the Repo" --history back --expect "The fixture is described" --history forward --expect "The title names the Repo"`:
   `.view.txt` `at /wiki/verify/fixture#readme`, `focus on h1 "Readme"`, and `.view.png` no ring round it.

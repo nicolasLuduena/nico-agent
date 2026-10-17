@@ -11,6 +11,7 @@ const node = (key: string, rest: Partial<MapNode> = {}): MapNode => ({
   assignees: null,
   stage: "Ready",
   agent_state: null,
+  asking: null,
   pr: null,
   review: null,
   verdict: null,
@@ -94,10 +95,11 @@ describe("the map's layout", () => {
     expect(shown.edges).toEqual([{ from: "acme/api#9", to: "acme/api#10", kind: "blocker" }]);
   });
 
-  it("flags what needs you, as the strip lists it: an Implementer Asking, a Failed Dispatch, a Verified PR", () => {
+  it("flags what needs you: an Implementer Asking (as herdr says it, or as a tick recorded it), a Failed Dispatch, a Verified PR", () => {
     const drawn = layout({
       nodes: [
         node("acme/api#11", { stage: "Implementing", agent_state: { implementer: "blocked", reviewer: null } }),
+        node("acme/api#10", { stage: "Implementing", agent_state: { implementer: "unknown", reviewer: null }, asking: { since: "2026-09-30T04:12:00Z", question: "Keep it?" } }),
         node("acme/api#12", { stage: "Failed" }),
         node("acme/api#13", { stage: "Verified" }),
         node("acme/api#14", { stage: "PR draft", agent_state: { implementer: "idle", reviewer: "working" } }),
@@ -106,7 +108,7 @@ describe("the map's layout", () => {
       edges: [],
     });
 
-    expect(drawn.nodes.filter((n) => n.needs).map((n) => n.key)).toEqual(["acme/api#11", "acme/api#12", "acme/api#13"]);
+    expect(drawn.nodes.filter((n) => n.needs).map((n) => n.key)).toEqual(["acme/api#11", "acme/api#10", "acme/api#12", "acme/api#13"]);
   });
 
   it("gives a PR draft node a row under its Stage saying where its review stands, and flags one that stopped or gave up", () => {

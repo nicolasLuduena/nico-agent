@@ -4,7 +4,7 @@ Once a Dispatch's PR is final, each tick Closes it: keeps its Evidence in the Bu
 worktree and closes its workspace. A merged PR's worktree is removed with `--force`, whatever is
 left in it. A PR closed unmerged with modified or untracked files in its worktree is not removed:
 the tick says once `could not Close <issue>: worktree has uncommitted changes: <files>`, the
-Dispatch is `Failed` at the `close` step and in the needs-you strip, and later ticks check again
+Dispatch is `Failed` at the `close` step, its node flagged, and later ticks check again
 without a word until the files are gone.
 
 ## Sub-features
@@ -12,12 +12,12 @@ without a word until the files are gone.
 - `close-merged-force` a merged PR's worktree is removed with `herdr worktree remove --workspace <ws> --force`.
 - `close-dirty-once` a closed-unmerged PR's dirty worktree is said once in a tick's `actions`, not again the next tick, with no `herdr worktree remove`.
 - `close-dirty-failed` that Dispatch is `stage: "Failed"` with `failure: {step: "close", error: "worktree has uncommitted changes: <files>"}`, and `closed_at: null`.
-- `close-dirty-strip` the strip has `button "Failed verify/fixture #<n> <title> <time>"`; its panel shows the error and `At the close step.`
+- `close-dirty-node` the node `#<n>, <title>, Failed, needs you` is flagged; its panel shows the error and `At the close step.`
 
 ## How to get to it (user POV)
 
 - A tick: `nico-agent refresh --json` (or serve's own tick, or the page's Refresh), then `nico-agent status --json`.
-- Open `http://127.0.0.1:<port>/` (the run's `$URL`) and the Failed row.
+- Open `http://127.0.0.1:<port>/` (the run's `$URL`) and the Failed node.
 
 ## Driving it with control-nico-agent
 
@@ -37,9 +37,9 @@ Preconditions:
   line for `verify/fixture#10`; #11's is said again (herdr is down, not a dirty worktree).
 - **Status.** Run `$C run --evidence "$E/03-status" -- status --json`. `#10` is `stage: "Failed"`,
   `failure.step: "close"`, `closed_at: null`; `#11` is `stage: "Merged"`, `failure: null`.
-- **Strip.** Run `$C page --evidence "$E/04-strip" --expect Failed`. `region "Needs you"` has
-  `button "Failed verify/fixture #10 Verify: seeded Dispatch 10 <time>"`.
-- **Open it.** Run `$C page --evidence "$E/05-open" --click "button~Failed verify/fixture #10"`.
+- **Node.** Run `$C page --evidence "$E/04-node" --expect Failed`. The map has
+  `button "#10, Verify: seeded Dispatch 10, Failed, needs you"`, and no `region "Needs you"`.
+- **Open it.** Run `$C page --evidence "$E/05-open" --click "button~#10, Verify: seeded Dispatch 10"`.
   `.requests.txt` has `GET /api/node/verify%2Ffixture%2310 -> 200`; the panel has
   `strong: "worktree has uncommitted changes: ?? .evidence/"` and `paragraph: At the close step.`
 - **Proof.** Copy `$OUTSIDE_LOG` to `$E/outside.log`. Each `.console.txt` is empty.

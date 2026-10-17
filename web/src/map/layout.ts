@@ -22,6 +22,8 @@ export interface MapNode {
   /** A Dispatch's Stage, or Ready, Stackable or Waiting without one; null for a Blocker not offered to the loop. */
   stage: string | null;
   agent_state: { implementer: string; reviewer: string | null } | null;
+  /** While its Implementer waits on the user, as a tick recorded it; herdr's `blocked` says it sooner. */
+  asking: { since: string; question: string } | null;
   pr: { url: string; draft: boolean | null } | null;
   review: Review | null;
   verdict: { result: "pass" | "fail"; sha: string; at: string } | null;
@@ -51,8 +53,8 @@ export interface Point {
 /**
  * A node where the map draws it: `x`, `y` its top left corner, `height` its
  * own; `line` where its review stands while it is PR draft, or why it waits
- * while Waiting; `faded` once its PR merged; `needs` when the needs-you strip
- * lists it.
+ * while Waiting; `faded` once its PR merged; `needs` when it needs you
+ * (strip.ts).
  */
 export type Placed = MapNode & Point & { height: number; line: string | null; faded: boolean; needs: boolean };
 
@@ -105,6 +107,7 @@ export function layout(map: MapData): { width: number; height: number; nodes: Pl
         // serve sends a merged issue for 7 days after its merge, unless the map hides them.
         faded: n.stage === "Merged",
         needs:
+          n.asking !== null ||
           n.agent_state?.implementer === "blocked" ||
           n.stage === "Failed" ||
           n.stage === "Verified" ||

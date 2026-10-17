@@ -60,8 +60,8 @@ Preconditions:
   Every step `ok`; folded at the end; `.console.txt` is empty.
 - **Phone.** Run `$C page --evidence "$E/09-phone" --storage "$S" --width 390 --click "button=Hide" --gone "A quiet night" --expect "Morning of 2026-10-14"`.
   The screenshot has the line wrapped beside `Show`, and no horizontal scroll.
-- **None.** `$C seed morning none`, then run `$C page --evidence "$E/10-none" --storage "$S" --expect "Nothing needs you" --gone "Morning of"`.
-  `main` starts with `region "Needs you"`: no Morning section.
+- **None.** `$C seed morning none`, then run `$C page --evidence "$E/10-none" --storage "$S" --expect "Refresh" --gone "Morning of"`.
+  `main` starts with `tablist "Projects"`: no Morning section.
 - **Proof.** `$C state > "$E/state.after.txt"` and the diff: empty, the summary seeded and taken
   away again; the page writes nothing. Copy `$OUTSIDE_LOG` to `$E/outside.log`: empty.
 

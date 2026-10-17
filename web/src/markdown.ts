@@ -24,7 +24,7 @@ export function blocks(markdown: string): Block[] {
   return out;
 }
 
-/** The sections the needs-you band shows live; morning.md's snapshot of them only goes stale once the user acts. */
+/** The sections the map's flags show live; morning.md's snapshot of them only goes stale once the user acts. */
 const LIVE = ["merge these", "answer these", "fix these"];
 
 /** `markdown` without its live sections, each from its heading to the next: the night's history is what stays. */

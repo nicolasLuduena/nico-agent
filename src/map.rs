@@ -161,6 +161,7 @@ pub fn map(ctx: &Context, name: &str) -> Result<Option<Value>, Refusal> {
             "assignees": issue.zip(reader).map(|(i, (user, _))| source::assignees(i, user)),
             "stage": stage,
             "agent_state": shown["agent_state"],
+            "asking": shown["asking"],
             "pr": pr,
             "review": shown["review"],
             "verdict": if verdict.is_null() { Value::Null } else {

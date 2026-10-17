@@ -2,10 +2,10 @@ import { reviewerKeptFailing } from "./failure";
 import * as review from "./review";
 import type { Dispatch, Run, Status } from "./status";
 
-/** One row of the needs-you strip: what only the user can act on. */
+/** One thing only the user can act on: its node's flag when it has one (`issue`), else a toast. */
 export interface Need {
   kind: "Asking" | "Blocked" | "Failed" | "Review" | "Verified" | "Paused" | "Install" | "Check";
-  /** The Repo and issue whose node the row opens; neither for a paused Source or the morning agent, no issue for a quality-scan, an Install or a check. */
+  /** The Repo and issue whose node flags it; neither for a paused Source or the morning agent, no issue for a quality-scan, an Install or a check. */
   repo: string | null;
   issue: string | null;
   /** The question's first line, the issue's title, the blocked agent's name, why the Reviewer's failing Verdicts Failed it, where its review stands, the paused Source, a failed Install's last line of output, or what a failing check says. */
@@ -16,7 +16,7 @@ export interface Need {
   at: string | null;
 }
 
-/** The needs-you strip, across Repos, from `/api/status`. */
+/** What needs you, across Repos, from `/api/status`. */
 export function needsYou(status: Status): Need[] {
   const live = status.dispatches.filter((d) => d.closed_at === null);
   const row = (kind: Need["kind"], d: Dispatch, at: string | null, text = d.title): Need => ({ kind, repo: d.repo, issue: d.issue, text, at });

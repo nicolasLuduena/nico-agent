@@ -17,17 +17,16 @@ numbered option it shows, the keys ↑ ↓ Tab Enter Esc, and a text box with Se
 - `answer-typed` an answer, by the user or `--by faux-nico`, is typed as `herdr agent prompt <implementer> <text> --wait --until working --timeout 30000`.
 - `answer-keys` `--keys <key>...` (herdr's key names: `up`, `down`, `tab`, `enter`, `esc`, a digit) is sent as `herdr agent send-keys <implementer> <key>...` and recorded with the keys as its text, each time.
 - `answer-route` `POST /api/answer {issue, text}` or `{issue, keys}` runs `answer`: 200 with its answer; a refusal 409 (400 for a bad body), as `{error, help}`.
-- `answer-pane` `GET /api/node/<issue>` of an Asking Dispatch (recorded, or herdr reporting its Implementer blocked before a tick records it, as the band shows it) has `pane`, the Implementer's screen as `herdr agent read --source visible` gives it, or `pane_error` when herdr cannot read it; of any other Dispatch, neither.
-- `answer-board` the panel of an Asking Dispatch, kept as the map takes a change elsewhere (a half-typed answer stays), opens with `region "Asking"` first: the pane, `group "Options"` with a `button "<n> <option>"` per numbered option, `group "Keys"` (`button "Up"`, `"Down"`, `"Tab"`, `"Enter"`, `"Esc"`), `textbox "Answer in words"` and `button "Send"`. Each answer reads the pane again. An Asking row of the band opens it with the text box focused. A refusal, or a pane herdr cannot read, is on the errata rule. At 360px nothing but the pane's box is wider than the window.
+- `answer-pane` `GET /api/node/<issue>` of an Asking Dispatch (recorded, or herdr reporting its Implementer blocked before a tick records it, as the node's flag shows it) has `pane`, the Implementer's screen as `herdr agent read --source visible` gives it, or `pane_error` when herdr cannot read it; of any other Dispatch, neither.
+- `answer-board` the panel of an Asking Dispatch, kept as the map takes a change elsewhere (a half-typed answer stays), opens with `region "Asking"` first: the pane, `group "Options"` with a `button "<n> <option>"` per numbered option, `group "Keys"` (`button "Up"`, `"Down"`, `"Tab"`, `"Enter"`, `"Esc"`), `textbox "Answer in words"` and `button "Send"`. Each answer reads the pane again. A refusal, or a pane herdr cannot read, is on the errata rule. At 360px nothing but the pane's box is wider than the window.
 
 ## How to get to it (user POV)
 
-- The user sees an Asking in `nico-agent status` or the page's needs-you band and runs
+- The user sees an Asking in `nico-agent status` or as a flagged node on the page and runs
   `nico-agent answer <issue> --text <text>`, or `--keys <key>...` for a choice dialog.
 - A faux-nico, started on an Asking in a Repo with `Faux-nico answers` on, runs
   `nico-agent answer <issue> --text <text> --by faux-nico`.
-- On the Board, on a desk or a phone: the Asking row of the needs-you band, or the node on the map,
-  opens the panel; an option, a key, or words and Send answer it.
+- On the Board, on a desk or a phone: the flagged node on the map opens the panel; an option, a key, or words and Send answer it.
 
 ## Driving it with control-nico-agent
 
@@ -93,15 +92,15 @@ Preconditions:
 - **The pane.** `$C http --evidence "$E/00-node" GET /api/node/verify%2Ffixture%237`: `agent_state.implementer`
   `blocked`, and `pane` holds the dialog: its tabs (`☐ Node tint  ☐ Sections  ✔ Submit`), the
   question, `❯ 1. Faint tint`, `2. No tint`, `3. Type something.`, `4. Chat about this`.
-- **Opened from the band.** `$C page --evidence "$E/01-desk-light-asking" --width 1280 --scheme light --click "button~Asking verify/fixture #7" --expect "Should map nodes carry a tint of their Stage hue?"`:
-  `region "Asking"` is the panel's first section, with `button "1 Faint tint"` to `button "4 Chat about this"`;
-  `.view.txt` says focus is on the input.
+- **Opened from the node.** `$C page --evidence "$E/01-desk-light-asking" --width 1280 --scheme light --click "button~#7, " --expect "Should map nodes carry a tint of their Stage hue?"`:
+  the node ends `needs you`; `region "Asking"` is the panel's first section, with `button "1 Faint tint"` to `button "4 Chat about this"`;
+  `.view.txt` says focus is on the panel's title.
 - **An option.** The same, then `--click "button=1 Faint tint" --expect "Should the panel's sections start folded?"`
   (`02-desk-light-picked-1`): `POST /api/answer {"issue":"verify/fixture#7","keys":["1"]} -> 200`, and the
   pane, read again, shows Claude's second question.
-- **Phone, dark, a key at a time.** `--width 360 --scheme dark`: open the row (`03-phone-dark-asking`),
+- **Phone, dark, a key at a time.** `--width 360 --scheme dark`: open the node (`03-phone-dark-asking`),
   then `--click "button=Down" --expect "❯ 2. Open"` (`04-phone-dark-down`), each `.view.txt` 360px wide in
-  a 360px window, focus kept on the key. Then `--width 360 --scheme light`, open the row,
+  a 360px window, focus kept on the key. Then `--width 360 --scheme light`, open the node,
   `--expect "❯ 2. Open" --click "button=Enter" --expect "Ready to submit your answers?"` (`05-phone-light-enter`).
 - **Submitted.** `--width 1280 --scheme dark`: open the row, `--click "button=1 Submit answers" --gone "Ready to submit your answers?" --wait 6`
   (`06-desk-dark-submitted`): the pane shows Claude's one-sentence reply with both answers.

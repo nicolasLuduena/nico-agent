@@ -13,7 +13,7 @@ An H1 title, one paragraph on the user-visible behaviour, then exactly four H2 s
 - [Status](./status.md)
 - [Dispatch's refusals](./dispatch-refusals.md)
 - [Verdict recording to the Bucket](./verdict-bucket.md)
-- [The page's tabs and strip](./page-tabs-strip.md)
+- [The page's tabs and what needs you](./page-tabs-strip.md)
 - [A tab and a map per Project](./project-tabs.md)
 - [A Dispatch the Reviewer kept failing](./rulings.md)
 - [Where each PR's review stands](./review.md)

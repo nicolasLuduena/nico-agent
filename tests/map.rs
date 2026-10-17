@@ -75,6 +75,7 @@ fn a_blocked_ready_for_agent_issue_is_a_node_with_a_blocker_edge_from_each_open_
             "assignees": [],
             "stage": "Ready",
             "agent_state": null,
+            "asking": null,
             "pr": null,
             "review": null,
             "verdict": null,
@@ -95,6 +96,7 @@ fn a_blocked_ready_for_agent_issue_is_a_node_with_a_blocker_edge_from_each_open_
             "assignees": null,
             "stage": null,
             "agent_state": null,
+            "asking": null,
             "pr": null,
             "review": null,
             "verdict": null,
@@ -365,6 +367,7 @@ fn a_project_s_map_holds_every_repo_s_nodes_each_naming_its_repo_with_blocker_ed
             "assignees": null,
             "stage": null,
             "agent_state": null,
+            "asking": null,
             "pr": null,
             "review": null,
             "verdict": null,
@@ -475,4 +478,24 @@ fn a_node_waiting_on_a_blocker_in_another_repo_says_why_with_an_edge_from_it_til
     assert_eq!(node(&map, "acme/api#3")["stage"], "Ready");
     assert_eq!(node(&map, "acme/api#3").get("waits"), None);
     assert_eq!(map["edges"], json!([]));
+}
+
+#[test]
+fn a_nodes_recorded_asking_is_on_the_map_so_its_flag_outlasts_herdrs_blocked() {
+    let t = with_issues("", &[7]);
+    t.world
+        .add_clone("/src/api", &["git@github.com:acme/api.git"]);
+    let ran = t.cli(&["dispatch", "acme/api#7"]);
+    assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
+    (t.world.agents.borrow_mut()).insert("impl-api-7".into(), "blocked".into());
+    (t.world.screens.borrow_mut()).insert("impl-api-7".into(), "Keep the old endpoint?".into());
+    t.tick();
+
+    let (status, map) = t.get("/api/map/acme/api");
+
+    assert_eq!(status, 200, "{map}");
+    assert_eq!(
+        node(&map, "acme/api#7")["asking"],
+        json!({ "since": "2026-09-30T12:00:00Z", "question": "Keep the old endpoint?" })
+    );
 }

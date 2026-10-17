@@ -30,13 +30,13 @@ Preconditions:
 - `$C run -- repo add verify/fixture --path "$FIXTURE_CLONE" --json`; `$C seed issues`.
 - `E=.evidence/<issue>/refresh`.
 
-- **Before.** Run `$C page --evidence "$E/01-before"`: `region "Needs you"` says `Nothing needs you`;
+- **Before.** Run `$C page --evidence "$E/01-before"`: no node ends `needs you` and there is no `list "Needs you"`;
   the map shows `#1` and `#5` Ready, `#6` Stackable. `: > "$OUTSIDE_LOG"`.
 - **Press Refresh.** Run `$C page --evidence "$E/02-pressed" --click "button=Refresh" --expect "Failed"`.
   `.requests.txt` has, after the first load, `POST /api/refresh -> 200` then `GET /api/status -> 200`
-  and `GET /api/map/verify%2Ffixture -> 200`; the strip now lists `Failed verify/fixture #1`, `#5` and
-  `#6`, then the Repo's failing Readiness checks as `Check verify/fixture: ...` rows, and the map's
-  nodes say `Failed, needs you`. `$OUTSIDE_LOG` starts `gh api user --jq .login` (the fresh cache
+  and `GET /api/map/verify%2Ffixture -> 200`; the map's
+  nodes `#1`, `#5` and `#6` say `Failed, needs you`, and the Repo's failing Readiness checks are
+  `Check verify/fixture: ...` toasts in `list "Needs you"`. `$OUTSIDE_LOG` starts `gh api user --jq .login` (the fresh cache
   was not trusted), then the dispatches' `gh issue edit`, `herdr worktree create` and `notify-send`
   lines, and ends with the checks' `ghbot api /installation/repositories ...`. Copy it to
   `$E/outside.pressed.log`.
@@ -56,8 +56,8 @@ Preconditions:
   HTTP `200`; `repos[0].error` `GitHub rate limit exceeded; nico-agent asks it again at <the pause>`;
   `actions` hold only the two herdr lines; `$OUTSIDE_LOG` has no `gh` line, only `herdr agent list`,
   `herdr tab create` and the checks' `ghbot api /installation/repositories ...` (the GitHub App
-  answers on its own rate limit). Run `$C page --evidence "$E/05-paused-page"`: the strip adds
-  `Paused GitHub until <time>` last, under the three Failed rows and the Check rows.
+  answers on its own rate limit). Run `$C page --evidence "$E/05-paused-page"`: `list "Needs you"` adds
+  `Paused GitHub until <time>` last, after the Check toasts.
 - **Proof.** `$C state > "$E/state.after.txt"`; copy `$OUTSIDE_LOG` to `$E/outside.log`.
 - **PR below closed.** A fresh run without `seed issues` (its dispatches would add actions):
   `$C cleanup; $C launch --no-build && $C doctor && . "$($C env)"`,
@@ -74,8 +74,8 @@ Preconditions:
   `{"error":"the PR below, https://github.com/verify/fixture/pull/109, closed unmerged","step":"restart"}`.
   `: > "$OUTSIDE_LOG"`, then `$C run --evidence "$E/06-below-closed-again" -- refresh --json`: no
   action names `verify/fixture#10`, and `$OUTSIDE_LOG` has no `notify-send`. Run
-  `$C page --evidence "$E/06-below-closed-page" --click "button~Failed verify/fixture #10"`:
-  `region "Needs you"` has `button "Failed verify/fixture #10 Verify: seeded Dispatch 10 <time>"`;
+  `$C page --evidence "$E/06-below-closed-page" --click "button~#10, Verify: seeded Dispatch 10"`:
+  the node reads `#10, Verify: seeded Dispatch 10, Failed, needs you`;
   `.requests.txt` has `GET /api/node/verify%2Ffixture%2310 -> 200`; the panel reads
   `the PR below, https://github.com/verify/fixture/pull/109, closed unmerged`, `At the restart step.`
   and `No restarts.` Copy `$OUTSIDE_LOG` to `$E/outside.log`.
@@ -95,7 +95,7 @@ Preconditions:
 - The button's `Refreshing…` state lasts as long as the tick; in a run that is under a second, so
   prove the click by `.requests.txt`, not by catching the label.
 - In a run GitHub always refuses, so the read times beside the button do not move after a refresh;
-  what changes is what the tick did (dispatches, strip rows) and what `$OUTSIDE_LOG` recorded.
+  what changes is what the tick did (dispatches, flags and toasts) and what `$OUTSIDE_LOG` recorded.
 - A refused POST (a config that does not load) shows an `alert` under the button; a 200 with a
   Repo's `error` does not.
 - Every refresh tick restarts nothing for a seeded Dispatch whose Agent states are unknown (herdr

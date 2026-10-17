@@ -24,7 +24,7 @@ test("the Libraries tab is `#/libraries`, which no Project's name can be: a name
   expect(route("#/libraries")).toEqual(libraries);
   expect(route("#libraries")).toEqual({ project: "libraries", view: "map" });
   expect(hash({ project: "libraries", view: "map" })).toBe("#libraries");
-  // A Project picked while the Libraries tab showed, from a strip row: its map.
+  // A Project picked while the Libraries tab showed: its map.
   expect(hash({ project: "shop", view: "libraries" })).toBe("#shop");
 });
 
