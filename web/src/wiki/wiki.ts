@@ -29,7 +29,7 @@ export interface Listed {
   commit: string | null;
   builtAt: string | null;
   gaps: number;
-  /** How many of its Gaps the budget left, which Continue asks about with a fresh budget of `calls`. */
+  /** How many of its Gaps the budget or a failed call left, which Continue asks about with a fresh budget of `calls`. */
   budget: number;
   calls: number;
   /** Its build: open in the herdr `pane`, waiting its turn, or failed for `why`. */
@@ -148,7 +148,7 @@ export interface Anchor {
 
 export interface Gap {
   paths: string[];
-  reason: "budget" | "depth" | "unreadable";
+  reason: "budget" | "depth" | "unreadable" | "unanswered";
 }
 
 /** The kinds of Interpretation, in the order a Component lists them. */
@@ -166,6 +166,7 @@ export const REASONS: Record<Gap["reason"], string> = {
   budget: "Not explored: the build's calls ran out",
   depth: "Not explored: deeper than the build divides",
   unreadable: "Unreadable: an answer failed its checks",
+  unanswered: "Not explored: its call failed",
 };
 
 /** How far behind its Base the Wiki is, and how many of its Interpretations are Stale, if any: the header's last words. */
@@ -216,9 +217,9 @@ export function search(wiki: Pick<Wiki, "components">, query: string): Hit[] {
   ];
 }
 
-/** What Continue asks about, before its button: "6 parts not explored (budget)". */
+/** What Continue asks about, before its button: "6 parts not explored". */
 export function unexplored(budget: number): string {
-  return `${budget} part${budget === 1 ? "" : "s"} not explored (budget)`;
+  return `${budget} part${budget === 1 ? "" : "s"} not explored`;
 }
 
 /** The heads the page gives ids, for the outline: the Component's name, then each section it shows, with how many it holds; `related` when a Relationship joins it to another Component, either way, and `parts` how many sub-Components it has. */

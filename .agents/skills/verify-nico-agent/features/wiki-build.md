@@ -2,13 +2,14 @@
 
 `nico-agent wiki build <owner/name>` builds that Repo's Wiki from scratch, as `--rebuild` does
 (`--update`, from the Wiki before it, is [wiki-update.md](./wiki-update.md); `--continue`, filling
-its budget Gaps, [wiki-buttons.md](./wiki-buttons.md)): it checks the Repo out
+its budget and `unanswered` Gaps, [wiki-buttons.md](./wiki-buttons.md)): it checks the Repo out
 at `origin/<base>`, records each file's blob and line count, and asks the `[wiki]` launch about the
 code part by part, top-down, each part one headless, read-only call of its Harness: `opencode2
 run` by default, `claude -p` or `codex exec` when the launch is theirs. Code checks every
 answer: a claim that fails goes back to the model in the same session, by its id with what failed,
 up to 3 rounds, each a call of the budget; one still failing is dropped and its part recorded as a
-Gap. The Wiki lands in the Bucket in one commit at `wiki/<owner>/<name>/wiki.json`; then its
+Gap. A call that errors leaves its part a Gap `unanswered`; only a build whose every call errors
+fails. The Wiki lands in the Bucket in one commit at `wiki/<owner>/<name>/wiki.json`; then its
 overviews and Interpretations are embedded through Ollama's `/api/embed` for `ask`, kept in the
 config dir, a failed embed leaving the Wiki built. The build writes its outcome to `wikis.json` as
 its last act: built, with its Gaps by reason, or failed with why.
@@ -16,13 +17,14 @@ its last act: built, with its Gaps by reason, or failed with why.
 ## Sub-features
 
 - `wiki-usage` `wiki` alone is exit 2 with the usage; a slug that is no Repo is exit 1 and writes no outcome.
-- `wiki-failed` a call that errors fails the build: exit 1 with why, `wikis.json` `failed` with it, nothing in the Bucket, the checkout gone.
+- `wiki-failed` a build whose every call errors fails: exit 1 with why, `wikis.json` `failed` with it, nothing in the Bucket, the checkout gone.
 - `wiki-read-only` each call is `opencode2 run --standalone -m <model> --format json <prompt>` with `OPENCODE_CONFIG_CONTENT` denying bash, edit, execute, external_directory, task, webfetch and websearch; on claude `claude -p --output-format json --json-schema <schema> --tools=Read,Grep,Glob --strict-mcp-config --permission-prompts none`, corrected with `--resume <session>`; on codex `codex exec --ignore-user-config -c sandbox_mode="read-only" --skip-git-repo-check --json --output-schema <config dir>/wiki/answer.schema.json`, corrected with `codex exec resume <session>` (a real build on either: [wiki-settings.md](./wiki-settings.md)).
 - `wiki-built` an answer lands as one Bucket commit `wiki <owner/name> <commit>`, served at `/bucket/wiki/<owner>/<name>/wiki.json`, its files with git's blobs and their line counts; `wikis.json` `built`.
 - `wiki-embed` after the Bucket commit, one `curl` POSTs every overview and Interpretation to `http://127.0.0.1:11434/api/embed` with `nomic-embed-text`; with Ollama unreachable, stderr says `could not embed the Wiki of <owner/name>, so ask embeds it first: ...`, the build is still `built` and the config dir holds no `wiki/<owner>/<name>/vectors.json`; with Ollama up, it does.
 - `wiki-gap` a claim failing a check (an Anchor past its file's end or over 60 lines, an Explainer's arrow to a step it does not have, a division's Interpretation whose Anchors all fall in the files of one of its Components) is sent back 3 times, each `opencode2 run ... -s <session>` continuing the first call's session; still failing, it is dropped, said on stderr, and its part a Gap `unreadable`; the build still succeeds.
 - `wiki-corrected` a claim the model corrects in its first round is kept: one correction call, no Gap.
 - `wiki-unread-reply` a correction that is no JSON keeps the answer before it, and the next round says so.
+- `wiki-unanswered` a call that errors leaves its part a Gap `unanswered` and the build still succeeds; `--continue` asks that part alone again and leaves no Gap.
 
 ## How to get to it (user POV)
 
@@ -96,7 +98,20 @@ Preconditions:
   its `role`. The `state` diff from `state.division.before.txt`: `wikis.json` `built`, a Bucket
   commit `wiki verify/fixture <commit>`, and five `opencode2 run` calls: the top part, three
   corrections with `-s` and its session, each listing `interpretation 1` with that why, then
-  Readme's. Copy `$OUTSIDE_LOG` to `$E/outside.log`.
+  Readme's.
+- **A call that fails.** `$C seed answer none`. Write `$E/division-plain.json`, the same division
+  with no Interpretation. `$C seed answer "$E/division-plain.json" "verify/fixture"` (Readme left
+  unseeded, so its call fails), `$C state > "$E/state.unanswered.before.txt"`, then `$C run --evidence
+  "$E/11-unanswered" -- wiki build verify/fixture --json`. Exit `0`, `"components":2`,
+  `"gaps":{"unanswered":1}`; stderr says `verify/fixture > Readme: the call failed: ...` and
+  `verify/fixture > Readme: not asked (unanswered), a Gap`. `$C http --evidence "$E/12-bucket-unanswered"
+  GET /bucket/wiki/verify/fixture/wiki.json`: `readme` with `gaps` `[{"paths":["README.md"],"reason":"unanswered"}]`;
+  `$C http --evidence "$E/13-wikis-unanswered" GET /api/wikis`: `"budget":1`.
+- **Continued.** `$C seed answer "$E/readme.json" "verify/fixture > Readme"`, then `$C run --evidence
+  "$E/14-continue" -- wiki build verify/fixture --continue --json`. Exit `0`, `"gaps":{}`; stderr
+  `continuing it: 1 part(s) copied or kept, 1 to ask again` and `verify/fixture > Readme: asked (call 1 of 48)`;
+  the `state` diff from `state.unanswered.before.txt` has two Bucket commits and, after the first
+  build's, one `opencode2 run` call, about `verify/fixture > Readme`. Copy `$OUTSIDE_LOG` to `$E/outside.log`.
 
 ## Gotchas
 

@@ -81,7 +81,7 @@ const ROUTES: &[(&str, &str)] = &[
     ),
     (
         "POST /api/wiki/<id>/update|rebuild|continue",
-        "queue the Wiki's build first: an Update, one from nothing, or one asking only its budget Gaps",
+        "queue the Wiki's build first: an Update, one from nothing, or one asking only its budget or unanswered Gaps",
     ),
     (
         "PATCH /api/repo/<owner/name>/switches {name: bool}",

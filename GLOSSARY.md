@@ -214,15 +214,16 @@ the base since it was written; shown as such, never hidden, until a wiki
 build asks about its part again. _Avoid_: outdated, invalid.
 
 **Update**: a wiki build of a Repo's Wiki from the one before it, asking
-again only about the parts whose files changed and copying the rest; a
-parent whose parts changed keeps its Interpretations, Terms and
-Explainer, Stale where they are. _Avoid_: refresh, incremental build.
+again only about the parts whose files changed or a failed call left
+Gaps, and copying the rest; a parent whose parts changed keeps its
+Interpretations, Terms and Explainer, Stale where they are. _Avoid_:
+refresh, incremental build.
 
 **Rebuild**: a wiki build of a Wiki from nothing, as its first one is,
 asked for by the user. _Avoid_: reset, regenerate.
 
 **Continue**: a wiki build asking again only the parts of a Wiki its
-budget left Gaps, with a fresh budget, at the commit the Wiki describes.
+budget or a failed call left Gaps, with a fresh budget, at the commit the Wiki describes.
 _Avoid_: resume, retry.
 
 **Run**: one start of a trigger's agent: a quality-scan, a faux-nico, the

@@ -2,7 +2,8 @@
 
 `nico-agent wiki build <owner/name> --update` builds a Repo's Wiki from the one the Bucket holds,
 at the Repo's `origin/<base>`: a part whose files kept their blobs is copied over, a leaf whose
-files changed is asked again, the part a file added or removed sits under is divided again, its
+files changed is asked again, as is a part with an `unanswered` Gap (see
+[wiki-build.md](./wiki-build.md)), the part a file added or removed sits under is divided again, its
 parts from scratch, and a parent whose parts changed keeps its Interpretations. Each part keeps
 its place in the tree. Between builds, `GET /api/wiki/<id>` and the MCP's `get_component` mark
 `stale` each Interpretation, Term and Explainer citing a file whose blob at `origin/<base>` (as the clone last

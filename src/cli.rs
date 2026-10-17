@@ -88,7 +88,7 @@ const COMMANDS: &[(&str, &str)] = &[
     ),
     (
         "nico-agent wiki build <owner/name>[@<tag>[:<path>]] [--update|--rebuild|--continue]",
-        "build the Wiki of the Repo from scratch at origin/<base> (--rebuild too), or of the Library version at its tag under its subfolder, one headless call of the [wiki] launch per part of its code, and keep it in the Bucket; with --update, from the Wiki it holds, asking only about the parts whose files changed; with --continue, at the Wiki's commit, asking only about the parts its budget left Gaps, with a fresh budget",
+        "build the Wiki of the Repo from scratch at origin/<base> (--rebuild too), or of the Library version at its tag under its subfolder, one headless call of the [wiki] launch per part of its code, and keep it in the Bucket; with --update, from the Wiki it holds, asking only about the parts whose files changed or a failed call left Gaps; with --continue, at the Wiki's commit, asking only about the parts its budget or a failed call left Gaps, with a fresh budget",
     ),
     (
         "nico-agent mcp [--wiki <owner/name>[@<tag>[:<path>]]]...",

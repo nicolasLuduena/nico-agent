@@ -32,7 +32,7 @@ between Components. serve answers the Wikis at `GET /api/wikis` and one at `GET 
 - `wiki-relationships` `region "Relationships"`, only on a Component a Relationship joins to another either way, draws the Component and each Component a Relationship joins it to, each a `link "<from> <kind> <to>: <description>"` opening that Component.
 - `wiki-explainer` `region "Explainer"`, only on a Component with one, holds its title and one `button "Step <n>[, <lane>]: <caption>"` per step, each lane framed with its name; a step pressed shows its caption and its Anchor links under the drawing, pressed again hides them.
 - `wiki-parts` `region "Components"` holds each sub-Component's `link` and its overview's first sentence, whole.
-- `wiki-gaps` a Component's Gaps show under `region "Gaps"` with their reason (`Unreadable: an answer failed its checks`, `Not explored: the build's calls ran out`, `Not explored: deeper than the build divides`) and their files folded.
+- `wiki-gaps` a Component's Gaps show under `region "Gaps"` with their reason (`Unreadable: an answer failed its checks`, `Not explored: the build's calls ran out`, `Not explored: its call failed`, `Not explored: deeper than the build divides`) and their files folded.
 - `wiki-next` the article ends with `link "Next <name>"`, the next Component in the tree's order (its first sub-Component, else the next one beside it or beside a Component above it); the last has none.
 - `wiki-focus` another Component opened (tree, Next, a sheet's link) moves focus to its `heading` level 1, with no focus ring after a click in `.view.png`.
 - `wiki-history` a Component opened from the tree, from `region "Components"` or by Next is a new fragment: back and forward move between Components.
