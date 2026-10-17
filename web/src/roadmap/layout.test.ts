@@ -28,8 +28,8 @@ describe("the Roadmap's layout", () => {
       ["no label", 8 + 2 * (272 + 48), 8],
     ]);
     expect([at(2).x, at(3).x, at(4).x, at(1).x]).toEqual([20, 20, 340, 660]);
-    expect([at(2).y, at(3).y]).toEqual([32, 32 + 66 + 16]);
-    expect(drawn.lanes[0].height).toBe(24 + 2 * 66 + 16 + 12);
+    expect([at(2).y, at(3).y]).toEqual([32, 32 + 84 + 16]);
+    expect(drawn.lanes[0].height).toBe(24 + 2 * 84 + 16 + 12);
     expect(drawn.width).toBe(8 + 3 * 272 + 2 * 48 + 48);
   });
 
@@ -47,24 +47,24 @@ describe("the Roadmap's layout", () => {
     const [right, left, same] = drawn.arrows.map((a) => a.points);
     // #2 to #4, one lane right on the same row: straight across, in the gutter's first line.
     expect(right).toEqual([
-      { x: 268, y: 59 },
-      { x: 286, y: 59 },
-      { x: 286, y: 59 },
-      { x: 340, y: 59 },
+      { x: 268, y: 68 },
+      { x: 286, y: 68 },
+      { x: 286, y: 68 },
+      { x: 340, y: 68 },
     ]);
     // #4 to #3, back left a row down: out below #4's left middle, into below #3's right, on the next line.
     expect(left).toEqual([
-      { x: 340, y: 71 },
-      { x: 292, y: 71 },
-      { x: 292, y: 153 },
-      { x: 268, y: 153 },
+      { x: 340, y: 80 },
+      { x: 292, y: 80 },
+      { x: 292, y: 180 },
+      { x: 268, y: 180 },
     ]);
     // #2 to #3, in one lane: out of the right side and back in.
     expect(same).toEqual([
-      { x: 268, y: 59 },
-      { x: 298, y: 59 },
-      { x: 298, y: 153 },
-      { x: 268, y: 153 },
+      { x: 268, y: 68 },
+      { x: 298, y: 68 },
+      { x: 298, y: 180 },
+      { x: 268, y: 180 },
     ]);
   });
 
@@ -74,12 +74,12 @@ describe("the Roadmap's layout", () => {
     expect(drawn.lanes[0].y).toBe(8 + 2 * 6 + 12);
     // Out of #1's left side, up into the channel, across to the gutter right of #2's lane, down into #2's right.
     expect(drawn.arrows[0].points).toEqual([
-      { x: 660, y: 95 },
-      { x: 606, y: 95 },
+      { x: 660, y: 104 },
+      { x: 606, y: 104 },
       { x: 606, y: 14 },
       { x: 286, y: 14 },
-      { x: 286, y: 95 },
-      { x: 268, y: 95 },
+      { x: 286, y: 104 },
+      { x: 268, y: 104 },
     ]);
   });
 });

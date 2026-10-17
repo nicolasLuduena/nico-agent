@@ -258,16 +258,6 @@ fn the_app_is_served_at_slash_from_the_binary_with_every_file_it_loads() {
         "{loaded:?}"
     );
     assert!(kinds.contains(&(200, "text/css".into())), "{loaded:?}");
-    let css = loaded.iter().find(|path| path.ends_with(".css")).unwrap();
-    let fonts: Vec<String> = (assets(&fetch(&t, css).2).into_iter())
-        .filter(|path| path.ends_with(".woff2"))
-        .collect();
-    assert_eq!(fonts.len(), 3, "Barlow 400, 600 and 700");
-    let (status, kind, font) = fetch(&t, &fonts[0]);
-    assert_eq!(
-        (status, kind.as_str(), &font[..4]),
-        (200, "font/woff2", &b"wOF2"[..])
-    );
     assert_eq!(fetch(&t, "/assets/nothing.js").0, 404);
 }
 

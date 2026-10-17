@@ -1,79 +1,65 @@
 /* DESIGN.md's tokens and type, and the one set of controls every form uses; each component lays itself out. */
 
-@font-face {
-  font-family: Barlow;
-  font-weight: 400;
-  font-display: swap;
-  src: url("./fonts/barlow-400.woff2") format("woff2");
-}
-@font-face {
-  font-family: Barlow;
-  font-weight: 600;
-  font-display: swap;
-  src: url("./fonts/barlow-600.woff2") format("woff2");
-}
-@font-face {
-  font-family: Barlow;
-  font-weight: 700;
-  font-display: swap;
-  src: url("./fonts/barlow-700.woff2") format("woff2");
-}
-
 :root {
   color-scheme: light;
-  --ground: #f4f5f2;
+  /* The workspace: a neutral page, white surfaces on it, a faint band for hover and folded lines. */
+  --ground: #f5f6f8;
   --surface: #ffffff;
-  --ink: #111214;
-  --ink-muted: #50545b;
-  --rule: #111214;
-  --hairline: #cfd2d6;
-  --signal: #ffd400;
-  --signal-ink: #111214;
+  --raised: #eef0f3;
+  --ink: #1a1d23;
+  --ink-muted: #5b636e;
+  /* A card's or a section's edge, and a control's (3:1 on surface, as a field's frame must be). */
+  --hairline: #e1e4e9;
+  --rule: #8b929c;
+  /* The one selection accent: the open node, the current Project and view, links, focus, a primary action. */
+  --accent: #2459d1;
+  --accent-ink: #ffffff;
+  --accent-soft: #e8eefb;
+  --focus: #2459d1;
+  /* Needs you, and nothing else: a soft amber badge with its own ink and edge. */
+  --signal: #fff1c2;
+  --signal-edge: #c99400;
+  --signal-ink: #533c00;
+  /* A Stage's hue: its mark and its word. Implementing and PR draft are live, Verified verified, Failed failed. */
   --live: #1d4f91;
   --verified: #00754a;
   --failed: #c8102e;
-  --reversed: #111214;
-  --reversed-ink: #ffffff;
-  --focus: #1d4f91;
-  /* A Stage's hue: its ring, its word, its node's tint. Implementing and PR draft are live, Verified verified, Failed failed. */
   --ready: #00747a;
   --stackable: #a32385;
   --waiting: #99560f;
   --merged: #8250df;
   --closed: #7a6655;
-  /* A Harness's hue: its diamond wherever it is named. */
+  /* A Harness's hue: a small dot in a launch picker's select, beside its name. */
   --harness-claude: #a94a26;
   --harness-codex: #0b7b63;
   --harness-opencode: #6a4bd6;
-  /* A Repo's line colour, by its order in a Project of more than one: its square and its panel's rule. */
-  --line-1: #2560c0;
-  --line-2: #c22b62;
-  --line-3: #457b20;
-  --line-4: #06779a;
-  --line-5: #8d5a2c;
-  --line-6: #4b4f9e;
-  /* How much of its Stage's hue a node's fill takes. */
-  --tint: 7%;
+  --radius: 8px;
+  --radius-control: 6px;
+  --shadow: 0 1px 2px rgb(16 24 40 / 6%);
+  --shadow-pop: 0 8px 24px rgb(16 24 40 / 12%);
   /* 24px on desktop, 16px on phone. */
   --gutter: 24px;
 }
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --ground: #0b1220;
-  --surface: #121a2b;
-  --ink: #eef1f4;
-  --ink-muted: #a9b1bd;
-  --rule: #6b7689;
-  --hairline: #2a3447;
-  --signal: #f2c200;
-  --signal-ink: #111214;
+  --ground: #0e1117;
+  --surface: #161a21;
+  --raised: #1e232c;
+  --ink: #e6e9ee;
+  --ink-muted: #9ba3af;
+  --hairline: #2a303a;
+  --rule: #6b7380;
+  --accent: #6ea2ff;
+  --accent-ink: #0e1117;
+  --accent-soft: #1b2740;
+  --focus: #6ea2ff;
+  --signal: #3a2f0d;
+  --signal-edge: #a07c12;
+  --signal-ink: #ffd96a;
   --live: #7fb0ff;
   --verified: #3ccf8e;
   --failed: #ff6b6b;
-  --reversed: #eef1f4;
-  --reversed-ink: #0b1220;
-  --focus: #7fb0ff;
   --ready: #45cbc5;
   --stackable: #f07fd6;
   --waiting: #e8a35a;
@@ -82,13 +68,8 @@
   --harness-claude: #f2956c;
   --harness-codex: #4dd0aa;
   --harness-opencode: #a996ff;
-  --line-1: #7aa7ff;
-  --line-2: #f481a8;
-  --line-3: #94d16c;
-  --line-4: #55c2e3;
-  --line-5: #d9a674;
-  --line-6: #a1a6e8;
-  --tint: 12%;
+  --shadow: 0 1px 2px rgb(0 0 0 / 30%);
+  --shadow-pop: 0 8px 24px rgb(0 0 0 / 45%);
 }
 
 @media (width < 720px) {
@@ -111,14 +92,14 @@ body {
   margin: 0;
   background: var(--ground);
   color: var(--ink);
-  font: 400 14px/1.45 Barlow, system-ui, sans-serif;
+  font: 400 14px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   font-variant-numeric: tabular-nums;
   -webkit-text-size-adjust: 100%;
 }
 
 ::selection {
-  background: var(--live);
-  color: var(--surface);
+  background: var(--accent);
+  color: var(--accent-ink);
 }
 
 :focus-visible {
@@ -127,7 +108,7 @@ body {
 }
 
 a {
-  color: var(--live);
+  color: var(--accent);
   text-underline-offset: 3px;
 }
 
@@ -145,32 +126,48 @@ ul {
   margin: 0;
 }
 
-/* A command, set in the text's own face. */
+/* A command, set in the terminal's face, as it is typed. */
 code {
-  font: inherit;
-  font-weight: 600;
+  font: 600 0.92em ui-monospace, "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;
   color: var(--ink);
 }
 
-/* DESIGN.md's errata rule: a refusal, a Dispatch's failure, serve out of reach. */
+/* A refusal, a Dispatch's failure, serve out of reach: a red rule down its left edge. */
 .errata {
   display: grid;
   gap: 4px;
   padding: 8px 12px;
   border-left: 4px solid var(--failed);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--failed) 6%, var(--surface));
   overflow-wrap: anywhere;
 }
 
-/* DESIGN.md's `label`: kinds, column heads, strip kinds, section heads. */
+/* A section's or a fold's head, and a short kind: semibold, sentence case. */
 .label {
   font-size: 14px;
   font-weight: 600;
-  line-height: 1.2;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  line-height: 1.3;
 }
 
-/* DESIGN.md's controls: one look for hover, focus, disabled and refused, in every form. */
+/* Needs you, on its issue: a soft amber badge that says it in words. */
+.needs {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  padding: 0 8px;
+  min-height: 20px;
+  border: 1px solid var(--signal-edge);
+  border-radius: 999px;
+  background: var(--signal);
+  color: var(--signal-ink);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+/* The controls: one look for hover, focus, disabled and refused, in every form. */
 
 /* A field's label above its control, sentence case and quieter than the section head over it. */
 .field {
@@ -182,7 +179,7 @@ code {
 .field-name {
   color: var(--ink-muted);
 }
-/* A label that says what it does on hover: dotted under, its tip a small gauge-style panel under it after a beat. */
+/* A label that says what it does on hover: dotted under, its tip a small panel under it after a beat. */
 [data-tip] {
   position: relative;
   text-decoration: underline dotted var(--ink-muted);
@@ -199,10 +196,9 @@ code {
   background: var(--surface);
   color: var(--ink);
   font-weight: 400;
-  text-transform: none;
-  letter-spacing: normal;
-  border-top: 1px solid var(--rule);
-  box-shadow: 0 0 0 1px var(--hairline);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-pop);
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
@@ -243,9 +239,9 @@ select,
 input:not([type="checkbox"], [type="radio"]) {
   width: 100%;
   min-height: 36px;
-  padding: 0 8px;
-  border: 1px solid var(--ink-muted);
-  border-radius: 2px;
+  padding: 0 10px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-control);
   background: var(--surface);
   text-overflow: ellipsis;
 }
@@ -257,47 +253,54 @@ select:hover:not(:disabled),
 input:hover:not(:disabled) {
   border-color: var(--ink);
 }
-/* Refused: the field keeps what is set, framed in the errata's red until the next save. */
+/* Refused: the field keeps what is set, framed in red until the next save. */
 [aria-invalid="true"] {
   border-color: var(--failed);
   box-shadow: 0 0 0 1px var(--failed);
 }
 
-/* DESIGN.md's button: the form's one action. */
+/* The form's one action: the accent's fill. */
 .button {
   min-height: 36px;
   padding: 0 16px;
-  border: 1px solid var(--ink);
-  border-radius: 2px;
-  background: var(--ink);
-  color: var(--surface);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-control);
+  background: var(--accent);
+  color: var(--accent-ink);
   font-weight: 600;
   cursor: pointer;
 }
 .button:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--ink) 82%, var(--surface));
+  background: color-mix(in srgb, var(--accent) 86%, var(--ink));
 }
-/* DESIGN.md's button-quiet: an action beside a setting. */
+/* An action beside a setting, and every other button. */
 .quiet {
   flex: none;
   min-height: 36px;
-  padding: 0 16px;
+  padding: 0 14px;
   border: 1px solid var(--rule);
-  border-radius: 2px;
+  border-radius: var(--radius-control);
   background: var(--surface);
   color: var(--ink);
   font-weight: 600;
   cursor: pointer;
 }
 .quiet:hover:not(:disabled) {
-  background: var(--ground);
+  background: var(--raised);
+}
+a.button,
+a.quiet {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
 }
 select:disabled,
 input:disabled,
 .button:disabled,
 .quiet:disabled {
   border-color: var(--hairline);
-  background: var(--ground);
+  background: var(--raised);
   color: var(--ink-muted);
   cursor: not-allowed;
 }
@@ -305,7 +308,7 @@ input:disabled,
   cursor: progress;
 }
 
-/* A standard toggle: live when on, a hairline track when off. */
+/* A standard toggle: the accent when on, a muted track when off. */
 input[role="switch"] {
   appearance: none;
   position: relative;
@@ -313,9 +316,9 @@ input[role="switch"] {
   width: 40px;
   height: 22px;
   margin: 0;
-  border: 1px solid var(--ink-muted);
-  border-radius: 2px;
-  background: var(--hairline);
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  background: var(--raised);
   cursor: pointer;
   transition: background-color 120ms ease-out;
 }
@@ -326,7 +329,7 @@ input[role="switch"]::before {
   left: 2px;
   width: 16px;
   height: 16px;
-  border-radius: 1px;
+  border-radius: 50%;
   background: var(--ink-muted);
   transition: transform 120ms ease-out;
 }
@@ -340,11 +343,11 @@ input[role="switch"]:hover {
   border-color: var(--ink);
 }
 input[role="switch"]:checked {
-  border-color: var(--live);
-  background: var(--live);
+  border-color: var(--accent);
+  background: var(--accent);
 }
 input[role="switch"]:checked::before {
-  background: var(--surface);
+  background: var(--accent-ink);
   transform: translateX(18px);
 }
 
@@ -358,9 +361,9 @@ input[role="switch"]:checked::before {
   white-space: nowrap;
 }
 .chip.own {
-  padding: 0 2px 0 6px;
+  padding: 0 2px 0 8px;
   border: 1px solid var(--hairline);
-  border-radius: 2px;
+  border-radius: 999px;
   color: var(--ink);
 }
 .chip button {
@@ -371,13 +374,13 @@ input[role="switch"]:checked::before {
   height: 18px;
   padding: 0;
   border: 0;
-  border-radius: 2px;
+  border-radius: 50%;
   background: none;
   color: var(--ink-muted);
   cursor: pointer;
 }
 .chip button:hover {
-  background: var(--ground);
+  background: var(--raised);
   color: var(--ink);
 }
 .chip button::after {
@@ -394,22 +397,15 @@ input[role="switch"]:checked::before {
   color: var(--ink);
 }
 
-/* A Repo's line colour, a Harness's hue: a square, a diamond. */
-.swatch {
-  display: inline-block;
-  flex: none;
-  width: 10px;
-  height: 10px;
-  background: var(--line);
-}
+/* A Harness's hue, beside its name in a launch picker: a small dot. */
 .harness {
   display: inline-block;
   flex: none;
   width: 8px;
   height: 8px;
   margin: 0 2px;
+  border-radius: 50%;
   background: var(--harness);
-  transform: rotate(45deg);
 }
 
 /* A finger's size on a phone: 16px field text, which iOS does not zoom into, and 44px to tap. */
@@ -434,7 +430,7 @@ input[role="switch"]:checked::before {
   }
 }
 
-/* A panel of the column right of the map: a Repo's, or its Project's defaults. */
+/* A panel of the Repos column: a Repo's, or its Project's defaults. */
 .controls {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -442,15 +438,143 @@ input[role="switch"]:checked::before {
   padding: 16px;
   background: var(--surface);
   border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
 }
-/* A Repo's line colour, on its panel's head as a timetable's column head sits on its rule. */
-.controls.lined {
-  border-top: 3px solid var(--line);
-}
-/* DESIGN.md's `head`: the Repo's or Project's name heading its panel. */
+/* The Repo's or Project's name heading its panel. */
 .controls h2.head {
-  font-size: 22px;
+  font-size: 16px;
   font-weight: 600;
-  line-height: 1.2;
+  line-height: 1.3;
   overflow-wrap: anywhere;
+}
+
+/* The inspector: the open node's panel (desktop) or bottom sheet (phone), the map's and the Roadmap's alike. */
+.inspector {
+  padding: 0 20px 20px;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  animation: inspector-in 160ms ease-out;
+}
+@keyframes inspector-in {
+  from {
+    transform: translateX(16px);
+  }
+}
+.inspector > header {
+  padding-top: 16px;
+}
+.inspector .bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  min-height: 36px;
+}
+.inspector .ref {
+  color: var(--ink-muted);
+  overflow-wrap: anywhere;
+}
+.inspector h2 {
+  margin-top: 4px;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+}
+.inspector h2:focus {
+  outline: none;
+}
+.inspector h2:focus-visible {
+  outline: 2px solid var(--focus);
+}
+.inspector h3 {
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.inspector > section,
+.inspector .section {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--hairline);
+}
+.inspector .note {
+  color: var(--ink-muted);
+}
+/* A secondary detail, folded under its labelled line. */
+.inspector details > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.inspector details > summary .count {
+  color: var(--ink-muted);
+  font-weight: 400;
+}
+.inspector details[open] > summary {
+  margin-bottom: 8px;
+}
+.inspector .grip {
+  display: none;
+}
+/* Beside a map taller than the window, the inspector stays in view. */
+@media (width >= 720px) {
+  .inspector {
+    position: sticky;
+    top: 16px;
+    max-height: calc(100vh - 32px);
+    overflow-y: auto;
+  }
+}
+/* The bottom sheet: up to 85vh, scrolling inside, closed by Close, Escape or a swipe down. */
+@media (width < 720px) {
+  .inspector {
+    position: fixed;
+    inset: auto 0 0;
+    z-index: 10;
+    max-height: 85vh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 0 16px 16px;
+    border-width: 1px 0 0;
+    border-radius: 12px 12px 0 0;
+    box-shadow: var(--shadow-pop);
+    animation-name: inspector-rise;
+  }
+  @keyframes inspector-rise {
+    from {
+      transform: translateY(100%);
+    }
+  }
+  .inspector > header {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    padding: 8px 0;
+    background: var(--surface);
+    touch-action: none;
+  }
+  .inspector .grip {
+    display: block;
+    width: 40px;
+    height: 4px;
+    margin: 0 auto 8px;
+    border-radius: 2px;
+    background: var(--rule);
+  }
+  .inspector details > summary {
+    min-height: 44px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .inspector {
+    animation: none;
+  }
 }

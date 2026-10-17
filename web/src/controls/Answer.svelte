@@ -63,7 +63,7 @@
 </script>
 
 <section aria-labelledby="{id}-head">
-  <h3 class="label" id="{id}-head">Asking</h3>
+  <h3 id="{id}-head">Asking</h3>
   {#if error}
     <Refused {error} help={[]} />
   {:else}
@@ -108,7 +108,7 @@
   h3 {
     margin: 0;
     font-size: 14px;
-    color: var(--ink-muted);
+    font-weight: 600;
   }
   /* The screen as herdr reads it: unwrapped, scrolling inside its own box, never the panel. */
   .pane {
@@ -117,9 +117,10 @@
     overflow: auto;
     padding: 8px 12px;
     border: 1px solid var(--hairline);
+    border-radius: var(--radius-control);
     background: var(--ground);
     color: var(--ink);
-    font: 400 14px/1.35 ui-monospace, "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;
+    font: 400 13px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;
     white-space: pre;
     tab-size: 8;
   }

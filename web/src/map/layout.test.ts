@@ -132,15 +132,15 @@ describe("the map's layout", () => {
     });
 
     expect(drawn.nodes.map((n) => [n.key, n.line, n.height, n.needs])).toEqual([
-      ["acme/api#16", "reviewing", 110, false],
-      ["acme/api#17", "review off", 110, false],
-      ["acme/api#18", "review gave up", 110, true],
-      ["acme/api#19", "review stopped", 110, true],
-      ["acme/api#20", "review retrying", 110, false],
-      ["acme/api#21", "waiting for review", 110, false],
-      ["acme/api#22", "verdict fail", 110, false],
-      ["acme/api#23", null, 88, true],
-      ["acme/api#24", null, 88, false],
+      ["acme/api#16", "reviewing", 128, false],
+      ["acme/api#17", "review off", 128, false],
+      ["acme/api#18", "review gave up", 128, true],
+      ["acme/api#19", "review stopped", 128, true],
+      ["acme/api#20", "review retrying", 128, false],
+      ["acme/api#21", "waiting for review", 128, false],
+      ["acme/api#22", "verdict fail", 128, false],
+      ["acme/api#23", null, 108, true],
+      ["acme/api#24", null, 108, false],
     ]);
   });
 
@@ -155,9 +155,9 @@ describe("the map's layout", () => {
     });
 
     expect(drawn.nodes.map((n) => [n.key, n.line, n.height])).toEqual([
-      ["acme/api#3", "waits on acme/web#1 to be installed in acme/web", 110],
-      ["acme/api#4", "acme/api#4's PR https://github.com/acme/api/pull/9 was closed unmerged", 110],
-      ["acme/api#5", null, 88],
+      ["acme/api#3", "waits on acme/web#1 to be installed in acme/web", 128],
+      ["acme/api#4", "acme/api#4's PR https://github.com/acme/api/pull/9 was closed unmerged", 128],
+      ["acme/api#5", null, 108],
     ]);
   });
 
@@ -176,10 +176,10 @@ describe("the map's layout", () => {
     });
 
     expect(drawn.nodes.map((n) => [n.key, n.line, n.height])).toEqual([
-      ["acme/api#6", "assigned to @colleague", 110],
-      ["acme/api#7", "assigned to @colleague, @ada", 110],
-      ["acme/api#8", "unassigned", 110],
-      ["acme/api#9", null, 88],
+      ["acme/api#6", "assigned to @colleague", 128],
+      ["acme/api#7", "assigned to @colleague, @ada", 128],
+      ["acme/api#8", "unassigned", 128],
+      ["acme/api#9", null, 108],
     ]);
   });
 });

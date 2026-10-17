@@ -44,8 +44,8 @@ export interface MapEdge {
   kind: "blocker" | "stack";
 }
 
-/** DESIGN.md's node, in px; one with a line under its Stage is a row taller. */
-export const NODE = { width: 248, height: 88, row: 22 };
+/** DESIGN.md's node, in px: room for a title of two lines; one with a line under its Stage is a row taller. */
+export const NODE = { width: 248, height: 108, row: 20 };
 
 export interface Point {
   x: number;
@@ -61,13 +61,27 @@ export interface Box extends Point {
 /** A lane framing its nodes, its name on the frame's top line. */
 export type Lane = Box & { name: string };
 
+/** What its agent is doing: Asking, working, idle, or no agent. */
+export type Agent = "asking" | "working" | "idle" | null;
+
 /**
  * A node where the map draws it: `x`, `y` its top left corner, `height` its
  * own; `line` where its review stands while it is PR draft, or why it waits
- * while Waiting; `faded` once its PR merged; `needs` when it needs you:
- * what has no node is a toast (toasts.ts).
+ * while Waiting; `agent` its agent's state; `faded` once its PR merged;
+ * `needs` when it needs you: what has no node is a toast (toasts.ts).
  */
-export type Placed = MapNode & Point & { height: number; line: string | null; faded: boolean; needs: boolean };
+export type Placed = MapNode & Point & { height: number; line: string | null; agent: Agent; faded: boolean; needs: boolean };
+
+/** The Agent state: Asking, working, idle, or no agent. */
+export function agentOf(n: MapNode): Agent {
+  const a = n.agent_state;
+  // A tick's record of the Asking says it while herdr cannot.
+  if (n.asking !== null || a?.implementer === "blocked") return "asking";
+  if (!a) return null;
+  if (a.implementer === "working" || a.reviewer === "working") return "working";
+  if (["idle", "done"].includes(a.implementer) || ["idle", "done"].includes(a.reviewer ?? "")) return "idle";
+  return null;
+}
 
 /** The short line under a node's Stage: its review's while PR draft, why it waits while Waiting, less its own key, or who has it. */
 function line(n: MapNode) {
@@ -79,7 +93,17 @@ function line(n: MapNode) {
   if (n.stage === "Waiting" && n.waits) return n.waits.startsWith(`${n.key} `) ? n.waits.slice(n.key.length + 1) : n.waits;
   return null;
 }
-const heightOf = (n: MapNode) => NODE.height + (line(n) ? NODE.row : 0);
+/** Whether it needs you: an Implementer Asking, its faux-nico blocked, a Failed Dispatch, a review given up on or stopped, a Verified PR. */
+export const needsYou = (n: MapNode) =>
+  n.asking !== null ||
+  !!n.faux_nico?.blocked_since ||
+  n.agent_state?.implementer === "blocked" ||
+  n.stage === "Failed" ||
+  n.stage === "Verified" ||
+  review.needsYou(n.review);
+
+/** A row under the Stage for its agent, its line, or both. */
+const heightOf = (n: MapNode) => NODE.height + (line(n) || agentOf(n) ? NODE.row : 0);
 
 /** An edge as drawn: its points run left to right, the arrowhead at the last. */
 export type Drawn = MapEdge & { points: Point[] };
@@ -115,15 +139,10 @@ export function layout(map: MapData): { width: number; height: number; nodes: Pl
         y: y - heightOf(n) / 2,
         height: heightOf(n),
         line: line(n),
+        agent: agentOf(n),
         // serve sends a merged issue for 7 days after its merge, unless the map hides them.
         faded: n.stage === "Merged",
-        needs:
-          n.asking !== null ||
-          !!n.faux_nico?.blocked_since ||
-          n.agent_state?.implementer === "blocked" ||
-          n.stage === "Failed" ||
-          n.stage === "Verified" ||
-          review.needsYou(n.review),
+        needs: needsYou(n),
       };
     }),
     edges: map.edges.map((e) => ({ ...e, points: g.edge(...ends(e)).points ?? [] })),

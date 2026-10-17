@@ -1,10 +1,11 @@
 <script lang="ts">
-  // The open node's panel (desktop) or bottom sheet (phone): what the map
-  // node knows, who it is assigned to with "Assign to me" while no one is,
-  // and for an issue with a Dispatch, /api/node/<issue>: while it is Asking
-  // its Implementer's pane, to answer from, then its PR, restarts, review
-  // with "Review now" while it is off, stopped or given up on, and Verdict
-  // with findings, and Evidence in the Bucket.
+  // The open node's inspector (desktop) or bottom sheet (phone): what the map
+  // node knows and, for an issue with a Dispatch, /api/node/<issue>, its next
+  // useful action first: while it is Asking its Implementer's pane, to answer
+  // from; when it Failed, why; then its PR (opened on GitHub to review and
+  // merge), its review with "Review now" while it is off, stopped or given up
+  // on, and Verdict with findings, and Evidence in the Bucket; then who it is
+  // assigned to, with "Assign to me" while no one is, and its restarts, folded.
   import { onMount } from "svelte";
   import Answer from "../controls/Answer.svelte";
   import { assignMe, assignable, named } from "../controls/assign";
@@ -15,6 +16,7 @@
   import { harnessHue, stageHue } from "../hues";
   import * as review from "../review";
   import { reviewerKeptFailing } from "../failure";
+  import { agentOf, needsYou } from "./layout";
   import { numbered, type Failure, type Project, type Restart, type Review, type Stage } from "../status";
   import { clock } from "../time";
   import Mark from "./Mark.svelte";
@@ -98,33 +100,36 @@
 
 <svelte:window onkeydown={(e) => e.key === "Escape" && close()} />
 
-<section class="panel" aria-labelledby="panel-title" bind:this={panel} style:transform={pulled ? `translateY(${pulled}px)` : null}>
+<section class="inspector" aria-labelledby="panel-title" bind:this={panel} style:transform={pulled ? `translateY(${pulled}px)` : null}>
   <!-- The swipe is a pointer's shortcut for Close, which keyboards and screen readers have. -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <header onpointerdown={grab} onpointermove={pull} onpointerup={release} onpointercancel={release}>
     <div class="grip" aria-hidden="true"></div>
-    <div class="line">
-      <h2 id="panel-title" tabindex="-1" bind:this={title}>
-        {node?.title ?? issue}
-        {#if node?.url}<a href={node.url} target="_blank" rel="noreferrer"
-            >{numbered(issue, node.repo, project.repos)}</a
-          >{/if}
-      </h2>
+    <div class="bar">
+      <span class="ref">
+        {#if node?.url}<a href={node.url} target="_blank" rel="noreferrer">{numbered(issue, node.repo, project.repos)}</a>{:else}{issue}{/if}
+        {#if node && node.kind !== "code"}· {node.kind}{/if}
+      </span>
       <button type="button" class="quiet" onclick={close}>Close</button>
     </div>
+    <h2 id="panel-title" tabindex="-1" bind:this={title}>{node?.title ?? issue}</h2>
     {#if node}
+      {@const agent = agentOf(node)}
       <p class="stage">
-        <svg width="14" height="14" viewBox="0 0 14 14"><Mark stage={node.stage} /></svg>
-        <strong style:color={stageHue(node.stage)}>{node.stage ?? "Blocker"}</strong>
-        <span class="label kind">{node.kind}</span>
+        <span class="word" style:color={stageHue(node.stage)}>
+          {#if node.stage}<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><Mark stage={node.stage} /></svg>{/if}
+          <strong>{node.stage ?? "Blocker"}</strong>
+        </span>
+        {#if agent}<span class="agent" class:asking={agent === "asking"}>Agent {agent}</span>{/if}
+        {#if needsYou(node)}<span class="needs">Needs you</span>{/if}
       </p>
     {/if}
   </header>
 
   {#if !node}
-    <p class="note">{shown.map ? `${issue} is not on this Project's map.` : "Reading the map…"}</p>
+    <p class="note section">{shown.map ? `${issue} is not on this Project's map.` : "Reading the map…"}</p>
   {:else}
-    {#if failure}<p class="errata"><strong>{failure}</strong></p>{/if}
+    {#if failure}<p class="errata section" role="status"><strong>{failure}</strong></p>{/if}
 
     {#if full && (full.pane !== undefined || full.pane_error)}
       <div class="section">
@@ -132,73 +137,49 @@
       </div>
     {/if}
 
-    {#if node.assignees}
+    {#if node.stage === "Waiting" && node.waits}<p class="said section">{node.waits}</p>{/if}
+
+    {#if full?.failure}
+      {@const kept = reviewerKeptFailing(full.failure, full.restarts)}
       <section>
-        <h3 class="label">Assigned</h3>
-        {#if assignable(node.assignees, dispatched)}
-          <Press {issue} action={assignMe}><span class="note">Unassigned</span></Press>
-        {:else}
-          <p class:note={!node.assignees.length}>{named(node.assignees).join(", ")}</p>
-        {/if}
+        <h3>Failure</h3>
+        <div class="errata">
+          {#if kept}
+            <p><strong>{kept.said}</strong></p>
+            <p>{kept.help}</p>
+          {:else}
+            <p><strong>{@render ticked(full.failure.error)}</strong></p>
+            <p>At the {full.failure.step} step.</p>
+          {/if}
+        </div>
       </section>
     {/if}
 
     <section>
-      <h3 class="label">PR</h3>
+      <h3>Pull request</h3>
       {#if pr}
+        {@const n = pr.url.split("/").pop()}
         <p class="row">
-          <span>
-            <a href={pr.url} target="_blank" rel="noreferrer">PR {pr.url.split("/").pop()}</a>
-            {#if pr.draft}<span class="label flag">draft</span>{/if}
-          </span>
+          <a class={node.stage === "Verified" ? "button" : "quiet"} href={pr.url} target="_blank" rel="noreferrer">Open PR {n}{pr.draft ? " (draft)" : ""}</a>
           {#if full?.pr?.merged_at}<span class="at">merged {clock(full.pr.merged_at)}</span>{/if}
         </p>
+        {#if node.stage === "Verified"}<p class="note hint">Review and merge it on GitHub.</p>{/if}
       {:else}
         <p class="note">No PR yet.</p>
       {/if}
     </section>
 
     {#if !dispatched}
-      {#if node.stage === "Waiting" && node.waits}<p class="said section">{node.waits}</p>{/if}
       <p class="note section">Not dispatched yet: no restarts, Verdict or Evidence.</p>
     {:else if !full}
       {#if !failure}<p class="note section">Reading the Dispatch…</p>{/if}
     {:else}
-      {#if full.failure}
-        {@const kept = reviewerKeptFailing(full.failure, full.restarts)}
-        <section>
-          <h3 class="label">Failure</h3>
-          <div class="errata">
-            {#if kept}
-              <p><strong>{kept.said}</strong></p>
-              <p>{kept.help}</p>
-            {:else}
-              <p><strong>{@render ticked(full.failure.error)}</strong></p>
-              <p>At the {full.failure.step} step.</p>
-            {/if}
-          </div>
-        </section>
-      {/if}
-
       <section>
-        <h3 class="label">Restarts</h3>
-        {#if full.restarts.length}
-          <ol class="restarts">
-            {#each full.restarts as r, i (i)}
-              <li><span class="at">{clock(r.at)}</span><strong>{r.reason}</strong><span class="by">by {r.by}</span></li>
-            {/each}
-          </ol>
-        {:else}
-          <p class="note">No restarts.</p>
-        {/if}
-      </section>
-
-      <section>
-        <h3 class="label">Review</h3>
+        <h3>Review</h3>
         <!-- A Verdict on the head says it itself, below. -->
         {#if full.review && full.review.state !== "passed" && full.review.state !== "failed"}
           {@const r = full.review}
-          <!-- A line naming its Reviewer's Harness carries its diamond, as everywhere a Harness is named. -->
+          <!-- A line naming its Reviewer's Harness carries its dot, as a launch picker does. -->
           {#snippet stands()}
             <p class="said">
               {#if r.harness && ["reviewing", "stopped"].includes(r.state)}<span
@@ -219,7 +200,7 @@
         {#if full.verdict}
           <p class="row">
             <span>
-              <span class="label {full.verdict.result}">{full.verdict.result}</span>
+              <strong class={full.verdict.result}>{full.verdict.result}</strong>
               <span class="sha">{full.verdict.sha.slice(0, 7)}</span>
             </span>
             <span class="at">{clock(full.verdict.at)}</span>
@@ -231,7 +212,7 @@
       </section>
 
       <section>
-        <h3 class="label">Evidence</h3>
+        <h3>Evidence</h3>
         {#if full.evidence.length}
           {@const heads = new Set(full.evidence.map((file) => file.path.split("/")[0])).size}
           <p class="row">
@@ -245,67 +226,64 @@
         {/if}
       </section>
     {/if}
+
+    {#if node.assignees}
+      <section>
+        <h3>Assigned</h3>
+        {#if assignable(node.assignees, dispatched)}
+          <Press {issue} action={assignMe}><span class="note">Unassigned</span></Press>
+        {:else}
+          <p class:note={!node.assignees.length}>{named(node.assignees).join(", ")}</p>
+        {/if}
+      </section>
+    {/if}
+
+    {#if full}
+      <!-- Folded, but open on a Failed Dispatch, whose recovery its restarts tell. -->
+      <details class="section" open={node.stage === "Failed"}>
+        <summary><h3>Restarts</h3><span class="count">{full.restarts.length}</span></summary>
+        {#if full.restarts.length}
+          <ol class="restarts">
+            {#each full.restarts as r, i (i)}
+              <li><span class="at">{clock(r.at)}</span><strong>{r.reason}</strong><span class="by">by {r.by}</span></li>
+            {/each}
+          </ol>
+        {:else}
+          <p class="note">No restarts.</p>
+        {/if}
+      </details>
+    {/if}
   {/if}
 </section>
 
 <style>
-  .panel {
-    padding: 0 24px 24px;
-    background: var(--surface);
-    border-left: 1px solid var(--rule);
-    box-shadow: 0 0 0 1px var(--hairline);
-    animation: slide 160ms ease-out;
-  }
-  @keyframes slide {
-    from {
-      transform: translateX(16px);
-    }
-  }
-  header {
-    padding-top: 24px;
-  }
-  .grip {
-    display: none;
-  }
-  .line {
-    display: flex;
-    justify-content: space-between;
-    align-items: start;
-    gap: 12px;
-  }
-  h2 {
-    font-size: 22px;
-    font-weight: 600;
-    line-height: 1.2;
-    overflow-wrap: anywhere;
-    text-wrap: balance;
-  }
-  h2 a {
-    font-weight: 700;
-  }
   .stage {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 6px;
+    gap: 6px 12px;
     margin-top: 8px;
   }
-  .stage svg {
+  .word {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .word svg {
     flex: none;
   }
-  .kind {
+  .agent {
+    color: var(--ink-muted);
+  }
+  .agent.asking {
+    color: var(--ink);
+    font-weight: 600;
+  }
+  .stage .needs {
     margin-left: auto;
-    color: var(--ink-muted);
   }
-  section > section,
-  .section {
-    margin-top: 16px;
-    padding-top: 12px;
-    border-top: 1px solid var(--hairline);
-  }
-  h3 {
-    margin: 0 0 8px;
-    font-size: 14px;
-    color: var(--ink-muted);
+  details summary h3 {
+    margin: 0;
   }
   ol {
     margin: 0;
@@ -315,17 +293,16 @@
   .row {
     display: flex;
     justify-content: space-between;
-    align-items: baseline;
+    align-items: center;
     gap: 12px;
+  }
+  .hint {
+    margin-top: 6px;
   }
   .at {
     color: var(--ink-muted);
     text-align: right;
     white-space: nowrap;
-  }
-  .flag {
-    margin-left: 6px;
-    color: var(--ink-muted);
   }
   /* Time in a right-aligned column, then the reason and who restarted it. */
   .restarts {
@@ -370,68 +347,5 @@
     max-width: 70ch;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
-  }
-  .note {
-    color: var(--ink-muted);
-  }
-  header + .errata {
-    margin-top: 16px;
-  }
-  a.quiet {
-    display: inline-flex;
-    align-items: center;
-    color: var(--ink);
-    text-decoration: none;
-  }
-
-  /* Beside a map taller than the window, the panel stays in view. */
-  @media (width >= 720px) {
-    .panel {
-      position: sticky;
-      top: 0;
-      max-height: 100vh;
-      overflow-y: auto;
-    }
-  }
-
-  /* The bottom sheet: up to 85vh, scrolling inside, closed by Close or a swipe down. */
-  @media (width < 720px) {
-    .panel {
-      position: fixed;
-      inset: auto 0 0;
-      z-index: 10;
-      max-height: 85vh;
-      overflow-y: auto;
-      overscroll-behavior: contain;
-      padding: 0 16px 16px;
-      border-left: 0;
-      border-top: 1px solid var(--rule);
-      animation-name: rise;
-    }
-    @keyframes rise {
-      from {
-        transform: translateY(100%);
-      }
-    }
-    header {
-      position: sticky;
-      top: 0;
-      padding-top: 8px;
-      padding-bottom: 8px;
-      background: var(--surface);
-      touch-action: none;
-    }
-    .grip {
-      display: block;
-      width: 40px;
-      height: 4px;
-      margin: 0 auto 8px;
-      background: var(--hairline);
-    }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .panel {
-      animation: none;
-    }
   }
 </style>

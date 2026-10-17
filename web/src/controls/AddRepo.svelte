@@ -33,7 +33,7 @@
 </script>
 
 <section aria-labelledby="add-head">
-  <h2 class="label" id="add-head">Add a Repo</h2>
+  <h2 class="head" id="add-head">Add a Repo</h2>
   <form onsubmit={submit}>
     <label class="field">
       <span class="field-name">Repo</span>
@@ -65,10 +65,11 @@
   section {
     display: grid;
     gap: 12px;
-    margin: 0 var(--gutter) var(--gutter);
     padding: 16px;
     background: var(--surface);
     border: 1px solid var(--hairline);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
   }
   form {
     display: flex;
@@ -78,5 +79,9 @@
   }
   label {
     flex: 1 1 200px;
+  }
+  .head {
+    font-size: 16px;
+    font-weight: 600;
   }
 </style>
