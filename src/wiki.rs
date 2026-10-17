@@ -20,7 +20,7 @@
 //! `origin/<base>` is not the one it was written against.
 
 use std::cmp::Reverse;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::{fs, io};
 
@@ -710,7 +710,7 @@ struct Arrow {
     label: Option<String>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 struct Relationship {
     to: String,
     kind: String,
@@ -1266,12 +1266,12 @@ fn described(
     ));
     // Where each Component was in the Wiki before: one asked again keeps its place.
     let mut places = HashMap::new();
-    let (mut components, mut frontier) = match previous {
+    let (mut components, mut frontier, mut spare) = match previous {
         Some(previous) => {
             let was = previous.commit.clone();
             let ids = previous.components.iter().map(|c| c.id.clone());
             places.extend(ids.enumerate().map(|(n, id)| (id, n)));
-            let (components, parts) = updated(previous, &files, continuing);
+            let (components, parts, spare) = updated(previous, &files, continuing);
             let from = match continuing {
                 true => "continuing it".into(),
                 false => format!("updating it from {was}"),
@@ -1281,7 +1281,7 @@ fn described(
                 components.len(),
                 parts.len()
             ));
-            (components, parts)
+            (components, parts, spare)
         }
         None => (
             vec![],
@@ -1295,6 +1295,7 @@ fn described(
                 depth: 0,
                 relationships: vec![],
             }],
+            vec![],
         ),
     };
     let mut ids: HashSet<String> = (components.iter().map(|c| c.id.clone()))
@@ -1456,7 +1457,16 @@ fn described(
             }
             world.log(&format!("{trail}: {} part(s) under it", parts.len()));
             components.push(component);
-            next.extend(parts);
+            for part in parts {
+                match copied(&mut spare, &part) {
+                    Some(kept) => {
+                        world.log(&format!("{trail}: copied {} part(s) it kept", kept.len()));
+                        ids.extend(kept.iter().map(|c| c.id.clone()));
+                        components.extend(kept);
+                    }
+                    None => next.push(part),
+                }
+            }
         }
         frontier = next;
     }
@@ -1477,12 +1487,19 @@ fn described(
 
 /// What an Update makes of `previous`, the Wiki before it, now that the
 /// code's files are `files`, top-down: a Component whose files kept their
-/// blobs is copied with its parts; the part a file added or removed sits
-/// under is asked again, its parts from scratch, as is a leaf whose files
+/// blobs is copied with its parts; the leaf a file added shares a folder
+/// with, else the part it sits under, and the part a file removed sits
+/// under are asked again, their parts from scratch, as is a leaf whose files
 /// changed; any other, a parent whose parts changed, is kept with its
 /// claims. Each part with an unanswered Gap is asked again too, its parts
-/// from scratch, and when `continuing` it each with a budget Gap. The Components it keeps, then the parts to ask.
-fn updated(previous: Wiki, files: &[File], continuing: bool) -> (Vec<Component>, Vec<Part>) {
+/// from scratch, and when `continuing` it each with a budget Gap. The
+/// Components it keeps, the parts to ask, then those under a part asked again
+/// whose files and parts' files are all unchanged, for its new division to keep.
+fn updated(
+    previous: Wiki,
+    files: &[File],
+    continuing: bool,
+) -> (Vec<Component>, Vec<Part>, Vec<Component>) {
     let blobs = |files: &[File]| -> HashMap<String, String> {
         (files.iter())
             .map(|f| (f.path.clone(), f.blob.clone()))
@@ -1519,10 +1536,19 @@ fn updated(previous: Wiki, files: &[File], continuing: bool) -> (Vec<Component>,
     );
     let mut new: Vec<&String> = now.keys().filter(|p| !was.contains_key(*p)).collect();
     new.sort();
+    let leaf = |i: usize| !(0..all.len()).any(|j| parent(j) == Some(i));
     for path in new {
-        // It sits under the deepest part holding every file of its nearest folder.
-        // shortcut: a file new at the top, or in a folder split across parts, divides their
-        // parent again from scratch; copy the new parts that keep an old one's files if that costs.
+        // It sits in the leaf holding the most files of its folder, the first of those,
+        // or when none holds one, under the deepest part holding every file of its nearest folder.
+        let folder = |p: &str| p.rfind('/').map_or("", |n| &p[..=n]).to_owned();
+        let shared = |i: usize| {
+            (all[i].files.iter())
+                .filter(|f| folder(f) == folder(path))
+                .count()
+        };
+        let leaf_home = (0..all.len())
+            .filter(|&i| leaf(i) && shared(i) > 0)
+            .min_by_key(|&i| Reverse(shared(i)));
         let folders = (path.rmatch_indices('/'))
             .map(|(n, _)| &path[..=n])
             .chain([""]);
@@ -1534,7 +1560,8 @@ fn updated(previous: Wiki, files: &[File], continuing: bool) -> (Vec<Component>,
             })
             .find(|near| !near.is_empty())
             .unwrap_or_default();
-        let home = deepest(&|c| near.iter().all(|p| c.files.contains(p)));
+        let home =
+            leaf_home.unwrap_or_else(|| deepest(&|c| near.iter().all(|p| c.files.contains(p))));
         asked.insert(home);
         let mut up = Some(home);
         while let Some(i) = up {
@@ -1564,7 +1591,7 @@ fn updated(previous: Wiki, files: &[File], continuing: bool) -> (Vec<Component>,
         Gone,
     }
     let mut fates: Vec<Fate> = vec![];
-    let mut held = vec![];
+    let (mut held, mut fresh) = (vec![], vec![]);
     for (i, c) in all.iter().enumerate() {
         let files: Vec<String> = (c.files.iter())
             .filter(|f| now.contains_key(*f))
@@ -1582,12 +1609,19 @@ fn updated(previous: Wiki, files: &[File], continuing: bool) -> (Vec<Component>,
             _ => Fate::Asked,
         });
         held.push(files);
+        fresh.push(unchanged && !asked.contains(&i));
     }
-    let (mut components, mut parts) = (vec![], vec![]);
+    // Fresh only with every part under it fresh too: a parent comes before its parts.
+    for i in (0..all.len()).rev() {
+        if let Some(p) = parent(i).filter(|_| !fresh[i]) {
+            fresh[p] = false;
+        }
+    }
+    let (mut components, mut parts, mut spare) = (vec![], vec![], vec![]);
     for (i, mut c) in previous.components.into_iter().enumerate() {
         let files = std::mem::take(&mut held[i]);
         match fates[i] {
-            Fate::Gone => {}
+            Fate::Gone if !fresh[i] => {}
             Fate::Asked => parts.push(Part {
                 id: c.id,
                 name: c.name,
@@ -1598,7 +1632,7 @@ fn updated(previous: Wiki, files: &[File], continuing: bool) -> (Vec<Component>,
                 depth: depth[i],
                 relationships: c.relationships,
             }),
-            Fate::Copied | Fate::Kept => {
+            fate => {
                 // Pinned where it changed: the blob each cited file had when written.
                 let cited = (c.interpretations.iter()).flat_map(|i| &i.anchors);
                 let cited = cited.chain(c.terms.iter().flat_map(|t| &t.anchors));
@@ -1613,11 +1647,38 @@ fn updated(previous: Wiki, files: &[File], continuing: bool) -> (Vec<Component>,
                     .collect();
                 c.blobs = pins;
                 c.files = files;
-                components.push(c);
+                match fate {
+                    Fate::Gone => spare.push(c),
+                    _ => components.push(c),
+                }
             }
         }
     }
-    (components, parts)
+    (components, parts, spare)
+}
+
+/// The Component an Update set aside that `part` names again, by its id and
+/// files, with every part under it, all taken from `spare`, if there is one.
+/// It keeps its claims and takes what the new division says of it.
+fn copied(spare: &mut Vec<Component>, part: &Part) -> Option<Vec<Component>> {
+    let set = |files: &[String]| files.iter().cloned().collect::<BTreeSet<String>>();
+    let at = (spare.iter()).position(|c| c.id == part.id && set(&c.files) == set(&part.files))?;
+    let mut top = spare.remove(at);
+    (top.name, top.parent) = (part.name.clone(), part.parent.clone());
+    top.relationships = part.relationships.clone();
+    let mut under = HashSet::from([top.id.clone()]);
+    let mut kept = vec![top];
+    // A parent comes before its parts.
+    for c in std::mem::take(spare) {
+        match c.parent.as_ref().is_some_and(|p| under.contains(p)) {
+            true => {
+                under.insert(c.id.clone());
+                kept.push(c);
+            }
+            false => spare.push(c),
+        }
+    }
+    Some(kept)
 }
 
 /// Each file of the checkout in `dir`, under the folder `under` if one, by
