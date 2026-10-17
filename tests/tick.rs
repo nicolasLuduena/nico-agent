@@ -854,7 +854,9 @@ fn a_linear_rate_limit_pauses_the_repos_reading_linear_even_across_a_restart_of_
             "github open issues acme/api",
             "github issues acme/web",
             "linear viewer",
-            "linear issues BLE"
+            "linear issues BLE",
+            "github open issues acme/web",
+            "linear open issues BLE",
         ]
     );
     let logged = t.world.logged();

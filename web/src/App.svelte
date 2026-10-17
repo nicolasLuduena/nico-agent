@@ -109,7 +109,7 @@
         </label>
         {#if !onLibraries}
           <nav class="views" aria-label="View">
-            {#each [["map", "Map"], ["wiki", "Wiki"]] as const as [view, name] (view)}
+            {#each [["map", "Map"], ["wiki", "Wiki"], ["roadmap", "Roadmap"]] as const as [view, name] (view)}
               <a
                 class="label"
                 href={hash({ project: project.name, view })}
@@ -189,7 +189,7 @@
     min-width: 0;
     font-weight: 600;
   }
-  /* Map | Wiki: the Project's two views. */
+  /* Map | Wiki | Roadmap: the Project's three views. */
   .views {
     display: flex;
     gap: 24px;

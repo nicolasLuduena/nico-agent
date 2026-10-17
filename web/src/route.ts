@@ -1,17 +1,19 @@
 /** What the Board's URL hash selects: a Project and its view; or Libraries, of no Project. */
 export interface Route {
   project: string | null;
-  view: "map" | "wiki" | "libraries";
+  view: "map" | "wiki" | "roadmap" | "libraries";
 }
 
 /**
- * `#<project>`, its map, or `#<project>/wiki`, its Wiki view; the name
+ * `#<project>`, its map, `#<project>/wiki`, its Wiki view, or
+ * `#<project>/roadmap`, its Roadmap; the name
  * escaped, as names hold `/`. Libraries is `#/libraries`: no
  * Project, as an escaped name holds no `/`.
  */
 export function hash(at: Route): string {
   if (at.project === null) return at.view === "libraries" ? "#/libraries" : "";
-  return `#${encodeURIComponent(at.project)}${at.view === "wiki" ? "/wiki" : ""}`;
+  const view = at.view === "wiki" || at.view === "roadmap" ? `/${at.view}` : "";
+  return `#${encodeURIComponent(at.project)}${view}`;
 }
 
 /** The hash's parts, unescaped; null for a broken escape. */
@@ -28,7 +30,7 @@ export function route(hash: string): Route {
   const none: Route = { project: null, view: "map" };
   const [project, view] = parts(hash) ?? [];
   if (!project) return parts(hash)?.length === 2 && view === "libraries" ? { ...none, view } : none;
-  return { project, view: view === "wiki" ? view : "map" };
+  return { project, view: view === "wiki" || view === "roadmap" ? view : "map" };
 }
 
 /** Escaped for a page's URL, its `/`, `@` and `:` kept as written, as a Library version's id reads. */
