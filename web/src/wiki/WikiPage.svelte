@@ -363,7 +363,7 @@
   .outline button:hover {
     text-decoration: underline;
   }
-  /* The open Component, underlined with the rule as the active tab is. */
+  /* The open Component, underlined with the rule as the current view is. */
   .tree a[aria-current="page"] {
     font-weight: 600;
     text-decoration: underline 3px var(--rule);

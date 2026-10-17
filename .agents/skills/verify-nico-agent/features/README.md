@@ -13,8 +13,8 @@ An H1 title, one paragraph on the user-visible behaviour, then exactly four H2 s
 - [Status](./status.md)
 - [Dispatch's refusals](./dispatch-refusals.md)
 - [Verdict recording to the Bucket](./verdict-bucket.md)
-- [The page's tabs and what needs you](./page-tabs-strip.md)
-- [A tab and a map per Project](./project-tabs.md)
+- [The Project select and what needs you](./page-tabs-strip.md)
+- [A map per Project](./project-tabs.md)
 - [A Dispatch the Reviewer kept failing](./rulings.md)
 - [Where each PR's review stands](./review.md)
 - [Close](./close.md)
@@ -28,7 +28,6 @@ An H1 title, one paragraph on the user-visible behaviour, then exactly four H2 s
 - [GitHub rate-limit gauge](./rate-gauge.md)
 - [Answer an Asking Implementer](./answer.md)
 - [Live updates](./live-updates.md)
-- [The Morning summary on the page](./morning.md)
 - [Build a Repo's Wiki](./wiki-build.md)
 - [Serve Wikis to agents through the MCP](./wiki-mcp.md)
 - [Read a Wiki on its page](./wiki-view.md)
@@ -44,4 +43,4 @@ An H1 title, one paragraph on the user-visible behaviour, then exactly four H2 s
 - [The page's colours](./palette.md)
 - [Requests from other sites](./foreign-requests.md)
 
-Not yet mapped (drive by hand, then add a file): the faux-nico, gardening and quality-scan triggers, the map's node layout beyond what the tabs and project-tabs files assert, the morning agent writing `morning.md` (off in a run: set `morning.enabled = true` and `hour` to the current one to drive it), the theme switch, `serve` restarting Dispatches after a reboot, the notification once 3 ticks in a row fail and once one works again (a run ticks every 600 minutes), `scripts/install-service.sh` and the unit it writes (`tests/install_service.rs` covers it; drive it with `systemctl` stubbed on `PATH` and a scratch `HOME`), and everything that needs a live herdr or GitHub: `cargo test` covers those through the fake World.
+Not yet mapped (drive by hand, then add a file): the faux-nico, gardening and quality-scan triggers, the map's node layout beyond what the page-tabs-strip and project-tabs files assert, the morning agent writing `morning.md` (off in a run: set `morning.enabled = true` and `hour` to the current one to drive it), the theme switch, `serve` restarting Dispatches after a reboot, the notification once 3 ticks in a row fail and once one works again (a run ticks every 600 minutes), `scripts/install-service.sh` and the unit it writes (`tests/install_service.rs` covers it; drive it with `systemctl` stubbed on `PATH` and a scratch `HOME`), and everything that needs a live herdr or GitHub: `cargo test` covers those through the fake World.

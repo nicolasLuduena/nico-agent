@@ -11,7 +11,7 @@ Linear team. _Avoid_: provider, tracker integration.
 **Repo**: a GitHub repository nico-agent dispatches into, by slug and local
 clone path, with its Switches and launch defaults.
 
-**Project**: Repos that work together: one tab and map, defaults its Repos
+**Project**: Repos that work together: one map, defaults its Repos
 inherit, Blockers honoured across them. A Repo belongs to at most one; one
 that names none is a Project of its own, named by its slug. _Avoid_:
 workspace (herdr's), group; Linear's is always written "Linear project".
@@ -170,7 +170,7 @@ deepening opportunities and files issues. _Avoid_: linter, retro.
 **Morning summary**: `morning.md`, written once a day by the morning agent
 from what `status` shows since the last one: what to merge in which order,
 what needs an answer, what failed, what gardening landed, what ideas were
-filed. Rendered first on the Board. _Avoid_: report, digest.
+filed. Not on the Board: how it is read is being rethought (#380). _Avoid_: report, digest.
 
 **Wiki**: what a Repo's or a Library's code does as of one commit, as a tree
 of Components, each claim citing the lines it rests on, written by a wiki

@@ -53,7 +53,7 @@
 #                                 exit code is the CLI's
 #   http [--evidence PREFIX] [--header 'NAME: VALUE']... <METHOD> <PATH> [BODY]
 #                                 ask this run's serve, as the page does; exit 1 on 4xx/5xx
-#   page [--tunnel] [--evidence PREFIX] [--width PX] [--scheme light|dark] [--storage FILE|none] [--path PATH] [--hash HASH] [--within ROLE=NAME|page | --click ROLE=NAME | --click ROLE~NAME | --press KEY
+#   page [--tunnel] [--evidence PREFIX] [--width PX] [--scheme light|dark] [--storage FILE|none] [--path PATH] [--hash HASH] [--within ROLE=NAME|page | --click ROLE=NAME | --click ROLE~NAME | --select NAME=OPTION | --press KEY
 #        | --type TEXT | --expect TEXT | --gone TEXT | --wait SECONDS | --history back|forward | --mode pass|502|signed-out | --hold SECONDS]...
 #                                 open serve's page in headless Chromium, act in order, capture; prints ok or
 #                                 FAIL per step and exits 1 on the first failure, after capturing
@@ -67,8 +67,9 @@
 # .requests.txt (each /api call, and each /api/events stream as answered: a reconnect is a line), .console.txt.
 # Each still prints what it captured.
 #
-# page steps: --click tab=verify/second clicks the element of that ARIA role whose accessible name is exactly
-# the text; --click "button~Failed verify/fixture #1" one whose name contains it; --within "region=verify/fixture"
+# page steps: --click button=Refresh clicks the element of that ARIA role whose accessible name is exactly
+# the text; --click "button~Failed verify/fixture #1" one whose name contains it; --select Project=verify/second
+# picks that option in the combobox named Project; --within "region=verify/fixture"
 # makes every later --click look only inside that element, --within page the whole page again; --press ArrowRight
 # a key; --type dev text into what has focus; --expect TEXT waits for the text; --gone TEXT up to a minute for it
 # to go; --wait 120 lets two minutes pass; --history back|forward the browser's buttons; --mode 502 switches the

@@ -61,7 +61,7 @@ Preconditions:
   and `text: default`; `config.toml` has no `reviewer` line.
 - **Base.** Run `$C page --evidence "$E/07-base" --click "region=Settings" --click "textbox=Base" --type dev --press Enter --expect "Saved" --expect "Base set here"`.
   `PATCH ... {"base":"dev"} -> 200`; `config.toml` has `base = "dev"`.
-- **Join a Project.** Run `$C page --evidence "$E/08-join" --click "region=Settings" --click "combobox=Project" --type verify --press Enter --expect "Leave verify"`.
+- **Join a Project.** Run `$C page --evidence "$E/08-join" --within "region=verify/fixture" --click "region=Settings" --click "combobox=Project" --type verify --press Enter --expect "Leave verify"`.
   `PATCH ... {"project":"verify"} -> 200`, then `GET /api/status` and `GET /api/map/verify`; the tab
   is now `tab "verify" [selected]`, its Project's, with `region "verify"` (the Project's defaults)
   above `region "verify/fixture"`; `config.toml` has `project = "verify"`.

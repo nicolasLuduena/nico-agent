@@ -40,8 +40,7 @@ it binds the rebuild.
   when the Project has more than one, its Repo; edges for Blockers, across
   its Repos too; a stacked PR drawn to the PR it targets. What needs you is
   flagged on its node (Asking, failed twice, Verified PRs to merge) or is a
-  toast (a failing Readiness check: what will break a Repo before it does). The morning
-  summary renders first each day. A Refresh button is the one way to ask
+  toast (a failing Readiness check: what will break a Repo before it does). A Refresh button is the one way to ask
   GitHub again.
 - **A Wiki per Repo and per Library version.** What the code does, as a
   tree of Components whose every claim cites its lines, built overnight by
