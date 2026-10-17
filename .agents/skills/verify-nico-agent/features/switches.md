@@ -51,8 +51,9 @@ Preconditions:
 - **Second view.** Run `$C run --evidence "$E/08-list" -- repo list --json`: `switches` has
   `dispatch` false, `review` false, the rest as before (`answer`, `gardening`, `mine`, `quality_scan` false).
 - **Obeyed.** `: > "$OUTSIDE_LOG"`; run `$C http --evidence "$E/09-refresh-off" POST /api/refresh`.
-  HTTP `200`, `actions` only the stubbed `could not read GitHub's rate limit: ...`; `$OUTSIDE_LOG` holds only `gh api user --jq .login` and the Readiness
-  checks' `ghbot api /installation/repositories ...` (no `gh issue edit`, no `herdr worktree
+  HTTP `200`, `actions` only the stubbed `could not read GitHub's rate limit: ...`; `$OUTSIDE_LOG` holds only `gh api user --jq .login`, the rate-limit
+  reads `gh api rate_limit` and `ghbot api rate_limit`, and the Readiness checks' `ghbot api /installation/repositories ...`
+  and `herdr agent list` (no `gh issue edit`, no `herdr worktree
   create`): nothing was dispatched. Copy it to `$E/outside.off.log`.
 - **Toggle on the page.** Run `$C page --evidence "$E/10-toggle" --click "region=Switches" --expect "3 of 9 on" --click "switch=Dispatch" --expect "Saved" --expect "4 of 9 on" --gone "Saved"`.
   `ok` for each step; `.requests.txt` has `PATCH /api/repo/verify/fixture {"switches":{"dispatch":true}} -> 200`; the ARIA

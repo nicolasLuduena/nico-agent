@@ -43,18 +43,23 @@ Preconditions:
 - **Reload.** Run `$C page --evidence "$E/02-reloaded" --width 1440 --storage "$S" --expect "Defaults for its Repos"`;
   `magick compare -metric AE "$E/01-desk-light.view.png" "$E/02-reloaded.view.png" null:` counts only the pixels
   of the read times, if any; the squares and rules are where and as they were.
-- **Harnesses.** Run `$C page --evidence "$E/03-harnesses" --width 1440 --within "region=verify/fixture" --click "region=Settings" --expect "Reviewer"`:
-  `combobox "Implementer Harness"` on `claude` and `combobox "Reviewer Harness"` on `codex`; the screenshot has a clay
-  diamond inside the first and a green one inside the second.
+- **Harnesses.** Run `$C page --evidence "$E/03-harnesses" --width 1440 --click "button=Dismiss Check verify/second" --click "button=Dismiss Check verify/second" --click "button=Dismiss Check verify/second" --click "button=Dismiss Check verify/second" --click "button=Dismiss Check verify/second" --click "button=Dismiss Check verify/fixture" --click "button=Dismiss Check verify/fixture" --click "button=Dismiss Check verify/fixture" --click "button=Dismiss Check verify/fixture" --click "button=Dismiss Check verify/fixture" --within "region=verify/fixture" --click "region=Settings" --expect "Reviewer"`:
+  `combobox "Implementer Harness"` on `claude` and `combobox "Reviewer Harness"` on `Not the Implementer's` (nothing
+  sets a Reviewer); the screenshot has a clay diamond inside the first and a hollow one inside the second.
 - **Dark and phone.** The same page with `--scheme dark` (`06-desk-dark`), `--width 390` (`07-phone-light`) and
   `--width 390 --scheme dark` (`08-phone-dark`): the same hues from their `-dark` twins, the toasts' squares framed
   in black on the yellow; `.view.txt` `page 390px wide in a 390px window`.
 - **AA.** Run `node .evidence/<issue>/palette/contrast.mjs web/src/app.css > "$E/contrast.txt"` (the script in this
   feature's Evidence of #365, which reads every token from `app.css`): every line `ok`, ending `all pass`.
-- **Proof.** `$C state > "$E/state.after.txt"` and the diff (empty); copy `$OUTSIDE_LOG` to `$E/outside.log`.
+- **Proof.** `$C state > "$E/state.after.txt"` and the diff: outside calls only, `herdr agent list` from the page asking
+  for #7's Agent states, and no file changed; copy `$OUTSIDE_LOG` to `$E/outside.log`.
 
 ## Gotchas
 
+- With two Repos their ten Readiness toasts stack past the top of the window, so the first
+  `button~Dismiss` (verify/fixture's, at the top) is out of reach and times out: dismiss the bottom ones
+  first, by name, `--click "button=Dismiss Check verify/second"` five times, then `"button=Dismiss Check
+  verify/fixture"` five times.
 - Colour is in the screenshot, not the ARIA snapshot: the snapshot proves the names are unchanged, the `.png` the hues.
 - A Project of one Repo has no line colours: add both Repos to one Project first.
 - `seed dispatch` does not start an agent (herdr is stubbed), so no node shows an agent's diamond in a run, and no

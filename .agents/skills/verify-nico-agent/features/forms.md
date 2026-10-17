@@ -12,7 +12,7 @@ field is 16px and at least 44px tall, and nothing is wider than the window.
 
 ## Sub-features
 
-- `forms-order` `region "<slug>"` holds, in order, `region "Dispatch"` (never folded), `region "Readiness"`, `"Room"`, `"Switches"`, `"Settings"`, `"Install"`, then `button "Remove <slug>…"`; each folded `group` reads its head and what is set: `2 of 6 pass`, `3 · 0 in flight`, `4 of 9 on`, `Implementer claude`, `None linked`, `None`.
+- `forms-order` `region "<slug>"` holds, in order, `region "Dispatch"`, `region "Readiness"`, `"Room"`, `"Switches"`, `"Settings"`, `"Install"`, then `button "Remove <slug>…"`; each folded `group` reads its head and what is set: `3 to dispatch`, `2 of 7 pass`, `3 · 0 in flight`, `4 of 9 on`, `Implementer claude Reviewer: not the Implementer's`, `None`.
 - `forms-alarm` a section with a failing state opens by itself (Readiness while a check fails), and so does one whose save was refused.
 - `forms-remember` a section opened by the user is open again after a reload in the same browser, for that Repo only; one that opened by itself is not remembered; a browser whose storage throws still opens and closes them.
 - `forms-saving` a toggle or field held on its way to serve shows `Saving…` beside it and stays enabled; once serve answers, a `status` reads `Saved`, then the chip `set here` with `button "Use the default <Setting>"`.
@@ -38,10 +38,10 @@ Preconditions:
 - `E=.evidence/<issue>/forms`; `$C state > "$E/state.before.txt"`; `S="$E/browser.json"` (one browser across the steps that say so).
 
 - **Order.** Run `$C page --evidence "$E/01-order" --expect "Readiness"`. Within `region "verify/fixture"`:
-  `region "Dispatch"` with `button "Dispatch"`, then `region "Readiness"` open (its `group` reads `Readiness 2 of 6 pass`
+  `region "Dispatch"` folded to `group: Dispatch 3 to dispatch`, then `region "Readiness"` open (its `group` reads `Readiness 2 of 7 pass`
   and holds the failing checks' `.evidence/ is not ignored on main` and the verification skill's, then
   `list "Passing"`), then folded
-  `group`s `Room 3 · 0 in flight`, `Switches 4 of 9 on`, `Settings Implementer claude`,
+  `group`s `Room 3 · 0 in flight`, `Switches 4 of 9 on`, `Settings Implementer claude Reviewer: not the Implementer's`,
   `Install None`, and `button "Remove verify/fixture…"` last; no `spinbutton "Room"` (folded).
 - **Remembered.** Run `$C page --evidence "$E/02-open" --storage "$S" --click "region=Room" --expect "in flight; each Dispatch"`,
   then `$C page --evidence "$E/03-reloaded" --storage "$S" --expect "in flight; each Dispatch"`: the second browser,
@@ -58,7 +58,7 @@ Preconditions:
   one `PATCH ... {"base":"dev"} -> 200`; `config.toml` has `base = "dev"`.
 - **Escape.** Run `$C page --evidence "$E/10-escape" --click "region=Settings" --click "textbox=Base" --press Control+a --type nope --press Escape --press Tab --wait 1`:
   `textbox "Base"` holding `text: dev` and no PATCH in `.requests.txt`; `config.toml` still `base = "dev"`.
-- **Enter in the Dispatch form.** Run `$C page --evidence "$E/14-dispatch-enter" --within "region=Dispatch" --click "combobox=Harness" --press ArrowDown --press Enter --click "textbox=Model" --type gpt-5 --press Enter --wait 1`:
+- **Enter in the Dispatch form.** Run `$C page --evidence "$E/14-dispatch-enter" --click "button~Dismiss" --click "button~Dismiss" --click "button~Dismiss" --click "button~Dismiss" --click "button~Dismiss" --click "region=Dispatch" --within "region=Dispatch" --click "combobox=Harness" --press ArrowDown --press Enter --click "textbox=Model" --type gpt-5 --press Enter --wait 1`:
   codex takes any model, so `textbox "Model"` (placeholder `default`) holds `gpt-5`, and `.requests.txt` has no `POST /api/dispatch`.
 - **Refused.** Run `$C page --evidence "$E/11-refused" --click "region=Room" --click "spinbutton=Room" --press Control+a --type 0 --press Enter --expect "room is a whole number of at least 1, not 0"`:
   `PATCH ... {"room":0} -> 400`; `region "Room"` open with an `alert` under it and `spinbutton "Room" [invalid]: "3"`.

@@ -37,7 +37,7 @@ Preconditions:
   assigned to the user, `#4` to `someone-else`, the rest to no one); `$C seed assign answers`.
 - `E=.evidence/<issue>/mine`; `$C state > "$E/state.before.txt"`.
 
-- **Turn it on, then dispatch.** Run `$C page --evidence "$E/01-switch-on-then-dispatch" --within "region=verify/fixture" --click "region=Switches" --expect "5 of 9 on" --click "switch=Only issues assigned to me" --expect "Saved" --expect "6 of 9 on" --within "region=Dispatch" --click "button=Dispatch" --expect "turn" --expect "Assign to me"`.
+- **Turn it on, then dispatch.** Run `$C page --evidence "$E/01-switch-on-then-dispatch" --within "region=verify/fixture" --click "region=Dispatch" --click "region=Switches" --expect "5 of 9 on" --click "switch=Only issues assigned to me" --expect "Saved" --expect "6 of 9 on" --within "region=Dispatch" --click "button=Dispatch" --expect "turn" --expect "Assign to me"`.
   `.requests.txt` has `PATCH /api/repo/verify/fixture {"switches":{"mine":true}} -> 200`, then
   `POST /api/dispatch {"issue":"verify/fixture#1",...} -> 409`; the ARIA snapshot has an `alert`
   `verify/fixture#1 is not assigned to you, and verify/fixture takes only issues assigned to you`,

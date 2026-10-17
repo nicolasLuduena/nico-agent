@@ -14,7 +14,7 @@ so back and forward move between Projects. There is no tab row and no Morning su
 
 ## Sub-features
 
-- `page-empty` with no Repo: the page says `No Repo yet. Add one here, or with nico-agent repo add <owner/name> --path <clone>.`, with no `combobox "Project"` and nothing needing you.
+- `page-empty` with no Repo: the page says `No Repo yet. Add one below, or with nico-agent repo add <owner/name> --path <clone>.`, with no `combobox "Project"` and nothing needing you.
 - `select-one-per-project` `combobox "Project"` has an `option` per Project with a Repo, by name, the first selected; on its row `navigation "View"` (`link "Map"`, `link "Roadmap"`), the read times and `button "Refresh"`. No `tablist` and no `region "Morning summary"`.
 - `select-pick` picking an option shows that Project's map, read times and controls, and the hash becomes `#<project>`, escaped.
 - `select-back` the browser's back button returns to the Project picked before.
@@ -87,6 +87,10 @@ Preconditions:
   `PR draft` and loses it.
 - The toasts sit over the page's corner, where a Repo's panel ends: `--click` what is under them
   only after `--click "button~Dismiss"` once per toast, or they time it out.
+- With two Repos their ten Readiness toasts stack past the top of the window, so the first
+  `button~Dismiss` (verify/fixture's, at the top) is out of reach and times out: dismiss the bottom ones
+  first, by name, `--click "button=Dismiss Check verify/second"` five times, then `"button=Dismiss Check
+  verify/fixture"` five times.
 - `seed issues` caches only `verify/fixture`; `verify/second` stays `Source not read yet`.
 - While the page is open with a live Dispatch, serve's event stream asks herdr every 10 seconds:
   expect `herdr agent list` lines in `$OUTSIDE_LOG`.

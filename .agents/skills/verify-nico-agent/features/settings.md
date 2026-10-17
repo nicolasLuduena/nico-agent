@@ -42,23 +42,26 @@ Preconditions:
   restart dispatches nothing.
 - `E=.evidence/<issue>/settings`; `$C state > "$E/state.before.txt"`.
 
-- **On the page.** Run `$C page --evidence "$E/01-page" --click "region=Room" --click "region=Switches" --click "region=Settings" --expect "Reviewer Harness"`. The snapshot has
-  `region "Settings"` (`text: Settings Implementer claude`) with `group "Implementer"` (`strong: Implementer`, `text: default`, `combobox
-  "Implementer Harness"` on `claude`), `group "Reviewer"` (`text: default`, `codex`, `textbox "Reviewer
-  model"` and `textbox "Reviewer Effort"`, placeholder `default`),
+- **On the page.** Run `$C page --evidence "$E/01-page" --click "button~Dismiss" --click "button~Dismiss" --click "button~Dismiss" --click "button~Dismiss" --click "button~Dismiss" --click "region=Room" --click "region=Switches" --click "region=Settings" --expect "Each Dispatch's Reviewer runs on another Harness"`. The snapshot has
+  `region "Settings"` (`text: "Settings Implementer claude Reviewer: not the Implementer's"`) with `group "Implementer"` (`strong: Implementer`, `text: default`, `combobox
+  "Implementer Harness"` on `claude`), `group "Reviewer"` (`text: default`, `combobox
+  "Reviewer Harness"` on `option "Not the Implementer's" [selected]`, `combobox "Reviewer model" [disabled]` and
+  `combobox "Reviewer Effort" [disabled]` on `default`, and `paragraph: "Each Dispatch's Reviewer runs on another
+  Harness than its Implementer's: codex for claude, claude for codex and opencode."`),
   `text: Base`, `text: default` and `textbox "Base"`, `combobox "Project"`; `text: default` beside
   `spinbutton "Room"`, and `text: default` beside `switch "Review"`.
-- **Reviewer on the page.** Run `$C page --evidence "$E/02-reviewer" --click "region=Settings" --click "combobox=Reviewer Harness" --press ArrowDown --press Enter --expect "Saved" --expect "Reviewer set here"`.
-  `.requests.txt` has `PATCH /api/repo/verify/fixture {"reviewer":{"harness":"opencode","model":null,"effort":null}} -> 200`;
-  the snapshot has `opencode [selected]` and `text: set here` with `button "Use the default Reviewer"`;
-  `cp "$CONFIG_DIR/config.toml" "$E/02-reviewer.config.toml"` has `reviewer = { harness = "opencode" }`.
+- **Reviewer on the page.** Run `$C page --evidence "$E/02-reviewer" --click "button~Dismiss" --click "button~Dismiss" --click "button~Dismiss" --click "button~Dismiss" --click "button~Dismiss" --click "region=Settings" --click "combobox=Reviewer Harness" --press ArrowDown --press Enter --expect "Saved" --expect "Reviewer set here"`.
+  `.requests.txt` has `PATCH /api/repo/verify/fixture {"reviewer":{"harness":"claude","model":null,"effort":null}} -> 200`
+  (ArrowDown leaves `Not the Implementer's` for the first Harness);
+  the snapshot has `claude [selected]` and `text: set here` with `button "Use the default Reviewer"`;
+  `cp "$CONFIG_DIR/config.toml" "$E/02-reviewer.config.toml"` has `reviewer = { harness = "claude" }`.
 - **Survives a restart.** Run `$C restart > "$E/03-restart.txt"` and `$C doctor`, which passes on the
-  new pid. `$C page --evidence "$E/04-after-restart" --click "region=Settings" --expect "Reviewer set here"`: `combobox
-  "Reviewer Harness"` on `opencode`, `button "Use the default Reviewer"`. `$C run --evidence
+  new pid. `$C page --evidence "$E/04-after-restart" --click "button~Dismiss" --click "button~Dismiss" --click "button~Dismiss" --click "button~Dismiss" --click "button~Dismiss" --click "region=Settings" --expect "Reviewer set here"`: `combobox
+  "Reviewer Harness"` on `claude`, `button "Use the default Reviewer"`. `$C run --evidence
   "$E/05-status" -- status --json`: `repos[0].reviewer` is
-  `{"from":"repo","value":{"effort":null,"harness":"opencode","model":null}}`.
-- **Use the default.** Run `$C page --evidence "$E/06-undo" --click "region=Settings" --click "button=Use the default Reviewer" --expect "Reviewer default"`.
-  `.requests.txt` has `PATCH ... {"reviewer":null} -> 200`; `codex [selected]`, `strong: Reviewer`
+  `{"from":"repo","value":{"effort":null,"harness":"claude","model":null}}`.
+- **Use the default.** Run `$C page --evidence "$E/06-undo" --click "button~Dismiss" --click "button~Dismiss" --click "button~Dismiss" --click "button~Dismiss" --click "button~Dismiss" --click "region=Settings" --click "button=Use the default Reviewer" --expect "Reviewer default"`.
+  `.requests.txt` has `PATCH ... {"reviewer":null} -> 200`; `Not the Implementer's [selected]`, `strong: Reviewer`
   and `text: default`; `config.toml` has no `reviewer` line.
 - **Base.** Run `$C page --evidence "$E/07-base" --click "region=Settings" --click "textbox=Base" --type dev --press Enter --expect "Saved" --expect "Base set here"`.
   `PATCH ... {"base":"dev"} -> 200`; `config.toml` has `base = "dev"`.
@@ -112,7 +115,10 @@ Preconditions:
 - `restart` ticks once, as `launch` does: with Dispatch on, every Ready issue is dispatched and
   fails in the run. Turn Dispatch off first.
 - A select is driven by clicking it, then `ArrowDown` and `Enter`: the next option. The Harnesses
-  are listed claude, codex, opencode, and the Reviewer starts on codex, so ArrowDown is opencode.
+  are listed claude, codex, opencode; the Reviewer's starts on `Not the Implementer's`, the rule serve
+  follows while nothing sets one, so ArrowDown is claude.
+- `--expect` finds visible text, not an ARIA name: `combobox "Reviewer Harness"` is labelled `Harness`
+  under `Reviewer`, so expect the line under the Reviewer's picker or the folded line instead.
 - A Repo names a Project before the Project has defaults: `PATCH /api/project/<name>` refuses a
   name no Repo names and no `[projects.<name>]` holds. A Repo naming none is its own Project, named
   by its slug, so `PATCH /api/project/verify%2Ffixture` sets that one.
