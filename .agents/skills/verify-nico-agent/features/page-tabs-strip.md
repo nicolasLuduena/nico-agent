@@ -61,7 +61,7 @@ Preconditions:
   `Blocked quality-scan-fixture <time>`, `Blocked morning <time>` and `Paused GitHub until <time>`, drawn
   over the page's bottom right corner in the screenshot, yellow. Then `tablist "Projects"`. The map's node buttons
   `#1, Verify: a Ready issue, Failed, needs you`, `#10, Verify: seeded Dispatch 10, Verified, PR 110 draft, needs you` and
-  `#12, Verify: seeded Dispatch 12, Implementing, needs you` end `needs you` (#12 from its recorded Asking: herdr is a stub); no other does.
+  `#12, Verify: seeded Dispatch 12, Implementing, needs you` end `needs you` (#12 from its recorded Asking and its blocked faux-nico: herdr is a stub); no other does.
 - **Dismiss.** Run `$C page --evidence "$E/08-dismiss" --expect "Paused" --click "button=Dismiss"`: `list "Needs you"` has two `status`
   items left, `Blocked morning` and `Paused GitHub`; the one dismissed is back on the next page.
 - **Open a flagged node.** Run `$C page --evidence "$E/09-open" --expect "Paused" --click "button~#1, Verify: a Ready issue"`.

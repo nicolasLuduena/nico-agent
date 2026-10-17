@@ -4,15 +4,15 @@
   import { repoLine } from "./hues";
   import { flash } from "./motion";
   import type { Project } from "./status";
-  import type { Need } from "./strip";
+  import type { Need } from "./toasts";
   import { clock } from "./time";
 
   let { needs, projects }: { needs: Need[]; projects: Project[] } = $props();
 
-  // What has a node is on its flag; the rest is a toast, dismissed for this page load only.
+  // Each dismissed for this page load only.
   const key = (need: Need) => `${need.repo} ${need.text}`;
   let dismissed = $state(new Set<string>());
-  const toasts = $derived(needs.filter((n) => n.issue === null && !dismissed.has(key(n))));
+  const toasts = $derived(needs.filter((n) => !dismissed.has(key(n))));
 
   /** A toast the page did not have: it flashes once as it arrives, not on the first read. */
   function arrive(row: Element) {

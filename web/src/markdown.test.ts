@@ -64,7 +64,7 @@ describe("the Morning summary's first line", () => {
 });
 
 describe("the Morning summary on the page", () => {
-  it("drops the sections the needs-you band shows live, keeping the night's history", () => {
+  it("drops the sections the map's flags show live, keeping the night's history", () => {
     const summary =
       "## Merge these\n1. acme/api#7\n\n## Answer these\nNothing needs you\n\n## Fix these\n- acme/api#9: stalled\n\n## Landed\n- acme/api#5 Read once\n\n## Filed\nNothing ran\n";
 

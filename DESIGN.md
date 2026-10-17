@@ -129,16 +129,11 @@ components:
     backgroundColor: "{colors.reversed}"
     textColor: "{colors.reversed-ink}"
     rounded: "{rounded.none}"
-  strip:
+  toast:
     backgroundColor: "{colors.signal}"
     textColor: "{colors.signal-ink}"
     rounded: "{rounded.none}"
-    padding: "12px 24px"
-  strip-empty:
-    backgroundColor: "{colors.surface}"
-    textColor: "{colors.ink-muted}"
-    rounded: "{rounded.none}"
-    padding: "12px 24px"
+    padding: "10px 8px 12px 14px"
   tab:
     textColor: "{colors.ink-muted}"
     typography: "{typography.head}"
@@ -230,7 +225,7 @@ All text pairs meet WCAG AA, light and dark, on `surface`, on `ground` and on a 
 
 Barlow is a grotesk drawn from transit and highway signage. It is served from the binary as woff2 (400, 600, 700, Latin subset), with no hosted font stylesheet. Tabular figures are on everywhere (`font-variant-numeric: tabular-nums`).
 
-**The Two Sizes Rule.** There are two sizes, 14px and 22px. Rank comes from weight (400, 600, 700), from case (all-caps `label` for kinds, column heads, strip kinds and section heads), from ink (`ink-muted` for a field's label) and from reversal. A size step is not a way to rank.
+**The Two Sizes Rule.** There are two sizes, 14px and 22px. Rank comes from weight (400, 600, 700), from case (all-caps `label` for kinds, column heads, toast kinds and section heads), from ink (`ink-muted` for a field's label) and from reversal. A size step is not a way to rank.
 
 **The Phone Field Exception.** Under 720px, the text inside a field (`field-phone`) is 16px, so iOS never zooms the page into it.
 

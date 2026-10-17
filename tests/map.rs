@@ -76,6 +76,7 @@ fn a_blocked_ready_for_agent_issue_is_a_node_with_a_blocker_edge_from_each_open_
             "stage": "Ready",
             "agent_state": null,
             "asking": null,
+            "faux_nico": null,
             "pr": null,
             "review": null,
             "verdict": null,
@@ -97,6 +98,7 @@ fn a_blocked_ready_for_agent_issue_is_a_node_with_a_blocker_edge_from_each_open_
             "stage": null,
             "agent_state": null,
             "asking": null,
+            "faux_nico": null,
             "pr": null,
             "review": null,
             "verdict": null,
@@ -368,6 +370,7 @@ fn a_project_s_map_holds_every_repo_s_nodes_each_naming_its_repo_with_blocker_ed
             "stage": null,
             "agent_state": null,
             "asking": null,
+            "faux_nico": null,
             "pr": null,
             "review": null,
             "verdict": null,
@@ -498,4 +501,27 @@ fn a_nodes_recorded_asking_is_on_the_map_so_its_flag_outlasts_herdrs_blocked() {
         node(&map, "acme/api#7")["asking"],
         json!({ "since": "2026-09-30T12:00:00Z", "question": "Keep the old endpoint?" })
     );
+    assert_eq!(node(&map, "acme/api#7")["faux_nico"], json!(null));
+}
+
+#[test]
+fn a_nodes_faux_nico_is_on_the_map_with_since_when_herdr_reports_it_blocked() {
+    let t = with_issues("answer = true", &[7]);
+    t.world
+        .add_clone("/src/api", &["git@github.com:acme/api.git"]);
+    let ran = t.cli(&["dispatch", "acme/api#7"]);
+    assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
+    (t.world.agents.borrow_mut()).insert("impl-api-7".into(), "blocked".into());
+    (t.world.screens.borrow_mut()).insert("impl-api-7".into(), "Keep the old endpoint?".into());
+    t.tick();
+    (t.world.agents.borrow_mut()).insert("faux-nico-api-7".into(), "blocked".into());
+    t.world.advance(Duration::from_secs(60));
+    t.tick();
+
+    let (status, map) = t.get("/api/map/acme/api");
+
+    assert_eq!(status, 200, "{map}");
+    let faux_nico = &node(&map, "acme/api#7")["faux_nico"];
+    assert_eq!(faux_nico["agent"], "faux-nico-api-7", "{faux_nico}");
+    assert_eq!(faux_nico["blocked_since"], "2026-09-30T12:01:00Z", "{faux_nico}");
 }
