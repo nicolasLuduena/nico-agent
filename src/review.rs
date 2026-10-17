@@ -360,6 +360,14 @@ fn stop(ctx: &Context, issue: &str, head: &str, times: usize) -> Vec<String> {
     [said].into_iter().chain(failed).collect()
 }
 
+/// The Reviewer's own worktree when `d`'s Reviewer was prompted for `sha`:
+/// where it verified that head and saved its Evidence.
+pub fn worktree_at(d: &Dispatch, sha: &str) -> Option<String> {
+    (d.reviewer.as_ref())
+        .filter(|r| r.sha.as_deref() == Some(sha))
+        .and_then(|_| worktree(d))
+}
+
 /// The folder of `d`'s Reviewer's own worktree, beside its Implementer's
 /// and named as its agent is; `None` before the Implementer's is made.
 pub fn worktree(d: &Dispatch) -> Option<String> {

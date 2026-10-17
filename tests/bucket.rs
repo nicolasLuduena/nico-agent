@@ -278,6 +278,32 @@ fn close_keeps_evidence_changed_since_its_head_was_kept_before_removing_the_work
 }
 
 #[test]
+fn close_keeps_the_reviewer_s_evidence_under_review_before_removing_its_worktree() {
+    let t = with_pr();
+    t.world
+        .add_file("/worktrees/api-7/.evidence/7/same.txt", b"implementer's");
+    t.world
+        .add_file("/worktrees/rev-api-7/.evidence/7/same.txt", b"reviewer's");
+    push(&t, "sha9", PrState::Merged);
+    t.world.calls.borrow_mut().clear();
+
+    t.tick();
+
+    assert_eq!(
+        kept(&t),
+        pairs(&[
+            ("7/sha9/review/same.txt", "reviewer's"),
+            ("7/sha9/same.txt", "implementer's"),
+        ])
+    );
+    let calls = t.world.calls();
+    let at = |prefix: &str| calls.iter().position(|c| c.starts_with(prefix));
+    let copy = at("cp -r /worktrees/rev-api-7/").expect("the Reviewer's Evidence copied");
+    let removed = at("git -C /src/api worktree remove").expect("its worktree removed");
+    assert!(copy < removed, "{calls:?}");
+}
+
+#[test]
 fn close_with_the_evidence_the_bucket_holds_commits_nothing() {
     let t = opened();
     t.world
@@ -359,6 +385,7 @@ fn a_verdict_commits_the_evidence_and_findings_to_the_bucket_under_repo_issue_an
             "git -C /worktrees/rev-api-7 status --porcelain --untracked-files=no".into(),
             format!("git remotes {BUCKET}"),
             format!("cp -r /worktrees/api-7/.evidence/7/. {BUCKET}/acme/api/7/sha9"),
+            format!("cp -r /worktrees/rev-api-7/.evidence/7/. {BUCKET}/acme/api/7/sha9/review"),
             format!("write {BUCKET}/acme/api/7/sha9/findings.md"),
             format!(
                 "git -C {BUCKET} add -- acme/api/7/sha9 && git -C {BUCKET} -c user.name=nico-agent -c user.email=nico-agent@localhost commit --quiet --allow-empty --no-gpg-sign -m verdict acme/api#7 pass sha9"
@@ -367,6 +394,26 @@ fn a_verdict_commits_the_evidence_and_findings_to_the_bucket_under_repo_issue_an
     );
     // The same Verdict again is no new one: its Reviewer's worktree is checked, nothing is kept twice.
     assert_eq!(t.world.calls(), calls[..2]);
+}
+
+#[test]
+fn a_verdict_keeps_the_reviewer_s_evidence_under_review_beside_the_implementer_s_of_the_same_name()
+{
+    let t = with_pr();
+    t.world
+        .add_file("/worktrees/api-7/.evidence/7/same.txt", b"implementer's");
+    t.world
+        .add_file("/worktrees/rev-api-7/.evidence/7/same.txt", b"reviewer's");
+
+    verdict(&t, &["pass", "--sha", "sha9"]);
+
+    assert_eq!(
+        kept(&t),
+        pairs(&[
+            ("7/sha9/review/same.txt", "reviewer's"),
+            ("7/sha9/same.txt", "implementer's"),
+        ])
+    );
 }
 
 #[test]

@@ -100,11 +100,7 @@ pub fn verdict(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
         ));
     }
     // The Reviewer prompted for this head verifies it as pushed, in its own worktree.
-    let reviewed = d
-        .reviewer
-        .as_ref()
-        .filter(|r| r.sha.as_deref() == Some(sha));
-    if let Some(dir) = reviewed.and_then(|_| review::worktree(&d)) {
+    if let Some(dir) = review::worktree_at(&d, sha) {
         let help = format!(
             "Verify from the Reviewer's worktree {dir} as checked out at {sha}: commit nothing there, change no tracked file"
         );

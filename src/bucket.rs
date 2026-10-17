@@ -12,11 +12,12 @@ use crate::cli::{Context, Refusal};
 use crate::config::{self, Config};
 use crate::dispatch::{self, Dispatch};
 use crate::http;
+use crate::review;
 use crate::stage;
 use crate::state;
 use crate::world::{Answer, HttpResponse, World, WorldError, WorldResult};
 
-const README: &str = "# nico-agent's Bucket\n\nEvidence, one commit per PR head, Verdict and Close: `<owner>/<repo>/<issue>/<sha>/`\nholds what the worktree's `.evidence/<issue>/` held while its PR was at `<sha>`,\nand a Verdict's `findings.md` from its Reviewer.\n\nEach Repo's Wiki, one commit per build: `wiki/<owner>/<repo>/wiki.json`; each\nLibrary version's at `wiki/<owner>/<repo>/<tag>/<path>/wiki.json`, the tag's `/` as `%2F`.\n";
+const README: &str = "# nico-agent's Bucket\n\nEvidence, one commit per PR head, Verdict and Close: `<owner>/<repo>/<issue>/<sha>/`\nholds what the worktree's `.evidence/<issue>/` held while its PR was at `<sha>`,\nunder `review/` what its Reviewer's own worktree held there once prompted for\n`<sha>`, and a Verdict's `findings.md` from its Reviewer.\n\nEach Repo's Wiki, one commit per build: `wiki/<owner>/<repo>/wiki.json`; each\nLibrary version's at `wiki/<owner>/<repo>/<tag>/<path>/wiki.json`, the tag's `/` as `%2F`.\n";
 
 /// Make the Bucket, a git repo with its README committed, unless there is one.
 pub fn create(ctx: &Context, config: &Config) -> Result<(), Refusal> {
@@ -139,8 +140,8 @@ pub fn step(ctx: &Context, config: &Config) -> io::Result<Vec<String>> {
 }
 
 /// Commit `d`'s Evidence to the Bucket at `sha` with `message` when it is
-/// not what the Bucket's last commit there holds: nothing when its worktree
-/// has none. What to say of it, or why it could not be kept.
+/// not what the Bucket's last commit there holds: nothing when its worktrees
+/// have none. What to say of it, or why it could not be kept.
 pub fn keep_evidence(
     ctx: &Context,
     config: &Config,
@@ -171,14 +172,22 @@ pub fn keep_evidence(
 }
 
 /// Copy `d`'s Evidence into the Bucket at `sha`, the Bucket made first if it
-/// is missing: the folder it is in there, `<repo>/<issue>/<sha>`.
+/// is missing: the folder it is in there, `<repo>/<issue>/<sha>`. The
+/// Reviewer's, from its own worktree when it was prompted for `sha`, goes
+/// under `review/`, so a file named as one of the Implementer's overwrites none.
 fn copied(world: &dyn World, config: &Config, d: &Dispatch, sha: &str) -> Result<String, Refusal> {
     made(world, config)?;
     let kept = format!("{}/{sha}", folder(d));
+    let to = format!("{}/{kept}", config.bucket.path);
     if let Some(worktree) = &d.worktree {
         let from = format!("{worktree}/{}", evidence(d));
-        let to = format!("{}/{kept}", config.bucket.path);
         world.copy_dir(&from, &to).map_err(refused)?;
+    }
+    if let Some(worktree) = review::worktree_at(d, sha) {
+        let from = format!("{worktree}/{}", evidence(d));
+        world
+            .copy_dir(&from, &format!("{to}/review"))
+            .map_err(refused)?;
     }
     Ok(kept)
 }
