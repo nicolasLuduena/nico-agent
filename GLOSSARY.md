@@ -16,6 +16,12 @@ inherit, Blockers honoured across them. A Repo belongs to at most one; one
 that names none is a Project of its own, named by its slug. _Avoid_:
 workspace (herdr's), group; Linear's is always written "Linear project".
 
+**Roadmap**: every open issue of a Project's Repos not labelled
+`ready-for-agent`, in a lane per label (`needs-triage`, `needs-info`,
+`ready-for-human`, `wontfix`, or none of them), with the Blockers between
+them, kept from each Source read and shown read-only on the Board. _Avoid_:
+triage, backlog.
+
 **Blocker**: an issue that must be resolved before another can start, as the
 Source's native dependency relation records it. One in another Repo of the
 Project is resolved once closed and, when that Repo has an Install, installed

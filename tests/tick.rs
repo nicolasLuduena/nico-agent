@@ -93,7 +93,14 @@ fn a_repo_with_dispatch_off_is_read_but_never_dispatched_into() {
     let (said, calls) = calls_after(&t, || t.tick());
 
     assert_eq!(said, Vec::<String>::new());
-    assert_eq!(calls, ["github viewer", "github issues acme/api"]);
+    assert_eq!(
+        calls,
+        [
+            "github viewer",
+            "github issues acme/api",
+            "github open issues acme/api"
+        ]
+    );
     let status = t.cli(&["status", "--json"]).json();
     assert_eq!(status["repos"][0]["ready"][0]["key"], "acme/api#1");
 }
@@ -355,6 +362,7 @@ fn a_tick_reads_the_source_asks_about_prs_closes_then_fills_the_room_it_freed() 
             // (1) the Source, a tick old
             "github viewer",
             "github issues acme/api",
+            "github open issues acme/api",
             // (2) the PR that can still change
             "github pr activity acme/api#9",
             // (3) Close, its worktree's Evidence kept first if the Bucket lacks it
@@ -686,6 +694,7 @@ fn a_github_rate_limit_pauses_github_reads_until_its_reset_and_status_shows_it()
         [
             "github viewer",
             "github issues acme/api",
+            "github open issues acme/api",
             "github branch prs acme/api:agent/api-1",
             "github pr activity acme/api#9",
         ]
@@ -768,10 +777,11 @@ fn refresh_rereads_every_source_and_every_watched_pr_final_ones_included_then_ti
         })
     );
     assert_eq!(
-        calls[..4],
+        calls[..5],
         [
             "github viewer",
             "github issues acme/api",
+            "github open issues acme/api",
             "github pr activity acme/api#10",
             "github pr activity acme/api#9",
         ]
@@ -818,6 +828,7 @@ fn a_linear_rate_limit_pauses_the_repos_reading_linear_even_across_a_restart_of_
         hit,
         [
             "github issues acme/api",
+            "github open issues acme/api",
             "github issues acme/web",
             "linear viewer",
             "linear issues BLE"
@@ -832,14 +843,20 @@ fn a_linear_rate_limit_pauses_the_repos_reading_linear_even_across_a_restart_of_
         serde_json::Value::Null
     );
     // No Linear call at all till the pause ends.
-    assert_eq!(during, ["github issues acme/api"]);
+    assert_eq!(
+        during,
+        ["github issues acme/api", "github open issues acme/api"]
+    );
     assert_eq!(
         after,
         [
             "github issues acme/api",
+            "github open issues acme/api",
             "github issues acme/web",
             "linear viewer",
-            "linear issues BLE"
+            "linear issues BLE",
+            "github open issues acme/web",
+            "linear open issues BLE",
         ]
     );
     let logged = t.world.logged();

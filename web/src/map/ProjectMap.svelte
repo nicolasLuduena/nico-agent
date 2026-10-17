@@ -16,7 +16,7 @@
   import { still } from "../motion";
   import { selection } from "../selection.svelte";
   import { harnessHue, repoLine, stageHue } from "../hues";
-  import { number, repoName, type Dispatch, type Project } from "../status";
+  import { number, numbered, repoName, type Dispatch, type Project } from "../status";
   import { layout, NODE, withoutMerged, type Placed } from "./layout";
   import Mark from "./Mark.svelte";
 
@@ -251,7 +251,7 @@
     const a = agent(n);
     const harness = a && harnessAt(n);
     return [
-      [number(n.key, n.repo ?? ""), repoName(n.repo, project.repos)].filter(Boolean).join(" "),
+      numbered(n.key, n.repo, project.repos),
       n.title ?? "",
       n.stage ?? "Blocker",
       a && `agent ${a}${harness ? ` on ${harness}` : ""}`,

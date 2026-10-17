@@ -97,6 +97,8 @@ pub struct GitHubIssue {
     pub blockers: Vec<GitHubBlocker>,
     /// Whether the issue has sub-issues, which makes it a parent, never dispatched.
     pub has_sub_issues: bool,
+    /// Its description, in Markdown.
+    pub body: String,
 }
 
 /// One of a GitHub identity's hourly budgets, as `gh api rate_limit` says it.
@@ -158,6 +160,8 @@ pub struct LinearIssue {
     pub assignee_name: Option<String>,
     pub blockers: Vec<LinearBlocker>,
     pub has_sub_issues: bool,
+    /// Its description, in Markdown.
+    pub description: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -404,6 +408,8 @@ pub trait World {
     fn github_viewer(&self) -> WorldResult<String>;
     /// Open `ready-for-agent` issues of a repo; the core still applies the Ready rule.
     fn github_issues(&self, slug: &str) -> WorldResult<Vec<GitHubIssue>>;
+    /// Every open issue of a repo, whatever its labels, as the Roadmap shows them.
+    fn github_open_issues(&self, slug: &str) -> WorldResult<Vec<GitHubIssue>>;
     /// Open or merged PRs that close an issue when merged.
     fn github_linked_pull_requests(&self, slug: &str, number: u64)
     -> WorldResult<Vec<PullRequest>>;
@@ -432,6 +438,8 @@ pub trait World {
     // Linear
     fn linear_viewer(&self) -> WorldResult<String>;
     fn linear_issues(&self, team: &str) -> WorldResult<Vec<LinearIssue>>;
+    /// Every issue of the team neither completed nor canceled, whatever its labels.
+    fn linear_open_issues(&self, team: &str) -> WorldResult<Vec<LinearIssue>>;
     /// URLs of a Linear issue's attachments, GitHub PRs among them.
     fn linear_attachment_urls(&self, identifier: &str) -> WorldResult<Vec<String>>;
     /// Assign a Linear issue to the API key's owner (the Claim).
@@ -851,12 +859,13 @@ struct Repository {
     name_with_owner: String,
 }
 
-const ISSUES_QUERY: &str = "query($owner: String!, $name: String!, $label: String!, $cursor: String) {
+/// Without `$labels`, every open issue.
+const ISSUES_QUERY: &str = "query($owner: String!, $name: String!, $labels: [String!], $cursor: String) {
   repository(owner: $owner, name: $name) {
-    issues(first: 100, after: $cursor, states: OPEN, labels: [$label], orderBy: {field: CREATED_AT, direction: ASC}) {
+    issues(first: 100, after: $cursor, states: OPEN, labels: $labels, orderBy: {field: CREATED_AT, direction: ASC}) {
       pageInfo { hasNextPage endCursor }
       nodes {
-        number title url state createdAt
+        number title url state createdAt body
         labels(first: 50) { nodes { name } }
         assignees(first: 20) { nodes { login } }
         blockedBy(first: 50) { nodes { number title state closedAt repository { nameWithOwner } } }
@@ -874,6 +883,7 @@ struct IssueNode {
     url: String,
     state: String,
     created_at: String,
+    body: String,
     labels: Nodes<Named>,
     assignees: Nodes<Login>,
     blocked_by: Nodes<NumberedNode>,
@@ -908,6 +918,33 @@ fn issue_state(state: &str) -> IssueState {
     }
 }
 
+/// The repo's open issues, oldest first; with `label`, only those labelled it.
+fn github_issues(slug: &str, label: Option<&str>) -> WorldResult<Vec<GitHubIssue>> {
+    let (owner, name) = slug.split_once('/').ok_or_else(repo_not_found)?;
+    let mut issues = vec![];
+    let mut cursor = None;
+    loop {
+        let mut vars = vec![("owner", owner), ("name", name)];
+        vars.extend(label.map(|l| ("labels[]", l)));
+        vars.extend(cursor.as_deref().map(|c| ("cursor", c)));
+        let response = gh_graphql(ISSUES_QUERY, &vars, &[])?;
+        let page = &response["data"]["repository"]["issues"];
+        if page.is_null() {
+            return Err(repo_not_found());
+        }
+        let page: Page<IssueNode> =
+            serde_json::from_value(page.clone()).map_err(|_| invalid("GitHub"))?;
+        issues.extend(page.nodes.into_iter().map(GitHubIssue::from));
+        match page.page_info {
+            PageInfo {
+                has_next_page: true,
+                end_cursor: Some(next),
+            } => cursor = Some(next),
+            _ => return Ok(issues),
+        }
+    }
+}
+
 impl From<IssueNode> for GitHubIssue {
     fn from(node: IssueNode) -> Self {
         GitHubIssue {
@@ -928,6 +965,7 @@ impl From<IssueNode> for GitHubIssue {
                 })
                 .collect(),
             has_sub_issues: node.sub_issues_summary.total > 0,
+            body: node.body,
         }
     }
 }
@@ -1539,28 +1577,10 @@ impl World for RealWorld {
         Ok(gh(&args)?.trim().to_string())
     }
     fn github_issues(&self, slug: &str) -> WorldResult<Vec<GitHubIssue>> {
-        let (owner, name) = slug.split_once('/').ok_or_else(repo_not_found)?;
-        let mut issues = vec![];
-        let mut cursor = None;
-        loop {
-            let mut vars = vec![("owner", owner), ("name", name), ("label", READY_LABEL)];
-            vars.extend(cursor.as_deref().map(|c| ("cursor", c)));
-            let response = gh_graphql(ISSUES_QUERY, &vars, &[])?;
-            let page = &response["data"]["repository"]["issues"];
-            if page.is_null() {
-                return Err(repo_not_found());
-            }
-            let page: Page<IssueNode> =
-                serde_json::from_value(page.clone()).map_err(|_| invalid("GitHub"))?;
-            issues.extend(page.nodes.into_iter().map(GitHubIssue::from));
-            match page.page_info {
-                PageInfo {
-                    has_next_page: true,
-                    end_cursor: Some(next),
-                } => cursor = Some(next),
-                _ => return Ok(issues),
-            }
-        }
+        github_issues(slug, Some(READY_LABEL))
+    }
+    fn github_open_issues(&self, slug: &str) -> WorldResult<Vec<GitHubIssue>> {
+        github_issues(slug, None)
     }
     fn github_linked_pull_requests(
         &self,
@@ -1749,7 +1769,10 @@ impl World for RealWorld {
         linear::viewer(self)
     }
     fn linear_issues(&self, team: &str) -> WorldResult<Vec<LinearIssue>> {
-        linear::issues(self, team)
+        linear::issues(self, team, Some(READY_LABEL))
+    }
+    fn linear_open_issues(&self, team: &str) -> WorldResult<Vec<LinearIssue>> {
+        linear::issues(self, team, None)
     }
     fn linear_attachment_urls(&self, identifier: &str) -> WorldResult<Vec<String>> {
         linear::attachment_urls(self, identifier)

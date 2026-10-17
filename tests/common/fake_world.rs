@@ -190,6 +190,7 @@ pub fn github_issue(slug: &str, number: u64) -> GitHubIssue {
         assignees: vec![],
         blockers: vec![],
         has_sub_issues: false,
+        body: String::new(),
     }
 }
 
@@ -221,6 +222,7 @@ pub fn linear_issue(identifier: &str) -> LinearIssue {
         assignee_name: None,
         blockers: vec![],
         has_sub_issues: false,
+        description: String::new(),
     }
 }
 
@@ -644,6 +646,15 @@ impl World for FakeWorld {
             .collect())
     }
 
+    /// Like the real one, every open issue.
+    fn github_open_issues(&self, slug: &str) -> WorldResult<Vec<GitHubIssue>> {
+        self.call(format!("github open issues {slug}"))?;
+        let issues = self.issues.borrow().get(slug).cloned().unwrap_or_default();
+        Ok((issues.into_iter())
+            .filter(|i| i.state == IssueState::Open)
+            .collect())
+    }
+
     fn github_linked_pull_requests(
         &self,
         slug: &str,
@@ -756,6 +767,19 @@ impl World for FakeWorld {
             .iter()
             .filter(of_team)
             .filter(|i| i.labels.iter().any(|l| l == "ready-for-agent"))
+            .cloned()
+            .collect())
+    }
+
+    /// Like the real one, every issue of the team neither completed nor canceled.
+    fn linear_open_issues(&self, team: &str) -> WorldResult<Vec<LinearIssue>> {
+        self.call(format!("linear open issues {team}"))?;
+        let of_team =
+            |i: &&LinearIssue| [&i.team.key, &i.team.id, &i.team.name].contains(&&team.to_string());
+        let open = |i: &&LinearIssue| !["completed", "canceled"].contains(&i.state.as_str());
+        Ok((self.linear.borrow().iter())
+            .filter(of_team)
+            .filter(open)
             .cloned()
             .collect())
     }

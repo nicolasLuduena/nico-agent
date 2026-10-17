@@ -87,6 +87,9 @@ impl World for Guarded<'_> {
     fn github_issues(&self, slug: &str) -> WorldResult<Vec<GitHubIssue>> {
         self.ask(GITHUB, |w| w.github_issues(slug))
     }
+    fn github_open_issues(&self, slug: &str) -> WorldResult<Vec<GitHubIssue>> {
+        self.ask(GITHUB, |w| w.github_open_issues(slug))
+    }
     fn github_linked_pull_requests(
         &self,
         slug: &str,
@@ -122,6 +125,9 @@ impl World for Guarded<'_> {
     }
     fn linear_issues(&self, team: &str) -> WorldResult<Vec<LinearIssue>> {
         self.ask(LINEAR, |w| w.linear_issues(team))
+    }
+    fn linear_open_issues(&self, team: &str) -> WorldResult<Vec<LinearIssue>> {
+        self.ask(LINEAR, |w| w.linear_open_issues(team))
     }
     fn linear_attachment_urls(&self, identifier: &str) -> WorldResult<Vec<String>> {
         self.ask(LINEAR, |w| w.linear_attachment_urls(identifier))

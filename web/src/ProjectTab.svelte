@@ -1,6 +1,6 @@
 <script lang="ts">
-  // One Project's work, its map or its Wiki view (the views are picked in App), the list of its Wikis
-  // (wiki/), each read on its own page. The map on the left;
+  // One Project's work, its map, its Wiki view or its Roadmap (the views are picked in App): the list of its Wikis
+  // (wiki/), each read on its own page; every open issue the loop does not work (roadmap/). The map on the left;
   // on the right its defaults, unless it is a Repo's own, then a panel per
   // Repo with its switches, settings and Dispatch form (controls/), or the
   // open node's panel (#253, map/).
@@ -8,6 +8,7 @@
   import ProjectDefaults from "./controls/ProjectDefaults.svelte";
   import Panel from "./map/Panel.svelte";
   import ProjectMap from "./map/ProjectMap.svelte";
+  import Roadmap from "./roadmap/Roadmap.svelte";
   import { selection } from "./selection.svelte";
   import type { Project, Status } from "./status";
   import { libraryId } from "./wiki/wiki";
@@ -24,6 +25,8 @@
 
 {#if selection.view === "wiki"}
   <WikiView {project} libraries={linked} settings={status.wiki_settings} />
+{:else if selection.view === "roadmap"}
+  <Roadmap {project} />
 {:else}
   <div class="work" class:open={selection.issue}>
     <ProjectMap {project} dispatches={status.dispatches} />

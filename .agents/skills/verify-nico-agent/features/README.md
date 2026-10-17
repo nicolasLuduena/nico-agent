@@ -15,6 +15,7 @@ An H1 title, one paragraph on the user-visible behaviour, then exactly four H2 s
 - [Verdict recording to the Bucket](./verdict-bucket.md)
 - [The Project select and what needs you](./page-tabs-strip.md)
 - [A map per Project](./project-tabs.md)
+- [The Roadmap](./roadmap.md)
 - [A Dispatch the Reviewer kept failing](./rulings.md)
 - [Where each PR's review stands](./review.md)
 - [Close](./close.md)

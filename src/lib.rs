@@ -23,6 +23,7 @@ pub mod refresh;
 pub mod repo;
 pub mod restart;
 pub mod review;
+pub mod roadmap;
 pub mod serve;
 pub mod source;
 pub mod stage;

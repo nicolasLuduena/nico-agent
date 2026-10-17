@@ -8,7 +8,7 @@ use serde_json::{Value, json};
 
 use crate::bucket;
 use crate::cli::{Context, Refusal};
-use crate::config;
+use crate::config::{self, Config};
 use crate::dispatch::{self, Dispatch};
 use crate::http;
 use crate::source::{self, Issue};
@@ -25,13 +25,9 @@ use crate::world::READY_LABEL;
 /// its Repo, none for a Blocker outside the Project.
 pub fn map(ctx: &Context, name: &str) -> Result<Option<Value>, Refusal> {
     let config = config::load(&ctx.config_dir)?;
-    let slugs: Vec<&String> = (config.repos.iter())
-        .filter(|(slug, repo)| repo.project_name(slug) == name)
-        .map(|(slug, _)| slug)
-        .collect();
-    if slugs.is_empty() && !config.projects.contains_key(name) {
+    let Some(slugs) = project_slugs(&config, name) else {
         return Ok(None);
-    }
+    };
     let dispatches = dispatch::load(&ctx.config_dir)?;
     let prs = stage::load(&ctx.config_dir)?;
     let status = status::shown(ctx, &config, &dispatches, &prs, false)?;
@@ -70,16 +66,7 @@ pub fn map(ctx: &Context, name: &str) -> Result<Option<Value>, Refusal> {
         }
         readers.insert(slug, (read.user, read.mine));
     }
-    // A Blocker in another Repo of the Project is keyed in GitHub's casing; its node, in the config's.
-    for blocker in issues.iter_mut().flat_map(|i| &mut i.blockers) {
-        let own = source::github_ref(&blocker.key).and_then(|(slug, number)| {
-            let own = slugs.iter().find(|s| s.eq_ignore_ascii_case(slug))?;
-            Some(format!("{own}#{number}"))
-        });
-        if let Some(own) = own {
-            blocker.key = own;
-        }
-    }
+    own_keys(&mut issues, &slugs);
     let offered = |i: &Issue| i.open && i.labels.iter().any(|l| l == READY_LABEL);
     let mut keys: Vec<&str> = (issues.iter().filter(|i| offered(i)))
         .map(|i| i.key.as_str())
@@ -136,10 +123,7 @@ pub fn map(ctx: &Context, name: &str) -> Result<Option<Value>, Refusal> {
         };
         let url = (issue.map(|i| i.url.clone()))
             .or_else(|| d.map(|d| d.url.clone()))
-            .or_else(|| {
-                let (slug, number) = source::github_ref(key)?;
-                Some(format!("https://github.com/{slug}/issues/{number}"))
-            });
+            .or_else(|| source::github_url(key));
         let title = (issue.map(|i| i.title.as_str()))
             .or(d.map(|d| d.title.as_str()))
             .or_else(|| {
@@ -188,6 +172,30 @@ pub fn map(ctx: &Context, name: &str) -> Result<Option<Value>, Refusal> {
     }
     let nodes: Vec<Value> = nodes.into_values().collect();
     Ok(Some(json!({ "nodes": nodes, "edges": edges })))
+}
+
+/// The Repos of the Project `name`, a Repo's own named by its slug; `None`
+/// when it is no Project.
+pub fn project_slugs<'c>(config: &'c Config, name: &str) -> Option<Vec<&'c String>> {
+    let slugs: Vec<&String> = (config.repos.iter())
+        .filter(|(slug, repo)| repo.project_name(slug) == name)
+        .map(|(slug, _)| slug)
+        .collect();
+    (!slugs.is_empty() || config.projects.contains_key(name)).then_some(slugs)
+}
+
+/// Key each Blocker of `issues` in another Repo of the Project, `slugs`, in
+/// the config's casing, as its node is, not GitHub's.
+pub fn own_keys(issues: &mut [Issue], slugs: &[&String]) {
+    for blocker in issues.iter_mut().flat_map(|i| &mut i.blockers) {
+        let own = source::github_ref(&blocker.key).and_then(|(slug, number)| {
+            let own = slugs.iter().find(|s| s.eq_ignore_ascii_case(slug))?;
+            Some(format!("{own}#{number}"))
+        });
+        if let Some(own) = own {
+            blocker.key = own;
+        }
+    }
 }
 
 /// `GET /api/node/<issue>`: the issue's last Dispatch as `status` shows it,

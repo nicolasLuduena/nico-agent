@@ -16,7 +16,7 @@
 #   doctor                        read-only: is this run worth driving? A failing doctor means "do not drive"
 #   env                           print the path of run.env, to source: . "$(control-nico-agent env)"
 #                                 gives $FIXTURE_CLONE, $SECOND_CLONE, $CONFIG_DIR, $BUCKET, $URL, $OUTSIDE_LOG
-#   seed issues [second|chain]    a fresh Source read of verify/fixture (issues 1-6; `chain`: #6 on two chained PRs), or verify/second (1-3)
+#   seed issues [second|chain]    a fresh Source read of verify/fixture (issues 1-6, and #9, #30, #31 open beside them for the Roadmap; `chain`: #6 on two chained PRs), or verify/second (1-3)
 #   seed dispatch <n> pr|asking|stacked|restarted|ruled
 #                                 a Dispatch of verify/fixture#<n> as the loop records it; prints
 #                                 { issue, kind, worktree, branch, head, pr, evidence }: keep it, verdict recipes need head
@@ -447,6 +447,8 @@ cmd_seed() {
 # `second`, verify/second's instead: #1 waiting on verify/fixture#1, a Blocker in another Repo,
 # #2 on verify/outside#7, in no Repo, and #3 on verify/fixture#20, closed as it is read. With
 # `chain`, #6 is also blocked by #8, whose PR #108 (head agent/fixture-8) sits on #9's: Stackable on agent/fixture-8.
+# Every open issue, as the Roadmap reads it: these, then #9 (no label), #30 (needs-triage, blocked by #2)
+# and #31 (needs-info, blocked by #30).
 seed_issues() {
   [ "${1:-}" != second ] || { seed_second_issues; return; }
   local chain=false; [ "${1:-}" != chain ] || chain=true
@@ -457,7 +459,7 @@ seed_issues() {
       key: "\($s)#\($n)", title: $title, url: "\($u)/\($n)", branch: "agent/fixture-\($n)",
       created_at: "2026-01-0\($n)T09:00:00Z", open: true, labels: $labels, assignees: [],
       has_sub_issues: false, blockers: [] };
-    { read_at: $at, user: ["verify-nico"], issues: [
+    [
       issue(1; "Verify: a Ready issue"; ["ready-for-agent"]),
       issue(2; "Verify: not labelled"; []),
       (issue(3; "Verify: waits on #1"; ["ready-for-agent"])
@@ -469,7 +471,16 @@ seed_issues() {
             prs: [{number: 109, url: "https://github.com/\($s)/pull/109", head_branch: "agent/fixture-9", base_branch: "main"}]}]
         | if $chain then .blockers += [{key: "\($s)#8", title: "Verify: a Blocker stacked on #9", resolved: false,
             prs: [{number: 108, url: "https://github.com/\($s)/pull/108", head_branch: "agent/fixture-8", base_branch: "agent/fixture-9"}]}] else . end)
-    ] }')"
+    ] as $issues
+    | { read_at: $at, user: ["verify-nico"], issues: $issues, open: ($issues + [
+      issue(9; "Verify: a Blocker in review"; []),
+      (issue(30; "Verify: needs triage"; ["needs-triage", "bug"]) | .created_at = "2026-01-10T09:00:00Z"
+        | .assignees = ["verify-nico", "someone-else"]
+        | .body = "## Why\n\nThe fixture **needs** a decision on `README.md`.\n\n- keep it\n- drop it\n\nSee https://example.com/spec."
+        | .blockers = [{key: "\($s)#2", title: "Verify: not labelled", resolved: false, prs: []}]),
+      (issue(31; "Verify: needs info"; ["needs-info"]) | .created_at = "2026-01-11T09:00:00Z"
+        | .blockers = [{key: "\($s)#30", title: "Verify: needs triage", resolved: false, prs: []}])
+    ]) }')"
   jq -c '{ file: input_filename, read_at, issues: [.issues[] | {key, title}] }' "$CONFIG_DIR/issues/$SLUG.json"
 }
 

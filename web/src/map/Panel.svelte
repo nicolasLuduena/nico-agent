@@ -15,7 +15,7 @@
   import { harnessHue, stageHue } from "../hues";
   import * as review from "../review";
   import { reviewerKeptFailing } from "../failure";
-  import { number, repoName, type Failure, type Project, type Restart, type Review, type Stage } from "../status";
+  import { numbered, type Failure, type Project, type Restart, type Review, type Stage } from "../status";
   import { clock } from "../time";
   import Mark from "./Mark.svelte";
   import { shown } from "./ProjectMap.svelte";
@@ -107,7 +107,7 @@
       <h2 id="panel-title" tabindex="-1" bind:this={title}>
         {node?.title ?? issue}
         {#if node?.url}<a href={node.url} target="_blank" rel="noreferrer"
-            >{[number(issue, node.repo ?? ""), repoName(node.repo, project.repos)].filter(Boolean).join(" ")}</a
+            >{numbered(issue, node.repo, project.repos)}</a
           >{/if}
       </h2>
       <button type="button" class="quiet" onclick={close}>Close</button>
