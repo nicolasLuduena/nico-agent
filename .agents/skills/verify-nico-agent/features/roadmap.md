@@ -1,6 +1,6 @@
 # The Roadmap
 
-A Project's second view, `ROADMAP` beside `MAP`, at `#<project>/roadmap`: every open issue
+A Project's second view, the `Roadmap` tab beside `Map`, at `#<project>/roadmap`: every open issue
 of its Repos not labelled `ready-for-agent`, as each Source read last kept it, in a lane per label left
 to right (`NEEDS-TRIAGE`, `NEEDS-INFO`, `READY-FOR-HUMAN`, `WONTFIX`, then `NO LABEL`; an issue in the
 first its labels match; an empty lane not drawn), with an arrow from each open Blocker on it to the issue
@@ -12,13 +12,13 @@ with GitHub unreachable it shows the last read. `GET /api/roadmap/<project>` ans
 
 - `roadmap-api` `GET /api/roadmap/<project>` answers `lanes`, `nodes` (each with `key`, `repo`, `title`, `url`, `lane`, `labels`, `assignees`, `body`, `blocked_by`, `blocks`) and `edges` (`kind` `blocker`); a name that is no Project is a 404.
 - `roadmap-view` `link "Roadmap"` opens `region "Roadmap of <project>"`, a button per node named `#<n>, <title>, <lane>`.
-- `roadmap-panel` a node opens `region "<title> #<n>"` with Labels, Assigned, Description, Blocked by and Blocks; nothing to press but `button "Close"` and links.
+- `roadmap-panel` a node opens `region "<title>"`, its `#<n>` link over the title, with Labels, Assigned, Description, Blocked by and Blocks; nothing to press but `button "Close"` and links.
 - `roadmap-last-read` with GitHub unreachable, a refresh keeps the Roadmap as last read.
 - `roadmap-phone` under 720px the Roadmap scrolls inside its field and the panel is a bottom sheet.
 
 ## How to get to it (user POV)
 
-- Serve's page: pick the Project, then `ROADMAP` in its row; or open `#<project>/roadmap`.
+- Serve's page: pick the Project, then the `Roadmap` tab under its header; or open `#<project>/roadmap`.
 - `GET /api/roadmap/<project>` with curl, the name percent-encoded.
 
 ## Driving it with control-nico-agent
@@ -44,7 +44,7 @@ Preconditions:
   and `NO LABEL` left to right, an arrow from `#30` straight into `#31`, and one from `#2` over the lanes into `#30`'s
   right side. `.requests.txt` has `GET /api/roadmap/verify%2Ffixture -> 200` and no write.
 - **A node.** Run `$C page --evidence "$E/04-panel" --hash "#verify%2Ffixture/roadmap" --expect "herdr server stop" --click "button~Dismiss" --click "button~Dismiss" --click "button~Dismiss" --click "button~Dismiss" --click "button~Dismiss" --click "button~#30, Verify: needs triage"`.
-  The node is `[pressed]`; `region "Verify: needs triage #30"` holds `link "#30"`, Labels `needs-triage, bug`,
+  The node is `[pressed]`; `region "Verify: needs triage"` holds `link "#30"`, Labels `needs-triage, bug`,
   Assigned `you, someone-else`, Description with `Why` in bold, the list `keep it`, `drop it`, `README.md` as
   code and `link "https://example.com/spec"`, Blocked by `link "#2"` `Verify: not labelled`, Blocks
   `link "#31"` `Verify: needs info`; its only button is `Close`. `.requests.txt` has no write.

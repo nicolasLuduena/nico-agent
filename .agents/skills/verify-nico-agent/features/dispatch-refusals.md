@@ -74,7 +74,7 @@ Preconditions:
 - **API.** Run `$C http --evidence "$E/16-api-not-ready" POST /api/dispatch '{"issue":"verify/fixture#2"}'`:
   HTTP `409`, the not-labelled refusal. Run `$C http --evidence "$E/17-api-bad-body" POST /api/dispatch '{"issue":7}'`:
   HTTP `400`, `error` `issue is a string, not 7`.
-- **Form.** Run `$C page --evidence "$E/18-form" --click "region=Dispatch" --click "button=Dispatch" --expect "failed at worktree"`.
+- **Form.** Run `$C page --evidence "$E/18-form" --click "button=Repos" --click "region=Dispatch" --click "button=Dispatch" --expect "failed at worktree"`.
   The form's Issue starts on `#5 Verify: a Research issue` (#1 is In flight); `.requests.txt` has
   `POST /api/dispatch {"issue":"verify/fixture#5","harness":"claude","model":null,"effort":null} -> 409`;
   the ARIA snapshot has `region "verify/fixture"` opening with `region "Dispatch"` (`combobox "Issue"`,
@@ -87,7 +87,7 @@ Preconditions:
 - **Proof.** Copy `$OUTSIDE_LOG` to `$E/outside.log`; `$C run --evidence "$E/20-status" -- status --json`
   shows `#1`, `#5` and `#6` with `stage` `Failed`, `#6`'s `warnings` `could not Claim verify/fixture#6:
   GitHub rate limit exceeded; nico-agent asks it again at <the pause's time>; assign it to yourself by hand`.
-- **Form on codex.** Run `$C page --evidence "$E/21-form-codex" --click "region=Dispatch" --within "region=Dispatch" --click "combobox=Harness" --press ArrowDown --press Enter`.
+- **Form on codex.** Run `$C page --evidence "$E/21-form-codex" --click "button=Repos" --click "region=Dispatch" --within "region=Dispatch" --click "combobox=Harness" --press ArrowDown --press Enter`.
   `combobox "Harness"` on `codex`, then `textbox "Model"` and `textbox "Effort"`, each empty with placeholder `default`;
   `combobox "Issue" [disabled]` on `Nothing to dispatch` and `button "Dispatch" [disabled]` (#1, #5, #6 Failed); no `POST`.
 

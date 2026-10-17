@@ -34,7 +34,7 @@ export interface RoadmapData {
   edges: { from: string; to: string; kind: "blocker" }[];
 }
 
-/** A Roadmap node: the map's, its number and title rows without the Stage's. */
+/** A Roadmap node: the map's, its title and number rows without the Stage's. */
 export const CARD = { width: NODE.width, height: NODE.height - NODE.row };
 /** Inside a lane's frame; above its first node, room for its name on the frame's top line. */
 const PAD = 12;

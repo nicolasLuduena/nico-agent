@@ -3,7 +3,6 @@
   // `changed`: every open issue of its Repos the loop does not work, a lane
   // per label left to right, its Blockers' arrows drawn as the map's. A node
   // opens a read-only panel. Nothing on it writes anywhere.
-  import { repoLine } from "../hues";
   import { watch } from "../live";
   import { number, numbered, repoName, type Project } from "../status";
   import Issue from "./Issue.svelte";
@@ -56,10 +55,9 @@
         </svg>
         {#each drawn.nodes as n (n.key)}
           {@const repo = repoName(n.repo, project.repos)}
-          {@const line = repoLine(n.repo, project)}
           <button
             type="button"
-            class="node"
+            class="node-card"
             class:selected={open === n.key}
             style:left="{n.x}px"
             style:top="{n.y}px"
@@ -67,20 +65,23 @@
             style:height="{CARD.height}px"
             aria-label={said(n.key, n.repo, n.title, n.lane)}
             aria-pressed={open === n.key}
+            title={n.title}
             onclick={() => (open = open === n.key ? null : n.key)}
           >
-            <span class="first">
-              <span class="number">{number(n.key, n.repo)}</span>
-              {#if repo}<span class="repo">{#if line}<span class="swatch" style:--line={line}></span>{/if}{repo}</span>{/if}
-            </span>
             <span class="title">{n.title}</span>
+            <span class="ref">{number(n.key, n.repo)}{#if repo}<span class="muted">{` · ${repo}`}</span>{/if}</span>
           </button>
         {/each}
       </div>
+      {#if failure}<p class="errata stale" role="status">Showing the last Roadmap read. {failure}</p>{/if}
     {:else if drawn}
       <p class="note">Nothing on this Roadmap: every open issue of its Repos is labelled <code>ready-for-agent</code>, or none is open.</p>
     {:else}
-      <p class="note">{failure ?? "Reading the Roadmap…"}</p>
+      {#if failure}
+        <p class="note errata" role="status"><strong>Could not read the Roadmap.</strong> {failure}</p>
+      {:else}
+        <p class="note">Reading the Roadmap…</p>
+      {/if}
     {/if}
   </section>
   {#if opened}
@@ -94,19 +95,20 @@
   .work {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
-    gap: 24px;
-    padding: 16px var(--gutter) var(--gutter);
+    gap: 16px;
   }
   .work.open {
     grid-template-columns: minmax(0, 1fr) 400px;
   }
   /* At full size; a Roadmap wider or taller than the field scrolls inside it. */
   .field {
+    position: relative;
     min-height: 60vh;
     max-height: calc(100vh - 32px);
     overflow: auto;
     background: var(--surface);
     border: 1px solid var(--hairline);
+    border-radius: var(--radius);
   }
   .drawn {
     position: relative;
@@ -116,101 +118,44 @@
     inset: 0;
   }
   .note {
-    padding: 16px;
+    margin: 16px;
     color: var(--ink-muted);
     max-width: 70ch;
   }
+  .errata.note {
+    color: var(--ink);
+  }
+  .stale {
+    position: sticky;
+    left: 8px;
+    bottom: 8px;
+    margin: 8px;
+  }
   .lane {
-    fill: none;
+    fill: var(--ground);
     stroke: var(--hairline);
+    rx: 8px;
   }
   /* A lane's name on its frame's top line, the line knocked out behind it. */
   .lane-name {
     fill: var(--ink-muted);
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 600;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
     dominant-baseline: central;
     paint-order: stroke;
     stroke: var(--surface);
     stroke-width: 6px;
   }
-  /* A blocker's line on the map: a route between its stops. */
+  /* A Blocker's line, as on the map. */
   .arrow {
     fill: none;
-    stroke: var(--ink);
-    stroke-width: 2;
+    stroke: var(--ink-muted);
+    stroke-width: 1.5;
   }
   marker path {
     fill: none;
-    stroke: var(--ink);
+    stroke: var(--ink-muted);
     stroke-width: 1.5;
-  }
-
-  /* The map's node: its number and Repo on the first row, its title on the second. */
-  .node {
-    position: absolute;
-    display: grid;
-    align-content: start;
-    gap: 6px;
-    padding: 8px 12px;
-    text-align: left;
-    color: var(--ink);
-    font: inherit;
-    background: var(--surface);
-    border: 1px solid var(--hairline);
-    border-radius: 0;
-    cursor: pointer;
-  }
-  .node:hover {
-    border-color: var(--rule);
-  }
-  .node:focus-visible {
-    outline: 2px solid var(--focus);
-    outline-offset: 2px;
-  }
-  .first {
-    display: flex;
-    align-items: baseline;
-    gap: 8px;
-    min-width: 0;
-  }
-  .number {
-    font-size: 22px;
-    font-weight: 700;
-    line-height: 1.1;
-    letter-spacing: -0.01em;
-    white-space: nowrap;
-  }
-  .repo {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    color: var(--ink-muted);
-    font-weight: 600;
-  }
-  .swatch {
-    display: inline-block;
-    width: 10px;
-    height: 10px;
-    margin-right: 4px;
-    background: var(--line);
-  }
-  .title {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  /* The selected node: the page's one reversed element. */
-  .node.selected {
-    color: var(--reversed-ink);
-    background: var(--reversed);
-    border-color: var(--reversed);
-  }
-  .node.selected .repo {
-    color: var(--reversed-ink);
   }
 
   /* The Roadmap, then the sheet over it. */
@@ -218,7 +163,6 @@
     .work,
     .work.open {
       grid-template-columns: minmax(0, 1fr);
-      gap: 16px;
     }
     .field {
       height: 60vh;

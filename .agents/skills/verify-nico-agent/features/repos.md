@@ -69,16 +69,16 @@ Preconditions:
   Exit `0`, `verify/second added`; `config.toml`'s `[repos."verify/second"]` has `project = "verify"`.
   `$C run --evidence "$E/15-add-again" -- repo add verify/second --path "$SECOND_CLONE" --json`:
   `already added (no-op)`, `project` kept.
-- **Remove on the page.** Run `$C page --evidence "$E/16-page-remove" --select "Project=verify" --click "button=Remove verify/second…" --expect "Its clone stays" --click "button=Remove verify/second" --gone "Remove verify/second"`.
+- **Remove on the page.** Run `$C page --evidence "$E/16-page-remove" --click "button=Repos" --click "link=verify" --click "button=Remove verify/second…" --expect "Its clone stays" --click "button=Remove verify/second" --gone "Remove verify/second"`.
   `.requests.txt` has `DELETE /api/repo/verify/second -> 200`; the snapshot's `combobox "Project"`
   holds `option "verify/fixture"` only (Project verify has no Repo left, so no option); `config.toml` has no `verify/second`.
-- **Add on the page.** Run `$C page --evidence "$E/17-page-add" --click "textbox=Repo" --type verify/second --click "textbox=Its clone" --type "$SECOND_CLONE" --click "combobox=Its Project" --type verify --click "button=Add" --expect "verify/second added"`.
+- **Add on the page.** Run `$C page --evidence "$E/17-page-add" --click "button=Repos" --click "textbox=Repo" --type verify/second --click "textbox=Its clone" --type "$SECOND_CLONE" --click "combobox=Its Project" --type verify --click "button=Add" --expect "verify/second added"`.
   `.requests.txt` has `POST /api/repo {"slug":"verify/second","path":"$SECOND_CLONE","project":"verify"} -> 200`;
   the snapshot has `option "verify" [selected]`, its Project's, holding `region "verify/second"`; `config.toml` has it again with `project = "verify"`.
 - **The routes.** `$C http --evidence "$E/18-post-no-path" POST /api/repo '{"slug":"verify/x"}'`:
   `400`, `missing required flag --path`, help the `repo add` usage. `$C http --evidence
   "$E/19-delete" DELETE /api/repo/verify%2Fsecond`: `200`, `{"repo":"verify/second removed","stays":[...]}`.
-- **Refused with work In flight.** `$C seed dispatch 7 pr`; run `$C page --evidence "$E/20-page-remove-refused" --click "button=Remove verify/fixture…" --click "button=Remove verify/fixture" --expect "has a Dispatch In flight"`.
+- **Refused with work In flight.** `$C seed dispatch 7 pr`; run `$C page --evidence "$E/20-page-remove-refused" --click "button=Repos" --click "button=Remove verify/fixture…" --click "button=Remove verify/fixture" --expect "has a Dispatch In flight"`.
   `.requests.txt` has `DELETE /api/repo/verify/fixture -> 409`; an `alert` reads `verify/fixture
   has a Dispatch In flight: verify/fixture#7` with help `Remove it once each is Closed, or run
   \`nico-agent repo rm verify/fixture\`, which keeps them In flight till they are Closed`; `config.toml` still has

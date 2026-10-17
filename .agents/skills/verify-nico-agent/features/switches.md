@@ -21,7 +21,7 @@ tick on.
 
 ## How to get to it (user POV)
 
-- Open the page, pick a Repo's Project in the `Project` select, and toggle a switch in its `Switches` section: `Faux-nico
+- Open the page, pick a Repo's Project in the rail, open `Repos`, and toggle a switch in its `Switches` section: `Faux-nico
   answers`, `Dispatch`, `Flip to ready`, `Gardening`, `Only issues assigned to me`, `Quality-scan`,
   `Restart`, `Review`, `Stack`.
 - From a script: `PATCH /api/repo/<owner/name>/switches` with a JSON object of switches.
@@ -55,7 +55,7 @@ Preconditions:
   reads `gh api rate_limit` and `ghbot api rate_limit`, and the Readiness checks' `ghbot api /installation/repositories ...`
   and `herdr agent list` (no `gh issue edit`, no `herdr worktree
   create`): nothing was dispatched. Copy it to `$E/outside.off.log`.
-- **Toggle on the page.** Run `$C page --evidence "$E/10-toggle" --click "region=Switches" --expect "3 of 9 on" --click "switch=Dispatch" --expect "Saved" --expect "4 of 9 on" --gone "Saved"`.
+- **Toggle on the page.** Run `$C page --evidence "$E/10-toggle" --click "button=Repos" --click "region=Switches" --expect "3 of 9 on" --click "switch=Dispatch" --expect "Saved" --expect "4 of 9 on" --gone "Saved"`.
   `ok` for each step; `.requests.txt` has `PATCH /api/repo/verify/fixture {"switches":{"dispatch":true}} -> 200`; the ARIA
   snapshot has `switch "Dispatch" [checked]` after `set here` and `button "Use the default Dispatch"`,
   `switch "Review"` unchecked after `set here`, and `Faux-nico answers`, `Gardening`, `Only issues

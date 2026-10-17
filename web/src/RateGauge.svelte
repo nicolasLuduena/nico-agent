@@ -94,13 +94,13 @@
     min-height: 36px;
     padding: 0 8px;
     border: 0;
-    border-radius: 2px;
+    border-radius: var(--radius-control);
     background: none;
     color: var(--ink);
     cursor: pointer;
   }
   button:hover {
-    background: var(--surface);
+    background: var(--raised);
   }
   /* The ball: a disc that fills from the bottom as the tightest budget is used. */
   .ball {
@@ -134,18 +134,20 @@
     color: var(--tone);
     font-variant-numeric: tabular-nums;
   }
+  /* Over the gauge, from the rail's foot; under it, from the phone's top bar. */
   .panel {
     position: absolute;
-    top: calc(100% + 4px);
-    right: 0;
+    bottom: calc(100% + 4px);
+    left: 0;
     z-index: 20;
     width: 320px;
     max-width: calc(100vw - 2 * var(--gutter));
     padding: 16px;
     background: var(--surface);
     color: var(--ink);
-    border-top: 1px solid var(--rule);
-    box-shadow: 0 0 0 1px var(--hairline);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-pop);
   }
   h2 {
     font-size: 14px;
@@ -203,6 +205,8 @@
       position: static;
     }
     .panel {
+      top: calc(100% + 4px);
+      bottom: auto;
       left: var(--gutter);
       right: var(--gutter);
       width: auto;

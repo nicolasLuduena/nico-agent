@@ -8,16 +8,16 @@ related_targets: []
 # Surface brief: the nico-agent page (web/)
 
 Scope: the one page `serve` embeds at `/` (spec #231). Mode: Operate.
-Audience and job: the user, at the desk in the morning with GitHub beside it, reads the shape of each Repo's night (what is Ready, in flight, Verified, merged) before acting; the phone is a check-in.
-Constraints: every number from `/api/status` or `/api/map`; readable with GitHub paused; standard web controls; Light, Dark, System.
-Memorable moment: a Repo's map read like a timetable, Blocker chains running left to right, the one yellow band saying what needs you.
-Unresolved: exact node size once real titles are laid out; the morning slot's content (spec 3).
+Audience and job: the user, at the desk in the morning with GitHub beside it, sees what work is happening and what needs them (Asking agents, failures, Verified PRs) before acting; the phone is a check-in to pick a Project, read an issue and answer.
+Constraints: every number from `/api/status`, `/api/map` or `/api/roadmap`; readable with GitHub paused or serve out of reach (cached work stays); standard web controls; Light, Dark, System on one layout and one component set; no Wiki, Libraries or MCP (removed in #429/#433); no Morning summary on the Board.
+Memorable moment: the Project's map, each card leading with its issue's title, Blocker chains running left to right, and one amber `Needs you` on exactly the issues that need you.
+Unresolved: a map of many unlinked issues stacks them in one tall column (dagre's first rank).
 
 ## Direction contract
 
-THESIS: Each Repo reads like a printed railway timetable: Blocker chains run left to right like a train's calling pattern, issue numbers set bold and tabular like departure times. It refuses the SaaS card grid, the hacker terminal, and the airy marketing page.
-OWN-WORLD: Arrivals-sheet white (night-board blue in Dark), full-ink type and hard rules, Barlow with tabular figures, square corners. Signal yellow belongs to what needs you and nothing else; every Stage has its status colour (blue live, green Verified, red Failed, teal Ready, purple Merged, …), every Repo of a Project its line colour, every Harness its own (#365). A ring is a Stage, a square a Repo, a diamond a Harness: readable without colour.
-STORY: In one glance the user sees what needs them, then each Repo's shape and how stale it is, then opens a node for its restarts, Verdict and Evidence.
-FIRST VIEWPORT: Header (wordmark, theme switch); morning slot (empty until spec 3); the needs-you band full width; Repo tabs with read times and Refresh right-aligned; the map filling the work area left, switches and Dispatch form in a 320px column right; the node panel replaces that column.
-FORM: Station Timetable, candidate 4 of 7 on the ordered list, seed key 6cb4e308.
-FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
+THESIS: A calm work map (#432). The light workspace is everyday and approachable, the dark one focused; the same layout, components and interactions in both. It refuses the timetable metaphor it replaces (#247), the KPI dashboard, the hacker terminal and the airy marketing page.
+OWN-WORLD: Neutral surfaces, hairline frames, modest rounding (8px cards, 6px controls), the platform's sans with tabular figures, one selection accent. Every state in words first: Stage words beside their icons in their hues, agent state as `Asking` / `Working` / `Idle`, `Needs you` as a soft amber badge. Repos have no colours; a Harness's hue is only a dot in a launch picker.
+STORY: In one glance the user sees which issues carry `Needs you`, then each chain's shape and how fresh the reads are, then opens a node whose inspector puts the next action first: answer, recover, or open the PR on GitHub.
+FIRST VIEWPORT: The Projects rail left (gauge and theme switch at its foot); the Project's header (name, Repos, read times, Refresh, Repos) and the Map / Roadmap tabs; the map filling the work area; the inspector at its right once a node is open; the Repo and Project controls behind `Repos`; notices in a foldable stack at the bottom right.
+FORM: the light concept's composition and the dark concept's theme treatment (design-references/board-workspace at 51b157c), with #432's corrections: no Wiki, Libraries, test counters, progress summaries, Open agent or Loop-running indicator.
+FINISH: unreviewed and undocumented is unfinished; this build ends with Evidence at 1440×900 and 390×844 in both themes, DESIGN.md and the verification recipes matching the shipped controls.

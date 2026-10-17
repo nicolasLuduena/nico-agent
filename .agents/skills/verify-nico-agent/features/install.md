@@ -55,7 +55,7 @@ Preconditions:
   nico-agent install verify/fixture once it is fixed` under it; `region "Install"` is open by itself, its line
   reading `Install Failed at <time>`, with `textbox "Install command"` reading `seq 1 25`, `Failed at <time>`,
   the output and the help.
-- **Failed.** Restore `README.md`. `$C page --evidence "$E/08-page-set-command" --click "textbox=Install command" --press Control+a --type "echo compiling; echo boom >&2; exit 4" --press Enter --wait 2`
+- **Failed.** Restore `README.md`. `$C page --evidence "$E/08-page-set-command" --click "button=Repos" --click "textbox=Install command" --press Control+a --type "echo compiling; echo boom >&2; exit 4" --press Enter --wait 2`
   (the section is still open, its last Install refused):
   `.requests.txt` has `PATCH /api/repo/verify/fixture {"install":"echo compiling; echo boom >&2; exit 4"} -> 200`.
   `install`: exit `1`, `the Install of verify/fixture failed: boom`; `last.output` is
@@ -64,7 +64,7 @@ Preconditions:
   background, and within 6 seconds run it again: exit `1`, `an Install of verify/fixture is running
   (pid N)`, help `One more runs once it ends`; `installs.json` has `runner` N and `queued: true`.
   The first ends with exit `0`, `last.output` `slow done`, `queued` still true. `$C page --evidence
-  "$E/14-page-installed" --within "region=verify/fixture" --click "region=Install" --expect "Installed <short sha>"`:
+  "$E/14-page-installed" --click "button=Repos" --within "region=verify/fixture" --click "region=Install" --expect "Installed <short sha>"`:
   the folded line read `Installed <short sha>`; no `Install` toast.
 - **Queued, then a tick.** `: > "$OUTSIDE_LOG"`; `$C run --evidence "$E/15-refresh-queued" -- refresh --json`:
   `actions` holds `could not start the Install of verify/fixture, queued again: \`herdr workspace
@@ -76,7 +76,7 @@ Preconditions:
   `[projects.verify]` with `room = 2` and `install = "make"` to `config.toml`: `repo list --json`
   exits `1` with `config.toml line <n>: projects.verify.install: unknown field \`install\`, ...`;
   restore the file.
-- **Remove.** `$C page --evidence "$E/19-page-remove" --within "region=verify/fixture" --click "region=Install" --click "textbox=Install command" --press Control+a --press Backspace --press Enter --expect Saved --wait 2`:
+- **Remove.** `$C page --evidence "$E/19-page-remove" --click "button=Repos" --within "region=verify/fixture" --click "region=Install" --click "textbox=Install command" --press Control+a --press Backspace --press Enter --expect Saved --wait 2`:
   `PATCH ... {"install":null} -> 200`; the section's line reads `None`; `config.toml` has no `install`; `status`'s `repos[0]` has no
   `install`.
 - **Proof.** `$C state > "$E/state.after.txt"` and diff: `installs.json` new, `checks.json` changed.

@@ -24,7 +24,7 @@ defaults the same way. A refusal shows its error and help, and writes nothing. W
 
 ## How to get to it (user POV)
 
-- Open the page, pick a Repo's Project in the `Project` select, open `Settings` (folded to `Implementer <launch>`), and change
+- Open the page, pick a Repo's Project in the rail, open `Repos`, then `Settings` (folded to `Implementer <launch>`), and change
   a select, or type in `Base` or `Project` and press Enter (or leave the field; Escape puts it back).
 - Press the × after `set here` (`Use the default` or `Use the Project's`) beside a setting the Repo
   sets, or `Leave <name>` under its Project.
@@ -42,7 +42,7 @@ Preconditions:
   restart dispatches nothing.
 - `E=.evidence/<issue>/settings`; `$C state > "$E/state.before.txt"`.
 
-- **On the page.** Run `$C page --evidence "$E/01-page" --click "button~Dismiss" --click "button~Dismiss" --click "button~Dismiss" --click "button~Dismiss" --click "button~Dismiss" --click "region=Room" --click "region=Switches" --click "region=Settings" --expect "Each Dispatch's Reviewer runs on another Harness"`. The snapshot has
+- **On the page.** Run `$C page --evidence "$E/01-page" --click "button=Repos" --click "button~Dismiss" --click "button~Dismiss" --click "button~Dismiss" --click "button~Dismiss" --click "button~Dismiss" --click "region=Room" --click "region=Switches" --click "region=Settings" --expect "Each Dispatch's Reviewer runs on another Harness"`. The snapshot has
   `region "Settings"` (`text: "Settings Implementer claude Reviewer: not the Implementer's"`) with `group "Implementer"` (`strong: Implementer`, `text: default`, `combobox
   "Implementer Harness"` on `claude`), `group "Reviewer"` (`text: default`, `combobox
   "Reviewer Harness"` on `option "Not the Implementer's" [selected]`, `combobox "Reviewer model" [disabled]` and
@@ -50,37 +50,37 @@ Preconditions:
   Harness than its Implementer's: codex for claude, claude for codex and opencode."`),
   `text: Base`, `text: default` and `textbox "Base"`, `combobox "Project"`; `text: default` beside
   `spinbutton "Room"`, and `text: default` beside `switch "Review"`.
-- **Reviewer on the page.** Run `$C page --evidence "$E/02-reviewer" --click "button~Dismiss" --click "button~Dismiss" --click "button~Dismiss" --click "button~Dismiss" --click "button~Dismiss" --click "region=Settings" --click "combobox=Reviewer Harness" --press ArrowDown --press Enter --expect "Saved" --expect "Reviewer set here"`.
+- **Reviewer on the page.** Run `$C page --evidence "$E/02-reviewer" --click "button=Repos" --click "button~Dismiss" --click "button~Dismiss" --click "button~Dismiss" --click "button~Dismiss" --click "button~Dismiss" --click "region=Settings" --click "combobox=Reviewer Harness" --press ArrowDown --press Enter --expect "Saved" --expect "Reviewer set here"`.
   `.requests.txt` has `PATCH /api/repo/verify/fixture {"reviewer":{"harness":"claude","model":null,"effort":null}} -> 200`
   (ArrowDown leaves `Not the Implementer's` for the first Harness);
   the snapshot has `claude [selected]` and `text: set here` with `button "Use the default Reviewer"`;
   `cp "$CONFIG_DIR/config.toml" "$E/02-reviewer.config.toml"` has `reviewer = { harness = "claude" }`.
 - **Survives a restart.** Run `$C restart > "$E/03-restart.txt"` and `$C doctor`, which passes on the
-  new pid. `$C page --evidence "$E/04-after-restart" --click "button~Dismiss" --click "button~Dismiss" --click "button~Dismiss" --click "button~Dismiss" --click "button~Dismiss" --click "region=Settings" --expect "Reviewer set here"`: `combobox
+  new pid. `$C page --evidence "$E/04-after-restart" --click "button=Repos" --click "button~Dismiss" --click "button~Dismiss" --click "button~Dismiss" --click "button~Dismiss" --click "button~Dismiss" --click "region=Settings" --expect "Reviewer set here"`: `combobox
   "Reviewer Harness"` on `claude`, `button "Use the default Reviewer"`. `$C run --evidence
   "$E/05-status" -- status --json`: `repos[0].reviewer` is
   `{"from":"repo","value":{"effort":null,"harness":"claude","model":null}}`.
-- **Use the default.** Run `$C page --evidence "$E/06-undo" --click "button~Dismiss" --click "button~Dismiss" --click "button~Dismiss" --click "button~Dismiss" --click "button~Dismiss" --click "region=Settings" --click "button=Use the default Reviewer" --expect "Reviewer default"`.
+- **Use the default.** Run `$C page --evidence "$E/06-undo" --click "button=Repos" --click "button~Dismiss" --click "button~Dismiss" --click "button~Dismiss" --click "button~Dismiss" --click "button~Dismiss" --click "region=Settings" --click "button=Use the default Reviewer" --expect "Reviewer default"`.
   `.requests.txt` has `PATCH ... {"reviewer":null} -> 200`; `Not the Implementer's [selected]`, `strong: Reviewer`
   and `text: default`; `config.toml` has no `reviewer` line.
-- **Base.** Run `$C page --evidence "$E/07-base" --click "region=Settings" --click "textbox=Base" --type dev --press Enter --expect "Saved" --expect "Base set here"`.
+- **Base.** Run `$C page --evidence "$E/07-base" --click "button=Repos" --click "region=Settings" --click "textbox=Base" --type dev --press Enter --expect "Saved" --expect "Base set here"`.
   `PATCH ... {"base":"dev"} -> 200`; `config.toml` has `base = "dev"`.
-- **Join a Project.** Run `$C page --evidence "$E/08-join" --within "region=verify/fixture" --click "region=Settings" --click "combobox=Project" --type verify --press Enter --expect "Leave verify"`.
+- **Join a Project.** Run `$C page --evidence "$E/08-join" --click "button=Repos" --within "region=verify/fixture" --click "region=Settings" --click "combobox=Project" --type verify --press Enter --expect "Leave verify"`.
   `PATCH ... {"project":"verify"} -> 200`, then `GET /api/status` and `GET /api/map/verify`; the select
   is now `option "verify" [selected]`, its Project's, with `region "verify"` (the Project's defaults)
   above `region "verify/fixture"`; `config.toml` has `project = "verify"`.
 - **The Project's defaults.** Run `$C http --evidence "$E/09-project" PATCH /api/project/verify '{"room":2,"base":"main","switches":{"review":false}}'`.
   HTTP `200`, `name` `verify`, `defaults` `{"base":"main","room":2,"switches":{"review":false}}`
   and each of the Project's settings as status shows it, `room` `{"from":"project","value":2}`;
-  `config.toml` gains `[projects.verify]` with those three. `$C page --evidence "$E/10-page-project" --within "region=verify/fixture" --click "region=Room" --click "region=Switches" --click "region=Settings" --expect "2 · 0 in flight"`:
+  `config.toml` gains `[projects.verify]` with those three. `$C page --evidence "$E/10-page-project" --click "button=Repos" --within "region=verify/fixture" --click "region=Room" --click "region=Switches" --click "region=Settings" --expect "2 · 0 in flight"`:
   `text: from Project` beside `spinbutton "Room": "2"`, `text: from Project` beside `switch "Review"`
   unchecked, `text: set here` with `button "Use the Project's Base"` (the Repo's `dev` wins over the Project's `main`).
-- **Use the Project's.** Run `$C page --evidence "$E/11-undo-to-project" --within "region=verify/fixture" --click "region=Settings" --click "button=Use the Project's Base" --expect "Base from Project"`.
+- **Use the Project's.** Run `$C page --evidence "$E/11-undo-to-project" --click "button=Repos" --within "region=verify/fixture" --click "region=Settings" --click "button=Use the Project's Base" --expect "Base from Project"`.
   `PATCH ... {"base":null} -> 200`; `text: from Project`, `textbox "Base": main`; `config.toml`'s
   Repo has no `base` line.
-- **Emptied.** Run `$C page --evidence "$E/11b-empty-base" --within "region=verify/fixture" --click "region=Settings" --click "textbox=Base" --press Control+a --press Backspace --press Enter --expect "Base from Project"`.
+- **Emptied.** Run `$C page --evidence "$E/11b-empty-base" --click "button=Repos" --within "region=verify/fixture" --click "region=Settings" --click "textbox=Base" --press Control+a --press Backspace --press Enter --expect "Base from Project"`.
   `PATCH ... {"base":null} -> 200`; the field shows the Project's again, `textbox "Base": main`.
-- **Leave it.** Run `$C page --evidence "$E/12-leave" --within "region=verify/fixture" --click "region=Settings" --click "button=Leave verify" --gone "Leave verify" --click "region=Room" --expect "3 · 0 in flight"`.
+- **Leave it.** Run `$C page --evidence "$E/12-leave" --click "button=Repos" --within "region=verify/fixture" --click "region=Settings" --click "button=Leave verify" --gone "Leave verify" --click "region=Room" --expect "3 · 0 in flight"`.
   `PATCH ... {"project":null} -> 200`; `option "verify/fixture" [selected]` again, no `option "verify"`
   (it has no Repo left), `text: default` beside `spinbutton "Room": "3"`;
   `config.toml`'s Repo has no `project` line, and `[projects.verify]` stays.
