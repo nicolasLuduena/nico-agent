@@ -13,6 +13,7 @@
   import Refused from "./Refused.svelte";
   import Save from "./Save.svelte";
   import { Saves } from "./saves.svelte";
+  import { ruleSaid } from "./launch";
   import { type Holder, picked, unset } from "./settings";
 
   let {
@@ -49,10 +50,16 @@
   const named = (value: string) => value.trim() || null;
   /** A launch in a line, kept whole where the line wraps: its Harness, then its model and Effort when set. */
   const said = (l: Launch) => [l.harness, l.model, l.effort].filter(Boolean).join("\u00a0·\u00a0");
+
+  /** Nothing sets the Reviewer: it runs on another Harness than each Dispatch's Implementer. */
+  const ruled = $derived(shown.reviewer.from === "default");
+  /** The rule is offered where removing this layer's Reviewer reaches it: not under a Project that sets one. */
+  const reachable = $derived(holder.own === "project" || !holder.under?.defaults?.reviewer);
 </script>
 
 {#snippet launch(key: "implementer" | "reviewer", title: string)}
   {@const setting = shown[key]}
+  {@const rule = key === "reviewer" && ruled}
   <div class="field" role="group" aria-labelledby="{id}-{key}">
     <div class="field-head">
       <strong id="{id}-{key}">{title}</strong>
@@ -62,16 +69,21 @@
     </div>
     <LaunchPicker
       {harnesses}
-      launch={setting.value}
+      launch={rule ? { harness: "", model: null, effort: null } : setting.value}
       named={title}
+      rule={key === "reviewer" && reachable ? "Not the Implementer's" : undefined}
       invalid={!!saves.invalid(key)}
       busy={saves.busy(key)}
-      pick={(field, value, back) => save(key, { [key]: picked(setting.value, field, value) }, back)}
+      pick={(field, value, back) =>
+        field === "harness" && value === "" ? save(key, unset([key]), back) : save(key, { [key]: picked(setting.value, field, value) }, back)}
     />
+    {#if rule}
+      <p class="rule">Each Dispatch's Reviewer runs on another Harness than its Implementer's: {ruleSaid(Object.keys(harnesses))}.</p>
+    {/if}
   </div>
 {/snippet}
 
-<Fold panel={holder.panel} title="Settings" summary="Implementer {said(shown.implementer.value)}" alarm={saves.refused !== null}>
+<Fold panel={holder.panel} title="Settings" summary={`Implementer ${said(shown.implementer.value)}\nReviewer${ruled ? ": not the Implementer's" : ` ${said(shown.reviewer.value)}`}`} alarm={saves.refused !== null}>
   {@render launch("implementer", "Implementer")}
   {@render launch("reviewer", "Reviewer")}
   <div class="field">
@@ -140,6 +152,9 @@
     gap: 8px;
     padding-bottom: 8px;
     border-bottom: 1px solid var(--hairline);
+  }
+  .rule {
+    color: var(--ink-muted);
   }
   .project {
     display: flex;

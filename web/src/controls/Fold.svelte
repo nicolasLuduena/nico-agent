@@ -66,6 +66,7 @@
     margin-left: auto;
     color: var(--ink-muted);
     text-align: right;
+    white-space: pre-line;
     overflow-wrap: anywhere;
   }
   .inside {

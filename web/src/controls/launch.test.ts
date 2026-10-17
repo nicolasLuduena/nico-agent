@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Dispatch, Launch, Repo } from "../status";
-import { choices, inFlight, startingLaunch } from "./launch";
+import { choices, inFlight, otherHarness, ruleSaid, startingLaunch } from "./launch";
 
 const repo: Repo = {
   slug: "acme/api",
@@ -79,5 +79,17 @@ describe("the Repo's Dispatches in flight", () => {
 
     expect(inFlight(repo, dispatches)).toBe(2);
     expect(inFlight(repo, [])).toBe(0);
+  });
+});
+
+describe("the default Reviewer's rule", () => {
+  it("reviews on the first other Harness by name, as serve picks it", () => {
+    expect(otherHarness(["opencode", "codex", "claude"], "claude")).toBe("codex");
+    expect(otherHarness(["opencode", "codex", "claude"], "opencode")).toBe("claude");
+    expect(otherHarness(["claude"], "claude")).toBe("claude");
+  });
+
+  it("says what it picks for each Implementer", () => {
+    expect(ruleSaid(["claude", "codex", "opencode"])).toBe("codex for claude, claude for codex and opencode");
   });
 });

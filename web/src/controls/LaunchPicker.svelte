@@ -13,6 +13,7 @@
     harnesses,
     launch,
     named = "",
+    rule,
     invalid = false,
     busy = false,
     pick,
@@ -21,6 +22,8 @@
     launch: Launch;
     /** Whose launch it is, which names each field: `Implementer model`; none, `Model`. */
     named?: string;
+    /** The label of a first Harness option that leaves the Harness to a rule; chosen, `launch.harness` is "". */
+    rule?: string;
     invalid?: boolean;
     busy?: boolean;
     pick: (field: keyof Launch, value: string | null, back: () => void) => unknown;
@@ -37,7 +40,9 @@
   {@const value = launch[field]}
   <label class="field">
     <span class="field-name">{LABEL[field]}</span>
-    {#if listed}
+    {#if launch.harness === ""}
+      <select aria-label={called(field)} disabled><option>default</option></select>
+    {:else if listed}
       <select
         aria-label={called(field)}
         value={value ?? ""}
@@ -80,7 +85,7 @@
     <label class="field">
       <span class="field-name">{LABEL.harness}</span>
       <span class="marked" style:--harness={harnessHue(launch.harness)}>
-        <span class="harness" aria-hidden="true"></span>
+        <span class="harness" class:ruled={launch.harness === ""} aria-hidden="true"></span>
         <select
           aria-label={called("harness")}
           value={launch.harness}
@@ -91,6 +96,7 @@
             pick("harness", select.value, () => (select.value = launch.harness));
           }}
         >
+          {#if rule}<option value="">{rule}</option>{/if}
           {#each Object.keys(harnesses) as name (name)}
             <option value={name}>{name}</option>
           {/each}
@@ -137,5 +143,10 @@
   }
   .marked select {
     padding-left: 28px;
+  }
+  /* No one Harness: the diamond hollow. */
+  .harness.ruled {
+    background: none;
+    box-shadow: inset 0 0 0 1.5px var(--ink-muted);
   }
 </style>

@@ -7,7 +7,8 @@
   import Fold from "./Fold.svelte";
   import Press from "./Press.svelte";
   import LaunchPicker from "./LaunchPicker.svelte";
-  import { startingLaunch } from "./launch";
+  import { harnessHue } from "../hues";
+  import { otherHarness, startingLaunch } from "./launch";
   import Refused from "./Refused.svelte";
   import { send, type Sent } from "./send";
 
@@ -24,6 +25,11 @@
   const launch = $derived(startingLaunch(repo, status.dispatches, pick.harness));
   const model = $derived(pick.model !== undefined ? pick.model : launch.model);
   const effort = $derived(pick.effort !== undefined ? pick.effort : launch.effort);
+  /** Whether the form starts on a launch used before in the Repo, rather than its Implementer's. */
+  const used = $derived(status.dispatches.some((d) => d.repo === repo.slug && d.implementer.harness in repo.harnesses));
+  /** Who reviews it: the Reviewer set, or else another Harness than the one picked. */
+  const ruled = $derived(repo.reviewer.from === "default");
+  const reviewer = $derived(ruled ? otherHarness(Object.keys(repo.harnesses), launch.harness) : repo.reviewer.value.harness);
 
   async function submit(event: SubmitEvent) {
     event.preventDefault();
@@ -63,6 +69,20 @@
       launch={{ harness: launch.harness, model, effort }}
       pick={(field, value) => (pick = field === "harness" ? { issue: pick.issue, harness: value ?? launch.harness } : { ...pick, [field]: value })}
     />
+    <div class="said">
+      <p>{used ? "Starts on the last launch used in this Repo" : "Starts on the Implementer's launch in Settings"}</p>
+      <p>
+        {#if repo.switches.review?.value === false}
+          Not reviewed: review is off for this Repo
+        {:else}
+          Reviewed on <span class="harness" style:--harness={harnessHue(reviewer)} aria-hidden="true"></span>{reviewer}, {!ruled
+            ? "as Settings sets it"
+            : reviewer === launch.harness
+              ? "the only Harness"
+              : "not the Implementer's Harness"}
+        {/if}
+      </p>
+    </div>
     <button type="submit" class="button" disabled={!issue || running} aria-busy={running}>
       {running ? "Dispatching…" : "Dispatch"}
     </button>
@@ -82,5 +102,10 @@
     display: grid;
     grid-template-columns: minmax(0, 1fr);
     gap: 12px;
+  }
+  .said {
+    display: grid;
+    gap: 2px;
+    color: var(--ink-muted);
   }
 </style>
