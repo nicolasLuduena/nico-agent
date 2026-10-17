@@ -64,7 +64,14 @@ fn ready_github_issues_are_listed_oldest_first_with_their_kind() {
     );
     assert_eq!(status["repos"][0]["slug"], "acme/api");
     assert_eq!(status["repos"][0]["read_at"], "2026-09-30T12:00:00Z");
-    assert_eq!(t.world.calls(), ["github viewer", "github issues acme/api"]);
+    assert_eq!(
+        t.world.calls(),
+        [
+            "github viewer",
+            "github issues acme/api",
+            "github open issues acme/api"
+        ]
+    );
     let cache: Value = serde_json::from_str(
         &std::fs::read_to_string(t.config_dir.join("issues/acme/api.json")).unwrap(),
     )
@@ -433,6 +440,8 @@ fn linear_issues_the_selector_claims_are_ready_or_stackable_beside_github_ones()
             "linear attachments BLE-1",
             "github pr acme/api#21",
             "linear attachments BLE-31",
+            "github open issues acme/api",
+            "linear open issues BLE",
         ]
     );
 }

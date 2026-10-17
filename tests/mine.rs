@@ -220,7 +220,9 @@ fn a_hand_dispatch_of_an_unassigned_issue_in_a_mine_repo_is_refused_with_how_to_
             "github viewer",
             "github issues acme/api",
             "linear viewer",
-            "linear issues BLE"
+            "linear issues BLE",
+            "github open issues acme/api",
+            "linear open issues BLE",
         ]
     );
 }

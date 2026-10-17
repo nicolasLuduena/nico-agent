@@ -22,6 +22,7 @@ use crate::rate_limit::{self, RateLimits};
 use crate::refresh;
 use crate::repo;
 use crate::review;
+use crate::roadmap;
 use crate::stage;
 use crate::state;
 use crate::status;
@@ -45,6 +46,10 @@ const ROUTES: &[(&str, &str)] = &[
     (
         "GET /api/map/<project>",
         "the issues of the Project's Repos and how they block and stack on each other",
+    ),
+    (
+        "GET /api/roadmap/<project>",
+        "every open issue of the Project's Repos not labelled ready-for-agent, in lanes by label, and how they block each other",
     ),
     (
         "GET /api/node/<issue>",
@@ -141,6 +146,15 @@ pub fn answer(ctx: &Context, port: u16, request: &HttpRequest) -> Answer {
             let help = "Ask for a Project /api/status lists";
             found(
                 map::map(ctx, &name),
+                format!("{name} is not a Project"),
+                help,
+            )
+        }
+        ("GET", path) if let Some(name) = path.strip_prefix("/api/roadmap/") => {
+            let name = unescaped(name);
+            let help = "Ask for a Project /api/status lists";
+            found(
+                roadmap::roadmap(ctx, &name),
                 format!("{name} is not a Project"),
                 help,
             )

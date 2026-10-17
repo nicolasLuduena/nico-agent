@@ -6,9 +6,10 @@ use serde_json::{Value, json};
 const FLAGS: [&str; 6] = ["--harness", "claude", "--model", "opus", "--effort", "high"];
 
 /// The calls of a whole dispatch of `acme/api#7` with FLAGS.
-const ALL: [&str; 10] = [
+const ALL: [&str; 11] = [
     "github viewer",
     "github issues acme/api",
+    "github open issues acme/api",
     "git -C /src/api default-branch",
     "github assign acme/api#7 @me",
     "git -C /src/api fetch origin",
@@ -272,19 +273,19 @@ fn a_failed_step_leaves_the_dispatch_failed_there_and_the_same_command_continues
             "fetch",
             |w| fail(w, "git -C /src/api fetch"),
             |w| w.clear_failures(),
-            ALL[4..].to_vec(),
+            ALL[5..].to_vec(),
         ),
         (
             "worktree",
             |w| fail(w, "herdr worktree create"),
             |w| w.clear_failures(),
-            ALL[5..].to_vec(),
+            ALL[6..].to_vec(),
         ),
         (
             "tab",
             |w| fail(w, "herdr tab rename"),
             |w| w.clear_failures(),
-            ALL[6..].to_vec(),
+            ALL[7..].to_vec(),
         ),
         // Past its tab, whether its agent is still in herdr is asked first.
         (
@@ -297,13 +298,13 @@ fn a_failed_step_leaves_the_dispatch_failed_there_and_the_same_command_continues
             "agent ready",
             |w| *w.blocked_screen.borrow_mut() = Some("Do you want to enable telemetry?".into()),
             |w| *w.blocked_screen.borrow_mut() = None,
-            [&LIST[..], &continued_ready, &ALL[8..]].concat(),
+            [&LIST[..], &continued_ready, &ALL[9..]].concat(),
         ),
         (
             "prompt",
             |w| w.stalled_prompts.set(3),
             |_| {},
-            [&LIST[..], &ALL[8..]].concat(),
+            [&LIST[..], &ALL[9..]].concat(),
         ),
     ];
     for (step, break_it, heal, continued) in cases {
@@ -401,7 +402,7 @@ fn claudes_trust_question_for_the_new_worktree_is_answered_before_the_prompt() {
 
     assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
     assert_eq!(
-        t.world.calls()[7..],
+        t.world.calls()[8..],
         [
             "herdr agent start impl-api-7 --kind claude --pane w1:p1 -- --model opus --effort high",
             "herdr agent read impl-api-7 --source visible",
@@ -544,7 +545,7 @@ fn opencode_runs_in_the_pane_with_its_model_and_effort_and_is_named_once_herdr_s
     let config =
         format!(r#"{{"agents":{{"build":{{"model":"{model}#high"}}}},"model":"{model}#high"}}"#);
     assert_eq!(
-        t.world.calls()[7..],
+        t.world.calls()[8..],
         [
             format!("opencode variant ~/.local/state/opencode/model.json {model} high"),
             format!("herdr pane run w1:p1 env OPENCODE_CONFIG_CONTENT='{config}' opencode2 --standalone"),
@@ -586,6 +587,8 @@ fn a_linear_issue_is_dispatched_into_the_repo_that_claims_it_on_linears_branch()
             "github issues acme/api",
             "linear viewer",
             "linear issues BLE",
+            "github open issues acme/api",
+            "linear open issues BLE",
             "git -C /src/api default-branch",
             "linear assign BLE-1",
             "git -C /src/api fetch origin",
@@ -667,7 +670,7 @@ fn a_dispatch_another_live_process_runs_is_left_to_it_until_that_process_is_gone
         after.json()["dispatched"],
         "acme/api#7 (continued from tab)"
     );
-    assert_eq!(t.world.calls(), ALL[6..]);
+    assert_eq!(t.world.calls(), ALL[7..]);
 }
 
 /// `with_issue`, with acme/api#7 dispatched by process 5000, which got as far
@@ -698,7 +701,7 @@ fn a_dispatch_whose_process_died_mid_steps_is_taken_up_by_the_tick_where_it_stop
     assert_eq!(after, ["acme/api#7 (continued from tab)"]);
     assert_eq!(
         herdr_calls(&t),
-        ["herdr agent list", ALL[6], ALL[7], ALL[9]]
+        ["herdr agent list", ALL[7], ALL[8], ALL[10]]
     );
     let shown = &status(&t)["dispatches"][0];
     assert_eq!(shown["completed"].as_array().unwrap().len(), 7);
@@ -717,7 +720,7 @@ fn after_a_reboot_a_lease_whose_pid_is_alive_again_is_another_process_and_dispat
         after.json()["dispatched"],
         "acme/api#7 (continued from tab)"
     );
-    assert_eq!(t.world.calls(), ALL[6..]);
+    assert_eq!(t.world.calls(), ALL[7..]);
 }
 
 /// `with_issue`, with acme/api#7 dispatched by process 5000, which started
@@ -786,7 +789,7 @@ fn dispatch_by_hand_starts_from_a_fresh_tab_when_herdr_says_the_agent_is_gone_an
     );
     assert_eq!(
         unknown.world.calls(),
-        [&["herdr agent list"][..], &ALL[8..]].concat()
+        [&["herdr agent list"][..], &ALL[9..]].concat()
     );
 }
 
@@ -896,7 +899,7 @@ fn an_implementer_of_a_repo_linking_a_built_library_version_starts_with_its_wiki
         launched(&t),
         [
             r#"herdr agent start impl-api-7 --kind claude --pane w1:p1 -- --model opus --effort high --mcp-config {"mcpServers":{"wiki":{"command":"nico-agent","args":["mcp","--wiki","acme/kit@v1"]}}} --allowedTools mcp__wiki__*"#.to_string(),
-            format!("{} Ask the wiki MCP about {KIT} before reading their source.", ALL[9]),
+            format!("{} Ask the wiki MCP about {KIT} before reading their source.", ALL[10]),
         ]
     );
 }
@@ -906,5 +909,5 @@ fn an_implementer_of_a_repo_linking_only_unbuilt_library_versions_gets_neither_t
  {
     let t = with_repo_config(&format!("libraries = [{KIT_TOML}]\n"));
 
-    assert_eq!(launched(&t), [ALL[7], ALL[9]]);
+    assert_eq!(launched(&t), [ALL[8], ALL[10]]);
 }

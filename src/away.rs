@@ -350,7 +350,9 @@ pub fn start_on_worktree(
     let made = world.herdr_worktree_create(&repo.path, &branch, &base, &run.launch.agent)?;
     run.workspace = Some(made.workspace);
     run.worktree = Some(made.path.clone());
-    start(ctx, config, run, made.tab, &made.path, &repo.path, text, wikis)
+    start(
+        ctx, config, run, made.tab, &made.path, &repo.path, text, wikis,
+    )
 }
 
 /// Start the Run's agent in `tab`, the one its new workspace opened with,

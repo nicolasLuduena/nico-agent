@@ -21,7 +21,7 @@ const ENDPOINT: &str = "https://api.linear.app/graphql";
 const ISSUES_QUERY: &str = "query($filter: IssueFilter!, $cursor: String) {
   issues(first: 100, after: $cursor, filter: $filter) {
     nodes {
-      id identifier title url branchName createdAt team { id key name } project { id name }
+      id identifier title description url branchName createdAt team { id key name } project { id name }
       state { type } assignee { id displayName }
       labels(first: 100) { nodes { name } pageInfo { hasNextPage endCursor } }
       inverseRelations(first: 100) { nodes { type issue { identifier title state { type } completedAt canceledAt } } pageInfo { hasNextPage endCursor } }
@@ -37,6 +37,7 @@ struct IssueNode {
     id: String,
     identifier: String,
     title: String,
+    description: Option<String>,
     url: String,
     branch_name: String,
     created_at: String,
@@ -94,14 +95,19 @@ pub(super) fn viewer(world: &RealWorld) -> WorldResult<String> {
         .ok_or_else(|| invalid("Linear"))
 }
 
-/// The team's `ready-for-agent` issues; `team` is its id, key or name.
-pub(super) fn issues(world: &RealWorld, team: &str) -> WorldResult<Vec<LinearIssue>> {
+/// The team's `ready-for-agent` issues, or with `ready` off every one neither
+/// completed nor canceled; `team` is its id, key or name.
+pub(super) fn issues(world: &RealWorld, team: &str, ready: bool) -> WorldResult<Vec<LinearIssue>> {
     let team_filter = if is_uuid(team) {
         json!({ "id": { "eq": team } })
     } else {
         json!({ "or": [{ "key": { "eq": team } }, { "name": { "eq": team } }] })
     };
-    let filter = json!({ "team": team_filter, "labels": { "name": { "eq": READY_LABEL } } });
+    let filter = if ready {
+        json!({ "team": team_filter, "labels": { "name": { "eq": READY_LABEL } } })
+    } else {
+        json!({ "team": team_filter, "state": { "type": { "nin": ["completed", "canceled"] } } })
+    };
     let mut issues = vec![];
     let mut cursor: Option<String> = None;
     loop {
@@ -178,6 +184,7 @@ fn to_issue(world: &RealWorld, node: IssueNode) -> WorldResult<LinearIssue> {
             })
             .collect(),
         has_sub_issues: !node.children.nodes.is_empty(),
+        description: node.description.unwrap_or_default(),
     })
 }
 

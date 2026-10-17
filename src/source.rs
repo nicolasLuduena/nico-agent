@@ -27,6 +27,10 @@ pub struct Read {
     /// The user on each Source read: a GitHub login, a Linear user id.
     pub user: Vec<String>,
     pub issues: Vec<Issue>,
+    /// Every open issue of its Sources, whatever its labels: what the Roadmap
+    /// shows. None in a cache read before it was asked.
+    #[serde(default)]
+    pub open: Vec<Issue>,
     /// The Repo's slug while its `mine` Switch is on, as [`settle`] reads the
     /// config: then an issue assigned to no one is not Ready.
     #[serde(skip)]
@@ -62,6 +66,9 @@ pub struct Issue {
     pub assignee_names: Vec<String>,
     pub has_sub_issues: bool,
     pub blockers: Vec<Blocker>,
+    /// Its description, in Markdown.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub body: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -299,10 +306,18 @@ fn read(world: &dyn World, slug: &str, repo: &Repo) -> WorldResult<Read> {
             blocker.prs = asked[&blocker.key].clone();
         }
     }
+    let mut open: Vec<Issue> = (world.github_open_issues(slug)?.iter())
+        .map(|i| from_github(slug, i))
+        .collect();
+    if let Some(selector) = &repo.linear {
+        let team = world.linear_open_issues(&selector.team)?;
+        open.extend(team.iter().filter(|i| claims(selector, i)).map(from_linear));
+    }
     Ok(Read {
         read_at,
         user,
         issues,
+        open,
         mine: None,
     })
 }
@@ -561,6 +576,7 @@ fn from_github(slug: &str, issue: &GitHubIssue) -> Issue {
         assignees: issue.assignees.clone(),
         assignee_names: vec![],
         has_sub_issues: issue.has_sub_issues,
+        body: issue.body.clone(),
         blockers: issue
             .blockers
             .iter()
@@ -610,6 +626,7 @@ fn from_linear(issue: &LinearIssue) -> Issue {
         assignees: issue.assignee.iter().cloned().collect(),
         assignee_names: issue.assignee_name.iter().cloned().collect(),
         has_sub_issues: issue.has_sub_issues,
+        body: issue.description.clone(),
         blockers: issue
             .blockers
             .iter()
