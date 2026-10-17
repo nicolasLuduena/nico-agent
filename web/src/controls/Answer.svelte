@@ -120,7 +120,7 @@
     border-radius: var(--radius-control);
     background: var(--ground);
     color: var(--ink);
-    font: 400 13px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;
+    font: 400 13px/1.4 var(--mono);
     white-space: pre;
     tab-size: 8;
   }

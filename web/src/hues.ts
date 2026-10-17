@@ -1,5 +1,6 @@
 // DESIGN.md's working hues, each a token in app.css with its dark twin: one
-// per Stage (its mark and its word) and per Harness (a dot in a launch picker).
+// per Stage (its mark and its word) and per Harness (a dot in a launch picker
+// and before the inspector's review line).
 
 const STAGES: Record<string, string> = {
   Waiting: "waiting",

@@ -57,7 +57,7 @@
           {@const repo = repoName(n.repo, project.repos)}
           <button
             type="button"
-            class="node"
+            class="node-card"
             class:selected={open === n.key}
             style:left="{n.x}px"
             style:top="{n.y}px"
@@ -73,7 +73,7 @@
           </button>
         {/each}
       </div>
-      {#if failure}<p class="stale" role="status">Showing the last Roadmap read. {failure}</p>{/if}
+      {#if failure}<p class="errata stale" role="status">Showing the last Roadmap read. {failure}</p>{/if}
     {:else if drawn}
       <p class="note">Nothing on this Roadmap: every open issue of its Repos is labelled <code>ready-for-agent</code>, or none is open.</p>
     {:else}
@@ -130,11 +130,6 @@
     left: 8px;
     bottom: 8px;
     margin: 8px;
-    padding: 6px 10px;
-    border: 1px solid var(--hairline);
-    border-left: 4px solid var(--failed);
-    border-radius: var(--radius-control);
-    background: var(--surface);
   }
   .lane {
     fill: var(--ground);
@@ -161,57 +156,6 @@
     fill: none;
     stroke: var(--ink-muted);
     stroke-width: 1.5;
-  }
-
-  /* The map's card: its title first, then its number and Repo. */
-  .node {
-    position: absolute;
-    display: grid;
-    align-content: start;
-    row-gap: 4px;
-    padding: 10px 12px;
-    text-align: left;
-    color: var(--ink);
-    font: inherit;
-    font-size: 13px;
-    line-height: 18px;
-    background: var(--surface);
-    border: 1px solid var(--hairline);
-    border-radius: var(--radius);
-    box-shadow: var(--shadow);
-    cursor: pointer;
-  }
-  .node:hover {
-    border-color: var(--rule);
-  }
-  .node:focus-visible {
-    outline: 2px solid var(--focus);
-    outline-offset: 2px;
-  }
-  .title {
-    display: -webkit-box;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
-    line-clamp: 2;
-    overflow: hidden;
-    font-size: 15px;
-    font-weight: 600;
-    line-height: 20px;
-    overflow-wrap: anywhere;
-  }
-  .ref {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .muted {
-    color: var(--ink-muted);
-  }
-  /* The open node: the one selection accent, its frame doubled. */
-  .node.selected {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 1px var(--accent), var(--shadow);
   }
 
   /* The Roadmap, then the sheet over it. */

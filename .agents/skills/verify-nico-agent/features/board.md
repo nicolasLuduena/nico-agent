@@ -21,7 +21,7 @@ behind `Repos`, secondary to the work. Changing a view or opening Repos asks the
 - `board-verified` a Verified node's inspector has `link "Open PR <n>"` as the primary button and `Review and merge it on GitHub.`, then the Verdict and `link "Open Evidence"`.
 - `board-failed` a Failed node's inspector has `heading "Failure"` before the PR, and its `Restarts` open.
 - `board-asking` an Asking node's inspector opens on `region "Asking"`, its keys and `Answer in words` (answer.md).
-- `board-repos` `button "Repos"` (`[expanded]`) shows `region "Repos"` in the inspector's place: the Project's defaults, each Repo's panel and `region "Add a Repo"`; opening a node puts the inspector there, closing it brings Repos back; on Roadmap there is no `Repos`.
+- `board-repos` `button "Repos"` (`[expanded]`) shows `region "Repos"` in the inspector's place: the Project's defaults, each Repo's panel and `region "Add a Repo"`; opening a node puts the inspector there, closing it brings Repos back; on the Roadmap `Repos` opens the Map with the column.
 - `board-notices` the notices stack scrolls inside at half the window; `button "Hide notices"` folds it to `Show <n> notices` for the page load.
 - `board-stale` while serve or a map read fails, the cached map stays with `Showing the last map read. <why>` over it; with nothing cached, `Could not read the map.` and why.
 - `board-empty` with no Repo, `region "No Repo yet"` says how to add one and holds `region "Add a Repo"`.
@@ -63,12 +63,16 @@ Preconditions:
   `button "Repos" [expanded]`, `region "Repos"` with `region "verify"`, `region "verify/fixture"`, `region "verify/second"`
   and `region "Add a Repo"`; `.requests.txt` has no write and no call that reads the Source.
 - **Roadmap.** Run `$C page --evidence "$E/08-roadmap-dark-1440" --width 1440 --scheme dark --click "button=Hide notices" --click "link=Roadmap" --click "button~#30 fixture" --expect "Description"`:
-  `.view.txt` `at /#verify/roadmap`, `region "Verify: needs triage"` with Labels, Assigned, Description, Blocked by and Blocks; no `button "Repos"`.
+  `.view.txt` `at /#verify/roadmap`, `region "Verify: needs triage"` with Labels, Assigned, Description, Blocked by and Blocks.
 - **Gauge.** Run `$C page --evidence "$E/09-gauge-light-1440" --width 1440 --click "button=Hide notices" --click "button~GitHub rate limits" --expect "Bot · ghbot"`
   and `--width 390 --scheme dark` (`10-gauge-dark-390`): the panel over the rail's foot, between the gutters on a phone.
 - **Phone.** Run `$C page --evidence "$E/05-phone-light-390" --width 390 --click "button=Hide notices"` and
   `$C page --evidence "$E/06-phone-sheet-dark-390" --width 390 --scheme dark --click "button=Hide notices" --click "button~#7 fixture, Verify: seeded" --expect "Answer in words"`:
   `combobox "Project"`, no `navigation "Projects"`; the sheet with `button "Close"` and the keys, each 44px; `.view.txt` `page 390px wide in a 390px window`.
+- **Switch Projects.** `$C http --evidence "$E/15-leave" PATCH /api/repo/verify/second '{"project":null}'`, then
+  `$C page --evidence "$E/16-switch-back" --width 1440 --click "button=Hide notices" --click "link=verify/second" --expect "Verify: waits on fixture #1" --history back --expect "seeded Dispatch 10"`:
+  `navigation "Projects"` has `link "verify"` and `link "verify/second"`; `.view.txt` `at /` after back, `link "verify" [current=page]`.
+  `--width 390 --select "Project=verify/second"` (`17-switch-phone`) does the same from the select.
 - **Zoom.** Run `$C page --evidence "$E/12-zoom" --width 1440 --click "button=Hide notices" --click "button=Zoom in" --click "button=Zoom in" --click "button=Fit"`: the screenshot fitted again.
 - **Unreachable.** `$C tunnel start`, then `$C page --tunnel --evidence "$E/13-unreachable" --width 1440 --click "button=Hide notices" --mode 502 --expect "Lost nico-agent serve"`:
   the errata banner `Lost nico-agent serve; reconnecting. Showing what was last read.` over the header, the map and its nodes still
@@ -84,4 +88,4 @@ Preconditions:
 - A node's name starts with its number, and in a Project of two Repos its Repo: click `button~#10 fixture, Verify`, as
   `button~#7, ` would match `verify/outside#7, …` too.
 - With herdr stubbed no agent is seen working; the Asking comes from the tick's record, so the agent row reads `Asking`.
-- `seed issues chain` lays out many unlinked nodes in the first column, so the field is taller than the window at 1440×900.
+- `seed issues chain` lays out many unlinked nodes in the first column: the field fits them at 60% and pans the rest inside, the page itself not scrolling.

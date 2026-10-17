@@ -61,7 +61,6 @@ export interface Box extends Point {
 /** A lane framing its nodes, its name on the frame's top line. */
 export type Lane = Box & { name: string };
 
-/** What its agent is doing: Asking, working, idle, or no agent. */
 export type Agent = "asking" | "working" | "idle" | null;
 
 /**
@@ -72,7 +71,7 @@ export type Agent = "asking" | "working" | "idle" | null;
  */
 export type Placed = MapNode & Point & { height: number; line: string | null; agent: Agent; faded: boolean; needs: boolean };
 
-/** The Agent state: Asking, working, idle, or no agent. */
+/** What its agent is doing: Asking, working, idle, or no agent. */
 export function agentOf(n: MapNode): Agent {
   const a = n.agent_state;
   // A tick's record of the Asking says it while herdr cannot.
@@ -94,7 +93,7 @@ function line(n: MapNode) {
   return null;
 }
 /** Whether it needs you: an Implementer Asking, its faux-nico blocked, a Failed Dispatch, a review given up on or stopped, a Verified PR. */
-export const needsYou = (n: MapNode) =>
+export const needs = (n: MapNode) =>
   n.asking !== null ||
   !!n.faux_nico?.blocked_since ||
   n.agent_state?.implementer === "blocked" ||
@@ -142,7 +141,7 @@ export function layout(map: MapData): { width: number; height: number; nodes: Pl
         agent: agentOf(n),
         // serve sends a merged issue for 7 days after its merge, unless the map hides them.
         faded: n.stage === "Merged",
-        needs: needsYou(n),
+        needs: needs(n),
       };
     }),
     edges: map.edges.map((e) => ({ ...e, points: g.edge(...ends(e)).points ?? [] })),

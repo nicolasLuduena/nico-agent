@@ -4,7 +4,7 @@ One component system in Light, Dark and System: neutral surfaces, hairline frame
 accent (the open node, the current Project and view, links, focus, the primary button), and a hue
 per Stage on its icon and its word, always beside the word. Needs you is a soft amber badge that says
 `Needs you`, and the amber edge of the notices; nothing else is amber-yellow. A Harness has a hue only
-as a dot in each launch picker's Harness select. Repos have no colours: a node names its Repo in words.
+as a dot in each launch picker's Harness select and before the inspector's review line that names its Reviewer's. Repos have no colours: a node names its Repo in words.
 Every text pair meets WCAG AA in both themes, and no state is told by colour alone.
 
 ## Sub-features

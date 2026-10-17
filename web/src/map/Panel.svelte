@@ -16,7 +16,7 @@
   import { harnessHue, stageHue } from "../hues";
   import * as review from "../review";
   import { reviewerKeptFailing } from "../failure";
-  import { agentOf, needsYou } from "./layout";
+  import { agentOf, needs } from "./layout";
   import { numbered, type Failure, type Project, type Restart, type Review, type Stage } from "../status";
   import { clock } from "../time";
   import Mark from "./Mark.svelte";
@@ -121,7 +121,7 @@
           <strong>{node.stage ?? "Blocker"}</strong>
         </span>
         {#if agent}<span class="agent" class:asking={agent === "asking"}>Agent {agent}</span>{/if}
-        {#if needsYou(node)}<span class="needs">Needs you</span>{/if}
+        {#if needs(node)}<span class="needs">Needs you</span>{/if}
       </p>
     {/if}
   </header>

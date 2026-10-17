@@ -19,9 +19,10 @@
 
   // The Repos column, its controls secondary to the work: closed until asked for, on each page load.
   let reposOpen = $state(false);
+  /** On the Roadmap, which is read-only, Repos opens beside the map. */
   function toggleRepos() {
-    reposOpen = !reposOpen;
-    if (reposOpen) selection.issue = null;
+    reposOpen = !reposOpen || selection.view !== "map";
+    if (reposOpen) Object.assign(selection, { view: "map", issue: null });
   }
 
   // The hash selects as a link opens the page, and as back and forward move through it; the selection writes it back.
@@ -133,9 +134,7 @@
           </div>
           <div class="actions">
             <Refresh />
-            {#if selection.view === "map"}
-              <button type="button" class="quiet" aria-expanded={reposOpen} aria-controls="repos" onclick={toggleRepos}>Repos</button>
-            {/if}
+            <button type="button" class="quiet" aria-expanded={reposOpen && selection.view === "map"} aria-controls="repos" onclick={toggleRepos}>Repos</button>
           </div>
         </header>
         <nav class="views" aria-label="View">
@@ -174,7 +173,7 @@
     z-index: 5;
     display: flex;
     flex-direction: column;
-    gap: 20px;
+    gap: 16px;
     height: 100vh;
     padding: 16px 12px;
     background: var(--surface);
@@ -183,7 +182,7 @@
   .brand {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
     padding: 0 8px;
     font-size: 16px;
     font-weight: 600;
@@ -218,7 +217,7 @@
   .projects a {
     display: grid;
     gap: 0 8px;
-    padding: 7px 8px;
+    padding: 8px;
     border-radius: var(--radius-control);
     color: var(--ink);
     text-decoration: none;

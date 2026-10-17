@@ -73,10 +73,11 @@
     );
   });
 
-  /** The scale that fits the map to the field's width, at most full size. */
-  const scale = $derived(drawn ? Math.min(1, (width - 2 * PAD) / drawn.width) : 1);
-  /** On desktop the field grows to the fitted map's height; on a phone it stays 60vh. */
-  const tall = $derived(drawn && width ? `${drawn.height * scale + 2 * PAD}px` : null);
+  /**
+   * The scale that fits the map to the field, at most full size; past 60% it
+   * fits the width only, and the rest pans inside the field.
+   */
+  const scale = $derived(drawn ? Math.min(1, (width - 2 * PAD) / drawn.width, Math.max(0.6, (height - 2 * PAD) / drawn.height)) : 1);
 
   const home = () => ({ x: PAD, y: PAD, k: scale });
 
@@ -232,7 +233,6 @@
 <section
   class="field"
   aria-label="Map of {project.name}"
-  style:--drawn={tall}
   bind:this={field}
   bind:clientWidth={width}
   bind:clientHeight={height}
@@ -279,7 +279,7 @@
           {@const more = detail(n)}
           <button
             type="button"
-            class="node"
+            class="node-card"
             data-key={n.key}
             class:selected={selection.issue === n.key}
             class:faded={n.faded}
@@ -318,7 +318,7 @@
         {/each}
       </div>
     </div>
-    {#if failure}<p class="stale" role="status">Showing the last map read. {failure}</p>{/if}
+    {#if failure}<p class="errata stale" role="status">Showing the last map read. {failure}</p>{/if}
     <div class="tools">
       {#if kinds.size}
         <p class="legend" aria-label="Edges">
@@ -351,8 +351,8 @@
 <style>
   .field {
     position: relative;
-    min-height: max(60vh, var(--drawn, 0px));
-    height: 100%;
+    /* The window's height under the header, so the page itself never scrolls past the map. */
+    height: max(420px, calc(100vh - 168px));
     overflow: clip;
     background: var(--surface);
     background-image: radial-gradient(circle, var(--hairline) 1px, transparent 1px);
@@ -398,11 +398,6 @@
     top: 8px;
     left: 8px;
     right: 8px;
-    padding: 6px 10px;
-    border: 1px solid var(--hairline);
-    border-left: 4px solid var(--failed);
-    border-radius: var(--radius-control);
-    background: var(--surface);
   }
   .tools {
     position: absolute;
@@ -500,57 +495,16 @@
     stroke: var(--accent);
   }
 
-  /* A card: its title first, then its number and Repo, then its Stage. */
-  .node {
-    position: absolute;
-    display: grid;
-    align-content: start;
-    row-gap: 4px;
-    padding: 9px 12px;
-    text-align: left;
-    color: var(--ink);
-    font: inherit;
-    font-size: 13px;
-    line-height: 18px;
-    background: var(--surface);
-    border: 1px solid var(--hairline);
-    border-radius: var(--radius);
-    box-shadow: var(--shadow);
-    cursor: pointer;
-  }
-  .node:hover {
-    border-color: var(--rule);
-  }
-  .node:focus-visible {
-    outline: 2px solid var(--focus);
-    outline-offset: 2px;
-  }
   /* Merged: set back on the page's ground, dashed, its text still full contrast. */
-  .node.faded {
+  .node-card.faded {
     background: var(--ground);
     border-style: dashed;
     box-shadow: none;
   }
   /* Failed: the red rule down its left edge, as an errata's. */
-  .node.failed {
+  .node-card.failed {
     border-left: 4px solid var(--failed);
-    padding-left: 9px;
-  }
-  /* The open node: the one selection accent, its frame doubled. */
-  .node.selected {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 1px var(--accent), var(--shadow);
-  }
-  .title {
-    display: -webkit-box;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
-    line-clamp: 2;
-    overflow: hidden;
-    font-size: 15px;
-    font-weight: 600;
-    line-height: 20px;
-    overflow-wrap: anywhere;
+    padding-left: 5px;
   }
   .row {
     display: flex;
@@ -559,13 +513,6 @@
     gap: 8px;
     min-width: 0;
   }
-  .ref {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .muted,
   .unknown,
   .detail {
     color: var(--ink-muted);

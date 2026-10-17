@@ -33,6 +33,8 @@
   --harness-claude: #a94a26;
   --harness-codex: #0b7b63;
   --harness-opencode: #6a4bd6;
+  /* The Asking pane and commands: the one monospace. */
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;
   --radius: 8px;
   --radius-control: 6px;
   --shadow: 0 1px 2px rgb(16 24 40 / 6%);
@@ -128,7 +130,7 @@ ul {
 
 /* A command, set in the terminal's face, as it is typed. */
 code {
-  font: 600 0.92em ui-monospace, "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;
+  font: 600 0.92em var(--mono);
   color: var(--ink);
 }
 
@@ -449,9 +451,56 @@ input[role="switch"]:checked::before {
   overflow-wrap: anywhere;
 }
 
+/* A node's card, on the map and the Roadmap: its title first (two lines), then its number and Repo; each lays out the rest. */
+.node-card {
+  position: absolute;
+  display: grid;
+  align-content: start;
+  row-gap: 4px;
+  padding: 8px 12px;
+  text-align: left;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  line-height: 18px;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  cursor: pointer;
+}
+.node-card:hover {
+  border-color: var(--rule);
+}
+/* The open node: the one selection accent, its frame doubled. */
+.node-card.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent), var(--shadow);
+}
+.node-card .title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 20px;
+  overflow-wrap: anywhere;
+}
+.node-card .ref {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.node-card .muted {
+  color: var(--ink-muted);
+}
+
 /* The inspector: the open node's panel (desktop) or bottom sheet (phone), the map's and the Roadmap's alike. */
 .inspector {
-  padding: 0 20px 20px;
+  padding: 0 16px 16px;
   background: var(--surface);
   border: 1px solid var(--hairline);
   border-radius: var(--radius);
@@ -499,7 +548,7 @@ input[role="switch"]:checked::before {
 .inspector > section,
 .inspector .section {
   margin-top: 16px;
-  padding-top: 14px;
+  padding-top: 12px;
   border-top: 1px solid var(--hairline);
 }
 .inspector .note {
