@@ -6,7 +6,7 @@ use common::{Ran, Setup, github_issue, implementer_idle, pull_request, setup};
 use nico_agent::world::{Answer, Mergeable, PrState, PullRequest, PullRequestActivity};
 use serde_json::{Value, json};
 
-const BUCKET: &str = "/mnt/agents-land/nico-agent-bucket";
+const BUCKET: &str = "/mnt/agent-land/nico-agent-bucket";
 
 /// Repo `acme/api` added, its issue 7 dispatched into `/worktrees/api-7`,
 /// its PR 9 at `sha9` found, and no calls recorded yet.
@@ -474,7 +474,7 @@ fn get_bucket_serves_a_file_of_the_bucket_s_working_tree_and_refuses_any_path_ou
     t.world
         .add_file(&format!("{BUCKET}/acme/api/7/abc/sign in.png"), &png);
     t.world
-        .add_file("/mnt/agents-land/secret.txt", b"not the Bucket's");
+        .add_file("/mnt/agent-land/secret.txt", b"not the Bucket's");
     t.world
         .add_file(&format!("{BUCKET}/.git/config"), b"[core]");
     t.world.calls.borrow_mut().clear();

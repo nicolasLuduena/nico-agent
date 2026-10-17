@@ -37,7 +37,7 @@ projects = {}
 # `url` unset, links to it are serve's own; set it to the tunnel's, which the
 # PR bodies then link.
 [bucket]
-path = "/mnt/agents-land/nico-agent-bucket"
+path = "/mnt/agent-land/nico-agent-bucket"
 
 # When each Repo with its quality_scan switch on is scanned, weekly, local time.
 [quality_scan]

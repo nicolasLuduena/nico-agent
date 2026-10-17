@@ -233,7 +233,7 @@ fn at_the_hour_one_morning_agent_starts_on_the_config_directory_and_once_that_da
 
 /// The Wiki of the Repo `slug` at `path` built at abc1234 by `wiki build`.
 fn wiki_built(t: &Setup, slug: &str, path: &str) {
-    t.world.add_clone("/mnt/agents-land/nico-agent-bucket", &[]);
+    t.world.add_clone("/mnt/agent-land/nico-agent-bucket", &[]);
     t.world
         .add_tree_file(path, "origin/main", "src/lib.rs", "pub fn run() {}\n");
     (t.world.headless.borrow_mut()).push((

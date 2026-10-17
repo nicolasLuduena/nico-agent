@@ -3,7 +3,7 @@ mod common;
 use common::{Setup, setup};
 use serde_json::{Value, json};
 
-const BUCKET: &str = "/mnt/agents-land/nico-agent-bucket";
+const BUCKET: &str = "/mnt/agent-land/nico-agent-bucket";
 
 const LIB: &str = "pub mod config;\npub mod web;\n\npub fn run() {}\n";
 const CONFIG: &str = "pub struct Config;\n";
