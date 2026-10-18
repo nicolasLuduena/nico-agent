@@ -24,7 +24,7 @@ const status = (dispatches: Partial<Dispatch>[], githubPausedUntil: string | nul
   })),
 });
 
-describe("the toasts", () => {
+describe("the notices", () => {
   it("are none when nothing needs you, and none for what has a node to flag: an Asking, a Failed or Verified Dispatch, a blocked faux-nico", () => {
     const asking = { since: "2026-09-30T04:12:00Z", question: "Keep the v1 route?" };
     const flagged = status([
@@ -66,13 +66,13 @@ describe("the toasts", () => {
       repos: [{ slug: "acme/api", last_scan: { agent: "quality-scan-api", blocked_since: "2026-09-30T03:10:00Z" } } as Repo],
     };
 
-    expect(needsYou(paused).map((n) => [n.kind, n.text, n.at])).toEqual([
-      ["Blocked", "quality-scan-api", "2026-09-30T03:10:00Z"],
-      ["Paused", "GitHub", "2026-09-30T13:00:00Z"],
+    expect(needsYou(paused)).toEqual([
+      { kind: "Blocked", repo: "acme/api", text: "quality-scan-api", at: "2026-09-30T03:10:00Z" },
+      { kind: "Paused", repo: null, text: "GitHub", at: "2026-09-30T13:00:00Z" },
     ]);
   });
 
-  it("list each failing Readiness check with its Repo, what it says and its help, since when it fails", () => {
+  it("list one notice per Repo with a failing Readiness check: what each failing one says, where to fix them, since when", () => {
     const check = (name: string, ok: boolean, said: string, help: string | null = null) => ({ name, ok, said, help });
     const checked: Status = {
       ...status([]),
@@ -84,21 +84,26 @@ describe("the toasts", () => {
             results: [
               check("clone", true, "/src/api is a clone of acme/api"),
               check("skills", false, "no verdict skill for codex, the Reviewer's Harness", "Install verdict in one of ~/.agents/skills"),
+              check("bot", false, "could not check the GitHub App on acme/api", "Run `gh auth login`"),
             ],
           },
         } as Repo,
-        { slug: "acme/web" } as Repo,
+        { slug: "acme/web", checks: { at: "2026-09-30T07:05:00Z", results: [check("herdr", false, "herdr is not running")] } } as Repo,
+        { slug: "acme/cli", checks: { at: "2026-09-30T07:05:00Z", results: [check("clone", true, "fine")] } } as Repo,
+        { slug: "acme/docs" } as Repo,
       ],
     };
 
+    const fix = "Readiness, under Repos";
     expect(needsYou(checked)).toEqual([
       {
         kind: "Check",
         repo: "acme/api",
-        text: "no verdict skill for codex, the Reviewer's Harness",
-        help: "Install verdict in one of ~/.agents/skills",
+        checks: ["no verdict skill for codex, the Reviewer's Harness", "could not check the GitHub App on acme/api"],
+        help: fix,
         at: "2026-09-30T07:00:00Z",
       },
+      { kind: "Check", repo: "acme/web", checks: ["herdr is not running"], help: fix, at: "2026-09-30T07:05:00Z" },
     ]);
   });
 

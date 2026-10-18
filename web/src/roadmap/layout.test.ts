@@ -45,21 +45,21 @@ describe("the Roadmap's layout", () => {
     });
 
     const [right, left, same] = drawn.arrows.map((a) => a.points);
-    // #2 to #4, one lane right on the same row: straight across, in the gutter's first line.
+    // #2 to #4, one lane right on the same row: straight across, the gutter's first line down its middle.
     expect(right).toEqual([
       { x: 268, y: 70 },
-      { x: 286, y: 70 },
-      { x: 286, y: 70 },
+      { x: 304, y: 70 },
+      { x: 304, y: 70 },
       { x: 340, y: 70 },
     ]);
-    // #4 to #3, back left a row down: out below #4's left middle, into below #3's right, on the next line.
+    // #4 to #3, back left a row down: out below #4's left middle, into below #3's right, on the next line, right of the middle.
     expect(left).toEqual([
       { x: 340, y: 82 },
-      { x: 292, y: 82 },
-      { x: 292, y: 186 },
+      { x: 310, y: 82 },
+      { x: 310, y: 186 },
       { x: 268, y: 186 },
     ]);
-    // #2 to #3, in one lane: out of the right side and back in.
+    // #2 to #3, in one lane: out of the right side and back in, on the line left of the middle.
     expect(same).toEqual([
       { x: 268, y: 70 },
       { x: 298, y: 70 },
@@ -75,11 +75,26 @@ describe("the Roadmap's layout", () => {
     // Out of #1's left side, up into the channel, across to the gutter right of #2's lane, down into #2's right.
     expect(drawn.arrows[0].points).toEqual([
       { x: 660, y: 106 },
-      { x: 606, y: 106 },
-      { x: 606, y: 14 },
-      { x: 286, y: 14 },
-      { x: 286, y: 106 },
+      { x: 624, y: 106 },
+      { x: 624, y: 14 },
+      { x: 304, y: 14 },
+      { x: 304, y: 106 },
       { x: 268, y: 106 },
     ]);
+  });
+
+  it("keeps a gutter's lines clear of the lanes' frames, never on one", () => {
+    // Seven arrows from #2, each back into its own lane: a gutter's fullest.
+    const many = [...Array(7)].map((_, k) => node(10 + k, "needs-triage"));
+    const drawn = layoutRoadmap({
+      lanes,
+      nodes: [...nodes, ...many],
+      edges: many.map((n) => ({ from: "acme/api#2", to: n.key, kind: "blocker" as const })),
+    });
+
+    const xs = drawn.arrows.map((a) => a.points[1].x);
+    expect(xs).toEqual([304, 310, 298, 316, 292, 322, 286]);
+    // The gutter runs from lane 0's right frame (280) to lane 1's left (328).
+    for (const x of xs) expect(Math.min(x - 280, 328 - x)).toBeGreaterThanOrEqual(6);
   });
 });

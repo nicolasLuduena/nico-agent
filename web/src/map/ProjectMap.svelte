@@ -7,10 +7,11 @@
 
 <script lang="ts">
   // The Project's map from /api/map/<project>, refetched on every `changed`:
-  // dagre lays it out left to right, the field pans and zooms, a node opens its
+  // dagre lays out each group of linked issues left to right, the groups packed
+  // to the field's shape (layout.ts); the field pans and zooms, a node opens its
   // inspector. Each node is a card: its title first, then its number and Repo,
   // then its Stage in words beside its mark, its PR, and its agent's state.
-  import { tick, untrack } from "svelte";
+  import { flushSync, tick, untrack } from "svelte";
   import { watch } from "../live";
   import { still } from "../motion";
   import { selection } from "../selection.svelte";
@@ -27,8 +28,11 @@
   let flashed = $state(new Set<string>());
   let width = $state(0);
   let height = $state(0);
-  let view = $state({ x: PAD, y: PAD, k: 1 });
-  /** The Project the view was last fitted to, and the issue it last panned to. */
+  /** The map's scale; the field's own scroll is where it is panned to. */
+  let k = $state(1);
+  /** The room the map was last packed into: the field, less its padding, when it was last fitted. Kept while the inspector narrows the field, so the nodes stay put. */
+  let room = $state({ width: 0, height: 0 });
+  /** The Project (and Hide merged) the map was last fitted to, and the issue it last panned to. */
   let fitted: string | null = null;
   let panned: string | null = null;
 
@@ -44,7 +48,6 @@
   }
   function toggleMerged() {
     hideMerged = !hideMerged;
-    fitted = null;
     try {
       localStorage.setItem(HIDE_MERGED, hideMerged ? "1" : "0");
     } catch {
@@ -53,7 +56,7 @@
   }
   const merged = $derived(shown.map?.nodes.filter((n) => n.stage === "Merged").length ?? 0);
 
-  const drawn = $derived(shown.map && layout(hideMerged ? withoutMerged(shown.map) : shown.map));
+  const drawn = $derived(shown.map && room.width ? layout(hideMerged ? withoutMerged(shown.map) : shown.map, room) : null);
 
   // The Project's name, not its object: each status read makes a new one, and the map
   // (and the panel reading it) must not start over on every change.
@@ -73,13 +76,34 @@
     );
   });
 
-  /**
-   * The scale that fits the map to the field, at most full size; past 60% it
-   * fits the width only, and the rest pans inside the field.
-   */
-  const scale = $derived(drawn ? Math.min(1, (width - 2 * PAD) / drawn.width, Math.max(0.6, (height - 2 * PAD) / drawn.height)) : 1);
+  /** The least the map fits at: a node's 15px title at 13px on screen. */
+  const FLOOR = 0.87;
 
-  const home = () => ({ x: PAD, y: PAD, k: scale });
+  /**
+   * The scale that fits the map to the field, at most full size; when that is
+   * under the floor, it fits the width only, never under the floor, and the
+   * rest pans inside the field from its top left.
+   */
+  const scale = $derived.by(() => {
+    if (!drawn) return 1;
+    const across = (width - 2 * PAD) / drawn.width;
+    const fit = Math.min(1, across, (height - 2 * PAD) / drawn.height);
+    return fit >= FLOOR ? fit : Math.max(FLOOR, Math.min(1, across));
+  });
+
+  /** Where the drawing sits in the field's scroll: padded, or centred while it is smaller than the field. */
+  const off = $derived({
+    x: drawn ? Math.max(PAD, (width - drawn.width * k) / 2) : PAD,
+    y: drawn ? Math.max(PAD, (height - drawn.height * k) / 2) : PAD,
+  });
+
+  const behavior = (): ScrollBehavior => (still() ? "auto" : "smooth");
+
+  /** Fit: the fitting scale, the map from its top left. */
+  function fit(smooth = true) {
+    k = scale;
+    field.scrollTo({ left: 0, top: 0, behavior: smooth ? behavior() : "auto" });
+  }
 
   /** Zoom by `by` about the field's middle: the zoom buttons. */
   function zoomStep(by: number) {
@@ -87,48 +111,27 @@
     zoom(by, { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 });
   }
 
-  /** Zoomed in past the fit, a finger's every drag pans the map; fitted, a vertical swipe scrolls the page past it. */
-  const closer = $derived(view.k > scale);
-
   $effect(() => {
-    if (drawn && width && fitted !== project.name) {
-      fitted = project.name;
-      untrack(() => (view = home()));
+    if (shown.map && width && height && fitted !== `${project.name} ${hideMerged}`) {
+      fitted = `${project.name} ${hideMerged}`;
+      untrack(() => {
+        room = { width: width - 2 * PAD, height: height - 2 * PAD };
+        fit(false);
+      });
     }
   });
 
-  /** The glide under way; a drag or zoom stops it where it is. */
-  let gliding = 0;
-  $effect(() => () => cancelAnimationFrame(gliding));
-
-  /** Move the view to `to` over 300ms, easing out, so the map shows where it went; then `done`. */
-  function glide(to: typeof view, done?: () => void) {
-    cancelAnimationFrame(gliding);
-    if (still()) {
-      view = to;
-      return done?.();
-    }
-    const from = view;
-    const start = performance.now();
-    const step = (now: number) => {
-      const t = Math.min(1, (now - start) / 300);
-      const e = t === 1 ? 1 : 1 - 2 ** (-10 * t);
-      view = { x: from.x + (to.x - from.x) * e, y: from.y + (to.y - from.y) * e, k: from.k + (to.k - from.k) * e };
-      if (t < 1) gliding = requestAnimationFrame(step);
-      else done?.();
-    };
-    gliding = requestAnimationFrame(step);
+  /** Scroll `key`'s node into the middle of the field, and the field onto the screen, when any of it is out of view. */
+  function reveal(key: string) {
+    const node = field.querySelector(`[data-key="${key}"]`);
+    if (!node) return;
+    const [box, view] = [node.getBoundingClientRect(), field.getBoundingClientRect()];
+    const inside = box.left >= view.left && box.top >= view.top && box.right <= view.left + field.clientLeft + field.clientWidth && box.bottom <= view.top + field.clientTop + field.clientHeight;
+    const at: ScrollLogicalPosition = inside ? "nearest" : "center";
+    node.scrollIntoView({ block: at, inline: at, behavior: behavior() });
   }
 
-  /** Pan `n` into the middle of the field when any of it is out of view; then `done`. */
-  function reveal(n: Placed, done?: () => void) {
-    const { x, y, k } = view;
-    const [left, top] = [x + n.x * k, y + n.y * k];
-    if (left >= 0 && top >= 0 && left + NODE.width * k <= width && top + n.height * k <= height) return done?.();
-    glide({ k, x: width / 2 - (n.x + NODE.width / 2) * k, y: height / 2 - (n.y + n.height / 2) * k }, done);
-  }
-
-  // An opened node: pan to it, once per opening.
+  // An opened node: scroll to it, once per opening, once the inspector has narrowed the field.
   let field: HTMLElement;
   $effect(() => {
     const key = selection.issue;
@@ -136,28 +139,27 @@
     if (!key) panned = null;
     if (!n || panned === key) return;
     panned = key;
-    // Then bring it onto the screen, where the map's glide left it, when the page is scrolled away from it.
-    const onScreen = () =>
-      field.querySelector(`[data-key="${key}"]`)?.scrollIntoView({ block: "nearest", behavior: still() ? "auto" : "smooth" });
-    void tick().then(() => reveal(n, onScreen));
+    void tick().then(() => reveal(n.key));
   });
 
   function open(key: string) {
     selection.issue = key;
   }
 
-  // Drag to pan; pinch, or Ctrl and the wheel, to zoom. A drag only takes the pointer once it
-  // has moved, so a tap on a node stays a click.
+  // A mouse drag pans the field's scroll, a finger's scrolls it natively; pinch, or Ctrl and the
+  // wheel, zoom. A drag only takes the pointer once it has moved, so a click on a node stays a click.
   const pointers = new Map<number, { x: number; y: number }>();
+  /** Zoom by `by` about `at` (client px), the map's point under it kept there. */
   function zoom(by: number, at: { x: number; y: number }) {
     const rect = field.getBoundingClientRect();
-    const [px, py] = [at.x - rect.left, at.y - rect.top];
-    cancelAnimationFrame(gliding);
-    const k = Math.min(2, Math.max(0.2, view.k * by));
-    view = { k, x: px - ((px - view.x) * k) / view.k, y: py - ((py - view.y) * k) / view.k };
+    const [px, py] = [at.x - rect.left - field.clientLeft, at.y - rect.top - field.clientTop];
+    const [mx, my] = [(field.scrollLeft + px - off.x) / k, (field.scrollTop + py - off.y) / k];
+    // The sizer grows or shrinks first, so the scroll it is set to is not clamped to the old one.
+    flushSync(() => (k = Math.min(2, Math.max(0.2, k * by))));
+    field.scrollLeft = mx * k + off.x - px;
+    field.scrollTop = my * k + off.y - py;
   }
   function down(e: PointerEvent) {
-    cancelAnimationFrame(gliding);
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
   }
   function move(e: PointerEvent) {
@@ -170,23 +172,22 @@
         x: (now.x + other.x) / 2,
         y: (now.y + other.y) / 2,
       });
-    } else {
-      // Captured by the plane these handlers are on, so the rest of the drag, and its end, still reach them,
-      // and the click a drag ends in lands on the plane, not on the node under it.
-      const plane = e.currentTarget as HTMLElement;
-      if (!plane.hasPointerCapture(e.pointerId)) {
+    } else if (e.pointerType !== "touch") {
+      // Captured by the field these handlers are on, so the rest of the drag, and its end, still reach them,
+      // and the click a drag ends in lands on the field, not on the node under it.
+      if (!field.hasPointerCapture(e.pointerId)) {
         if (Math.hypot(now.x - was.x, now.y - was.y) < 4) return;
-        plane.setPointerCapture(e.pointerId);
+        field.setPointerCapture(e.pointerId);
       }
-      const dy = closer || e.pointerType !== "touch" ? now.y - was.y : 0;
-      view = { ...view, x: view.x + now.x - was.x, y: view.y + dy };
+      field.scrollLeft -= now.x - was.x;
+      field.scrollTop -= now.y - was.y;
     }
     pointers.set(e.pointerId, now);
   }
   function up(e: PointerEvent) {
     pointers.delete(e.pointerId);
   }
-  /** Ctrl or Cmd and the wheel zoom, as a trackpad's pinch does; the wheel alone scrolls the page. */
+  /** Ctrl or Cmd and the wheel zoom, as a trackpad's pinch does; the wheel alone scrolls the field, then the page. */
   function wheel(e: WheelEvent) {
     if (!e.ctrlKey && !e.metaKey) return;
     e.preventDefault();
@@ -230,95 +231,104 @@
   }
 </script>
 
-<section
-  class="field"
-  aria-label="Map of {project.name}"
-  bind:this={field}
-  bind:clientWidth={width}
-  bind:clientHeight={height}
->
-  {#if drawn && drawn.nodes.length > 0}
-    {@const kinds = new Set(drawn.edges.map((e) => e.kind))}
-    <div
-      class="plane"
-      role="presentation"
-      style:touch-action={closer ? "none" : "pan-y"}
-      onpointerdown={down}
-      onpointermove={move}
-      onpointerup={up}
-      onpointercancel={up}
-      onwheel={wheel}
-    >
-      <svg class="edges" role="presentation">
-        <defs>
-          {#each ["blocker", "stack"] as kind (kind)}
-            <marker
-              id="arrow-{kind}"
-              class={kind}
-              viewBox="0 0 10 10"
-              refX="9"
-              refY="5"
-              markerWidth="10"
-              markerHeight="10"
-              markerUnits="userSpaceOnUse"
-              orient="auto"
+<section class="map" aria-label="Map of {project.name}">
+  <div
+    class="field"
+    role="presentation"
+    bind:this={field}
+    bind:clientWidth={width}
+    bind:clientHeight={height}
+    onpointerdown={down}
+    onpointermove={move}
+    onpointerup={up}
+    onpointercancel={up}
+    onwheel={wheel}
+  >
+    {#if drawn && drawn.nodes.length > 0}
+      <!-- As large as the map at its scale, so the field scrolls over all of it and a node scrolls into view. -->
+      <div class="sizer" style:width="{drawn.width * k + 2 * off.x}px" style:height="{drawn.height * k + 2 * off.y}px">
+        <div class="plane" style:left="{off.x}px" style:top="{off.y}px" style:width="{drawn.width}px" style:height="{drawn.height}px" style:transform="scale({k})">
+          <svg class="edges" role="presentation">
+            <defs>
+              {#each ["blocker", "stack"] as kind (kind)}
+                <marker
+                  id="arrow-{kind}"
+                  class={kind}
+                  viewBox="0 0 10 10"
+                  refX="9"
+                  refY="5"
+                  markerWidth="10"
+                  markerHeight="10"
+                  markerUnits="userSpaceOnUse"
+                  orient="auto"
+                >
+                  <path d="M2 1 L9 5 L2 9" />
+                </marker>
+              {/each}
+            </defs>
+            {#each drawn.edges as e (`${e.kind} ${e.from} ${e.to}`)}
+              <polyline class="edge {e.kind}" points={e.points.map((p) => `${p.x},${p.y}`).join(" ")} marker-end="url(#arrow-{e.kind})" />
+            {/each}
+          </svg>
+          {#each drawn.nodes as n (n.key)}
+            {@const repo = repoName(n.repo, project.repos)}
+            {@const more = detail(n)}
+            <button
+              type="button"
+              class="node-card"
+              data-key={n.key}
+              class:selected={selection.issue === n.key}
+              class:faded={n.faded}
+              style:left="{n.x}px"
+              style:top="{n.y}px"
+              style:width="{NODE.width}px"
+              style:height="{n.height}px"
+              style:--hue={stageHue(n.stage)}
+              aria-label={said(n)}
+              aria-pressed={selection.issue === n.key}
+              title={n.title ?? n.key}
+              onclick={() => open(n.key)}
+              onfocus={() => reveal(n.key)}
             >
-              <path d="M2 1 L9 5 L2 9" />
-            </marker>
-          {/each}
-        </defs>
-        <g transform="translate({view.x} {view.y}) scale({view.k})">
-          {#each drawn.edges as e (`${e.kind} ${e.from} ${e.to}`)}
-            <polyline class="edge {e.kind}" points={e.points.map((p) => `${p.x},${p.y}`).join(" ")} marker-end="url(#arrow-{e.kind})" />
-          {/each}
-        </g>
-      </svg>
-      <div class="nodes" style:transform="translate({view.x}px, {view.y}px) scale({view.k})">
-        {#each drawn.nodes as n (n.key)}
-          {@const repo = repoName(n.repo, project.repos)}
-          {@const more = detail(n)}
-          <button
-            type="button"
-            class="node-card"
-            data-key={n.key}
-            class:selected={selection.issue === n.key}
-            class:faded={n.faded}
-            class:failed={n.stage === "Failed"}
-            style:left="{n.x}px"
-            style:top="{n.y}px"
-            style:width="{NODE.width}px"
-            style:height="{n.height}px"
-            style:--hue={stageHue(n.stage)}
-            aria-label={said(n)}
-            aria-pressed={selection.issue === n.key}
-            title={n.title ?? n.key}
-            onclick={() => open(n.key)}
-            onfocus={() => reveal(n)}
-          >
-            {#if n.title}
-              <span class="title">{n.title}</span>
-            {:else}
-              <span class="title unknown">Title not read</span>
-            {/if}
-            <span class="row">
-              <span class="ref">{number(n.key, n.repo ?? "")}<span class="muted">{[repo, n.kind !== "code" && n.kind].filter(Boolean).map((part) => ` · ${part}`).join("")}</span></span>
-              {#if n.needs}<span class="needs">Needs you</span>{/if}
-            </span>
-            {#key n.stage}
-              <span class="row stage" class:flash={flashed.has(n.key)}>
-                <span class="word">
-                  {#if n.stage}<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><Mark stage={n.stage} /></svg>{/if}
-                  <span class:unknown={!n.stage}>{n.stage ?? "Blocker"}</span>
-                </span>
-                {#if n.pr}<span class="muted">PR {prNumber(n.pr.url)}{n.pr.draft ? " draft" : ""}</span>{/if}
+              {#if n.title}
+                <span class="title">{n.title}</span>
+              {:else}
+                <span class="title unknown">Title not read</span>
+              {/if}
+              <span class="row">
+                <span class="ref">{number(n.key, n.repo ?? "")}<span class="muted">{[repo, n.kind !== "code" && n.kind].filter(Boolean).map((part) => ` · ${part}`).join("")}</span></span>
+                {#if n.needs}<span class="needs">Needs you</span>{/if}
               </span>
-            {/key}
-            {#if more}<span class="detail" class:asking={n.agent === "asking"}>{more}</span>{/if}
-          </button>
-        {/each}
+              {#key n.stage}
+                <span class="row stage" class:flash={flashed.has(n.key)}>
+                  <span class="word">
+                    {#if n.stage}<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><Mark stage={n.stage} /></svg>{/if}
+                    <span class:unknown={!n.stage}>{n.stage ?? "Blocker"}</span>
+                  </span>
+                  {#if n.pr}<span class="muted">PR {prNumber(n.pr.url)}{n.pr.draft ? " draft" : ""}</span>{/if}
+                </span>
+              {/key}
+              {#if more}<span class="detail" class:asking={n.agent === "asking"}>{more}</span>{/if}
+            </button>
+          {/each}
+        </div>
       </div>
-    </div>
-    {#if failure}<p class="errata stale" role="status">Showing the last map read. {failure}</p>{/if}
+    {:else if drawn}
+      {#if hideMerged && merged > 0}
+        <p class="note">Nothing on this map but merged issues.</p>
+      {:else}
+        <p class="note">Nothing on this map: no open <code>ready-for-agent</code> issue, nothing in flight or merged in the last 7 days.</p>
+      {/if}
+    {:else if failure}
+      <p class="note errata" role="status"><strong>Could not read the map.</strong> {failure}</p>
+    {:else}
+      <p class="note">Reading the map…</p>
+    {/if}
+  </div>
+  {#if drawn && drawn.nodes.length > 0 && failure}<p class="errata stale" role="status">Showing the last map read. {failure}</p>{/if}
+  <!-- The map's tools, in a bar under the field so nothing covers a node: the legend and Hide merged left, the zoom right. -->
+  {#if (drawn && drawn.nodes.length > 0) || merged > 0}
+    {@const kinds = new Set(drawn?.edges.map((e) => e.kind))}
     <div class="tools">
       {#if kinds.size}
         <p class="legend" aria-label="Edges">
@@ -326,39 +336,53 @@
           {#if kinds.has("stack")}<span><svg width="24" height="8" aria-hidden="true"><line class="edge stack" x1="0" y1="4" x2="24" y2="4" /></svg>Stacked on</span>{/if}
         </p>
       {/if}
-      <div class="zoom" role="group" aria-label="Zoom">
-        <button type="button" class="quiet" aria-label="Zoom out" onclick={() => zoomStep(1 / 1.25)}>−</button>
-        <button type="button" class="quiet" aria-label="Zoom in" onclick={() => zoomStep(1.25)}>+</button>
-        <button type="button" class="quiet" onclick={() => glide(home())}>Fit</button>
-      </div>
+      {#if merged > 0}
+        <button type="button" class="quiet" onclick={toggleMerged}>{hideMerged ? `Show ${merged} merged` : "Hide merged"}</button>
+      {/if}
+      {#if drawn && drawn.nodes.length > 0}
+        <div class="zoom" role="group" aria-label="Zoom">
+          <button type="button" class="quiet" aria-label="Zoom out" onclick={() => zoomStep(1 / 1.25)}>
+            <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M2.5 7 H11.5" /></svg>
+          </button>
+          <span class="readout">{Math.round(k * 100)}%</span>
+          <button type="button" class="quiet" aria-label="Zoom in" onclick={() => zoomStep(1.25)}>
+            <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M2.5 7 H11.5 M7 2.5 V11.5" /></svg>
+          </button>
+          <button type="button" class="quiet" onclick={() => fit()}>Fit</button>
+        </div>
+      {/if}
     </div>
-  {:else if drawn}
-    {#if hideMerged && merged > 0}
-      <p class="note">Nothing on this map but merged issues.</p>
-    {:else}
-      <p class="note">Nothing on this map: no open <code>ready-for-agent</code> issue, nothing in flight or merged in the last 7 days.</p>
-    {/if}
-  {:else if failure}
-    <p class="note errata" role="status"><strong>Could not read the map.</strong> {failure}</p>
-  {:else}
-    <p class="note">Reading the map…</p>
-  {/if}
-  {#if merged > 0}
-    <button type="button" class="quiet merged" onclick={toggleMerged}>{hideMerged ? `Show ${merged} merged` : "Hide merged"}</button>
   {/if}
 </section>
 
 <style>
+  .map {
+    /* The tools bar's height: 36px controls and 8px above and below them, the hairline over it. */
+    --bar: 53px;
+    position: relative;
+    background: var(--surface);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius);
+  }
   .field {
     position: relative;
-    /* The window's height under the header, so the page itself never scrolls past the map. */
-    height: max(420px, calc(100vh - 168px));
-    overflow: clip;
+    /* The window's height under the header, the notices and the tools bar, so the page itself never scrolls past the map. */
+    height: max(420px, calc(100vh - 168px - var(--notices-h, 0px) - var(--bar)));
+    /* Panned by its own scroll, so a node scrolled into view (focus, find, a test's click) is in it; past its ends a scroll goes on to the page. */
+    overflow: auto;
+    touch-action: pan-x pan-y;
+    cursor: grab;
+    user-select: none;
     background: var(--surface);
     background-image: radial-gradient(circle, var(--hairline) 1px, transparent 1px);
     background-size: 24px 24px;
-    border: 1px solid var(--hairline);
-    border-radius: var(--radius);
+    /* The dot grid moves with the map. */
+    background-attachment: local;
+    /* Inside the region's frame; rounded at its foot too while no tools bar is under it. */
+    border-radius: calc(var(--radius) - 1px) calc(var(--radius) - 1px) 0 0;
+  }
+  .field:last-child {
+    border-radius: calc(var(--radius) - 1px);
   }
   /* Fitted to the width, 60vh tall, the Repos column below it. */
   @media (width < 720px) {
@@ -367,22 +391,20 @@
       min-height: 0;
     }
   }
-  .plane,
+  .sizer {
+    position: relative;
+  }
+  /* The drawing at full size, scaled from its top left. */
+  .plane {
+    position: absolute;
+    transform-origin: 0 0;
+  }
   .edges {
     position: absolute;
     inset: 0;
     width: 100%;
     height: 100%;
-  }
-  .plane {
-    cursor: grab;
-    user-select: none;
-  }
-  .nodes {
-    position: absolute;
-    top: 0;
-    left: 0;
-    transform-origin: 0 0;
+    overflow: visible;
   }
   .note {
     margin: 16px;
@@ -400,24 +422,20 @@
     right: 8px;
   }
   .tools {
-    position: absolute;
-    right: 8px;
-    bottom: 8px;
     display: flex;
     flex-wrap: wrap;
-    justify-content: flex-end;
     align-items: center;
-    gap: 8px;
+    gap: 8px 16px;
+    min-height: var(--bar);
+    box-sizing: border-box;
+    padding: 8px;
+    border-top: 1px solid var(--hairline);
   }
   .legend {
     display: flex;
     gap: 12px;
-    min-height: 36px;
     align-items: center;
-    padding: 0 12px;
-    border: 1px solid var(--hairline);
-    border-radius: var(--radius-control);
-    background: var(--surface);
+    margin: 0 0 0 4px;
     color: var(--ink-muted);
     font-size: 13px;
   }
@@ -428,11 +446,34 @@
   }
   .zoom {
     display: flex;
+    margin-left: auto;
   }
   .zoom button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     min-width: 36px;
     padding: 0 10px;
     border-radius: 0;
+  }
+  /* Drawn as the Stage marks are: a 1.5px stroke in the button's ink. */
+  .zoom svg path {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.5;
+  }
+  /* The scale on show, so a shrunk map says so; text between the buttons, not one of them. */
+  .readout {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 52px;
+    padding: 0 8px;
+    border-block: 1px solid var(--rule);
+    background: var(--surface);
+    color: var(--ink-muted);
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
   }
   .zoom button:first-child {
     border-radius: var(--radius-control) 0 0 var(--radius-control);
@@ -440,27 +481,14 @@
   .zoom button:last-child {
     border-radius: 0 var(--radius-control) var(--radius-control) 0;
   }
-  .zoom button + button {
+  .zoom > * + * {
     margin-left: -1px;
   }
   .zoom button:focus-visible {
     position: relative;
   }
-  .merged {
-    position: absolute;
-    left: 8px;
-    bottom: 8px;
-  }
-  /* At the field's top on a phone, clear of the notices across its foot. */
+  /* On a phone the legend is hidden and the buttons 44px; the bar wraps rather than overflow. */
   @media (width < 720px) {
-    .tools {
-      top: 8px;
-      bottom: auto;
-    }
-    .merged {
-      top: 8px;
-      bottom: auto;
-    }
     .zoom button {
       min-width: 44px;
     }
@@ -500,11 +528,6 @@
     background: var(--ground);
     border-style: dashed;
     box-shadow: none;
-  }
-  /* Failed: the red rule down its left edge, as an errata's. */
-  .node-card.failed {
-    border-left: 4px solid var(--failed);
-    padding-left: 5px;
   }
   .row {
     display: flex;

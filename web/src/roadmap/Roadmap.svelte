@@ -32,11 +32,21 @@
     );
   });
 
+  // How far the field is scrolled sideways, and how wide it shows: a fade at an edge with more past it.
+  let scrolled = $state(0);
+  let shown = $state(0);
+  const past = $derived({ left: scrolled > 0, right: !!drawn && scrolled + shown < drawn.width - 1 });
+
   const said = (key: string, repo: string, title: string, lane: string) => [numbered(key, repo, project.repos), title, lane].join(", ");
 </script>
 
 <div class="work" class:open={opened}>
-  <section class="field" aria-label="Roadmap of {project.name}">
+  <section
+    class="field"
+    aria-label="Roadmap of {project.name}"
+    bind:clientWidth={shown}
+    onscroll={(e) => (scrolled = e.currentTarget.scrollLeft)}
+  >
     {#if drawn && drawn.nodes.length > 0}
       <div class="drawn" style:width="{drawn.width}px" style:height="{drawn.height}px">
         <svg role="presentation" width={drawn.width} height={drawn.height}>
@@ -72,6 +82,8 @@
             <span class="ref">{number(n.key, n.repo)}{#if repo}<span class="muted">{` · ${repo}`}</span>{/if}</span>
           </button>
         {/each}
+        {#if past.left}<div class="past left" aria-hidden="true"></div>{/if}
+        {#if past.right}<div class="past right" aria-hidden="true"></div>{/if}
       </div>
       {#if failure}<p class="errata stale" role="status">Showing the last Roadmap read. {failure}</p>{/if}
     {:else if drawn}
@@ -103,6 +115,7 @@
   /* At full size; a Roadmap wider or taller than the field scrolls inside it. */
   .field {
     position: relative;
+    container-type: inline-size;
     min-height: 60vh;
     max-height: calc(100vh - 32px);
     overflow: auto;
@@ -110,8 +123,25 @@
     border: 1px solid var(--hairline);
     border-radius: var(--radius);
   }
+  /* Its fades sit in a row in it, each held to an edge of the field's view. */
   .drawn {
     position: relative;
+    display: flex;
+  }
+  /* More of the Roadmap past this edge: what runs under it fades into the field, never cut mid-word. */
+  .past {
+    position: sticky;
+    flex: none;
+    width: 64px;
+    pointer-events: none;
+  }
+  .past.left {
+    left: 0;
+    background: linear-gradient(to left, transparent, var(--surface));
+  }
+  .past.right {
+    left: calc(100cqw - 64px);
+    background: linear-gradient(to right, transparent, var(--surface));
   }
   svg {
     position: absolute;

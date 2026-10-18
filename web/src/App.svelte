@@ -110,8 +110,6 @@
     {/if}
 
     {#if status}
-      <NeedsYou needs={needsYou(status)} />
-
       {#if project}
         {@const read = oldest("read_at")}
         {@const checked = oldest("prs_checked_at")}
@@ -142,8 +140,11 @@
             <a href={hash({ project: project.name, view })} aria-current={selection.view === view ? "page" : undefined}>{name}</a>
           {/each}
         </nav>
+        <!-- Between the tabs and the work, in the flow: what needs you without a node, never over the map. -->
+        <NeedsYou needs={needsYou(status)} />
         <ProjectTab {project} {status} repos={reposOpen} />
       {:else}
+        <NeedsYou needs={needsYou(status)} />
         <section class="empty" aria-labelledby="empty-head">
           <h1 id="empty-head">No Repo yet</h1>
           <p>
@@ -229,7 +230,6 @@
     background: var(--accent-soft);
     color: var(--ink);
     font-weight: 600;
-    box-shadow: inset 3px 0 0 var(--accent);
   }
   .name {
     overflow-wrap: anywhere;

@@ -8,6 +8,7 @@
   // assigned to, with "Assign to me" while no one is, and its restarts, folded.
   import { onMount } from "svelte";
   import Answer from "../controls/Answer.svelte";
+  import Markdown from "../Markdown.svelte";
   import { assignMe, assignable, named } from "../controls/assign";
   import Press from "../controls/Press.svelte";
   import { ticked } from "../controls/Refused.svelte";
@@ -129,7 +130,7 @@
   {#if !node}
     <p class="note section">{shown.map ? `${issue} is not on this Project's map.` : "Reading the map…"}</p>
   {:else}
-    {#if failure}<p class="errata section" role="status"><strong>{failure}</strong></p>{/if}
+    {#if failure}<div class="section"><p class="errata" role="status"><strong>{failure}</strong></p></div>{/if}
 
     {#if full && (full.pane !== undefined || full.pane_error)}
       <div class="section">
@@ -205,7 +206,7 @@
             </span>
             <span class="at">{clock(full.verdict.at)}</span>
           </p>
-          {#if full.verdict.findings}<p class="findings">{full.verdict.findings}</p>{/if}
+          {#if full.verdict.findings}<div class="findings"><Markdown text={full.verdict.findings} /></div>{/if}
         {:else if !full.review}
           <p class="note">No Verdict yet.</p>
         {/if}
@@ -342,10 +343,17 @@
   .said + .row {
     margin-top: 8px;
   }
+  /* The Reviewer's Markdown, as the Roadmap's Description reads it, at a 70-character measure. */
   .findings {
+    display: grid;
+    gap: 8px;
     margin-top: 8px;
     max-width: 70ch;
-    white-space: pre-wrap;
     overflow-wrap: anywhere;
+  }
+  .findings :global(ul),
+  .findings :global(ol) {
+    padding-left: 20px;
+    list-style: revert;
   }
 </style>

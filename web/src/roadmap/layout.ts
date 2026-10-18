@@ -82,8 +82,10 @@ export function layoutRoadmap(data: RoadmapData): { width: number; height: numbe
   const arrows: Arrow[] = edges.map(({ from, to }, k) => {
     const [a, b] = [at.get(from)!, at.get(to)!];
     const [ca, cb] = [column.get(from)!, column.get(to)!];
-    // Each arrow its own line in a gutter, while a gutter holds no more than seven.
-    const slot = ((k % 7) - 3) * SLOT;
+    // Each arrow its own line in a gutter, while a gutter holds no more than seven: the first
+    // down its middle, the next either side of it, so a lone one never hugs a lane's frame.
+    const i = k % 7;
+    const slot = (i % 2 ? (i + 1) / 2 : -i / 2) * SLOT;
     const left = (c: number) => laneX(c) - BETWEEN / 2 + slot;
     const right = (c: number) => laneX(c) + laneWidth + BETWEEN / 2 + slot;
     const out = cb < ca ? { x: a.x, y: a.y + CARD.height / 2 + PORT } : { x: a.x + CARD.width, y: a.y + CARD.height / 2 - PORT };
