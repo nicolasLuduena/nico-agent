@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Button } from "$lib/components/ui/button/index.js";
   import { ticked } from "./controls/Refused.svelte";
   import { flash } from "./motion";
   import type { Need } from "./toasts";
@@ -46,9 +47,9 @@
           {/if}
           <span class="end">
             {#if need.kind === "Check"}
-              <button type="button" class="quiet more" aria-expanded={shown.has(key(need))} aria-controls="checks-{need.repo}" onclick={() => toggle(need)}>
+              <Button variant="outline" class="more" aria-expanded={shown.has(key(need))} aria-controls="checks-{need.repo}" onclick={() => toggle(need)}>
                 {shown.has(key(need)) ? "Hide the checks" : "Show the checks"}
-              </button>
+              </Button>
             {/if}
             <button
               type="button"
@@ -71,9 +72,9 @@
         </li>
       {/each}
     </ul>
-    <button type="button" class="quiet fold" aria-expanded={!folded} onclick={() => (folded = !folded)}>
+    <Button variant="outline" class="fold" aria-expanded={!folded} onclick={() => (folded = !folded)}>
       {folded ? `Show ${notices.length} notice${notices.length === 1 ? "" : "s"}` : "Hide notices"}
-    </button>
+    </Button>
   </div>
 {/if}
 
@@ -91,7 +92,7 @@
   .needs {
     margin-top: calc((var(--row) - 20px) / 2);
   }
-  .fold {
+  .band :global(.fold) {
     min-height: 32px;
     margin: calc((var(--row) - 32px) / 2) 0 0 auto;
   }
@@ -168,7 +169,7 @@
     color: var(--ink-muted);
   }
   /* Smaller than a form's quiet button, so a notice stays one row. */
-  .more {
+  .band :global(.more) {
     min-height: 28px;
     padding: 0 10px;
     font-size: 13px;
@@ -201,11 +202,11 @@
       align-items: center;
     }
     .needs,
-    .fold {
+    .band :global(.fold) {
       margin-top: 0;
     }
-    .fold,
-    .more,
+    .band :global(.fold),
+    .band :global(.more),
     .close {
       min-width: 44px;
       min-height: 44px;

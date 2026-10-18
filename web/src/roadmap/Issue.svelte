@@ -1,6 +1,7 @@
 <script lang="ts">
   // An open Roadmap node's inspector (desktop) or bottom sheet (phone): what the
   // Source last said of the issue, and nothing to press but Close and links.
+  import { Button } from "$lib/components/ui/button/index.js";
   import { onMount } from "svelte";
   import { named } from "../controls/assign";
   import Markdown from "../Markdown.svelte";
@@ -47,7 +48,7 @@
     <div class="grip" aria-hidden="true"></div>
     <div class="bar">
       <a class="ref" href={node.url} target="_blank" rel="noreferrer">{numbered(node.key, node.repo, project.repos)}</a>
-      <button type="button" class="quiet" onclick={close}>Close</button>
+      <Button variant="outline" onclick={close}>Close</Button>
     </div>
     <h2 id="roadmap-title" tabindex="-1" bind:this={title}>{node.title}</h2>
   </header>

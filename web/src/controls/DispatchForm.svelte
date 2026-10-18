@@ -1,6 +1,7 @@
 <script lang="ts">
   // Dispatch by hand: one of the Repo's Ready, Stackable or Gardening issues, on a
   // Harness, model and Effort that start on the last launch used.
+  import { Button } from "$lib/components/ui/button/index.js";
   import { reload } from "../live";
   import { number, type Repo, type Status } from "../status";
   import { asksToAssign, assignMe } from "./assign";
@@ -83,9 +84,9 @@
         {/if}
       </p>
     </div>
-    <button type="submit" class="button" disabled={!issue || running} aria-busy={running}>
+    <Button type="submit" disabled={!issue || running} aria-busy={running}>
       {running ? "Dispatching…" : "Dispatch"}
-    </button>
+    </Button>
   </form>
   {#if sent?.outcome.ok}
     <p role="status">Dispatched {number(sent.issue, repo.slug)}.</p>

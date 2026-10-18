@@ -1,6 +1,7 @@
 <script lang="ts">
   // Take the Repo out of config.toml, as `repo rm` does, once asked twice; its
   // clone stays. serve refuses while it has a Dispatch In flight.
+  import { Button } from "$lib/components/ui/button/index.js";
   import { reload } from "../live";
   import type { Repo } from "../status";
   import Refused from "./Refused.svelte";
@@ -28,13 +29,13 @@
   {#if asking}
     <p role="status">Remove {repo.slug} from nico-agent? Its clone stays.</p>
     <div class="buttons">
-      <button type="button" class="quiet" disabled={running} aria-busy={running} onclick={remove}>
+      <Button variant="outline" class="max-w-full wrap-anywhere" disabled={running} aria-busy={running} onclick={remove}>
         {running ? "Removing…" : `Remove ${repo.slug}`}
-      </button>
-      <button type="button" class="quiet" disabled={running} onclick={() => (asking = false)}>Keep it</button>
+      </Button>
+      <Button variant="outline" class="max-w-full wrap-anywhere" disabled={running} onclick={() => (asking = false)}>Keep it</Button>
     </div>
   {:else}
-    <button type="button" class="quiet" onclick={() => ((asking = true), (refused = null))}>Remove {repo.slug}…</button>
+    <Button variant="outline" class="max-w-full wrap-anywhere" onclick={() => ((asking = true), (refused = null))}>Remove {repo.slug}…</Button>
   {/if}
   {#if refused && !refused.ok}
     <Refused error={refused.error} help={refused.help} />
@@ -53,9 +54,5 @@
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
-  }
-  button {
-    max-width: 100%;
-    overflow-wrap: anywhere;
   }
 </style>

@@ -1,4 +1,47 @@
-/* DESIGN.md's tokens and type, and the one set of controls every form uses; each component lays itself out. */
+/* DESIGN.md's tokens and type, the theme shadcn-svelte's components in `components/ui/` take from them, and the
+   controls not yet moved onto them; each component lays itself out. */
+
+/* Tailwind's theme and utilities, without its preflight: the house base below is the page's reset. */
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+/* A house class that is also a Tailwind utility gets that utility too: the Stage marks' `ring` must not. */
+@source not inline("ring");
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+/* DESIGN.md's Phone Field Exception, the house's one breakpoint. */
+@custom-variant phone (@media (width < 720px));
+
+/* shadcn-svelte's theme, in its names, drawn from DESIGN.md's tokens, so each theme follows them; no other colour is
+   a utility. Its `accent` is a hover band (`raised`): the house accent is its `primary`. */
+@theme inline {
+  --color-*: initial;
+  --color-background: var(--ground);
+  --color-foreground: var(--ink);
+  --color-card: var(--surface);
+  --color-card-foreground: var(--ink);
+  --color-popover: var(--surface);
+  --color-popover-foreground: var(--ink);
+  --color-primary: var(--accent);
+  --color-primary-foreground: var(--accent-ink);
+  --color-secondary: var(--raised);
+  --color-secondary-foreground: var(--ink);
+  --color-muted: var(--raised);
+  --color-muted-foreground: var(--ink-muted);
+  --color-accent: var(--raised);
+  --color-accent-foreground: var(--ink);
+  --color-destructive: var(--failed);
+  --color-border: var(--hairline);
+  --color-input: var(--rule);
+  --color-ring: var(--focus);
+  --color-signal: var(--signal);
+  --color-signal-edge: var(--signal-edge);
+  --color-signal-foreground: var(--signal-ink);
+  /* DESIGN.md's rounded: control, card, sheet. */
+  --radius-md: var(--radius-control);
+  --radius-lg: var(--radius);
+  --radius-xl: 12px;
+}
 
 :root {
   color-scheme: light;
@@ -80,59 +123,61 @@
   }
 }
 
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
-}
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
 
-html {
-  /* Inherited by every scroll inside: the thumb in `rule`, no track, so a scroll reads as part of the panel it is in. */
-  scrollbar-color: var(--rule) transparent;
-}
+  html {
+    /* Inherited by every scroll inside: the thumb in `rule`, no track, so a scroll reads as part of the panel it is in. */
+    scrollbar-color: var(--rule) transparent;
+  }
 
-body {
-  margin: 0;
-  background: var(--ground);
-  color: var(--ink);
-  font: 400 14px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  font-variant-numeric: tabular-nums;
-  -webkit-text-size-adjust: 100%;
-}
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font: 400 14px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-variant-numeric: tabular-nums;
+    -webkit-text-size-adjust: 100%;
+  }
 
-::selection {
-  background: var(--accent);
-  color: var(--accent-ink);
-}
+  ::selection {
+    background: var(--accent);
+    color: var(--accent-ink);
+  }
 
-:focus-visible {
-  outline: 2px solid var(--focus);
-  outline-offset: 2px;
-}
+  :focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+  }
 
-a {
-  color: var(--accent);
-  text-underline-offset: 3px;
-}
+  a {
+    color: var(--accent);
+    text-underline-offset: 3px;
+  }
 
-button,
-input,
-select {
-  font: inherit;
-  color: inherit;
-}
+  button,
+  input,
+  select {
+    font: inherit;
+    color: inherit;
+  }
 
-h1,
-h2,
-p,
-ul {
-  margin: 0;
-}
+  h1,
+  h2,
+  p,
+  ul {
+    margin: 0;
+  }
 
-/* A command, set in the terminal's face, as it is typed. */
-code {
-  font: 600 0.92em var(--mono);
-  color: var(--ink);
+  /* A command, set in the terminal's face, as it is typed. */
+  code {
+    font: 600 0.92em var(--mono);
+    color: var(--ink);
+  }
 }
 
 /* A refusal, a Dispatch's failure, serve out of reach: a faint red wash in a red hairline, Failed's cross before its first line, so it reads without the hue. */
@@ -249,8 +294,8 @@ code {
   min-width: 0;
 }
 
-select,
-input:not([type="checkbox"], [type="radio"]) {
+/* The controls still native, until shadcn-svelte's take them over: a select, and the toggle. */
+select {
   width: 100%;
   min-height: 36px;
   padding: 0 10px;
@@ -259,66 +304,22 @@ input:not([type="checkbox"], [type="radio"]) {
   background: var(--surface);
   text-overflow: ellipsis;
 }
-input::placeholder {
-  color: var(--ink-muted);
-  opacity: 1;
-}
-select:hover:not(:disabled),
-input:hover:not(:disabled) {
+select:hover:not(:disabled) {
   border-color: var(--ink);
 }
 /* Refused: the field keeps what is set, framed in red until the next save. */
-[aria-invalid="true"] {
+:where(select, input[role="switch"])[aria-invalid="true"] {
   border-color: var(--failed);
   box-shadow: 0 0 0 1px var(--failed);
 }
 
-/* The form's one action: the accent's fill. */
-.button {
-  min-height: 36px;
-  padding: 0 16px;
-  border: 1px solid var(--accent);
-  border-radius: var(--radius-control);
-  background: var(--accent);
-  color: var(--accent-ink);
-  font-weight: 600;
-  cursor: pointer;
-}
-.button:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--accent) 86%, var(--ink));
-}
-/* An action beside a setting, and every other button. */
-.quiet {
-  flex: none;
-  min-height: 36px;
-  padding: 0 14px;
-  border: 1px solid var(--rule);
-  border-radius: var(--radius-control);
-  background: var(--surface);
-  color: var(--ink);
-  font-weight: 600;
-  cursor: pointer;
-}
-.quiet:hover:not(:disabled) {
-  background: var(--raised);
-}
-a.button,
-a.quiet {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  text-decoration: none;
-}
-select:disabled,
-input:disabled,
-.button:disabled,
-.quiet:disabled {
+select:disabled {
   border-color: var(--hairline);
   background: var(--raised);
   color: var(--ink-muted);
   cursor: not-allowed;
 }
-[aria-busy="true"] {
+:where(select, input[role="switch"])[aria-busy="true"] {
   cursor: progress;
 }
 
@@ -424,14 +425,9 @@ input[role="switch"]:checked::before {
 
 /* A finger's size on a phone: 16px field text, which iOS does not zoom into, and 44px to tap. */
 @media (width < 720px) {
-  select,
-  input:not([type="checkbox"], [type="radio"]) {
+  select {
     min-height: 44px;
     font-size: 16px;
-  }
-  .button,
-  .quiet {
-    min-height: 44px;
   }
   .setting {
     min-height: 44px;

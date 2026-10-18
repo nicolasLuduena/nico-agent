@@ -3,6 +3,7 @@
   // its role and Agent state, then its last 200 lines (its screen while herdr
   // scrolls it only idle) from /api/agent/<issue>/<role>, read again every 3 s while it is open and the
   // page is visible; under an Asking Implementer's, the answer controls.
+  import { Button } from "$lib/components/ui/button/index.js";
   import { onMount } from "svelte";
   import Answer from "../controls/Answer.svelte";
   import { hash } from "../route";
@@ -123,7 +124,7 @@
     <div class="grip" aria-hidden="true"></div>
     <div class="bar">
       <a class="ref" href={hash({ project: project.name, view: "map", issue })}>{numbered(issue, node?.repo ?? null, project.repos)}{node?.title ? ` ${node.title}` : ""}</a>
-      <button type="button" class="quiet" onclick={close}>Close</button>
+      <Button variant="outline" onclick={close}>Close</Button>
     </div>
     <h2 id="agent-title" tabindex="-1" bind:this={title}>{ROLE[role]}</h2>
     <p class="state">

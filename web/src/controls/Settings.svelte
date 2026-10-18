@@ -3,6 +3,9 @@
   // /api/status shows them, folded under the Implementer's launch; each
   // written to config.toml as it changes, a text field on Enter or on leaving
   // it; its own launch or Base goes back to its Project's or the default.
+  import { Button } from "$lib/components/ui/button/index.js";
+  import { Input } from "$lib/components/ui/input/index.js";
+  import { fromAction } from "svelte/attachments";
   import { reload } from "../live";
   import { selection } from "../selection.svelte";
   import type { Launch, Project, Repo } from "../status";
@@ -93,21 +96,21 @@
         <From setting={shown.base} {holder} keys={["base"]} name="Base" onundo={() => save("base", unset(["base"]))} />
       </Save>
     </div>
-    <input
+    <Input
       id="{id}-base"
       value={shown.base.value ?? ""}
       placeholder="origin's default branch"
       autocomplete="off"
       aria-invalid={saves.invalid("base")}
       aria-busy={saves.busy("base")}
-      use:entered={{
+      {@attach fromAction(entered, () => ({
         set: shown.base.value ?? "",
         save: async (value, input) => {
           await save("base", { base: named(value) });
           // Emptied, it shows what takes its place, which may be the value it last showed.
           input.value = shown.base.value ?? "";
         },
-      }}
+      }))}
     />
   </div>
   {#if repo}
@@ -117,7 +120,8 @@
         <Save state={saves.of("project")} />
       </div>
       <div class="project">
-        <input
+        <Input
+          class="w-auto min-w-0 flex-[1_1_140px]"
           id="{id}-project"
           list="{id}-projects"
           value={joined ?? ""}
@@ -125,13 +129,13 @@
           autocomplete="off"
           aria-invalid={saves.invalid("project")}
           aria-busy={saves.busy("project")}
-          use:entered={{
+          {@attach fromAction(entered, () => ({
             set: joined ?? "",
             save: (value, input) => save("project", { project: named(value) }, () => (input.value = joined ?? "")),
-          }}
+          }))}
         />
         {#if joined}
-          <button type="button" class="quiet" onclick={() => save("project", { project: null })}>Leave {joined}</button>
+          <Button variant="outline" class="max-w-full wrap-anywhere" onclick={() => save("project", { project: null })}>Leave {joined}</Button>
         {/if}
       </div>
       <datalist id="{id}-projects">
@@ -160,14 +164,5 @@
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
-  }
-  .project input {
-    flex: 1 1 140px;
-    width: auto;
-    min-width: 0;
-  }
-  .project button {
-    max-width: 100%;
-    overflow-wrap: anywhere;
   }
 </style>

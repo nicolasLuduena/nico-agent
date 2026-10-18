@@ -6,6 +6,7 @@
 </script>
 
 <script lang="ts">
+  import { Button } from "$lib/components/ui/button/index.js";
   // The Project's map from /api/map/<project>, refetched on every `changed`:
   // dagre lays out each group of linked issues left to right, the groups packed
   // to the field's shape (layout.ts); the field pans and zooms, a node opens its
@@ -363,18 +364,18 @@
         </p>
       {/if}
       {#if merged > 0}
-        <button type="button" class="quiet" onclick={toggleMerged}>{hideMerged ? `Show ${merged} merged` : "Hide merged"}</button>
+        <Button variant="outline" onclick={toggleMerged}>{hideMerged ? `Show ${merged} merged` : "Hide merged"}</Button>
       {/if}
       {#if drawn && drawn.nodes.length > 0}
         <div class="zoom" role="group" aria-label="Zoom">
-          <button type="button" class="quiet" aria-label="Zoom out" onclick={() => zoomStep(1 / 1.25)}>
+          <Button variant="outline" aria-label="Zoom out" onclick={() => zoomStep(1 / 1.25)}>
             <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M2.5 7 H11.5" /></svg>
-          </button>
+          </Button>
           <span class="readout">{Math.round(k * 100)}%</span>
-          <button type="button" class="quiet" aria-label="Zoom in" onclick={() => zoomStep(1.25)}>
+          <Button variant="outline" aria-label="Zoom in" onclick={() => zoomStep(1.25)}>
             <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M2.5 7 H11.5 M7 2.5 V11.5" /></svg>
-          </button>
-          <button type="button" class="quiet" onclick={() => fit()}>Fit</button>
+          </Button>
+          <Button variant="outline" onclick={() => fit()}>Fit</Button>
         </div>
       {/if}
     </div>
@@ -479,7 +480,7 @@
     display: flex;
     margin-left: auto;
   }
-  .zoom button {
+  .zoom :global(button) {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -506,21 +507,21 @@
     font-size: 13px;
     font-variant-numeric: tabular-nums;
   }
-  .zoom button:first-child {
+  .zoom :global(button:first-child) {
     border-radius: var(--radius-control) 0 0 var(--radius-control);
   }
-  .zoom button:last-child {
+  .zoom :global(button:last-child) {
     border-radius: 0 var(--radius-control) var(--radius-control) 0;
   }
-  .zoom > * + * {
+  .zoom > :global(*) + :global(*) {
     margin-left: -1px;
   }
-  .zoom button:focus-visible {
+  .zoom :global(button:focus-visible) {
     position: relative;
   }
   /* On a phone the legend is hidden and the buttons 44px; the bar wraps rather than overflow. */
   @media (width < 720px) {
-    .zoom button {
+    .zoom :global(button) {
       min-width: 44px;
     }
     .legend {

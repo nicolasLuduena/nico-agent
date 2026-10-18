@@ -3,6 +3,8 @@
   // under its value; written to config.toml as it is entered (Enter or
   // leaving it); its own goes back to its Project's or the default. A Repo's
   // counts its Dispatches In flight.
+  import { Input } from "$lib/components/ui/input/index.js";
+  import { fromAction } from "svelte/attachments";
   import { entered, whole } from "./field";
   import Fold from "./Fold.svelte";
   import From from "./From.svelte";
@@ -17,13 +19,13 @@
   // The PATCH's answer, until /api/status's next one.
   let room = $derived(holder.settings.room);
   const saves = new Saves();
-  let input: HTMLInputElement;
+  let input = $state<HTMLInputElement | null>(null);
 
   async function save(body: Record<string, unknown>) {
     const sent = await saves.run("room", () => holder.patch(body));
     if (sent.ok) room = sent.answer.room;
     // A refused value goes back to the room set.
-    input.value = String(room.value);
+    if (input) input.value = String(room.value);
   }
 </script>
 
@@ -35,7 +37,8 @@
         <From setting={room} {holder} keys={["room"]} name="Room" onundo={() => save(unset(["room"]))} />
       </Save>
     </span>
-    <input
+    <Input
+      class="w-20 flex-none"
       id="{id}-room"
       type="number"
       min="1"
@@ -43,8 +46,8 @@
       aria-invalid={saves.invalid("room")}
       aria-busy={saves.busy("room")}
       aria-describedby={live === undefined ? undefined : `${id}-live`}
-      bind:this={input}
-      use:entered={{ set: String(room.value), save: (value) => save({ room: whole(value) }) }}
+      bind:ref={input}
+      {@attach fromAction(entered, () => ({ set: String(room.value), save: (value: string) => save({ room: whole(value) }) }))}
     />
   </div>
   {#if live !== undefined}
@@ -56,10 +59,6 @@
 </Fold>
 
 <style>
-  .setting input {
-    flex: none;
-    width: 80px;
-  }
   p {
     color: var(--ink-muted);
   }

@@ -2,6 +2,7 @@
   // A button-quiet asking serve one thing of the issue, which the page shows
   // once it refetches; a refusal inline under it, on the errata rule, kept
   // while the button is not `offered`. What `children` puts there sits left of it.
+  import { Button } from "$lib/components/ui/button/index.js";
   import type { Snippet } from "svelte";
   import { reload } from "../live";
   import { Pressing, type Action } from "./press.svelte";
@@ -28,7 +29,7 @@
 <div class="row">
   {@render children?.()}
   {#if offered}
-    <button type="button" class="quiet" disabled={pressing.busy} aria-busy={pressing.busy} onclick={press}>{pressing.label}</button>
+    <Button variant="outline" disabled={pressing.busy} aria-busy={pressing.busy} onclick={press}>{pressing.label}</Button>
   {/if}
 </div>
 {#if pressing.refused}

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Button } from "$lib/components/ui/button/index.js";
   import { onMount } from "svelte";
   import AddRepo from "./controls/AddRepo.svelte";
   import Refresh from "./controls/Refresh.svelte";
@@ -131,7 +132,7 @@
           </div>
           <div class="actions">
             <Refresh />
-            <button type="button" class="quiet" aria-expanded={reposOpen && selection.view === "map"} aria-controls="repos" onclick={toggleRepos}>Repos</button>
+            <Button variant="outline" aria-expanded={reposOpen && selection.view === "map"} aria-controls="repos" onclick={toggleRepos}>Repos</Button>
           </div>
         </header>
         <nav class="views" aria-label="View">
@@ -298,7 +299,7 @@
     align-items: center;
     gap: 8px;
   }
-  .actions [aria-expanded="true"] {
+  .actions :global([aria-expanded="true"]) {
     border-color: var(--accent);
     background: var(--accent-soft);
   }

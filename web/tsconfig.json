@@ -8,7 +8,8 @@
     "strict": true,
     "noEmit": true,
     "verbatimModuleSyntax": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "paths": { "$lib": ["./src"], "$lib/*": ["./src/*"] }
   },
   "include": ["src"]
 }
