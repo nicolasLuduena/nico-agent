@@ -33,7 +33,8 @@
 #   seed dialog <n>|none          a real Claude in a herdr tab of its own, impl-fixture-<n>, Asking two questions
 #                                 in a choice dialog, reached through seed herdr; none closes it. Needs herdr and claude
 #   seed reviewer <n>|none        herdr answers the start of rev-fixture-<n>, a Reviewer of a Dispatch seeded `pr`,
-#                                 as it would, and lists it working beside its idle Implementer; none, a stub again.
+#                                 as it would, lists it working beside its idle Implementer, and reads its screen
+#                                 (240 numbered lines); none, a stub again.
 #                                 Not with seed herdr
 #   drift push <n>|stale|pause|hang|below merged|closed|final <n> merged|closed
 #                                 what GitHub would change: a new PR head, an old read, a rate limit, a gh that never answers,
@@ -194,6 +195,10 @@ case "\$name" in
         "tab close") if [ "\${3:-}" = verify:t-rev ]; then rm -f "$RUN_DIR/herdr-reviewer-started"; exit 0; fi ;;
         "agent start") if [ "\${3:-}" = "\$rev" ]; then : > "$RUN_DIR/herdr-reviewer-started"; echo '{"result":{}}'; exit 0; fi ;;
         "agent prompt") if [ "\${3:-}" = "\$rev" ]; then echo '{"result":{}}'; exit 0; fi ;;
+        # Its screen, once started: 240 lines printed, the last --lines of them read.
+        "agent read") if [ "\${3:-}" = "\$rev" ] && [ -f "$RUN_DIR/herdr-reviewer-started" ]; then
+            seq 1 240 | sed "s|^|rev-fixture-\$n reviews verify/fixture#\$n, line |" | tail -n "\${7:-200}"; exit 0
+          fi ;;
         "agent list")
           started="\$([ -f "$RUN_DIR/herdr-reviewer-started" ] && echo true || echo false)"
           jq -cn --arg n "\$n" --argjson started "\$started" '{result: {agents: ([{name: "impl-fixture-\(\$n)", agent_status: "idle"}]

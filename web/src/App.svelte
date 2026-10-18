@@ -22,14 +22,13 @@
   /** On the Roadmap, which is read-only, Repos opens beside the map. */
   function toggleRepos() {
     reposOpen = !reposOpen || selection.view !== "map";
-    if (reposOpen) Object.assign(selection, { view: "map", issue: null });
+    if (reposOpen) Object.assign(selection, { view: "map", issue: null, agent: null });
   }
 
-  // The hash selects as a link opens the page, and as back and forward move through it; the selection writes it back.
+  // The hash selects as a link opens the page, and as back and forward move through it; the selection writes it back,
+  // so opening and closing a panel are steps of the history.
   function follow() {
-    const at = route(location.hash);
-    if (at.project !== selection.project) selection.issue = null;
-    Object.assign(selection, at);
+    Object.assign(selection, route(location.hash));
   }
   follow();
   $effect(() => {
@@ -60,7 +59,7 @@
 
   /** The option at `i`: a Project's, its view kept. */
   function show(i: number) {
-    Object.assign(selection, { project: projects[i].name, issue: null });
+    Object.assign(selection, { project: projects[i].name, issue: null, agent: null });
   }
 
   /** The read times flash once when a read moves them, not when another Project shows its own. */

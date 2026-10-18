@@ -15,7 +15,7 @@ use crate::source::{self, Issue};
 use crate::stage;
 use crate::state;
 use crate::status;
-use crate::world::READY_LABEL;
+use crate::world::{self, READY_LABEL};
 
 /// `GET /api/map/<project>`: the nodes and edges of the Project `name`, a
 /// Repo's own named by its slug; `None` when it is no Project. Its nodes are
@@ -200,8 +200,7 @@ pub fn own_keys(issues: &mut [Issue], slugs: &[&String]) {
 
 /// `GET /api/node/<issue>`: the issue's last Dispatch as `status` shows it,
 /// its restarts and Verdict with findings among it, and every file of the
-/// issue's Bucket folder, and while it is Asking its Implementer's pane;
-/// `None` when the issue has no Dispatch.
+/// issue's Bucket folder; `None` when the issue has no Dispatch.
 pub fn node(ctx: &Context, issue: &str) -> Result<Option<Value>, Refusal> {
     let config = config::load(&ctx.config_dir)?;
     let dispatches = dispatch::load(&ctx.config_dir)?;
@@ -224,14 +223,51 @@ pub fn node(ctx: &Context, issue: &str) -> Result<Option<Value>, Refusal> {
         .collect();
     node["evidence_folder"] = json!(format!("/bucket/{}/", http::escaped(&folder)));
     node["evidence"] = json!(evidence);
-    // What the Asking Implementer shows, as herdr has it, for the user to answer
-    // from; Asking as its flag says it, herdr's blocked before a tick records it.
-    let blocked = node["agent_state"]["implementer"] == "blocked";
-    if d.closed_at.is_none() && (d.asking.is_some() || blocked) {
-        match ctx.world.herdr_agent_read(&d.implementer.agent) {
-            Ok(pane) => node["pane"] = json!(pane),
-            Err(e) => node["pane_error"] = json!(e.0),
-        }
-    }
     Ok(Some(node))
+}
+
+/// How many of its last lines an agent's screen shows.
+pub const SCREEN_LINES: usize = 200;
+
+/// `GET /api/agent/<issue>/<role>`: the last [`SCREEN_LINES`] lines of the
+/// issue's live Implementer or Reviewer, as herdr reads them (its screen
+/// while herdr scrolls it only idle), or why herdr could not; refused for an
+/// issue with no live Dispatch, or a role with no agent herdr lists. herdr's
+/// alone: no GitHub call.
+pub fn screen(ctx: &Context, issue: &str, role: &str) -> Result<Value, Refusal> {
+    let config = config::load(&ctx.config_dir)?;
+    let dispatches = dispatch::load(&ctx.config_dir)?;
+    let see = "See its agents in `nico-agent status --json`".to_string();
+    let live = (dispatch::key(&config, &dispatches, issue).ok())
+        .and_then(|key| dispatches.iter().rfind(|d| d.issue == key))
+        .filter(|d| d.closed_at.is_none());
+    let Some(d) = live else {
+        return Err(Refusal::new(
+            format!("{issue} has no live Dispatch"),
+            vec![see],
+        ));
+    };
+    let agent = match role {
+        "implementer" => Some(&d.implementer.agent),
+        "reviewer" => d.reviewer.as_ref().map(|r| &r.launch.agent),
+        _ => {
+            let mut bad = Refusal::new(
+                format!("{role} is not a role: implementer or reviewer"),
+                vec!["Ask for /api/agent/<issue>/implementer or /reviewer".into()],
+            );
+            bad.exit_code = 2;
+            return Err(bad);
+        }
+    };
+    let agents = ctx.world.herdr_agents()?;
+    let Some(agent) = agent.filter(|a| world::agent_state(&agents, a).is_some()) else {
+        return Err(Refusal::new(
+            format!("{issue} has no {role} in herdr"),
+            vec![see],
+        ));
+    };
+    Ok(match ctx.world.herdr_agent_recent(agent, SCREEN_LINES) {
+        Ok(screen) => json!({ "agent": agent, "screen": screen }),
+        Err(e) => json!({ "agent": agent, "unread": e.0 }),
+    })
 }

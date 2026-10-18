@@ -523,5 +523,8 @@ fn a_nodes_faux_nico_is_on_the_map_with_since_when_herdr_reports_it_blocked() {
     assert_eq!(status, 200, "{map}");
     let faux_nico = &node(&map, "acme/api#7")["faux_nico"];
     assert_eq!(faux_nico["agent"], "faux-nico-api-7", "{faux_nico}");
-    assert_eq!(faux_nico["blocked_since"], "2026-09-30T12:01:00Z", "{faux_nico}");
+    assert_eq!(
+        faux_nico["blocked_since"], "2026-09-30T12:01:00Z",
+        "{faux_nico}"
+    );
 }

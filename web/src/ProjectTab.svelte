@@ -1,12 +1,13 @@
 <script lang="ts">
   // One Project's work, its map or its Roadmap (the views are picked in App): every open issue the loop does
   // not work (roadmap/). The map on the left; on the right the open node's
-  // inspector (#253, map/), or, while the Repos column is open, its defaults,
+  // inspector (#253, map/), or its agent's panel (#435), or, while the Repos column is open, its defaults,
   // unless it is a Repo's own, then a panel per Repo with its Dispatch form,
   // switches and settings (controls/), and Add a Repo.
   import AddRepo from "./controls/AddRepo.svelte";
   import Controls from "./controls/Controls.svelte";
   import ProjectDefaults from "./controls/ProjectDefaults.svelte";
+  import AgentPanel from "./map/AgentPanel.svelte";
   import Panel from "./map/Panel.svelte";
   import ProjectMap from "./map/ProjectMap.svelte";
   import Roadmap from "./roadmap/Roadmap.svelte";
@@ -24,10 +25,17 @@
   <Roadmap {project} />
 {:else}
   <div class="work" class:open={selection.issue} class:side-open={selection.issue || reposOpen}>
-    <ProjectMap {project} dispatches={status.dispatches} />
+    <ProjectMap {project} />
     {#if selection.issue}
       <div class="side">
-        <Panel issue={selection.issue} {project} />
+        {#if selection.agent}
+          <!-- Another agent's panel starts over: its own reads, focus on its title. -->
+          {#key `${selection.issue} ${selection.agent}`}
+            <AgentPanel issue={selection.issue} role={selection.agent} {project} />
+          {/key}
+        {:else}
+          <Panel issue={selection.issue} {project} />
+        {/if}
       </div>
     {:else if reposOpen}
       <div class="side" id="repos" role="region" aria-label="Repos">

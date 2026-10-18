@@ -29,6 +29,7 @@ An H1 title, one paragraph on the user-visible behaviour, then exactly four H2 s
 - [Refresh](./refresh.md)
 - [GitHub rate-limit gauge](./rate-gauge.md)
 - [Answer an Asking Implementer](./answer.md)
+- [An In-flight issue's agents: their rows and panels](./agents.md)
 - [Live updates](./live-updates.md)
 - [The panel's forms](./forms.md)
 - [The page's colours](./palette.md)

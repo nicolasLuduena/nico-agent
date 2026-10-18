@@ -1,13 +1,12 @@
 <script lang="ts">
   // The open node's inspector (desktop) or bottom sheet (phone): what the map
   // node knows and, for an issue with a Dispatch, /api/node/<issue>, its next
-  // useful action first: while it is Asking its Implementer's pane, to answer
-  // from; when it Failed, why; then its PR (opened on GitHub to review and
-  // merge), its review with "Review now" while it is off, stopped or given up
+  // useful action first: while it is Asking, a link to its Implementer's agent
+  // panel, to answer from; when it Failed, why; then its PR (opened on GitHub
+  // to review and merge), its review with "Review now" while it is off, stopped or given up
   // on, and Verdict with findings, and Evidence in the Bucket; then who it is
   // assigned to, with "Assign to me" while no one is, and its restarts, folded.
   import { onMount } from "svelte";
-  import Answer from "../controls/Answer.svelte";
   import Markdown from "../Markdown.svelte";
   import { assignMe, assignable, named } from "../controls/assign";
   import Press from "../controls/Press.svelte";
@@ -17,7 +16,8 @@
   import { harnessHue, stageHue } from "../hues";
   import * as review from "../review";
   import { reviewerKeptFailing } from "../failure";
-  import { agentOf, needs } from "./layout";
+  import { hash } from "../route";
+  import { agentsOf, needs } from "./layout";
   import { numbered, type Failure, type Project, type Restart, type Review, type Stage } from "../status";
   import { clock } from "../time";
   import Mark from "./Mark.svelte";
@@ -32,9 +32,6 @@
     failure: Failure | null;
     evidence_folder: string;
     evidence: { path: string; url: string }[];
-    /** While it is Asking: its Implementer's pane, or why herdr could not read it. */
-    pane?: string;
-    pane_error?: string;
   }
 
   let { issue, project }: { issue: string; project: Project } = $props();
@@ -115,13 +112,11 @@
     </div>
     <h2 id="panel-title" tabindex="-1" bind:this={title}>{node?.title ?? issue}</h2>
     {#if node}
-      {@const agent = agentOf(node)}
       <p class="stage">
         <span class="word" style:color={stageHue(node.stage)}>
           {#if node.stage}<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><Mark stage={node.stage} /></svg>{/if}
           <strong>{node.stage ?? "Blocker"}</strong>
         </span>
-        {#if agent}<span class="agent" class:asking={agent === "asking"}>Agent {agent}</span>{/if}
         {#if needs(node)}<span class="needs">Needs you</span>{/if}
       </p>
     {/if}
@@ -132,10 +127,12 @@
   {:else}
     {#if failure}<div class="section"><p class="errata" role="status"><strong>{failure}</strong></p></div>{/if}
 
-    {#if full && (full.pane !== undefined || full.pane_error)}
-      <div class="section">
-        <Answer {issue} pane={full.pane} error={full.pane_error} />
-      </div>
+    {#if agentsOf(node).some((a) => a.role === "implementer" && a.state === "asking")}
+      <section aria-labelledby="asking-title">
+        <h3 id="asking-title">Asking</h3>
+        <p class="said">The Implementer is asking you something{node.asking ? `: ${node.asking.question}` : "."}</p>
+        <p class="hint"><a class="button" href={hash({ project: project.name, view: "map", issue, agent: "implementer" })}>Answer it in its panel</a></p>
+      </section>
     {/if}
 
     {#if node.stage === "Waiting" && node.waits}<p class="said section">{node.waits}</p>{/if}
@@ -272,13 +269,6 @@
   }
   .word svg {
     flex: none;
-  }
-  .agent {
-    color: var(--ink-muted);
-  }
-  .agent.asking {
-    color: var(--ink);
-    font-weight: 600;
   }
   .stage .needs {
     margin-left: auto;

@@ -1,13 +1,12 @@
 <script lang="ts">
-  // Answer an Asking Implementer from what its pane shows: in words, by an
-  // option's digit, or a key at a time; each `POST /api/answer`, then the
-  // pane is read again to show what it did.
-  import { reload } from "../live";
+  // Answer an Asking Implementer under its screen, in its agent panel: in
+  // words, by an option the screen shows, or a key at a time; each
+  // `POST /api/answer`, then `answered`, which reads the screen again.
   import { options } from "./answer";
   import Refused from "./Refused.svelte";
   import { send, type Sent } from "./send";
 
-  let { issue, pane, error }: { issue: string; pane?: string; error?: string } = $props();
+  let { issue, screen, answered }: { issue: string; screen: string; answered: () => void } = $props();
   const id = $props.id();
 
   /** The keys any dialog takes: what each shows, herdr's name for it, and what it is called. */
@@ -22,15 +21,7 @@
   let text = $state("");
   let running = $state(false);
   let sent = $state<Sent | null>(null);
-  // The screen's padding, its blank margins and the empty rows a terminal leaves
-  // between its output and its prompt left out: only what it says is scrolled.
-  const shown = $derived(
-    (pane ?? "")
-      .replace(/[ \t]+$/gm, "")
-      .replace(/\n{3,}/g, "\n\n")
-      .replace(/^\n+|\n+$/g, ""),
-  );
-  const picks = $derived(options(shown));
+  const picks = $derived(options(screen));
 
   async function answer(body: { text: string } | { keys: string[] }) {
     // One at a time; a key stays enabled, so focus stays on it for the next press.
@@ -44,7 +35,7 @@
       text = "";
       box.focus({ preventScroll: true });
     }
-    reload(`/api/node/${encodeURIComponent(issue)}`);
+    answered();
   }
 
   function submit(event: SubmitEvent) {
@@ -53,24 +44,10 @@
   }
 
   let box: HTMLInputElement;
-
-  // The dialog is at the foot of the screen: the box starts scrolled to it.
-  let screen = $state<HTMLElement>();
-  $effect(() => {
-    void shown;
-    if (screen) screen.scrollTop = screen.scrollHeight;
-  });
 </script>
 
 <section aria-labelledby="{id}-head">
-  <h3 id="{id}-head">Asking</h3>
-  {#if error}
-    <Refused {error} help={[]} />
-  {:else}
-    <!-- Scrolls inside its box, so a keyboard can reach it. -->
-    <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-    <pre class="pane" tabindex="0" aria-label="The Implementer's pane" bind:this={screen}>{shown}</pre>
-  {/if}
+  <h3 id="{id}-head">Answer</h3>
   {#if picks.length}
     <div class="picks" role="group" aria-label="Options">
       {#each picks as o (o.key)}
@@ -110,20 +87,6 @@
     font-size: 14px;
     font-weight: 600;
   }
-  /* The screen as herdr reads it: unwrapped, scrolling inside its own box, never the panel. */
-  .pane {
-    margin: 0;
-    max-height: 24em;
-    overflow: auto;
-    padding: 8px 12px;
-    border: 1px solid var(--hairline);
-    border-radius: var(--radius-control);
-    background: var(--ground);
-    color: var(--ink);
-    font: 400 13px/1.4 var(--mono);
-    white-space: pre;
-    tab-size: 8;
-  }
   .picks {
     display: grid;
     gap: 8px;
@@ -151,11 +114,5 @@
     grid-template-columns: minmax(0, 1fr) max-content;
     align-items: end;
     gap: 8px;
-  }
-  /* On a phone the pane, its options and the keys share the sheet's first screen. */
-  @media (width < 720px) {
-    .pane {
-      max-height: 30vh;
-    }
   }
 </style>

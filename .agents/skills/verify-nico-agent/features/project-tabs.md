@@ -82,8 +82,8 @@ Preconditions:
 - **Phone.** Run `$C page --evidence "$E/09-phone" --width 390`: `combobox "Project"`
   with `option "verify" [selected]`, its own full-width line in the screenshot.
 - **An Asking node.** Run `$C seed dispatch 12 asking`, then `$C page --evidence "$E/10-asking-open" --click "button~#12 fixture, Verify: seeded Dispatch 12"`.
-  `link "verify"`, and `heading "verify"` (the shown Project); the node `#12 fixture, Verify: seeded Dispatch 12, Implementing, agent asking on claude, needs you` is
-  `[pressed]`; `region "Verify: seeded Dispatch 12"` (an inspector is named by its title alone); `.requests.txt` has `GET
+  `link "verify"`, and `heading "verify"` (the shown Project); the node `#12 fixture, Verify: seeded Dispatch 12, Implementing, needs you` is
+  `[pressed]`, with its row `button "Implementer, asking you something"`; `region "Verify: seeded Dispatch 12"` (an inspector is named by its title alone); `.requests.txt` has `GET
   /api/node/verify%2Ffixture%2312 -> 200`.
 - **Status.** Run `$C run --evidence "$E/11-status" -- status --json`: `projects[0]` is `verify`
   with `defaults` `{"room":5,"switches":{"review":false}}` and `room` `{"from":"project","value":5}`;
@@ -113,8 +113,8 @@ Preconditions:
   "verify"` under both Repos, `room = 2` under verify/second, `install = "echo installed"` under
   verify/fixture and `[projects.verify]` with `room = 5` and `switches = { review = false }`, the
   seeded Dispatch, `installs.json` and `checks.json` (the Readiness checks run again). Copy `$OUTSIDE_LOG` to
-  `$E/outside.log`: `herdr agent list` (the open page with a live Dispatch), `herdr agent read impl-fixture-12
-  --source visible` (step 10's Asking inspector reading its pane), `ghbot api /installation/repositories ...` (the
+  `$E/outside.log`: `herdr agent list` (the open page with a live Dispatch) and no `herdr agent read` (step 10's
+  Asking inspector reads no screen; only an agent panel does, agents.md), `ghbot api /installation/repositories ...` (the
   Readiness checks after a settings write and the Install), and launch's `gh api rate_limit` and `ghbot api rate_limit`. Every `.console.txt` is empty.
 
 ## Gotchas
