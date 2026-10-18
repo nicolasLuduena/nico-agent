@@ -7,7 +7,7 @@ its Base or with changes to tracked files, else pulls fast-forward and runs the 
 showing its output on stderr as it runs; it keeps `{at, sha, ok, output}` (the last 20 lines) in
 `installs.json`, then runs the Repo's Readiness checks. One runs at a time per Repo: asked while one
 runs, it queues one more, which the next tick starts in a herdr workspace `install-<repo>`. A failed
-or refused one is an `Install` toast over the page's corner and an errata block in its panel's Install
+or refused one is an `Install` notice in the band under the views and an errata block in its panel's Install
 section, with `nico-agent install <slug>` as its help.
 
 ## Sub-features
@@ -19,14 +19,14 @@ section, with `nico-agent install <slug>` as its help.
 - `install-failed` a command that exits non-zero: exit `1`, `the Install of <slug> failed: <its last line>`, `ok` false with the sha it pulled.
 - `install-checks` the Repo's Readiness checks run after each Install (its `ghbot` call in the outside log).
 - `install-one-at-a-time` `install` asked while another runs refuses with `an Install of <slug> is running (pid N)` and `queued: true`; the next tick (a Refresh) starts the queued one in herdr.
-- `install-toast-panel` a failed or refused last Install is a `status` toast `Install <slug>: <last line>` in `list "Needs you"` with `Run nico-agent install <slug> once it is fixed` under it, and `region "Install"` in its panel opens by itself, its folded line reading `Failed at <time>`, then the output and the same help; an ok one stays folded, its line reading `Installed <short sha>` and, opened, `Installed <short sha> at <time>`; with no command it reads `None`.
+- `install-toast-panel` a failed or refused last Install is a `status` notice `Install <slug>`, its last line under it, in `list "Needs you"` with `Run nico-agent install <slug> once it is fixed` under it, and `region "Install"` in its panel opens by itself, its folded line reading `Failed at <time>`, then the output and the same help; an ok one stays folded, its line reading `Installed <short sha>` and, opened, `Installed <short sha> at <time>`; with no command it reads `None`.
 
 ## How to get to it (user POV)
 
 - The Repo's panel's `region "Install"`, folded to one line unless its last Install failed: click it open, then its `textbox "Install command"` (change, then Enter or leave the field).
 - `PATCH /api/repo/<slug>` with `{"install": ...}`, as the page sends it.
 - `nico-agent install <slug>`, by hand or in the pane the loop opens after a merge into the Base.
-- The toasts and `nico-agent status --json`'s `repos[].install`.
+- The notices and `nico-agent status --json`'s `repos[].install`.
 
 ## Driving it with control-nico-agent
 
@@ -50,8 +50,8 @@ Preconditions:
   verify/fixture failed: <clone> is on spike, not its Base main`, help `Run nico-agent install
   verify/fixture once it is fixed`; `last.sha` null. Back on `main` with a line appended to
   `README.md`: `... has changes to tracked files: M README.md`.
-- **Toast and panel.** `$C page --evidence "$E/07-page-refused" --expect "has changes to tracked files"`:
-  `list "Needs you"` has a `status` toast `Install verify/fixture: <clone> has changes ... M README.md` with `Run
+- **Toast and panel.** `$C page --evidence "$E/07-page-refused" --click "button=Repos" --expect "has changes to tracked files"`:
+  `list "Needs you"` has a `status` notice `Install verify/fixture`, `<clone> has changes ... M README.md` under it, with `Run
   nico-agent install verify/fixture once it is fixed` under it; `region "Install"` is open by itself, its line
   reading `Install Failed at <time>`, with `textbox "Install command"` reading `seq 1 25`, `Failed at <time>`,
   the output and the help.
@@ -59,13 +59,13 @@ Preconditions:
   (the section is still open, its last Install refused):
   `.requests.txt` has `PATCH /api/repo/verify/fixture {"install":"echo compiling; echo boom >&2; exit 4"} -> 200`.
   `install`: exit `1`, `the Install of verify/fixture failed: boom`; `last.output` is
-  `compiling\nboom`, `last.sha` the clone's HEAD. The toast reads `Install verify/fixture: boom`.
+  `compiling\nboom`, `last.sha` the clone's HEAD. The notice reads `Install verify/fixture`, `boom` under it.
 - **One at a time.** `PATCH ... '{"install":"sleep 6; echo slow done"}'`; start `install` in the
   background, and within 6 seconds run it again: exit `1`, `an Install of verify/fixture is running
   (pid N)`, help `One more runs once it ends`; `installs.json` has `runner` N and `queued: true`.
   The first ends with exit `0`, `last.output` `slow done`, `queued` still true. `$C page --evidence
   "$E/14-page-installed" --click "button=Repos" --within "region=verify/fixture" --click "region=Install" --expect "Installed <short sha>"`:
-  the folded line read `Installed <short sha>`; no `Install` toast.
+  the folded line read `Installed <short sha>`; no `Install` notice.
 - **Queued, then a tick.** `: > "$OUTSIDE_LOG"`; `$C run --evidence "$E/15-refresh-queued" -- refresh --json`:
   `actions` holds `could not start the Install of verify/fixture, queued again: \`herdr workspace
   create\` failed: verify_stub: ...`; `$OUTSIDE_LOG` has `herdr workspace create --cwd <clone>

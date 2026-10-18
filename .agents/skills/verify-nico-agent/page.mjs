@@ -121,8 +121,8 @@ try {
         // Into what has focus, a key per character, as typed.
         await page.keyboard.type(step.type);
       } else if (step.gone) {
-        // Long enough for a reconnect's backoff.
-        await page.getByText(step.gone, { exact: false }).first().waitFor({ state: "hidden", timeout: 60000 });
+        // No visible match left (text folded away counts as gone), waited long enough for a reconnect's backoff.
+        await page.getByText(step.gone, { exact: false }).filter({ visible: true }).first().waitFor({ state: "hidden", timeout: 60000 });
       } else if (step.wait !== undefined) {
         await page.waitForTimeout(step.wait * 1000);
       } else if (step.history) {
@@ -137,7 +137,8 @@ try {
         const set = await fetch(new URL("/__tunnel/mode", url), { method: "PUT", body: step.mode });
         if (!set.ok) throw new Error(`the tunnel stand-in answered ${set.status}: ${await set.text()}`);
       } else {
-        await page.getByText(step.expect, { exact: false }).first().waitFor({ timeout: 10000 });
+        // The first visible match: text folded inside a closed section is not on the page yet.
+        await page.getByText(step.expect, { exact: false }).filter({ visible: true }).first().waitFor({ timeout: 10000 });
       }
       await settle();
       console.log(`ok    ${Object.entries(step)[0].join(" ")}`);

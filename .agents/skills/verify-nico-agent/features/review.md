@@ -54,7 +54,7 @@ Preconditions:
 - **Gave up on the page.** Run `$C page --evidence "$E/10-gave-up" --click "button~#10, Verify: seeded Dispatch 10" --expect "Reviewer gave up on <sha7>"`.
   The node button ends `review gave up, needs you`; `.requests.txt` has `GET /api/node/verify%2Ffixture%2310 -> 200`;
   the panel's Review line reads `Reviewer gave up on <sha7>: review it by hand with nico-agent verdict verify/fixture#10 pass|fail --sha <head>`,
-  the command a `code`. At `--width 390` (`11-phone`, with --click "button=Dismiss Check verify/fixture" --click "button=Dismiss Check verify/fixture" --click "button=Dismiss Check verify/fixture" --click "button=Dismiss Check verify/fixture" --click "button=Dismiss Check verify/fixture" before the node's click: the toasts cover the map on a phone) the line wraps in the sheet and nothing
+  the command a `code`. At `--width 390` (`11-phone`) the line wraps in the sheet and nothing
   is wider than the screen.
 - **Off.** Run `$C http --evidence "$E/12-review-off" PATCH /api/repo/verify/fixture/switches '{"review":false}'`
   (switches.md drives the switch on the page): its answer has `"review":false`. Run
@@ -98,10 +98,8 @@ Preconditions:
 
 ## Gotchas
 
-- The Readiness checks' toasts (`list "Needs you"`, each a `status` with `button "Dismiss <its head>"`) arrive a moment after the page
-  loads and sit over the panel, so a `--click` on `button "Review now"` times out under them: first
-  `--expect` the last toast's text, then `--click "button~Dismiss"` once per toast (5 with herdr a
-  stub, 3 once `seed reviewer` makes it answer).
+- The Readiness checks' `Check verify/fixture` notice sits in the band between the views and the map, in the
+  page's flow: it covers no button, so no step dismisses it.
 - `review-waits` needs herdr to report the Implementer working: `seed reviewer` lists it idle, so
   `cargo test` covers it through the fake World.
 - herdr is a stub, so a Reviewer never starts until `seed reviewer <n>` makes herdr answer its

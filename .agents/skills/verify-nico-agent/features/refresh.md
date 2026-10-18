@@ -35,8 +35,8 @@ Preconditions:
 - **Press Refresh.** Run `$C page --evidence "$E/02-pressed" --click "button=Refresh" --expect "Failed"`.
   `.requests.txt` has, after the first load, `POST /api/refresh -> 200` then `GET /api/status -> 200`
   and `GET /api/map/verify%2Ffixture -> 200`; the map's
-  nodes `#1`, `#5` and `#6` say `Failed, needs you`, and the Repo's failing Readiness checks are
-  `Check verify/fixture: ...` toasts in `list "Needs you"`. `$OUTSIDE_LOG` starts `gh api user --jq .login` (the fresh cache
+  nodes `#1`, `#5` and `#6` say `Failed, needs you`, and the Repo's failing Readiness checks listed
+  in the `Check verify/fixture` notice in `list "Needs you"`. `$OUTSIDE_LOG` starts `gh api user --jq .login` (the fresh cache
   was not trusted), then the dispatches' `gh issue edit`, `herdr worktree create` and `notify-send`
   lines, and ends with the checks' `ghbot api /installation/repositories ...`. Copy it to
   `$E/outside.pressed.log`.
@@ -57,7 +57,7 @@ Preconditions:
   `actions` hold only the two herdr lines; `$OUTSIDE_LOG` has no `gh` line, only `herdr agent list`,
   `herdr tab create` and the checks' `ghbot api /installation/repositories ...` (the GitHub App
   answers on its own rate limit). Run `$C page --evidence "$E/05-paused-page"`: `list "Needs you"` adds
-  `Paused GitHub until <time>` last, after the Check toasts.
+  `Paused GitHub until <time>` last, after the Check notice.
 - **Proof.** `$C state > "$E/state.after.txt"`; copy `$OUTSIDE_LOG` to `$E/outside.log`.
 - **PR below closed.** A fresh run without `seed issues` (its dispatches would add actions):
   `$C cleanup; $C launch --no-build && $C doctor && . "$($C env)"`,
@@ -95,7 +95,7 @@ Preconditions:
 - The button's `Refreshing…` state lasts as long as the tick; in a run that is under a second, so
   prove the click by `.requests.txt`, not by catching the label.
 - In a run GitHub always refuses, so the read times beside the button do not move after a refresh;
-  what changes is what the tick did (dispatches, flags and toasts) and what `$OUTSIDE_LOG` recorded.
+  what changes is what the tick did (dispatches, flags and notices) and what `$OUTSIDE_LOG` recorded.
 - A refused POST (a config that does not load) shows an `alert` under the button; a 200 with a
   Repo's `error` does not.
 - Every refresh tick restarts nothing for a seeded Dispatch whose Agent states are unknown (herdr

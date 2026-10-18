@@ -68,8 +68,8 @@ Preconditions:
 
 ## Gotchas
 
-- A Readiness check failing in the run (no implement skill, the stubbed `ghbot`, `herdr`) is a toast over the
-  panel's foot (#420), so a `--click` under it times out: `--click "button~Dismiss"` once per toast first.
+- The Readiness checks failing in the run (no implement skill, the stubbed `ghbot`, `herdr`) are one `Check`
+  notice in the band between the views and the map, in the page's flow: it covers no control.
 - `answer`, `gardening`, `mine` and `quality_scan` start off. Turning `answer`, `gardening`
   or `quality_scan` on in a run starts nothing visible (no Asking from herdr, no gardening issue, no
   scan hour), so prove those through `cargo test`, and here only that the PATCH writes them; `mine`

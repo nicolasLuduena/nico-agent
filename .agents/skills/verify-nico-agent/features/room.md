@@ -55,7 +55,7 @@ Preconditions:
   `$OUTSIDE_LOG` has no `herdr worktree create`: #7 fills the room. Then `'{"room":2}'` (`15-room-2`)
   and `$C http --evidence "$E/16-refresh-raised" POST /api/refresh`: `actions` has
   `verify/fixture#1 failed at worktree: ...` and `$OUTSIDE_LOG` one `herdr worktree create`, for #1
-  only. `$C page --evidence "$E/17-page-after" --click "button=Repos" --click "button~Dismiss" --click "button~Dismiss" --click "button~Dismiss" --click "button~Dismiss" --click "button~Dismiss" --click "region=Room" --expect "2 in flight; each Dispatch holds its room"`: the Failed #1 holds its room too (the folded line reads `2 · 2 in flight`).
+  only. `$C page --evidence "$E/17-page-after" --click "button=Repos" --click "region=Room" --expect "2 in flight; each Dispatch holds its room"`: the Failed #1 holds its room too (the folded line reads `2 · 2 in flight`).
 - **Second view.** `$C run --evidence "$E/18-list" -- repo list --json`: `room` is 2.
 - **Proof.** `$C state > "$E/state.after.txt"` and the diff; copy `$OUTSIDE_LOG` to `$E/outside.log`.
 

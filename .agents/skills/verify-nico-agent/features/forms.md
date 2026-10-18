@@ -58,7 +58,7 @@ Preconditions:
   one `PATCH ... {"base":"dev"} -> 200`; `config.toml` has `base = "dev"`.
 - **Escape.** Run `$C page --evidence "$E/10-escape" --click "button=Repos" --click "region=Settings" --click "textbox=Base" --press Control+a --type nope --press Escape --press Tab --wait 1`:
   `textbox "Base"` holding `text: dev` and no PATCH in `.requests.txt`; `config.toml` still `base = "dev"`.
-- **Enter in the Dispatch form.** Run `$C page --evidence "$E/14-dispatch-enter" --click "button=Repos" --click "button~Dismiss" --click "button~Dismiss" --click "button~Dismiss" --click "button~Dismiss" --click "button~Dismiss" --click "region=Dispatch" --within "region=Dispatch" --click "combobox=Harness" --press ArrowDown --press Enter --click "textbox=Model" --type gpt-5 --press Enter --wait 1`:
+- **Enter in the Dispatch form.** Run `$C page --evidence "$E/14-dispatch-enter" --click "button=Repos" --click "region=Dispatch" --within "region=Dispatch" --click "combobox=Harness" --press ArrowDown --press Enter --click "textbox=Model" --type gpt-5 --press Enter --wait 1`:
   codex takes any model, so `textbox "Model"` (placeholder `default`) holds `gpt-5`, and `.requests.txt` has no `POST /api/dispatch`.
 - **Refused.** Run `$C page --evidence "$E/11-refused" --click "button=Repos" --click "region=Room" --click "spinbutton=Room" --press Control+a --type 0 --press Enter --expect "room is a whole number of at least 1, not 0"`:
   `PATCH ... {"room":0} -> 400`; `region "Room"` open with an `alert` under it and `spinbutton "Room" [invalid]: "3"`.

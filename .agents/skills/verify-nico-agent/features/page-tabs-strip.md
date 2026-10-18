@@ -3,9 +3,9 @@
 serve's page shows what needs you where it is. The node of every Implementer Asking, every faux-nico
 herdr reports blocked, every Failed Dispatch, every PR whose review was given up on or stopped and
 every Verified PR to merge carries a `Needs you` badge and its name ends `needs you`; its inspector has
-the rest. What has no node is a notice in the stack over the page's bottom right corner, dismissible
-for the page load, the stack foldable with `Hide notices`: an agent of the loop's own that herdr reports
-blocked (a quality-scan, the morning agent), a paused GitHub, a failing Readiness check (checks.md) and a
+the rest. What has no node is a notice in a band between the views and the work, in the page's flow,
+dismissible for the page load, the band foldable with `Hide notices`: an agent of the loop's own that herdr reports
+blocked (a quality-scan, the morning agent), a paused GitHub, a Repo's failing Readiness checks (one notice per Repo, checks.md) and a
 failed Install (install.md). On the desk a rail on the left lists the Projects as links (a Repo naming
 none is its own, named by its slug), the current one marked; on a phone the rail is a bar at the top and
 the Project is chosen in a select named Project in the header. The header names the Project, its Repos
@@ -20,11 +20,11 @@ The URL's hash follows the pick, so back and forward move between Projects. Ther
 - `rail-back` the browser's back button returns to the Project picked before.
 - `select-phone` under 720px the rail is a bar (the logo, the gauge, the theme switch) and `combobox "Project"`, an `option` per Project, takes its own full-width line in the header; the read times, Refresh and Repos, then the views as two tabs, under it.
 - `no-morning` a `morning.md` in the config dir is in `GET /api/status`'s `morning_summary`, and nowhere on the page.
-- `needs-no-band` nothing of what needs you is above the header: no `region "Needs you"`, with or without items.
+- `needs-no-band` nothing of what needs you is above the header: no `region "Needs you"`, with or without items; `list "Needs you"` comes after `navigation "View"`.
 - `needs-flag` the node of an Asking Implementer (herdr saying `blocked`, or the Asking a tick recorded), a Failed Dispatch, a review given up on or stopped and a Verified PR carries `Needs you` and its name ends `needs you`; its inspector holds the question (answer.md), the failure (close.md, rulings.md), the review (review.md) or the Verdict.
-- `needs-toast-blocked` a blocked Run with no node is a `status` toast `Blocked <agent> <since>` in `list "Needs you"`; a faux-nico's flags its Dispatch's node instead.
-- `needs-toast-paused` a paused GitHub is a toast `Paused GitHub until <time>`.
-- `needs-toast-dismiss` each toast's `button "Dismiss <its head>"` removes it for this page load; a reload shows it again. `button "Hide notices"` folds the stack to `button "Show <n> notices"` for the page load.
+- `needs-toast-blocked` a blocked Run with no node is a `status` notice `Blocked <agent> <since>` in `list "Needs you"`; a faux-nico's flags its Dispatch's node instead.
+- `needs-toast-paused` a paused GitHub is a notice `Paused GitHub until <time>`.
+- `needs-toast-dismiss` each notice's `button "Dismiss <its head>"` removes it for this page load; a reload shows it again. `button "Hide notices"` folds the band to `button "Show <n> notices"` for the page load.
 - `needs-open` clicking a flagged node opens its inspector (`GET /api/node/<issue>`); an Asking one's with `region "Asking"` first (see answer.md).
 
 ## How to get to it (user POV)
@@ -62,10 +62,10 @@ Preconditions:
   `$C seed dispatch 10 pr > "$E/seed10.json"`, `$C run -- verdict verify/fixture#10 pass --sha "$(jq -r .head "$E/seed10.json")" --json`,
   `$C seed dispatch 12 asking`, `$C seed run faux-nico 12`, `$C seed run quality-scan`, `$C seed run morning`
   and `$C drift pause`. Run `$C page --evidence "$E/07-needs" --expect "Paused"`.
-  No `region "Needs you"`; `main` starts with `list "Needs you"`, three `status` items in order, each with `button "Dismiss <its head>"`:
-  `Blocked quality-scan-fixture <time>`, `Blocked morning <time>` and `Paused GitHub until <time>`, drawn
-  over the page's bottom right corner in the screenshot, each a card with an amber edge, under `button "Hide notices"`.
-  Then the Project's `heading`. The map's node buttons
+  No `region "Needs you"`; after the Project's `heading` and `navigation "View"`, `list "Needs you"` holds three `status`
+  items in order, each with `button "Dismiss <its head>"`: `Blocked quality-scan-fixture <time>`, `Blocked morning <time>`
+  and `Paused GitHub until <time>`, drawn in the band above the map in the screenshot, each a white card with a hairline
+  frame, after the `Needs you` badge and `button "Hide notices"`. The map's node buttons
   `#1, Verify: a Ready issue, Failed, needs you`, `#10, Verify: seeded Dispatch 10, Verified, PR 110 draft, needs you` and
   `#12, Verify: seeded Dispatch 12, Implementing, needs you` end `needs you` (#12 from its recorded Asking and its blocked faux-nico: herdr is a stub); no other does.
 - **Dismiss.** Run `$C page --evidence "$E/08-dismiss" --expect "Paused" --click "button~Dismiss"`: `list "Needs you"` has two `status`
@@ -74,8 +74,8 @@ Preconditions:
   `.requests.txt` has `GET /api/node/verify%2Ffixture%231 -> 200`; the node is `[pressed]` and a `region "Verify: a Ready issue"`
   inspector opens beside the map. Then `--click "button~#12, Verify: seeded Dispatch 12"` (`10-open-asking`):
   `GET /api/node/verify%2Ffixture%2312 -> 200`, its inspector's first section `region "Asking"`.
-- **Phone.** Run `$C page --evidence "$E/11-phone" --width 390 --expect "Paused"`: the toasts across the foot of the
-  screen, `page 390px wide in a 390px window`.
+- **Phone.** Run `$C page --evidence "$E/11-phone" --width 390 --expect "Paused"`: the notices in the band above the map,
+  full width, `page 390px wide in a 390px window`.
 - **No Morning summary.** Write `# Morning`, `## Landed` and `- verify/fixture#5 Read once` to
   `"$E/morning.md"`, `$C seed morning "$E/morning.md"`, then `$C http --evidence "$E/12-api-status-morning" GET /api/status`:
   `morning_summary` holds the text. `$C page --evidence "$E/12-no-morning"`: no `Landed`, no `button "Hide"` or `"Show"`.
@@ -89,9 +89,8 @@ Preconditions:
   seeded `asking` shows. Likewise a blocked Run shows only as `seed run` records it.
 - A Verified flag needs a pass Verdict on the PR's current head: after `drift push` it drops to
   `PR draft` and loses it.
-- The notices sit over the page's corner, where the Repos column and the inspector end: `--click` what is under
-  them only after `--click "button=Hide notices"`, or `--click "button~Dismiss"` once per notice, or they time it out.
-- With two Repos their ten Readiness notices fill the stack, which scrolls inside at half the window's height.
+- The notices sit in the page's flow, between the views and the work: they cover nothing, and the band scrolls
+  inside past a third of the window's height.
 - `seed issues` caches only `verify/fixture`; `verify/second` stays `Source not read yet`.
 - While the page is open with a live Dispatch, serve's event stream asks herdr every 10 seconds:
   expect `herdr agent list` lines in `$OUTSIDE_LOG`.

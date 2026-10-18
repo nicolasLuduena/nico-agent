@@ -70,7 +70,7 @@ Preconditions:
 - **The pane, unread.** `$C http --evidence "$E/18-node-11" GET /api/node/verify%2Ffixture%2311` has
   `pane_error` `` `herdr agent read` failed: verify_stub: ... `` and no `pane`; `GET /api/node/verify%2Ffixture%239`
   (`19-node-9`) has neither.
-- **The Board, refused.** `$C page --evidence "$E/20-board-refused" --width 360 --click "button~Asking verify/fixture #11" --expect "agent read failed" --click "button=Enter" --expect "send-keys failed"`:
+- **The Board, refused.** `$C page --evidence "$E/20-board-refused" --width 360 --click "button~#11, Verify" --expect "agent read failed" --click "button=Enter" --expect "send-keys failed"`:
   the panel's Asking section holds the read's error on the errata rule, the keys and the text box,
   then the send-keys refusal on the errata rule under them; `.requests.txt` has
   `POST /api/answer {"issue":"verify/fixture#11","keys":["enter"]} -> 409`; `.view.txt` says the page
@@ -108,7 +108,7 @@ Preconditions:
   (`07-phone-dark-words`): `POST /api/answer {"issue":"verify/fixture#7","text":"..."} -> 200`, the pane
   shows Claude's `done`, and focus is back on the input after the reload.
 - **A change elsewhere.** `E=.evidence/<issue>/map-live`; with `(sleep 8; $C seed dispatch 13 pr) &`
-  running, `$C page --evidence "$E/01-typing-while-a-dispatch-lands" --click "button~Asking verify/fixture #7" --expect "Answer in words" --type "half-typed answer" --expect "Verify: seeded Dispatch 13"`:
+  running, `$C page --evidence "$E/01-typing-while-a-dispatch-lands" --click "button~#7, Verify" --expect "Answer in words" --type "half-typed answer" --expect "Verify: seeded Dispatch 13"`:
   the map draws #13 at the next `changed`, and `.aria.txt` still has `textbox "Answer in words": half-typed answer`.
 - **Its proof.** `$C state > "$E/state.after.txt"`; its diff from `$E/state.before.txt` holds
   `dispatches.json`'s `answers` on `verify/fixture#7`, one per answer (`1`, `down`, `enter`, `1`, the

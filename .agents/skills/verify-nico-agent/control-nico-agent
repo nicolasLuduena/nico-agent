@@ -62,8 +62,8 @@
 # the text; --click "button~Failed verify/fixture #1" one whose name contains it; --select Project=verify/second
 # picks that option in the combobox named Project; --within "region=verify/fixture"
 # makes every later --click look only inside that element, --within page the whole page again; --press ArrowRight
-# a key; --type dev text into what has focus; --expect TEXT waits for the text; --gone TEXT up to a minute for it
-# to go; --wait 120 lets two minutes pass; --history back|forward the browser's buttons; --mode 502 switches the
+# a key; --type dev text into what has focus; --expect TEXT waits for the text to show; --gone TEXT up to a minute until none of it
+# shows; --wait 120 lets two minutes pass; --history back|forward the browser's buttons; --mode 502 switches the
 # tunnel stand-in (with --tunnel only); --hold 20 holds each later write to /api (PATCH, POST, DELETE) 20 seconds
 # on its way to serve, no step waiting for it (a write still held when the page closes never reaches serve);
 # --path /bucket/ opens that path instead of the Board, --hash "#verify%2Ffixture" that fragment; --scheme

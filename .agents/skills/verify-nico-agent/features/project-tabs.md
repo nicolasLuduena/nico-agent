@@ -42,15 +42,15 @@ Preconditions:
   with `$SECOND_CLONE`; `$C seed issues` and `$C seed issues second`.
 - `E=.evidence/<issue>/project-tabs`; `$C state > "$E/state.before.txt"`.
 
-- **Own Projects.** Run `$C page --evidence "$E/01-own-projects" --click "link=verify/second"`.
-  `combobox "Project"` has `option "verify/fixture"` and `option "verify/second" [selected]`; `region
+- **Own Projects.** Run `$C page --evidence "$E/01-own-projects" --click "link=verify/second" --click "button=Repos"`.
+  `navigation "Projects"` has `link "verify/fixture"` and `link "verify/second" [current=page]`; `region
   "Map of verify/second"` has `#1, Verify: waits on fixture #1, Waiting, waits on verify/fixture#1 to
   close`, `#2, Verify: waits on an outside issue, Waiting, waits on verify/outside#7 to close`, `#3,
   Verify: waits on fixture #20 installed, Ready` (its Blocker closed, in another Project),
   `verify/fixture#1, Verify: a Ready issue, Blocker` and `verify/outside#7, Verify: an outside
   Blocker, Blocker`; one `region "verify/second"` panel, no Project's defaults.
 - **Join on the page.** Run `$C page --evidence "$E/02-join-on-page" --click "button=Repos" --within "region=verify/fixture" --click "region=Settings" --click "combobox=Project" --type verify --press Tab --expect "Defaults for its Repos"`.
-  `option "verify" [selected]` beside `option "verify/second"`; `region "verify"` above `region
+  `link "verify" [current=page]` beside `link "verify/second"`; `region "verify"` above `region
   "verify/fixture"`; `.requests.txt` has `PATCH /api/repo/verify/fixture {"project":"verify"} ->
   200`, then `GET /api/status` and `GET /api/map/verify`, and no second `GET
   /api/map/verify%2Ffixture` (that Project is gone). `.console.txt` is empty.
@@ -64,15 +64,15 @@ Preconditions:
   and `{"from":"verify/outside#7","kind":"blocker","to":"verify/second#2"}`. Run `$C http --evidence "$E/05-old-map" GET /api/map/verify%2Fsecond`:
   HTTP `404`, `verify/second is not a Project`, help `Ask for a Project /api/status lists`.
 - **A Repo's own room.** Run `$C http --evidence "$E/06-second-own-room" PATCH /api/repo/verify/second '{"room":2}'`: `room` `{"from":"repo","value":2}`.
-- **The Project.** Run `$C page --evidence "$E/07-project-tab" --click "button=Repos" --click "button=Dismiss Check verify/second" --click "button=Dismiss Check verify/second" --click "button=Dismiss Check verify/second" --click "button=Dismiss Check verify/second" --click "button=Dismiss Check verify/second" --click "button=Dismiss Check verify/fixture" --click "button=Dismiss Check verify/fixture" --click "button=Dismiss Check verify/fixture" --click "button=Dismiss Check verify/fixture" --click "button=Dismiss Check verify/fixture" --expect "Defaults for its Repos" --within "region=verify" --click "region=Room" --within "region=verify/fixture" --click "region=Room" --within "region=verify/second" --click "region=Room"`.
-  `option "verify" [selected]`, the only Project; `region "Map of verify"` names nodes `#1 fixture, Verify: a Ready
+- **The Project.** Run `$C page --evidence "$E/07-project-tab" --click "button=Repos" --expect "Defaults for its Repos" --within "region=verify" --click "region=Room" --within "region=verify/fixture" --click "region=Room" --within "region=verify/second" --click "region=Room"`.
+  `link "verify" [current=page]`, the only Project; `region "Map of verify"` names nodes `#1 fixture, Verify: a Ready
   issue, Ready`, `#1 second, Verify: waits on fixture #1, Waiting, waits on verify/fixture#1 to
   close` and `verify/outside#7, Verify: an outside Blocker, Blocker`; the screenshot draws the edge
   from `#1 fixture` to `#1 second`, and `waits on verify/fixture#1 to close` under `#1 second`'s
   Stage.
   `region "verify"` has `text: default` beside `spinbutton "Room": "3"`; `region "verify/fixture"`
   `text: default`, `"3"`; `region "verify/second"` `text: set here` with `button "Use the default Room"`, `"2"`.
-- **Edit the Project's defaults.** Run `$C page --evidence "$E/08-edit-defaults" --click "button=Repos" --click "button=Dismiss Check verify/second" --click "button=Dismiss Check verify/second" --click "button=Dismiss Check verify/second" --click "button=Dismiss Check verify/second" --click "button=Dismiss Check verify/second" --click "button=Dismiss Check verify/fixture" --click "button=Dismiss Check verify/fixture" --click "button=Dismiss Check verify/fixture" --click "button=Dismiss Check verify/fixture" --click "button=Dismiss Check verify/fixture" --click "region=Room" --click "spinbutton=Room" --press Control+a --type 5 --press Tab --click "region=Switches" --click "switch=Review" --within "region=verify/fixture" --click "region=Room" --click "region=Switches" --within "region=verify/second" --click "region=Room" --click "region=Switches"`.
+- **Edit the Project's defaults.** Run `$C page --evidence "$E/08-edit-defaults" --click "button=Repos" --click "region=Room" --click "spinbutton=Room" --press Control+a --type 5 --press Tab --click "region=Switches" --click "switch=Review" --within "region=verify/fixture" --click "region=Room" --click "region=Switches" --within "region=verify/second" --click "region=Room" --click "region=Switches"`.
   `.requests.txt` has `PATCH /api/project/verify {"room":5} -> 200` and `PATCH /api/project/verify
   {"switches":{"review":false}} -> 200`, each followed by `GET /api/status`. `region "verify"` has
   `button "Use the default Room"`, `"5"`, and `button "Use the default Review"` beside an unchecked
@@ -82,8 +82,8 @@ Preconditions:
 - **Phone.** Run `$C page --evidence "$E/09-phone" --width 390`: `combobox "Project"`
   with `option "verify" [selected]`, its own full-width line in the screenshot.
 - **An Asking node.** Run `$C seed dispatch 12 asking`, then `$C page --evidence "$E/10-asking-open" --click "button~#12 fixture, Verify: seeded Dispatch 12"`.
-  `option "verify" [selected]`; the node `#12 fixture, Verify: seeded Dispatch 12, Implementing, needs you` is
-  `[pressed]`; `region "Verify: seeded Dispatch 12 #12 fixture"`; `.requests.txt` has `GET
+  `link "verify" [current=page]`; the node `#12 fixture, Verify: seeded Dispatch 12, Implementing, needs you` is
+  `[pressed]`; `region "Verify: seeded Dispatch 12"` (an inspector is named by its title alone); `.requests.txt` has `GET
   /api/node/verify%2Ffixture%2312 -> 200`.
 - **Status.** Run `$C run --evidence "$E/11-status" -- status --json`: `projects[0]` is `verify`
   with `defaults` `{"room":5,"switches":{"review":false}}` and `room` `{"from":"project","value":5}`;
@@ -100,7 +100,7 @@ Preconditions:
 - **On the page.** Run `$C page --evidence "$E/16-page-waits-install" --click "button~#3 second" --expect "verify/second#3 waits on verify/fixture#20 to be installed in verify/fixture"`.
   The node is `#3 second, Verify: waits on fixture #20 installed, Waiting, waits on
   verify/fixture#20 to be installed in verify/fixture`, its panel `region "Verify: waits on fixture
-  #20 installed #3 second"` has the sentence as a paragraph; the screenshot draws the edge from
+  #20 installed"` has the sentence as a paragraph; the screenshot draws the edge from
   `#20 fixture` to `#3 second`.
 - **Installed.** Run `$C run --evidence "$E/17-install" -- install verify/fixture --json`: exit `0`,
   `installed` `verify/fixture at <sha>`; `installs.json`'s `last.at` is after the Blocker's
@@ -117,10 +117,8 @@ Preconditions:
 
 ## Gotchas
 
-- With two Repos their ten Readiness toasts stack past the top of the window, so the first
-  `button~Dismiss` (verify/fixture's, at the top) is out of reach and times out: dismiss the bottom ones
-  first, by name, `--click "button=Dismiss Check verify/second"` five times, then `"button=Dismiss Check
-  verify/fixture"` five times.
+- With two Repos their failing Readiness checks are two `Check` notices, one per Repo, in the band
+  between the views and the map: they cover nothing, so no step dismisses them.
 - `seed issues second` caches verify/second's issues; without it verify/second's map is
   empty and `Source not read yet`.
 - An option is a Project with a Repo: a `[projects.<name>]` no Repo names has none.

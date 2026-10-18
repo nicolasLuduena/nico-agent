@@ -16,7 +16,7 @@ behind `Repos`, secondary to the work. Changing a view or opening Repos asks the
 - `board-rail` the rail lists each Project as a link, the shown one `[current=page]`, with the theme switch and, once a tick read it, the rate-limit gauge at its foot; the gauge's panel opens over it.
 - `board-node` a node's card shows its title first, then `#<n> · <repo>` (and `· research`), its Stage word beside its icon, its PR, `Needs you` on what needs you, and a row for its agent's state and its line; its accessible name is `#<n>[ <repo>], <title>, <Stage>, …` as before.
 - `board-edges` a Blocker is a solid line, a Stacked dispatch a dashed accent line, each with an arrow, named in the legend at the map's foot (`Blocks`, `Stacked on`) while the map has one.
-- `board-zoom` `button "Zoom out"`, `"Zoom in"` and `"Fit"` zoom about the field's middle and fit it again; a drag pans, Ctrl and the wheel or a pinch zoom; at the field's top on a phone.
+- `board-zoom` `button "Zoom out"`, `"Zoom in"` and `"Fit"` zoom about the field's middle and fit it again; a drag pans, Ctrl and the wheel or a pinch zoom; the zoom group shows the scale (`N%`); on a phone in a bar under the field, off the nodes.
 - `board-inspector` a node opens `region "<title>"` beside the map, its `#<n>` link and `button "Close"` over the title, then the Stage, the agent's state and `Needs you`; focus moves to the title, and Close or Escape returns it to the node.
 - `board-verified` a Verified node's inspector has `link "Open PR <n>"` as the primary button and `Review and merge it on GitHub.`, then the Verdict and `link "Open Evidence"`.
 - `board-failed` a Failed node's inspector has `heading "Failure"` before the PR, and its `Restarts` open.
@@ -45,47 +45,50 @@ Preconditions:
   (rate-gauge.md); `$C run --evidence "$E/00-refresh" -- refresh --json`. `$C state > "$E/state.before.txt"`.
 
 - **Map, light and dark.** Run `$C page --evidence "$E/02-map-light-1440" --width 1440 --expect "seeded Dispatch 10"`
-  and the same `--scheme dark` (`03-map-dark-1440`, `--click "button=Hide notices"`): `navigation "Projects"` has
+  and the same `--scheme dark` (`03-map-dark-1440`): `navigation "Projects"` has
   `link "verify" [current=page]`; `heading "verify"`, `2 Repos · Source read <time> · PRs not checked yet`; node buttons
   `#10 fixture, Verify: seeded Dispatch 10, Verified, PR 110 draft, needs you`, `#11 fixture, …, Failed, PR 111 draft, needs you`,
   `#7 fixture, …, Implementing, agent asking, needs you`, `#12 fixture, …, PR draft, PR 112 draft, review retrying`; the
   screenshot shows titles first, the Stage words in their hues, `Needs you` badges, the #9 to #12 line dashed, the legend.
-- **Inspectors.** Run `$C page --evidence "$E/04-inspector-Verified-light-1440" --width 1440 --click "button=Hide notices" --click "button~#10 fixture, Verify: seeded" --expect "Pull request"`:
+- **Inspectors.** Run `$C page --evidence "$E/04-inspector-Verified-light-1440" --width 1440 --click "button~#10 fixture, Verify: seeded" --expect "Pull request"`:
   `region "Verify: seeded Dispatch 10"` with `link "#10 fixture"`, `button "Close"`, `strong: Verified`, `Needs you`,
   `link "Open PR 110 (draft)"`, `Review and merge it on GitHub.`, `heading "Review"` then `pass <sha7> <time>`,
   `link "Open Evidence"`; `.view.txt` `focus on h2 "Verify: seeded Dispatch 10"`. The same for `#7` `--scheme dark`
   (`04-inspector-Asking-dark-1440`): `Agent asking`, then `region "Asking"` first, its keys and `textbox "Answer in words"`;
   and `#11` (`04-inspector-Failed-light-1440`): `heading "Failure"` before `heading "Pull request"`, `Restarts` open.
   `.requests.txt` has only `GET`s.
-- **Close and Escape.** Run `$C page --evidence "$E/11-escape" --width 1440 --click "button=Hide notices" --click "button~#10 fixture, Verify: seeded" --press Escape`:
+- **Close and Escape.** Run `$C page --evidence "$E/11-escape" --width 1440 --click "button~#10 fixture, Verify: seeded" --press Escape`:
   no inspector, `.view.txt` `focus on button "Verify: seeded Dispatch 10 …"`.
-- **Repos.** Run `$C page --evidence "$E/07-repos-light-1440" --width 1440 --click "button=Hide notices" --click "button=Repos" --expect "Defaults for its Repos"`:
+- **Repos.** Run `$C page --evidence "$E/07-repos-light-1440" --width 1440 --click "button=Repos" --expect "Defaults for its Repos"`:
   `button "Repos" [expanded]`, `region "Repos"` with `region "verify"`, `region "verify/fixture"`, `region "verify/second"`
   and `region "Add a Repo"`; `.requests.txt` has no write and no call that reads the Source.
-- **Roadmap.** Run `$C page --evidence "$E/08-roadmap-dark-1440" --width 1440 --scheme dark --click "button=Hide notices" --click "link=Roadmap" --click "button~#30 fixture" --expect "Description"`:
+- **Roadmap.** Run `$C page --evidence "$E/08-roadmap-dark-1440" --width 1440 --scheme dark --click "link=Roadmap" --click "button~#30 fixture" --expect "Description"`:
   `.view.txt` `at /#verify/roadmap`, `region "Verify: needs triage"` with Labels, Assigned, Description, Blocked by and Blocks.
-- **Gauge.** Run `$C page --evidence "$E/09-gauge-light-1440" --width 1440 --click "button=Hide notices" --click "button~GitHub rate limits" --expect "Bot · ghbot"`
+- **Gauge.** Run `$C page --evidence "$E/09-gauge-light-1440" --width 1440 --click "button~GitHub rate limits" --expect "Bot · ghbot"`
   and `--width 390 --scheme dark` (`10-gauge-dark-390`): the panel over the rail's foot, between the gutters on a phone.
-- **Phone.** Run `$C page --evidence "$E/05-phone-light-390" --width 390 --click "button=Hide notices"` and
-  `$C page --evidence "$E/06-phone-sheet-dark-390" --width 390 --scheme dark --click "button=Hide notices" --click "button~#7 fixture, Verify: seeded" --expect "Answer in words"`:
+- **Phone.** Run `$C page --evidence "$E/05-phone-light-390" --width 390` and
+  `$C page --evidence "$E/06-phone-sheet-dark-390" --width 390 --scheme dark --click "button~#7 fixture, Verify: seeded" --expect "Answer in words"`:
   `combobox "Project"`, no `navigation "Projects"`; the sheet with `button "Close"` and the keys, each 44px; `.view.txt` `page 390px wide in a 390px window`.
+- **Read only.** `$C state > "$E/state.reads.txt"`; `diff "$E/state.before.txt" "$E/state.reads.txt" > "$E/state.reads.diff"`:
+  outside calls only; no view, Repos press, inspector, Roadmap or gauge wrote a file.
 - **Switch Projects.** `$C http --evidence "$E/15-leave" PATCH /api/repo/verify/second '{"project":null}'`, then
-  `$C page --evidence "$E/16-switch-back" --width 1440 --click "button=Hide notices" --click "link=verify/second" --expect "Verify: waits on fixture #1" --history back --expect "seeded Dispatch 10"`:
+  `$C page --evidence "$E/16-switch-back" --width 1440 --click "link=verify/second" --expect "Verify: waits on fixture #1" --history back --expect "seeded Dispatch 10"`:
   `navigation "Projects"` has `link "verify"` and `link "verify/second"`; `.view.txt` `at /` after back, `link "verify" [current=page]`.
   `--width 390 --select "Project=verify/second"` (`17-switch-phone`) does the same from the select.
-- **Zoom.** Run `$C page --evidence "$E/12-zoom" --width 1440 --click "button=Hide notices" --click "button=Zoom in" --click "button=Zoom in" --click "button=Fit"`: the screenshot fitted again.
-- **Unreachable.** `$C tunnel start`, then `$C page --tunnel --evidence "$E/13-unreachable" --width 1440 --click "button=Hide notices" --mode 502 --expect "Lost nico-agent serve"`:
+- **Zoom.** Run `$C page --evidence "$E/12-zoom" --width 1440 --click "button=Zoom in" --click "button=Zoom in" --click "button=Fit"`: the screenshot fitted again.
+- **Unreachable.** `$C tunnel start`, then `$C page --tunnel --evidence "$E/13-unreachable" --width 1440 --mode 502 --expect "Lost nico-agent serve"`:
   the errata banner `Lost nico-agent serve; reconnecting. Showing what was last read.` over the header, the map and its nodes still
   shown, with `Showing the last map read.` over it. `--mode pass` after.
 - **Paused.** `$C drift pause`, `$C run -- refresh --json`, then `$C page --evidence "$E/14-paused-light-1440" --width 1440 --expect "Paused"`:
   the notice `Paused GitHub until <time>` and the gauge's `Paused`.
-- **Proof.** `$C state > "$E/state.after.txt"`, its diff from `state.before.txt` in `$E/state.diff`: outside calls only (the
-  pause's write after `14`); copy `$OUTSIDE_LOG` to `$E/outside.log`.
+- **Proof.** `$C state > "$E/state.after.txt"`, its diff from `state.before.txt` in `$E/state.diff`: outside calls, and the
+  recipe's own writes: `config.toml`'s verify/second without `project` (`15-leave`) and its `bucket.url` (`tunnel start`),
+  and the pause and `dispatches.json` from `14`'s refresh; copy `$OUTSIDE_LOG` to `$E/outside.log`.
 
 ## Gotchas
 
-- With two Repos their ten Readiness notices cover the map's corner: `--click "button=Hide notices"` first.
+- The two Repos' failing Readiness checks are two `Check` notices in the band between the views and the map; the map takes the height left under them, so nothing is covered.
 - A node's name starts with its number, and in a Project of two Repos its Repo: click `button~#10 fixture, Verify`, as
   `button~#7, ` would match `verify/outside#7, …` too.
 - With herdr stubbed no agent is seen working; the Asking comes from the tick's record, so the agent row reads `Asking`.
-- `seed issues chain` lays out many unlinked nodes in the first column: the field fits them at 60% and pans the rest inside, the page itself not scrolling.
+- `seed issues chain` has many unlinked issues: the map packs them in a grid across the field, beside the chains, and never fits below 87% (titles stay legible); what does not fit pans inside the field, the page itself not scrolling. The zoom group shows the scale (`N%`).
