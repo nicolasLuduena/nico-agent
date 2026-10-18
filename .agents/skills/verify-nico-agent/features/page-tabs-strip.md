@@ -67,7 +67,7 @@ Preconditions:
   and `Paused GitHub until <time>`, drawn in the band above the map in the screenshot, each a white card with a hairline
   frame, between the `Needs you` badge and `button "Hide notices"`. The map's node buttons
   `#1, Verify: a Ready issue, Failed, needs you`, `#10, Verify: seeded Dispatch 10, Verified, PR 110 draft, needs you` and
-  `#12, Verify: seeded Dispatch 12, Implementing, agent asking on claude, needs you` end `needs you` (#12 from its recorded Asking and its blocked faux-nico: herdr is a stub); no other does.
+  `#12, Verify: seeded Dispatch 12, Implementing, needs you` end `needs you` (#12 from its recorded Asking and its blocked faux-nico: herdr is a stub); no other does.
 - **Dismiss.** Run `$C page --evidence "$E/08-dismiss" --expect "Paused" --click "button~Dismiss"`: `list "Needs you"` has two `status`
   items left, `Blocked morning` and `Paused GitHub`; the one dismissed is back on the next page.
 - **Open a flagged node.** Run `$C page --evidence "$E/09-open" --expect "Paused" --click "button~#1, Verify: a Ready issue"`.
