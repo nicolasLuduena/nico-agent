@@ -66,8 +66,8 @@ Preconditions:
 - **Base.** Run `$C page --evidence "$E/07-base" --click "button=Repos" --click "region=Settings" --click "textbox=Base" --type dev --press Enter --expect "Saved" --expect "Base set here"`.
   `PATCH ... {"base":"dev"} -> 200`; `config.toml` has `base = "dev"`.
 - **Join a Project.** Run `$C page --evidence "$E/08-join" --click "button=Repos" --within "region=verify/fixture" --click "region=Settings" --click "combobox=Project" --type verify --press Enter --expect "Leave verify"`.
-  `PATCH ... {"project":"verify"} -> 200`, then `GET /api/status` and `GET /api/map/verify`; the rail's
-  `link "verify"` is now `[current=page]`, its Project's, with `region "verify"` (the Project's defaults)
+  `PATCH ... {"project":"verify"} -> 200`, then `GET /api/status` and `GET /api/map/verify`; the header's
+  `heading "verify"` now names the shown Project, its Project's, with `region "verify"` (the Project's defaults)
   above `region "verify/fixture"`; `config.toml` has `project = "verify"`.
 - **The Project's defaults.** Run `$C http --evidence "$E/09-project" PATCH /api/project/verify '{"room":2,"base":"main","switches":{"review":false}}'`.
   HTTP `200`, `name` `verify`, `defaults` `{"base":"main","room":2,"switches":{"review":false}}`
@@ -81,7 +81,7 @@ Preconditions:
 - **Emptied.** Run `$C page --evidence "$E/11b-empty-base" --click "button=Repos" --within "region=verify/fixture" --click "region=Settings" --click "textbox=Base" --press Control+a --press Backspace --press Enter --expect "Base from Project"`.
   `PATCH ... {"base":null} -> 200`; the field shows the Project's again, `textbox "Base": main`.
 - **Leave it.** Run `$C page --evidence "$E/12-leave" --click "button=Repos" --within "region=verify/fixture" --click "region=Settings" --click "button=Leave verify" --gone "Leave verify" --click "region=Room" --expect "3 · 0 in flight"`.
-  `PATCH ... {"project":null} -> 200`; `link "verify/fixture" [current=page]` again, no `link "verify"`
+  `PATCH ... {"project":null} -> 200`; `link "verify/fixture"`, and `heading "verify/fixture"` (the shown Project) again, no `link "verify"`
   (it has no Repo left), `text: default` beside `spinbutton "Room": "3"`;
   `config.toml`'s Repo has no `project` line, and `[projects.verify]` stays.
 - **API, percent-encoded.** Run `$C http --evidence "$E/13-api" PATCH /api/repo/verify%2Ffixture '{"implementer":{"harness":"codex","model":"gpt-5"},"room":4,"switches":{"stack":false}}'`.

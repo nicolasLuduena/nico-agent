@@ -35,7 +35,8 @@ Preconditions:
 
 - **Desk, light.** Run `$C page --evidence "$E/01-desk-light" --width 1440 --click "button~#1 fixture, Verify: a Ready issue"`.
   The screenshot: `#1 fixture` (Ready) with teal `Ready` beside a ring, framed in the accent and `[pressed]`,
-  `#1 second` with amber sienna `Waiting`, `#6` magenta `Stackable`, `#7` blue `PR draft`; every card white; the
+  `#1 second` with amber sienna `Waiting`, `#7` blue `PR draft` (and `#6` magenta `Stackable` where the field,
+  narrowed by the inspector, shows it: it scrolls to the rest); every card white; the
   rail's `verify` on its accent-soft band; the inspector beside the map. The snapshot names nodes as before
   (`#1 fixture, Verify: a Ready issue, Ready`).
 - **Harnesses.** Run `$C page --evidence "$E/03-harnesses" --width 1440 --click "button=Repos" --within "region=verify/fixture" --click "region=Settings" --expect "Reviewer"`:

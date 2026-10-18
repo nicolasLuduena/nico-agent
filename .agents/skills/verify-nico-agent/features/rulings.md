@@ -15,7 +15,7 @@ Failed on `verdict` at once, same reason twice.
 
 - `rulings-bucket` `.evidence/<n>/rulings.md` in the worktree is kept in the Bucket at the PR's next head, served at `/bucket/<owner>/<repo>/<n>/<sha>/rulings.md`.
 - `failed-verdict-status` a failing Verdict on a Dispatch whose `verdict` restarts are used up: the refresh says `<issue> Failed: verdict again after 2 restarts for it`, and `/api/status` has its `failure` `{step: "restart", error, reason: "verdict"}`.
-- `failed-verdict-node` its node ends `Failed, needs you`.
+- `failed-verdict-node` its node reads `Failed, PR <n> draft, needs you` at its end.
 - `failed-verdict-panel` its panel's Failure section says `The Reviewer failed it N rounds running; the Findings and Rulings are in its Evidence` in `strong`, N being its `verdict` restarts plus one, and `Merge its PR or close it on GitHub, and the loop Closes the Dispatch` under it; its Evidence holds `findings.md` and `rulings.md` at the failing head.
 - `rulings-rereview` a failing Verdict answered by a `verdict` restart whose Implementer went idle on the same head: the refresh says `<issue>: Reviewer started on codex for <head>`, `status` gives `review.state` `reviewing` and `reviewer.rulings` `true`; a second fail on that head records anew (not a no-op), and the next refresh says `<issue> Failed: verdict again at <head> after its Rulings`, its panel `The Reviewer failed it 2 rounds running; ...`.
 - `failed-other` a `verdict` restart that failed at its tab flags its node the same, its panel's Failure the error and `At the tab step.`
@@ -54,7 +54,7 @@ Preconditions:
   "verdict again after 2 restarts for it", "reason": "verdict", "step": "restart"}`, its `restarts`
   two `verdict`; `#11`'s `{"step": "tab", "reason": "verdict", ...}`, one `verdict` restart.
 - **The flags.** Run `$C page --evidence "$E/07-flags" --expect "seeded Dispatch 11"`: the nodes
-  `#11, Verify: seeded Dispatch 11, Failed, needs you` and `#10, Verify: seeded Dispatch 10, Failed, needs you`.
+  `#11, Verify: seeded Dispatch 11, Failed, PR 111 draft, needs you` and `#10, Verify: seeded Dispatch 10, Failed, PR 110 draft, needs you`.
 - **The panels.** Run `$C page --evidence "$E/08-panel-10" --click "button~#10, Verify: seeded Dispatch 10" --expect "Open Evidence"`:
   `.requests.txt` has `GET /api/node/verify%2Ffixture%2310 -> 200`; under `heading "Failure"`, `strong:
   The Reviewer failed it 3 rounds running; the Findings and Rulings are in its Evidence` and `paragraph:

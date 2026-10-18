@@ -15,7 +15,7 @@ The URL's hash follows the pick, so back and forward move between Projects. Ther
 ## Sub-features
 
 - `page-empty` with no Repo: `region "No Repo yet"` says how to add one, on the page or with `nico-agent repo add <owner/name> --path <clone>`, and holds `region "Add a Repo"`; no `navigation "Projects"`, no `combobox "Project"` and nothing needing you.
-- `rail-one-per-project` `navigation "Projects"` has a `link` per Project with a Repo, by name, the shown one `[current=page]` (the first, with no hash); `heading` the Project's name, the paragraph `<n> Repos · Source read <time> · PRs checked <time>`, `button "Refresh"` and `button "Repos"`, then `navigation "View"` (`link "Map"`, `link "Roadmap"`). No `tablist` and no `region "Morning summary"`.
+- `rail-one-per-project` `navigation "Projects"` has a `link` per Project with a Repo, by name, the shown one carrying `aria-current="page"` (the ARIA snapshot does not print it: the header's `heading "<name>"` names the shown Project) (the first, with no hash); `heading` the Project's name, the paragraph `<n> Repos · Source read <time> · PRs checked <time>`, `button "Refresh"` and `button "Repos"`, then `navigation "View"` (`link "Map"`, `link "Roadmap"`). No `tablist` and no `region "Morning summary"`.
 - `rail-pick` following a Project's link shows its map and read times, and the hash becomes `#<project>`, escaped, the view kept.
 - `rail-back` the browser's back button returns to the Project picked before.
 - `select-phone` under 720px the rail is a bar (the logo, the gauge, the theme switch) and `combobox "Project"`, an `option` per Project, takes its own full-width line in the header; the read times, Refresh and Repos, then the views as two tabs, under it.
@@ -24,7 +24,7 @@ The URL's hash follows the pick, so back and forward move between Projects. Ther
 - `needs-flag` the node of an Asking Implementer (herdr saying `blocked`, or the Asking a tick recorded), a Failed Dispatch, a review given up on or stopped and a Verified PR carries `Needs you` and its name ends `needs you`; its inspector holds the question (answer.md), the failure (close.md, rulings.md), the review (review.md) or the Verdict.
 - `needs-toast-blocked` a blocked Run with no node is a `status` notice `Blocked <agent> <since>` in `list "Needs you"`; a faux-nico's flags its Dispatch's node instead.
 - `needs-toast-paused` a paused GitHub is a notice `Paused GitHub until <time>`.
-- `needs-toast-dismiss` each notice's `button "Dismiss <its head>"` removes it for this page load; a reload shows it again. `button "Hide notices"` folds the band to `button "Show <n> notices"` for the page load.
+- `needs-toast-dismiss` each notice's `button "Dismiss <kind> <repo or name>"` (`Dismiss Blocked verify/fixture` for a quality-scan, `Dismiss Blocked morning`, `Dismiss Paused GitHub`) removes it for this page load; a reload shows it again. `button "Hide notices"` folds the band to `button "Show <n> notices"` for the page load.
 - `needs-open` clicking a flagged node opens its inspector (`GET /api/node/<issue>`); an Asking one's with `region "Asking"` first (see answer.md).
 
 ## How to get to it (user POV)
@@ -42,19 +42,19 @@ Preconditions:
   no `list "Needs you"`, no `navigation "Projects"` and no `combobox "Project"`: `main` holds `region "No Repo yet"`
   with its paragraph and `region "Add a Repo"`.
 - **Two Repos.** Run `$C run -- repo add verify/fixture --path "$FIXTURE_CLONE" --json`, `$C run -- repo add verify/second --path "$SECOND_CLONE" --json`
-  and `$C seed issues`, then `$C page --evidence "$E/02-select"`. `navigation "Projects"` has `link "verify/fixture" [current=page]`
+  and `$C seed issues`, then `$C page --evidence "$E/02-select"`. `navigation "Projects"` has `link "verify/fixture"`, and `heading "verify/fixture"` (the shown Project)
   and `link "verify/second"`; `main` has `heading "verify/fixture"`, the paragraph `1 Repo · Source read <time> · PRs not checked yet`,
   `button "Refresh"`, `button "Repos"`, then `navigation "View"` with `link "Map"` (`#verify%2Ffixture`) and `link "Roadmap"`;
   no `tablist`. `region "Map of verify/fixture"` has node buttons `#1, Verify: a Ready issue, Ready`, `#3, Verify: waits
   on #1, Waiting, waits on verify/fixture#1 to close`, `#4, Verify: assigned to someone else,
-  Waiting`, `#5, Verify: a Research issue, Ready`, `#6, Verify: stacks on #9 PR, Stackable` and `#9, Verify: a Blocker in review, Blocker`
+  Waiting, assigned to @someone-else`, `#5, Verify: a Research issue, Ready`, `#6, Verify: stacks on #9 PR, Stackable` and `#9, Verify: a Blocker in review, Blocker`
   (no `#2`: not labelled). The screenshot has the rail on the left, the Project's name over its read times, Refresh and
   Repos at the right, and the Map and Roadmap tabs under them.
 - **Pick a Project.** Run `$C page --evidence "$E/03-pick" --click "link=verify/second" --expect "Source not read yet"`.
-  `link "verify/second" [current=page]`; `Nothing on this map`; `.view.txt` `at /#verify%2Fsecond`;
+  `link "verify/second"`, and `heading "verify/second"` (the shown Project); `Nothing on this map`; `.view.txt` `at /#verify%2Fsecond`;
   `.requests.txt` has `GET /api/map/verify%2Fsecond -> 200`.
 - **Back.** Run `$C page --evidence "$E/04-back" --click "link=verify/second" --expect "Source not read yet" --history back --expect "Source read"`:
-  `link "verify/fixture" [current=page]`, its map again, `.view.txt` `at /`.
+  `link "verify/fixture"`, and `heading "verify/fixture"` (the shown Project), its map again, `.view.txt` `at /`.
 - **Phone.** Run `$C page --evidence "$E/06-phone" --width 390`. `combobox "Project"` with `option "verify/fixture" [selected]`;
   no `navigation "Projects"`; the screenshot is one column under the top bar, the select its own full-width line, the read
   times, Refresh and Repos, then the Map and Roadmap tabs under it.
@@ -63,11 +63,11 @@ Preconditions:
   `$C seed dispatch 12 asking`, `$C seed run faux-nico 12`, `$C seed run quality-scan`, `$C seed run morning`
   and `$C drift pause`. Run `$C page --evidence "$E/07-needs" --expect "Paused"`.
   No `region "Needs you"`; after the Project's `heading` and `navigation "View"`, `list "Needs you"` holds three `status`
-  items in order, each with `button "Dismiss <its head>"`: `Blocked quality-scan-fixture <time>`, `Blocked morning <time>`
+  items in order, each with its `button "Dismiss <kind> <repo or name>"`: `Blocked quality-scan-fixture <time>`, `Blocked morning <time>`
   and `Paused GitHub until <time>`, drawn in the band above the map in the screenshot, each a white card with a hairline
   frame, after the `Needs you` badge and `button "Hide notices"`. The map's node buttons
   `#1, Verify: a Ready issue, Failed, needs you`, `#10, Verify: seeded Dispatch 10, Verified, PR 110 draft, needs you` and
-  `#12, Verify: seeded Dispatch 12, Implementing, needs you` end `needs you` (#12 from its recorded Asking and its blocked faux-nico: herdr is a stub); no other does.
+  `#12, Verify: seeded Dispatch 12, Implementing, agent asking on claude, needs you` end `needs you` (#12 from its recorded Asking and its blocked faux-nico: herdr is a stub); no other does.
 - **Dismiss.** Run `$C page --evidence "$E/08-dismiss" --expect "Paused" --click "button~Dismiss"`: `list "Needs you"` has two `status`
   items left, `Blocked morning` and `Paused GitHub`; the one dismissed is back on the next page.
 - **Open a flagged node.** Run `$C page --evidence "$E/09-open" --expect "Paused" --click "button~#1, Verify: a Ready issue"`.

@@ -74,7 +74,7 @@ Preconditions:
   holds `link "verify/fixture"` only (Project verify has no Repo left, so no link); `config.toml` has no `verify/second`.
 - **Add on the page.** Run `$C page --evidence "$E/17-page-add" --click "button=Repos" --click "textbox=Repo" --type verify/second --click "textbox=Its clone" --type "$SECOND_CLONE" --click "combobox=Its Project" --type verify --click "button=Add" --expect "verify/second added"`.
   `.requests.txt` has `POST /api/repo {"slug":"verify/second","path":"$SECOND_CLONE","project":"verify"} -> 200`;
-  the snapshot has `link "verify" [current=page]`, its Project's, holding `region "verify/second"`; `config.toml` has it again with `project = "verify"`.
+  the snapshot has `link "verify"`, and `heading "verify"` (the shown Project), its Project's, holding `region "verify/second"`; `config.toml` has it again with `project = "verify"`.
 - **The routes.** `$C http --evidence "$E/18-post-no-path" POST /api/repo '{"slug":"verify/x"}'`:
   `400`, `missing required flag --path`, help the `repo add` usage. `$C http --evidence
   "$E/19-delete" DELETE /api/repo/verify%2Fsecond`: `200`, `{"repo":"verify/second removed","stays":[...]}`.

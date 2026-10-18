@@ -62,7 +62,8 @@ Preconditions:
   HTTP `409`, `verify/fixture#4 is assigned to someone-else`, help `Take it from them on GitHub or
   Linear: nico-agent assigns you only an issue no one has`.
 - **The sheet.** Run `$C page --evidence "$E/12-panel-phone-unassigned" --width 390 --click "button~#1, Verify: a Ready issue" --expect "Assign to me"`:
-  the bottom sheet reads Assigned, `Unassigned` and `Assign to me` on one row, then why it waits.
+  the bottom sheet reads why it waits under its Stage (`verify/fixture#1 is not assigned to you, …`), then, under
+  `heading "Assigned"`, `Unassigned` and `Assign to me` on one row.
 - **Assign to me.** `: > "$OUTSIDE_LOG"`; run `$C page --evidence "$E/13-assigned-from-panel" --click "button~#1, Verify: a Ready issue" --expect "Unassigned" --click "button=Assign to me" --gone "Assign to me" --expect "you"`.
   `.requests.txt` has `POST /api/assign {"issue":"verify/fixture#1"} -> 200` and no
   `POST /api/refresh`; the ARIA snapshot has `button "#1, Verify: a Ready issue, Ready"` and the

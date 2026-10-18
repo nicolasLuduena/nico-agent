@@ -52,7 +52,8 @@ Preconditions:
   Exit `1`, `error` `verify/fixture#8 has no live Dispatch`.
 - **Not Asking.** Run `$C run --evidence "$E/08-not-asking" -- answer verify/fixture#9 --text "Keep it." --json`.
   Exit `1`, `error` `verify/fixture#9 is not Asking`.
-  `$C state` still matches `state.before.txt`: no refusal wrote anything or called out.
+  `$C state`'s diff from `state.before.txt` is one `herdr agent list` (a Dispatch not recorded Asking is looked up in
+  herdr first): no refusal wrote anything.
 - **Typed.** Run `$C run --evidence "$E/09-typed" -- answer verify/fixture#7 --text "Keep it." --json`,
   then with `--by faux-nico` (`10-faux-nico`). Each exit `1`,
   `` `herdr agent prompt` failed: verify_stub: herdr is a stub in this verification run ``.
@@ -104,14 +105,14 @@ Preconditions:
   `--expect "❯ 2. Open" --click "button=Enter" --expect "Ready to submit your answers?"` (`05-phone-light-enter`).
 - **Submitted.** `--width 1280 --scheme dark`: open the row, `--click "button=1 Submit answers" --gone "Ready to submit your answers?" --wait 6`
   (`06-desk-dark-submitted`): the pane shows Claude's one-sentence reply with both answers.
-- **In words.** `--width 360 --scheme dark`: open the row, `--type "Thanks. Reply with the one word: done" --press Enter --expect "Reply with the one word: done" --wait 12`
+- **In words.** `--width 360 --scheme dark`: open the row, `--click "textbox=Answer in words" --type "Thanks. Reply with the one word: done" --press Enter --expect "Reply with the one word: done" --wait 12`
   (`07-phone-dark-words`): `POST /api/answer {"issue":"verify/fixture#7","text":"..."} -> 200`, the pane
   shows Claude's `done`, and focus is back on the input after the reload.
 - **A change elsewhere.** `E=.evidence/<issue>/map-live`; with `(sleep 8; $C seed dispatch 13 pr) &`
-  running, `$C page --evidence "$E/01-typing-while-a-dispatch-lands" --click "button~#7, Verify" --expect "Answer in words" --type "half-typed answer" --expect "Verify: seeded Dispatch 13"`:
+  running, `$C page --evidence "$E/01-typing-while-a-dispatch-lands" --click "button~#7, Verify" --expect "Answer in words" --click "textbox=Answer in words" --type "half-typed answer" --expect "Verify: seeded Dispatch 13"`:
   the map draws #13 at the next `changed`, and `.aria.txt` still has `textbox "Answer in words": half-typed answer`.
-- **Its proof.** `$C state > "$E/state.after.txt"`; its diff from `$E/state.before.txt` holds
-  `dispatches.json`'s `answers` on `verify/fixture#7`, one per answer (`1`, `down`, `enter`, `1`, the
+- **Its proof.** `$C state > "$E/state.after.txt"`; its diff from `$E/state.before.txt` changes
+  `dispatches.json`, whose `answers` on `verify/fixture#7` hold (read the file: `state` prints it as a hash) one per answer (`1`, `down`, `enter`, `1`, the
   text), each `by` `user`, and the outside calls `herdr agent send-keys impl-fixture-7 ...` and
   `herdr agent prompt impl-fixture-7 ...`. Copy `$OUTSIDE_LOG` to `$E/outside.log`. Then
   `$C seed dialog none`.

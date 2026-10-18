@@ -43,14 +43,14 @@ Preconditions:
 - `E=.evidence/<issue>/project-tabs`; `$C state > "$E/state.before.txt"`.
 
 - **Own Projects.** Run `$C page --evidence "$E/01-own-projects" --click "link=verify/second" --click "button=Repos"`.
-  `navigation "Projects"` has `link "verify/fixture"` and `link "verify/second" [current=page]`; `region
+  `navigation "Projects"` has `link "verify/fixture"` and `link "verify/second"`, and `heading "verify/second"` (the shown Project); `region
   "Map of verify/second"` has `#1, Verify: waits on fixture #1, Waiting, waits on verify/fixture#1 to
   close`, `#2, Verify: waits on an outside issue, Waiting, waits on verify/outside#7 to close`, `#3,
   Verify: waits on fixture #20 installed, Ready` (its Blocker closed, in another Project),
   `verify/fixture#1, Verify: a Ready issue, Blocker` and `verify/outside#7, Verify: an outside
   Blocker, Blocker`; one `region "verify/second"` panel, no Project's defaults.
 - **Join on the page.** Run `$C page --evidence "$E/02-join-on-page" --click "button=Repos" --within "region=verify/fixture" --click "region=Settings" --click "combobox=Project" --type verify --press Tab --expect "Defaults for its Repos"`.
-  `link "verify" [current=page]` beside `link "verify/second"`; `region "verify"` above `region
+  `link "verify"`, and `heading "verify"` (the shown Project) beside `link "verify/second"`; `region "verify"` above `region
   "verify/fixture"`; `.requests.txt` has `PATCH /api/repo/verify/fixture {"project":"verify"} ->
   200`, then `GET /api/status` and `GET /api/map/verify`, and no second `GET
   /api/map/verify%2Ffixture` (that Project is gone). `.console.txt` is empty.
@@ -65,7 +65,7 @@ Preconditions:
   HTTP `404`, `verify/second is not a Project`, help `Ask for a Project /api/status lists`.
 - **A Repo's own room.** Run `$C http --evidence "$E/06-second-own-room" PATCH /api/repo/verify/second '{"room":2}'`: `room` `{"from":"repo","value":2}`.
 - **The Project.** Run `$C page --evidence "$E/07-project-tab" --click "button=Repos" --expect "Defaults for its Repos" --within "region=verify" --click "region=Room" --within "region=verify/fixture" --click "region=Room" --within "region=verify/second" --click "region=Room"`.
-  `link "verify" [current=page]`, the only Project; `region "Map of verify"` names nodes `#1 fixture, Verify: a Ready
+  `link "verify"`, and `heading "verify"` (the shown Project), the only Project; `region "Map of verify"` names nodes `#1 fixture, Verify: a Ready
   issue, Ready`, `#1 second, Verify: waits on fixture #1, Waiting, waits on verify/fixture#1 to
   close` and `verify/outside#7, Verify: an outside Blocker, Blocker`; the screenshot draws the edge
   from `#1 fixture` to `#1 second`, and `waits on verify/fixture#1 to close` under `#1 second`'s
@@ -82,7 +82,7 @@ Preconditions:
 - **Phone.** Run `$C page --evidence "$E/09-phone" --width 390`: `combobox "Project"`
   with `option "verify" [selected]`, its own full-width line in the screenshot.
 - **An Asking node.** Run `$C seed dispatch 12 asking`, then `$C page --evidence "$E/10-asking-open" --click "button~#12 fixture, Verify: seeded Dispatch 12"`.
-  `link "verify" [current=page]`; the node `#12 fixture, Verify: seeded Dispatch 12, Implementing, needs you` is
+  `link "verify"`, and `heading "verify"` (the shown Project); the node `#12 fixture, Verify: seeded Dispatch 12, Implementing, agent asking on claude, needs you` is
   `[pressed]`; `region "Verify: seeded Dispatch 12"` (an inspector is named by its title alone); `.requests.txt` has `GET
   /api/node/verify%2Ffixture%2312 -> 200`.
 - **Status.** Run `$C run --evidence "$E/11-status" -- status --json`: `projects[0]` is `verify`
@@ -111,9 +111,10 @@ Preconditions:
 - **Proof.** `$C state > "$E/state.after.txt"`; the diff shows `config.toml` gaining `project =
   "verify"` under both Repos, `room = 2` under verify/second, `install = "echo installed"` under
   verify/fixture and `[projects.verify]` with `room = 5` and `switches = { review = false }`, the
-  seeded Dispatch, and `installs.json`. Copy `$OUTSIDE_LOG` to `$E/outside.log`: only `herdr agent
-  list` (the open page with a live Dispatch) and `ghbot api /installation/repositories ...` (the
-  Readiness checks after a settings write and the Install). Every `.console.txt` is empty.
+  seeded Dispatch, `installs.json` and `checks.json` (the Readiness checks run again). Copy `$OUTSIDE_LOG` to
+  `$E/outside.log`: `herdr agent list` (the open page with a live Dispatch), `herdr agent read impl-fixture-12
+  --source visible` (step 10's Asking inspector reading its pane), `ghbot api /installation/repositories ...` (the
+  Readiness checks after a settings write and the Install), and launch's `gh api rate_limit` and `ghbot api rate_limit`. Every `.console.txt` is empty.
 
 ## Gotchas
 
@@ -130,8 +131,8 @@ Preconditions:
   needs `--within "region=<slug>"` before it.
 - The Room input keeps its value as typed: select it (`Control+a`) before typing, and leave it
   (`Tab`) to send it.
-- The map field is as tall as the column beside it; with several Repo panels the `Fit` button is
-  far down the page.
+- The map field fits the window under the header and notices, with its tools bar under it; the Repos column beside it
+  runs on past it, down the page.
 - A node's line under its Stage is cut to the node's width (`waits on verify/fixture#20 to b…`):
   `--expect` reads the text drawn, so expect the whole sentence in the node's panel, or read the
   node's name in the ARIA snapshot.

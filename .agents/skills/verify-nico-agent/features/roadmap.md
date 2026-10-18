@@ -43,12 +43,12 @@ Preconditions:
   and `#9, Verify: a Blocker in review, no label`. The screenshot draws the lanes `needs-triage`, `needs-info`
   and `no label` left to right, an arrow from `#30` straight into `#31`, and one from `#2` over the lanes into `#30`'s
   right side. `.requests.txt` has `GET /api/roadmap/verify%2Ffixture -> 200` and no write.
-- **A node.** Run `$C page --evidence "$E/04-panel" --hash "#verify%2Ffixture/roadmap" --expect "herdr server stop" --click "button~#30, Verify: needs triage"`.
+- **A node.** Run `$C page --evidence "$E/04-panel" --hash "#verify%2Ffixture/roadmap" --click "button~#30, Verify: needs triage"`.
   The node is `[pressed]`; `region "Verify: needs triage"` holds `link "#30"`, Labels `needs-triage, bug`,
   Assigned `you, someone-else`, Description with `Why` in bold, the list `keep it`, `drop it`, `README.md` as
   code and `link "https://example.com/spec"`, Blocked by `link "#2"` `Verify: not labelled`, Blocks
   `link "#31"` `Verify: needs info`; its only button is `Close`. `.requests.txt` has no write.
-- **Phone.** Run `$C page --evidence "$E/05-phone" --width 390 --hash "#verify%2Ffixture/roadmap" --expect "herdr server stop" --click "button~#9, Verify"`:
+- **Phone.** Run `$C page --evidence "$E/05-phone" --width 390 --hash "#verify%2Ffixture/roadmap" --click "button~#9, Verify"`:
   `.view.txt` says the page is no wider than the window; the panel is a sheet at the bottom of the screenshot.
 - **Last read.** Run `$C run --evidence "$E/06-refresh" -- refresh --json` (the `gh` stub fails every read), then
   `$C http --evidence "$E/07-after-refresh" GET /api/roadmap/verify%2Ffixture`: the same body as `01-roadmap-api`.

@@ -13,7 +13,7 @@ behind `Repos`, secondary to the work. Changing a view or opening Repos asks the
 
 ## Sub-features
 
-- `board-rail` the rail lists each Project as a link, the shown one `[current=page]`, with the theme switch and, once a tick read it, the rate-limit gauge at its foot; the gauge's panel opens over it.
+- `board-rail` the rail lists each Project as a link, the shown one carrying `aria-current="page"` (the ARIA snapshot does not print it: the header's `heading "<name>"` names the shown Project), with the theme switch and, once a tick read it, the rate-limit gauge at its foot; the gauge's panel opens over it.
 - `board-node` a node's card shows its title first, then `#<n> · <repo>` (and `· research`), its Stage word beside its icon, its PR, `Needs you` on what needs you, and a row for its agent's state and its line; its accessible name is `#<n>[ <repo>], <title>, <Stage>, …` as before.
 - `board-edges` a Blocker is a solid line, a Stacked dispatch a dashed accent line, each with an arrow, named in the legend at the map's foot (`Blocks`, `Stacked on`) while the map has one.
 - `board-zoom` `button "Zoom out"`, `"Zoom in"` and `"Fit"` zoom about the field's middle and fit it again; a drag pans, Ctrl and the wheel or a pinch zoom; the zoom group shows the scale (`N%`); on a phone in a bar under the field, off the nodes.
@@ -46,9 +46,9 @@ Preconditions:
 
 - **Map, light and dark.** Run `$C page --evidence "$E/02-map-light-1440" --width 1440 --expect "seeded Dispatch 10"`
   and the same `--scheme dark` (`03-map-dark-1440`): `navigation "Projects"` has
-  `link "verify" [current=page]`; `heading "verify"`, `2 Repos · Source read <time> · PRs not checked yet`; node buttons
+  `link "verify"`, and `heading "verify"` (the shown Project); `heading "verify"`, `2 Repos · Source read <time> · PRs not checked yet`; node buttons
   `#10 fixture, Verify: seeded Dispatch 10, Verified, PR 110 draft, needs you`, `#11 fixture, …, Failed, PR 111 draft, needs you`,
-  `#7 fixture, …, Implementing, agent asking, needs you`, `#12 fixture, …, PR draft, PR 112 draft, review retrying`; the
+  `#7 fixture, …, Implementing, agent asking on claude, needs you`, `#12 fixture, …, PR draft, PR 112 draft, review retrying`; the
   screenshot shows titles first, the Stage words in their hues, `Needs you` badges, the #9 to #12 line dashed, the legend.
 - **Inspectors.** Run `$C page --evidence "$E/04-inspector-Verified-light-1440" --width 1440 --click "button~#10 fixture, Verify: seeded" --expect "Pull request"`:
   `region "Verify: seeded Dispatch 10"` with `link "#10 fixture"`, `button "Close"`, `strong: Verified`, `Needs you`,
@@ -73,7 +73,7 @@ Preconditions:
   outside calls only; no view, Repos press, inspector, Roadmap or gauge wrote a file.
 - **Switch Projects.** `$C http --evidence "$E/15-leave" PATCH /api/repo/verify/second '{"project":null}'`, then
   `$C page --evidence "$E/16-switch-back" --width 1440 --click "link=verify/second" --expect "Verify: waits on fixture #1" --history back --expect "seeded Dispatch 10"`:
-  `navigation "Projects"` has `link "verify"` and `link "verify/second"`; `.view.txt` `at /` after back, `link "verify" [current=page]`.
+  `navigation "Projects"` has `link "verify"` and `link "verify/second"`; `.view.txt` `at /` after back, `link "verify"`, and `heading "verify"` (the shown Project).
   `--width 390 --select "Project=verify/second"` (`17-switch-phone`) does the same from the select.
 - **Zoom.** Run `$C page --evidence "$E/12-zoom" --width 1440 --click "button=Zoom in" --click "button=Zoom in" --click "button=Fit"`: the screenshot fitted again.
 - **Unreachable.** `$C tunnel start`, then `$C page --tunnel --evidence "$E/13-unreachable" --width 1440 --mode 502 --expect "Lost nico-agent serve"`:

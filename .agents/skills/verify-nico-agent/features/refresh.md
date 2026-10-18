@@ -47,15 +47,15 @@ Preconditions:
   `could not ask GitHub about https://github.com/verify/fixture/pull/110: not authenticated with GitHub; run \`gh auth login\``,
   the same for `.../pull/109` (the PR `#6` stacks on, watched from then on), `verify/fixture#10: Evidence
   at <its head> kept in the Bucket`, `could not list herdr's agents: ...`
-  and `could not start the Reviewer of verify/fixture#10: \`herdr tab create\` failed: ...`.
+  `could not start the Reviewer of verify/fixture#10: \`herdr tab create\` failed: ...`, and last `could not read GitHub's rate limit: ...`.
   `$OUTSIDE_LOG` has `gh api user --jq .login`, a `gh pr list --repo verify/fixture --head agent/fixture-<n> ...`
   per Dispatch without a PR, `gh pr view 110 --repo verify/fixture --json ...` and `gh pr view 109 ...`,
-  `herdr agent list`, `herdr tab create --workspace verify-workspace-10 ...` and the checks'
-  `ghbot api /installation/repositories ...`. Copy it to `$E/outside.cli.log`.
+  `herdr agent list`, `herdr tab create --workspace verify-workspace-10 ...`, the rate-limit reads `gh api rate_limit`
+  and `ghbot api rate_limit`, and the checks' `ghbot api /installation/repositories ...`. Copy it to `$E/outside.cli.log`.
 - **Paused.** Run `$C drift pause`, `: > "$OUTSIDE_LOG"`, then `$C http --evidence "$E/04-paused" POST /api/refresh`.
   HTTP `200`; `repos[0].error` `GitHub rate limit exceeded; nico-agent asks it again at <the pause>`;
-  `actions` hold only the two herdr lines; `$OUTSIDE_LOG` has no `gh` line, only `herdr agent list`,
-  `herdr tab create` and the checks' `ghbot api /installation/repositories ...` (the GitHub App
+  `actions` hold only the two herdr lines and the rate-limit one; `$OUTSIDE_LOG` has no `gh` line but `gh api rate_limit`
+  (it costs no budget, so a pause lets it through), and `ghbot api rate_limit`, `herdr agent list`, `herdr tab create` and the checks' `ghbot api /installation/repositories ...` (the GitHub App
   answers on its own rate limit). Run `$C page --evidence "$E/05-paused-page"`: `list "Needs you"` adds
   `Paused GitHub until <time>` last, after the Check notice.
 - **Proof.** `$C state > "$E/state.after.txt"`; copy `$OUTSIDE_LOG` to `$E/outside.log`.
@@ -64,7 +64,7 @@ Preconditions:
   `$C run -- repo add verify/fixture --path "$FIXTURE_CLONE" --json`, `$C seed dispatch 10 stacked`,
   `$C http --evidence "$E/06-restart-off" PATCH /api/repo/verify/fixture/switches '{"restart":false}'`,
   `$C drift below closed`, `$C state > "$E/state.closed.before.txt"` and `: > "$OUTSIDE_LOG"`.
-  Run `$C run --evidence "$E/06-below-closed" -- refresh --json`: the last action is
+  Run `$C run --evidence "$E/06-below-closed" -- refresh --json`: the last action but the rate-limit one is
   `verify/fixture#10 Failed: the PR below, https://github.com/verify/fixture/pull/109, closed unmerged`.
   `$C state > "$E/state.closed.after.txt"`; its diff has `dispatches.json`'s `failure`; copy
   `$OUTSIDE_LOG` to `$E/outside.below-closed.log`: one
@@ -75,7 +75,7 @@ Preconditions:
   `: > "$OUTSIDE_LOG"`, then `$C run --evidence "$E/06-below-closed-again" -- refresh --json`: no
   action names `verify/fixture#10`, and `$OUTSIDE_LOG` has no `notify-send`. Run
   `$C page --evidence "$E/06-below-closed-page" --click "button~#10, Verify: seeded Dispatch 10"`:
-  the node reads `#10, Verify: seeded Dispatch 10, Failed, needs you`;
+  the node reads `#10, Verify: seeded Dispatch 10, Failed, PR 110 draft, needs you`;
   `.requests.txt` has `GET /api/node/verify%2Ffixture%2310 -> 200`; the panel reads
   `the PR below, https://github.com/verify/fixture/pull/109, closed unmerged`, `At the restart step.`
   and `No restarts.` Copy `$OUTSIDE_LOG` to `$E/outside.log`.
@@ -83,10 +83,11 @@ Preconditions:
   `$C cleanup; $C launch --no-build && $C doctor && . "$($C env)"`,
   `$C run -- repo add verify/fixture --path "$FIXTURE_CLONE" --json`, `$C seed dispatch 10 stacked`,
   `$C drift below merged`, `$C state > "$E/state.merged.before.txt"` and `: > "$OUTSIDE_LOG"`.
-  Run `$C run --evidence "$E/07-below-merged" -- refresh --json`: the last action is
-  `verify/fixture#10 failed at tab of its retarget restart: \`herdr tab close\` failed: verify_stub: herdr is a stub in this verification run`.
+  Run `$C run --evidence "$E/07-below-merged" -- refresh --json`: the last action but the rate-limit one is
+  `verify/fixture#10 failed at tab of its retarget restart: \`herdr tab create\` failed: verify_stub: herdr is a stub in this verification run`
+  (the restart opens the new tab before it closes the old one, so a stubbed herdr refuses the create first).
   `$C state > "$E/state.merged.after.txt"`; copy `$OUTSIDE_LOG` to `$E/outside.below-merged.log`:
-  it has `herdr tab close verify-tab-10`. Run
+  it has `herdr tab create --workspace verify-workspace-10 ... --label implementer --no-focus` and no `herdr tab close`. Run
   `$C run --evidence "$E/07-below-merged-status" -- status --json`: `dispatches[0]` has `base`
   `main` and `restarts` `[{"at":<now>,"by":"loop","reason":"retarget"}]`.
 
