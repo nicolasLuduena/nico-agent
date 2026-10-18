@@ -47,7 +47,11 @@ const ROUTES: &[(&str, &str)] = &[
     ),
     (
         "GET /api/node/<issue>",
-        "the issue's Dispatch, its restarts, its Verdict's findings, its Evidence and, while it is Asking, its Implementer's pane",
+        "the issue's Dispatch, its restarts, its Verdict's findings and its Evidence",
+    ),
+    (
+        "GET /api/agent/<issue>/<role>",
+        "the last 200 lines of the issue's live implementer or reviewer as herdr reads them (its screen while herdr scrolls it only idle), or why herdr could not",
     ),
     (
         "GET /api/events",
@@ -132,6 +136,11 @@ pub fn answer(ctx: &Context, port: u16, request: &HttpRequest) -> Answer {
                 format!("{issue} has no Dispatch"),
                 help,
             )
+        }
+        ("GET", path) if let Some(at) = path.strip_prefix("/api/agent/") => {
+            // `owner/repo#N/role`, the issue escaped.
+            let (issue, role) = at.rsplit_once('/').unwrap_or((at, ""));
+            ran(map::screen(ctx, &unescaped(issue), role))
         }
         ("GET", _) if let Some((_, kind, bytes)) = APP.iter().find(|(p, ..)| *p == path) => {
             Answer::Whole(HttpResponse {

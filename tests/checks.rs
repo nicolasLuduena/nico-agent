@@ -549,13 +549,23 @@ fn status_says_the_repo_s_agents_post_as_the_bot_once_the_app_is_on_it_and_as_yo
     t.world.calls.borrow_mut().clear();
 
     assert_eq!(posts_as(&t), "nicolasluduena-coding-agent[bot]");
-    assert!(!t.world.calls().contains(&"github app repos".to_string()), "no new call");
+    assert!(
+        !t.world.calls().contains(&"github app repos".to_string()),
+        "no new call"
+    );
 
     t.world.app_repos.borrow_mut().clear();
     served(&t);
     assert_eq!(posts_as(&t), "you");
 
-    t.world.fail_call("github app repos", "`ghbot api /installation/repositories` failed");
+    t.world.fail_call(
+        "github app repos",
+        "`ghbot api /installation/repositories` failed",
+    );
     served(&t);
-    assert_eq!(posts_as(&t), "you", "an App it could not ask about posts nothing");
+    assert_eq!(
+        posts_as(&t),
+        "you",
+        "an App it could not ask about posts nothing"
+    );
 }

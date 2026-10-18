@@ -420,6 +420,10 @@ pub trait World {
     fn herdr_agents(&self) -> WorldResult<Vec<Agent>>;
     /// The text visible in a named agent's pane.
     fn herdr_agent_read(&self, name: &str) -> WorldResult<String>;
+    /// The last `lines` lines a named agent's pane printed, its recent scrollback
+    /// with them; what its screen shows while herdr cannot scroll it (an
+    /// alternate screen, Claude's or codex's, scrolls only while its agent is idle).
+    fn herdr_agent_recent(&self, name: &str, lines: usize) -> WorldResult<String>;
     fn herdr_agent_send_keys(&self, name: &str, keys: &[String]) -> WorldResult<()>;
     /// Wait until a named agent reaches one of `states`, failing after `timeout`.
     fn herdr_agent_wait(&self, name: &str, states: &[String], timeout: Duration)
@@ -1670,6 +1674,15 @@ impl World for RealWorld {
     }
     fn herdr_agent_read(&self, name: &str) -> WorldResult<String> {
         Ok(herdr_text(&["agent", "read", name, "--source", "visible"])?)
+    }
+    fn herdr_agent_recent(&self, name: &str, lines: usize) -> WorldResult<String> {
+        let lines = lines.to_string();
+        match herdr_text(&[
+            "agent", "read", name, "--source", "recent", "--lines", &lines,
+        ]) {
+            Err(e) if e.is(&["agent_not_idle"]) => self.herdr_agent_read(name),
+            read => Ok(read?),
+        }
     }
     fn herdr_agent_send_keys(&self, name: &str, keys: &[String]) -> WorldResult<()> {
         let mut all = vec!["agent", "send-keys", name];

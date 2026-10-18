@@ -415,42 +415,27 @@ fn the_app_s_answer_is_refused_as_the_cli_s_is_and_records_nothing() {
 }
 
 #[test]
-fn the_node_of_an_asking_dispatch_holds_its_implementer_s_pane_and_no_other_does() {
+fn the_node_of_an_asking_dispatch_reads_no_pane_its_implementer_s_screen_is_read_on_its_own() {
     let t = asking();
     let dialog = "│ Should I keep the old endpoint?\n\n❯ 1. Keep it\n  2. Drop it\n\nEnter to select · Esc to cancel";
     (t.world.screens.borrow_mut()).insert("impl-api-7".into(), dialog.into());
 
-    let (status, asking) = t.get("/api/node/acme%2Fapi%237");
-    let read = t.world.calls();
-    t.world
-        .fail_call("herdr agent read", "`herdr agent read` failed: gone");
-    let (_, unread) = t.get("/api/node/acme%2Fapi%237");
-    t.world.clear_failures();
-    (t.world.agents.borrow_mut()).insert("impl-api-7".into(), "working".into());
-    t.tick();
-    t.world.calls.borrow_mut().clear();
-    let (_, working) = t.get("/api/node/acme%2Fapi%237");
+    let (status, node) = t.get("/api/node/acme%2Fapi%237");
+    let node_calls = t.world.calls();
+    let (_, screen) = t.get("/api/agent/acme%2Fapi%237/implementer");
 
-    assert_eq!(status, 200, "{asking}");
-    assert_eq!(asking["pane"], dialog);
+    assert_eq!(status, 200, "{node}");
+    assert_eq!((node.get("pane"), node.get("pane_error")), (None, None));
     assert!(
-        read.contains(&"herdr agent read impl-api-7 --source visible".to_string()),
-        "{read:?}"
+        !node_calls.iter().any(|c| c.starts_with("herdr agent read")),
+        "{node_calls:?}"
     );
-    assert_eq!(
-        (unread.get("pane"), &unread["pane_error"]),
-        (None, &json!("`herdr agent read` failed: gone"))
-    );
-    assert_eq!(
-        (working.get("pane"), working.get("pane_error")),
-        (None, None)
-    );
-    let reads = (t.world.calls().into_iter()).filter(|c| c.starts_with("herdr agent read"));
-    assert_eq!(reads.count(), 0);
+    assert_eq!(screen, json!({ "agent": "impl-api-7", "screen": dialog }));
 }
 
 #[test]
-fn an_implementer_herdr_reports_blocked_before_a_tick_sees_it_shows_its_pane_and_takes_an_answer() {
+fn an_implementer_herdr_reports_blocked_before_a_tick_sees_it_shows_its_screen_and_takes_an_answer()
+{
     let t = setup();
     t.world
         .add_clone("/src/api", &["git@github.com:acme/api.git"]);
@@ -465,14 +450,14 @@ fn an_implementer_herdr_reports_blocked_before_a_tick_sees_it_shows_its_pane_and
     t.world.advance(MINUTE);
     t.world.calls.borrow_mut().clear();
 
-    let (_, node) = t.get("/api/node/acme%2Fapi%237");
+    let (_, read) = t.get("/api/agent/acme%2Fapi%237/implementer");
     let pressed = t.send(
         "POST",
         "/api/answer",
         r#"{"issue": "acme/api#7", "keys": ["1"]}"#,
     );
 
-    assert_eq!(node["pane"], dialog);
+    assert_eq!(read["screen"], dialog);
     assert_eq!(
         pressed,
         (200, json!({"answer": "acme/api#7 answered by user"}))

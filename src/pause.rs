@@ -272,6 +272,9 @@ impl World for Guarded<'_> {
     fn herdr_agent_read(&self, name: &str) -> WorldResult<String> {
         self.world.herdr_agent_read(name)
     }
+    fn herdr_agent_recent(&self, name: &str, lines: usize) -> WorldResult<String> {
+        self.world.herdr_agent_recent(name, lines)
+    }
     fn herdr_agent_send_keys(&self, name: &str, keys: &[String]) -> WorldResult<()> {
         self.world.herdr_agent_send_keys(name, keys)
     }

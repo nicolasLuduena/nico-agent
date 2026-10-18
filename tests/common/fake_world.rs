@@ -785,6 +785,15 @@ impl World for FakeWorld {
         Ok(blocked.unwrap_or_else(|| self.screens.borrow().get(name).cloned().unwrap_or_default()))
     }
 
+    fn herdr_agent_recent(&self, name: &str, lines: usize) -> WorldResult<String> {
+        self.call(format!(
+            "herdr agent read {name} --source recent --lines {lines}"
+        ))?;
+        let screen = self.screens.borrow().get(name).cloned().unwrap_or_default();
+        let from = screen.lines().count().saturating_sub(lines);
+        Ok(screen.lines().skip(from).collect::<Vec<_>>().join("\n"))
+    }
+
     /// Answers the startup question the agent is blocked on.
     fn herdr_agent_send_keys(&self, name: &str, keys: &[String]) -> WorldResult<()> {
         self.call(format!("herdr agent send-keys {name} {}", keys.join(" ")))?;
