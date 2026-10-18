@@ -30,7 +30,7 @@
   let height = $state(0);
   /** The map's scale; the field's own scroll is where it is panned to. */
   let k = $state(1);
-  /** The room the map was last packed into: the field, less its padding, when it was last fitted. Kept while the inspector narrows the field, so the nodes stay put. */
+  /** The room the map was last packed into: the field, less its padding, when it was last fitted, and since, while no one has zoomed it. */
   let room = $state({ width: 0, height: 0 });
   /** The Project (and Hide merged) the map was last fitted to, and the issue it last panned to. */
   let fitted: string | null = null;
@@ -99,9 +99,12 @@
 
   const behavior = (): ScrollBehavior => (still() ? "auto" : "smooth");
 
+  /** The scale the last Fit set: while the map is still at it, it follows the field's size. */
+  let fitK = 1;
+
   /** Fit: the fitting scale, the map from its top left. */
   function fit(smooth = true) {
-    k = scale;
+    k = fitK = scale;
     field.scrollTo({ left: 0, top: 0, behavior: smooth ? behavior() : "auto" });
   }
 
@@ -119,6 +122,21 @@
         fit(false);
       });
     }
+  });
+
+  // The field resized (the inspector opened, the window changed): a map no one has zoomed since its Fit is
+  // packed to the field's new shape and fits it again, so it scrolls only when even that is past the floor.
+  $effect(() => {
+    const now = { width: width - 2 * PAD, height: height - 2 * PAD };
+    untrack(() => {
+      if (fitted && k === fitK && (now.width !== room.width || now.height !== room.height)) room = now;
+    });
+  });
+  $effect(() => {
+    const now = scale;
+    untrack(() => {
+      if (fitted && k === fitK) k = fitK = now;
+    });
   });
 
   /** Scroll `key`'s node into the middle of the field, and the field onto the screen, when any of it is out of view. */
@@ -360,16 +378,21 @@
     /* The tools bar's height: 36px controls and 8px above and below them, the hairline over it. */
     --bar: 53px;
     position: relative;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
     background: var(--surface);
     border: 1px solid var(--hairline);
     border-radius: var(--radius);
   }
   .field {
     position: relative;
-    /* The window's height under the header, the notices and the tools bar, so the page itself never scrolls past the map. */
-    height: max(420px, calc(100vh - 168px - var(--notices-h, 0px) - var(--bar)));
+    /* What the work area leaves after the tools bar, so the page itself never scrolls past the map. */
+    flex: 1 1 0;
+    min-height: 0;
     /* Panned by its own scroll, so a node scrolled into view (focus, find, a test's click) is in it; past its ends a scroll goes on to the page. */
     overflow: auto;
+    scrollbar-width: thin;
     touch-action: pan-x pan-y;
     cursor: grab;
     user-select: none;
@@ -387,8 +410,8 @@
   /* Fitted to the width, 60vh tall, the Repos column below it. */
   @media (width < 720px) {
     .field {
+      flex: none;
       height: 60vh;
-      min-height: 0;
     }
   }
   .sizer {
