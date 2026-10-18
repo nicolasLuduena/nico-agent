@@ -6,13 +6,13 @@
 </script>
 
 <script lang="ts">
-  import { Button } from "$lib/components/ui/button/index.js";
   // The Project's map from /api/map/<project>, refetched on every `changed`:
   // dagre lays out each group of linked issues left to right, the groups packed
   // to the field's shape (layout.ts); the field pans and zooms, a node opens its
   // inspector. Each node is a card: its title first, then its number and Repo,
   // then its Stage in words beside its mark and its PR, then a row per live
   // agent, which opens that agent's panel.
+  import { Button } from "$lib/components/ui/button/index.js";
   import { flushSync, tick, untrack } from "svelte";
   import { MediaQuery } from "svelte/reactivity";
   import { watch } from "../live";

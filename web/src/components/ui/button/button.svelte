@@ -10,7 +10,7 @@
     variants: {
       variant: {
         // The form's one action: the accent's fill, a step darker on hover.
-        default: "border-primary bg-primary px-4 text-primary-foreground hover:not-disabled:bg-[color-mix(in_srgb,var(--accent)_86%,var(--ink))]",
+        default: "border-primary bg-primary px-4 text-primary-foreground hover:not-disabled:bg-primary-hover",
         // Every other action, DESIGN.md's quiet button: `surface` in a `rule` frame, `raised` on hover.
         outline: "flex-none border-input bg-card px-3.5 text-foreground hover:not-disabled:bg-muted",
       },

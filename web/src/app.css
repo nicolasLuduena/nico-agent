@@ -24,6 +24,8 @@
   --color-popover-foreground: var(--ink);
   --color-primary: var(--accent);
   --color-primary-foreground: var(--accent-ink);
+  /* A button's fill a step darker on hover. */
+  --color-primary-hover: color-mix(in srgb, var(--accent) 86%, var(--ink));
   --color-secondary: var(--raised);
   --color-secondary-foreground: var(--ink);
   --color-muted: var(--raised);
@@ -40,7 +42,7 @@
   /* DESIGN.md's rounded: control, card, sheet. */
   --radius-md: var(--radius-control);
   --radius-lg: var(--radius);
-  --radius-xl: 12px;
+  --radius-xl: var(--radius-sheet);
 }
 
 :root {
@@ -80,6 +82,7 @@
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;
   --radius: 8px;
   --radius-control: 6px;
+  --radius-sheet: 12px;
   --shadow: 0 1px 2px rgb(16 24 40 / 6%);
   --shadow-pop: 0 8px 24px rgb(16 24 40 / 12%);
   /* 24px on desktop, 16px on phone. */
@@ -602,7 +605,7 @@ input[role="switch"]:checked::before {
     overscroll-behavior: contain;
     padding: 0 16px 16px;
     border-width: 1px 0 0;
-    border-radius: 12px 12px 0 0;
+    border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
     box-shadow: var(--shadow-pop);
     animation-name: inspector-rise;
   }

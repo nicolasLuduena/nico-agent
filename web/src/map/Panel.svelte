@@ -159,7 +159,7 @@
       {#if pr}
         {@const n = pr.url.split("/").pop()}
         <p class="row">
-          <a class={node.stage === "Verified" ? "button" : "quiet"} href={pr.url} target="_blank" rel="noreferrer">Open PR {n}{pr.draft ? " (draft)" : ""}</a>
+          <Button variant={node.stage === "Verified" ? "default" : "outline"} href={pr.url} target="_blank" rel="noreferrer">Open PR {n}{pr.draft ? " (draft)" : ""}</Button>
           {#if full?.pr?.merged_at}<span class="at">merged {clock(full.pr.merged_at)}</span>{/if}
         </p>
         {#if node.stage === "Verified"}<p class="note hint">Review and merge it on GitHub.</p>{/if}
