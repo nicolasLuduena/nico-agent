@@ -40,7 +40,8 @@ it binds the rebuild.
   when the Project has more than one, its Repo; edges for Blockers, across
   its Repos too; a stacked PR drawn to the PR it targets. What needs you is
   flagged on its node (Asking, failed twice, Verified PRs to merge) or is a
-  toast (a failing Readiness check: what will break a Repo before it does). A Refresh button is the one way to ask
+  notice in a band under the view tabs (a Repo's failing Readiness checks:
+  what will break a Repo before it does). A Refresh button is the one way to ask
   GitHub again.
 - **Local first.** What GitHub or Linear said is kept locally and shown from
   there. A PR is asked about again only while it can still change; merged and
