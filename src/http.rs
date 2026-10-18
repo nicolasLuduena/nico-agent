@@ -76,8 +76,8 @@ const ROUTES: &[(&str, &str)] = &[
         "start a Reviewer on the head of the issue's PR now, its failed starts for that head cleared, whatever the review switch says",
     ),
     (
-        "POST /api/answer {issue, text|keys}",
-        "`nico-agent answer` of the issue, in words or keys",
+        "POST /api/answer {issue, text|keys, reply, session, field}",
+        "`nico-agent answer` of the issue, in words or keys, or replying to an opencode form or permission",
     ),
     (
         "PATCH /api/repo/<owner/name>/switches {name: bool}",
@@ -452,9 +452,12 @@ fn issue(request: &HttpRequest, command: &str) -> Result<String, Refusal> {
 }
 
 /// `answer <issue> --text <text>`, or `--keys <key>...`, from the body's
-/// `{issue, text}` or `{issue, keys}`: the user's, never faux-nico's.
+/// `{issue, text}` or `{issue, keys}`, with `--reply`, `--session` and
+/// `--field` from its `reply`, `session` and `field`: the user's, never
+/// faux-nico's.
 fn answer_asking(ctx: &Context, request: &HttpRequest) -> Result<Value, Refusal> {
-    let mut argv = argv(request, "answer", &["issue", "text"])?;
+    let names = ["issue", "text", "reply", "session", "field"];
+    let mut argv = argv(request, "answer", &names)?;
     match &body(request)?["keys"] {
         Value::Null => {}
         // No key herdr names starts with `--`: one that does would be a flag of `answer`.

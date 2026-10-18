@@ -69,8 +69,8 @@ const COMMANDS: &[(&str, &str)] = &[
         "start an Implementer on each Ready issue, or continue its failed Dispatch from the step that failed",
     ),
     (
-        "nico-agent answer <issue> --text <text>|--keys <key>... [--by faux-nico]",
-        "type an answer into the issue's Asking Implementer, or press keys in its pane, and record it on its Dispatch",
+        "nico-agent answer <issue> --text <text>|--keys <key>... [--reply <id> --session <session> [--field <key>]] [--by faux-nico]",
+        "type an answer into the issue's Asking Implementer, or press keys in its pane, or reply with --text to the opencode form or permission <id>, and record it on its Dispatch",
     ),
     (
         "nico-agent verdict <issue> pass|fail --sha <sha> [--findings <file>]",

@@ -197,7 +197,7 @@ fn an_unknown_path_or_method_answers_404_with_the_routes_as_help() {
         "POST /api/refresh: `nico-agent refresh`",
         "POST /api/assign {issue}: assign the issue to the user on its Source, unless someone else has it, and keep that in its Repo's last read",
         "POST /api/review {issue}: start a Reviewer on the head of the issue's PR now, its failed starts for that head cleared, whatever the review switch says",
-        "POST /api/answer {issue, text|keys}: `nico-agent answer` of the issue, in words or keys",
+        "POST /api/answer {issue, text|keys, reply, session, field}: `nico-agent answer` of the issue, in words or keys, or replying to an opencode form or permission",
         "PATCH /api/repo/<owner/name>/switches {name: bool}: set the Repo's switches; null takes its Project's or the default",
         "PATCH /api/repo/<owner/name> {implementer, reviewer, room, base, project, install, switches}: set the Repo's own settings; null takes its Project's or the default",
         "PATCH /api/project/<name> {implementer, reviewer, room, base, switches}: set the Project's defaults for its Repos; null removes one",

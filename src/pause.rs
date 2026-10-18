@@ -6,6 +6,8 @@ use std::io;
 use std::path::Path;
 use std::time::{Duration, SystemTime};
 
+use serde_json::Value;
+
 use crate::state;
 use crate::world::{
     Agent, GitHubIssue, Handler, HttpRequest, LinearIssue, PullRequest, PullRequestActivity,
@@ -300,6 +302,18 @@ impl World for Guarded<'_> {
         after: Option<(&str, &str)>,
     ) -> WorldResult<Option<Transcript>> {
         self.world.harness_transcript(harness, command, cwd, after)
+    }
+    fn opencode_asks(&self, command: &str, session: &str) -> WorldResult<Vec<Value>> {
+        self.world.opencode_asks(command, session)
+    }
+    fn opencode_reply(
+        &self,
+        command: &str,
+        session: &str,
+        id: &str,
+        body: &Value,
+    ) -> WorldResult<()> {
+        self.world.opencode_reply(command, session, id, body)
     }
     fn opencode_save_variant(
         &self,

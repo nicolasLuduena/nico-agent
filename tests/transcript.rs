@@ -50,6 +50,10 @@ fn entries(id: &str, entries: Value) -> String {
     )
 }
 
+fn asking(asks: Value) -> String {
+    format!("event: asking\ndata: {}\n\n", json!({ "asking": asks }))
+}
+
 fn missing(why: &str) -> String {
     format!("event: missing\ndata: {}\n\n", json!({ "missing": why }))
 }
@@ -79,8 +83,8 @@ fn claude_chat() -> Value {
     json!([
         { "role": "user", "text": "Implement #7" },
         { "role": "thinking", "text": "Read the issue first.", "usage": usage },
-        { "role": "tool", "text": "Bash {\"command\":\"gh issue view 7\"}", "usage": usage },
-        { "role": "result", "text": "Add a login page" },
+        { "role": "tool", "id": "t1", "name": "Bash", "text": "Bash {\"command\":\"gh issue view 7\"}", "usage": usage },
+        { "role": "result", "id": "t1", "text": "Add a login page" },
         { "role": "progress", "data": { "type": "agent_progress", "agentId": "a1" } },
         { "role": "assistant", "text": "I'll add the login page.", "usage": usage },
     ])
@@ -217,7 +221,7 @@ fn an_opencode_chat_streams_its_finished_messages_and_resumes_after_the_last_one
     let done = json!({ "id": "msg_3", "type": "assistant", "time": { "created": 1, "completed": 2 },
         "tokens": tokens, "content": [
             { "type": "reasoning", "text": "Read the issue." },
-            { "type": "tool", "name": "bash", "state": { "status": "completed",
+            { "type": "tool", "id": "call_1", "name": "bash", "state": { "status": "completed",
                 "input": { "command": "gh issue view 7" },
                 "content": [{ "type": "text", "text": "Add a login page" }] } },
             { "type": "text", "text": "Adding it." },
@@ -242,11 +246,12 @@ fn an_opencode_chat_streams_its_finished_messages_and_resumes_after_the_last_one
                 json!([
                     { "role": "user", "text": "Implement #7" },
                     { "role": "thinking", "text": "Read the issue." },
-                    { "role": "tool", "text": "bash {\"command\":\"gh issue view 7\"}" },
-                    { "role": "result", "text": "Add a login page" },
+                    { "role": "tool", "id": "call_1", "name": "bash", "text": "bash {\"command\":\"gh issue view 7\"}" },
+                    { "role": "result", "id": "call_1", "text": "Add a login page" },
                     { "role": "assistant", "text": "Adding it.", "usage": tokens },
                 ])
             )
+            + &asking(json!([]))
     );
     assert_eq!(
         landed,
@@ -261,10 +266,119 @@ fn an_opencode_chat_streams_its_finished_messages_and_resumes_after_the_last_one
         [
             sessions,
             "opencode2 api GET /api/session/ses_a/message?order=asc&limit=100",
+            "opencode2 api GET /api/session/ses_a/form",
+            "opencode2 api GET /api/session/ses_a/permission",
             sessions,
             "opencode2 api GET /api/session/ses_a/message?cursor=<next after msg_3>&limit=100",
+            "opencode2 api GET /api/session/ses_a/form",
+            "opencode2 api GET /api/session/ses_a/permission",
         ]
     );
+}
+
+#[test]
+fn a_claude_question_carries_its_options_and_a_to_do_list_its_items() {
+    let t = dispatched("claude");
+    let asked = json!({ "type": "tool_use", "id": "t2", "name": "AskUserQuestion", "input": { "questions": [
+        { "question": "Keep the old endpoint?", "header": "Endpoint", "multiSelect": false, "options": [
+            { "label": "Keep it", "description": "Both live a release" },
+            { "label": "Drop it" },
+        ] },
+    ] } });
+    let several = json!({ "type": "tool_use", "id": "t3", "name": "AskUserQuestion", "input": { "questions": [
+        { "question": "Which?", "header": "A", "options": [{ "label": "One" }] },
+        { "question": "And?", "header": "B", "options": [{ "label": "Two" }] },
+    ] } });
+    let todos = json!({ "type": "tool_use", "id": "t4", "name": "TodoWrite", "input": { "todos": [
+        { "content": "Write the test", "status": "completed", "activeForm": "Writing the test" },
+        { "content": "Make it pass", "status": "in_progress", "activeForm": "Making it pass" },
+    ] } });
+    let failed = json!({ "type": "tool_result", "tool_use_id": "t4", "is_error": true, "content": "No such file" });
+    let line = |content: Value| json!({ "type": "assistant", "message": { "content": [content] } });
+    let lines = [line(asked), line(several), line(todos), line(failed)];
+    keeps(&t, "claude", "s1", &lines);
+
+    let opened = t.stream(CHAT).next();
+
+    let call = |name: &str, input: &Value| format!("{name} {input}");
+    assert_eq!(
+        opened,
+        session("s1")
+            + &entries(
+                &format!("s1 {}", length(&lines)),
+                json!([
+                    { "role": "tool", "id": "t2", "name": "AskUserQuestion",
+                      "text": call("AskUserQuestion", &lines[0]["message"]["content"][0]["input"]),
+                      "ask": { "id": "t2", "header": "Endpoint", "question": "Keep the old endpoint?", "options": [
+                          { "label": "Keep it", "description": "Both live a release", "value": "Keep it" },
+                          { "label": "Drop it", "description": null, "value": "Drop it" },
+                      ] } },
+                    { "role": "tool", "id": "t3", "name": "AskUserQuestion",
+                      "text": call("AskUserQuestion", &lines[1]["message"]["content"][0]["input"]),
+                      "ask": { "id": "t3", "header": "A", "question": "Which?", "options": [] } },
+                    { "role": "tool", "id": "t4", "name": "TodoWrite",
+                      "text": call("TodoWrite", &lines[2]["message"]["content"][0]["input"]),
+                      "todos": [
+                          { "text": "Write the test", "status": "completed" },
+                          { "text": "Make it pass", "status": "in_progress" },
+                      ] },
+                    { "role": "result", "id": "t4", "text": "No such file", "error": true },
+                ])
+            )
+    );
+}
+
+#[test]
+fn an_opencode_implementer_s_question_and_permission_are_asked_till_replied() {
+    let t = dispatched("opencode");
+    keeps(
+        &t,
+        "opencode",
+        "ses_a",
+        &[json!({ "id": "msg_1", "type": "user", "text": "Implement #7" })],
+    );
+    let form = json!({ "id": "frm_1", "sessionID": "ses_a", "title": "Questions",
+        "metadata": { "kind": "question" }, "fields": [
+            { "key": "q0", "title": "Color", "description": "Which color?", "type": "string", "custom": true,
+              "options": [{ "value": "Red", "label": "Red", "description": "Choose red" }, { "value": "Blue", "label": "Blue" }] },
+        ] });
+    let permission = json!({ "id": "per_1", "sessionID": "ses_a", "action": "bash", "resources": ["rm -rf build"] });
+    (t.world.asks.borrow_mut()).insert("ses_a".into(), vec![form, permission]);
+
+    let mut chat = t.stream(CHAT);
+    let opened = chat.next();
+    let unchanged = chat.next();
+    (t.world.agents.borrow_mut()).insert("impl-api-7".into(), "blocked".into());
+    let sent = t.send(
+        "POST",
+        "/api/answer",
+        r#"{"issue": "acme/api#7", "text": "once", "reply": "per_1", "session": "ses_a"}"#,
+    );
+    let replied = chat.next();
+
+    let question = json!({ "id": "frm_1", "session": "ses_a", "field": "q0", "header": "Color",
+        "question": "Which color?", "options": [
+            { "label": "Red", "description": "Choose red", "value": "Red" },
+            { "label": "Blue", "description": null, "value": "Blue" },
+        ] });
+    let allow = json!({ "id": "per_1", "session": "ses_a", "header": "Permission", "question": "bash rm -rf build",
+        "options": [
+            { "label": "Allow once", "value": "once" },
+            { "label": "Always allow", "value": "always" },
+            { "label": "Reject", "value": "reject" },
+        ] });
+    assert_eq!(
+        opened,
+        session("ses_a")
+            + &entries(
+                "ses_a msg_1",
+                json!([{ "role": "user", "text": "Implement #7" }])
+            )
+            + &asking(json!([question, allow]))
+    );
+    assert_eq!(unchanged, "");
+    assert_eq!(sent.0, 200, "{}", sent.1);
+    assert_eq!(replied, asking(json!([question])));
 }
 
 #[test]
