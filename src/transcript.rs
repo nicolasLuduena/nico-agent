@@ -272,6 +272,7 @@ fn tool(id: &Value, name: &Value, input: &Value, usage: &Value) -> Option<Value>
 /// each with the `value` that answers it; none to pick but its first of
 /// several questions, or one taking several picks, which the screen answers.
 fn ask(id: &Value, questions: &Value) -> Value {
+    // shortcut: several questions (or form fields) are answered in the pane; offer each in turn if that proves common.
     let first = &questions[0];
     let one = questions.as_array().map_or(0, Vec::len) == 1
         && first["multiSelect"] != true
