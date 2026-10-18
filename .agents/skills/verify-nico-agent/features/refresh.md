@@ -35,10 +35,10 @@ Preconditions:
 - **Press Refresh.** Run `$C page --evidence "$E/02-pressed" --click "button=Refresh" --expect "Failed"`.
   `.requests.txt` has, after the first load, `POST /api/refresh -> 200` then `GET /api/status -> 200`
   and `GET /api/map/verify%2Ffixture -> 200`; the map's
-  nodes `#1`, `#5` and `#6` say `Failed, needs you`, and the Repo's failing Readiness checks listed
-  in the `Check verify/fixture` notice in `list "Needs you"`. `$OUTSIDE_LOG` starts `gh api user --jq .login` (the fresh cache
+  nodes `#1`, `#5` and `#6` say `Failed, needs you`, and the Repo's failing Readiness checks are
+  counted in the `Check verify/fixture` notice in `list "Needs you"` (`5 checks fail · Readiness, under Repos`). `$OUTSIDE_LOG` starts `gh api user --jq .login` (the fresh cache
   was not trusted), then the dispatches' `gh issue edit`, `herdr worktree create` and `notify-send`
-  lines, and ends with the checks' `ghbot api /installation/repositories ...`. Copy it to
+  lines, then the rate-limit reads and the checks' `ghbot api /installation/repositories ...`, and the open page's `herdr agent list`s. Copy it to
   `$E/outside.pressed.log`.
 - **CLI.** Run `$C seed dispatch 10 pr`, `: > "$OUTSIDE_LOG"`, then `$C run --evidence "$E/03-cli" -- refresh --json`.
   Exit `0`; `repos` is `[{"error":"not authenticated with GitHub; run \`gh auth login\`","read_at":<the seed's>,"slug":"verify/fixture"}]`;

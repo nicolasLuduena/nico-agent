@@ -40,8 +40,9 @@ Preconditions:
 - **List.** Run `$C run --evidence "$E/01-list" -- repo list --json`. Both Repos have `project`
   `verify` and `reviewer` opencode `big`; verify/fixture `room` `2`, verify/second `room` `4`;
   `switches.review` false and `switches.stack` true in both.
-- **Status.** Run `$C run --evidence "$E/02-status" -- status --json`. `projects` is
-  `[{"name":"verify","repos":["verify/fixture","verify/second"],"defaults":{"room":2,"reviewer":{...},"switches":{"review":false}}}]`.
+- **Status.** Run `$C run --evidence "$E/02-status" -- status --json`. `projects` is one Project,
+  `{"name":"verify","repos":["verify/fixture","verify/second"],"defaults":{"room":2,"reviewer":{...},"switches":{"review":false}}, ...}`,
+  beside its own settings as `{value, from}` (`room` `{"from":"project","value":2}`, `base`, `implementer`, `reviewer`, `switches`, ...).
   verify/fixture's `room` is `{"value":2,"from":"project"}`, verify/second's `{"value":4,"from":"repo"}`;
   both have `reviewer` `from` `project`, `switches.review` `{"value":false,"from":"project"}`,
   `switches.dispatch` `{"value":true,"from":"default"}`, `implementer` claude `from` `default` and

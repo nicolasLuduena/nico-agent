@@ -100,8 +100,9 @@ Preconditions:
 - **On the page.** Run `$C page --evidence "$E/16-page-waits-install" --click "button~#3 second" --expect "verify/second#3 waits on verify/fixture#20 to be installed in verify/fixture"`.
   The node is `#3 second, Verify: waits on fixture #20 installed, Waiting, waits on
   verify/fixture#20 to be installed in verify/fixture`, its panel `region "Verify: waits on fixture
-  #20 installed"` has the sentence as a paragraph; the screenshot draws the edge from
-  `#20 fixture` to `#3 second`.
+  #20 installed"` has the sentence as a paragraph; the edge from
+  `#20 fixture` to `#3 second` is in step 14's map (the screenshot shows it entering `#3 second`; the field scrolls
+  to the open node, so its source may sit past the field's edge).
 - **Installed.** Run `$C run --evidence "$E/17-install" -- install verify/fixture --json`: exit `0`,
   `installed` `verify/fixture at <sha>`; `installs.json`'s `last.at` is after the Blocker's
   `closed_at` (the seed's read time). `$C run --evidence "$E/18-status-ready" -- status --json`:

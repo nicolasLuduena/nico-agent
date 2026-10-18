@@ -65,7 +65,7 @@ Preconditions:
   No `region "Needs you"`; after the Project's `heading` and `navigation "View"`, `list "Needs you"` holds three `status`
   items in order, each with its `button "Dismiss <kind> <repo or name>"`: `Blocked quality-scan-fixture <time>`, `Blocked morning <time>`
   and `Paused GitHub until <time>`, drawn in the band above the map in the screenshot, each a white card with a hairline
-  frame, after the `Needs you` badge and `button "Hide notices"`. The map's node buttons
+  frame, between the `Needs you` badge and `button "Hide notices"`. The map's node buttons
   `#1, Verify: a Ready issue, Failed, needs you`, `#10, Verify: seeded Dispatch 10, Verified, PR 110 draft, needs you` and
   `#12, Verify: seeded Dispatch 12, Implementing, agent asking on claude, needs you` end `needs you` (#12 from its recorded Asking and its blocked faux-nico: herdr is a stub); no other does.
 - **Dismiss.** Run `$C page --evidence "$E/08-dismiss" --expect "Paused" --click "button~Dismiss"`: `list "Needs you"` has two `status`

@@ -111,7 +111,7 @@ Preconditions:
 - **A change elsewhere.** `E=.evidence/<issue>/map-live`; with `(sleep 8; $C seed dispatch 13 pr) &`
   running, `$C page --evidence "$E/01-typing-while-a-dispatch-lands" --click "button~#7, Verify" --expect "Answer in words" --click "textbox=Answer in words" --type "half-typed answer" --expect "Verify: seeded Dispatch 13"`:
   the map draws #13 at the next `changed`, and `.aria.txt` still has `textbox "Answer in words": half-typed answer`.
-- **Its proof.** `$C state > "$E/state.after.txt"`; its diff from `$E/state.before.txt` changes
+- **Its proof.** `E=.evidence/<issue>/answer-board`; `$C state > "$E/state.after.txt"`; its diff from `$E/state.before.txt` changes
   `dispatches.json`, whose `answers` on `verify/fixture#7` hold (read the file: `state` prints it as a hash) one per answer (`1`, `down`, `enter`, `1`, the
   text), each `by` `user`, and the outside calls `herdr agent send-keys impl-fixture-7 ...` and
   `herdr agent prompt impl-fixture-7 ...`. Copy `$OUTSIDE_LOG` to `$E/outside.log`. Then

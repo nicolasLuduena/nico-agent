@@ -28,7 +28,7 @@ Preconditions:
 - A fresh run; `doctor` passes; `. "$($C env)"`.
 - `$C run -- repo add verify/fixture --path "$FIXTURE_CLONE" --json`;
   `$C http PATCH /api/repo/verify/fixture/switches '{"dispatch":false}'`, so the refresh below starts nothing; `$C seed issues`.
-- `E=.evidence/<issue>/roadmap`; `$C state > "$E/state.before.txt"`.
+- `E=.evidence/<issue>/roadmap`; `mkdir -p "$E"`; `$C state > "$E/state.before.txt"`.
 
 - **The route.** Run `$C http --evidence "$E/01-roadmap-api" GET /api/roadmap/verify%2Ffixture`: HTTP `200`;
   `lanes` `["needs-triage","needs-info","no label"]`; `nodes` `#2` (`no label`, `blocks` `#30`), `#9`
