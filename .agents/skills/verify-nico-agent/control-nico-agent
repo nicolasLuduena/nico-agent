@@ -671,7 +671,7 @@ seed_transcript() {
         { id: "msg_3", type: "assistant", time: { created: 1, completed: 2 }, tokens: { input: 12, output: 5 }, content: [
           { type: "reasoning", text: "Read the issue first." },
           { type: "tool", name: "bash", state: { status: "completed", input: { command: "gh issue view \($n)" },
-            output: "Verify: seeded Dispatch \($n)" } },
+            content: [{ type: "text", text: "Verify: seeded Dispatch \($n)" }] } },
           { type: "text", text: $long }] }' > "$messages" ;;
     more)
       local k

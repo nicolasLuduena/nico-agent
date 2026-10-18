@@ -200,7 +200,9 @@ fn opencode(message: &Value) -> Vec<Value> {
                 Some("tool") => {
                     let state = &part["state"];
                     let called = entry("tool", &call(&part["name"], &state["input"]), &Value::Null);
-                    let output = entry("result", &result(&state["output"]), &Value::Null);
+                    // opencode 2's result is its text blocks; an older one's, `output`.
+                    let done = (state.get("content")).unwrap_or(&state["output"]);
+                    let output = entry("result", &result(done), &Value::Null);
                     called.into_iter().chain(output).collect()
                 }
                 _ => vec![],

@@ -218,7 +218,8 @@ fn an_opencode_chat_streams_its_finished_messages_and_resumes_after_the_last_one
         "tokens": tokens, "content": [
             { "type": "reasoning", "text": "Read the issue." },
             { "type": "tool", "name": "bash", "state": { "status": "completed",
-                "input": { "command": "gh issue view 7" }, "output": "Add a login page" } },
+                "input": { "command": "gh issue view 7" },
+                "content": [{ "type": "text", "text": "Add a login page" }] } },
             { "type": "text", "text": "Adding it." },
         ] });
     let streaming = json!({ "id": "msg_4", "type": "assistant", "time": { "created": 3 },
