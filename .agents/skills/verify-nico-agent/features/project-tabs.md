@@ -1,6 +1,6 @@
 # A map per Project
 
-The page's `Project` select has an option per Project; a Repo that names none is a Project of its
+The page's Projects rail (the `Project` select on a phone) has a link per Project; a Repo that names none is a Project of its
 own, named by its slug, and its page is as it was before Projects. A Project shows its map, the union of its
 Repos' issues with Blocker edges across them, then the Project's defaults (Room, Switches and
 Settings, each folded to a line), each chipped `default` until the Project sets it and editable
@@ -30,7 +30,7 @@ has an Install, on that Install to run after the close; it is never stacked on i
 - Put Repos in a Project: the page's `Project` field in a Repo's Settings, `Add a Repo` with its
   Project, `nico-agent repo add --project`, `PATCH /api/repo/<slug>`, or `project = "<name>"` in
   `config.toml` by hand.
-- Open serve's page and pick the Project in the `Project` select.
+- Open serve's page and pick the Project in the rail (the `Project` select on a phone).
 - `GET /api/map/<project>` with curl, the name percent-encoded.
 
 ## Driving it with control-nico-agent
@@ -42,15 +42,15 @@ Preconditions:
   with `$SECOND_CLONE`; `$C seed issues` and `$C seed issues second`.
 - `E=.evidence/<issue>/project-tabs`; `$C state > "$E/state.before.txt"`.
 
-- **Own Projects.** Run `$C page --evidence "$E/01-own-projects" --select "Project=verify/second"`.
-  `combobox "Project"` has `option "verify/fixture"` and `option "verify/second" [selected]`; `region
+- **Own Projects.** Run `$C page --evidence "$E/01-own-projects" --click "link=verify/second" --click "button=Repos"`.
+  `navigation "Projects"` has `link "verify/fixture"` and `link "verify/second"`, and `heading "verify/second"` (the shown Project); `region
   "Map of verify/second"` has `#1, Verify: waits on fixture #1, Waiting, waits on verify/fixture#1 to
   close`, `#2, Verify: waits on an outside issue, Waiting, waits on verify/outside#7 to close`, `#3,
   Verify: waits on fixture #20 installed, Ready` (its Blocker closed, in another Project),
   `verify/fixture#1, Verify: a Ready issue, Blocker` and `verify/outside#7, Verify: an outside
   Blocker, Blocker`; one `region "verify/second"` panel, no Project's defaults.
-- **Join on the page.** Run `$C page --evidence "$E/02-join-on-page" --within "region=verify/fixture" --click "region=Settings" --click "combobox=Project" --type verify --press Tab --expect "Defaults for its Repos"`.
-  `option "verify" [selected]` beside `option "verify/second"`; `region "verify"` above `region
+- **Join on the page.** Run `$C page --evidence "$E/02-join-on-page" --click "button=Repos" --within "region=verify/fixture" --click "region=Settings" --click "combobox=Project" --type verify --press Tab --expect "Defaults for its Repos"`.
+  `link "verify"`, and `heading "verify"` (the shown Project) beside `link "verify/second"`; `region "verify"` above `region
   "verify/fixture"`; `.requests.txt` has `PATCH /api/repo/verify/fixture {"project":"verify"} ->
   200`, then `GET /api/status` and `GET /api/map/verify`, and no second `GET
   /api/map/verify%2Ffixture` (that Project is gone). `.console.txt` is empty.
@@ -64,15 +64,15 @@ Preconditions:
   and `{"from":"verify/outside#7","kind":"blocker","to":"verify/second#2"}`. Run `$C http --evidence "$E/05-old-map" GET /api/map/verify%2Fsecond`:
   HTTP `404`, `verify/second is not a Project`, help `Ask for a Project /api/status lists`.
 - **A Repo's own room.** Run `$C http --evidence "$E/06-second-own-room" PATCH /api/repo/verify/second '{"room":2}'`: `room` `{"from":"repo","value":2}`.
-- **The Project.** Run `$C page --evidence "$E/07-project-tab" --click "button=Dismiss Check verify/second" --click "button=Dismiss Check verify/second" --click "button=Dismiss Check verify/second" --click "button=Dismiss Check verify/second" --click "button=Dismiss Check verify/second" --click "button=Dismiss Check verify/fixture" --click "button=Dismiss Check verify/fixture" --click "button=Dismiss Check verify/fixture" --click "button=Dismiss Check verify/fixture" --click "button=Dismiss Check verify/fixture" --expect "Defaults for its Repos" --within "region=verify" --click "region=Room" --within "region=verify/fixture" --click "region=Room" --within "region=verify/second" --click "region=Room"`.
-  `option "verify" [selected]`, the only Project; `region "Map of verify"` names nodes `#1 fixture, Verify: a Ready
+- **The Project.** Run `$C page --evidence "$E/07-project-tab" --click "button=Repos" --expect "Defaults for its Repos" --within "region=verify" --click "region=Room" --within "region=verify/fixture" --click "region=Room" --within "region=verify/second" --click "region=Room"`.
+  `link "verify"`, and `heading "verify"` (the shown Project), the only Project; `region "Map of verify"` names nodes `#1 fixture, Verify: a Ready
   issue, Ready`, `#1 second, Verify: waits on fixture #1, Waiting, waits on verify/fixture#1 to
   close` and `verify/outside#7, Verify: an outside Blocker, Blocker`; the screenshot draws the edge
   from `#1 fixture` to `#1 second`, and `waits on verify/fixture#1 to close` under `#1 second`'s
   Stage.
   `region "verify"` has `text: default` beside `spinbutton "Room": "3"`; `region "verify/fixture"`
   `text: default`, `"3"`; `region "verify/second"` `text: set here` with `button "Use the default Room"`, `"2"`.
-- **Edit the Project's defaults.** Run `$C page --evidence "$E/08-edit-defaults" --click "button=Dismiss Check verify/second" --click "button=Dismiss Check verify/second" --click "button=Dismiss Check verify/second" --click "button=Dismiss Check verify/second" --click "button=Dismiss Check verify/second" --click "button=Dismiss Check verify/fixture" --click "button=Dismiss Check verify/fixture" --click "button=Dismiss Check verify/fixture" --click "button=Dismiss Check verify/fixture" --click "button=Dismiss Check verify/fixture" --click "region=Room" --click "spinbutton=Room" --press Control+a --type 5 --press Tab --click "region=Switches" --click "switch=Review" --within "region=verify/fixture" --click "region=Room" --click "region=Switches" --within "region=verify/second" --click "region=Room" --click "region=Switches"`.
+- **Edit the Project's defaults.** Run `$C page --evidence "$E/08-edit-defaults" --click "button=Repos" --click "region=Room" --click "spinbutton=Room" --press Control+a --type 5 --press Tab --click "region=Switches" --click "switch=Review" --within "region=verify/fixture" --click "region=Room" --click "region=Switches" --within "region=verify/second" --click "region=Room" --click "region=Switches"`.
   `.requests.txt` has `PATCH /api/project/verify {"room":5} -> 200` and `PATCH /api/project/verify
   {"switches":{"review":false}} -> 200`, each followed by `GET /api/status`. `region "verify"` has
   `button "Use the default Room"`, `"5"`, and `button "Use the default Review"` beside an unchecked
@@ -82,8 +82,8 @@ Preconditions:
 - **Phone.** Run `$C page --evidence "$E/09-phone" --width 390`: `combobox "Project"`
   with `option "verify" [selected]`, its own full-width line in the screenshot.
 - **An Asking node.** Run `$C seed dispatch 12 asking`, then `$C page --evidence "$E/10-asking-open" --click "button~#12 fixture, Verify: seeded Dispatch 12"`.
-  `option "verify" [selected]`; the node `#12 fixture, Verify: seeded Dispatch 12, Implementing, needs you` is
-  `[pressed]`; `region "Verify: seeded Dispatch 12 #12 fixture"`; `.requests.txt` has `GET
+  `link "verify"`, and `heading "verify"` (the shown Project); the node `#12 fixture, Verify: seeded Dispatch 12, Implementing, agent asking on claude, needs you` is
+  `[pressed]`; `region "Verify: seeded Dispatch 12"` (an inspector is named by its title alone); `.requests.txt` has `GET
   /api/node/verify%2Ffixture%2312 -> 200`.
 - **Status.** Run `$C run --evidence "$E/11-status" -- status --json`: `projects[0]` is `verify`
   with `defaults` `{"room":5,"switches":{"review":false}}` and `room` `{"from":"project","value":5}`;
@@ -100,8 +100,9 @@ Preconditions:
 - **On the page.** Run `$C page --evidence "$E/16-page-waits-install" --click "button~#3 second" --expect "verify/second#3 waits on verify/fixture#20 to be installed in verify/fixture"`.
   The node is `#3 second, Verify: waits on fixture #20 installed, Waiting, waits on
   verify/fixture#20 to be installed in verify/fixture`, its panel `region "Verify: waits on fixture
-  #20 installed #3 second"` has the sentence as a paragraph; the screenshot draws the edge from
-  `#20 fixture` to `#3 second`.
+  #20 installed"` has the sentence as a paragraph; the edge from
+  `#20 fixture` to `#3 second` is in step 14's map (the screenshot shows it entering `#3 second`; the field scrolls
+  to the open node, so its source may sit past the field's edge).
 - **Installed.** Run `$C run --evidence "$E/17-install" -- install verify/fixture --json`: exit `0`,
   `installed` `verify/fixture at <sha>`; `installs.json`'s `last.at` is after the Blocker's
   `closed_at` (the seed's read time). `$C run --evidence "$E/18-status-ready" -- status --json`:
@@ -111,29 +112,28 @@ Preconditions:
 - **Proof.** `$C state > "$E/state.after.txt"`; the diff shows `config.toml` gaining `project =
   "verify"` under both Repos, `room = 2` under verify/second, `install = "echo installed"` under
   verify/fixture and `[projects.verify]` with `room = 5` and `switches = { review = false }`, the
-  seeded Dispatch, and `installs.json`. Copy `$OUTSIDE_LOG` to `$E/outside.log`: only `herdr agent
-  list` (the open page with a live Dispatch) and `ghbot api /installation/repositories ...` (the
-  Readiness checks after a settings write and the Install). Every `.console.txt` is empty.
+  seeded Dispatch, `installs.json` and `checks.json` (the Readiness checks run again). Copy `$OUTSIDE_LOG` to
+  `$E/outside.log`: `herdr agent list` (the open page with a live Dispatch), `herdr agent read impl-fixture-12
+  --source visible` (step 10's Asking inspector reading its pane), `ghbot api /installation/repositories ...` (the
+  Readiness checks after a settings write and the Install), and launch's `gh api rate_limit` and `ghbot api rate_limit`. Every `.console.txt` is empty.
 
 ## Gotchas
 
-- With two Repos their ten Readiness toasts stack past the top of the window, so the first
-  `button~Dismiss` (verify/fixture's, at the top) is out of reach and times out: dismiss the bottom ones
-  first, by name, `--click "button=Dismiss Check verify/second"` five times, then `"button=Dismiss Check
-  verify/fixture"` five times.
+- With two Repos their failing Readiness checks are two `Check` notices, one per Repo, in the band
+  between the views and the map: they cover nothing, so no step dismisses them.
 - `seed issues second` caches verify/second's issues; without it verify/second's map is
   empty and `Source not read yet`.
 - An option is a Project with a Repo: a `[projects.<name>]` no Repo names has none.
 - The Project's defaults come first on its page and share their control names with each Repo's: a
   bare `--click` reaches the Project's. Use `--within "region=<slug>"` for a Repo's, and for its
-  `combobox "Project"`: a bare one reaches the `Project` select above the map.
+  `combobox "Project"`: a bare one reaches the phone's `Project` select in the header, hidden on the desk.
 - Room, Switches and Settings are folded to one line (`<n> of 9 on` for the switches), in each
   panel of each new browser: `--click "region=Switches"` opens the first (the Project's); a Repo's
   needs `--within "region=<slug>"` before it.
 - The Room input keeps its value as typed: select it (`Control+a`) before typing, and leave it
   (`Tab`) to send it.
-- The map field is as tall as the column beside it; with several Repo panels the `Fit` button is
-  far down the page.
+- The map field fits the window under the header and notices, with its tools bar under it; the Repos column beside it
+  runs on past it, down the page.
 - A node's line under its Stage is cut to the node's width (`waits on verify/fixture#20 to b…`):
   `--expect` reads the text drawn, so expect the whole sentence in the node's panel, or read the
   node's name in the ARIA snapshot.

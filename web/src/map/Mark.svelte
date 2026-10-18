@@ -1,8 +1,8 @@
 <svelte:options namespace="svg" />
 
 <script lang="ts">
-  // A Stage's mark, DESIGN.md's table: its shape carries the Stage, its hue
-  // repeats it. A 14px cell; the caller places it. Nothing for no Stage.
+  // A Stage's mark, DESIGN.md's table: an icon beside the Stage's word, in its
+  // hue. A 14px cell; the caller places it. Nothing for no Stage.
   import { stageHue } from "../hues";
 
   let { stage }: { stage: string | null } = $props();
@@ -44,9 +44,5 @@
   }
   .disc {
     fill: currentColor;
-  }
-  /* On the selected node, reversed out with its text. */
-  :global(.selected) .mark {
-    color: var(--reversed-ink);
   }
 </style>

@@ -15,7 +15,7 @@
 #   restart                       stop this run's serve and start it again on the same HOME and port, as a reboot would
 #   doctor                        read-only: is this run worth driving? A failing doctor means "do not drive"
 #   env                           print the path of run.env, to source: . "$(control-nico-agent env)"
-#                                 gives $FIXTURE_CLONE, $SECOND_CLONE, $CONFIG_DIR, $BUCKET, $URL, $OUTSIDE_LOG
+#                                 gives $FIXTURE_CLONE, $SECOND_CLONE, $CONFIG_DIR, $BUCKET, $URL, $OUTSIDE_LOG, $RUN_DIR
 #   seed issues [second|chain]    a fresh Source read of verify/fixture (issues 1-6, and #9, #30, #31 open beside them for the Roadmap; `chain`: #6 on two chained PRs), or verify/second (1-3)
 #   seed dispatch <n> pr|asking|stacked|restarted|ruled
 #                                 a Dispatch of verify/fixture#<n> as the loop records it; prints
@@ -62,8 +62,8 @@
 # the text; --click "button~Failed verify/fixture #1" one whose name contains it; --select Project=verify/second
 # picks that option in the combobox named Project; --within "region=verify/fixture"
 # makes every later --click look only inside that element, --within page the whole page again; --press ArrowRight
-# a key; --type dev text into what has focus; --expect TEXT waits for the text; --gone TEXT up to a minute for it
-# to go; --wait 120 lets two minutes pass; --history back|forward the browser's buttons; --mode 502 switches the
+# a key; --type dev text into what has focus; --expect TEXT waits for the text to show; --gone TEXT up to a minute until none of it
+# shows; --wait 120 lets two minutes pass; --history back|forward the browser's buttons; --mode 502 switches the
 # tunnel stand-in (with --tunnel only); --hold 20 holds each later write to /api (PATCH, POST, DELETE) 20 seconds
 # on its way to serve, no step waiting for it (a write still held when the page closes never reaches serve);
 # --path /bucket/ opens that path instead of the Board, --hash "#verify%2Ffixture" that fragment; --scheme
@@ -301,6 +301,7 @@ FIXTURE_CLONE=$RUN_DIR/fixture/${SLUG#*/}
 SECOND_SLUG=$SECOND
 SECOND_CLONE=$RUN_DIR/fixture/${SECOND#*/}
 OUTSIDE_LOG=$RUN_DIR/outside.log
+RUN_DIR=$RUN_DIR
 EOF
   start_serve "$port"
   echo "launch: run dir   $RUN_DIR"

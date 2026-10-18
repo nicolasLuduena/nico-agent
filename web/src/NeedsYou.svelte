@@ -1,122 +1,233 @@
 <script lang="ts">
   import { ticked } from "./controls/Refused.svelte";
-  import { projectOf } from "./controls/settings";
-  import { repoLine } from "./hues";
   import { flash } from "./motion";
-  import type { Project } from "./status";
   import type { Need } from "./toasts";
   import { clock } from "./time";
 
-  let { needs, projects }: { needs: Need[]; projects: Project[] } = $props();
+  let { needs }: { needs: Need[] } = $props();
 
-  // Each dismissed for this page load only.
-  const key = (need: Need) => `${need.repo} ${need.text}`;
+  // Each dismissed for this page load only; a Check's comes back when another of its checks fails.
+  const key = (need: Need) => `${need.kind} ${need.repo} ${need.kind === "Check" ? need.checks.join("\n") : need.text}`;
   let dismissed = $state(new Set<string>());
-  const toasts = $derived(needs.filter((n) => !dismissed.has(key(n))));
+  const notices = $derived(needs.filter((n) => !dismissed.has(key(n))));
+  /** The band folded to its head, for this page load: the work under it moves up again. */
+  let folded = $state(false);
+  /** The Check notices showing their checks, for this page load: each opens on its own, folded to its count by default. */
+  let shown = $state(new Set<string>());
+  function toggle(need: Need) {
+    const next = new Set(shown);
+    if (!next.delete(key(need))) next.add(key(need));
+    shown = next;
+  }
 
-  /** A toast the page did not have: it flashes once as it arrives, not on the first read. */
+  /** A notice the page did not have: it flashes once as it arrives, not on the first read. */
   function arrive(row: Element) {
     flash(row);
     return {};
   }
+
+  // The contract with the map: `--notices-h` on the root is the band's height, 0px without it, so the map fits the window less it.
+  function measure(band: HTMLElement) {
+    const root = document.documentElement.style;
+    const seen = new ResizeObserver(() => root.setProperty("--notices-h", `${band.offsetHeight}px`));
+    seen.observe(band);
+    return {
+      destroy() {
+        seen.disconnect();
+        root.setProperty("--notices-h", "0px");
+      },
+    };
+  }
 </script>
 
-<!-- The Repo's line colour, in a Project of more than one, before its name. -->
-{#snippet swatch(repo: string)}
-  {@const line = repoLine(repo, projectOf(repo, projects))}
-  {#if line}<span class="swatch" style:--line={line}></span>{/if}
-{/snippet}
-
-{#if toasts.length}
-  <ul class="toasts" aria-label="Needs you">
-    {#each toasts as need (key(need))}
-      <li class="toast" role="status" in:arrive>
-        <span class="label kind">{need.kind}</span>
-        {#if need.kind === "Check" || need.kind === "Install"}
-          <!-- `acme/api: what it says`, and under it what to do about it, both read whole: the help is the fix. -->
-          <span class="ref">{@render swatch(need.repo ?? "")}{need.repo}:</span>
-          <span class="text">{@render ticked(need.text)}{#if need.help}<span class="help">{@render ticked(need.help)}</span>{/if}</span>
-        {:else}
-          <!-- `PAUSED GitHub until HH:MM`; `BLOCKED <agent> HH:MM` for an agent of the loop's own with no node. -->
-          <span class="ref">{need.text}</span>
-          <span class="text">{need.kind === "Paused" ? "until " : ""}{need.at ? clock(need.at) : ""}</span>
-        {/if}
-        <button type="button" class="close" aria-label="Dismiss {need.kind} {need.repo ?? need.text}" onclick={() => (dismissed = new Set(dismissed).add(key(need)))}>×</button>
-      </li>
-    {/each}
-  </ul>
+{#if notices.length}
+  <div class="band" use:measure>
+    <!-- The amber is the badge's alone, as on a node. -->
+    <span class="needs">Needs you</span>
+    <ul class="notices" aria-label="Needs you" hidden={folded}>
+      {#each notices as need (key(need))}
+        <!-- One row each: its kind, its name, a muted word, its buttons at the end; what opens or helps drops under it. -->
+        <li class="notice" role="status" in:arrive>
+          <span class="label">{need.kind}</span>
+          <span class="ref">{need.kind === "Check" || need.kind === "Install" ? need.repo : need.text}</span>
+          {#if need.kind === "Check"}
+            <span class="muted">{need.checks.length} check{need.checks.length === 1 ? " fails" : "s fail"} · {need.help}</span>
+          {:else if need.kind !== "Install" && need.at}
+            <!-- `Paused GitHub until HH:MM`; `Blocked <agent> HH:MM` for an agent of the loop's own with no node. -->
+            <span class="muted">{need.kind === "Paused" ? "until " : ""}{clock(need.at)}</span>
+          {/if}
+          <span class="end">
+            {#if need.kind === "Check"}
+              <button type="button" class="quiet more" aria-expanded={shown.has(key(need))} aria-controls="checks-{need.repo}" onclick={() => toggle(need)}>
+                {shown.has(key(need)) ? "Hide the checks" : "Show the checks"}
+              </button>
+            {/if}
+            <button
+              type="button"
+              class="close"
+              aria-label="Dismiss {need.kind} {need.kind === 'Check' ? need.repo : (need.repo ?? need.text)}"
+              onclick={() => (dismissed = new Set(dismissed).add(key(need)))}
+            >
+              <svg viewBox="0 0 14 14" width="14" height="14" aria-hidden="true"><path d="M3 3 L11 11 M11 3 L3 11" /></svg>
+            </button>
+          </span>
+          {#if need.kind === "Check"}
+            <!-- What each says, whole; their fixes are in the Repo's Readiness. -->
+            <ul class="under checks" id="checks-{need.repo}" hidden={!shown.has(key(need))}>
+              {#each need.checks as said, i (i)}<li>{@render ticked(said)}</li>{/each}
+            </ul>
+          {:else if need.kind === "Install"}
+            <!-- Its output's last line, and the command that runs it again: the fix, both read whole. -->
+            <span class="under muted">{@render ticked(need.text)}{#if need.help}<span class="help">{@render ticked(need.help)}</span>{/if}</span>
+          {/if}
+        </li>
+      {/each}
+    </ul>
+    <button type="button" class="quiet fold" aria-expanded={!folded} onclick={() => (folded = !folded)}>
+      {folded ? `Show ${notices.length} notice${notices.length === 1 ? "" : "s"}` : "Hide notices"}
+    </button>
+  </div>
 {/if}
 
 <style>
-  /* Stacked over the page's corner, in signal yellow; across the foot on a phone. */
-  .toasts {
-    position: fixed;
-    right: 16px;
-    bottom: 16px;
-    z-index: 10;
-    display: grid;
+  /* In the page's flow under the view tabs, so it never covers the work: the badge, the notices and Hide notices on one row. */
+  .band {
+    --row: 42px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
     gap: 8px;
-    width: min(420px, calc(100vw - 32px));
+    padding-bottom: 12px;
+  }
+  /* Centred on the first row of notices. */
+  .needs {
+    margin-top: calc((var(--row) - 20px) / 2);
+  }
+  .fold {
+    min-height: 32px;
+    margin: calc((var(--row) - 32px) / 2) 0 0 auto;
+  }
+  /* At most a third of the window: past that the notices scroll inside, the map still on the first screen. */
+  .notices {
+    display: flex;
+    flex: 1 1 0;
+    flex-wrap: wrap;
+    gap: 8px;
+    min-width: min(320px, 100%);
+    max-height: 33vh;
+    margin: 0;
     padding: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
     list-style: none;
   }
-  .toast {
-    display: grid;
-    grid-template-columns: max-content minmax(0, 1fr) max-content;
-    grid-template-areas: "kind ref close" "text text text";
-    column-gap: 12px;
-    row-gap: 4px;
-    align-items: baseline;
-    padding: 10px 8px 12px 14px;
-    background: var(--signal);
-    color: var(--signal-ink);
-    border: 1px solid var(--rule);
-    box-shadow: 0 6px 20px color-mix(in srgb, var(--signal-ink) 25%, transparent);
+  .notices[hidden] {
+    display: none;
   }
-  .kind {
-    grid-area: kind;
+  .notice {
+    display: flex;
+    flex: 1 1 auto;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0 8px;
+    min-width: 0;
+    max-width: 100%;
+    min-height: var(--row);
+    padding: 4px 4px 4px 12px;
+    background: var(--surface);
+    color: var(--ink);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
   }
   .ref {
-    grid-area: ref;
-    font-weight: 600;
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .text {
-    grid-area: text;
+  .muted {
+    min-width: 0;
+    color: var(--ink-muted);
+    font-size: 13px;
     overflow-wrap: anywhere;
   }
-  .text:empty {
-    display: none;
+  .end {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: auto;
+  }
+  .under {
+    flex-basis: 100%;
+    padding: 0 8px 6px 0;
   }
   .help {
     display: block;
   }
+  .checks {
+    display: grid;
+    gap: 2px;
+    margin: 0;
+    padding-left: 16px;
+    font-size: 13px;
+    overflow-wrap: anywhere;
+  }
+  .checks[hidden] {
+    display: none;
+  }
+  .checks li::marker {
+    color: var(--ink-muted);
+  }
+  /* Smaller than a form's quiet button, so a notice stays one row. */
+  .more {
+    min-height: 28px;
+    padding: 0 10px;
+    font-size: 13px;
+  }
   .close {
-    grid-area: close;
+    display: grid;
+    place-items: center;
     min-width: 32px;
     min-height: 32px;
     border: 0;
+    border-radius: var(--radius-control);
     background: none;
-    color: inherit;
-    font-size: 20px;
-    line-height: 1;
+    color: var(--ink-muted);
     cursor: pointer;
   }
   .close:hover {
-    background: color-mix(in srgb, var(--signal-ink) 10%, var(--signal));
+    background: var(--raised);
+    color: var(--ink);
   }
-  .close:focus-visible {
-    outline-color: var(--signal-ink);
+  /* The Stage icons' stroke (map/Mark.svelte). */
+  .close path {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.5;
   }
-  /* On the yellow in both themes: framed in its ink, so a light line colour still shows. */
-  .swatch {
-    margin-right: 8px;
-    outline: 1px solid var(--signal-ink);
-  }
-  /* A command keeps the toast's own ink: the page's would be white on yellow in Dark. */
-  .text :global(code) {
-    color: inherit;
+  /* The badge and Hide notices on their own line, the notices under them full width. */
+  @media (width < 720px) {
+    .band {
+      --row: 54px;
+      align-items: center;
+    }
+    .needs,
+    .fold {
+      margin-top: 0;
+    }
+    .fold,
+    .more,
+    .close {
+      min-width: 44px;
+      min-height: 44px;
+    }
+    .notices {
+      order: 1;
+      flex-basis: 100%;
+    }
+    .notice {
+      flex-basis: 100%;
+    }
   }
 </style>

@@ -24,6 +24,15 @@ const node = (key: string, rest: Partial<MapNode> = {}): MapNode => ({
 
 const at = (drawn: ReturnType<typeof layout>, key: string) => drawn.nodes.find((n) => n.key === key)!;
 
+/** Every pair of nodes whose cards overlap. */
+const overlaps = (drawn: ReturnType<typeof layout>) =>
+  drawn.nodes.flatMap((a, i) =>
+    drawn.nodes
+      .slice(i + 1)
+      .filter((b) => a.x < b.x + 248 && b.x < a.x + 248 && a.y < b.y + b.height && b.y < a.y + a.height)
+      .map((b) => [a.key, b.key]),
+  );
+
 describe("the map's layout", () => {
   it("draws a Blocker chain of three left to right, with two blocker edges from each Blocker to the issue it blocks", () => {
     const edges: MapEdge[] = [
@@ -61,6 +70,57 @@ describe("the map's layout", () => {
     const points = drawn.edges[0].points;
     expect(points[0].x).toBeCloseTo(below.x + 248);
     expect(points.at(-1)!.x).toBeCloseTo(stacked.x);
+  });
+
+  it("wraps unlinked issues into a grid as wide as the field, not one tall column", () => {
+    const keys = Array.from({ length: 10 }, (_, i) => `acme/api#${i + 1}`);
+
+    const drawn = layout({ nodes: keys.map((k) => node(k)), edges: [] }, { width: 1100, height: 650 });
+
+    expect(new Set(drawn.nodes.map((n) => n.x)).size).toBeGreaterThanOrEqual(3);
+    expect(drawn.width).toBeLessThanOrEqual(1100);
+    expect(drawn.height).toBeLessThanOrEqual(650);
+    expect(overlaps(drawn)).toEqual([]);
+  });
+
+  it("packs past the field's width to its shape when the issues would not fit its height", () => {
+    const keys = Array.from({ length: 40 }, (_, i) => `acme/api#${i + 1}`);
+
+    const drawn = layout({ nodes: keys.map((k) => node(k)), edges: [] }, { width: 1100, height: 650 });
+
+    expect(drawn.width).toBeGreaterThan(1100);
+    expect(drawn.width / drawn.height).toBeCloseTo(1100 / 650, 0);
+    expect(overlaps(drawn)).toEqual([]);
+  });
+
+  it("keeps two chains of three each in its own row, left to right, with their edges between their own nodes", () => {
+    const keys = Array.from({ length: 6 }, (_, i) => `acme/api#${i + 1}`);
+    const edges: MapEdge[] = [
+      { from: "acme/api#1", to: "acme/api#2", kind: "blocker" },
+      { from: "acme/api#2", to: "acme/api#3", kind: "blocker" },
+      { from: "acme/api#4", to: "acme/api#5", kind: "blocker" },
+      { from: "acme/api#6", to: "acme/api#5", kind: "stack" },
+    ];
+
+    const drawn = layout({ nodes: keys.map((k) => node(k)), edges }, { width: 1100, height: 650 });
+
+    const [one, two, three, four, five, six] = keys.map((k) => at(drawn, k));
+    // #6 is stacked on #5's PR, so it lies right of #5.
+    for (const [a, b, c] of [[one, two, three], [four, five, six]]) {
+      expect([a.y, b.y]).toEqual([c.y, c.y]);
+      expect(a.x + 248).toBeLessThan(b.x);
+      expect(b.x + 248).toBeLessThan(c.x);
+    }
+    expect(one.y).not.toEqual(four.y);
+    expect(overlaps(drawn)).toEqual([]);
+    // Each edge still runs from the right side of where its line starts to the left side of where it ends.
+    for (const e of drawn.edges) {
+      const [from, to] = e.kind === "stack" ? [at(drawn, e.to), at(drawn, e.from)] : [at(drawn, e.from), at(drawn, e.to)];
+      expect(e.points[0].x).toBeCloseTo(from.x + 248);
+      expect(e.points.at(-1)!.x).toBeCloseTo(to.x);
+      expect(e.points.at(-1)!.y).toBeGreaterThanOrEqual(to.y);
+      expect(e.points.at(-1)!.y).toBeLessThanOrEqual(to.y + to.height);
+    }
   });
 
   it("fades an issue whose PR merged, which serve sends for the last 7 days, and nothing else", () => {
@@ -132,15 +192,15 @@ describe("the map's layout", () => {
     });
 
     expect(drawn.nodes.map((n) => [n.key, n.line, n.height, n.needs])).toEqual([
-      ["acme/api#16", "reviewing", 110, false],
-      ["acme/api#17", "review off", 110, false],
-      ["acme/api#18", "review gave up", 110, true],
-      ["acme/api#19", "review stopped", 110, true],
-      ["acme/api#20", "review retrying", 110, false],
-      ["acme/api#21", "waiting for review", 110, false],
-      ["acme/api#22", "verdict fail", 110, false],
-      ["acme/api#23", null, 88, true],
-      ["acme/api#24", null, 88, false],
+      ["acme/api#16", "reviewing", 128, false],
+      ["acme/api#17", "review off", 128, false],
+      ["acme/api#18", "review gave up", 128, true],
+      ["acme/api#19", "review stopped", 128, true],
+      ["acme/api#20", "review retrying", 128, false],
+      ["acme/api#21", "waiting for review", 128, false],
+      ["acme/api#22", "verdict fail", 128, false],
+      ["acme/api#23", null, 108, true],
+      ["acme/api#24", null, 108, false],
     ]);
   });
 
@@ -155,9 +215,9 @@ describe("the map's layout", () => {
     });
 
     expect(drawn.nodes.map((n) => [n.key, n.line, n.height])).toEqual([
-      ["acme/api#3", "waits on acme/web#1 to be installed in acme/web", 110],
-      ["acme/api#4", "acme/api#4's PR https://github.com/acme/api/pull/9 was closed unmerged", 110],
-      ["acme/api#5", null, 88],
+      ["acme/api#3", "waits on acme/web#1 to be installed in acme/web", 128],
+      ["acme/api#4", "acme/api#4's PR https://github.com/acme/api/pull/9 was closed unmerged", 128],
+      ["acme/api#5", null, 108],
     ]);
   });
 
@@ -176,10 +236,10 @@ describe("the map's layout", () => {
     });
 
     expect(drawn.nodes.map((n) => [n.key, n.line, n.height])).toEqual([
-      ["acme/api#6", "assigned to @colleague", 110],
-      ["acme/api#7", "assigned to @colleague, @ada", 110],
-      ["acme/api#8", "unassigned", 110],
-      ["acme/api#9", null, 88],
+      ["acme/api#6", "assigned to @colleague", 128],
+      ["acme/api#7", "assigned to @colleague, @ada", 128],
+      ["acme/api#8", "unassigned", 128],
+      ["acme/api#9", null, 108],
     ]);
   });
 });

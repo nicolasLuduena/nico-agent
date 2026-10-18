@@ -25,7 +25,7 @@ C=.agents/skills/verify-nico-agent/control-nico-agent  # from the repo root
 ```sh
 $C launch            # cargo build --locked --bin nico-agent (build.rs builds web/ with Vite), scratch HOME, fixtures, serve
 $C doctor
-. "$($C env)"        # $FIXTURE_CLONE, $SECOND_CLONE, $CONFIG_DIR, $BUCKET, $URL, $OUTSIDE_LOG
+. "$($C env)"        # $FIXTURE_CLONE, $SECOND_CLONE, $CONFIG_DIR, $BUCKET, $URL, $OUTSIDE_LOG, $RUN_DIR
 ```
 
 Ready when `launch` prints serve's pid and URL and `doctor` passes. A failing `cargo build` is a broken checkout: fix or report that before verifying. Drive only a run whose `doctor` passes, and rerun it whenever anything looks off; a rebuild since launch fails it, so relaunch.

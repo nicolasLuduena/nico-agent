@@ -44,8 +44,8 @@ export interface MapEdge {
   kind: "blocker" | "stack";
 }
 
-/** DESIGN.md's node, in px; one with a line under its Stage is a row taller. */
-export const NODE = { width: 248, height: 88, row: 22 };
+/** DESIGN.md's node, in px: room for a title of two lines; one with a line under its Stage is a row taller. */
+export const NODE = { width: 248, height: 108, row: 20 };
 
 export interface Point {
   x: number;
@@ -61,13 +61,26 @@ export interface Box extends Point {
 /** A lane framing its nodes, its name on the frame's top line. */
 export type Lane = Box & { name: string };
 
+export type Agent = "asking" | "working" | "idle" | null;
+
 /**
  * A node where the map draws it: `x`, `y` its top left corner, `height` its
  * own; `line` where its review stands while it is PR draft, or why it waits
- * while Waiting; `faded` once its PR merged; `needs` when it needs you:
- * what has no node is a toast (toasts.ts).
+ * while Waiting; `agent` its agent's state; `faded` once its PR merged;
+ * `needs` when it needs you: what has no node is a toast (toasts.ts).
  */
-export type Placed = MapNode & Point & { height: number; line: string | null; faded: boolean; needs: boolean };
+export type Placed = MapNode & Point & { height: number; line: string | null; agent: Agent; faded: boolean; needs: boolean };
+
+/** What its agent is doing: Asking, working, idle, or no agent. */
+export function agentOf(n: MapNode): Agent {
+  const a = n.agent_state;
+  // A tick's record of the Asking says it while herdr cannot.
+  if (n.asking !== null || a?.implementer === "blocked") return "asking";
+  if (!a) return null;
+  if (a.implementer === "working" || a.reviewer === "working") return "working";
+  if (["idle", "done"].includes(a.implementer) || ["idle", "done"].includes(a.reviewer ?? "")) return "idle";
+  return null;
+}
 
 /** The short line under a node's Stage: its review's while PR draft, why it waits while Waiting, less its own key, or who has it. */
 function line(n: MapNode) {
@@ -79,7 +92,17 @@ function line(n: MapNode) {
   if (n.stage === "Waiting" && n.waits) return n.waits.startsWith(`${n.key} `) ? n.waits.slice(n.key.length + 1) : n.waits;
   return null;
 }
-const heightOf = (n: MapNode) => NODE.height + (line(n) ? NODE.row : 0);
+/** Whether it needs you: an Implementer Asking, its faux-nico blocked, a Failed Dispatch, a review given up on or stopped, a Verified PR. */
+export const needs = (n: MapNode) =>
+  n.asking !== null ||
+  !!n.faux_nico?.blocked_since ||
+  n.agent_state?.implementer === "blocked" ||
+  n.stage === "Failed" ||
+  n.stage === "Verified" ||
+  review.needsYou(n.review);
+
+/** A row under the Stage for its agent, its line, or both. */
+const heightOf = (n: MapNode) => NODE.height + (line(n) || agentOf(n) ? NODE.row : 0);
 
 /** An edge as drawn: its points run left to right, the arrowhead at the last. */
 export type Drawn = MapEdge & { points: Point[] };
@@ -93,39 +116,76 @@ export function withoutMerged(map: MapData): MapData {
   };
 }
 
-/** Lay out a Project's map left to right with dagre: Blockers left, the issues they block right. */
-export function layout(map: MapData): { width: number; height: number; nodes: Placed[]; edges: Drawn[] } {
-  const g = new dagre.graphlib.Graph();
-  g.setGraph({ rankdir: "LR", nodesep: 16, ranksep: 48, edgesep: 8 });
-  g.setDefaultEdgeLabel(() => ({}));
-  for (const n of map.nodes) g.setNode(n.key, { width: NODE.width, height: heightOf(n) });
+/** Between two packed groups of nodes, across and down. */
+const GAP = 24;
+
+/**
+ * Lay out a Project's map: each group of linked issues left to right with dagre,
+ * Blockers left, the issues they block right; then the groups packed into rows
+ * as wide as `room` (the field, in px), or wider when they would not fit its
+ * height, to its shape: the largest first, the unlinked issues wrapping into a grid.
+ */
+export function layout(
+  map: MapData,
+  room = { width: 1200, height: 800 },
+): { width: number; height: number; nodes: Placed[]; edges: Drawn[] } {
   // A stack edge comes from the stacked issue; lay it out from the issue whose PR it sits on.
   const ends = (e: MapEdge): [string, string] => (e.kind === "stack" ? [e.to, e.from] : [e.from, e.to]);
-  for (const e of map.edges) g.setEdge(...ends(e));
-  dagre.layout(g);
-  const { width = 0, height = 0 } = g.graph();
+  // The groups: issues joined by any edge, each a union under its first key.
+  const root = new Map(map.nodes.map((n) => [n.key, n.key]));
+  const find = (k: string): string => (root.get(k) === k ? k : find(root.get(k)!));
+  // An edge to a key with no node has nowhere to be drawn.
+  const edges = map.edges.filter((e) => root.has(e.from) && root.has(e.to));
+  for (const e of edges) root.set(find(e.from), find(e.to));
+  const groups = new Map<string, MapNode[]>();
+  for (const n of map.nodes) groups.set(find(n.key), [...(groups.get(find(n.key)) ?? []), n]);
+
+  const laid = [...groups.values()].map((nodes) => {
+    const g = new dagre.graphlib.Graph();
+    g.setGraph({ rankdir: "LR", nodesep: 16, ranksep: 48, edgesep: 8 });
+    g.setDefaultEdgeLabel(() => ({}));
+    for (const n of nodes) g.setNode(n.key, { width: NODE.width, height: heightOf(n) });
+    const keys = new Set(nodes.map((n) => n.key));
+    for (const e of edges) if (keys.has(e.from)) g.setEdge(...ends(e));
+    dagre.layout(g);
+    const { width = 0, height = 0 } = g.graph();
+    return { nodes, g, width, height, at: { x: 0, y: 0 } };
+  });
+  // Largest first, so a long chain gets a row and the unlinked issues fill in under it.
+  laid.sort((a, b) => b.nodes.length - a.nodes.length);
+
+  const area = laid.reduce((sum, c) => sum + (c.width + GAP) * (c.height + GAP), 0);
+  const across = Math.max(room.width, Math.sqrt((area * room.width) / room.height), ...laid.map((c) => c.width));
+  let [x, y, row] = [0, 0, 0];
+  for (const c of laid) {
+    if (x > 0 && x + c.width > across) [x, y, row] = [0, y + row + GAP, 0];
+    c.at = { x, y };
+    x += c.width + GAP;
+    row = Math.max(row, c.height);
+  }
+
+  const place = new Map(laid.flatMap((c) => c.nodes.map((n) => [n.key, c] as const)));
   return {
-    width,
-    height,
+    width: Math.max(0, ...laid.map((c) => c.at.x + c.width)),
+    height: Math.max(0, ...laid.map((c) => c.at.y + c.height)),
     nodes: map.nodes.map((n) => {
+      const { g, at } = place.get(n.key)!;
       const { x, y } = g.node(n.key);
       return {
         ...n,
-        x: x - NODE.width / 2,
-        y: y - heightOf(n) / 2,
+        x: at.x + x - NODE.width / 2,
+        y: at.y + y - heightOf(n) / 2,
         height: heightOf(n),
         line: line(n),
+        agent: agentOf(n),
         // serve sends a merged issue for 7 days after its merge, unless the map hides them.
         faded: n.stage === "Merged",
-        needs:
-          n.asking !== null ||
-          !!n.faux_nico?.blocked_since ||
-          n.agent_state?.implementer === "blocked" ||
-          n.stage === "Failed" ||
-          n.stage === "Verified" ||
-          review.needsYou(n.review),
+        needs: needs(n),
       };
     }),
-    edges: map.edges.map((e) => ({ ...e, points: g.edge(...ends(e)).points ?? [] })),
+    edges: edges.map((e) => {
+      const { g, at } = place.get(e.from)!;
+      return { ...e, points: (g.edge(...ends(e)).points ?? []).map((p: Point) => ({ x: at.x + p.x, y: at.y + p.y })) };
+    }),
   };
 }

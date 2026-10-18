@@ -45,12 +45,14 @@ Preconditions:
   `$C state > "$E/state.refused.txt"`: no diff from `state.before.txt`, and `$OUTSIDE_LOG` is empty.
 - **localhost.** Run `$C http --evidence "$E/08-localhost-switches" --header "Host: localhost:$PORT" --header "Origin: http://localhost:$PORT" PATCH /api/repo/verify/fixture/switches '{"review":false}'`.
   HTTP `200`, the Repo's `switches` with `"review":false`. `$C state > "$E/state.localhost.txt"`:
-  its diff from `state.refused.txt` is `config.toml` alone, now with `switches = { review = false }`.
+  its diff from `state.refused.txt` is `config.toml`, now with `switches = { review = false }`, and
+  what the Repo's Readiness checks then do: `checks.json` rewritten, and `$OUTSIDE_LOG` gaining one
+  `ghbot api /installation/repositories ...` line and one `herdr agent list`.
 - **The page.** Run `$C page --evidence "$E/09-page-refresh" --click "button=Refresh" --expect "Failed"`.
   `ok` for both steps; `.requests.txt` has `POST /api/refresh -> 200` (the browser sent serve's own `Origin`).
 - **Behind the tunnel.** Run `$C tunnel start`, `. "$($C env)"` and
   `grep -A2 '^\[bucket\]' "$CONFIG_DIR/config.toml" > "$E/10-tunnel.config.txt"`: `[bucket]` now has
-  `url = "$TUNNEL_URL"`. Run `$C page --tunnel --evidence "$E/11-tunnel-page" --click "region=Switches" --click "switch=Review" --click "button=Refresh" --expect "Failed"`.
+  `url = "$TUNNEL_URL"`. Run `$C page --tunnel --evidence "$E/11-tunnel-page" --click "button=Repos" --click "region=Switches" --click "switch=Review" --click "button=Refresh" --expect "Failed"`.
   `ok` for every step; `.requests.txt` and `$TUNNEL_LOG` have `PATCH /api/repo/verify/fixture -> 200`
   and `POST /api/refresh -> 200`. `$C http --evidence "$E/12-tunnel-host-foreign-origin" --header "Host: ${TUNNEL_URL#http://}" --header "Origin: https://evil.example" POST /api/refresh`
   answers `403`: the tunnel's host is serve's, another site's page still is not.

@@ -17,6 +17,14 @@
   let status = $state<Status | null>(null);
   let failure = $state<string | null>(null);
 
+  // The Repos column, its controls secondary to the work: closed until asked for, on each page load.
+  let reposOpen = $state(false);
+  /** On the Roadmap, which is read-only, Repos opens beside the map. */
+  function toggleRepos() {
+    reposOpen = !reposOpen || selection.view !== "map";
+    if (reposOpen) Object.assign(selection, { view: "map", issue: null });
+  }
+
   // The hash selects as a link opens the page, and as back and forward move through it; the selection writes it back.
   function follow() {
     const at = route(location.hash);
@@ -69,119 +77,233 @@
 
 <svelte:window onhashchange={follow} />
 
-<header class="top">
-  <h1 class="label">nico-agent</h1>
-  <div class="tools">
-    {#if status && Object.keys(status.rate_limits).length}
-      <RateGauge limits={status.rate_limits} pausedUntil={status.sources.github.paused_until} />
+<div class="shell">
+  <!-- The Projects on the left; on a phone a bar at the top, the Project chosen in the header's select. -->
+  <aside class="rail">
+    <p class="brand"><span class="logo" aria-hidden="true">n</span><span class="wordmark">nico-agent</span></p>
+    {#if projects.length}
+      <nav class="projects" aria-label="Projects">
+        <h2 class="rail-head">Projects</h2>
+        <ul>
+          {#each projects as p (p.name)}
+            <li>
+              <a href={hash({ project: p.name, view: selection.view })} aria-current={p === project ? "page" : undefined}>
+                <span class="name">{p.name}</span>
+                {#if p.repos.length > 1 || p.repos[0] !== p.name}<span class="count" aria-hidden="true">{p.repos.length} Repo{p.repos.length === 1 ? "" : "s"}</span>{/if}
+              </a>
+            </li>
+          {/each}
+        </ul>
+      </nav>
     {/if}
-    <ThemeSwitch />
-  </div>
-</header>
+    <div class="tools">
+      {#if status && Object.keys(status.rate_limits).length}
+        <RateGauge limits={status.rate_limits} pausedUntil={status.sources.github.paused_until} />
+      {/if}
+      <ThemeSwitch />
+    </div>
+  </aside>
 
-<main>
-  {#if failure}
-    <p class="errata" role="status"><strong>{failure}</strong></p>
-  {/if}
+  <main>
+    {#if failure}
+      <p class="errata banner" role="status"><strong>{failure}</strong>{#if status}<span> Showing what was last read.</span>{/if}</p>
+    {/if}
 
-  {#if status}
-    <NeedsYou needs={needsYou(status)} projects={status.projects} />
-
-    {#if project}
-      {@const read = oldest("read_at")}
-      {@const checked = oldest("prs_checked_at")}
-      <div class="bar">
-        <label class="pick">
-          <span class="label">Project</span>
-          <select value={at} onchange={(e) => show(Number(e.currentTarget.value))}>
-            {#each projects as p, i (p.name)}
-              <option value={i}>{p.name}</option>
-            {/each}
-          </select>
-        </label>
+    {#if status}
+      {#if project}
+        {@const read = oldest("read_at")}
+        {@const checked = oldest("prs_checked_at")}
+        <header class="head">
+          <div class="what">
+            <label class="pick">
+              <span class="field-name">Project</span>
+              <select value={at} onchange={(e) => show(Number(e.currentTarget.value))}>
+                {#each projects as p, i (p.name)}
+                  <option value={i}>{p.name}</option>
+                {/each}
+              </select>
+            </label>
+            <h1>{project.name}</h1>
+            <p class="times" use:moved={[project.name, `${read} ${checked}`]}>
+              {project.repos.length} Repo{project.repos.length === 1 ? "" : "s"}
+              · {read ? `Source read ${clock(read)}` : "Source not read yet"}
+              · {checked ? `PRs checked ${clock(checked)}` : "PRs not checked yet"}
+            </p>
+          </div>
+          <div class="actions">
+            <Refresh />
+            <button type="button" class="quiet" aria-expanded={reposOpen && selection.view === "map"} aria-controls="repos" onclick={toggleRepos}>Repos</button>
+          </div>
+        </header>
         <nav class="views" aria-label="View">
           {#each [["map", "Map"], ["roadmap", "Roadmap"]] as const as [view, name] (view)}
-            <a
-              class="label"
-              href={hash({ project: project.name, view })}
-              aria-current={selection.view === view ? "page" : undefined}>{name}</a
-            >
+            <a href={hash({ project: project.name, view })} aria-current={selection.view === view ? "page" : undefined}>{name}</a>
           {/each}
         </nav>
-        <!-- At the row's right; under the select and the views when they leave it no room. -->
-        <div class="read">
-          <p class="times" use:moved={[project.name, `${read} ${checked}`]}>
-            {read ? `Source read ${clock(read)}` : "Source not read yet"}
-            · {checked ? `PRs checked ${clock(checked)}` : "PRs not checked yet"}
+        <!-- Between the tabs and the work, in the flow: what needs you without a node, never over the map. -->
+        <NeedsYou needs={needsYou(status)} />
+        <ProjectTab {project} {status} repos={reposOpen} />
+      {:else}
+        <NeedsYou needs={needsYou(status)} />
+        <section class="empty" aria-labelledby="empty-head">
+          <h1 id="empty-head">No Repo yet</h1>
+          <p>
+            Add a Repo to see its <code>ready-for-agent</code> issues here, on a map of what blocks what. Name it on GitHub, say where
+            its clone is, and, to see it with others, the Project it joins. Or run
+            <code>nico-agent repo add &lt;owner/name&gt; --path &lt;clone&gt;</code>.
           </p>
-          <Refresh />
-        </div>
-      </div>
-      <ProjectTab {project} {status} />
-    {:else}
-      <p class="none">No Repo yet. Add one below, or with <code>nico-agent repo add &lt;owner/name&gt; --path &lt;clone&gt;</code>.</p>
+          <AddRepo {status} />
+        </section>
+      {/if}
+    {:else if !failure}
+      <p class="none">Reading nico-agent…</p>
     {/if}
-    <AddRepo {status} />
-  {:else if !failure}
-    <p class="none">Reading nico-agent…</p>
-  {/if}
-</main>
+  </main>
+</div>
 
 <style>
-  .top {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 16px;
-    flex-wrap: wrap;
-    position: relative;
-    padding: 12px var(--gutter);
+  .shell {
+    display: grid;
+    grid-template-columns: 220px minmax(0, 1fr);
+    min-height: 100vh;
   }
-  /* Under the wordmark, at the right, when the phone leaves them no room beside it. */
-  .tools {
+  /* Over the work, so the rate-limit panel it opens is never painted under the map. */
+  .rail {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    height: 100vh;
+    padding: 16px 12px;
+    background: var(--surface);
+    border-right: 1px solid var(--hairline);
+  }
+  .brand {
     display: flex;
     align-items: center;
     gap: 8px;
-    margin-left: auto;
-  }
-  h1 {
-    font-size: 14px;
+    padding: 0 8px;
+    font-size: 16px;
+    font-weight: 600;
     white-space: nowrap;
   }
-  .errata {
-    margin: 0 var(--gutter) 12px;
+  .logo {
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    border-radius: var(--radius-control);
+    background: var(--ink);
+    color: var(--surface);
+    font-weight: 700;
   }
-  .none {
-    padding: 16px var(--gutter);
+  .rail-head {
+    padding: 0 8px 6px;
     color: var(--ink-muted);
+    font-size: 13px;
+    font-weight: 600;
   }
-  .bar {
+  .projects {
+    min-height: 0;
+    overflow-y: auto;
+  }
+  .projects ul {
+    display: grid;
+    gap: 2px;
+    padding: 0;
+    list-style: none;
+  }
+  .projects a {
+    display: grid;
+    gap: 0 8px;
+    padding: 8px;
+    border-radius: var(--radius-control);
+    color: var(--ink);
+    text-decoration: none;
+  }
+  .projects a:hover {
+    background: var(--raised);
+  }
+  .projects a[aria-current="page"] {
+    background: var(--accent-soft);
+    color: var(--ink);
+    font-weight: 600;
+  }
+  .name {
+    overflow-wrap: anywhere;
+  }
+  .count {
+    color: var(--ink-muted);
+    font-size: 13px;
+    font-weight: 400;
+  }
+  .tools {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 8px 24px;
-    margin: 0 var(--gutter);
-    padding: 8px 0;
-    border-bottom: 1px solid var(--hairline);
+    gap: 8px;
+    margin-top: auto;
+  }
+  main {
+    min-width: 0;
+    padding: 16px var(--gutter) var(--gutter);
+  }
+  .banner {
+    margin-bottom: 12px;
+  }
+  .none {
+    color: var(--ink-muted);
+  }
+  .head {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px 24px;
+  }
+  .what {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+  }
+  h1 {
+    font-size: 20px;
+    font-weight: 600;
+    line-height: 1.3;
+    overflow-wrap: anywhere;
   }
   .pick {
+    display: none;
+  }
+  .times {
+    color: var(--ink-muted);
+  }
+  .actions {
     display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
     align-items: center;
-    gap: 12px;
+    gap: 8px;
   }
-  select {
-    min-width: 0;
-    font-weight: 600;
+  .actions [aria-expanded="true"] {
+    border-color: var(--accent);
+    background: var(--accent-soft);
   }
-  /* Map | Roadmap: the Project's two views. */
+  /* Map | Roadmap: the Project's two views, as tabs on the header's foot. */
   .views {
     display: flex;
-    gap: 24px;
+    gap: 4px;
+    margin: 12px 0 16px;
+    border-bottom: 1px solid var(--hairline);
   }
   .views a {
-    padding: 4px 0;
-    border-bottom: 3px solid transparent;
+    padding: 8px 12px;
+    margin-bottom: -1px;
+    border-bottom: 2px solid transparent;
     color: var(--ink-muted);
+    font-weight: 600;
     text-decoration: none;
   }
   .views a:hover {
@@ -189,28 +311,72 @@
   }
   .views a[aria-current="page"] {
     color: var(--ink);
-    border-bottom-color: var(--rule);
+    border-bottom-color: var(--accent);
   }
-  .read {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-    align-items: center;
-    gap: 0 16px;
-    margin-left: auto;
+  .empty {
+    display: grid;
+    gap: 12px;
+    max-width: 720px;
+    padding-top: 24px;
   }
-  .times {
+  .empty p {
     color: var(--ink-muted);
-    text-align: right;
+    max-width: 70ch;
   }
 
-  /* The select takes its own line; the read times and Refresh wrap under the views. */
+  /* The rail becomes a bar at the top; the Project is chosen in the header's select. */
   @media (width < 720px) {
-    .pick {
-      flex: 1 1 100%;
+    .shell {
+      grid-template-columns: minmax(0, 1fr);
     }
-    select {
+    .rail {
+      position: relative;
+      flex-direction: row;
+      flex-wrap: wrap;
+      align-items: center;
+      height: auto;
+      padding: 8px var(--gutter);
+      border-right: 0;
+      border-bottom: 1px solid var(--hairline);
+    }
+    .brand {
+      padding: 0;
+    }
+    /* The logo alone, so the gauge and the theme switch keep the bar's one line; still read out. */
+    .wordmark {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+    .projects {
+      display: none;
+    }
+    .tools {
+      margin: 0 0 0 auto;
+    }
+    .pick {
+      display: grid;
+      gap: 4px;
+      margin-bottom: 8px;
+    }
+    h1 {
+      display: none;
+    }
+    .head,
+    .what {
+      width: 100%;
+    }
+    .actions {
+      justify-content: flex-start;
+    }
+    .views a {
       flex: 1;
+      min-height: 44px;
+      display: grid;
+      place-items: center;
     }
   }
 </style>

@@ -2,9 +2,8 @@
   // A Repo's panel, in the column right of its Project's map: who its agents
   // post as, from its bot check, then the Dispatch form, its one action, then
   // its Readiness, room, switches, settings and Install, each
-  // folded to a line; then its removal. Headed by its slug, on its line colour,
-  // when the Project holds more than its own.
-  import { repoLine } from "../hues";
+  // folded to a line; then its removal. Headed by its slug when the Project
+  // holds more than its own.
   import type { Repo, Status } from "../status";
   import Checks from "./Checks.svelte";
   import DispatchForm from "./DispatchForm.svelte";
@@ -27,11 +26,10 @@
     under: projectOf(repo.slug, status.projects),
     patch: (body) => patch(repo.slug, body),
   });
-  const line = $derived(repoLine(repo.slug, holder.under));
   const posts = $derived(postsAs(repo));
 </script>
 
-<section class="controls" class:lined={line} style:--line={line} aria-label={repo.slug}>
+<section class="controls" aria-label={repo.slug}>
   <!-- A new Repo starts the panel fresh: no other Repo's picks, saves, refusals or open sections. -->
   {#key repo.slug}
     {#if headed}<h2 class="head">{repo.slug}</h2>{/if}

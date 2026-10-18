@@ -1,0 +1,965 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-18T01:24:41+00:00",
+  "title": "Design System: nico-agent",
+  "extensions": {
+    "colorMeta": {
+      "ground": {
+        "role": "neutral",
+        "displayName": "Workspace Grey",
+        "canonical": "#f5f6f8",
+        "tonalRamp": [
+          "#0b0b0c",
+          "#242526",
+          "#414243",
+          "#606163",
+          "#818284",
+          "#a4a5a7",
+          "#c8c9cb",
+          "#edeef0"
+        ]
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "Card White",
+        "canonical": "#ffffff",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ]
+      },
+      "raised": {
+        "role": "neutral",
+        "displayName": "Hover Band",
+        "canonical": "#eef0f3",
+        "tonalRamp": [
+          "#0a0b0d",
+          "#242527",
+          "#404244",
+          "#606164",
+          "#818285",
+          "#a3a5a8",
+          "#c7c9cc",
+          "#edeff2"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Desk Ink",
+        "canonical": "#1a1d23",
+        "tonalRamp": [
+          "#090b11",
+          "#22252b",
+          "#3f4249",
+          "#5e6169",
+          "#7f828a",
+          "#a1a5ad",
+          "#c5c9d2",
+          "#eaeff7"
+        ]
+      },
+      "ink-muted": {
+        "role": "neutral",
+        "displayName": "Quiet Ink",
+        "canonical": "#5b636e",
+        "tonalRamp": [
+          "#060b14",
+          "#1f262f",
+          "#3b434d",
+          "#5a626d",
+          "#7b838f",
+          "#9da6b2",
+          "#c1cad7",
+          "#e6effc"
+        ]
+      },
+      "hairline": {
+        "role": "neutral",
+        "displayName": "Hairline",
+        "canonical": "#e1e4e9",
+        "tonalRamp": [
+          "#090b0e",
+          "#232529",
+          "#404246",
+          "#5f6166",
+          "#808287",
+          "#a2a5aa",
+          "#c6c9ce",
+          "#eceff4"
+        ]
+      },
+      "rule": {
+        "role": "neutral",
+        "displayName": "Control Rule",
+        "canonical": "#8b929c",
+        "tonalRamp": [
+          "#070b12",
+          "#20252d",
+          "#3c424b",
+          "#5b626b",
+          "#7c838d",
+          "#9ea6b0",
+          "#c2cad4",
+          "#e7effa"
+        ]
+      },
+      "accent": {
+        "role": "primary",
+        "displayName": "Selection Blue",
+        "canonical": "#2459d1",
+        "tonalRamp": [
+          "#00003c",
+          "#031d5e",
+          "#1e3d81",
+          "#3c5ea5",
+          "#5c80ca",
+          "#7da4f0",
+          "#a0c9ff",
+          "#c4eeff"
+        ]
+      },
+      "accent-ink": {
+        "role": "primary",
+        "displayName": "On Accent",
+        "canonical": "#ffffff",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ]
+      },
+      "accent-soft": {
+        "role": "primary",
+        "displayName": "Selection Wash",
+        "canonical": "#e8eefb",
+        "tonalRamp": [
+          "#080b13",
+          "#21252e",
+          "#3d424c",
+          "#5c616c",
+          "#7d828e",
+          "#9fa5b1",
+          "#c3c9d6",
+          "#e9effc"
+        ]
+      },
+      "focus": {
+        "role": "primary",
+        "displayName": "Focus Blue",
+        "canonical": "#2459d1",
+        "tonalRamp": [
+          "#00003c",
+          "#031d5e",
+          "#1e3d81",
+          "#3c5ea5",
+          "#5c80ca",
+          "#7da4f0",
+          "#a0c9ff",
+          "#c4eeff"
+        ]
+      },
+      "signal": {
+        "role": "secondary",
+        "displayName": "Needs-you Amber",
+        "canonical": "#fff1c2",
+        "tonalRamp": [
+          "#140900",
+          "#2f2400",
+          "#4d4116",
+          "#6d6136",
+          "#8f8257",
+          "#b2a578",
+          "#d7c99b",
+          "#fceec0"
+        ]
+      },
+      "signal-edge": {
+        "role": "secondary",
+        "displayName": "Amber Edge",
+        "canonical": "#c99400",
+        "tonalRamp": [
+          "#210000",
+          "#401a00",
+          "#603900",
+          "#825900",
+          "#a57a12",
+          "#c99d42",
+          "#efc268",
+          "#ffe78d"
+        ]
+      },
+      "signal-ink": {
+        "role": "secondary",
+        "displayName": "Amber Ink",
+        "canonical": "#533c00",
+        "tonalRamp": [
+          "#190500",
+          "#362000",
+          "#553e02",
+          "#765d29",
+          "#987f4b",
+          "#bca16d",
+          "#e1c690",
+          "#ffebb4"
+        ]
+      },
+      "live": {
+        "role": "tertiary",
+        "displayName": "Live Blue",
+        "canonical": "#1d4f91",
+        "tonalRamp": [
+          "#00003c",
+          "#00205d",
+          "#0d4080",
+          "#3061a4",
+          "#5183c9",
+          "#73a7ef",
+          "#96ccff",
+          "#baf2ff"
+        ]
+      },
+      "verified": {
+        "role": "tertiary",
+        "displayName": "Verified Green",
+        "canonical": "#00754a",
+        "tonalRamp": [
+          "#001600",
+          "#00340e",
+          "#00532b",
+          "#007449",
+          "#389769",
+          "#5ebb8b",
+          "#84e0af",
+          "#a9ffd3"
+        ]
+      },
+      "failed": {
+        "role": "tertiary",
+        "displayName": "Failed Red",
+        "canonical": "#c8102e",
+        "tonalRamp": [
+          "#2d0000",
+          "#510006",
+          "#751e23",
+          "#9a4141",
+          "#c06261",
+          "#e78582",
+          "#ffa9a5",
+          "#ffceca"
+        ]
+      },
+      "ready": {
+        "role": "tertiary",
+        "displayName": "Ready Teal",
+        "canonical": "#00747a",
+        "tonalRamp": [
+          "#00131a",
+          "#003036",
+          "#004f55",
+          "#006f75",
+          "#349298",
+          "#5bb5bb",
+          "#81dae0",
+          "#a6ffff"
+        ]
+      },
+      "stackable": {
+        "role": "tertiary",
+        "displayName": "Stackable Magenta",
+        "canonical": "#a32385",
+        "tonalRamp": [
+          "#25001a",
+          "#460037",
+          "#692256",
+          "#8c4377",
+          "#b16499",
+          "#d786bd",
+          "#fdaae2",
+          "#ffcfff"
+        ]
+      },
+      "waiting": {
+        "role": "tertiary",
+        "displayName": "Waiting Sienna",
+        "canonical": "#99560f",
+        "tonalRamp": [
+          "#290000",
+          "#4a0b00",
+          "#6c2d00",
+          "#904e00",
+          "#b56f31",
+          "#db9255",
+          "#ffb779",
+          "#ffdc9e"
+        ]
+      },
+      "merged": {
+        "role": "tertiary",
+        "displayName": "Merged Purple",
+        "canonical": "#8250df",
+        "tonalRamp": [
+          "#130036",
+          "#2c0f57",
+          "#48307a",
+          "#67519d",
+          "#8872c2",
+          "#aa95e8",
+          "#cfb9ff",
+          "#f4dfff"
+        ]
+      },
+      "closed": {
+        "role": "tertiary",
+        "displayName": "Closed Taupe",
+        "canonical": "#7a6655",
+        "tonalRamp": [
+          "#160700",
+          "#322112",
+          "#503e2e",
+          "#715d4c",
+          "#937e6c",
+          "#b6a18e",
+          "#dbc4b2",
+          "#ffead6"
+        ]
+      },
+      "harness-claude": {
+        "role": "tertiary",
+        "displayName": "Claude Rust",
+        "canonical": "#a94a26",
+        "tonalRamp": [
+          "#2d0000",
+          "#500000",
+          "#732300",
+          "#984526",
+          "#be6748",
+          "#e48a6a",
+          "#ffae8d",
+          "#ffd3b1"
+        ]
+      },
+      "harness-codex": {
+        "role": "tertiary",
+        "displayName": "Codex Green",
+        "canonical": "#0b7b63",
+        "tonalRamp": [
+          "#001507",
+          "#003320",
+          "#00523c",
+          "#00735b",
+          "#35957c",
+          "#5cb99e",
+          "#82dec2",
+          "#a7ffe7"
+        ]
+      },
+      "harness-opencode": {
+        "role": "tertiary",
+        "displayName": "OpenCode Violet",
+        "canonical": "#6a4bd6",
+        "tonalRamp": [
+          "#100039",
+          "#26125a",
+          "#41337d",
+          "#5f54a1",
+          "#7f76c6",
+          "#a199ec",
+          "#c4bdff",
+          "#e9e2ff"
+        ]
+      },
+      "ground-dark": {
+        "role": "neutral",
+        "displayName": "Workspace Grey (dark)",
+        "canonical": "#0e1117",
+        "tonalRamp": [
+          "#080b11",
+          "#22252c",
+          "#3e4249",
+          "#5d6169",
+          "#7e828b",
+          "#a1a5ae",
+          "#c5c9d2",
+          "#eaeff8"
+        ]
+      },
+      "surface-dark": {
+        "role": "neutral",
+        "displayName": "Card White (dark)",
+        "canonical": "#161a21",
+        "tonalRamp": [
+          "#080b12",
+          "#21252d",
+          "#3e424a",
+          "#5c616a",
+          "#7d838c",
+          "#a0a5af",
+          "#c4c9d3",
+          "#e9eff9"
+        ]
+      },
+      "raised-dark": {
+        "role": "neutral",
+        "displayName": "Hover Band (dark)",
+        "canonical": "#1e232c",
+        "tonalRamp": [
+          "#070b13",
+          "#20252e",
+          "#3d424c",
+          "#5c616c",
+          "#7c838e",
+          "#9fa5b1",
+          "#c3c9d6",
+          "#e8effb"
+        ]
+      },
+      "ink-dark": {
+        "role": "neutral",
+        "displayName": "Desk Ink (dark)",
+        "canonical": "#e6e9ee",
+        "tonalRamp": [
+          "#090b0e",
+          "#232529",
+          "#404246",
+          "#5f6166",
+          "#808287",
+          "#a2a5aa",
+          "#c6c9ce",
+          "#eceff4"
+        ]
+      },
+      "ink-muted-dark": {
+        "role": "neutral",
+        "displayName": "Quiet Ink (dark)",
+        "canonical": "#9ba3af",
+        "tonalRamp": [
+          "#060b13",
+          "#1f252f",
+          "#3c424d",
+          "#5a626d",
+          "#7b838e",
+          "#9ea6b2",
+          "#c1cad6",
+          "#e7effc"
+        ]
+      },
+      "hairline-dark": {
+        "role": "neutral",
+        "displayName": "Hairline (dark)",
+        "canonical": "#2a303a",
+        "tonalRamp": [
+          "#070b14",
+          "#20252f",
+          "#3c424d",
+          "#5b626d",
+          "#7c838f",
+          "#9ea5b2",
+          "#c2cad7",
+          "#e7effc"
+        ]
+      },
+      "rule-dark": {
+        "role": "neutral",
+        "displayName": "Control Rule (dark)",
+        "canonical": "#6b7380",
+        "tonalRamp": [
+          "#060b15",
+          "#1f2530",
+          "#3b424e",
+          "#5a626e",
+          "#7b8390",
+          "#9da6b3",
+          "#c1cad8",
+          "#e6effe"
+        ]
+      },
+      "accent-dark": {
+        "role": "primary",
+        "displayName": "Selection Blue (dark)",
+        "canonical": "#6ea2ff",
+        "tonalRamp": [
+          "#00003c",
+          "#001e5e",
+          "#1a3e81",
+          "#395fa5",
+          "#5981ca",
+          "#7aa5f0",
+          "#9dcaff",
+          "#c1efff"
+        ]
+      },
+      "accent-ink-dark": {
+        "role": "primary",
+        "displayName": "On Accent (dark)",
+        "canonical": "#0e1117",
+        "tonalRamp": [
+          "#080b11",
+          "#22252c",
+          "#3e4249",
+          "#5d6169",
+          "#7e828b",
+          "#a1a5ae",
+          "#c5c9d2",
+          "#eaeff8"
+        ]
+      },
+      "accent-soft-dark": {
+        "role": "primary",
+        "displayName": "Selection Wash (dark)",
+        "canonical": "#1b2740",
+        "tonalRamp": [
+          "#030920",
+          "#19243d",
+          "#34425d",
+          "#53617e",
+          "#7383a1",
+          "#95a5c5",
+          "#b9caea",
+          "#deefff"
+        ]
+      },
+      "focus-dark": {
+        "role": "primary",
+        "displayName": "Focus Blue (dark)",
+        "canonical": "#6ea2ff",
+        "tonalRamp": [
+          "#00003c",
+          "#001e5e",
+          "#1a3e81",
+          "#395fa5",
+          "#5981ca",
+          "#7aa5f0",
+          "#9dcaff",
+          "#c1efff"
+        ]
+      },
+      "signal-dark": {
+        "role": "secondary",
+        "displayName": "Needs-you Amber (dark)",
+        "canonical": "#3a2f0d",
+        "tonalRamp": [
+          "#130900",
+          "#2e2402",
+          "#4c4120",
+          "#6c603e",
+          "#8e825f",
+          "#b1a480",
+          "#d6c9a3",
+          "#fbeec8"
+        ]
+      },
+      "signal-edge-dark": {
+        "role": "secondary",
+        "displayName": "Amber Edge (dark)",
+        "canonical": "#a07c12",
+        "tonalRamp": [
+          "#1f0100",
+          "#3d1c00",
+          "#5d3b00",
+          "#7e5b00",
+          "#a17d13",
+          "#c5a042",
+          "#eac468",
+          "#ffea8e"
+        ]
+      },
+      "signal-ink-dark": {
+        "role": "secondary",
+        "displayName": "Amber Ink (dark)",
+        "canonical": "#ffd96a",
+        "tonalRamp": [
+          "#1d0200",
+          "#3b1e00",
+          "#5a3c00",
+          "#7b5d00",
+          "#9e7e10",
+          "#c2a241",
+          "#e7c667",
+          "#ffec8d"
+        ]
+      },
+      "live-dark": {
+        "role": "tertiary",
+        "displayName": "Live Blue (dark)",
+        "canonical": "#7fb0ff",
+        "tonalRamp": [
+          "#00003c",
+          "#001e5e",
+          "#163f80",
+          "#3660a4",
+          "#5682ca",
+          "#77a6f0",
+          "#9acaff",
+          "#bff0ff"
+        ]
+      },
+      "verified-dark": {
+        "role": "tertiary",
+        "displayName": "Verified Green (dark)",
+        "canonical": "#3ccf8e",
+        "tonalRamp": [
+          "#001600",
+          "#00340c",
+          "#00542a",
+          "#007548",
+          "#2f9868",
+          "#58bc8a",
+          "#7ee1ad",
+          "#a4ffd2"
+        ]
+      },
+      "failed-dark": {
+        "role": "tertiary",
+        "displayName": "Failed Red (dark)",
+        "canonical": "#ff6b6b",
+        "tonalRamp": [
+          "#2d0000",
+          "#510005",
+          "#751e22",
+          "#9a4140",
+          "#c06360",
+          "#e78582",
+          "#ffa9a5",
+          "#ffcec9"
+        ]
+      },
+      "ready-dark": {
+        "role": "tertiary",
+        "displayName": "Ready Teal (dark)",
+        "canonical": "#45cbc5",
+        "tonalRamp": [
+          "#001616",
+          "#003432",
+          "#005350",
+          "#007570",
+          "#009792",
+          "#2fbcb6",
+          "#5fe1db",
+          "#88ffff"
+        ]
+      },
+      "stackable-dark": {
+        "role": "tertiary",
+        "displayName": "Stackable Magenta (dark)",
+        "canonical": "#f07fd6",
+        "tonalRamp": [
+          "#24001d",
+          "#45003a",
+          "#672259",
+          "#8a437a",
+          "#af659d",
+          "#d487c1",
+          "#fbabe6",
+          "#ffd0ff"
+        ]
+      },
+      "waiting-dark": {
+        "role": "tertiary",
+        "displayName": "Waiting Sienna (dark)",
+        "canonical": "#e8a35a",
+        "tonalRamp": [
+          "#270000",
+          "#490e00",
+          "#6b2f00",
+          "#8e5000",
+          "#b27225",
+          "#d8954c",
+          "#ffb971",
+          "#ffde96"
+        ]
+      },
+      "merged-dark": {
+        "role": "tertiary",
+        "displayName": "Merged Purple (dark)",
+        "canonical": "#a98bfa",
+        "tonalRamp": [
+          "#130037",
+          "#2b0f58",
+          "#48317a",
+          "#66519e",
+          "#8773c3",
+          "#aa95e9",
+          "#cebaff",
+          "#f3dfff"
+        ]
+      },
+      "closed-dark": {
+        "role": "tertiary",
+        "displayName": "Closed Taupe (dark)",
+        "canonical": "#c3ab98",
+        "tonalRamp": [
+          "#160700",
+          "#332011",
+          "#513d2d",
+          "#725c4b",
+          "#947d6b",
+          "#b8a08d",
+          "#ddc4b1",
+          "#ffe9d5"
+        ]
+      },
+      "harness-claude-dark": {
+        "role": "tertiary",
+        "displayName": "Claude Rust (dark)",
+        "canonical": "#f2956c",
+        "tonalRamp": [
+          "#2c0000",
+          "#4f0000",
+          "#732500",
+          "#97471f",
+          "#bd6842",
+          "#e38b65",
+          "#ffaf88",
+          "#ffd5ac"
+        ]
+      },
+      "harness-codex-dark": {
+        "role": "tertiary",
+        "displayName": "Codex Green (dark)",
+        "canonical": "#4dd0aa",
+        "tonalRamp": [
+          "#001704",
+          "#00351c",
+          "#005538",
+          "#007657",
+          "#009978",
+          "#43bd9a",
+          "#6de2be",
+          "#94ffe3"
+        ]
+      },
+      "harness-opencode-dark": {
+        "role": "tertiary",
+        "displayName": "OpenCode Violet (dark)",
+        "canonical": "#a996ff",
+        "tonalRamp": [
+          "#110038",
+          "#281159",
+          "#44327c",
+          "#6253a0",
+          "#8374c5",
+          "#a597eb",
+          "#c9bbff",
+          "#eee1ff"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "title": {
+        "displayName": "Title",
+        "purpose": "The Project's name in the header."
+      },
+      "head": {
+        "displayName": "Head",
+        "purpose": "The inspector's title."
+      },
+      "node-title": {
+        "displayName": "Node Title",
+        "purpose": "A node's title, two lines at most."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Form text, inspector sections, history rows."
+      },
+      "strong": {
+        "displayName": "Strong",
+        "purpose": "Section and fold heads, a notice's kind."
+      },
+      "small": {
+        "displayName": "Small",
+        "purpose": "A node's rows, the legend, the zoom readout, a notice's muted line."
+      },
+      "mono": {
+        "displayName": "Mono",
+        "purpose": "The Asking pane and commands only."
+      },
+      "field-phone": {
+        "displayName": "Field Phone",
+        "purpose": "Field text under 720px, so iOS never zooms."
+      }
+    },
+    "shadows": [
+      {
+        "name": "shadow",
+        "value": "0 1px 2px rgb(16 24 40 / 6%)",
+        "purpose": "Cards, panels, notices, the rail and the inspector: one faint lift. Dark: 0 1px 2px rgb(0 0 0 / 30%)."
+      },
+      {
+        "name": "shadow-pop",
+        "value": "0 8px 24px rgb(16 24 40 / 12%)",
+        "purpose": "Only what floats: the rate-limit panel, tips, the bottom sheet. Dark: 0 8px 24px rgb(0 0 0 / 45%)."
+      },
+      {
+        "name": "selected",
+        "value": "0 0 0 1px var(--accent), var(--shadow)",
+        "purpose": "The open node's doubled accent frame."
+      }
+    ],
+    "motion": [
+      {
+        "name": "inspector-in",
+        "value": "160ms ease-out",
+        "purpose": "The inspector slides in 16px; the sheet rises."
+      },
+      {
+        "name": "flash",
+        "value": "200ms ease-out",
+        "purpose": "A Stage row a refetch changed, a notice new to the page, moved read times: once."
+      },
+      {
+        "name": "tip",
+        "value": "120ms ease-out, 400ms delay",
+        "purpose": "A tip's card on hover."
+      },
+      {
+        "name": "switch",
+        "value": "120ms ease-out",
+        "purpose": "A toggle's thumb and track."
+      },
+      {
+        "name": "scroll",
+        "value": "smooth (native)",
+        "purpose": "Fit and an opened or focused node scroll the map's field; auto under reduced motion."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "prefers-reduced-motion: reduce",
+        "purpose": "All motion off; changes simply appear."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "phone",
+        "value": "width < 720px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Button",
+      "kind": "button",
+      "refersTo": "button",
+      "description": "The form's one action: the accent's fill.",
+      "html": "<button class=\"ds-button\">Dispatch</button>",
+      "css": ".ds-button{min-height:36px;padding:0 16px;border:1px solid var(--accent);border-radius:var(--radius-control);background:var(--accent);color:var(--accent-ink);font:600 14px/1.45 ui-sans-serif,system-ui,sans-serif;cursor:pointer}.ds-button:hover{background:color-mix(in srgb,var(--accent) 86%,var(--ink))}.ds-button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}"
+    },
+    {
+      "name": "Quiet button",
+      "kind": "button",
+      "refersTo": "button-quiet",
+      "description": "Every other action: surface, a rule frame.",
+      "html": "<button class=\"ds-quiet\">Refresh</button>",
+      "css": ".ds-quiet{min-height:36px;padding:0 14px;border:1px solid var(--rule);border-radius:var(--radius-control);background:var(--surface);color:var(--ink);font:600 14px/1.45 ui-sans-serif,system-ui,sans-serif;cursor:pointer}.ds-quiet:hover{background:var(--raised)}.ds-quiet:focus-visible{outline:2px solid var(--focus);outline-offset:2px}"
+    },
+    {
+      "name": "Text field",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "A field under its sentence-case label.",
+      "html": "<label class=\"ds-field\"><span>Base</span><input value=\"main\"></label>",
+      "css": ".ds-field{display:grid;gap:4px;font:400 14px/1.45 ui-sans-serif,system-ui,sans-serif}.ds-field span{color:var(--ink-muted)}.ds-field input{min-height:36px;padding:0 10px;border:1px solid var(--rule);border-radius:var(--radius-control);background:var(--surface);color:var(--ink);font:inherit}.ds-field input:hover{border-color:var(--ink)}.ds-field input:focus-visible{outline:2px solid var(--focus);outline-offset:2px}"
+    },
+    {
+      "name": "Needs you badge",
+      "kind": "chip",
+      "refersTo": "needs",
+      "description": "Needs you, on its issue or at the notices band's head; the only amber.",
+      "html": "<span class=\"ds-needs\">Needs you</span>",
+      "css": ".ds-needs{display:inline-flex;align-items:center;padding:0 8px;min-height:20px;border:1px solid var(--signal-edge);border-radius:999px;background:var(--signal);color:var(--signal-ink);font:600 12px/18px ui-sans-serif,system-ui,sans-serif;white-space:nowrap}"
+    },
+    {
+      "name": "Node",
+      "kind": "card",
+      "refersTo": "node",
+      "description": "A map node: its title first, then number and Repo, then its Stage in words beside its mark.",
+      "html": "<button class=\"ds-node\"><span class=\"t\">Verify: a Ready issue</span><span class=\"r\">#1 <span>· fixture</span></span><span class=\"s\"><svg width='14' height='14' viewBox='0 0 14 14' aria-hidden='true'><circle cx='7' cy='7' r='5.25' fill='none' stroke='currentColor' stroke-width='1.5'/></svg>Ready</span></button>",
+      "css": ".ds-node{display:grid;row-gap:4px;width:248px;min-height:108px;align-content:start;padding:8px 12px;text-align:left;background:var(--surface);color:var(--ink);border:1px solid var(--hairline);border-radius:var(--radius);box-shadow:var(--shadow);font:400 13px/18px ui-sans-serif,system-ui,sans-serif;cursor:pointer}.ds-node:hover{border-color:var(--rule)}.ds-node:focus-visible{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent),var(--shadow);outline:none}.ds-node .t{font:600 15px/20px ui-sans-serif,system-ui,sans-serif}.ds-node .r span{color:var(--ink-muted)}.ds-node .s{display:inline-flex;gap:6px;align-items:center;color:var(--ready);font-weight:600}"
+    },
+    {
+      "name": "Notice",
+      "kind": "custom",
+      "refersTo": "notice",
+      "description": "One row of the notices band: a white card in a hairline, no coloured edge, a drawn × to dismiss.",
+      "html": "<div class=\"ds-notice\"><strong>Check</strong><span>verify/fixture</span><span class=\"m\">5 checks fail · Readiness, under Repos</span><span class=\"e\"><button class=\"more\">Show the checks</button><button class=\"x\" aria-label=\"Dismiss\"><svg viewBox='0 0 14 14' width='14' height='14' aria-hidden='true'><path d='M3 3 L11 11 M11 3 L3 11'/></svg></button></span></div>",
+      "css": ".ds-notice{display:flex;flex-wrap:wrap;align-items:center;gap:0 8px;min-height:42px;padding:4px 4px 4px 12px;background:var(--surface);color:var(--ink);border:1px solid var(--hairline);border-radius:var(--radius);box-shadow:var(--shadow);font:400 14px/1.45 ui-sans-serif,system-ui,sans-serif}.ds-notice .m{color:var(--ink-muted);font-size:13px}.ds-notice .e{display:flex;gap:4px;align-items:center;margin-left:auto}.ds-notice .more{min-height:28px;padding:0 10px;border:1px solid var(--rule);border-radius:var(--radius-control);background:var(--surface);color:var(--ink);font:600 13px ui-sans-serif,system-ui,sans-serif;cursor:pointer}.ds-notice .more:hover,.ds-notice .x:hover{background:var(--raised)}.ds-notice .x{display:grid;place-items:center;min-width:32px;min-height:32px;border:0;border-radius:var(--radius-control);background:none;color:var(--ink-muted);cursor:pointer}.ds-notice .x path{fill:none;stroke:currentColor;stroke-width:1.5}.ds-notice button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}"
+    },
+    {
+      "name": "Errata",
+      "kind": "custom",
+      "description": "A refusal or failure: a 1px failed frame on a faint failed wash, Failed's drawn cross before it.",
+      "html": "<p class=\"ds-errata\"><strong>gh: not found</strong></p>",
+      "css": ".ds-errata{position:relative;margin:0;padding:8px 12px 8px 32px;border:1px solid var(--failed);border-radius:var(--radius-control);background:color-mix(in srgb,var(--failed) 6%,var(--surface));color:var(--ink);font:400 14px/1.45 ui-sans-serif,system-ui,sans-serif}.ds-errata::before{content:'';position:absolute;top:12px;left:12px;width:12px;height:12px;background:var(--failed);mask:url(\"data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14'><path d='M2 2 L12 12 M12 2 L2 12' stroke='black' stroke-width='2.25'/></svg>\") center/contain no-repeat}"
+    },
+    {
+      "name": "Zoom group",
+      "kind": "custom",
+      "description": "The map's tools bar, right: joined quiet buttons, drawn − and +, the scale as text between them.",
+      "html": "<div class=\"ds-zoom\"><button aria-label=\"Zoom out\"><svg width='14' height='14' viewBox='0 0 14 14'><path d='M2.5 7 H11.5'/></svg></button><span>100%</span><button aria-label=\"Zoom in\"><svg width='14' height='14' viewBox='0 0 14 14'><path d='M2.5 7 H11.5 M7 2.5 V11.5'/></svg></button><button>Fit</button></div>",
+      "css": ".ds-zoom{display:inline-flex;font:600 14px/1.45 ui-sans-serif,system-ui,sans-serif}.ds-zoom>*+*{margin-left:-1px}.ds-zoom button{display:inline-flex;align-items:center;justify-content:center;min-width:36px;min-height:36px;padding:0 10px;border:1px solid var(--rule);background:var(--surface);color:var(--ink);font:inherit;cursor:pointer}.ds-zoom button:hover{background:var(--raised)}.ds-zoom button:focus-visible{position:relative;outline:2px solid var(--focus);outline-offset:2px}.ds-zoom button:first-child{border-radius:var(--radius-control) 0 0 var(--radius-control)}.ds-zoom button:last-child{border-radius:0 var(--radius-control) var(--radius-control) 0}.ds-zoom path{fill:none;stroke:currentColor;stroke-width:1.5}.ds-zoom span{display:inline-flex;align-items:center;justify-content:center;min-width:52px;border-block:1px solid var(--rule);background:var(--surface);color:var(--ink-muted);font:400 13px ui-sans-serif,system-ui,sans-serif;font-variant-numeric:tabular-nums}"
+    }
+  ],
+  "narrative": {
+    "northStar": "A calm work map",
+    "overview": "The page is one workspace, read at the desk in the morning and checked on the phone. It answers two questions at a glance: what work is happening, and what needs me. The Project's map is the centre of it; everything else is either how you got there (the Projects rail, the views) or what you do with what you picked (the inspector). Settings exist and are one click away, but they never sit beside the work while you only watch it.\n\nLight is the everyday workspace: a neutral grey page, white cards and panels with hairline frames, readable system type. Dark is the same layout and the same components on a near-black page for a focused evening: no new layout, no new components, only its own tokens. Themes are Light, Dark and System. System follows `prefers-color-scheme` and is the default; the choice is remembered in `localStorage`.\n\nMotion is short and functional. The inspector slides in 160ms ease-out (rises, on a phone). When a refetch changes a node's Stage, its Stage row flashes once (200ms), as does a notice new to the page (not on the first read) and the read times when a read moves them (not when another Project shows its own). When a node taking keyboard focus, an opened node or Fit moves the map, its field scrolls there smoothly (the browser's own smooth scroll); a drag or a zoom takes over where it is. Nothing loops and nothing moves on load. Under `prefers-reduced-motion` all motion is off and changes simply appear.",
+    "keyCharacteristics": [],
+    "rules": [
+      {
+        "name": "The Words First Rule",
+        "body": "Every state is said in words: a Stage is its word, an agent's state is `Asking`, `Working` or `Idle`, needs you is `Needs you`. Colour and icons repeat what the word says, so the page reads without colour and without a legend of shapes to learn.",
+        "section": "overview"
+      },
+      {
+        "name": "The One Accent Rule",
+        "body": "One accent marks what is selected and what you can act on: the open node, the current Project, the current view, links, focus and the form's one action. No other hue is used for selection.",
+        "section": "overview"
+      },
+      {
+        "name": "The Phone Field Exception",
+        "body": "Under 720px, the text inside a field (`field-phone`) is 16px, so iOS never zooms the page into it.",
+        "section": "typography"
+      },
+      {
+        "name": "The Right Column Rule",
+        "body": "Every time on the page (Source read, PRs checked, restarted at, Verdict at, paused until) is `HH:MM`, plus the date when it isn't today, and sits at the right where it is in a row.",
+        "section": "typography"
+      },
+      {
+        "name": "The No Scroll Rule",
+        "body": "At 360px wide, nothing is wider than the viewport. Long titles wrap to two lines on nodes and wrap whole in the inspector.",
+        "section": "layout"
+      },
+      {
+        "name": "The No Side Edge Rule",
+        "body": "No card, notice, row, rail item or errata carries a coloured edge down one side. State is a frame (a hairline, the accent's doubled frame, the errata's `failed` hairline), a fill (`accent-soft`, the errata's wash), a word, and a drawn mark.",
+        "section": "shapes"
+      }
+    ],
+    "dos": [
+      "**Do** say every state in words, and let colour and icons repeat it.",
+      "**Do** keep the accent for selection and action, amber for needs you, and each Stage hue for its Stage; a token here and in `app.css`, never a hex in a component.",
+      "**Do** put the next useful action first in the inspector, and the secondary detail in a labelled disclosure.",
+      "**Do** keep settings behind `Repos`, and fold what is set once and left, saying what is set on the folded line.",
+      "**Do** say a save happened beside the field; never grey a field out while it saves.",
+      "**Do** put needs you without a node in the notices band under the view tabs, in the flow, and the map's tools in the bar under it; nothing floats over the map."
+    ],
+    "donts": [
+      "**Don't** add counters, progress summaries, KPI tiles or a global dashboard; needs you stays on its issue, or in a notice when it has none.",
+      "**Don't** show an action the app does not support (an Open agent button, a merge button), or a state it does not know (a \"Loop running\" light).",
+      "**Don't** colour Repos, tint cards with their Stage, or ask the reader to learn a legend of shapes.",
+      "**Don't** add mascots, bounce or confetti, and no monospace beyond the Asking pane and commands.",
+      "**Don't** put a coloured edge down one side of a card, a notice, a row or the rail's current Project (the No Side Edge Rule).",
+      "**Don't** pad toward airiness: six nodes in two chains read at 100% at 1440×900, under the header, the notices band and the tabs, without scrolling the page."
+    ]
+  }
+}

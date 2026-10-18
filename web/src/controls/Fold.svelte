@@ -33,7 +33,8 @@
     align-items: baseline;
     gap: 12px;
     min-height: 40px;
-    padding: 11px 12px 9px;
+    padding: 10px 12px;
+    border-radius: var(--radius-control);
     background: var(--ground);
     list-style: none;
     cursor: pointer;
@@ -58,7 +59,7 @@
     transform: rotate(45deg);
   }
   summary:hover {
-    background: color-mix(in srgb, var(--ink) 6%, var(--ground));
+    background: var(--raised);
   }
   /* What is set, whole: a long launch wraps under itself rather than hide its model or Effort. */
   .summary {
@@ -78,7 +79,7 @@
   @media (width < 720px) {
     summary {
       min-height: 44px;
-      padding-block: 13px 11px;
+      padding-block: 12px;
     }
   }
   @media (prefers-reduced-motion: reduce) {

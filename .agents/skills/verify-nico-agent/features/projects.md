@@ -40,16 +40,17 @@ Preconditions:
 - **List.** Run `$C run --evidence "$E/01-list" -- repo list --json`. Both Repos have `project`
   `verify` and `reviewer` opencode `big`; verify/fixture `room` `2`, verify/second `room` `4`;
   `switches.review` false and `switches.stack` true in both.
-- **Status.** Run `$C run --evidence "$E/02-status" -- status --json`. `projects` is
-  `[{"name":"verify","repos":["verify/fixture","verify/second"],"defaults":{"room":2,"reviewer":{...},"switches":{"review":false}}}]`.
+- **Status.** Run `$C run --evidence "$E/02-status" -- status --json`. `projects` is one Project,
+  `{"name":"verify","repos":["verify/fixture","verify/second"],"defaults":{"room":2,"reviewer":{...},"switches":{"review":false}}, ...}`,
+  beside its own settings as `{value, from}` (`room` `{"from":"project","value":2}`, `base`, `implementer`, `reviewer`, `switches`, ...).
   verify/fixture's `room` is `{"value":2,"from":"project"}`, verify/second's `{"value":4,"from":"repo"}`;
   both have `reviewer` `from` `project`, `switches.review` `{"value":false,"from":"project"}`,
   `switches.dispatch` `{"value":true,"from":"default"}`, `implementer` claude `from` `default` and
   `base` `{"value":null,"from":"default"}`.
 - **API.** Run `$C http --evidence "$E/03-api" GET /api/status`. HTTP `200`; `projects` equals the
   command's, and each Repo has the same `{value, from}` settings plus `harnesses`.
-- **Page.** Run `$C page --evidence "$E/04-page" --select "Project=verify" --expect "Defaults for its Repos" --within "region=verify" --click "region=Room" --click "region=Switches" --within "region=verify/fixture" --click "region=Room" --click "region=Switches" --within "region=verify/second" --click "region=Room" --click "region=Switches" --expect "Faux-nico answers"`:
-  `combobox "Project"` has `option "verify"`; each panel's Switches read `4 of 9 on`.
+- **Page.** Run `$C page --evidence "$E/04-page" --click "button=Repos" --click "link=verify" --expect "Defaults for its Repos" --within "region=verify" --click "region=Room" --click "region=Switches" --within "region=verify/fixture" --click "region=Room" --click "region=Switches" --within "region=verify/second" --click "region=Room" --click "region=Switches" --expect "Faux-nico answers"`:
+  `navigation "Projects"` has `link "verify"`, and `heading "verify"` (the shown Project); each panel's Switches read `4 of 9 on`.
   `region "verify"` (the Project's defaults) has `text: set here` with `button "Use the default Room"`
   and `spinbutton "Room": "2"`, and `switch "Review"` unchecked beside `button "Use the default
   Review"`; `region "verify/fixture"` has `text: from Project` beside `spinbutton "Room": "2"`, `switch
