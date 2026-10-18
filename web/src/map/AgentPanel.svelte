@@ -7,6 +7,7 @@
   import { Button } from "$lib/components/ui/button/index.js";
   import { onMount } from "svelte";
   import Answer from "../controls/Answer.svelte";
+  import Segments from "../Segments.svelte";
   import { hash } from "../route";
   import { selection } from "../selection.svelte";
   import { numbered, type Project } from "../status";
@@ -123,6 +124,10 @@
     };
   });
 
+  const SHOWS = [
+    { value: "chat" as const, label: "Chat" },
+    { value: "screen" as const, label: "Screen" },
+  ];
   const PREFIX: Record<string, string> = { user: "› ", tool: "▸ ", result: "  ⎿ " };
 
   // Pinned to its foot, where the agent writes, unless the user has scrolled up.
@@ -195,9 +200,8 @@
   </header>
 
   <div class="section">
-    <div class="switch" role="group" aria-label="Show">
-      <button type="button" aria-pressed={view === "chat"} onclick={() => (view = "chat")}>Chat</button>
-      <button type="button" aria-pressed={view === "screen"} onclick={() => (view = "screen")}>Screen</button>
+    <div class="show">
+      <Segments label="Show" options={SHOWS} value={view} pick={(v) => (view = v)} />
     </div>
     {#if chatting}
       {#if !chatOpened}
@@ -257,36 +261,8 @@
   .errata {
     margin-bottom: 8px;
   }
-  /* Chat | Screen, the theme switch's segments. */
-  .switch {
-    display: inline-flex;
+  .show {
     margin-bottom: 8px;
-    padding: 2px;
-    border: 1px solid var(--hairline);
-    border-radius: var(--radius-control);
-    background: var(--raised);
-  }
-  .switch button {
-    min-height: 30px;
-    padding: 0 10px;
-    border: 0;
-    border-radius: 4px;
-    background: none;
-    color: var(--ink-muted);
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-  }
-  .switch button:hover {
-    color: var(--ink);
-  }
-  .switch button[aria-pressed="true"] {
-    background: var(--surface);
-    color: var(--ink);
-    box-shadow: var(--shadow), 0 0 0 1px var(--hairline);
-  }
-  .switch button:focus-visible {
-    position: relative;
   }
   /* The chat, plain text as the screen is, but each entry wrapped: never a sideways scroll. */
   .chat {
@@ -329,9 +305,6 @@
     .screen,
     .chat {
       max-height: 40vh;
-    }
-    .switch button {
-      min-height: 44px;
     }
     .bar .ref {
       display: inline-flex;

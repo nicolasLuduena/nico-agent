@@ -251,7 +251,8 @@ pub fn screen(ctx: &Context, issue: &str, role: &str) -> Result<Value, Refusal> 
     })
 }
 
-const SEE: &str = "See its agents in `nico-agent status --json`";
+/// Where a refusal of an agent's screen or chat points.
+pub const SEE: &str = "See its agents in `nico-agent status --json`";
 
 /// The live Dispatch of `issue`, in `config`, and the launch of its agent
 /// in `role` (implementer or reviewer), none while it has no Reviewer.

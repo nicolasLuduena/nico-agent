@@ -218,18 +218,17 @@ fn foreign(ctx: &Context, port: u16, request: &HttpRequest) -> Option<Answer> {
         .ok()
         .and_then(|c| c.bucket.url);
     hosts.extend(tunnel.map(|url| host_of(&url).to_string()));
-    let header = |name: &str| header(request, name);
     // Not the tunnel's host itself: a page rebound to 127.0.0.1 reads this.
     let help = [format!(
         "Ask serve on 127.0.0.1:{port}, localhost:{port} or bucket.url's host"
     )];
-    let Some(host) = header("Host") else {
+    let Some(host) = header(request, "Host") else {
         return Some(error(403, "the request names no Host", &help));
     };
     if !hosts.iter().any(|h| h.eq_ignore_ascii_case(host)) {
         return Some(error(403, &format!("Host {host} is not serve's"), &help));
     }
-    let origin = header("Origin")
+    let origin = header(request, "Origin")
         .filter(|_| matches!(request.method.as_str(), "POST" | "PATCH" | "DELETE"))?;
     // `null`, a sandboxed page's or a file's, is no host of serve's: foreign too.
     if host_of(origin).eq_ignore_ascii_case(host) {

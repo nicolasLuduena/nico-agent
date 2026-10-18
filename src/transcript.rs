@@ -19,6 +19,9 @@ const EVERY: Duration = Duration::from_secs(1);
 /// A quiet stream's comment every this many looks, so a proxy never sees it idle.
 const KEEPALIVE: u32 = 15;
 
+/// The Harnesses whose chat is read.
+const READ: [&str; 2] = ["claude", "opencode"];
+
 /// How much of a tool call or its result the chat shows.
 const CUT: usize = 2000;
 
@@ -36,11 +39,8 @@ pub fn stream(
 ) -> Result<Answer, Refusal> {
     let (config, d, launch) = map::live_agent(ctx, issue, role)?;
     let Some(launch) = launch else {
-        let see = "See its agents in `nico-agent status --json`";
-        return Err(Refusal::new(
-            format!("{issue} has no {role}"),
-            vec![see.into()],
-        ));
+        let see = map::SEE.into();
+        return Err(Refusal::new(format!("{issue} has no {role}"), vec![see]));
     };
     let cwd = match role {
         "implementer" => d.worktree.clone(),
@@ -56,13 +56,13 @@ pub fn stream(
     let mut shown: Option<String> = None;
     let mut said: Option<String> = None;
     let mut quiet = 0;
+    let reads = READ.contains(&harness.as_str());
     let poll = move |world: &dyn World| {
-        let read = match harness.as_str() {
-            "claude" | "opencode" => {
-                let after = at.as_ref().map(|(s, p)| (s.as_str(), p.as_str()));
-                world.harness_transcript(&harness, &command, &cwd, after)
-            }
-            _ => Ok(None),
+        let after = at.as_ref().map(|(s, p)| (s.as_str(), p.as_str()));
+        let read = if reads {
+            world.harness_transcript(&harness, &command, &cwd, after)
+        } else {
+            Ok(None)
         };
         let mut sent = String::new();
         match read {
@@ -84,7 +84,7 @@ pub fn stream(
             unread => {
                 let why = match unread {
                     Err(e) => e.0,
-                    _ if harness == "claude" || harness == "opencode" => {
+                    _ if reads => {
                         format!("{harness} keeps no session for {cwd} yet")
                     }
                     _ => format!("{harness} keeps no chat nico-agent reads: see its screen"),
