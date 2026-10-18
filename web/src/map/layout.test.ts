@@ -174,6 +174,33 @@ describe("the map's layout", () => {
     expect(drawn.nodes.filter((n) => n.needs).map((n) => n.key)).toEqual(["acme/api#11", "acme/api#10", "acme/api#12", "acme/api#13", "acme/api#9"]);
   });
 
+  it("gives a node a row per live agent, the Implementer first, each in its Agent state, and none for one herdr no longer lists", () => {
+    const drawn = layout(
+      {
+        nodes: [
+          node("acme/api#30", { stage: "PR draft", agent_state: { implementer: "working", reviewer: "done" } }),
+          node("acme/api#31", { stage: "Implementing", agent_state: { implementer: "blocked", reviewer: null } }),
+          node("acme/api#32", { stage: "Implementing", agent_state: { implementer: "unknown", reviewer: null }, asking: { since: "2026-09-30T04:12:00Z", question: "Keep it?" } }),
+          node("acme/api#33", { stage: "PR draft", agent_state: { implementer: "gone", reviewer: "idle" } }),
+          node("acme/api#34", { stage: "Implementing", agent_state: { implementer: "gone", reviewer: null } }),
+          node("acme/api#35", { stage: "Implementing", agent_state: { implementer: "unknown", reviewer: null } }),
+        ],
+        edges: [],
+      },
+      undefined,
+      52,
+    );
+
+    expect(drawn.nodes.map((n) => [n.key, n.agents, n.height])).toEqual([
+      ["acme/api#30", [{ role: "implementer", state: "working" }, { role: "reviewer", state: "done" }], 108 + 2 * 52],
+      ["acme/api#31", [{ role: "implementer", state: "asking" }], 108 + 52],
+      ["acme/api#32", [{ role: "implementer", state: "asking" }], 108 + 52],
+      ["acme/api#33", [{ role: "reviewer", state: "idle" }], 108 + 52],
+      ["acme/api#34", [], 108],
+      ["acme/api#35", [{ role: "implementer", state: "unknown" }], 108 + 52],
+    ]);
+  });
+
   it("gives a PR draft node a row under its Stage saying where its review stands, and flags one that stopped or gave up", () => {
     const review = (state: Review["state"]): Review => ({ state, sha: "4f2a9c1e0b", harness: "codex", attempts: 0, cap: 2 });
     const drawn = layout({

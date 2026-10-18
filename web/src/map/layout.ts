@@ -44,8 +44,12 @@ export interface MapEdge {
   kind: "blocker" | "stack";
 }
 
-/** DESIGN.md's node, in px: room for a title of two lines; one with a line under its Stage is a row taller. */
-export const NODE = { width: 248, height: 108, row: 20 };
+/**
+ * DESIGN.md's node, in px: room for a title of two lines; one with a line
+ * under its Stage is a row taller, and each live agent adds its own row: 28px,
+ * or on a phone 52px, 44px at the map's least scale.
+ */
+export const NODE = { width: 248, height: 108, row: 20, agent: 28, touchAgent: 52 };
 
 export interface Point {
   x: number;
@@ -61,25 +65,51 @@ export interface Box extends Point {
 /** A lane framing its nodes, its name on the frame's top line. */
 export type Lane = Box & { name: string };
 
-export type Agent = "asking" | "working" | "idle" | null;
+export type Role = "implementer" | "reviewer";
+
+/** An agent's Agent state as its row says it: herdr's `blocked` is Asking; `unknown` while herdr could not say. */
+export type AgentState = "working" | "asking" | "idle" | "done" | "unknown";
+
+/** A live agent of its Dispatch: its role and Agent state. */
+export interface AgentRow {
+  role: Role;
+  state: AgentState;
+}
 
 /**
  * A node where the map draws it: `x`, `y` its top left corner, `height` its
  * own; `line` where its review stands while it is PR draft, or why it waits
- * while Waiting; `agent` its agent's state; `faded` once its PR merged;
+ * while Waiting; `agents` its live agents; `faded` once its PR merged;
  * `needs` when it needs you: what has no node is a toast (toasts.ts).
  */
-export type Placed = MapNode & Point & { height: number; line: string | null; agent: Agent; faded: boolean; needs: boolean };
+export type Placed = MapNode & Point & { height: number; line: string | null; agents: AgentRow[]; faded: boolean; needs: boolean };
 
-/** What its agent is doing: Asking, working, idle, or no agent. */
-export function agentOf(n: MapNode): Agent {
+export const ROLE: Record<Role, string> = { implementer: "Implementer", reviewer: "Reviewer" };
+
+/** What each Agent state means, in words: its row's tip and accessible name, its panel's header. */
+export const SAYS: Record<AgentState, string> = {
+  working: "Working",
+  asking: "Asking you something",
+  idle: "Idle: finished its turn",
+  done: "Done",
+  unknown: "Not known: herdr could not be read",
+};
+
+const STATES: Record<string, AgentState> = { working: "working", blocked: "asking", idle: "idle", done: "done" };
+
+/** Its live agents, the Implementer then the Reviewer: none that herdr no longer lists (`gone`) or that it never had. */
+export function agentsOf(n: MapNode): AgentRow[] {
   const a = n.agent_state;
-  // A tick's record of the Asking says it while herdr cannot.
-  if (n.asking !== null || a?.implementer === "blocked") return "asking";
-  if (!a) return null;
-  if (a.implementer === "working" || a.reviewer === "working") return "working";
-  if (["idle", "done"].includes(a.implementer) || ["idle", "done"].includes(a.reviewer ?? "")) return "idle";
-  return null;
+  if (!a) return [];
+  const rows: AgentRow[] = [];
+  for (const role of ["implementer", "reviewer"] as const) {
+    const said = a[role];
+    if (said === null || said === "gone") continue;
+    // A tick's record of the Asking says it while herdr cannot.
+    const asked = role === "implementer" && n.asking !== null;
+    rows.push({ role, state: asked ? "asking" : (STATES[said] ?? "unknown") });
+  }
+  return rows;
 }
 
 /** The short line under a node's Stage: its review's while PR draft, why it waits while Waiting, less its own key, or who has it. */
@@ -101,8 +131,8 @@ export const needs = (n: MapNode) =>
   n.stage === "Verified" ||
   review.needsYou(n.review);
 
-/** A row under the Stage for its agent, its line, or both. */
-const heightOf = (n: MapNode) => NODE.height + (line(n) || agentOf(n) ? NODE.row : 0);
+/** A row under the Stage for its line, and one per live agent, each `agentRow` tall. */
+const heightOf = (n: MapNode, agentRow: number) => NODE.height + (line(n) ? NODE.row : 0) + agentsOf(n).length * agentRow;
 
 /** An edge as drawn: its points run left to right, the arrowhead at the last. */
 export type Drawn = MapEdge & { points: Point[] };
@@ -124,10 +154,12 @@ const GAP = 24;
  * Blockers left, the issues they block right; then the groups packed into rows
  * as wide as `room` (the field, in px), or wider when they would not fit its
  * height, to its shape: the largest first, the unlinked issues wrapping into a grid.
+ * Each live agent's row is `agentRow` tall.
  */
 export function layout(
   map: MapData,
   room = { width: 1200, height: 800 },
+  agentRow = NODE.agent,
 ): { width: number; height: number; nodes: Placed[]; edges: Drawn[] } {
   // A stack edge comes from the stacked issue; lay it out from the issue whose PR it sits on.
   const ends = (e: MapEdge): [string, string] => (e.kind === "stack" ? [e.to, e.from] : [e.from, e.to]);
@@ -144,7 +176,7 @@ export function layout(
     const g = new dagre.graphlib.Graph();
     g.setGraph({ rankdir: "LR", nodesep: 16, ranksep: 48, edgesep: 8 });
     g.setDefaultEdgeLabel(() => ({}));
-    for (const n of nodes) g.setNode(n.key, { width: NODE.width, height: heightOf(n) });
+    for (const n of nodes) g.setNode(n.key, { width: NODE.width, height: heightOf(n, agentRow) });
     const keys = new Set(nodes.map((n) => n.key));
     for (const e of edges) if (keys.has(e.from)) g.setEdge(...ends(e));
     dagre.layout(g);
@@ -174,10 +206,10 @@ export function layout(
       return {
         ...n,
         x: at.x + x - NODE.width / 2,
-        y: at.y + y - heightOf(n) / 2,
-        height: heightOf(n),
+        y: at.y + y - heightOf(n, agentRow) / 2,
+        height: heightOf(n, agentRow),
         line: line(n),
-        agent: agentOf(n),
+        agents: agentsOf(n),
         // serve sends a merged issue for 7 days after its merge, unless the map hides them.
         faded: n.stage === "Merged",
         needs: needs(n),

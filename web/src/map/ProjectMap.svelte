@@ -10,17 +10,23 @@
   // dagre lays out each group of linked issues left to right, the groups packed
   // to the field's shape (layout.ts); the field pans and zooms, a node opens its
   // inspector. Each node is a card: its title first, then its number and Repo,
-  // then its Stage in words beside its mark, its PR, and its agent's state.
+  // then its Stage in words beside its mark and its PR, then a row per live
+  // agent, which opens that agent's panel.
   import { flushSync, tick, untrack } from "svelte";
+  import { MediaQuery } from "svelte/reactivity";
   import { watch } from "../live";
   import { still } from "../motion";
   import { selection } from "../selection.svelte";
   import { stageHue } from "../hues";
-  import { number, numbered, repoName, type Dispatch, type Project } from "../status";
-  import { layout, NODE, withoutMerged, type Placed } from "./layout";
+  import { number, numbered, repoName, type Project } from "../status";
+  import AgentDot from "./AgentDot.svelte";
+  import { layout, NODE, ROLE, SAYS, withoutMerged, type Placed, type Role } from "./layout";
   import Mark from "./Mark.svelte";
 
-  let { project, dispatches }: { project: Project; dispatches: Dispatch[] } = $props();
+  let { project }: { project: Project } = $props();
+
+  /** A phone's agent rows are 44px targets at the map's least scale. */
+  const phone = new MediaQuery("(width < 720px)");
 
   const PAD = 16;
   let failure = $state<string | null>(null);
@@ -56,7 +62,8 @@
   }
   const merged = $derived(shown.map?.nodes.filter((n) => n.stage === "Merged").length ?? 0);
 
-  const drawn = $derived(shown.map && room.width ? layout(hideMerged ? withoutMerged(shown.map) : shown.map, room) : null);
+  const agentRow = $derived(phone.current ? NODE.touchAgent : NODE.agent);
+  const drawn = $derived(shown.map && room.width ? layout(hideMerged ? withoutMerged(shown.map) : shown.map, room, agentRow) : null);
 
   // The Project's name, not its object: each status read makes a new one, and the map
   // (and the panel reading it) must not start over on every change.
@@ -142,8 +149,10 @@
     void tick().then(() => reveal(n.key));
   });
 
-  function open(key: string) {
-    selection.issue = key;
+  /** Open `key`'s panel, or with `agent` that agent's, in its place. */
+  function open(key: string, agent: Role | null = null) {
+    // The Project named too: none is chosen yet while the first one shows by default.
+    Object.assign(selection, { project: project.name, issue: key, agent });
   }
 
   // A mouse drag pans the field's scroll, a finger's scrolls it natively; pinch, or Ctrl and the
@@ -196,32 +205,12 @@
 
   const prNumber = (url: string) => url.split("/").pop();
 
-  /** The Harness of the agent at work on `n`: its Reviewer's while that one works alone, else its Implementer's. */
-  function harnessAt(n: Placed): string | null {
-    const d = dispatches.filter((d) => d.issue === n.key && d.closed_at === null).at(-1);
-    const reviewing = n.agent_state?.implementer !== "working" && n.agent_state?.reviewer === "working";
-    return (reviewing ? d?.review?.harness : d?.implementer.harness) ?? null;
-  }
-
-  /** What its agent is doing, in words: `Asking · claude`, `Working · codex`, `Idle`. */
-  function doing(n: Placed) {
-    const harness = n.agent && harnessAt(n);
-    const word = { asking: "Asking", working: "Working", idle: "Idle" }[n.agent!];
-    return harness ? `${word} · ${harness}` : word;
-  }
-
-  /** The row under the Stage: its agent's state, then its line. */
-  const detail = (n: Placed) => [n.agent && doing(n), n.line].filter(Boolean).join(" · ");
-
-  /** What a screen reader hears for a node: the same rows, in words. */
+  /** What a screen reader hears for a node: the same rows, in words; each agent's row says its own. */
   function said(n: Placed) {
-    const a = n.agent;
-    const harness = a && harnessAt(n);
     return [
       numbered(n.key, n.repo, project.repos),
       n.title ?? "",
       n.stage ?? "Blocker",
-      a && `agent ${a}${harness ? ` on ${harness}` : ""}`,
       n.pr && `PR ${prNumber(n.pr.url)}${n.pr.draft ? " draft" : ""}`,
       n.line,
       n.needs && "needs you",
@@ -272,44 +261,63 @@
           </svg>
           {#each drawn.nodes as n (n.key)}
             {@const repo = repoName(n.repo, project.repos)}
-            {@const more = detail(n)}
-            <button
-              type="button"
+            {@const opened = selection.issue === n.key}
+            <div
               class="node-card"
               data-key={n.key}
-              class:selected={selection.issue === n.key}
+              class:selected={opened}
               class:faded={n.faded}
               style:left="{n.x}px"
               style:top="{n.y}px"
               style:width="{NODE.width}px"
               style:height="{n.height}px"
               style:--hue={stageHue(n.stage)}
-              aria-label={said(n)}
-              aria-pressed={selection.issue === n.key}
-              title={n.title ?? n.key}
-              onclick={() => open(n.key)}
-              onfocus={() => reveal(n.key)}
+              style:--agent-row="{agentRow}px"
             >
-              {#if n.title}
-                <span class="title">{n.title}</span>
-              {:else}
-                <span class="title unknown">Title not read</span>
-              {/if}
-              <span class="row">
-                <span class="ref">{number(n.key, n.repo ?? "")}<span class="muted">{[repo, n.kind !== "code" && n.kind].filter(Boolean).map((part) => ` · ${part}`).join("")}</span></span>
-                {#if n.needs}<span class="needs">Needs you</span>{/if}
-              </span>
-              {#key n.stage}
-                <span class="row stage" class:flash={flashed.has(n.key)}>
-                  <span class="word">
-                    {#if n.stage}<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><Mark stage={n.stage} /></svg>{/if}
-                    <span class:unknown={!n.stage}>{n.stage ?? "Blocker"}</span>
-                  </span>
-                  {#if n.pr}<span class="muted">PR {prNumber(n.pr.url)}{n.pr.draft ? " draft" : ""}</span>{/if}
+              <!-- The card is its open button, but for its agents' rows, each a button of its own. -->
+              <button
+                type="button"
+                class="open"
+                aria-label={said(n)}
+                aria-pressed={opened && !selection.agent}
+                title={n.title ?? n.key}
+                onclick={() => open(n.key)}
+                onfocus={() => reveal(n.key)}
+              >
+                {#if n.title}
+                  <span class="title">{n.title}</span>
+                {:else}
+                  <span class="title unknown">Title not read</span>
+                {/if}
+                <span class="row">
+                  <span class="ref">{number(n.key, n.repo ?? "")}<span class="muted">{[repo, n.kind !== "code" && n.kind].filter(Boolean).map((part) => ` · ${part}`).join("")}</span></span>
+                  {#if n.needs}<span class="needs">Needs you</span>{/if}
                 </span>
-              {/key}
-              {#if more}<span class="detail" class:asking={n.agent === "asking"}>{more}</span>{/if}
-            </button>
+                {#key n.stage}
+                  <span class="row stage" class:flash={flashed.has(n.key)}>
+                    <span class="word">
+                      {#if n.stage}<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><Mark stage={n.stage} /></svg>{/if}
+                      <span class:unknown={!n.stage}>{n.stage ?? "Blocker"}</span>
+                    </span>
+                    {#if n.pr}<span class="muted">PR {prNumber(n.pr.url)}{n.pr.draft ? " draft" : ""}</span>{/if}
+                  </span>
+                {/key}
+                {#if n.line}<span class="detail">{n.line}</span>{/if}
+              </button>
+              {#each n.agents as a (a.role)}
+                <button
+                  type="button"
+                  class="agent"
+                  data-says={SAYS[a.state]}
+                  aria-label="{ROLE[a.role]}, {SAYS[a.state].toLowerCase()}"
+                  aria-pressed={opened && selection.agent === a.role}
+                  onclick={() => open(n.key, a.role)}
+                  onfocus={() => reveal(n.key)}
+                >
+                  <AgentDot state={a.state} />{ROLE[a.role]}
+                </button>
+              {/each}
+            </div>
           {/each}
         </div>
       </div>
@@ -523,6 +531,105 @@
     stroke: var(--accent);
   }
 
+  /* The card frames its open button and its agents' rows; the open button's click reaches over all of it but the rows. */
+  .node-card {
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+    cursor: default;
+  }
+  .open {
+    flex: 1;
+    display: grid;
+    align-content: start;
+    row-gap: 4px;
+    min-height: 0;
+    padding: 8px 12px;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  .open::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+  }
+  .open:focus-visible {
+    outline: none;
+  }
+  .node-card:has(.open:focus-visible) {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+  }
+  /* An agent's row: its dot and role; what its state means on hover and focus, as its accessible name says it. */
+  .agent {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: none;
+    height: var(--agent-row);
+    padding: 0 12px;
+    border: 0;
+    border-top: 1px solid var(--hairline);
+    background: none;
+    color: var(--ink);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  .agent:last-child {
+    border-radius: 0 0 calc(var(--radius) - 1px) calc(var(--radius) - 1px);
+  }
+  .agent:hover {
+    background: var(--raised);
+  }
+  .agent[aria-pressed="true"] {
+    background: var(--accent-soft);
+    font-weight: 600;
+  }
+  .agent:focus-visible {
+    outline-offset: -2px;
+  }
+  .agent::after {
+    content: attr(data-says);
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 8px;
+    z-index: 20;
+    padding: 4px 8px;
+    background: var(--surface);
+    color: var(--ink);
+    font-weight: 400;
+    white-space: nowrap;
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-control);
+    box-shadow: var(--shadow-pop);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 120ms ease-out, visibility 0s 120ms;
+  }
+  .agent:hover::after,
+  .agent:focus-visible::after {
+    opacity: 1;
+    visibility: visible;
+    transition: opacity 120ms ease-out 300ms, visibility 0s 300ms;
+  }
+  .agent:focus-visible::after {
+    transition: none;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .agent::after {
+      transition: none !important;
+    }
+  }
+
   /* Merged: set back on the page's ground, dashed, its text still full contrast. */
   .node-card.faded {
     background: var(--ground);
@@ -559,10 +666,6 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-  .detail.asking {
-    color: var(--ink);
-    font-weight: 600;
   }
   /* A refetch that changed its Stage: the row flashes once. */
   .flash {
