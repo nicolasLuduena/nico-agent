@@ -47,6 +47,8 @@ impl Ran {
 pub struct Events<'a> {
     t: &'a Setup,
     poll: Poll,
+    /// How often it polls.
+    pub every: Duration,
 }
 
 impl Events<'_> {
@@ -200,11 +202,27 @@ impl Setup {
 
     /// Open `serve`'s event stream: what each 10-second poll of it sends.
     pub fn events(&self) -> Events<'_> {
-        let Answer::Events { every, poll } = self.request("GET", "/api/events", "") else {
-            panic!("GET /api/events answered whole");
+        let events = self.stream("/api/events");
+        assert_eq!(events.every, Duration::from_secs(10));
+        events
+    }
+
+    /// Open the event stream `GET path` of `serve` answers.
+    pub fn stream(&self, path: &str) -> Events<'_> {
+        self.stream_with(path, &[])
+    }
+
+    /// [`Setup::stream`] with `headers` besides its Host.
+    pub fn stream_with(&self, path: &str, headers: &[(&str, &str)]) -> Events<'_> {
+        let headers = [&[("Host", HOST)], headers].concat();
+        let Answer::Events { every, poll } = self.request_with("GET", path, &headers, "") else {
+            panic!("GET {path} answered whole");
         };
-        assert_eq!(every, Duration::from_secs(10));
-        Events { t: self, poll }
+        Events {
+            t: self,
+            poll,
+            every,
+        }
     }
 
     /// Run `nico-agent <argv>` against the FakeWorld.

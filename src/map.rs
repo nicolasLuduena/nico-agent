@@ -11,6 +11,7 @@ use crate::cli::{Context, Refusal};
 use crate::config::{self, Config};
 use crate::dispatch::{self, Dispatch};
 use crate::http;
+use crate::launch::AgentLaunch;
 use crate::source::{self, Issue};
 use crate::stage;
 use crate::state;
@@ -235,21 +236,44 @@ pub const SCREEN_LINES: usize = 200;
 /// issue with no live Dispatch, or a role with no agent herdr lists. herdr's
 /// alone: no GitHub call.
 pub fn screen(ctx: &Context, issue: &str, role: &str) -> Result<Value, Refusal> {
+    let (_, _, launch) = live_agent(ctx, issue, role)?;
+    let agents = ctx.world.herdr_agents()?;
+    let agent = launch.map(|l| l.agent);
+    let Some(agent) = agent.filter(|a| world::agent_state(&agents, a).is_some()) else {
+        return Err(Refusal::new(
+            format!("{issue} has no {role} in herdr"),
+            vec![SEE.into()],
+        ));
+    };
+    Ok(match ctx.world.herdr_agent_recent(&agent, SCREEN_LINES) {
+        Ok(screen) => json!({ "agent": agent, "screen": screen }),
+        Err(e) => json!({ "agent": agent, "unread": e.0 }),
+    })
+}
+
+const SEE: &str = "See its agents in `nico-agent status --json`";
+
+/// The live Dispatch of `issue`, in `config`, and the launch of its agent
+/// in `role` (implementer or reviewer), none while it has no Reviewer.
+pub fn live_agent(
+    ctx: &Context,
+    issue: &str,
+    role: &str,
+) -> Result<(Config, Dispatch, Option<AgentLaunch>), Refusal> {
     let config = config::load(&ctx.config_dir)?;
     let dispatches = dispatch::load(&ctx.config_dir)?;
-    let see = "See its agents in `nico-agent status --json`".to_string();
     let live = (dispatch::key(&config, &dispatches, issue).ok())
         .and_then(|key| dispatches.iter().rfind(|d| d.issue == key))
         .filter(|d| d.closed_at.is_none());
     let Some(d) = live else {
         return Err(Refusal::new(
             format!("{issue} has no live Dispatch"),
-            vec![see],
+            vec![SEE.into()],
         ));
     };
-    let agent = match role {
-        "implementer" => Some(&d.implementer.agent),
-        "reviewer" => d.reviewer.as_ref().map(|r| &r.launch.agent),
+    let launch = match role {
+        "implementer" => Some(d.implementer.clone()),
+        "reviewer" => d.reviewer.as_ref().map(|r| r.launch.clone()),
         _ => {
             let mut bad = Refusal::new(
                 format!("{role} is not a role: implementer or reviewer"),
@@ -259,15 +283,5 @@ pub fn screen(ctx: &Context, issue: &str, role: &str) -> Result<Value, Refusal> 
             return Err(bad);
         }
     };
-    let agents = ctx.world.herdr_agents()?;
-    let Some(agent) = agent.filter(|a| world::agent_state(&agents, a).is_some()) else {
-        return Err(Refusal::new(
-            format!("{issue} has no {role} in herdr"),
-            vec![see],
-        ));
-    };
-    Ok(match ctx.world.herdr_agent_recent(agent, SCREEN_LINES) {
-        Ok(screen) => json!({ "agent": agent, "screen": screen }),
-        Err(e) => json!({ "agent": agent, "unread": e.0 }),
-    })
+    Ok((config, d.clone(), launch))
 }

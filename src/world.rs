@@ -7,7 +7,7 @@ mod linear;
 
 use std::fmt;
 use std::fs;
-use std::io::{self, BufRead, BufReader, Read, Write};
+use std::io::{self, BufRead, BufReader, Read, Seek, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
@@ -270,6 +270,17 @@ pub enum Answer {
     Events { every: Duration, poll: Poll },
 }
 
+/// A Harness's newest session for a folder, read past a place in it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Transcript {
+    /// Its id: claude's transcript file's name, opencode's session's.
+    pub session: String,
+    /// What it holds past that place, a JSON object a line: claude's lines as
+    /// it writes them, the last maybe not whole yet; opencode's messages,
+    /// oldest first, a message maybe still being written.
+    pub lines: Vec<u8>,
+}
+
 /// What an event stream sends at a poll, given the World of its thread.
 pub type Poll = Box<dyn FnMut(&dyn World) -> String>;
 
@@ -433,6 +444,22 @@ pub trait World {
     /// Open a workspace on the folder `cwd`, with no worktree, without focusing it.
     fn herdr_workspace_create(&self, cwd: &str, label: &str) -> WorldResult<Workspace>;
 
+    // Harnesses' own sessions
+    /// The newest session the Harness `harness` keeps for the folder `cwd`,
+    /// read past `after` (a session and a place in it) when it is that
+    /// session, else whole; `None` when it keeps none for the folder. claude's:
+    /// the transcript under `~/.claude/projects/` it last wrote, past a byte
+    /// offset. opencode's: its newest top-level session there, asked of its
+    /// background service through `command api`, past a message's id. No other
+    /// Harness's is read.
+    fn harness_transcript(
+        &self,
+        harness: &str,
+        command: &str,
+        cwd: &str,
+        after: Option<(&str, &str)>,
+    ) -> WorldResult<Option<Transcript>>;
+
     // opencode
     /// Save `effort` as opencode's variant for `model` in its variant `file`
     /// (`~/` is the home directory), keeping the rest; `None` clears it. A
@@ -520,6 +547,8 @@ fn answer(world: &RealWorld, handler: &Handler, mut stream: TcpStream) -> io::Re
         }
         Answer::Events { every, mut poll } => {
             stream.write_all(b"HTTP/1.1 200 \r\nContent-Type: text/event-stream\r\nCache-Control: no-cache\r\nConnection: close\r\n\r\n")?;
+            // At once, so a stream opens on what it has so far.
+            stream.write_all(poll(world).as_bytes())?;
             // Waiting to read is the timer: a read that times out is the next
             // poll, and an end of the stream is the client gone.
             stream.set_read_timeout(Some(every))?;
@@ -1055,6 +1084,49 @@ fn list_tree(dir: &Path, under: &Path, files: &mut Vec<PathBuf>) -> io::Result<(
         }
     }
     Ok(())
+}
+
+/// What opencode's background service answers `GET path`, through `command api`.
+fn opencode_api(command: &str, path: &str) -> WorldResult<Value> {
+    let shown = format!(
+        "{command} api GET {}",
+        path.split('?').next().unwrap_or(path)
+    );
+    let ran = run_till(
+        Command::new(command)
+            .args(["api", "GET", path])
+            .stdin(Stdio::null()),
+        deadline(),
+        &shown,
+        |_| WorldError(format!("`{command}` is not installed or not on PATH")),
+    )?;
+    let out = String::from_utf8_lossy(&ran.stdout);
+    if !ran.status.success() {
+        let said = first_line(&ran.stderr, &ran.status);
+        let said = out
+            .lines()
+            .next()
+            .filter(|l| !l.is_empty())
+            .map_or(said, String::from);
+        return Err(WorldError(format!("`{shown}` failed: {said}")));
+    }
+    serde_json::from_str(&out).map_err(|_| invalid(&shown))
+}
+
+/// `bytes` in unpadded base64url.
+fn base64url(bytes: &[u8]) -> String {
+    const DIGITS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    let mut out = String::new();
+    for chunk in bytes.chunks(3) {
+        let n = chunk
+            .iter()
+            .enumerate()
+            .fold(0u32, |n, (i, b)| n | u32::from(*b) << (16 - 8 * i));
+        for i in 0..=chunk.len() {
+            out.push(char::from(DIGITS[(n >> (18 - 6 * i) & 63) as usize]));
+        }
+    }
+    out
 }
 
 /// `path` with a leading `~/` the home directory.
@@ -1733,6 +1805,76 @@ impl World for RealWorld {
             tab: herdr_tab(&result)?,
         })
     }
+    fn harness_transcript(
+        &self,
+        harness: &str,
+        command: &str,
+        cwd: &str,
+        after: Option<(&str, &str)>,
+    ) -> WorldResult<Option<Transcript>> {
+        let at = |session: &str| after.filter(|(had, _)| *had == session).map(|(_, at)| at);
+        match harness {
+            "claude" => {
+                // shortcut: a folder name past claude's 200-character cut is hashed by it, not read here; read its rule if one ever is.
+                let munged: String = (cwd.chars())
+                    .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+                    .collect();
+                let dir = home(&format!("~/.claude/projects/{munged}"));
+                let newest = (fs::read_dir(&dir).into_iter().flatten().flatten())
+                    .map(|entry| entry.path())
+                    .filter(|path| path.extension().is_some_and(|e| e == "jsonl"))
+                    .filter_map(|path| Some((fs::metadata(&path).ok()?.modified().ok()?, path)))
+                    .max();
+                let Some((_, path)) = newest else {
+                    return Ok(None);
+                };
+                let session = (path.file_stem().unwrap_or_default())
+                    .to_string_lossy()
+                    .into_owned();
+                let from: u64 = at(&session).and_then(|at| at.parse().ok()).unwrap_or(0);
+                let unread =
+                    |e: io::Error| WorldError(format!("could not read {}: {e}", path.display()));
+                let mut file = fs::File::open(&path).map_err(unread)?;
+                file.seek(io::SeekFrom::Start(from)).map_err(unread)?;
+                let mut lines = vec![];
+                file.read_to_end(&mut lines).map_err(unread)?;
+                Ok(Some(Transcript { session, lines }))
+            }
+            "opencode" => {
+                let sessions = opencode_api(
+                    command,
+                    &format!(
+                        "/api/session?directory={}&parentID=null&order=desc&limit=1",
+                        crate::http::escaped(cwd)
+                    ),
+                )?;
+                let Some(session) = sessions["data"][0]["id"].as_str().map(String::from) else {
+                    return Ok(None);
+                };
+                // opencode's cursor for the messages after one: unpadded base64url of this JSON.
+                let page = at(&session).map_or("order=asc".into(), |at| {
+                    let next = format!(
+                        r#"{{"id":{},"order":"asc","direction":"next"}}"#,
+                        Value::from(at)
+                    );
+                    format!("cursor={}", base64url(next.as_bytes()))
+                });
+                let messages = opencode_api(
+                    command,
+                    &format!("/api/session/{session}/message?{page}&limit=100"),
+                )?;
+                let lines = (messages["data"].as_array().into_iter().flatten())
+                    .map(|m| format!("{m}\n"))
+                    .collect::<String>();
+                Ok(Some(Transcript {
+                    session,
+                    lines: lines.into_bytes(),
+                }))
+            }
+            _ => Ok(None),
+        }
+    }
+
     fn opencode_save_variant(
         &self,
         file: &str,

@@ -49,6 +49,10 @@ pub struct FakeWorld {
     pub agent_panes: RefCell<HashMap<String, String>>,
     /// What `herdr agent read` shows of each named agent.
     pub screens: RefCell<HashMap<String, String>>,
+    /// The newest session each Harness keeps for a folder, by `<harness>
+    /// <folder>`: its id and its lines, claude's as it writes them,
+    /// opencode's messages a JSON object each.
+    pub transcripts: RefCell<BTreeMap<String, (String, Vec<u8>)>>,
     /// The startup question the next agents started are blocked on, shown as
     /// their screen until keys are sent to one.
     pub blocked_screen: RefCell<Option<String>>,
@@ -119,6 +123,7 @@ impl Default for FakeWorld {
             agents: Default::default(),
             agent_panes: Default::default(),
             screens: Default::default(),
+            transcripts: Default::default(),
             blocked_screen: Default::default(),
             stalled_prompts: Default::default(),
             lagging_prompts: Default::default(),
@@ -792,6 +797,61 @@ impl World for FakeWorld {
         let screen = self.screens.borrow().get(name).cloned().unwrap_or_default();
         let from = screen.lines().count().saturating_sub(lines);
         Ok(screen.lines().skip(from).collect::<Vec<_>>().join("\n"))
+    }
+
+    fn harness_transcript(
+        &self,
+        harness: &str,
+        command: &str,
+        cwd: &str,
+        after: Option<(&str, &str)>,
+    ) -> WorldResult<Option<Transcript>> {
+        let held = (self.transcripts.borrow().get(&format!("{harness} {cwd}"))).cloned();
+        let at = (held.as_ref())
+            .and_then(|(session, _)| after.filter(|(had, _)| had == session))
+            .map(|(_, at)| at.to_string());
+        if harness == "claude" {
+            let munged: String = (cwd.chars())
+                .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+                .collect();
+            let from: usize = at.map_or(0, |at| at.parse().unwrap());
+            self.call(format!(
+                "tail -c +{} $(ls -t ~/.claude/projects/{munged}/*.jsonl | head -1)",
+                from + 1
+            ))?;
+            return Ok(held.map(|(session, lines)| Transcript {
+                session,
+                lines: lines[from..].to_vec(),
+            }));
+        }
+        self.call(format!(
+            "{command} api GET /api/session?directory={cwd}&parentID=null&order=desc&limit=1"
+        ))?;
+        let Some((session, lines)) = held else {
+            return Ok(None);
+        };
+        // The real cursor is opencode's own encoding of the message it follows.
+        let page = at
+            .as_ref()
+            .map_or("order=asc".into(), |at| format!("cursor=<next after {at}>"));
+        self.call(format!(
+            "{command} api GET /api/session/{session}/message?{page}&limit=100"
+        ))?;
+        let text = String::from_utf8(lines).unwrap();
+        let mut messages: Vec<&str> = text.lines().collect();
+        if let Some(at) = at {
+            let id = |m: &&str| serde_json::from_str::<serde_json::Value>(m).unwrap()["id"] == *at;
+            let past = messages.iter().position(id).map_or(0, |i| i + 1);
+            messages.drain(..past);
+        }
+        let lines = messages
+            .iter()
+            .map(|m| format!("{m}\n"))
+            .collect::<String>();
+        Ok(Some(Transcript {
+            session,
+            lines: lines.into_bytes(),
+        }))
     }
 
     /// Answers the startup question the agent is blocked on.

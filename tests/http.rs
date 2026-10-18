@@ -191,6 +191,7 @@ fn an_unknown_path_or_method_answers_404_with_the_routes_as_help() {
         "GET /api/roadmap/<project>: every open issue of the Project's Repos not labelled ready-for-agent, in lanes by label, and how they block each other",
         "GET /api/node/<issue>: the issue's Dispatch, its restarts, its Verdict's findings and its Evidence",
         "GET /api/agent/<issue>/<role>: the last 200 lines of the issue's live implementer or reviewer as herdr reads them (its screen while herdr scrolls it only idle), or why herdr could not",
+        "GET /api/agent/<issue>/<role>/transcript: a stream of the chat its claude or opencode session holds, then of each entry as it lands, resumed past `?after=` or `Last-Event-ID`; `missing`, with why, while there is none to read",
         "GET /api/events: a stream of `changed`, sent when state or an Agent state changes, and a keepalive comment otherwise",
         "POST /api/dispatch {issue, harness, model, effort}: `nico-agent dispatch` of the issue",
         "POST /api/refresh: `nico-agent refresh`",

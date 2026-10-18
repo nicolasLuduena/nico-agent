@@ -1,8 +1,9 @@
 <script lang="ts">
   // An agent's panel (desktop) or bottom sheet (phone), in place of its issue's:
-  // its role and Agent state, then its last 200 lines (its screen while herdr
-  // scrolls it only idle) from /api/agent/<issue>/<role>, read again every 3 s while it is open and the
-  // page is visible; under an Asking Implementer's, the answer controls.
+  // its role and Agent state, then its chat, streamed from /api/agent/<issue>/<role>/transcript while
+  // it is open and the page is visible, or beside it its last 200 lines (its screen while herdr
+  // scrolls it only idle) from /api/agent/<issue>/<role>, read again every 3 s likewise, shown in the
+  // chat's place while there is none to read; under an Asking Implementer's, the answer controls.
   import { Button } from "$lib/components/ui/button/index.js";
   import { onMount } from "svelte";
   import Answer from "../controls/Answer.svelte";
@@ -70,11 +71,67 @@
     };
   });
 
+  type Entry = { role: string; text?: string };
+  let entries = $state<Entry[]>([]);
+  /** Why there is no chat to read, while there is none. */
+  let missing = $state<string | null>(null);
+  let chatOpened = $state(false);
+  let view = $state<"chat" | "screen">("chat");
+  const said = $derived(entries.filter((e) => e.text));
+  /** The chat is shown unless asked for the screen, or there is none to read. */
+  const chatting = $derived(view === "chat" && !(missing !== null && said.length === 0));
+
+  // One stream while the panel is open and the page visible; reopened past the last entry it had.
+  $effect(() => {
+    const path = `/api/agent/${encodeURIComponent(issue)}/${role}/transcript`;
+    entries = [];
+    missing = null;
+    chatOpened = false;
+    let session: string | null = null;
+    let last: string | null = null;
+    let source: EventSource | null = null;
+    const open = () => {
+      source?.close();
+      source = null;
+      if (document.hidden) return;
+      source = new EventSource(last ? `${path}?after=${encodeURIComponent(last)}` : path);
+      source.addEventListener("session", (e) => {
+        const now = JSON.parse(e.data).session;
+        if (now !== session) entries = [];
+        session = now;
+        chatOpened = true;
+        missing = null;
+      });
+      source.addEventListener("entries", (e) => {
+        entries = [...entries, ...JSON.parse(e.data).entries];
+        last = e.lastEventId;
+      });
+      source.addEventListener("missing", (e) => {
+        missing = JSON.parse(e.data).missing;
+        chatOpened = true;
+      });
+      // Refused (no live Dispatch, no such agent): the browser gives up on it, and the screen stands in.
+      source.onerror = () => {
+        if (source?.readyState === EventSource.CLOSED) missing ??= "nico-agent serve refused its chat";
+      };
+    };
+    document.addEventListener("visibilitychange", open);
+    open();
+    return () => {
+      document.removeEventListener("visibilitychange", open);
+      source?.close();
+    };
+  });
+
+  const PREFIX: Record<string, string> = { user: "› ", tool: "▸ ", result: "  ⎿ " };
+
   // Pinned to its foot, where the agent writes, unless the user has scrolled up.
   let box = $state<HTMLElement>();
   let pinned = true;
   $effect(() => {
     void text;
+    void said.length;
+    void chatting;
     if (box && pinned) box.scrollTop = box.scrollHeight;
   });
   function scrolled() {
@@ -138,6 +195,29 @@
   </header>
 
   <div class="section">
+    <div class="switch" role="group" aria-label="Show">
+      <button type="button" aria-pressed={view === "chat"} onclick={() => (view = "chat")}>Chat</button>
+      <button type="button" aria-pressed={view === "screen"} onclick={() => (view = "screen")}>Screen</button>
+    </div>
+    {#if chatting}
+      {#if !chatOpened}
+        <p class="note">Reading its chat…</p>
+      {:else}
+        {#if missing}
+          <p class="errata" role="status"><strong>{missing}</strong></p>
+        {/if}
+        <!-- Scrolls inside its box, so a keyboard can reach it. -->
+        <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+        <div class="chat" role="log" tabindex="0" aria-label="The {ROLE[role]}'s chat" bind:this={box} onscroll={scrolled}>
+          {#each said as e, i (i)}
+            <p class={e.role}>{PREFIX[e.role] ?? ""}{e.text}</p>
+          {/each}
+        </div>
+      {/if}
+    {:else}
+    {#if view === "chat" && missing}
+      <p class="note">No chat to read: {missing}. Its screen:</p>
+    {/if}
     {#if unread}
       <p class="errata" role="status"><strong>{readAt ? `Last read ${clock(readAt)}` : "Not read yet"} · {unread}</strong></p>
     {:else if screen === null}
@@ -147,6 +227,7 @@
       <!-- Scrolls inside its box, so a keyboard can reach it. -->
       <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
       <pre class="screen" tabindex="0" aria-label="The {ROLE[role]}'s screen" bind:this={box} onscroll={scrolled}>{text}</pre>
+    {/if}
     {/if}
   </div>
 
@@ -176,6 +257,59 @@
   .errata {
     margin-bottom: 8px;
   }
+  /* Chat | Screen, the theme switch's segments. */
+  .switch {
+    display: inline-flex;
+    margin-bottom: 8px;
+    padding: 2px;
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-control);
+    background: var(--raised);
+  }
+  .switch button {
+    min-height: 30px;
+    padding: 0 10px;
+    border: 0;
+    border-radius: 4px;
+    background: none;
+    color: var(--ink-muted);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .switch button:hover {
+    color: var(--ink);
+  }
+  .switch button[aria-pressed="true"] {
+    background: var(--surface);
+    color: var(--ink);
+    box-shadow: var(--shadow), 0 0 0 1px var(--hairline);
+  }
+  .switch button:focus-visible {
+    position: relative;
+  }
+  /* The chat, plain text as the screen is, but each entry wrapped: never a sideways scroll. */
+  .chat {
+    max-height: 32em;
+    overflow: auto;
+    overscroll-behavior: contain;
+    padding: 8px 12px;
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-control);
+    background: var(--ground);
+    color: var(--ink);
+    font: 400 13px/1.4 var(--mono);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  .chat p {
+    margin: 0 0 8px;
+  }
+  .chat .thinking,
+  .chat .tool,
+  .chat .result {
+    color: var(--ink-muted);
+  }
   /* The screen as herdr reads it, plain: unwrapped, scrolling inside its own box, never the panel or the page. */
   .screen {
     margin: 0;
@@ -192,8 +326,12 @@
     tab-size: 8;
   }
   @media (width < 720px) {
-    .screen {
+    .screen,
+    .chat {
       max-height: 40vh;
+    }
+    .switch button {
+      min-height: 44px;
     }
     .bar .ref {
       display: inline-flex;

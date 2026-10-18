@@ -25,6 +25,7 @@ use crate::roadmap;
 use crate::stage;
 use crate::state;
 use crate::status;
+use crate::transcript;
 use crate::world::{AgentState, Answer, HttpRequest, HttpResponse, World};
 
 /// The app, as `build.rs` built it from `web/`: each file's path, Content-Type and bytes.
@@ -52,6 +53,10 @@ const ROUTES: &[(&str, &str)] = &[
     (
         "GET /api/agent/<issue>/<role>",
         "the last 200 lines of the issue's live implementer or reviewer as herdr reads them (its screen while herdr scrolls it only idle), or why herdr could not",
+    ),
+    (
+        "GET /api/agent/<issue>/<role>/transcript",
+        "a stream of the chat its claude or opencode session holds, then of each entry as it lands, resumed past `?after=` or `Last-Event-ID`; `missing`, with why, while there is none to read",
     ),
     (
         "GET /api/events",
@@ -137,6 +142,24 @@ pub fn answer(ctx: &Context, port: u16, request: &HttpRequest) -> Answer {
                 help,
             )
         }
+        ("GET", path)
+            if let Some(at) = (path.strip_prefix("/api/agent/"))
+                .and_then(|at| at.strip_suffix("/transcript")) =>
+        {
+            // `owner/repo#N/role`, the issue escaped, as the screen's.
+            let (issue, role) = at.rsplit_once('/').unwrap_or((at, ""));
+            let after = header(request, "Last-Event-ID")
+                .map(String::from)
+                .or_else(|| {
+                    let query = request.url.split_once('?')?.1;
+                    (query.split('&'))
+                        .find_map(|pair| Some(unescaped(pair.strip_prefix("after=")?)))
+                });
+            match transcript::stream(ctx, &unescaped(issue), role, after.as_deref()) {
+                Ok(stream) => stream,
+                Err(no) => ran(Err(no)),
+            }
+        }
         ("GET", path) if let Some(at) = path.strip_prefix("/api/agent/") => {
             // `owner/repo#N/role`, the issue escaped.
             let (issue, role) = at.rsplit_once('/').unwrap_or((at, ""));
@@ -195,11 +218,7 @@ fn foreign(ctx: &Context, port: u16, request: &HttpRequest) -> Option<Answer> {
         .ok()
         .and_then(|c| c.bucket.url);
     hosts.extend(tunnel.map(|url| host_of(&url).to_string()));
-    let header = |name: &str| {
-        (request.headers.iter())
-            .find(|(n, _)| n.eq_ignore_ascii_case(name))
-            .map(|(_, value)| value.as_str())
-    };
+    let header = |name: &str| header(request, name);
     // Not the tunnel's host itself: a page rebound to 127.0.0.1 reads this.
     let help = [format!(
         "Ask serve on 127.0.0.1:{port}, localhost:{port} or bucket.url's host"
@@ -222,6 +241,13 @@ fn foreign(ctx: &Context, port: u16, request: &HttpRequest) -> Option<Answer> {
         &format!("Origin {origin} is not the request's Host"),
         &help,
     ))
+}
+
+/// The value of the request's header `name`, its case ignored.
+fn header<'a>(request: &'a HttpRequest, name: &str) -> Option<&'a str> {
+    (request.headers.iter())
+        .find(|(n, _)| n.eq_ignore_ascii_case(name))
+        .map(|(_, value)| value.as_str())
 }
 
 /// `url`'s host[:port]: what follows its `://`, up to its path.
