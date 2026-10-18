@@ -87,7 +87,8 @@
 }
 
 html {
-  scrollbar-color: var(--rule) var(--ground);
+  /* Inherited by every scroll inside: the thumb in `rule`, no track, so a scroll reads as part of the panel it is in. */
+  scrollbar-color: var(--rule) transparent;
 }
 
 body {
@@ -584,13 +585,14 @@ input[role="switch"]:checked::before {
 .inspector .grip {
   display: none;
 }
-/* Beside a map taller than the window, the inspector stays in view. */
+/* Beside the map or the Roadmap, at most the work area's height, scrolling inside past it. */
 @media (width >= 720px) {
   .inspector {
-    position: sticky;
-    top: 16px;
-    max-height: calc(100vh - 32px);
+    align-self: start;
+    max-height: 100%;
     overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
   }
 }
 /* The bottom sheet: up to 85vh, scrolling inside, closed by Close, Escape or a swipe down. */

@@ -250,6 +250,18 @@
     min-width: 0;
     padding: 16px var(--gutter) var(--gutter);
   }
+  /* The window, exactly: the header takes its height and the work the rest, so the page never scrolls; only a window too short for the work's floor scrolls main. */
+  @media (width >= 720px) {
+    .shell {
+      height: 100dvh;
+    }
+    main {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      overflow-y: auto;
+    }
+  }
   .banner {
     margin-bottom: 12px;
   }

@@ -26,22 +26,10 @@
     return {};
   }
 
-  // The contract with the map: `--notices-h` on the root is the band's height, 0px without it, so the map fits the window less it.
-  function measure(band: HTMLElement) {
-    const root = document.documentElement.style;
-    const seen = new ResizeObserver(() => root.setProperty("--notices-h", `${band.offsetHeight}px`));
-    seen.observe(band);
-    return {
-      destroy() {
-        seen.disconnect();
-        root.setProperty("--notices-h", "0px");
-      },
-    };
-  }
 </script>
 
 {#if notices.length}
-  <div class="band" use:measure>
+  <div class="band">
     <!-- The amber is the badge's alone, as on a node. -->
     <span class="needs">Needs you</span>
     <ul class="notices" aria-label="Needs you" hidden={folded}>

@@ -52,14 +52,29 @@
   .work.side-open {
     grid-template-columns: minmax(0, 1fr) 340px;
   }
+  /* 400px, narrower on a narrow desk, so the map beside it keeps room to read. */
   .work.open {
-    grid-template-columns: minmax(0, 1fr) 400px;
+    grid-template-columns: minmax(0, 1fr) clamp(320px, 30vw, 400px);
   }
   .side {
     display: grid;
     align-content: start;
     gap: 16px;
     min-width: 0;
+  }
+  /* The rest of the window under the header: the map fills it, and the column beside it scrolls inside it, the one scroll for what it holds. */
+  @media (width >= 720px) {
+    .work {
+      flex: 1 1 0;
+      grid-template-rows: minmax(0, 1fr);
+      min-height: 360px;
+    }
+    .side {
+      min-height: 0;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      scrollbar-width: thin;
+    }
   }
 
   /* The map, then the column below it. */

@@ -110,15 +110,23 @@
     gap: 16px;
   }
   .work.open {
-    grid-template-columns: minmax(0, 1fr) 400px;
+    grid-template-columns: minmax(0, 1fr) clamp(320px, 30vw, 400px);
+  }
+  /* The rest of the window under the header, as the map's: the page never scrolls past it. */
+  @media (width >= 720px) {
+    .work {
+      flex: 1 1 0;
+      grid-template-rows: minmax(0, 1fr);
+      min-height: 360px;
+    }
   }
   /* At full size; a Roadmap wider or taller than the field scrolls inside it. */
   .field {
     position: relative;
     container-type: inline-size;
-    min-height: 60vh;
-    max-height: calc(100vh - 32px);
+    min-height: 0;
     overflow: auto;
+    scrollbar-width: thin;
     background: var(--surface);
     border: 1px solid var(--hairline);
     border-radius: var(--radius);
