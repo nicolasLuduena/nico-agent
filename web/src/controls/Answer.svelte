@@ -1,14 +1,17 @@
 <script lang="ts">
-  // Answer an Asking Implementer under its screen, in its agent panel: in
-  // words, by an option the screen shows, or a key at a time; each
-  // `POST /api/answer`, then `answered`, which reads the screen again.
+  // Answer an Asking Implementer under its chat, in its agent panel: in
+  // words, by an option of the question its transcript asks (claude's by its
+  // digit in the pane, opencode's replied through its server), else of the
+  // dialog its screen shows; or a key at a time. Each `POST /api/answer`,
+  // then `answered`.
   import { Button } from "$lib/components/ui/button/index.js";
   import { Input } from "$lib/components/ui/input/index.js";
+  import type { Ask } from "../map/chat";
   import { options } from "./answer";
   import Refused from "./Refused.svelte";
   import { send, type Sent } from "./send";
 
-  let { issue, screen, answered }: { issue: string; screen: string; answered: () => void } = $props();
+  let { issue, ask, screen, answered }: { issue: string; ask: Ask | null; screen: string | null; answered: () => void } = $props();
   const id = $props.id();
 
   /** The keys any dialog takes: what each shows, herdr's name for it, and what it is called. */
@@ -23,9 +26,19 @@
   let text = $state("");
   let running = $state(false);
   let sent = $state<Sent | null>(null);
-  const picks = $derived(options(screen));
+  const picks = $derived(
+    ask?.options.length
+      ? ask.options.map((o, i) => ({
+          key: String(i + 1),
+          label: o.label,
+          body: ask.session ? { text: o.value, reply: ask.id, session: ask.session, field: ask.field ?? null } : { keys: [String(i + 1)] },
+        }))
+      : options(screen ?? "").map((o) => ({ ...o, body: { keys: [o.key] } })),
+  );
 
-  async function answer(body: { text: string } | { keys: string[] }) {
+  type Body = { text: string; reply?: string; session?: string; field?: string | null } | { keys: string[] };
+
+  async function answer(body: Body) {
     // One at a time; a key stays enabled, so focus stays on it for the next press.
     if (running) return;
     running = true;
@@ -33,7 +46,7 @@
     sent = await send("POST", "/api/answer", { issue, ...body });
     running = false;
     // Sent, the box empties and Send disables: focus goes back to the box for the next answer.
-    if (sent.ok && "text" in body) {
+    if (sent.ok && "text" in body && !body.reply) {
       text = "";
       box?.focus({ preventScroll: true });
     }
@@ -50,10 +63,13 @@
 
 <section aria-labelledby="{id}-head">
   <h3 id="{id}-head">Answer</h3>
+  {#if ask?.question && ask.options.length}
+    <p class="asked">{#if ask.header}<strong>{`${ask.header}: `}</strong>{/if}{ask.question}</p>
+  {/if}
   {#if picks.length}
     <div class="picks" role="group" aria-label="Options">
       {#each picks as o (o.key)}
-        <Button variant="outline" class="px-3 py-2 text-left wrap-anywhere" aria-busy={running} onclick={() => answer({ keys: [o.key] })}
+        <Button variant="outline" class="px-3 py-2 text-left wrap-anywhere" aria-busy={running} onclick={() => answer(o.body)}
           ><span class="digit">{o.key}</span> {o.label}</Button
         >
       {/each}
@@ -88,6 +104,11 @@
     margin: 0;
     font-size: 14px;
     font-weight: 600;
+  }
+  .asked {
+    margin: 0;
+    white-space: pre-line;
+    overflow-wrap: anywhere;
   }
   .picks {
     display: grid;

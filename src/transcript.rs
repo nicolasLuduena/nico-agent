@@ -354,7 +354,7 @@ fn result(content: &Value) -> String {
 
 /// `text` up to [`CUT`] characters, an ellipsis after what is cut.
 fn cut(text: impl AsRef<str>) -> String {
-    // shortcut: a long result shows its start alone; let the chat open the whole of it in #444's UI.
+    // shortcut: a long result shows its start alone, in its Tool fold too; serve the whole of it when the fold opens, if that falls short.
     let text = text.as_ref();
     match text.char_indices().nth(CUT) {
         Some((i, _)) => format!("{}…", &text[..i]),
