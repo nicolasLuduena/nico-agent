@@ -3,9 +3,10 @@
 `answer` is how the user, or a faux-nico, unblocks an Implementer that herdr reports Asking: in
 words, typed as given into the Implementer's pane through herdr and submitted, or in keys, pressed
 there as a choice dialog takes them; either is recorded on the Dispatch beside the question it
-answers. A text may start with `--`, as an answer about a command line does. On the Board, the node
-panel of an Asking Dispatch shows the Implementer's pane, monospaced and unwrapped, with a button per
-numbered option it shows, the keys ↑ ↓ Tab Enter Esc, and a text box with Send, each running
+answers. A text may start with `--`, as an answer about a command line does. On the Board, the
+Implementer's agent panel (agents.md), opened from its node row or from `Answer it in its panel` in
+the issue's panel, shows its screen and under it, while it is Asking, a button per numbered option
+the screen shows, the keys ↑ ↓ Tab Enter Esc, and a text box with Send, each running
 `POST /api/answer`, which is `answer`.
 
 ## Sub-features
@@ -17,8 +18,8 @@ numbered option it shows, the keys ↑ ↓ Tab Enter Esc, and a text box with Se
 - `answer-typed` an answer, by the user or `--by faux-nico`, is typed as `herdr agent prompt <implementer> <text> --wait --until working --timeout 30000`.
 - `answer-keys` `--keys <key>...` (herdr's key names: `up`, `down`, `tab`, `enter`, `esc`, a digit) is sent as `herdr agent send-keys <implementer> <key>...` and recorded with the keys as its text, each time.
 - `answer-route` `POST /api/answer {issue, text}` or `{issue, keys}` runs `answer`: 200 with its answer; a refusal 409 (400 for a bad body), as `{error, help}`.
-- `answer-pane` `GET /api/node/<issue>` of an Asking Dispatch (recorded, or herdr reporting its Implementer blocked before a tick records it, as the node's flag shows it) has `pane`, the Implementer's screen as `herdr agent read --source visible` gives it, or `pane_error` when herdr cannot read it; of any other Dispatch, neither.
-- `answer-board` the panel of an Asking Dispatch, kept as the map takes a change elsewhere (a half-typed answer stays), opens with `region "Asking"` first: the pane, `group "Options"` with a `button "<n> <option>"` per numbered option, `group "Keys"` (`button "Up"`, `"Down"`, `"Tab"`, `"Enter"`, `"Esc"`), `textbox "Answer in words"` and `button "Send"`. Each answer reads the pane again. A refusal, or a pane herdr cannot read, is on the errata rule. At 360px nothing but the pane's box is wider than the window.
+- `answer-screen` `GET /api/agent/<issue>/implementer` is the Implementer's screen: herdr refuses its last 200 lines (`--source recent --lines 200`, `agent_not_idle`) while a Claude asks, so it is `herdr agent read --source visible`'s (agents.md); `GET /api/node/<issue>` holds no pane, Asking or not, and reads no screen.
+- `answer-board` the issue's panel of an Asking Dispatch has `region "Asking"` first, saying so with its question, and `link "Answer it in its panel"`; the Implementer's agent panel, kept as the map takes a change elsewhere (a half-typed answer stays), has under its screen `region "Answer"`: `group "Options"` with a `button "<n> <option>"` per numbered option, `group "Keys"` (`button "Up"`, `"Down"`, `"Tab"`, `"Enter"`, `"Esc"`), `textbox "Answer in words"` and `button "Send"`. Each answer reads the screen again. A refusal, or a screen herdr cannot read, is on the errata rule. At 360px nothing but the screen's box is wider than the window.
 
 ## How to get to it (user POV)
 
@@ -26,7 +27,7 @@ numbered option it shows, the keys ↑ ↓ Tab Enter Esc, and a text box with Se
   `nico-agent answer <issue> --text <text>`, or `--keys <key>...` for a choice dialog.
 - A faux-nico, started on an Asking in a Repo with `Faux-nico answers` on, runs
   `nico-agent answer <issue> --text <text> --by faux-nico`.
-- On the Board, on a desk or a phone: the flagged node on the map opens the panel; an option, a key, or words and Send answer it.
+- On the Board, on a desk or a phone: the flagged node's `Implementer` row, or `Answer it in its panel` in its issue's panel, opens the Implementer's agent panel; an option, a key, or words and Send answer it.
 
 ## Driving it with control-nico-agent
 
@@ -68,20 +69,20 @@ Preconditions:
   (`16-route-bad-keys`) `400` `keys is a list of key names, not "enter"`; `'{"issue":"verify/fixture#7","keys":["enter","--by","faux-nico"]}'`
   (`16b-route-flag-key`) `400` too, no key being a flag of `answer`; `'{"issue":"verify/fixture#11","keys":["enter"]}'`
   (`17-route-herdr`) `409` with the send-keys stub error.
-- **The pane, unread.** `$C http --evidence "$E/18-node-11" GET /api/node/verify%2Ffixture%2311` has
-  `pane_error` `` `herdr agent read` failed: verify_stub: ... `` and no `pane`; `GET /api/node/verify%2Ffixture%239`
-  (`19-node-9`) has neither.
-- **The Board, refused.** `$C page --evidence "$E/20-board-refused" --width 360 --click "button~#11, Verify" --expect "agent read failed" --click "button=Enter" --expect "send-keys failed"`:
-  the panel's Asking section holds the read's error on the errata rule, the keys and the text box,
-  then the send-keys refusal on the errata rule under them; `.requests.txt` has
-  `POST /api/answer {"issue":"verify/fixture#11","keys":["enter"]} -> 409`; `.view.txt` says the page
+- **The screen, unread.** `$C http --evidence "$E/18-screen-11" GET /api/agent/verify%2Ffixture%2311/implementer` is
+  `409` `` `herdr agent list` failed: verify_stub: ... ``; `GET /api/node/verify%2Ffixture%2311` (`19-node-11`) has
+  neither `pane` nor `pane_error`.
+- **The Board, refused.** `$C page --evidence "$E/20-board-refused" --width 360 --click "button~#11, Verify" --click "link=Answer it in its panel" --expect "Not read yet" --click "button=Enter" --expect "send-keys failed"`:
+  the agent panel's head says `Asking you something`, its read's error on the errata rule (`Not read yet · ...`), then
+  `region "Answer"` with the keys and the text box, then the send-keys refusal on the errata rule under them;
+  `.requests.txt` has `POST /api/answer {"issue":"verify/fixture#11","keys":["enter"]} -> 409`; `.view.txt` says the page
   is 360px wide in a 360px window.
 - **Proof.** Before the dialog: `$C state > "$E/state.after.txt"`; its diff from `state.before.txt` is outside calls only:
   `herdr agent list` (a Dispatch not recorded Asking is looked up in herdr first; herdr refusing,
   what it records stands), `herdr agent prompt impl-fixture-7 Keep\ it. --wait --until working --timeout 30000` twice, the
   two `--force` texts, `herdr agent send-keys impl-fixture-7 down enter`, then the route's and the
-  page's `herdr agent send-keys impl-fixture-11 enter` and `herdr agent read impl-fixture-11 --source visible`,
-  among the `herdr agent list` lines serve's status and event stream make;
+  page's `herdr agent send-keys impl-fixture-11 enter`, and no `herdr agent read` (herdr's list fails first),
+  among the `herdr agent list` lines serve's status, its event stream and the screen's reads make;
   `dispatches.json` is unchanged. Copy `$OUTSIDE_LOG` to `$E/outside.log`.
 
 - **A Claude Asking.** Needs herdr and Claude Code on the machine (else stop here, and report the
@@ -90,26 +91,26 @@ Preconditions:
   from now on the run reaches the real herdr for its list of agents and for what is asked of
   `impl-fixture-7` alone. `E=.evidence/<issue>/answer-board`; `mkdir -p "$E"`;
   `$C state > "$E/state.before.txt"`.
-- **The pane.** `$C http --evidence "$E/00-node" GET /api/node/verify%2Ffixture%237`: `agent_state.implementer`
-  `blocked`, and `pane` holds the dialog: its tabs (`☐ Node tint  ☐ Sections  ✔ Submit`), the
-  question, `❯ 1. Faint tint`, `2. No tint`, `3. Type something.`, `4. Chat about this`.
-- **Opened from the node.** `$C page --evidence "$E/01-desk-light-asking" --width 1280 --scheme light --click "button~#7, Verify" --expect "Should map nodes carry a tint of their Stage hue?"`:
-  the node ends `needs you`; `region "Asking"` is the inspector's first section, with `button "1 Faint tint"` to `button "4 Chat about this"`;
+- **The screen.** `$C http --evidence "$E/00-screen" GET /api/agent/verify%2Ffixture%237/implementer`: `screen` holds
+  the dialog: its tabs (`☐ Node tint  ☐ Sections  ✔ Submit`), the question, `❯ 1. Faint tint`, `2. No tint`,
+  `3. Type something.`, `4. Chat about this`.
+- **Opened from the node.** `$C page --evidence "$E/01-desk-light-asking" --width 1280 --scheme light --click "button=Implementer, asking you something" --expect "Should map nodes carry a tint of their Stage hue?"`:
+  the node ends `needs you`; `region "Implementer"` holds the screen, then `region "Answer"` with `button "1 Faint tint"` to `button "4 Chat about this"`;
   `.view.txt` says focus is on the panel's title.
 - **An option.** The same, then `--click "button=1 Faint tint" --expect "Should the panel's sections start folded?"`
   (`02-desk-light-picked-1`): `POST /api/answer {"issue":"verify/fixture#7","keys":["1"]} -> 200`, and the
-  pane, read again, shows Claude's second question.
-- **Phone, dark, a key at a time.** `--width 360 --scheme dark`: open the node (`03-phone-dark-asking`),
+  screen, read again, shows Claude's second question.
+- **Phone, dark, a key at a time.** `--width 360 --scheme dark`: open the Implementer's row (`03-phone-dark-asking`),
   then `--click "button=Down" --expect "❯ 2. Open"` (`04-phone-dark-down`), each `.view.txt` 360px wide in
-  a 360px window, focus kept on the key. Then `--width 360 --scheme light`, open the node,
+  a 360px window, focus kept on the key. Then `--width 360 --scheme light`, open the row,
   `--expect "❯ 2. Open" --click "button=Enter" --expect "Ready to submit your answers?"` (`05-phone-light-enter`).
 - **Submitted.** `--width 1280 --scheme dark`: open the row, `--click "button=1 Submit answers" --gone "Ready to submit your answers?" --wait 6`
-  (`06-desk-dark-submitted`): the pane shows Claude's one-sentence reply with both answers.
+  (`06-desk-dark-submitted`): the screen shows Claude's one-sentence reply with both answers.
 - **In words.** `--width 360 --scheme dark`: open the row, `--click "textbox=Answer in words" --type "Thanks. Reply with the one word: done" --press Enter --expect "Reply with the one word: done" --wait 12`
-  (`07-phone-dark-words`): `POST /api/answer {"issue":"verify/fixture#7","text":"..."} -> 200`, the pane
+  (`07-phone-dark-words`): `POST /api/answer {"issue":"verify/fixture#7","text":"..."} -> 200`, the screen
   shows Claude's `done`, and focus is back on the input after the reload.
 - **A change elsewhere.** `E=.evidence/<issue>/map-live`; with `(sleep 8; $C seed dispatch 13 pr) &`
-  running, `$C page --evidence "$E/01-typing-while-a-dispatch-lands" --click "button~#7, Verify" --expect "Answer in words" --click "textbox=Answer in words" --type "half-typed answer" --expect "Verify: seeded Dispatch 13"`:
+  running, `$C page --evidence "$E/01-typing-while-a-dispatch-lands" --click "button=Implementer, asking you something" --expect "Answer in words" --click "textbox=Answer in words" --type "half-typed answer" --expect "Verify: seeded Dispatch 13"`:
   the map draws #13 at the next `changed`, and `.aria.txt` still has `textbox "Answer in words": half-typed answer`.
 - **Its proof.** `E=.evidence/<issue>/answer-board`; `$C state > "$E/state.after.txt"`; its diff from `$E/state.before.txt` changes
   `dispatches.json`, whose `answers` on `verify/fixture#7` hold (read the file: `state` prints it as a hash) one per answer (`1`, `down`, `enter`, `1`, the
@@ -125,9 +126,9 @@ Preconditions:
 - `outside.log` quotes each argument shell-style: `--force\ is\ fine` is one argument, the text as
   given.
 - `status` between steps calls `gh api user` and `herdr agent list`, which then show in the diff.
-- A run never ticks on its own, so a Dispatch stays Asking after its dialog is answered: its panel
-  keeps the Answer section, showing the pane as it is now, until a tick (Refresh) sees herdr report
-  the agent working or idle.
+- A run never ticks on its own, so a Dispatch stays Asking by its record after its dialog is answered:
+  the Implementer's row and panel keep Asking, and the Answer section, showing the screen as it is now,
+  until a tick (Refresh) sees herdr report the agent working or idle.
 - `--gone` on a question fails once the dialog's review screen quotes it; wait for what replaces
   the question instead.
 - A real Claude moves on with each key: drive the steps in order, once; `$C seed dialog none`,

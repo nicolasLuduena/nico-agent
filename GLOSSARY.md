@@ -80,6 +80,10 @@ Verdict. _Avoid_: checker.
 shows. faux-nico answers it when the Repo's docs settle it; otherwise the
 user is notified. _Avoid_: stuck, blocked.
 
+**Agent state**: what herdr last reported an Implementer or Reviewer doing:
+working, idle, done, or Asking, or gone once it left herdr. Never a Stage,
+never "stuck". _Avoid_: status, activity.
+
 **Answer**: what the user or faux-nico sends an Asking Implementer, in words
 (typed and submitted) or keys (pressed in its pane, as a choice dialog takes
 them), kept on its Dispatch with the question it answers. _Avoid_: reply,
