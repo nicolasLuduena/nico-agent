@@ -24,12 +24,6 @@ export function blocks(markdown: string): Block[] {
   return out;
 }
 
-/** The first line of `markdown` that is not a heading, a list item's marker dropped, as Markdown. */
-export function firstText(markdown: string): string {
-  const line = markdown.split("\n").map((l) => l.trim()).find((l) => l && !l.startsWith("#"));
-  return line ? line.replace(/^(?:[-*+]|\d+[.)])\s+/, "") : "";
-}
-
 /** **strong**, `code`, [named](https://…) and bare https://… links, the last without trailing punctuation. */
 const INLINE = /\*\*(.+?)\*\*|`([^`]+)`|\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/[^\s)]*[^\s).,;:!?])/g;
 
