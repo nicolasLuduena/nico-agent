@@ -36,6 +36,11 @@
 #                                 as it would, lists it working beside its idle Implementer, and reads its screen
 #                                 (240 numbered lines); none, a stub again.
 #                                 Not with seed herdr
+#   seed transcript <n> claude|opencode|more|none
+#                                 the chat the Harness of seeded Dispatch <n>'s Implementer keeps: claude's transcript
+#                                 under the run HOME's ~/.claude/projects/, or (opencode) its Implementer made opencode's
+#                                 and the opencode2 stub answering its session and messages; more appends a reply, as it
+#                                 lands; none takes them away
 #   drift push <n>|stale|pause|hang|below merged|closed|final <n> merged|closed
 #                                 what GitHub would change: a new PR head, an old read, a rate limit, a gh that never answers,
 #                                 the PR below a Stacked dispatch or a seeded one's own merged or closed unmerged
@@ -43,8 +48,9 @@
 #   run [--evidence PREFIX] -- <nico-agent args...>
 #                                 run the CLI in the scratch HOME (cwd: the run's work/, so pass absolute paths);
 #                                 exit code is the CLI's
-#   http [--evidence PREFIX] [--header 'NAME: VALUE']... <METHOD> <PATH> [BODY]
-#                                 ask this run's serve, as the page does; exit 1 on 4xx/5xx
+#   http [--evidence PREFIX] [--header 'NAME: VALUE']... [--for SECONDS] <METHOD> <PATH> [BODY]
+#                                 ask this run's serve, as the page does; exit 1 on 4xx/5xx. --for reads a stream
+#                                 that long, then hangs up
 #   page [--tunnel] [--evidence PREFIX] [--width PX] [--scheme light|dark] [--storage FILE|none] [--path PATH] [--hash HASH] [--within ROLE=NAME|page | --click ROLE=NAME | --click ROLE~NAME | --select NAME=OPTION | --press KEY
 #        | --type TEXT | --expect TEXT | --gone TEXT | --wait SECONDS | --history back|forward | --mode pass|502|signed-out | --hold SECONDS]...
 #                                 open serve's page in headless Chromium, act in order, capture; prints ok or
@@ -56,7 +62,7 @@
 # --evidence PREFIX writes: run: PREFIX.cmd, .stdout, .stderr, .exit; http: .cmd (each --header in brackets
 # first), .stdout (the body), .stderr, .exit (the HTTP status), .headers; page: .cmd, .aria.txt, .png (the whole
 # page), .view.png (the window, as scrolled), .view.txt (address, scroll, page width against the window's, focus),
-# .requests.txt (each /api call, and each /api/events stream as answered: a reconnect is a line), .console.txt.
+# .requests.txt (each /api call, and each stream, /api/events or a chat, as answered: a reconnect is a line), .console.txt.
 # Each still prints what it captured.
 #
 # page steps: --click button=Refresh clicks the element of that ARIA role whose accessible name is exactly
@@ -207,6 +213,23 @@ case "\$name" in
       esac
     fi
     echo '{"error":{"code":"verify_stub","message":"herdr is a stub in this verification run"}}' >&2; exit 1 ;;
+  # \`seed transcript <n> opencode\`: its background service's answers, its one session and its messages
+  # past the one the cursor names (unpadded base64url of {"id":...}).
+  opencode2) dir="\$(cat "$RUN_DIR/opencode-dir" 2>/dev/null || true)"
+    if [ -n "\$dir" ] && [ "\${1:-} \${2:-}" = "api GET" ]; then
+      n="\${dir##*-}"
+      case "\${3:-}" in
+        /api/session\?*) if [[ "\$3" == *"directory=\$dir&"* ]]; then echo "{\"data\":[{\"id\":\"ses_verify\$n\"}]}"; else echo '{"data":[]}'; fi; exit 0 ;;
+        /api/session/ses_verify\$n/message\?*)
+          after=""
+          if [[ "\$3" =~ cursor=([A-Za-z0-9_-]+) ]]; then
+            c="\$(tr -- '-_' '+/' <<<"\${BASH_REMATCH[1]}")"; while [ \$(( \${#c} % 4 )) -ne 0 ]; do c="\$c="; done
+            after="\$(base64 -d <<<"\$c" | jq -r .id)"
+          fi
+          jq -sc --arg after "\$after" '{data: (if \$after == "" then . else .[((map(.id) | index(\$after)) + 1):] end)}' "$RUN_DIR/opencode-\$n.jsonl"
+          exit 0 ;;
+      esac
+    fi ;;
   # Recorded, never shown on the desktop.
   notify-send) exit 0 ;;
   curl) echo "curl: (6) verify-nico-agent: no network in this run" >&2; exit 6 ;;
@@ -413,7 +436,8 @@ cmd_seed() {
     herdr) seed_herdr "$@" ;;
     dialog) seed_dialog "$@" ;;
     reviewer) seed_reviewer "$@" ;;
-    *) die "seed: usage: seed issues [second|chain] | seed dispatch <n> pr|asking|stacked|restarted|ruled | seed run quality-scan|morning|faux-nico <n> | seed morning <file>|none | seed assign answers|none | seed herdr <agent>|none | seed dialog <n>|none | seed reviewer <n>|none" ;;
+    transcript) seed_transcript "$@" ;;
+    *) die "seed: usage: seed issues [second|chain] | seed dispatch <n> pr|asking|stacked|restarted|ruled | seed run quality-scan|morning|faux-nico <n> | seed morning <file>|none | seed assign answers|none | seed herdr <agent>|none | seed dialog <n>|none | seed reviewer <n>|none | seed transcript <n> claude|opencode|more|none" ;;
   esac
 }
 
@@ -608,6 +632,62 @@ seed_reviewer() {
   esac
 }
 
+# The chat the Harness of seeded Dispatch <n>'s Implementer keeps for its worktree. claude: its
+# transcript, a JSON line each as claude writes it, in the run HOME's ~/.claude/projects/<the
+# worktree, each character not a letter or digit a dash>/: a prompt, thinking, a tool call and its
+# result, a line the chat leaves out, and a reply too long for one line of the panel. opencode: its
+# Implementer made opencode's, and the opencode2 stub answering `api GET` of its session
+# (ses_verify<n>) and its messages (the same turns), past a message as its cursor says. more: a
+# reply appended, as it lands, `Landed live, reply <k>`. none: both taken away.
+seed_transcript() {
+  local n="${1:-}" kind="${2:-}"
+  [[ "$n" =~ ^[0-9]+$ ]] && [[ "$kind" =~ ^(claude|opencode|more|none)$ ]] || die "seed: usage: seed transcript <n> claude|opencode|more|none"
+  local worktree="$RUN_DIR/worktrees/fixture-$n"
+  local dir="$FIXTURE_HOME/.claude/projects/$(sed 's/[^a-zA-Z0-9]/-/g' <<<"$worktree")"
+  local file="$dir/verify-session-$n.jsonl" messages="$RUN_DIR/opencode-$n.jsonl"
+  local long="This reply is one long line, written as the agent wrote it, so the panel shows it wrapped in its box instead of scrolling sideways: the fixture keeps its README, the Dispatch's worktree holds the work, and nothing here reaches GitHub."
+  case "$kind" in
+    none) rm -rf "$dir" "$messages" "$RUN_DIR/opencode-dir" ;;
+    claude)
+      mkdir -p "$dir"
+      jq -nc --arg n "$n" --arg long "$long" '
+        { input_tokens: 3, output_tokens: 9 } as $usage
+        | { type: "user", message: { role: "user", content: "Implement verify/fixture#\($n) (seeded by verify-nico-agent)" } },
+          { type: "attachment", attachment: { type: "skill_listing" } },
+          { type: "assistant", message: { role: "assistant", usage: $usage,
+            content: [{ type: "thinking", thinking: "Read the issue first.", signature: "x" }] } },
+          { type: "assistant", message: { role: "assistant", usage: $usage,
+            content: [{ type: "tool_use", id: "t1", name: "Bash", input: { command: "gh issue view \($n)" } }] } },
+          { type: "user", message: { role: "user",
+            content: [{ type: "tool_result", tool_use_id: "t1", content: "Verify: seeded Dispatch \($n)" }] } },
+          { type: "assistant", message: { role: "assistant", usage: $usage, content: [{ type: "text", text: $long }] } }' > "$file" ;;
+    opencode)
+      write_state "$CONFIG_DIR/dispatches.json" "$(jq --arg i "$SLUG#$n" \
+        'map(if .issue == $i then .implementer.harness = "opencode" else . end)' "$CONFIG_DIR/dispatches.json")"
+      printf '%s\n' "$worktree" > "$RUN_DIR/opencode-dir"
+      jq -nc --arg n "$n" --arg long "$long" '
+        { id: "msg_1", type: "user", text: "Implement verify/fixture#\($n) (seeded by verify-nico-agent)" },
+        { id: "msg_2", type: "system", text: "The Code Mode tool catalog has changed." },
+        { id: "msg_3", type: "assistant", time: { created: 1, completed: 2 }, tokens: { input: 12, output: 5 }, content: [
+          { type: "reasoning", text: "Read the issue first." },
+          { type: "tool", name: "bash", state: { status: "completed", input: { command: "gh issue view \($n)" },
+            content: [{ type: "text", text: "Verify: seeded Dispatch \($n)" }] } },
+          { type: "text", text: $long }] }' > "$messages" ;;
+    more)
+      local k
+      if [ -f "$messages" ]; then
+        k=$(( $(wc -l < "$messages") - 2 ))
+        jq -nc --arg k "$k" '{ id: "msg_\(3 + ($k | tonumber))", type: "assistant", time: { created: 3, completed: 4 },
+          content: [{ type: "text", text: "Landed live, reply \($k)" }] }' >> "$messages"
+      else
+        [ -f "$file" ] || die "seed: no transcript of verify/fixture#$n: seed transcript $n claude first"
+        k=$(( $(wc -l < "$file") - 5 ))
+        jq -nc --arg k "$k" '{ type: "assistant", message: { role: "assistant",
+          content: [{ type: "text", text: "Landed live, reply \($k)" }] } }' >> "$file"
+      fi ;;
+  esac
+}
+
 # A real Claude (Haiku) in a herdr tab of its own, in the run's dialog/ folder, named as the
 # Implementer of a Dispatch seeded `asking` (impl-fixture-<n>), its folder trusted, Asking two
 # questions in a choice dialog; the run reaches it through `seed herdr`. Needs herdr and claude.
@@ -792,9 +872,11 @@ cmd_http() {
   local evidence="" sent=""
   # --header, as another site's page or a name rebound to 127.0.0.1 would send it; `Host:` sends none.
   local -a extra=()
-  while [ "${1:-}" = --evidence ] || [ "${1:-}" = --header ]; do
+  local seconds=""
+  while [ "${1:-}" = --evidence ] || [ "${1:-}" = --header ] || [ "${1:-}" = --for ]; do
     case "$1" in
       --evidence) evidence="${2:-}"; shift 2 || die "http: --evidence needs a path prefix" ;;
+      --for) seconds="${2:-}"; shift 2 || die "http: --for needs seconds" ;;
       --header) extra+=(-H "${2:-}"); sent+="[${2:-}] "; shift 2 || die "http: --header needs 'NAME: VALUE'" ;;
     esac
   done
@@ -805,7 +887,10 @@ cmd_http() {
   # --path-as-is: the path goes as given, `..` included, as a hand-made request would send it.
   local -a args=(-sS --path-as-is -X "$method" -D "$headers" -o "$out" -w '%{http_code}' "${extra[@]}")
   [ -n "$body" ] && args+=(--data-raw "$body")
+  [ -n "$seconds" ] && args+=(-N --max-time "$seconds")
   status="$(curl "${args[@]}" "$URL$path" 2>"$err")" || code=$?
+  # A stream read for --for seconds ends at its time, as the client hanging up.
+  if [ -n "$seconds" ] && [ "$code" -eq 28 ]; then code=0; : > "$err"; fi
   [ "$code" -eq 0 ] || die "http: could not reach serve at $URL: $(cat "$err")"
   if [ -n "$evidence" ]; then
     local cmd="$sent$method $path${body:+ $body}"

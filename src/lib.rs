@@ -27,6 +27,7 @@ pub mod stage;
 pub mod state;
 pub mod status;
 pub mod tick;
+pub mod transcript;
 pub mod verdict;
 pub mod world;
 

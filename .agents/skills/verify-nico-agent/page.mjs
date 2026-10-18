@@ -13,7 +13,7 @@
 // --hold SECONDS holds each later write to /api (not a GET) that long before it reaches serve, as a slow link
 // would, and no step waits for it: the capture shows the write under way; it is listed only if it ends in time.
 // With --evidence it writes PREFIX.aria.txt (the ARIA snapshot after the last step), PREFIX.png,
-// PREFIX.requests.txt (each /api request the page made, with its status; each /api/events stream as
+// PREFIX.requests.txt (each /api request the page made, with its status; each stream, /api/events or a chat, as
 // it is answered) and PREFIX.console.txt (console errors). It exits 1 when a step fails, after capturing.
 import { createRequire } from "node:module";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
@@ -77,7 +77,9 @@ try {
   /** Seconds each write to /api is held, once a --hold step said so; the requests a step waits for. */
   let held = 0;
   const waited = new WeakSet();
-  const api = (r) => new URL(r.url()).pathname.startsWith("/api/") && !r.url().endsWith("/api/events");
+  // The streams: the event stream and an agent's chat, never finished.
+  const stream = (r) => /^\/api\/(events|agent\/.*\/transcript)$/.test(new URL(r.url()).pathname);
+  const api = (r) => new URL(r.url()).pathname.startsWith("/api/") && !stream(r);
   page.on("request", (r) => api(r) && !(held && r.method() !== "GET") && (waited.add(r), inFlight++));
   page.on("requestfinished", async (r) => {
     if (!api(r)) return;
@@ -87,7 +89,7 @@ try {
   });
   page.on("requestfailed", (r) => api(r) && (requests.push(`${r.method()} ${r.url()} -> failed`), waited.has(r) && inFlight--));
   // A stream never finishes: it is listed as it is answered, a reconnect being another line.
-  page.on("response", (r) => r.url().endsWith("/api/events") && requests.push(`GET /api/events -> ${r.status()}`));
+  page.on("response", (r) => stream(r) && requests.push(`GET ${new URL(r.url()).pathname}${new URL(r.url()).search} -> ${r.status()}`));
   page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
   page.on("pageerror", (e) => errors.push(String(e)));
   // Settled: no /api request in flight for half a second (the event stream stays open, so never "network idle").
