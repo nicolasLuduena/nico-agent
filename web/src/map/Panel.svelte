@@ -128,8 +128,8 @@
     {#if failure}<div class="section"><p class="errata" role="status"><strong>{failure}</strong></p></div>{/if}
 
     {#if agentsOf(node).some((a) => a.role === "implementer" && a.state === "asking")}
-      <section>
-        <h3>Asking</h3>
+      <section aria-labelledby="asking-title">
+        <h3 id="asking-title">Asking</h3>
         <p class="said">The Implementer is asking you something{node.asking ? `: ${node.asking.question}` : "."}</p>
         <p class="hint"><a class="button" href={hash({ project: project.name, view: "map", issue, agent: "implementer" })}>Answer it in its panel</a></p>
       </section>
