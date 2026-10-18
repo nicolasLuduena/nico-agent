@@ -38,7 +38,7 @@ through `DELETE /api/repo/<slug>`, refused while the Repo has a Dispatch In flig
 Preconditions:
 
 - A fresh run; `doctor` passes; `. "$($C env)"`.
-- `E=.evidence/<issue>/repos`; `$C state > "$E/state.before.txt"`.
+- `E=.evidence/<issue>/repos`; `: > "$OUTSIDE_LOG"`; `$C state > "$E/state.before.txt"`.
 
 - **Empty list.** Run `$C run --evidence "$E/01-list-empty" -- repo list --json`. Exit `0`, stdout `{"repos":[]}`.
 - **Add.** Run `$C run --evidence "$E/02-add" -- repo add verify/fixture --path "$FIXTURE_CLONE" --json`.

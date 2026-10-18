@@ -29,7 +29,7 @@ Preconditions:
 
 - A fresh run; `doctor` passes; `. "$($C env)"`.
 - `$C run -- repo add verify/fixture --path "$FIXTURE_CLONE" --json`.
-- `E=.evidence/<issue>/live-updates`.
+- `E=.evidence/<issue>/live-updates`; `: > "$OUTSIDE_LOG"`.
 - For the page's sub-features: `$C tunnel start`, then `. "$($C env)"` again for
   `$TUNNEL_URL` and `$TUNNEL_LOG`. The stand-in sits where cloudflared and Access do: it cuts a
   response that sends nothing for 100 seconds; `--mode 502` (or `$C tunnel 502`) answers every request
