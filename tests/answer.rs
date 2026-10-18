@@ -12,12 +12,17 @@ const MINUTE: Duration = Duration::from_secs(60);
 /// `impl-api-7` Asking "Should I keep the old endpoint?" since 12:00, then a
 /// minute passes and the calls so far are cleared.
 fn asking() -> Setup {
+    asking_on("claude")
+}
+
+/// [`asking`], its Implementer on the Harness `harness`.
+fn asking_on(harness: &str) -> Setup {
     let t = setup();
     t.world
         .add_clone("/src/api", &["git@github.com:acme/api.git"]);
     t.cli(&["repo", "add", "acme/api", "--path", "/src/api"]);
     t.world.add_issue("acme/api", github_issue("acme/api", 7));
-    let ran = t.cli(&["dispatch", "acme/api#7"]);
+    let ran = t.cli(&["dispatch", "acme/api#7", "--harness", harness]);
     assert_eq!(ran.exit_code, 0, "{}", ran.stdout);
     (t.world.agents.borrow_mut()).insert("impl-api-7".into(), "blocked".into());
     (t.world.screens.borrow_mut()).insert(
@@ -119,7 +124,7 @@ fn keys_are_sent_to_the_asking_implementer_and_recorded_as_an_answer_each_time()
     );
 }
 
-const USAGE: &str = "Run `nico-agent answer <issue> --text <text>|--keys <key>... [--by faux-nico]` to type an answer into the issue's Asking Implementer, or press keys in its pane, and record it on its Dispatch";
+const USAGE: &str = "Run `nico-agent answer <issue> --text <text>|--keys <key>... [--reply <id> --session <session> [--field <key>]] [--by faux-nico]` to type an answer into the issue's Asking Implementer, or press keys in its pane, or reply with --text to the opencode form or permission <id>, and record it on its Dispatch";
 
 #[test]
 fn an_answer_by_faux_nico_is_recorded_as_faux_nicos() {
@@ -496,4 +501,84 @@ fn the_first_key_may_be_joined_to_its_flag_as_any_flag_s_value_may() {
         t.world.calls(),
         ["herdr agent send-keys impl-api-7 tab enter"]
     );
+}
+
+#[test]
+fn an_opencode_implementer_s_question_or_permission_is_replied_through_its_server_not_its_pane() {
+    let t = asking_on("opencode");
+    let post = |body: &str| t.send("POST", "/api/answer", body);
+
+    let picked = post(
+        r#"{"issue": "acme/api#7", "text": "Blue", "reply": "frm_1", "session": "ses_a", "field": "q0"}"#,
+    );
+    let allowed =
+        post(r#"{"issue": "acme/api#7", "text": "once", "reply": "per_1", "session": "ses_a"}"#);
+
+    let said = json!({"answer": "acme/api#7 answered by user"});
+    assert_eq!((picked, allowed), ((200, said.clone()), (200, said)));
+    assert_eq!(
+        t.world.calls(),
+        [
+            r#"opencode2 api POST /api/session/ses_a/form/frm_1/reply --data {"answer":{"q0":"Blue"}}"#,
+            r#"opencode2 api POST /api/session/ses_a/permission/per_1/reply --data {"decision":"once"}"#,
+        ]
+    );
+    let texts: Vec<Value> = (answers(&t).as_array().unwrap().iter())
+        .map(|a| a["text"].clone())
+        .collect();
+    assert_eq!(texts, ["Blue", "once"]);
+}
+
+#[test]
+fn a_reply_to_a_claude_implementer_without_a_session_or_to_no_permission_is_refused_unsent() {
+    let claude = asking();
+    let opencode = asking_on("opencode");
+
+    let to_claude = claude.cli(&[
+        "answer",
+        "acme/api#7",
+        "--text",
+        "Blue",
+        "--reply",
+        "frm_1",
+        "--session",
+        "ses_a",
+        "--json",
+    ]);
+    let no_session = opencode.cli(&[
+        "answer",
+        "acme/api#7",
+        "--text",
+        "Blue",
+        "--reply",
+        "frm_1",
+        "--json",
+    ]);
+    let no_decision = opencode.cli(&[
+        "answer",
+        "acme/api#7",
+        "--text",
+        "Sure",
+        "--reply",
+        "per_1",
+        "--session",
+        "ses_a",
+        "--json",
+    ]);
+
+    let unsent = "--reply answers an opencode Implementer's form or permission: with --session and --text, not --keys";
+    assert_eq!(
+        [&to_claude, &no_session, &no_decision].map(|r| (r.exit_code, r.json()["error"].clone())),
+        [
+            (2, json!(unsent)),
+            (2, json!(unsent)),
+            (
+                2,
+                json!("`Sure` is not a permission's reply: once, always or reject")
+            ),
+        ]
+    );
+    assert_eq!(claude.world.calls(), [] as [&str; 0]);
+    assert_eq!(opencode.world.calls(), [] as [&str; 0]);
+    assert_eq!(answers(&opencode), Value::Null);
 }

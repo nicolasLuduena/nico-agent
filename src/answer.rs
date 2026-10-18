@@ -1,6 +1,7 @@
 //! `answer`: unblock an Asking Implementer by typing an answer into its pane,
-//! or pressing keys there, through herdr, then keep it on its Dispatch with
-//! the question it answers.
+//! or pressing keys there, through herdr, or for opencode's, by replying to
+//! the form or permission its session waits on through its server; then keep
+//! it on its Dispatch with the question it answers.
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -33,7 +34,11 @@ pub enum By {
 
 pub fn answer(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
     let (args, keys) = split_keys(args);
-    let args = Args::parse("answer", &args, &["--text", "--by"])?;
+    let args = Args::parse(
+        "answer",
+        &args,
+        &["--text", "--by", "--reply", "--session", "--field"],
+    )?;
     let &[text_ref] = args.positionals(&["<issue>"])? else {
         unreachable!("one positional")
     };
@@ -83,7 +88,27 @@ pub fn answer(args: &[&str], ctx: &Context) -> Result<Value, Refusal> {
     };
     let said = format!("{issue} answered by {by}");
     let agent = &d.implementer.agent;
-    if let Some(keys) = keys {
+    if let Some(id) = args.flag("--reply") {
+        let (harness, session) = (&d.implementer.harness, args.flag("--session"));
+        let Some(session) = session.filter(|_| harness == "opencode" && keys.is_none()) else {
+            let error = "--reply answers an opencode Implementer's form or permission: with --session and --text, not --keys";
+            return Err(bad_invocation(error.into(), "answer"));
+        };
+        let body = match args.flag("--field") {
+            Some(field) => json!({ "answer": { field: text } }),
+            None if ["once", "always", "reject"].contains(&text.as_str()) => {
+                json!({ "decision": text })
+            }
+            None => {
+                let error = format!("`{text}` is not a permission's reply: once, always or reject");
+                return Err(bad_invocation(error, "answer"));
+            }
+        };
+        let command = (config.harnesses.get(harness))
+            .and_then(|h| h.command.clone())
+            .unwrap_or_else(|| harness.clone());
+        ctx.world.opencode_reply(&command, session, id, &body)?;
+    } else if let Some(keys) = keys {
         ctx.world.herdr_agent_send_keys(agent, &keys)?;
     } else if (d.answers.iter()).any(|a| (&a.since, &a.text) == (&asking.since, &text)) {
         return Ok(json!({ "answer": format!("{said} already recorded (no-op)") }));

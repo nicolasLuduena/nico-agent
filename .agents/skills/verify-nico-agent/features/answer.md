@@ -5,9 +5,13 @@ words, typed as given into the Implementer's pane through herdr and submitted, o
 there as a choice dialog takes them; either is recorded on the Dispatch beside the question it
 answers. A text may start with `--`, as an answer about a command line does. On the Board, the
 Implementer's agent panel (agents.md), opened from its node row or from `Answer it in its panel` in
-the issue's panel, shows its screen and under it, while it is Asking, a button per numbered option
-the screen shows, the keys ↑ ↓ Tab Enter Esc, and a text box with Send, each running
-`POST /api/answer`, which is `answer`.
+the issue's panel, shows its chat and under it, while it is Asking, the question its transcript asks
+and a button per option (claude's AskUserQuestion; opencode's question form or permission request,
+from its server), or, with no chat or a dialog the chat asks none of (a permission prompt, several
+questions at once: the screen is read for it then), per numbered option the screen shows; the keys ↑ ↓ Tab Enter Esc,
+and a text box with Send, each running `POST /api/answer`, which is `answer`. An opencode option is
+`answer --reply <id> --session <session> [--field <key>] --text <value>`, replied through
+`opencode2 api POST /api/session/<session>/form|permission/<id>/reply`, not the pane.
 
 ## Sub-features
 
@@ -17,9 +21,10 @@ the screen shows, the keys ↑ ↓ Tab Enter Esc, and a text box with Send, each
 - `answer-not-asking` a live Dispatch whose Implementer is not Asking is exit 1.
 - `answer-typed` an answer, by the user or `--by faux-nico`, is typed as `herdr agent prompt <implementer> <text> --wait --until working --timeout 30000`.
 - `answer-keys` `--keys <key>...` (herdr's key names: `up`, `down`, `tab`, `enter`, `esc`, a digit) is sent as `herdr agent send-keys <implementer> <key>...` and recorded with the keys as its text, each time.
-- `answer-route` `POST /api/answer {issue, text}` or `{issue, keys}` runs `answer`: 200 with its answer; a refusal 409 (400 for a bad body), as `{error, help}`.
+- `answer-reply` `--reply <id> --session <session>` answers an opencode Implementer's form (`--field <key>`, body `{"answer":{<key>:<text>}}`) or permission (`--text once|always|reject`, body `{"decision":...}`) through `opencode2 api POST .../reply`, recorded with `--text`; to a claude Implementer, without `--session`, with `--keys`, or a permission reply not one of the three, exit 2 and nothing sent.
+- `answer-route` `POST /api/answer {issue, text}`, `{issue, keys}` or `{issue, text, reply, session, field}` runs `answer`: 200 with its answer; a refusal 409 (400 for a bad body), as `{error, help}`.
 - `answer-screen` `GET /api/agent/<issue>/implementer` is the Implementer's screen: herdr refuses its last 200 lines (`--source recent --lines 200`, `agent_not_idle`) while a Claude asks, so it is `herdr agent read --source visible`'s (agents.md); `GET /api/node/<issue>` holds no pane, Asking or not, and reads no screen.
-- `answer-board` the issue's panel of an Asking Dispatch has `region "Asking"` first, saying so with its question, and `link "Answer it in its panel"`; the Implementer's agent panel, kept as the map takes a change elsewhere (a half-typed answer stays), has under its screen `region "Answer"`: `group "Options"` with a `button "<n> <option>"` per numbered option, `group "Keys"` (`button "Up"`, `"Down"`, `"Tab"`, `"Enter"`, `"Esc"`), `textbox "Answer in words"` and `button "Send"`. Each answer reads the screen again. A refusal, or a screen herdr cannot read, is on the errata rule. At 360px nothing but the screen's box is wider than the window.
+- `answer-board` the issue's panel of an Asking Dispatch has `region "Asking"` first, saying so with its question, and `link "Answer it in its panel"`; the Implementer's agent panel, kept as the map takes a change elsewhere (a half-typed answer stays), has under its chat `region "Answer"`: the question, `group "Options"` with a `button "<n> <option>"` per option the transcript's question offers (the screen's numbered ones while the chat asks none it can pick), `group "Keys"` (`button "Up"`, `"Down"`, `"Tab"`, `"Enter"`, `"Esc"`), `textbox "Answer in words"` and `button "Send"`. The chat shows each answer taken (the screen, read again, while it stands in). A refusal, or a screen herdr cannot read, is on the errata rule. At 360px nothing but the screen's box is wider than the window.
 
 ## How to get to it (user POV)
 
@@ -95,7 +100,7 @@ Preconditions:
   the dialog: its tabs (`☐ Node tint  ☐ Sections  ✔ Submit`), the question, `❯ 1. Faint tint`, `2. No tint`,
   `3. Type something.`, `4. Chat about this`.
 - **Opened from the node.** `$C page --evidence "$E/01-desk-light-asking" --width 1280 --scheme light --click "button=Implementer, asking you something" --expect "Should map nodes carry a tint of their Stage hue?"`:
-  the node ends `needs you`; `region "Implementer"` holds the screen, then `region "Answer"` with `button "1 Faint tint"` to `button "4 Chat about this"`;
+  the node ends `needs you`; `region "Implementer"` holds the chat (AskUserQuestion `Running`; two questions, so the screen is read for the options), then `region "Answer"` with `button "1 Faint tint"` to `button "4 Chat about this"`;
   `.view.txt` says focus is on the panel's title.
 - **An option.** The same, then `--click "button=1 Faint tint" --expect "Should the panel's sections start folded?"`
   (`02-desk-light-picked-1`): `POST /api/answer {"issue":"verify/fixture#7","keys":["1"]} -> 200`, and the

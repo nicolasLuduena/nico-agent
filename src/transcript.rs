@@ -29,7 +29,8 @@ const CUT: usize = 2000;
 /// <place>`, the last event's id the page had): a `session` event naming
 /// the session first and whenever a newer one replaces it (a Restart's),
 /// then `entries` events, each `id` the place to resume past; `missing`,
-/// with why, while there is none to read. Refused for an issue with no live
+/// with why, while there is none to read; and for an opencode Implementer,
+/// `asking`, what its session waits on the user for, whenever that changes. Refused for an issue with no live
 /// Dispatch or a role with no agent.
 pub fn stream(
     ctx: &Context,
@@ -57,6 +58,9 @@ pub fn stream(
     let mut said: Option<String> = None;
     let mut quiet = 0;
     let reads = READ.contains(&harness.as_str());
+    // Only an opencode Implementer's asks are answered through its server: claude's are in its transcript.
+    let asks = harness == "opencode" && role == "implementer";
+    let mut asked: Option<Vec<Value>> = None;
     let poll = move |world: &dyn World| {
         let after = at.as_ref().map(|(s, p)| (s.as_str(), p.as_str()));
         let read = if reads {
@@ -78,7 +82,15 @@ pub fn stream(
                 if let Some((entries, place)) = read_past(&harness, from, &lines) {
                     let id = format!("{session} {place}");
                     sent += &event("entries", Some(&id), json!({ "entries": entries }));
-                    at = Some((session, place));
+                    at = Some((session.clone(), place));
+                }
+                // An ask unread this time is left as last said.
+                let now = (asks.then(|| world.opencode_asks(&command, &session).ok()))
+                    .flatten()
+                    .map(|a| asking(&session, &a));
+                if now.is_some() && now != asked {
+                    sent += &event("asking", None, json!({ "asking": now }));
+                    asked = now;
                 }
             }
             unread => {
@@ -157,14 +169,15 @@ fn claude(line: &Value) -> Vec<Value> {
     let usage = &line["message"]["usage"];
     (blocks.iter())
         .filter_map(|block| {
-            let (kind, text) = match block["type"].as_str()? {
-                "text" => (role, block["text"].as_str()?.to_string()),
-                "thinking" => ("thinking", block["thinking"].as_str()?.to_string()),
-                "tool_use" => ("tool", call(&block["name"], &block["input"])),
-                "tool_result" => ("result", result(&block["content"])),
+            let entry = match block["type"].as_str()? {
+                "text" => entry(role, block["text"].as_str()?, usage),
+                "thinking" => entry("thinking", block["thinking"].as_str()?, usage),
+                "tool_use" => tool(&block["id"], &block["name"], &block["input"], usage),
+                "tool_result" => (entry("result", &result(&block["content"]), usage))
+                    .map(|e| outcome(e, &block["tool_use_id"], block["is_error"] == true)),
                 _ => return None,
             };
-            Some(entry(kind, &text, usage))
+            Some(entry)
         })
         .flatten()
         .collect()
@@ -199,10 +212,16 @@ fn opencode(message: &Value) -> Vec<Value> {
                 .collect(),
                 Some("tool") => {
                     let state = &part["state"];
-                    let called = entry("tool", &call(&part["name"], &state["input"]), &Value::Null);
+                    let called = tool(&part["id"], &part["name"], &state["input"], &Value::Null);
+                    let failed = state["status"] == "error";
                     // opencode 2's result is its text blocks; an older one's, `output`.
-                    let done = (state.get("content")).unwrap_or(&state["output"]);
-                    let output = entry("result", &result(done), &Value::Null);
+                    let done = match state.get("content") {
+                        _ if failed => &state["error"]["message"],
+                        Some(content) => content,
+                        None => &state["output"],
+                    };
+                    let output = (entry("result", &result(done), &Value::Null))
+                        .map(|e| outcome(e, &part["id"], failed));
                     called.into_iter().chain(output).collect()
                 }
                 _ => vec![],
@@ -226,6 +245,89 @@ fn entry(role: &str, text: &str, usage: &Value) -> Option<Value> {
         entry["usage"] = usage.clone();
     }
     Some(entry)
+}
+
+/// A tool call: as text, its name and its input; its `id` and `name`, and
+/// what the chat draws of the tools it knows: a question's `ask` (claude's
+/// AskUserQuestion), a to-do list's `todos` (claude's TodoWrite, opencode's
+/// todowrite).
+fn tool(id: &Value, name: &Value, input: &Value, usage: &Value) -> Option<Value> {
+    let mut e = entry("tool", &call(name, input), usage)?;
+    e["id"] = id.clone();
+    e["name"] = name.clone();
+    match name.as_str().unwrap_or_default() {
+        "AskUserQuestion" => e["ask"] = ask(id, &input["questions"]),
+        "TodoWrite" | "todowrite" => {
+            let todos = (input["todos"].as_array().into_iter().flatten())
+                .map(|t| json!({ "text": t["content"], "status": t["status"] }))
+                .collect::<Vec<_>>();
+            e["todos"] = todos.into();
+        }
+        _ => {}
+    }
+    Some(e)
+}
+
+/// A question as the page asks it: its `id`, its words, and its options,
+/// each with the `value` that answers it; none to pick but its first of
+/// several questions, or one taking several picks, which the screen answers.
+fn ask(id: &Value, questions: &Value) -> Value {
+    // shortcut: several questions (or form fields) are answered in the pane; offer each in turn if that proves common.
+    let first = &questions[0];
+    let one = questions.as_array().map_or(0, Vec::len) == 1
+        && first["multiSelect"] != true
+        && first["multiple"] != true
+        && first["type"] != "multiselect";
+    let options = (first["options"].as_array().into_iter().flatten())
+        .filter(|_| one)
+        .map(|o| {
+            let value = o.get("value").unwrap_or(&o["label"]);
+            json!({ "label": o["label"], "description": o["description"], "value": value })
+        })
+        .collect::<Vec<_>>();
+    json!({
+        "id": id,
+        "header": first.get("header").or(first.get("title")),
+        "question": first.get("question").or(first.get("description")),
+        "options": options,
+    })
+}
+
+/// A tool's result entry, with the `id` of the call it answers, and `error` when it failed.
+fn outcome(mut e: Value, id: &Value, failed: bool) -> Value {
+    e["id"] = id.clone();
+    if failed {
+        e["error"] = true.into();
+    }
+    e
+}
+
+/// What an opencode session waits on the user for, as the page asks it
+/// ([`ask`]'s shape): a form's first field, its `field` to reply to, or a
+/// permission request with opencode's three replies; each with its `session`.
+fn asking(session: &str, asks: &[Value]) -> Vec<Value> {
+    (asks.iter())
+        .map(|a| {
+            let mut asked = if a["id"].as_str().is_some_and(|id| id.starts_with("per")) {
+                let resources = (a["resources"].as_array().into_iter().flatten())
+                    .filter_map(Value::as_str)
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                let said = (a["message"].as_str().map(String::from))
+                    .unwrap_or_else(|| format!("{} {resources}", a["action"].as_str().unwrap_or("Allow")));
+                let options = [("Allow once", "once"), ("Always allow", "always"), ("Reject", "reject")]
+                    .map(|(label, value)| json!({ "label": label, "value": value }));
+                json!({ "id": a["id"], "header": "Permission", "question": said.trim(), "options": options })
+            } else {
+                let fields = a["fields"].as_array().cloned().unwrap_or_default();
+                let mut asked = ask(&a["id"], &fields.into());
+                asked["field"] = a["fields"][0]["key"].clone();
+                asked
+            };
+            asked["session"] = session.into();
+            asked
+        })
+        .collect()
 }
 
 /// A tool call as the chat shows it: the tool's name, then its input as JSON.
@@ -253,7 +355,7 @@ fn result(content: &Value) -> String {
 
 /// `text` up to [`CUT`] characters, an ellipsis after what is cut.
 fn cut(text: impl AsRef<str>) -> String {
-    // shortcut: a long result shows its start alone; let the chat open the whole of it in #444's UI.
+    // shortcut: a long result shows its start alone, in its Tool fold too; serve the whole of it when the fold opens, if that falls short.
     let text = text.as_ref();
     match text.char_indices().nth(CUT) {
         Some((i, _)) => format!("{}…", &text[..i]),

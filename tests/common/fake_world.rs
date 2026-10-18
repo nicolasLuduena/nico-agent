@@ -53,6 +53,10 @@ pub struct FakeWorld {
     /// <folder>`: its id and its lines, claude's as it writes them,
     /// opencode's messages a JSON object each.
     pub transcripts: RefCell<BTreeMap<String, (String, Vec<u8>)>>,
+    /// What each opencode session waits on the user for, by its id: its
+    /// open forms and permission requests, as `opencode_asks` gives them; one
+    /// replied to leaves.
+    pub asks: RefCell<BTreeMap<String, Vec<serde_json::Value>>>,
     /// The startup question the next agents started are blocked on, shown as
     /// their screen until keys are sent to one.
     pub blocked_screen: RefCell<Option<String>>,
@@ -124,6 +128,7 @@ impl Default for FakeWorld {
             agent_panes: Default::default(),
             screens: Default::default(),
             transcripts: Default::default(),
+            asks: Default::default(),
             blocked_screen: Default::default(),
             stalled_prompts: Default::default(),
             lagging_prompts: Default::default(),
@@ -906,6 +911,35 @@ impl World for FakeWorld {
             tab: first_tab(&workspace),
             workspace,
         })
+    }
+
+    fn opencode_asks(&self, command: &str, session: &str) -> WorldResult<Vec<serde_json::Value>> {
+        self.call(format!("{command} api GET /api/session/{session}/form"))?;
+        self.call(format!(
+            "{command} api GET /api/session/{session}/permission"
+        ))?;
+        Ok(self.asks.borrow().get(session).cloned().unwrap_or_default())
+    }
+
+    fn opencode_reply(
+        &self,
+        command: &str,
+        session: &str,
+        id: &str,
+        body: &serde_json::Value,
+    ) -> WorldResult<()> {
+        let kind = if id.starts_with("per") {
+            "permission"
+        } else {
+            "form"
+        };
+        self.call(format!(
+            "{command} api POST /api/session/{session}/{kind}/{id}/reply --data {body}"
+        ))?;
+        if let Some(asks) = self.asks.borrow_mut().get_mut(session) {
+            asks.retain(|a| a["id"] != id);
+        }
+        Ok(())
     }
 
     fn opencode_save_variant(

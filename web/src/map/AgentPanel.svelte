@@ -1,18 +1,25 @@
 <script lang="ts">
   // An agent's panel (desktop) or bottom sheet (phone), in place of its issue's:
   // its role and Agent state, then its chat, streamed from /api/agent/<issue>/<role>/transcript while
-  // it is open and the page is visible, or beside it its last 200 lines (its screen while herdr
-  // scrolls it only idle) from /api/agent/<issue>/<role>, read again every 3 s likewise, shown in the
-  // chat's place while there is none to read; under an Asking Implementer's, the answer controls.
+  // it is open and the page is visible, drawn with the AI Elements; only while there is no chat to read,
+  // its last 200 lines (its screen while herdr scrolls it only idle) from /api/agent/<issue>/<role>,
+  // read again every 3 s likewise; under an Asking Implementer's, the answer controls, which read the
+  // screen too while the chat asks nothing they can pick.
   import { Button } from "$lib/components/ui/button/index.js";
+  import { Conversation } from "$lib/components/ai-elements/conversation/index.js";
+  import { Message, MessageContent } from "$lib/components/ai-elements/message/index.js";
+  import { Reasoning, ReasoningContent, ReasoningTrigger } from "$lib/components/ai-elements/reasoning/index.js";
+  import { Response } from "$lib/components/ai-elements/response/index.js";
+  import { Task, TaskContent, TaskItem, TaskTrigger } from "$lib/components/ai-elements/task/index.js";
+  import { Tool, ToolContent, ToolHeader, ToolInput, ToolOutput } from "$lib/components/ai-elements/tool/index.js";
   import { onMount } from "svelte";
   import Answer from "../controls/Answer.svelte";
-  import Segments from "../Segments.svelte";
   import { hash } from "../route";
   import { selection } from "../selection.svelte";
   import { numbered, type Project } from "../status";
   import { clock } from "../time";
   import AgentDot from "./AgentDot.svelte";
+  import { asked, context, turns, type Ask, type Entry } from "./chat";
   import { agentsOf, ROLE, SAYS, type Role } from "./layout";
   import { shown } from "./ProjectMap.svelte";
 
@@ -22,6 +29,84 @@
   const node = $derived(shown.map?.nodes.find((n) => n.key === issue) ?? null);
   /** As the map last said it; null once herdr no longer lists it. */
   const doing = $derived(node && (agentsOf(node).find((a) => a.role === role)?.state ?? null));
+
+  let entries = $state<Entry[]>([]);
+  /** What an opencode Implementer's session waits on, as serve last said; null for claude's, asked in its chat. */
+  let served = $state<Ask[] | null>(null);
+  /** Why there is no chat to read, while there is none. */
+  let missing = $state<string | null>(null);
+  let chatOpened = $state(false);
+  const chat = $derived(turns(entries));
+  const tokens = $derived(context(entries));
+  const ask = $derived(served ? (served[0] ?? null) : asked(entries));
+  /** The screen stands in only while there is no chat to read. */
+  const fallback = $derived(chatOpened && missing !== null && chat.length === 0);
+  const asking = $derived(role === "implementer" && doing === "asking");
+  /** The screen is read while it stands in, or for the options of a dialog the chat asks none of (a permission prompt, several questions at once). */
+  const reads = $derived(fallback || (chatOpened && asking && !ask?.options.length));
+
+  // One stream while the panel is open and the page visible; reopened past the last entry it had.
+  $effect(() => {
+    const path = `/api/agent/${encodeURIComponent(issue)}/${role}/transcript`;
+    entries = [];
+    served = missing = null;
+    chatOpened = false;
+    let session: string | null = null;
+    let last: string | null = null;
+    let source: EventSource | null = null;
+    // What landed, applied once a frame, so the Markdown is drawn again once, not per event, and a
+    // session opens with its entries, never empty a frame before them.
+    let landed: Entry[] = [];
+    let fresh = false;
+    let opened = false;
+    let frame = 0;
+    const land = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        entries = fresh ? landed : [...entries, ...landed];
+        if (opened) [chatOpened, missing] = [true, null];
+        landed = [];
+        fresh = opened = false;
+      });
+    };
+    const open = () => {
+      source?.close();
+      source = null;
+      if (document.hidden) return;
+      source = new EventSource(last ? `${path}?after=${encodeURIComponent(last)}` : path);
+      source.addEventListener("session", (e) => {
+        const now = JSON.parse(e.data).session;
+        if (now !== session) [landed, fresh] = [[], true];
+        session = now;
+        opened = true;
+        land();
+      });
+      source.addEventListener("entries", (e) => {
+        landed.push(...JSON.parse(e.data).entries);
+        last = e.lastEventId;
+        land();
+      });
+      source.addEventListener("asking", (e) => (served = JSON.parse(e.data).asking));
+      source.addEventListener("missing", (e) => {
+        missing = JSON.parse(e.data).missing;
+        chatOpened = true;
+      });
+      // Refused (no live Dispatch, no such agent): the browser gives up on it, and the screen stands in.
+      source.onerror = () => {
+        if (source?.readyState === EventSource.CLOSED) {
+          missing ??= "nico-agent serve refused its chat";
+          chatOpened = true;
+        }
+      };
+    };
+    document.addEventListener("visibilitychange", open);
+    open();
+    return () => {
+      cancelAnimationFrame(frame);
+      document.removeEventListener("visibilitychange", open);
+      source?.close();
+    };
+  });
 
   let screen = $state<string | null>(null);
   // Its padding, blank margins and the empty rows a terminal leaves between its output and its prompt left out.
@@ -36,8 +121,9 @@
   let unread = $state<string | null>(null);
   let read: () => void = () => {};
 
-  // One read in flight at a time, the next 3 s after it lands; none while the page is hidden.
+  // While the screen is read: one read in flight at a time, the next 3 s after it lands; none while the page is hidden.
   $effect(() => {
+    if (!reads) return;
     const path = `/api/agent/${encodeURIComponent(issue)}/${role}`;
     screen = readAt = unread = null;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -67,76 +153,23 @@
     read();
     return () => {
       stopped = true;
+      read = () => {};
       clearTimeout(timer);
       document.removeEventListener("visibilitychange", visible);
     };
   });
 
-  type Entry = { role: string; text?: string };
-  let entries = $state<Entry[]>([]);
-  /** Why there is no chat to read, while there is none. */
-  let missing = $state<string | null>(null);
-  let chatOpened = $state(false);
-  let view = $state<"chat" | "screen">("chat");
-  const said = $derived(entries.filter((e) => e.text));
-  /** The chat is shown unless asked for the screen, or there is none to read. */
-  const chatting = $derived(view === "chat" && !(missing !== null && said.length === 0));
+  /** A to-do's status, marked as well as said. */
+  const DONE: Record<string, string> = { completed: "✓", in_progress: "▸", cancelled: "✕" };
+  /** A tool call's name, and its input past it. */
+  const named = (call: Entry) => call.name ?? call.text?.split(" ")[0] ?? "Tool";
+  const input = (call: Entry) => (call.text ?? "").slice(named(call).length).trim();
 
-  // One stream while the panel is open and the page visible; reopened past the last entry it had.
-  $effect(() => {
-    const path = `/api/agent/${encodeURIComponent(issue)}/${role}/transcript`;
-    entries = [];
-    missing = null;
-    chatOpened = false;
-    let session: string | null = null;
-    let last: string | null = null;
-    let source: EventSource | null = null;
-    const open = () => {
-      source?.close();
-      source = null;
-      if (document.hidden) return;
-      source = new EventSource(last ? `${path}?after=${encodeURIComponent(last)}` : path);
-      source.addEventListener("session", (e) => {
-        const now = JSON.parse(e.data).session;
-        if (now !== session) entries = [];
-        session = now;
-        chatOpened = true;
-        missing = null;
-      });
-      source.addEventListener("entries", (e) => {
-        entries = [...entries, ...JSON.parse(e.data).entries];
-        last = e.lastEventId;
-      });
-      source.addEventListener("missing", (e) => {
-        missing = JSON.parse(e.data).missing;
-        chatOpened = true;
-      });
-      // Refused (no live Dispatch, no such agent): the browser gives up on it, and the screen stands in.
-      source.onerror = () => {
-        if (source?.readyState === EventSource.CLOSED) missing ??= "nico-agent serve refused its chat";
-      };
-    };
-    document.addEventListener("visibilitychange", open);
-    open();
-    return () => {
-      document.removeEventListener("visibilitychange", open);
-      source?.close();
-    };
-  });
-
-  const SHOWS = [
-    { value: "chat" as const, label: "Chat" },
-    { value: "screen" as const, label: "Screen" },
-  ];
-  const PREFIX: Record<string, string> = { user: "› ", tool: "▸ ", result: "  ⎿ " };
-
-  // Pinned to its foot, where the agent writes, unless the user has scrolled up.
+  // The screen pinned to its foot, where the agent writes, unless the user has scrolled up.
   let box = $state<HTMLElement>();
   let pinned = true;
   $effect(() => {
     void text;
-    void said.length;
-    void chatting;
     if (box && pinned) box.scrollTop = box.scrollHeight;
   });
   function scrolled() {
@@ -200,44 +233,75 @@
   </header>
 
   <div class="section">
-    <div class="show">
-      <Segments label="Show" options={SHOWS} value={view} pick={(v) => (view = v)} />
-    </div>
-    {#if chatting}
-      {#if !chatOpened}
-        <p class="note">Reading its chat…</p>
-      {:else}
-        {#if missing}
-          <p class="errata" role="status"><strong>{missing}</strong></p>
-        {/if}
-        <!-- Scrolls inside its box, so a keyboard can reach it. -->
-        <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-        <div class="chat" role="log" tabindex="0" aria-label="The {ROLE[role]}'s chat" bind:this={box} onscroll={scrolled}>
-          {#each said as e, i (i)}
-            <p class={e.role}>{PREFIX[e.role] ?? ""}{e.text}</p>
-          {/each}
-        </div>
+    {#if !chatOpened}
+      <p class="note">Reading its chat…</p>
+    {:else if !fallback}
+      {#if missing}
+        <p class="errata" role="status"><strong>{missing}</strong></p>
+      {/if}
+      <Conversation class="chat" aria-label="The {ROLE[role]}'s chat">
+        {#each chat as turn, i (i)}
+          <Message from={turn.from}>
+            <MessageContent>
+              {#each turn.parts as part, j (j)}
+                {#if part.kind === "text"}
+                  {#if turn.from === "user"}
+                    <p class="said">{part.text}</p>
+                  {:else}
+                    <Response content={part.text} />
+                  {/if}
+                {:else if part.kind === "thinking"}
+                  <Reasoning>
+                    <ReasoningTrigger />
+                    <ReasoningContent content={part.text} />
+                  </Reasoning>
+                {:else if part.call.todos}
+                  {@const todos = part.call.todos}
+                  <Task>
+                    <TaskTrigger title="To do · {todos.filter((t) => t.status === 'completed').length} of {todos.length} done" />
+                    <TaskContent>
+                      {#each todos as t, k (k)}
+                        <TaskItem class={t.status === "in_progress" ? "text-foreground" : ""}>{DONE[t.status] ?? "○"} {t.text}</TaskItem>
+                      {/each}
+                    </TaskContent>
+                  </Task>
+                {:else}
+                  <Tool>
+                    <ToolHeader type={named(part.call)} state={!part.result ? "input-available" : part.result.error ? "output-error" : "output-available"} />
+                    <ToolContent>
+                      {#if input(part.call)}
+                        <ToolInput input={input(part.call)} />
+                      {/if}
+                      <ToolOutput output={part.result?.error ? undefined : part.result?.text} errorText={part.result?.error ? part.result.text : undefined} />
+                    </ToolContent>
+                  </Tool>
+                {/if}
+              {/each}
+            </MessageContent>
+          </Message>
+        {/each}
+      </Conversation>
+      {#if tokens !== null}
+        <p class="note tokens">{tokens.toLocaleString()} tokens in its context</p>
       {/if}
     {:else}
-    {#if view === "chat" && missing}
       <p class="note">No chat to read: {missing}. Its screen:</p>
-    {/if}
-    {#if unread}
-      <p class="errata" role="status"><strong>{readAt ? `Last read ${clock(readAt)}` : "Not read yet"} · {unread}</strong></p>
-    {:else if screen === null}
-      <p class="note">Reading its screen…</p>
-    {/if}
-    {#if text !== null}
-      <!-- Scrolls inside its box, so a keyboard can reach it. -->
-      <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-      <pre class="screen" tabindex="0" aria-label="The {ROLE[role]}'s screen" bind:this={box} onscroll={scrolled}>{text}</pre>
-    {/if}
+      {#if unread}
+        <p class="errata" role="status"><strong>{readAt ? `Last read ${clock(readAt)}` : "Not read yet"} · {unread}</strong></p>
+      {:else if screen === null}
+        <p class="note">Reading its screen…</p>
+      {/if}
+      {#if text !== null}
+        <!-- Scrolls inside its box, so a keyboard can reach it. -->
+        <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+        <pre class="screen" tabindex="0" aria-label="The {ROLE[role]}'s screen" bind:this={box} onscroll={scrolled}>{text}</pre>
+      {/if}
     {/if}
   </div>
 
-  {#if role === "implementer" && doing === "asking"}
+  {#if asking}
     <div class="section">
-      <Answer {issue} screen={text ?? ""} answered={() => read()} />
+      <Answer {issue} {ask} screen={reads ? text : null} answered={() => read()} />
     </div>
   {/if}
 </section>
@@ -261,30 +325,37 @@
   .errata {
     margin-bottom: 8px;
   }
-  .show {
-    margin-bottom: 8px;
-  }
-  /* The chat, plain text as the screen is, but each entry wrapped: never a sideways scroll. */
-  .chat {
+  /* The chat in the screen's frame: each turn wrapped, never a sideways scroll. */
+  :global(.chat) {
     max-height: 32em;
-    overflow: auto;
-    overscroll-behavior: contain;
     padding: 8px 12px;
     border: 1px solid var(--hairline);
     border-radius: var(--radius-control);
     background: var(--ground);
     color: var(--ink);
     font: 400 13px/1.4 var(--mono);
-    white-space: pre-wrap;
     overflow-wrap: anywhere;
   }
-  .chat p {
-    margin: 0 0 8px;
+  :global(.chat p),
+  :global(.chat ul),
+  :global(.chat ol) {
+    margin: 0 0 6px;
   }
-  .chat .thinking,
-  .chat .tool,
-  .chat .result {
-    color: var(--ink-muted);
+  :global(.chat :is(ul, ol)) {
+    padding-left: 20px;
+  }
+  .said {
+    white-space: pre-wrap;
+  }
+  :global(.chat .tool-text) {
+    margin: 0;
+    max-height: 16em;
+    overflow: auto;
+    white-space: pre-wrap;
+    font: inherit;
+  }
+  .tokens {
+    margin-top: 6px;
   }
   /* The screen as herdr reads it, plain: unwrapped, scrolling inside its own box, never the panel or the page. */
   .screen {
@@ -303,7 +374,7 @@
   }
   @media (width < 720px) {
     .screen,
-    .chat {
+    :global(.chat) {
       max-height: 40vh;
     }
     .bar .ref {

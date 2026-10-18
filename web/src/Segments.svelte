@@ -1,5 +1,5 @@
 <script lang="ts" generics="T extends string">
-  // A segmented switch, its states set here once: the theme switch's, and Chat / Screen in an agent's panel.
+  // A segmented switch, its states set here once: the theme switch's.
   // On a `raised` track, the picked segment a lifted `surface` pill; 44px tall under 720px.
   let { label, options, value, pick }: { label: string; options: { value: T; label: string }[]; value: T; pick: (value: T) => void } =
     $props();

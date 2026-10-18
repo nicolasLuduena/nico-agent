@@ -461,6 +461,21 @@ pub trait World {
     ) -> WorldResult<Option<Transcript>>;
 
     // opencode
+    /// What opencode's session `session` waits on the user for, asked of its
+    /// background service through `command api`: its open forms (a question
+    /// tool's, `frm_…`), then its permission requests (`per_…`), each as
+    /// opencode serves it.
+    fn opencode_asks(&self, command: &str, session: &str) -> WorldResult<Vec<Value>>;
+    /// Answer `id`, a form or permission request `opencode_asks` gave of
+    /// `session`, with `body` (`{answer}` for a form, `{decision}` for a
+    /// permission), through its server: the TUI showing it takes it as answered.
+    fn opencode_reply(
+        &self,
+        command: &str,
+        session: &str,
+        id: &str,
+        body: &Value,
+    ) -> WorldResult<()>;
     /// Save `effort` as opencode's variant for `model` in its variant `file`
     /// (`~/` is the home directory), keeping the rest; `None` clears it. A
     /// saved variant overrides the one opencode is started with.
@@ -1088,14 +1103,27 @@ fn list_tree(dir: &Path, under: &Path, files: &mut Vec<PathBuf>) -> io::Result<(
 
 /// What opencode's background service answers `GET path`, through `command api`.
 fn opencode_api(command: &str, path: &str) -> WorldResult<Value> {
+    opencode_call(command, "GET", path, None)
+}
+
+/// `command api <method> <path>`, with `body` as its JSON; what it answers,
+/// `Null` for no content.
+fn opencode_call(
+    command: &str,
+    method: &str,
+    path: &str,
+    body: Option<&Value>,
+) -> WorldResult<Value> {
     let shown = format!(
-        "{command} api GET {}",
+        "{command} api {method} {}",
         path.split('?').next().unwrap_or(path)
     );
+    let mut args = vec!["api".to_string(), method.into(), path.into()];
+    if let Some(body) = body {
+        args.extend(["--data".into(), body.to_string()]);
+    }
     let ran = run_till(
-        Command::new(command)
-            .args(["api", "GET", path])
-            .stdin(Stdio::null()),
+        Command::new(command).args(&args).stdin(Stdio::null()),
         deadline(),
         &shown,
         |_| WorldError(format!("`{command}` is not installed or not on PATH")),
@@ -1109,6 +1137,9 @@ fn opencode_api(command: &str, path: &str) -> WorldResult<Value> {
             .filter(|l| !l.is_empty())
             .map_or(said, String::from);
         return Err(WorldError(format!("`{shown}` failed: {said}")));
+    }
+    if out.trim().is_empty() {
+        return Ok(Value::Null);
     }
     serde_json::from_str(&out).map_err(|_| invalid(&shown))
 }
@@ -1873,6 +1904,31 @@ impl World for RealWorld {
             }
             _ => Ok(None),
         }
+    }
+
+    fn opencode_asks(&self, command: &str, session: &str) -> WorldResult<Vec<Value>> {
+        let mut asks = vec![];
+        for kind in ["form", "permission"] {
+            let listed = opencode_api(command, &format!("/api/session/{session}/{kind}"))?;
+            asks.extend(listed["data"].as_array().cloned().unwrap_or_default());
+        }
+        Ok(asks)
+    }
+    fn opencode_reply(
+        &self,
+        command: &str,
+        session: &str,
+        id: &str,
+        body: &Value,
+    ) -> WorldResult<()> {
+        let kind = if id.starts_with("per") {
+            "permission"
+        } else {
+            "form"
+        };
+        let path = format!("/api/session/{session}/{kind}/{id}/reply");
+        opencode_call(command, "POST", &path, Some(body))?;
+        Ok(())
     }
 
     fn opencode_save_variant(

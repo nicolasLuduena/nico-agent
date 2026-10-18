@@ -3,29 +3,30 @@
 Each live agent of a Dispatch has a row on its node, the Implementer then the Reviewer: its Agent
 state's dot and its role, what the state means on hover and focus and in its accessible name
 (`Implementer, working`). A row opens that agent's panel in place of the issue's (the bottom sheet on
-a phone): its role, its Agent state in words, a link back to the issue's panel and Close, then `Chat` and
-`Screen`. Chat, shown first, is the conversation its Harness keeps, streamed from `GET
-/api/agent/<issue>/<role>/transcript` while the panel is open: claude's transcript under `~/.claude/projects/`,
-opencode's session through `opencode2 api`, each entry wrapped, a reply appearing as it lands, no polling for it;
-while there is none to read, Chat shows the screen whole under `No chat to read: <why>. Its screen:`. The screen
-is its last 200 lines from `GET /api/agent/<issue>/<role>`, which reads `herdr agent read <agent> --source recent
+a phone): its role, its Agent state in words, a link back to the issue's panel and Close, then its chat: the
+conversation its Harness keeps, streamed from `GET /api/agent/<issue>/<role>/transcript` while the panel is
+open (claude's transcript under `~/.claude/projects/`, opencode's session through `opencode2 api`), drawn with
+the AI Elements: a Message per turn, the agent's words as Markdown, thinking under `Thinking`, each tool call a
+fold with its status, a to-do list under `To do · N of M done`, then `N tokens in its context`; a reply appearing
+as it lands, no polling for it. Only while there is none to read does the screen stand in, under `No chat to
+read: <why>. Its screen:`. The screen is its last 200 lines from `GET /api/agent/<issue>/<role>`, which reads `herdr agent read <agent> --source recent
 --lines 200` and nothing of GitHub; herdr scrolls an alternate screen (Claude's, codex's) only while its
-agent is idle, and refuses `agent_not_idle` otherwise, so then it reads `--source visible`, the screen. The panel reads again about every 3 s while it is open and the
-page visible; a failed read keeps the last screen under `Last read HH:MM · <why>`. An Asking
-Implementer is answered under its screen (answer.md). The open panel is in the URL's hash
+agent is idle, and refuses `agent_not_idle` otherwise, so then it reads `--source visible`, the screen. The panel reads it again about every 3 s while it stands in and the
+page is visible, and while the chat streams only for Answer's options when an Asking Implementer's chat asks nothing they can pick (answer.md); a failed read keeps the last screen under `Last read HH:MM · <why>`. An Asking
+Implementer is answered under its chat (answer.md). The open panel is in the URL's hash
 (`#<project>/<issue>/<role>`).
 
 ## Sub-features
 
-- `agents-chat-route` `GET /api/agent/<issue>/<role>/transcript` is a stream: `event: session` naming the session, then `event: entries` (`{entries: [{role, text, usage?}]}`, roles user, assistant, thinking, tool, result, progress) each with `id: <session> <place>`, a line once whole and never twice; `event: missing` with why while there is none to read (no session yet, a read that fails, a Harness whose chat is not read); resumed past `Last-Event-ID` or `?after=`; refused as the screen is. claude: the run HOME's newest `~/.claude/projects/<worktree, each non-alphanumeric a dash>/*.jsonl` from a byte offset; opencode: `opencode2 api GET /api/session?directory=<worktree>&...` then its messages, past the last finished one by opencode's cursor. No herdr, no `gh`.
-- `agents-chat` the panel opens on `group "Show"` with `button "Chat" [pressed]` and `log "The <Role>'s chat"`: `› ` before the user's, `▸ ` before a tool call, `⎿ ` before its result, each entry wrapped (the page no wider than the window); a reply appended to the transcript shows in the open panel; `.requests.txt` one `GET .../transcript -> 200` while the screen is read every 3 s.
-- `agents-chat-fallback` with no chat to read, Chat shows `No chat to read: <why>. Its screen:` and the screen's box; `button "Screen"` shows the screen whatever the chat holds.
+- `agents-chat-route` `GET /api/agent/<issue>/<role>/transcript` is a stream: `event: session` naming the session, then `event: entries` (`{entries: [{role, text, usage?}]}`, roles user, assistant, thinking, tool, result, progress; a tool call with its `id` and `name`, AskUserQuestion's with `ask`, TodoWrite's or todowrite's with `todos`, a result with the `id` it answers and `error` when it failed) each with `id: <session> <place>`, a line once whole and never twice; `event: missing` with why while there is none to read (no session yet, a read that fails, a Harness whose chat is not read); resumed past `Last-Event-ID` or `?after=`; refused as the screen is. claude: the run HOME's newest `~/.claude/projects/<worktree, each non-alphanumeric a dash>/*.jsonl` from a byte offset; opencode: `opencode2 api GET /api/session?directory=<worktree>&...` then its messages, past the last finished one by opencode's cursor, and for an Implementer `event: asking` (`{asking: [{id, session, field?, header, question, options}]}`) from `opencode2 api GET /api/session/<id>/form` and `.../permission` whenever it changes. No herdr, no `gh`.
+- `agents-chat` the panel opens on `log "The <Role>'s chat"`, no `group "Show"`: the user's turn on a bubble at the right, the agent's words as Markdown, `Thinking` and each tool call (`<name>` and `Completed`) folded, opening on `Parameters` and `Result`, everything wrapped (the page no wider than the window), `N tokens in its context` under it; a reply appended to the transcript shows in the open panel; `.requests.txt` one `GET .../transcript -> 200` and, unless Asking a dialog the chat asks none of, no `GET /api/agent/<issue>/<role>`.
+- `agents-chat-fallback` with no chat to read, the panel shows `No chat to read: <why>. Its screen:` and the screen's box, read every 3 s.
 - `agents-route` `GET /api/agent/<issue>/implementer|reviewer` answers `{agent, screen}` with the last 200 lines, or `{agent, unread}` with herdr's reason when its read fails; `409` for an issue with no live Dispatch, a role with no agent herdr lists, or herdr's list failing (its error); `400` for another role. One `herdr agent list`, then one `herdr agent read`, and no `gh`.
 - `agents-rows` a node with a working Reviewer and an idle Implementer has `button "Implementer, idle: finished its turn"` and `button "Reviewer, working"` under its own button, which no longer names an agent; an agent herdr no longer lists has no row; hover or focus shows what the dot means; dots in light and dark.
-- `agents-open` a row opens `region "<Role>"`: `link "#<n> <title>"`, `button "Close"`, `heading "<Role>"`, its state in `strong`, then the screen; the other row switches to its agent; the link opens the issue's panel; focus on the title.
-- `agents-poll` the screen is read about every 3 s while the panel is open, and not once it closes.
+- `agents-open` a row opens `region "<Role>"`: `link "#<n> <title>"`, `button "Close"`, `heading "<Role>"`, its state in `strong`, then the chat; the other row switches to its agent; the link opens the issue's panel; focus on the title.
+- `agents-poll` the screen is read about every 3 s while it stands in for a chat, and not once the panel closes or a chat streams.
 - `agents-failed` a read that fails after one that worked keeps the screen under `Last read HH:MM · <why>` on the errata rule; one that never worked says `Not read yet · <why>`.
-- `agents-asking` an Asking Implementer's issue panel says it is asking and has `link "Answer it in its panel"`, which opens its agent panel with `region "Answer"` under the screen (answer.md).
+- `agents-asking` an Asking Implementer's issue panel says it is asking and has `link "Answer it in its panel"`, which opens its agent panel with `region "Answer"` under the chat (answer.md).
 - `agents-link` back and forward open and close the agent panel, and `#<project>/<issue>/<role>` opens it directly.
 - `agents-phone` at 390px the panel is the bottom sheet, the state a word in its head, the page no wider than the window: only the screen's box scrolls sideways.
 
@@ -90,7 +91,7 @@ Preconditions:
 
 - **Chat, none to read.** `$C http --evidence "$E/19-chat-missing" --for 2 GET /api/agent/verify%2Ffixture%2310/implementer/transcript`:
   `200`, `event: missing`, `claude keeps no session for <run dir>/worktrees/fixture-10 yet`. `$C page --evidence "$E/20-chat-fallback" --width 1440 --click "button=Implementer, idle: finished its turn" --expect "No chat to read"`:
-  `button "Chat" [pressed]`, `No chat to read: claude keeps no session for ... yet. Its screen:` over `Not read yet · ...`.
+  `No chat to read: claude keeps no session for ... yet. Its screen:` over `Not read yet · ...`.
 - **Chat, claude's.** `$C seed transcript 10 claude`; `$C http --evidence "$E/21-chat-route" --for 2 GET /api/agent/verify%2Ffixture%2310/implementer/transcript`:
   `event: session` `{"session":"verify-session-10"}`, then `id: verify-session-10 1048`, `event: entries`: the user's prompt,
   `thinking` `Read the issue first.`, `tool` `Bash {"command":"gh issue view 10"}`, `result` `Verify: seeded Dispatch 10`,
@@ -99,10 +100,9 @@ Preconditions:
   `--header 'Last-Event-ID: verify-session-10 1048'` (`23-chat-resume`): `session`, then only `Landed live, reply 1`.
 - **Chat in the panel.** `(sleep 8; $C seed transcript 10 more) &` then
   `$C page --evidence "$E/24-chat-light-1440" --width 1440 --click "button=Implementer, idle: finished its turn" --expect "Landed live, reply 1" --expect "Landed live, reply 2"`:
-  `log "The Implementer's chat"` with `› Implement verify/fixture#10 ...`, `▸ Bash ...`, `⎿ Verify: seeded Dispatch 10`, the long reply wrapped
-  in the box, and reply 2 landing without a reload; `.requests.txt` one `GET /api/agent/verify%2Ffixture%2310/implementer/transcript -> 200`.
-  `--scheme dark` (`25-chat-dark-1440`) and at `--width 390` (`26-chat-phone-390`, `page 390px wide in a 390px window`). Then
-  `--click "button=Screen" --expect "Not read yet"` after opening it (`27-screen`): `button "Screen" [pressed]` and the screen's errata.
+  `log "The Implementer's chat"` with `Implement verify/fixture#10 ...` on the user's bubble, `Thinking` and `Bash` `Completed` folded, the long
+  reply wrapped in the box, and reply 2 landing without a reload; `.requests.txt` one `GET /api/agent/verify%2Ffixture%2310/implementer/transcript -> 200`
+  and no screen read. `--scheme dark` (`25-chat-dark-1440`) and at `--width 390` (`26-chat-phone-390`, `page 390px wide in a 390px window`).
 - **Chat, opencode's.** `$C seed transcript 10 opencode` (its Implementer now opencode's); `$C http --evidence "$E/28-opencode-route" --for 2 GET /api/agent/verify%2Ffixture%2310/implementer/transcript`:
   `session` `ses_verify10`, `id: ses_verify10 msg_3`, the same turns (no `system`), its `tokens` as the reply's `usage`.
   `(sleep 1.5; $C seed transcript 10 more) &` then `--header 'Last-Event-ID: ses_verify10 msg_3' --for 3` (`29-opencode-resume`): only
@@ -121,6 +121,6 @@ Preconditions:
 - `seed reviewer none` forgets the Reviewer's start: seeding it again lists no Reviewer until the next start.
 - A run never ticks on its own, so the Agent states are herdr's at each status read, not a tick's.
 - The screen's reads are the panel's own fetches, not the event stream: they show in `.requests.txt` and `$OUTSIDE_LOG`
-  every 3 s while it is open.
+  every 3 s while it stands in for a chat, and not while one streams.
 - Hidden pages are not driven here: Chromium in `page` is always visible. The panel stops reading on
   `visibilitychange` to hidden, by its code; drive a hidden tab by hand to see it.
