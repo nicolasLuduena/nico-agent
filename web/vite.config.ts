@@ -1,4 +1,6 @@
+import { fileURLToPath } from "node:url";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
+import tailwindcss from "@tailwindcss/vite";
 import type { ProxyOptions } from "vite";
 import { defineConfig } from "vitest/config";
 
@@ -16,9 +18,13 @@ const serve: ProxyOptions = {
 
 // `npm run dev` serves the app with hot reload against a running `nico-agent serve`.
 export default defineConfig({
-  plugins: [svelte()],
+  plugins: [tailwindcss(), svelte()],
   server: { proxy: { "/api": serve, "/bucket": serve } },
-  // Tests run Svelte as the browser does, so a rune's effects run in them.
-  resolve: process.env.VITEST ? { conditions: ["browser"] } : undefined,
+  resolve: {
+    // shadcn-svelte's components import `$lib/...`: here `src/`.
+    alias: { $lib: fileURLToPath(new URL("./src", import.meta.url)) },
+    // Tests run Svelte as the browser does, so a rune's effects run in them.
+    conditions: process.env.VITEST ? ["browser"] : undefined,
+  },
   test: { environment: "./src/runes.environment.ts" },
 });

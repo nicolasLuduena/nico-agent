@@ -1,6 +1,8 @@
 <script lang="ts">
   // Add a Repo, as `repo add` does: its owner/name, the path of its clone and,
   // if any, the Project it joins. Its Project shows once added.
+  import { Button } from "$lib/components/ui/button/index.js";
+  import { Input } from "$lib/components/ui/input/index.js";
   import { reload } from "../live";
   import { selection } from "../selection.svelte";
   import type { Status } from "../status";
@@ -37,22 +39,22 @@
   <form onsubmit={submit}>
     <label class="field">
       <span class="field-name">Repo</span>
-      <input name="slug" placeholder="owner/name" required autocomplete="off" />
+      <Input name="slug" placeholder="owner/name" required autocomplete="off" />
     </label>
     <label class="field">
       <span class="field-name">Its clone</span>
-      <input name="path" placeholder="/path/to/its/clone" required autocomplete="off" />
+      <Input name="path" placeholder="/path/to/its/clone" required autocomplete="off" />
     </label>
     <label class="field">
       <span class="field-name">Its Project</span>
-      <input name="project" list="add-projects" placeholder="its own" autocomplete="off" />
+      <Input name="project" list="add-projects" placeholder="its own" autocomplete="off" />
     </label>
     <datalist id="add-projects">
       {#each status.projects as p (p.name)}
         <option value={p.name}></option>
       {/each}
     </datalist>
-    <button type="submit" class="button" disabled={running} aria-busy={running}>{running ? "Adding…" : "Add"}</button>
+    <Button type="submit" disabled={running} aria-busy={running}>{running ? "Adding…" : "Add"}</Button>
   </form>
   {#if sent?.outcome.ok}
     <p role="status">{sent.outcome.answer.repo}.</p>

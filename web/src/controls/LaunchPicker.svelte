@@ -4,6 +4,8 @@
   // Effort, each a select of what the Harness lists, or a text field where it
   // takes any, suggesting what the Harness's own files name. `pick` gets each change, and how to put the field back should
   // serve refuse it.
+  import { Input } from "$lib/components/ui/input/index.js";
+  import { fromAction } from "svelte/attachments";
   import { harnessHue } from "../hues";
   import type { Launch, Repo } from "../status";
   import { entered } from "./field";
@@ -58,7 +60,7 @@
         {/each}
       </select>
     {:else}
-      <input
+      <Input
         aria-label={called(field)}
         value={value ?? ""}
         placeholder="default"
@@ -66,10 +68,10 @@
         list={suggested.length ? `${id}-${field}` : undefined}
         aria-invalid={invalid || undefined}
         aria-busy={busy}
-        use:entered={{
+        {@attach fromAction(entered, () => ({
           set: value ?? "",
           save: async (typed, input) => pick(field, typed.trim() || null, () => (input.value = launch[field] ?? "")),
-        }}
+        }))}
       />
       {#if suggested.length}
         <datalist id="{id}-{field}">

@@ -3,6 +3,8 @@
   // went: its command, written to config.toml as it is entered (emptied,
   // removed), and the last Install, a failed or refused one on the errata rule
   // with what it printed, which opens the section by itself.
+  import { Input } from "$lib/components/ui/input/index.js";
+  import { fromAction } from "svelte/attachments";
   import { reload } from "../live";
   import type { Repo } from "../status";
   import { clock } from "../time";
@@ -35,14 +37,14 @@
       <label class="field-name" for="{id}-command">Install command</label>
       <Save state={saves.of("install")} />
     </div>
-    <input
+    <Input
       id="{id}-command"
       value={repo.install?.command ?? ""}
       placeholder="none: nothing runs after a merge"
       autocomplete="off"
       aria-invalid={saves.invalid("install")}
       aria-busy={saves.busy("install")}
-      use:entered={{ set: repo.install?.command ?? "", save }}
+      {@attach fromAction(entered, () => ({ set: repo.install?.command ?? "", save }))}
     />
   </div>
   {#if saves.refused}

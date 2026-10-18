@@ -6,6 +6,7 @@
   // to review and merge), its review with "Review now" while it is off, stopped or given up
   // on, and Verdict with findings, and Evidence in the Bucket; then who it is
   // assigned to, with "Assign to me" while no one is, and its restarts, folded.
+  import { Button } from "$lib/components/ui/button/index.js";
   import { onMount } from "svelte";
   import Markdown from "../Markdown.svelte";
   import { assignMe, assignable, named } from "../controls/assign";
@@ -108,7 +109,7 @@
         {#if node?.url}<a href={node.url} target="_blank" rel="noreferrer">{numbered(issue, node.repo, project.repos)}</a>{:else}{issue}{/if}
         {#if node && node.kind !== "code"}· {node.kind}{/if}
       </span>
-      <button type="button" class="quiet" onclick={close}>Close</button>
+      <Button variant="outline" onclick={close}>Close</Button>
     </div>
     <h2 id="panel-title" tabindex="-1" bind:this={title}>{node?.title ?? issue}</h2>
     {#if node}
@@ -131,7 +132,7 @@
       <section aria-labelledby="asking-title">
         <h3 id="asking-title">Asking</h3>
         <p class="said">The Implementer is asking you something{node.asking ? `: ${node.asking.question}` : "."}</p>
-        <p class="hint"><a class="button" href={hash({ project: project.name, view: "map", issue, agent: "implementer" })}>Answer it in its panel</a></p>
+        <p class="hint"><Button href={hash({ project: project.name, view: "map", issue, agent: "implementer" })}>Answer it in its panel</Button></p>
       </section>
     {/if}
 
@@ -158,7 +159,7 @@
       {#if pr}
         {@const n = pr.url.split("/").pop()}
         <p class="row">
-          <a class={node.stage === "Verified" ? "button" : "quiet"} href={pr.url} target="_blank" rel="noreferrer">Open PR {n}{pr.draft ? " (draft)" : ""}</a>
+          <Button variant={node.stage === "Verified" ? "default" : "outline"} href={pr.url} target="_blank" rel="noreferrer">Open PR {n}{pr.draft ? " (draft)" : ""}</Button>
           {#if full?.pr?.merged_at}<span class="at">merged {clock(full.pr.merged_at)}</span>{/if}
         </p>
         {#if node.stage === "Verified"}<p class="note hint">Review and merge it on GitHub.</p>{/if}
@@ -214,7 +215,7 @@
         {#if full.evidence.length}
           {@const heads = new Set(full.evidence.map((file) => file.path.split("/")[0])).size}
           <p class="row">
-            <a class="quiet" href={full.evidence_folder} target="_blank" rel="noreferrer">Open Evidence</a>
+            <Button variant="outline" href={full.evidence_folder} target="_blank" rel="noreferrer">Open Evidence</Button>
             <span class="at">
               {heads} head{heads === 1 ? "" : "s"} · {full.evidence.length} file{full.evidence.length === 1 ? "" : "s"}
             </span>

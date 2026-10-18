@@ -1,6 +1,7 @@
 <script lang="ts">
   // The one way to ask GitHub and Linear again: `refresh`, then the page
   // refetches so the read times beside it move.
+  import { Button } from "$lib/components/ui/button/index.js";
   import { reload } from "../live";
   import Refused from "./Refused.svelte";
   import { send, type Sent } from "./send";
@@ -17,9 +18,9 @@
   }
 </script>
 
-<button type="button" class="quiet" disabled={running} aria-busy={running} onclick={refresh}>
+<Button variant="outline" disabled={running} aria-busy={running} onclick={refresh}>
   {running ? "Refreshing…" : "Refresh"}
-</button>
+</Button>
 {#if sent && !sent.ok}
   <!-- On a line of its own under the read times and Refresh. -->
   <div class="refused">

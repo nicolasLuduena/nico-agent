@@ -2,6 +2,8 @@
   // Answer an Asking Implementer under its screen, in its agent panel: in
   // words, by an option the screen shows, or a key at a time; each
   // `POST /api/answer`, then `answered`, which reads the screen again.
+  import { Button } from "$lib/components/ui/button/index.js";
+  import { Input } from "$lib/components/ui/input/index.js";
   import { options } from "./answer";
   import Refused from "./Refused.svelte";
   import { send, type Sent } from "./send";
@@ -33,7 +35,7 @@
     // Sent, the box empties and Send disables: focus goes back to the box for the next answer.
     if (sent.ok && "text" in body) {
       text = "";
-      box.focus({ preventScroll: true });
+      box?.focus({ preventScroll: true });
     }
     answered();
   }
@@ -43,7 +45,7 @@
     if (text.trim()) void answer({ text });
   }
 
-  let box: HTMLInputElement;
+  let box = $state<HTMLInputElement | null>(null);
 </script>
 
 <section aria-labelledby="{id}-head">
@@ -51,25 +53,25 @@
   {#if picks.length}
     <div class="picks" role="group" aria-label="Options">
       {#each picks as o (o.key)}
-        <button type="button" class="quiet" aria-busy={running} onclick={() => answer({ keys: [o.key] })}
-          ><span class="digit">{o.key}</span> {o.label}</button
+        <Button variant="outline" class="px-3 py-2 text-left wrap-anywhere" aria-busy={running} onclick={() => answer({ keys: [o.key] })}
+          ><span class="digit">{o.key}</span> {o.label}</Button
         >
       {/each}
     </div>
   {/if}
   <div class="keys" role="group" aria-label="Keys">
     {#each KEYS as [face, key, name] (key)}
-      <button type="button" class="quiet" aria-label={name} aria-busy={running} onclick={() => answer({ keys: [key] })}>{face}</button>
+      <Button variant="outline" class="min-w-11 px-3" aria-label={name} aria-busy={running} onclick={() => answer({ keys: [key] })}>{face}</Button>
     {/each}
   </div>
   <form onsubmit={submit}>
     <label class="field">
       <span class="field-name">Answer in words</span>
-      <input bind:value={text} bind:this={box} autocomplete="off" />
+      <Input bind:value={text} bind:ref={box} autocomplete="off" />
     </label>
-    <button type="submit" class="button" disabled={!text.trim() || running} aria-busy={running}>
+    <Button type="submit" disabled={!text.trim() || running} aria-busy={running}>
       {running ? "Sending…" : "Send"}
-    </button>
+    </Button>
   </form>
   {#if sent && !sent.ok}
     <Refused error={sent.error} help={sent.help} />
@@ -91,12 +93,6 @@
     display: grid;
     gap: 8px;
   }
-  /* An option says what it picks, whole, wrapping under itself. */
-  .picks button {
-    padding: 8px 12px;
-    text-align: left;
-    overflow-wrap: anywhere;
-  }
   .digit {
     margin-right: 4px;
   }
@@ -104,10 +100,6 @@
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
-  }
-  .keys button {
-    min-width: 44px;
-    padding: 0 12px;
   }
   form {
     display: grid;
