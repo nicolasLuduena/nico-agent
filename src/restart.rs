@@ -118,6 +118,9 @@ pub fn step(
                 if d.rebasing != seen.rebasing {
                     live.rebasing = d.rebasing;
                 }
+                if d.rebasing_from != seen.rebasing_from {
+                    live.rebasing_from.clone_from(&d.rebasing_from);
+                }
                 if d.idle_since != seen.idle_since {
                     live.idle_since.clone_from(&d.idle_since);
                 }

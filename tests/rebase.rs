@@ -317,3 +317,52 @@ fn a_dispatch_is_restarted_once_a_tick_for_its_most_specific_reason_and_another_
         .collect();
     assert_eq!(reasons, ["conflict", "verdict"]);
 }
+
+/// GitHub says PR 12 of `acme/api`, open on `develop` at `head`, is `mergeable`.
+fn pr_12_is(t: &Setup, head: &str, mergeable: Mergeable) {
+    let activity = PullRequestActivity {
+        state: PrState::Open,
+        draft: true,
+        head_sha: head.into(),
+        base_branch: "develop".into(),
+        mergeable,
+        updated_at: "2026-09-30T12:30:00Z".into(),
+        merged_at: None,
+    };
+    (t.world.activity.borrow_mut()).insert("acme/api#12".into(), activity);
+}
+
+#[test]
+fn a_conflict_after_a_rebase_restarts_push_restarts_without_the_pr_ever_seen_mergeable() {
+    let t = stacked("");
+    next_tick(&t);
+    let mut prs = t.world.prs.borrow_mut();
+    prs.iter_mut().find(|pr| pr.number == 11).unwrap().state = PrState::Merged;
+    drop(prs);
+    let mut said = vec![next_tick(&t)];
+    for (head, mergeable) in [
+        // Still the head it was restarted at: the conflict being rebased.
+        ("sha12", Mergeable::Conflicting),
+        // Pushed, and the Base moved again before a tick saw it mergeable.
+        ("sha12b", Mergeable::Conflicting),
+        ("sha12b", Mergeable::Conflicting),
+        ("sha12c", Mergeable::Conflicting),
+        ("sha12d", Mergeable::Conflicting),
+    ] {
+        pr_12_is(&t, head, mergeable);
+        said.push(next_tick(&t));
+    }
+
+    let none = Vec::<String>::new();
+    assert_eq!(
+        said,
+        [
+            vec!["acme/api#2 restarted: retarget".to_string()],
+            none.clone(),
+            vec!["acme/api#2 restarted: conflict".to_string()],
+            none,
+            vec!["acme/api#2 restarted: conflict".to_string()],
+            vec!["acme/api#2 Failed: conflict again after 2 restarts for it".to_string()],
+        ]
+    );
+}
