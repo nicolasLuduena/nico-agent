@@ -87,9 +87,13 @@ pub struct Dispatch {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub idle_since: Option<String>,
     /// Restarted to rebase (conflict or retarget) since its PR was last seen
-    /// mergeable: a conflict meanwhile is not restarted for again.
+    /// mergeable or pushed to: a conflict meanwhile is not restarted for again.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub rebasing: bool,
+    /// The head its PR was at when `rebasing` was set: a push since means
+    /// the rebase it asked for happened, so `rebasing` ends.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rebasing_from: Option<String>,
     /// The head its PR was flipped to ready at, by its passing Verdict.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub flipped: Option<String>,
@@ -241,6 +245,7 @@ pub fn issue(ctx: &Context, config: &Config, key: &str, flags: Flags) -> Result<
         restarts: vec![],
         idle_since: None,
         rebasing: false,
+        rebasing_from: None,
         flipped: None,
         kept: None,
         runner: Some(ctx.world.process_id()),

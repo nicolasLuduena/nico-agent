@@ -39,8 +39,8 @@ Preconditions:
   `read_at` null and `ready`, `stackable`, `gardening`, `waiting` `[]`; its settings are each
   `from` `default`: `room` `3`, `base` null, `implementer` claude, `reviewer` codex, `quality_scan`
   and `faux_nico` claude, `switches` `dispatch`, `stack`, `review`, `restart`, `flip` true and
-  `answer`, `gardening`, `quality_scan` false. `projects` is
-  `[{"name":"verify/fixture","repos":["verify/fixture"],"defaults":{}}]`; `dispatches` `[]`.
+  `answer`, `gardening`, `quality_scan` false. `projects` is one Project, `name` `verify/fixture`,
+  `repos` `["verify/fixture"]`, `defaults` `{}`, with those same settings; `dispatches` `[]`.
   `$OUTSIDE_LOG` gained `gh api user --jq .login`.
 - **Cached read.** Run `$C seed issues`, then `$C state > "$E/state.before.txt"` and `$C run --evidence "$E/02-cached" -- status --json`.
   Exit `0`; no `error`; `read_at` is the seed's; `ready` is `verify/fixture#1` "Verify: a Ready
