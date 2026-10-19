@@ -110,7 +110,7 @@ pub fn step(
             },
         };
         if d != seen {
-            // Only what the reasons noted: a retarget's Base, rebasing, idle since when.
+            // Only what the reasons noted: a retarget's Base, rebasing and from which head, idle since when.
             dispatch::edit(ctx, &d.issue, |live| {
                 if d.base != seen.base {
                     live.base.clone_from(&d.base);

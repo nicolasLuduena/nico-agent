@@ -167,16 +167,7 @@ fn a_retarget_restarts_once_when_the_pr_below_merged_naming_its_base() {
     let merged = next_tick(&t);
     let sent = prompts(&t, 2);
     // Asked to rebase already: its conflict meanwhile is no restart.
-    let activity = PullRequestActivity {
-        state: PrState::Open,
-        draft: true,
-        head_sha: "sha12".into(),
-        base_branch: "develop".into(),
-        mergeable: Mergeable::Conflicting,
-        updated_at: "2026-09-30T12:30:00Z".into(),
-        merged_at: None,
-    };
-    (t.world.activity.borrow_mut()).insert("acme/api#12".into(), activity);
+    pr_12_is(&t, "sha12", Mergeable::Conflicting);
     let after = next_tick(&t);
 
     assert_eq!(
@@ -333,7 +324,7 @@ fn pr_12_is(t: &Setup, head: &str, mergeable: Mergeable) {
 }
 
 #[test]
-fn a_conflict_after_a_rebase_restarts_push_restarts_without_the_pr_ever_seen_mergeable() {
+fn a_conflict_after_the_push_a_rebase_restart_asked_for_is_restarted_for_unseen_mergeable() {
     let t = stacked("");
     next_tick(&t);
     let mut prs = t.world.prs.borrow_mut();
@@ -365,4 +356,28 @@ fn a_conflict_after_a_rebase_restarts_push_restarts_without_the_pr_ever_seen_mer
             vec!["acme/api#2 Failed: conflict again after 2 restarts for it".to_string()],
         ]
     );
+}
+
+#[test]
+fn a_dispatch_rebasing_from_before_its_head_was_noted_notes_it_and_restarts_after_a_push() {
+    let t = stacked("");
+    next_tick(&t);
+    let mut prs = t.world.prs.borrow_mut();
+    prs.iter_mut().find(|pr| pr.number == 11).unwrap().state = PrState::Merged;
+    drop(prs);
+    next_tick(&t);
+    // As a Dispatch restarted to rebase before the head was noted was kept.
+    let file = t.config_dir.join("dispatches.json");
+    let mut all: Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
+    assert_eq!(all[0]["rebasing"], true);
+    all[0].as_object_mut().unwrap().remove("rebasing_from");
+    std::fs::write(&file, serde_json::to_string_pretty(&all).unwrap()).unwrap();
+
+    pr_12_is(&t, "sha12", Mergeable::Conflicting);
+    let unpushed = next_tick(&t);
+    pr_12_is(&t, "sha12b", Mergeable::Conflicting);
+    let pushed = next_tick(&t);
+
+    assert_eq!(unpushed, Vec::<String>::new());
+    assert_eq!(pushed, ["acme/api#2 restarted: conflict"]);
 }
